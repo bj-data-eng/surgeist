@@ -1635,6 +1635,164 @@ mod tests {
     }
 
     #[test]
+    fn frame_discard_continues_after_the_first_retained_byte_fault() {
+        use crate::accounting::{RenderAccountingOptions, RenderProfile, RendererCpu};
+
+        let options =
+            RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
+        let cpu = RendererCpu::new(options).unwrap();
+        let manager = ResourceManager::with_generation(
+            ResourceCacheBudget::DEFAULT,
+            Generation::new(options).unwrap(),
+            cpu.at(RenderCpuScope::DeviceBacking),
+        );
+        let mut discarded = manager.begin_frame(None).unwrap();
+        let first = discarded.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+        let mut unrelated = manager.begin_frame(None).unwrap();
+        let survivor = unrelated.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+        let last = discarded.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+        let generation = manager.generation();
+        let before = generation.class_usage(GenerationClass::CacheVello).unwrap();
+        let probes = generation.cache_work(RenderWork::ResourceProbes).unwrap();
+        let cleanup_probes = || {
+            cpu.snapshot()
+                .unwrap()
+                .scope_usage(RenderCpuScope::Cleanup)
+                .unwrap()
+                .work(RenderWork::ResourceProbes)
+        };
+        let cpu_before = cleanup_probes();
+        manager.inject_retained_byte_mismatch_before_discard_for_test();
+
+        let cleanup = discarded.resolve(FrameResourceDisposition::Discard);
+        assert_eq!(
+            cleanup.evicted_resources(),
+            &[first.resource_identity(), last.resource_identity()]
+        );
+        let fault = ResourceAccountingFault::RetainedByteMismatch {
+            retained_bytes: 7,
+            registered_entry_bytes: 8,
+        };
+        assert_eq!(
+            cleanup.retention(),
+            ResourceRetentionOutcome::AccountingFault { fault }
+        );
+        let after = manager.observation_for_test();
+        assert_eq!(after.accounting_fault_for_test(), Some(fault));
+        assert_eq!(
+            after.entry_identities_for_test(),
+            &[survivor.resource_identity()]
+        );
+        assert_eq!(after.accounted_entry_bytes, Some(4));
+        assert_eq!((after.active_frame_count, after.leased_count), (1, 1));
+        assert_eq!(generation.registered_cache_bytes().unwrap(), 3);
+        assert_eq!(generation.idle_cache_bytes().unwrap(), 0);
+        assert_eq!(generation.cache_bytes().unwrap(), 12);
+        drop((first, last));
+        assert_eq!(generation.cache_bytes().unwrap(), 4);
+        let after = generation.class_usage(GenerationClass::CacheVello).unwrap();
+        assert_eq!(
+            after.work(RenderWork::ResourceEvictions) - before.work(RenderWork::ResourceEvictions),
+            2
+        );
+        assert_eq!(
+            after.work(RenderWork::ResourceLeaseReturns),
+            before.work(RenderWork::ResourceLeaseReturns)
+        );
+        // Only the first removal reconciles two remaining entries. Both removals
+        // separately probe the cache, then publish their identities in order.
+        assert_eq!(
+            after.work(RenderWork::ResourceProbes) - before.work(RenderWork::ResourceProbes),
+            2
+        );
+        assert_eq!(
+            generation.cache_work(RenderWork::ResourceProbes).unwrap() - probes,
+            4
+        );
+        // Three selection visits, two scratch insertions and two result appends.
+        assert_eq!(cleanup_probes() - cpu_before, 7);
+
+        unrelated.release(survivor).unwrap();
+        assert_eq!(
+            unrelated.finish().retention(),
+            ResourceRetentionOutcome::AccountingFault { fault }
+        );
+    }
+
+    #[test]
+    fn idle_trim_accounts_for_only_the_returned_entries_and_keeps_the_active_survivor() {
+        let manager = ResourceManager::new(ResourceCacheBudget::DISABLED);
+        let mut finishing = manager.begin_frame(None).unwrap();
+        let vello = finishing.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+        let effect = finishing.acquire(effect_key(1), 4).unwrap();
+        let mut unrelated = manager.begin_frame(None).unwrap();
+        let survivor = unrelated.acquire(effect_key(1), 4).unwrap();
+        let expected = [vello.resource_identity(), effect.resource_identity()];
+        drop((vello, effect));
+        let generation = manager.generation();
+        let probes = generation.cache_work(RenderWork::ResourceProbes).unwrap();
+        let vello_before = generation.class_usage(GenerationClass::CacheVello).unwrap();
+        let effects_before = generation
+            .class_usage(GenerationClass::CacheEffects)
+            .unwrap();
+        assert_eq!(generation.cache_bytes().unwrap(), 12);
+        assert_eq!(generation.registered_cache_bytes().unwrap(), 12);
+        assert_eq!(generation.idle_cache_bytes().unwrap(), 0);
+
+        let cleanup = finishing.finish();
+        assert_eq!(cleanup.evicted_resources(), &expected);
+        assert_eq!(
+            cleanup.retention(),
+            ResourceRetentionOutcome::Trimmed {
+                released_count: 2,
+                retained_count: 0,
+                retained_byte_len: 0
+            }
+        );
+        let after = manager.observation_for_test();
+        assert_eq!(
+            after.entry_identities_for_test(),
+            &[survivor.resource_identity()]
+        );
+        assert_eq!(after.accounted_entry_bytes, Some(4));
+        assert_eq!((after.active_frame_count, after.leased_count), (1, 1));
+        assert_eq!(after.accounting_fault_for_test(), None);
+        assert_eq!(generation.cache_bytes().unwrap(), 4);
+        assert_eq!(generation.registered_cache_bytes().unwrap(), 4);
+        assert_eq!(generation.idle_cache_bytes().unwrap(), 0);
+        // Return, pre-trim audit and selection inspect every entry. The final
+        // audit and both summary walks each inspect the remaining effect.
+        for (class, before, class_probes) in [
+            (GenerationClass::CacheVello, vello_before, 3),
+            (GenerationClass::CacheEffects, effects_before, 9),
+        ] {
+            let after = generation.class_usage(class).unwrap();
+            assert_eq!(
+                after.work(RenderWork::ResourceProbes) - before.work(RenderWork::ResourceProbes),
+                class_probes
+            );
+            assert_eq!(
+                after.work(RenderWork::ResourceEvictions)
+                    - before.work(RenderWork::ResourceEvictions),
+                1
+            );
+            assert_eq!(
+                after.work(RenderWork::ResourceLeaseReturns)
+                    - before.work(RenderWork::ResourceLeaseReturns),
+                1
+            );
+        }
+        assert_eq!(
+            generation.cache_work(RenderWork::ResourceProbes).unwrap() - probes,
+            3 + 9 + 2
+        );
+        let survivor_id = survivor.resource_identity();
+        unrelated.release(survivor).unwrap();
+        assert_eq!(unrelated.finish().evicted_resources(), &[survivor_id]);
+        assert_eq!(generation.cache_bytes().unwrap(), 0);
+    }
+
+    #[test]
     fn cache_candidate_scans_charge_each_inspected_entry_to_its_own_class() {
         let manager = ResourceManager::default();
         let mut initial = manager.begin_frame(None).unwrap();

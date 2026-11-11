@@ -140,6 +140,135 @@ fn closed(
 }
 
 #[test]
+fn native_atlas_retirement_removes_only_idle_persistent_atlases() {
+    use crate::{
+        accounting::GenerationClass, resource::ResourceCacheKey, texture::EffectTextureDescriptor,
+    };
+
+    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let device = renderer.default_wgpu_device_queue().unwrap().0;
+    let options = options(RenderProfile::Off);
+    let cpu = RendererCpu::new(options).unwrap();
+    let manager = manager(&cpu, options);
+    let account = Account::for_test();
+    let extent = PhysicalSize::new(2, 2);
+    let mut recording = RecordingBuilder::new(&account).unwrap();
+    recording.request_image_atlas(extent).unwrap();
+    recording
+        .new_transient_image(ImageRole::GradientRamp, PhysicalSize::new(1, 1))
+        .unwrap();
+    let (_, intents) = recording.finish();
+    let [
+        ResourceIntent::Image(atlas),
+        ResourceIntent::Image(transient),
+    ] = intents.as_slice()
+    else {
+        panic!("expected the atlas and gradient ramp intents");
+    };
+    let atlas = VelloImageKey::from_intent(atlas);
+    let transient = VelloImageKey::from_intent(transient);
+    let effect = EffectTextureDescriptor::try_capture(
+        PhysicalSize::new(1, 1),
+        wgpu::TextureUsages::TEXTURE_BINDING,
+    )
+    .unwrap();
+
+    let mut previous = manager.begin_frame(None).unwrap();
+    let first = previous.acquire_vello_image(device, atlas, 16).unwrap();
+    let second = previous.acquire_vello_image(device, atlas, 16).unwrap();
+    let ramp = previous.acquire_vello_image(device, transient, 4).unwrap();
+    let effect = previous
+        .acquire(ResourceCacheKey::EffectTexture(effect.cache_key()), 4)
+        .unwrap();
+    let initial = [
+        first.resource_identity(),
+        second.resource_identity(),
+        ramp.resource_identity(),
+        effect.resource_identity(),
+    ];
+    for lease in [first, second, ramp, effect] {
+        previous.release(lease).unwrap();
+    }
+    assert!(previous.finish().evicted_resources().is_empty());
+    let mut active = manager.begin_frame(None).unwrap();
+    let current = active.acquire_vello_image(device, atlas, 16).unwrap();
+    let current_id = current.resource_identity();
+    let before = manager.observation_for_test();
+    assert_eq!(
+        before.entry_identities_for_test(),
+        &[initial[0], initial[1], initial[2], initial[3], current_id]
+    );
+    assert_eq!((before.idle_count, before.leased_count), (4, 1));
+    let generation = manager.generation();
+    assert_eq!(generation.cache_bytes().unwrap(), 56);
+    assert_eq!(generation.registered_cache_bytes().unwrap(), 56);
+    assert_eq!(generation.idle_cache_bytes().unwrap(), 40);
+
+    // Admission and selection inspect each entry. The final audit inspects
+    // the survivors. Only the first retirement has two keyed removal probes.
+    for (vello_probes, removed) in [(10, 2), (6, 0)] {
+        let vello_before = generation.class_usage(GenerationClass::CacheVello).unwrap();
+        let effect_before = generation
+            .class_usage(GenerationClass::CacheEffects)
+            .unwrap();
+        let probes = generation.cache_work(RenderWork::ResourceProbes).unwrap();
+        active.retire_idle_vello_atlases().unwrap();
+        let after = manager.observation_for_test();
+        assert_eq!(
+            after.entry_identities_for_test(),
+            &[initial[2], initial[3], current_id]
+        );
+        assert_eq!(
+            (
+                after.idle_count,
+                after.leased_count,
+                after.active_frame_count
+            ),
+            (2, 1, 1)
+        );
+        assert_eq!(after.accounted_entry_bytes, Some(24));
+        assert_eq!(after.retained_atlas_count_for_test(), 1);
+        assert_eq!(after.accounting_fault_for_test(), None);
+        assert_eq!(generation.cache_bytes().unwrap(), 24);
+        assert_eq!(generation.registered_cache_bytes().unwrap(), 24);
+        assert_eq!(generation.idle_cache_bytes().unwrap(), 8);
+        for (class, before, class_probes, evictions) in [
+            (
+                GenerationClass::CacheVello,
+                vello_before,
+                vello_probes,
+                removed,
+            ),
+            (GenerationClass::CacheEffects, effect_before, 3, 0),
+        ] {
+            let after = generation.class_usage(class).unwrap();
+            assert_eq!(
+                after.work(RenderWork::ResourceProbes) - before.work(RenderWork::ResourceProbes),
+                class_probes
+            );
+            assert_eq!(
+                after.work(RenderWork::ResourceEvictions)
+                    - before.work(RenderWork::ResourceEvictions),
+                evictions
+            );
+            assert_eq!(
+                after.work(RenderWork::ResourceLeaseReturns),
+                before.work(RenderWork::ResourceLeaseReturns)
+            );
+        }
+        assert_eq!(
+            generation.cache_work(RenderWork::ResourceProbes).unwrap() - probes,
+            vello_probes + 3 + removed
+        );
+    }
+    let (texture, _) = active.vello_image(&current).unwrap();
+    assert_eq!((texture.width(), texture.height()), (2, 2));
+    active.release(current).unwrap();
+    assert!(active.finish().evicted_resources().is_empty());
+    assert_eq!(generation.idle_cache_bytes().unwrap(), 24);
+}
+
+#[test]
 fn individual_clean_commit_preserves_retention_and_exact_readiness_maintenance() {
     let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
     let device = renderer.default_wgpu_device_queue().unwrap().0;
