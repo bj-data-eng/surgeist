@@ -3836,6 +3836,93 @@ if (actual !== expected) {{
 }
 
 #[test]
+fn bundled_helper_preserves_computed_block_axis_auto_margins() {
+    let root = std::env::temp_dir().join(format!(
+        "surgeist-layout-computed-block-margin-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).expect("temp dir");
+    let script_path = root.join("computed-block-margin.js");
+    let script = format!(
+        r#"
+const window = {{}};
+const document = {{ styleSheets: [] }};
+{TEST_HELPER_SOURCE}
+
+{{
+function check(name, declarations, mode, direction, typed, resolved, expected) {{
+  const style = {{
+    ...Object.fromEntries(declarations.map(([property], index) => [index, property])),
+    length: declarations.length,
+    getPropertyValue(property) {{
+      return declarations.find(([key]) => key === property)?.[1] ?? "";
+    }},
+  }};
+  const element = {{ style }};
+  if (typed) {{
+    element.computedStyleMap = () => ({{ get: property => typed[property] ?? {{ unit: "px", value: 0 }} }});
+  }}
+  const computedStyle = {{
+    writingMode: mode, direction,
+    marginTop: "0px", marginRight: "0px", marginBottom: "0px", marginLeft: "0px",
+    ...resolved,
+  }};
+  const margin = parseEffectiveMargin(element, computedStyle);
+  if (JSON.stringify(margin) !== JSON.stringify(expected)) {{
+    throw new Error(name + ": expected " + JSON.stringify(expected) + ", got " + JSON.stringify(margin));
+  }}
+}}
+const auto = {{ value: "auto" }};
+const autoWire = {{ unit: "auto" }};
+const px = value => ({{ unit: "px", value }});
+
+check("horizontal computed block longhands", [
+  ["margin-block-start", "auto"], ["margin-block-end", "5px"]
+], "horizontal-tb", "ltr", {{ "margin-top": auto, "margin-bottom": px(5) }},
+{{ marginTop: "30px", marginBottom: "5px" }},
+{{ top: autoWire, bottom: px(5) }});
+
+check("vertical computed block shorthand", [
+  ["margin-block", "auto"]
+], "vertical-rl", "rtl", {{ "margin-left": auto, "margin-right": auto }},
+{{ marginLeft: "-15px", marginRight: "-15px" }},
+{{ left: autoWire, right: autoWire }});
+
+check("later physical margin wins in the computed style", [
+  ["margin-block", "auto"], ["margin-right", "9px"]
+], "vertical-lr", "ltr", {{ "margin-left": auto, "margin-right": px(9) }},
+{{ marginLeft: "18px", marginRight: "9px" }},
+{{ left: autoWire, right: px(9) }});
+
+check("later logical margin replaces an inline physical auto", [
+  ["margin-top", "auto"], ["margin-block", "3px 5px"]
+], "horizontal-tb", "ltr", {{ "margin-top": px(3), "margin-bottom": px(5) }},
+{{ marginTop: "3px", marginBottom: "5px" }},
+{{ top: px(3), bottom: px(5) }});
+
+check("inline declarations preserve block auto and fixed lengths without Typed OM", [
+  ["margin-block", "auto 5px"], ["margin-right", "0px"]
+], "sideways-lr", "rtl", null, {{ marginLeft: "27px", marginRight: "0px" }},
+{{ left: autoWire }});
+}}
+"#
+    );
+    fs::write(&script_path, script).expect("script");
+
+    let output = Command::new("node")
+        .arg(&script_path)
+        .output()
+        .expect("node should run the computed margin capture");
+    fs::remove_dir_all(root).expect("remove capture test files");
+    assert!(
+        output.status.success(),
+        "computed margin capture failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn bundled_helper_preserves_authored_percentage_margin_values() {
     let root = std::env::temp_dir().join(format!(
         "surgeist-layout-percentage-margin-capture-{}",
