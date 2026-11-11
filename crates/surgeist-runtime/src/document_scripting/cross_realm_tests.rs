@@ -235,6 +235,12 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
     )>() + account;
     let window_event =
         size_of::<(RefCell<Option<Root>>, DomHostedRuntimeRetention)>() + 2 * size_of::<Rc<()>>();
+    // The four relations each have a getter. Only window has no setter.
+    let window_relations = size_of::<(
+        Weak<NativeOwner>,
+        DocumentScriptPermit,
+        DomHostedRuntimeRetention,
+    )>() + 7 * size_of::<(Rc<()>, &'static ())>();
     let exact = size_of::<NativeOwner>()
         + size_of_val(&read)
         + size_of_val(&detach)
@@ -244,6 +250,7 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         + escape
         + HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes()
         + dom_exception
+        + window_relations
         + window_event;
     drop(read);
     drop(detach);
@@ -264,6 +271,7 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
             let script = r#"(() => {
                 const current = Object.getOwnPropertyDescriptor(globalThis, "event");
                 return new DOMException().name === "Error" && CSS.escape("0") === "\\30 " &&
+                       window === globalThis && self === window && parent === window && opener === null &&
                        globalThis.event === undefined && current.enumerable && current.configurable &&
                        current.get.name === "get event" && current.get.length === 0 &&
                        current.set.name === "set event" && current.set.length === 1;
