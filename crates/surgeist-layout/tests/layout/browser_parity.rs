@@ -1105,12 +1105,18 @@ fn fri05_c06_computed_overflow_corpus_outputs_have_centralized_provenance() {
 
 #[test]
 fn runs_subgrid_relative_rtl_abspos_fixture_against_surgeist_layout() {
-    let golden = support::Golden::parse(include_str!(
-        "browser_parity/xml/subgrid/subgrid_abspos_relative_rtl_column_3_to_5__border_box_ltr.xml"
-    ))
-    .expect("browser parity fixture should parse");
-
-    support::assert_surgeist_matches(&golden).expect("surgeist layout should match fixture");
+    let historical =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml/subgrid");
+    let originals: Vec<_> = crate::fixture_variants::fixture_cases()
+        .into_iter()
+        .map(|(variant, _)| {
+            historical.join(format!(
+                "subgrid_abspos_relative_rtl_column_3_to_5__{variant}.xml",
+            ))
+        })
+        .collect();
+    assert_eq!(originals.len(), 4);
+    assert_registered_originals_match(&originals);
 }
 
 fn assert_registered_subgrid_alignment(source: &str) {
