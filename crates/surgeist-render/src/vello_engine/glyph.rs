@@ -1438,6 +1438,77 @@ mod receiving_tests {
         (font, visible, space)
     }
 
+    #[test]
+    fn native_png_preflight_requires_decoded_output_scratch() {
+        let mut png = Vec::new();
+        let mut encoder = png::Encoder::new(&mut png, 2, 1);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().unwrap();
+        writer
+            .write_image_data(&[0, 17, 34, 255, 51, 68, 85, 255])
+            .unwrap();
+        writer.finish().unwrap();
+        let bitmap = SelectedBitmap {
+            width: 2,
+            height: 1,
+            source: SelectedBitmapSource::Other,
+            data: SelectedBitmapData::Png {
+                data: &png,
+                expected_dimensions: Some((2, 1)),
+            },
+            selection: None,
+        };
+        assert_bitmap_scratch_admission(&bitmap, 8, BitmapEncoding::Png);
+    }
+
+    #[test]
+    fn native_packed_mask_preflight_requires_decoded_output_scratch() {
+        let bitmap = SelectedBitmap {
+            width: 9,
+            height: 1,
+            source: SelectedBitmapSource::Other,
+            data: SelectedBitmapData::Mask {
+                bpp: 1,
+                is_packed: true,
+                data: &[0b1010_1010, 0b1000_0000],
+            },
+            selection: None,
+        };
+        assert_bitmap_scratch_admission(&bitmap, 9, BitmapEncoding::PackedMask);
+    }
+
+    fn assert_bitmap_scratch_admission(
+        bitmap: &SelectedBitmap<'_>,
+        decoded_bytes: u64,
+        encoding: BitmapEncoding,
+    ) {
+        let (font, _, _) = fixture();
+        for scratch_limit in [decoded_bytes - 1, decoded_bytes] {
+            let options = RenderAccountingOptions::new()
+                .with_limits(RenderLimits::new().with_scratch_bytes(scratch_limit));
+            let mut context = RenderAccountingContext::new(options);
+            let result = context.run(RenderAttemptKind::Frame, RenderPhase::Encode, |_| {
+                preflight_bitmap(bitmap, &font).map(|result| {
+                    assert_eq!(
+                        std::mem::discriminant(&result),
+                        std::mem::discriminant(&encoding)
+                    );
+                })
+            });
+            let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+            assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+            if scratch_limit < decoded_bytes {
+                let error = result.expect_err("one-short scratch must refuse native bitmap decode");
+                assert!(error.accounting_diagnostic().is_some());
+                assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+            } else {
+                result.unwrap();
+                assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), decoded_bytes);
+            }
+        }
+    }
+
     fn selected_outline(
         font: &FontData,
         glyph: u32,
