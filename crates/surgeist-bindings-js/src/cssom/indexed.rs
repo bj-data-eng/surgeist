@@ -252,16 +252,16 @@ impl<H: StylesheetHost> Rules<H> {
                 .try_borrow()
                 .map_err(|_| Error::RegistryConflict)?;
             let mut found = None;
-            for (index, (known, identity)) in cache.entries.iter().enumerate() {
+            for (known, identity) in &cache.entries {
                 self.sheet.realm.host.work(scope, 1)?;
                 if known == id {
-                    found = Some((index, *identity));
+                    found = Some(*identity);
                     break;
                 }
             }
             found
         };
-        if let Some((_, identity)) = known
+        if let Some(identity) = known
             && let Some(root) = scope.operations.reopen_projection(identity)?
         {
             return Ok(scope.value(root));
@@ -278,7 +278,7 @@ impl<H: StylesheetHost> Rules<H> {
             }),
             &[],
         )?;
-        self.cache_identity(scope, id, identity, known.map(|(index, _)| index))?;
+        self.cache_identity(scope, id, identity)?;
         Ok(object)
     }
 
@@ -287,26 +287,30 @@ impl<H: StylesheetHost> Rules<H> {
         scope: &mut Scope<'_>,
         id: &CssomRuleId,
         identity: Projection,
-        existing: Option<usize>,
     ) -> Result<(), Error> {
         let mut cache = self
             .cache
             .try_borrow_mut()
             .map_err(|_| Error::RegistryConflict)?;
-        if let Some(index) = existing {
-            let entry = cache
-                .entries
-                .get_mut(index)
-                .ok_or(Error::RegistryConflict)?;
-            entry.1 = identity;
-            return Ok(());
+        let host = &self.sheet.realm.host;
+        // Reclaim collected entries before growing the live list's cache.
+        // A detached but reachable wrapper still owns its identity.
+        let mut cursor = 0;
+        while cursor < cache.entries.len() {
+            host.work(scope, 1)?;
+            let (_, identity) = cache.entries.get(cursor).ok_or(Error::RegistryConflict)?;
+            if scope.operations.projection_is_live(*identity)? {
+                cursor += 1;
+            } else {
+                host.work(scope, 1)?;
+                cache.entries.swap_remove(cursor);
+            }
         }
         if cache.entries.len() == cache.entries.capacity() {
             let capacity = cache.entries.capacity().saturating_mul(2).max(4);
             let bytes = capacity
                 .checked_mul(size_of::<(CssomRuleId, Projection)>())
                 .ok_or(Error::Allocation)?;
-            let host = &self.sheet.realm.host;
             let backing = host.retain(scope, bytes)?;
             host.work(scope, cache.entries.len())?;
             let mut replacement = Vec::new();

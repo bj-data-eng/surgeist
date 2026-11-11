@@ -17,7 +17,7 @@ pub enum MediaEdit {
     Delete,
 }
 
-pub(super) fn members<'scope, H: StylesheetHost>(
+pub(super) fn attribute_member<'scope, H: StylesheetHost>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
 ) -> Result<(), Error> {
@@ -28,7 +28,13 @@ pub(super) fn members<'scope, H: StylesheetHost>(
         &ascii(b"get mediaText"),
         Callback::new(media_text::<H>),
         Some((&ascii(b"set mediaText"), Callback::new(set_media_text::<H>))),
-    )?;
+    )
+}
+
+pub(super) fn operation_members<'scope, H: StylesheetHost>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+) -> Result<(), Error> {
     method(
         scope,
         prototype,

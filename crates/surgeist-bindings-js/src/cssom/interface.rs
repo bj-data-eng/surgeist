@@ -75,10 +75,25 @@ pub fn install<H: StylesheetHost>(
     let rule = interface::<H>(scope, Interface::Rule, None, None)?;
     sheet_members::<H>(scope, &sheet.1, &css_sheet.1)?;
     list_members::<Rules<H>>(scope, &rules.1)?;
+    list_iterator(scope, &rules.1)?;
+    media::attribute_member::<H>(scope, &media.1)?;
     list_members::<Media<H>>(scope, &media.1)?;
-    media::members::<H>(scope, &media.1)?;
+    media::operation_members::<H>(scope, &media.1)?;
+    list_iterator(scope, &media.1)?;
     rule_members::<H>(scope, &rule.1)?;
     let entries = [sheet, css_sheet, rules, media, rule];
+    // Web IDL installs the prototype's constructor after its members.
+    for (constructor, prototype) in &entries {
+        data(
+            scope,
+            prototype,
+            PropertyKey::String(&CONSTRUCTOR),
+            constructor,
+            true,
+            false,
+            true,
+        )?;
+    }
     let prototypes = entries.each_ref().map(|(_, prototype)| &prototype.root);
     scope.operations.cssom_prototypes(&prototypes)?;
     for (entry, interface) in entries.iter().zip([
@@ -143,15 +158,6 @@ fn interface<'scope, H: StylesheetHost>(
         false,
         false,
         false,
-    )?;
-    data(
-        scope,
-        &prototype,
-        PropertyKey::String(&CONSTRUCTOR),
-        &constructor,
-        true,
-        false,
-        true,
     )?;
     let symbol = scope.well_known_symbol(WellKnownSymbol::ToStringTag)?;
     let tag = scope.string(kind.name())?;
@@ -252,7 +258,13 @@ fn list_members<'scope, L: indexed::List>(
         1,
         1,
         Callback::new(indexed::item::<L>),
-    )?;
+    )
+}
+
+fn list_iterator<'scope>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+) -> Result<(), Error> {
     let iterator = scope.well_known_symbol(WellKnownSymbol::Iterator)?;
     let values = scope.intrinsic(Intrinsic::ArrayValues)?;
     data(
@@ -290,18 +302,18 @@ fn sheet_members<'scope, H: StylesheetHost>(
     attribute(
         scope,
         sheet,
-        DISABLED,
-        &ascii(b"get disabled"),
-        Callback::new(disabled::<H>),
-        Some((&ascii(b"set disabled"), Callback::new(set_disabled::<H>))),
-    )?;
-    attribute(
-        scope,
-        sheet,
         MEDIA,
         &ascii(b"get media"),
         Callback::new(media::<H>),
         Some((&ascii(b"set media"), Callback::new(forward_media::<H>))),
+    )?;
+    attribute(
+        scope,
+        sheet,
+        DISABLED,
+        &ascii(b"get disabled"),
+        Callback::new(disabled::<H>),
+        Some((&ascii(b"set disabled"), Callback::new(set_disabled::<H>))),
     )?;
     for (key, name) in [
         (CSS_RULES.as_slice(), &ascii(b"get cssRules")[..]),
@@ -483,18 +495,18 @@ fn rule_members<'scope, H: StylesheetHost>(
     attribute(
         scope,
         rule,
-        &TYPE,
-        &ascii(b"get type"),
-        Callback::new(rule_type::<H>),
-        None,
-    )?;
-    attribute(
-        scope,
-        rule,
         &CSS_TEXT,
         &ascii(b"get cssText"),
         Callback::new(rule_text::<H>),
         Some((&ascii(b"set cssText"), Callback::new(set_rule_text::<H>))),
+    )?;
+    attribute(
+        scope,
+        rule,
+        &TYPE,
+        &ascii(b"get type"),
+        Callback::new(rule_type::<H>),
+        None,
     )
 }
 
