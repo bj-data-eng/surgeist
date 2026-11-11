@@ -690,6 +690,10 @@ const REGISTERED_MATCHING: &[(&str, &str)] = &[
         "1c732137441ce14b8c7c9e59b4ce741c39708ae2543aebcefc6ab60c50c50b78",
     ),
     (
+        authority::FRI07_INTRINSIC_FLEX_EDITION,
+        "7b156a74615954eb2a6d90f210b9f2ef33bb5b878e2b435e5009b570b3df481f",
+    ),
+    (
         authority::GRID_LANES_PAIRED_EDITION,
         REGISTERED_GRID_LANES_PAIRED_TERMINAL_SHA256,
     ),
