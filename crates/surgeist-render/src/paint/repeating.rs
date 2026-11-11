@@ -140,13 +140,9 @@ impl RepeatingGradient {
                 validate_non_negative_f64(radius_y, "repeating radial gradient vertical radius")?;
             }
         }
-        validate_field_stops(&self.stops)?;
+        let (first, last) = validate_field_stops(&self.stops)?;
         validate_non_negative_f64(
-            self.stops
-                .last()
-                .expect("nonempty validated list")
-                .position()
-                - self.stops[0].position(),
+            last.position() - first.position(),
             "repeating gradient span",
         )
     }

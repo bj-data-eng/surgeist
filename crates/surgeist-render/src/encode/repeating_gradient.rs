@@ -13,11 +13,39 @@ use super::{
 };
 use crate::vello_engine::gradient_endpoints::{PadEndpoints, ProgramCoordinates};
 use crate::{
-    Color, Error, GradientStop, PhysicalSize, Point, RepeatingGradient, Result,
+    Color, Error, GradientStop, PhysicalSize, Point, RenderAccountingError, RepeatingGradient,
+    Result,
     accounting::{Account, RenderPhase, RenderWork},
     color_reduction::{PremultipliedSum, premultiplied},
     paint::GradientGeometry,
 };
+
+enum RepeatingStops<'a> {
+    Single(&'a GradientStop),
+    Multiple(MultipleStops<'a>),
+}
+
+struct MultipleStops<'a> {
+    all: &'a [GradientStop],
+    first: &'a GradientStop,
+    middle: &'a [GradientStop],
+    last: &'a GradientStop,
+}
+
+impl<'a> RepeatingStops<'a> {
+    fn borrow(stops: &'a [GradientStop]) -> Result<Self> {
+        match stops {
+            [only] => Ok(Self::Single(only)),
+            [first, middle @ .., last] => Ok(Self::Multiple(MultipleStops {
+                all: stops,
+                first,
+                middle,
+                last,
+            })),
+            [] => Err(RenderAccountingError::Invariant.into()),
+        }
+    }
+}
 
 pub(super) fn prepare(
     gradient: &RepeatingGradient,
@@ -27,24 +55,24 @@ pub(super) fn prepare(
 ) -> Result<FrameBrush> {
     let account = account.at(RenderPhase::GradientPrepare);
     account.phase(RenderPhase::GradientPrepare, || {
-        let stops = gradient.stops();
-        if stops.len() == 1 {
-            account.work(RenderWork::GradientStopVisits, 1)?;
-            return Ok(FrameBrush::solid(stops[0].color().into()));
-        }
+        let stops = match RepeatingStops::borrow(gradient.stops())? {
+            RepeatingStops::Single(stop) => {
+                account.work(RenderWork::GradientStopVisits, 1)?;
+                return Ok(FrameBrush::solid(stop.color().into()));
+            }
+            RepeatingStops::Multiple(stops) => stops,
+        };
         account.work(RenderWork::GradientStopVisits, 2)?;
-        let first_stop = stops[0];
-        let last_stop = stops[stops.len() - 1];
-        let first = scalar(&account, || first_stop.position())?;
-        let last = scalar(&account, || last_stop.position())?;
+        let first = scalar(&account, || stops.first.position())?;
+        let last = scalar(&account, || stops.last.position())?;
         let span = scalar(&account, || last - first)?;
         if scalar(&account, || span == 0.0)? {
-            return solid_average(stops, Average::Uniform, &account);
+            return solid_average(&stops, Average::Uniform, &account);
         }
         let field_geometry = match gradient.geometry() {
             GradientGeometry::HorizontalDistance { origin_x } => {
                 return prepare_horizontal_distance(
-                    gradient,
+                    &stops,
                     origin_x,
                     first,
                     span,
@@ -66,9 +94,11 @@ pub(super) fn prepare(
         };
         let geometry = period_geometry(field_geometry, first, span, &account)?;
         let (field, local) = match geometry {
-            PeriodGeometry::RoundedZero => return solid_average(stops, Average::Uniform, &account),
+            PeriodGeometry::RoundedZero => {
+                return solid_average(&stops, Average::Uniform, &account);
+            }
             PeriodGeometry::ZeroHeight => {
-                return solid_average(stops, Average::Weighted(span), &account);
+                return solid_average(&stops, Average::Weighted(span), &account);
             }
             PeriodGeometry::Pattern { field, local } => (field, local),
         };
@@ -82,7 +112,7 @@ pub(super) fn prepare(
             return Err(invalid_geometry("non-finite device period"));
         }
         if scalar(&account, || period < 2.0)? {
-            return solid_average(stops, Average::Weighted(span), &account);
+            return solid_average(&stops, Average::Weighted(span), &account);
         }
         let mut brush_transform = BrushTransform {
             local,
@@ -96,7 +126,7 @@ pub(super) fn prepare(
                 let composed = affine_product(paint_to_device, brush_transform.local, &account)?;
                 let transform = narrow_transform(composed, &account)?;
                 if !check_native_linear(transform, &account)? {
-                    return solid_average(stops, Average::Uniform, &account);
+                    return solid_average(&stops, Average::Uniform, &account);
                 }
                 qualify_linear(
                     brush_transform.reference_device,
@@ -130,9 +160,9 @@ pub(super) fn prepare(
             }
         }
         .with_extend(peniko::Extend::Repeat);
-        let mut normalized = account.temporary(stops.len())?;
+        let mut normalized = account.temporary(stops.all.len())?;
         let mut hinted = false;
-        for stop in stops {
+        for stop in stops.all {
             account.work(RenderWork::GradientStopVisits, 1)?;
             hinted |= stop.hint_after().is_some();
             let position = scalar(&account, || stop.position())?;
@@ -146,10 +176,13 @@ pub(super) fn prepare(
             )));
         }
         let program = if hinted {
-            let endpoints =
-                PadEndpoints::new((0., first_stop.color()), (1., last_stop.color()), &account)?;
+            let endpoints = PadEndpoints::new(
+                (0., stops.first.color()),
+                (1., stops.last.color()),
+                &account,
+            )?;
             Some(hint_program::prepare(
-                stops,
+                stops.all,
                 &normalized,
                 |position, account| {
                     let difference = scalar(account, || position - first)?;
@@ -181,7 +214,7 @@ fn horizontal_phase(first: f64, span: f64, account: &Account) -> Result<f32> {
 }
 
 fn prepare_horizontal_distance(
-    gradient: &RepeatingGradient,
+    stops: &MultipleStops<'_>,
     origin_x: f64,
     first: f64,
     span: f64,
@@ -189,7 +222,6 @@ fn prepare_horizontal_distance(
     target: PhysicalSize,
     account: &Account,
 ) -> Result<FrameBrush> {
-    let stops = gradient.stops();
     // Period needs only the linear map. Do not construct an unused transformed
     // origin before a rounded-zero/unresolved average has been selected.
     account.work(RenderWork::CoordinateVisits, 4)?;
@@ -219,24 +251,25 @@ fn prepare_horizontal_distance(
         account,
     )?;
     account.work(RenderWork::GradientStopVisits, 2)?;
-    let first_stop = stops[0];
-    let last_stop = stops[stops.len() - 1];
-    let endpoints =
-        PadEndpoints::new((0.0, first_stop.color()), (1.0, last_stop.color()), account)?;
+    let endpoints = PadEndpoints::new(
+        (0.0, stops.first.color()),
+        (1.0, stops.last.color()),
+        account,
+    )?;
     let normalize = |position: f64, account: &Account| -> Result<f32> {
         let difference = scalar(account, || position - first)?;
         let quotient = scalar(account, || difference / span)?;
         scalar(account, || quotient as f32)
     };
     let program = hint_program::prepare_projected(
-        stops,
+        stops.all,
         |_, position, account| normalize(position, account),
         normalize,
         endpoints,
         ProgramCoordinates::HorizontalDistanceRepeat { phase },
         account,
     )?;
-    let carrier = ordinary_gradient::horizontal_carrier_stops(stops, account)?;
+    let carrier = ordinary_gradient::horizontal_carrier_stops(stops.all, account)?;
     let native =
         peniko::Gradient::new_linear((0.0, 0.0), (1.0, 0.0)).with_extend(peniko::Extend::Repeat);
     let mut output = gradient_with_stops(native, carrier, Some(brush))?;
@@ -419,32 +452,35 @@ enum Average {
     Weighted(f64),
 }
 
-fn solid_average(stops: &[GradientStop], rule: Average, account: &Account) -> Result<FrameBrush> {
+fn solid_average(
+    stops: &MultipleStops<'_>,
+    rule: Average,
+    account: &Account,
+) -> Result<FrameBrush> {
     Ok(FrameBrush::solid(average(stops, rule, account)?.into()))
 }
 
-fn average(stops: &[GradientStop], rule: Average, account: &Account) -> Result<Color> {
+fn average(stops: &MultipleStops<'_>, rule: Average, account: &Account) -> Result<Color> {
     let mut total = PremultipliedSum::new();
-    let mut previous = None;
-    let denominator = if matches!(rule, Average::Uniform) {
-        let intervals = scalar(account, || stops.len() - 1)?;
-        Some(scalar(account, || intervals as f64)?)
-    } else {
-        None
-    };
-    for (index, stop) in stops.iter().enumerate() {
-        account.work(RenderWork::GradientStopVisits, 1)?;
-        let color = premultiplied(stop.color(), account)?;
-        match rule {
-            Average::Uniform => {
-                let endpoint = index == 0 || index + 1 == stops.len();
-                let numerator = if endpoint { 0.5 } else { 1.0 };
-                let weight = scalar(account, || {
-                    numerator / denominator.expect("uniform color count")
-                })?;
+    match rule {
+        Average::Uniform => {
+            let intervals = scalar(account, || stops.middle.len() + 1)?;
+            let denominator = scalar(account, || intervals as f64)?;
+            let numerators = std::iter::once((stops.first, 0.5))
+                .chain(stops.middle.iter().map(|stop| (stop, 1.0)))
+                .chain(std::iter::once((stops.last, 0.5)));
+            for (stop, numerator) in numerators {
+                account.work(RenderWork::GradientStopVisits, 1)?;
+                let color = premultiplied(stop.color(), account)?;
+                let weight = scalar(account, || numerator / denominator)?;
                 total.add_weighted(color, weight, account)?;
             }
-            Average::Weighted(span) => {
+        }
+        Average::Weighted(span) => {
+            let mut previous = None;
+            for stop in stops.all {
+                account.work(RenderWork::GradientStopVisits, 1)?;
+                let color = premultiplied(stop.color(), account)?;
                 let position = scalar(account, || stop.position())?;
                 if let Some((previous_position, previous_color)) = previous {
                     let difference = scalar(account, || position - previous_position)?;
@@ -522,13 +558,50 @@ mod tests {
         }
     }
 
+    fn multiple_stops(stops: &[GradientStop]) -> MultipleStops<'_> {
+        let RepeatingStops::Multiple(stops) = RepeatingStops::borrow(stops).unwrap() else {
+            panic!("expected multiple stops");
+        };
+        stops
+    }
+
+    #[test]
+    fn qualified_stops_borrow_the_original_records() {
+        assert_eq!(
+            RepeatingStops::borrow(&[])
+                .err()
+                .unwrap()
+                .accounting_diagnostic(),
+            Some(RenderAccountingError::Invariant)
+        );
+        let original = [
+            stop(7.0, color(1.0, 0.0, 0.0, 1.0)),
+            stop(7.0, color(1.0, 1.0, 1.0, 1.0)),
+            stop(7.0, color(0.0, 0.0, 1.0, 1.0)),
+            stop(7.0, color(0.0, 1.0, 0.0, 1.0)),
+        ];
+        let RepeatingStops::Single(only) = RepeatingStops::borrow(&original[..1]).unwrap() else {
+            panic!("expected one stop");
+        };
+        assert!(std::ptr::eq(only, &original[0]));
+
+        for length in [2, 4] {
+            let records = &original[..length];
+            let stops = multiple_stops(records);
+            assert!(std::ptr::eq(stops.all, records));
+            assert!(std::ptr::eq(stops.first, &records[0]));
+            assert!(std::ptr::eq(stops.last, &records[length - 1]));
+            assert!(std::ptr::eq(stops.middle, &records[1..length - 1]));
+        }
+    }
+
     #[test]
     fn averages_use_segment_integrals_and_premultiplied_srgba() {
         // Segment lengths 1,3 give endpoint weights 1/8,1/2,3/8.
         // Premultiplied sum is (1/8,1/4,0,3/8), with no transparent blue bleed.
         assert_color(
             average(
-                &weighted_stops(),
+                &multiple_stops(&weighted_stops()),
                 Average::Weighted(4.0),
                 &Account::for_test(),
             )
@@ -542,7 +615,12 @@ mod tests {
             stop(4.0, color(1.0, 1.0, 1.0, 1.0)),
         ];
         assert_color(
-            average(&stops, Average::Weighted(4.0), &Account::for_test()).unwrap(),
+            average(
+                &multiple_stops(&stops),
+                Average::Weighted(4.0),
+                &Account::for_test(),
+            )
+            .unwrap(),
             [0.5, 0.5, 0.75, 1.0],
         );
     }
@@ -556,7 +634,12 @@ mod tests {
         ];
         // Equal replacement spacing gives weights 1/4,1/2,1/4.
         assert_color(
-            average(&stops, Average::Uniform, &Account::for_test()).unwrap(),
+            average(
+                &multiple_stops(&stops),
+                Average::Uniform,
+                &Account::for_test(),
+            )
+            .unwrap(),
             [0.75, 0.5, 0.75, 1.0],
         );
         let four = [
@@ -566,7 +649,12 @@ mod tests {
             stop(0.0, color(1.0, 1.0, 1.0, 1.0)),
         ];
         assert_color(
-            average(&four, Average::Uniform, &Account::for_test()).unwrap(),
+            average(
+                &multiple_stops(&four),
+                Average::Uniform,
+                &Account::for_test(),
+            )
+            .unwrap(),
             [1.0 / 3.0, 0.5, 0.5, 1.0],
         );
         let transparent = [
@@ -574,7 +662,12 @@ mod tests {
             stop(1.0, color(0.0, 0.0, 1.0, 0.0)),
         ];
         assert_eq!(
-            average(&transparent, Average::Weighted(1.0), &Account::for_test()).unwrap(),
+            average(
+                &multiple_stops(&transparent),
+                Average::Weighted(1.0),
+                &Account::for_test(),
+            )
+            .unwrap(),
             Color::TRANSPARENT,
         );
     }

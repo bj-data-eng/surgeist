@@ -348,10 +348,10 @@ pub(crate) enum GradientKind {
     },
 }
 
-/// Establishes the list invariant shared by ordinary and repeating fields.
+/// Returns the accepted endpoints of an ordinary or repeating field.
 /// Individual finite positions and colors are already proved by GradientStop.
-fn validate_field_stops(stops: &[GradientStop]) -> Result<()> {
-    validate_nonempty_stops(stops)?;
+fn validate_field_stops(stops: &[GradientStop]) -> Result<(&GradientStop, &GradientStop)> {
+    let (first, tail) = validate_nonempty_stops(stops)?;
     for (stop_index, pair) in stops.windows(2).enumerate() {
         if pair[1].position < pair[0].position {
             return Err(Error::invalid_value(
@@ -366,21 +366,21 @@ fn validate_field_stops(stops: &[GradientStop]) -> Result<()> {
             return Err(GradientHintError::HintOutsideInterval { stop_index }.into());
         }
     }
-    let stop_index = stops.len() - 1;
-    if stops[stop_index].hint_after.is_some() {
-        return Err(GradientHintError::TrailingHint { stop_index }.into());
+    let last = tail.last().unwrap_or(first);
+    if last.hint_after.is_some() {
+        return Err(GradientHintError::TrailingHint {
+            stop_index: tail.len(),
+        }
+        .into());
     }
-    Ok(())
+    Ok((first, last))
 }
 
-fn validate_nonempty_stops(stops: &[GradientStop]) -> Result<()> {
-    if stops.is_empty() {
-        return Err(
-            Error::invalid_value("gradient stops", "[]", "must not be empty")
-                .replace_message("gradient stops must not be empty"),
-        );
-    }
-    Ok(())
+fn validate_nonempty_stops(stops: &[GradientStop]) -> Result<(&GradientStop, &[GradientStop])> {
+    stops.split_first().ok_or_else(|| {
+        Error::invalid_value("gradient stops", "[]", "must not be empty")
+            .replace_message("gradient stops must not be empty")
+    })
 }
 
 impl Gradient {
@@ -845,6 +845,22 @@ mod field_model_tests {
 
     fn stop(position: f64) -> GradientStop {
         GradientStop::try_new(position, Color::BLACK).unwrap()
+    }
+
+    #[test]
+    fn validated_field_endpoints_borrow_the_actual_first_and_last_records() {
+        let records = [
+            stop(3.0),
+            stop(3.0),
+            GradientStop::try_new(3.0, Color::TRANSPARENT).unwrap(),
+        ];
+        let (first, last) = validate_field_stops(&records[..1]).unwrap();
+        assert!(std::ptr::eq(first, &records[0]));
+        assert!(std::ptr::eq(last, first));
+
+        let (first, last) = validate_field_stops(&records).unwrap();
+        assert!(std::ptr::eq(first, &records[0]));
+        assert!(std::ptr::eq(last, &records[2]));
     }
 
     #[test]
