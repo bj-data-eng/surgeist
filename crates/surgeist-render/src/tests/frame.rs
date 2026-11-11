@@ -1610,6 +1610,68 @@ fn color_filter_graph_preserves_authored_order_clamps_and_exact_lifetimes() {
 }
 
 #[test]
+fn runtime_lowering_projects_color_filter_operations_once_per_visit() {
+    use crate::{
+        RenderAccountingOptions, RenderAttemptStatus, RenderLimits, RenderQuantity, RenderResource,
+        RenderWork,
+        accounting::{Account, FrameFixture, RendererCpu},
+        resource::WorkingFormat,
+    };
+
+    let graph = crate::frame::authored_filter_graph_for_test(
+        authored_color_filter_runs_for_test(),
+        filter_graph_commands_for_test(),
+        filter_graph_context_for_test(),
+        &Account::for_test(),
+    )
+    .unwrap();
+    let capabilities = DeviceCapabilities::from_test_facts(true, true, 4_096);
+    let lower = |limit| {
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::FilterOperationVisits, limit)
+            .unwrap();
+        let options = RenderAccountingOptions::new().with_limits(limits);
+        let cpu = RendererCpu::new(options).unwrap();
+        let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                crate::pass::LoweredGraphPlan::try_lower_validated_graph(
+                    &graph,
+                    WorkingFormat::HighPrecision,
+                    Format::Rgba8,
+                    &capabilities,
+                    attempt.account(),
+                )
+                .map(drop)
+            })
+            .unwrap()
+            .into_parts();
+        assert_eq!(fault, None);
+        (result, report)
+    };
+    // Six authored operations are projected once during graph validation and
+    // once during runtime lowering, then converted once to runtime operations.
+    let (result, report) = lower(u64::MAX);
+    result.unwrap();
+    let visit = RenderWork::FilterOperationVisits;
+    assert_eq!(report.attempt().unwrap().usage().work(visit), 18);
+
+    let (result, report) = lower(17);
+    assert!(result.unwrap_err().accounting_diagnostic().is_some());
+    let attempt = report.attempt().unwrap();
+    assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
+    let refusal = attempt.refusal().unwrap();
+    assert_eq!(refusal.quantity(), RenderQuantity::Work(visit));
+    assert_eq!((refusal.current(), refusal.amount()), (17, 1));
+    assert_eq!(attempt.usage().work(visit), 17);
+    assert_eq!(attempt.usage().live(RenderResource::RetainedCpuBytes), 0);
+    assert_eq!(attempt.usage().live(RenderResource::ScratchCpuBytes), 0);
+
+    let (retry, report) = lower(18);
+    retry.unwrap();
+    assert_eq!(report.attempt().unwrap().usage().work(visit), 18);
+}
+
+#[test]
 fn gpu_graph_executor_accepts_only_color_blur_and_drop_shadow_filter_graphs() {
     let observed = crate::pass::spatial_filter_executable_graph_observation_for_test(
         spatial_filter_authored_filter_steps_for_test(),
