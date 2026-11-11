@@ -298,9 +298,11 @@ pub(super) fn window_resolves_the_inherited_event_target_operations() {
             return "the Window named-properties layer must preserve standard reflection";
         }
         for (const key of ["newName", "0", Symbol("name"), "constructor"]) {
-            if (Reflect.set(names, key, 17) || Object.hasOwn(names, key)
-                || Reflect.set({}, key, 17, names) || Object.hasOwn(names, key)) {
-                return "WindowProperties must refuse assignment to its own receiver";
+            if (Reflect.set(names, key, 17) || Object.hasOwn(names, key)) {
+                return "WindowProperties must refuse direct assignment for " + String(key);
+            }
+            if (Reflect.set({}, key, 17, names) || Object.hasOwn(names, key)) {
+                return "WindowProperties must refuse assignment as an alternate receiver for " + String(key);
             }
             const ordinary = Object.create(names);
             if (!Reflect.set(names, key, 17, ordinary) || ordinary[key] !== 17
