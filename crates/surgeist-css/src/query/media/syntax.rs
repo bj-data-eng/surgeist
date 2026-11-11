@@ -55,12 +55,44 @@ impl CssMediaQueryList {
         &self.queries
     }
 
+    /// Compares the members and commas with their provenance, additionally
+    /// checking each exact UTF16 member's original allocation by identity.
+    /// This reads no original units. Independently supplied equal input can
+    /// reuse its established allocation after a caller's bounded comparison.
+    /// The separately retained list parse source is outside this comparison.
+    #[must_use]
+    pub fn same_member_provenance(&self, other: &Self) -> bool {
+        self.queries.len() == other.queries.len()
+            && self
+                .queries
+                .iter()
+                .zip(&other.queries)
+                .all(|(left, right)| {
+                    let left_source = exact_member_source(left);
+                    let right_source = exact_member_source(right);
+                    let same_original = match (left_source, right_source) {
+                        (None, None) => true,
+                        (Some(left), Some(right)) => std::sync::Arc::ptr_eq(left, right),
+                        _ => false,
+                    };
+                    same_original && crate::source::same_provenance(left, right)
+                })
+            && crate::source::same_provenance(&self.comma_origins, &other.comma_origins)
+    }
+
     pub(crate) fn into_single_query(self) -> Option<CssMediaQuery> {
         if self.queries.len() == 1 {
             self.queries.into_iter().next()
         } else {
             None
         }
+    }
+}
+
+fn exact_member_source(query: &CssMediaQuery) -> Option<&std::sync::Arc<Vec<u16>>> {
+    match query.origin() {
+        CssValueOrigin::Parsed(origin) => origin.source().original_utf16(),
+        _ => None,
     }
 }
 

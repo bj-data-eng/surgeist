@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicBool;
 use surgeist_css::CssParser;
 use surgeist_css::component::CssValueOrigin;
 use surgeist_css::diagnostic::CssRecoveryAction;
-use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
 use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
 use surgeist_css::source::{CssUtf16InputLimits, CssUtf16Resource};
 use surgeist_cssom::*;
@@ -319,6 +319,94 @@ fn utf16_batch_replaces_exact_member_origin_even_when_normalization_is_equal() {
     assert_eq!(media.media_text(&store, limits()).unwrap(), "print");
     assert!(Arc::ptr_eq(&original_units(&current), &replacement));
     assert!(Arc::ptr_eq(&original_units(&first), &original));
+}
+
+#[test]
+fn utf16_batch_member_restoration_spends_only_the_reached_comparison_work() {
+    let original = Arc::new(exact_media("print"));
+    let mut polls = 0;
+    CssMediaQuery::parse_medium_utf16(
+        &CssParser::default(),
+        original.clone(),
+        CssUtf16InputLimits::default(),
+        || {
+            polls += 1;
+            Ok::<_, std::convert::Infallible>(())
+        },
+    )
+    .unwrap();
+    let parse_work = polls - 1; // The initial interruption observation costs no work.
+    let exact_work = parse_work + 1 + original.len();
+    let proceed = AtomicBool::new(false);
+    for work in [exact_work - 1, exact_work] {
+        let mut policy = CssomLimits::default();
+        policy.sheet_utf16_input.max_work = work;
+        let mut store = CssomStore::new(policy, Default::default()).unwrap();
+        let media = source_free_media(&mut store);
+        let _ = media
+            .append_medium(
+                &mut store,
+                CssomSheetText::Utf16(original.clone()),
+                &proceed,
+            )
+            .unwrap();
+        let before = store.snapshot();
+        let mut edit = batch(&store);
+        assert!(
+            edit.delete_medium(media.id(), "print", &proceed)
+                .unwrap()
+                .changed()
+        );
+        let equal = Arc::new(original.as_ref().clone());
+        let restored = edit.append_medium(media.id(), CssomSheetText::Utf16(equal), &proceed);
+        if work == exact_work {
+            assert!(restored.unwrap().changed());
+            unchanged(&store.commit(edit).unwrap());
+        } else {
+            assert!(matches!(restored, Err(CssomError::Utf16Input(error))
+                if error.exhausted_limit() == Some(CssUtf16Resource::Work)));
+            assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
+        }
+        assert_eq!(store.snapshot().revision(), before.revision());
+        assert_eq!(media.media_text(&store, limits()).unwrap(), "print");
+    }
+}
+
+#[test]
+fn utf16_batch_restores_member_origins_when_later_deletes_shift_appended_indices() {
+    let mut store = new_store();
+    let media = source_free_media(&mut store);
+    let proceed = AtomicBool::new(false);
+    for source in ["print", "screen"] {
+        let _ = media
+            .append_medium(
+                &mut store,
+                CssomSheetText::Utf16(Arc::new(exact_media(source))),
+                &proceed,
+            )
+            .unwrap();
+    }
+    let before = store.snapshot();
+    let mut edit = batch(&store);
+    for source in ["print", "screen"] {
+        assert!(
+            edit.delete_medium(media.id(), source, &proceed)
+                .unwrap()
+                .changed()
+        );
+        assert!(
+            edit.append_medium(
+                media.id(),
+                CssomSheetText::Utf16(Arc::new(exact_media(source))),
+                &proceed,
+            )
+            .unwrap()
+            .changed()
+        );
+    }
+    unchanged(&store.commit(edit).unwrap());
+    assert_eq!(store.snapshot().revision(), before.revision());
+    assert_eq!(media.media_text(&store, limits()).unwrap(), "print, screen");
 }
 
 #[test]

@@ -1263,7 +1263,25 @@ impl CssMediaQuery {
         poll: impl FnMut() -> Result<(), E>,
     ) -> Result<crate::CssParseReport<Option<CssMediaQuery>>, crate::source::CssUtf16InputError<E>>
     {
-        crate::source::utf16_input::parse_utf16(original, limits, poll, |snapshot| {
+        Self::parse_medium_utf16_with_work(parser, original, limits, poll).map(|(report, _)| report)
+    }
+
+    /// Returns the single-medium report and actual work spent from
+    /// `limits.max_work`, allowing the caller to use the remaining allowance.
+    ///
+    /// # Errors
+    ///
+    /// Returns the CSS preparation refusal or original caller interruption.
+    pub fn parse_medium_utf16_with_work<E>(
+        parser: &crate::CssParser,
+        original: std::sync::Arc<Vec<u16>>,
+        limits: crate::source::CssUtf16InputLimits,
+        poll: impl FnMut() -> Result<(), E>,
+    ) -> Result<
+        (crate::CssParseReport<Option<CssMediaQuery>>, usize),
+        crate::source::CssUtf16InputError<E>,
+    > {
+        crate::source::utf16_input::parse_utf16_with_work(original, limits, poll, |snapshot| {
             crate::parser::fragments::parse_cssom_media_query(snapshot, parser.context())
         })
     }
