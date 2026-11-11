@@ -710,6 +710,96 @@ fn native_window_event_observes_its_live_standalone_dispatch() {
     }).unwrap();
 }
 
+fn native_window_registers_and_removes_guest_event_listeners() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        const target = Object.freeze(new EventTarget());
+        if (typeof target.addEventListener !== "function" || typeof target.removeEventListener !== "function") {
+            return "EventTarget must expose native listener operations";
+        }
+        const order = [];
+        const trace = [];
+        const outer = new Event("nested", { cancelable: true });
+        const first = {
+            get handleEvent() {
+                trace.push("get");
+                return function(event) {
+                    if (this !== first || event !== outer || event.currentTarget !== target) throw 1;
+                    trace.push("once");
+                    if (!target.dispatchEvent(new Event("nested"))) throw 2;
+                };
+            },
+        };
+        function tail(event) {
+            if (this !== target || event.target !== target) throw 3;
+            trace.push(event === outer ? "outer" : "inner");
+            if (event === outer) event.preventDefault();
+        }
+        target.addEventListener("nested", first, {
+            get signal() { order.push("signal"); },
+            get passive() { order.push("passive"); return false; },
+            get once() { order.push("once"); return true; },
+            get capture() { order.push("capture"); return true; },
+        });
+        target.addEventListener("nested", first, true);
+        target.addEventListener("nested", tail, { passive: false });
+        target.removeEventListener("nested", first, { capture: false });
+        if (target.dispatchEvent(outer) || order.join() !== "capture,once,passive,signal"
+            || trace.join() !== "get,once,inner,outer") return "wrong listener selection or option order";
+
+        target.removeEventListener("nested", tail);
+        if (!target.dispatchEvent(new Event("nested")) || trace.length !== 4) {
+            return "exact listener removal must persist";
+        }
+        target.addEventListener("passive", event => event.preventDefault(), { passive: true });
+        if (!target.dispatchEvent(new Event("passive", { cancelable: true }))) {
+            return "passive listener changed native cancellation";
+        }
+        let traps = 0, coercions = 0, invalid = 0;
+        const forged = new Proxy(target, { get() { traps++; }, getPrototypeOf() { traps++; } });
+        for (const action of [
+            () => EventTarget.prototype.addEventListener.call(forged, { toString() { coercions++; } }, tail),
+            () => target.addEventListener("missing"),
+            () => target.addEventListener("invalid", 1),
+            () => target.addEventListener("signal", tail, { signal: {} }),
+        ]) {
+            try { action(); } catch (error) { if (error instanceof TypeError) invalid++; }
+        }
+        if (traps || coercions || invalid !== 4) return "wrong brand or callback conversion";
+        target.addEventListener("absent", null);
+        globalThis.originalListenerError = {};
+        target.addEventListener("throw", { handleEvent() { throw originalListenerError; } });
+        let later = false;
+        target.addEventListener("throw", () => { later = true; });
+        return target.dispatchEvent(new Event("throw")) && later ? "ok" : "ordinary throw stopped delivery";
+    })()"#;
+    let observed = host
+        .in_document(&permit, |scope| {
+            let result = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&result)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&observed).unwrap(), "ok");
+    let report = host
+        .take_guest_listener_exception(&permit)
+        .unwrap()
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        let expected =
+            scope.evaluate(&"originalListenerError".encode_utf16().collect::<Vec<_>>())?;
+        let actual = scope.import(report.exception.value())?;
+        assert!(scope.strict_equals(&expected, &actual)?);
+        Ok(())
+    })
+    .unwrap();
+    assert!(
+        host.take_guest_listener_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+}
+
 fn native_window_exposes_dom_exception() {
     let (session, top) = setup();
     let mut host = prepare(session, Arc::new(cancel()))
@@ -2077,6 +2167,7 @@ fn main() {
                 native_window_constructs_distinct_event_targets_with_the_interface_prototype()
             }
             "window-event-live-operations" => native_window_event_observes_its_live_standalone_dispatch(),
+            "window-event-listeners" => native_window_registers_and_removes_guest_event_listeners(),
             "native_window_exposes_dom_exception" => native_window_exposes_dom_exception(),
             "dom-exception-error-data" => {
                 native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion()
@@ -2141,6 +2232,7 @@ fn main() {
     native_window_constructs_event_with_exact_type_flags_and_clock();
     native_window_constructs_distinct_event_targets_with_the_interface_prototype();
     native_window_event_observes_its_live_standalone_dispatch();
+    native_window_registers_and_removes_guest_event_listeners();
     native_window_exposes_dom_exception();
     native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();
     native_window_dom_exception_admission_and_hook_collision();
