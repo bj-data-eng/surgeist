@@ -895,3 +895,235 @@ fn actual_parked_source_keeps_its_mandatory_tail_and_original_cleanup_custody() 
     assert!(f.dom.style_cssom_roots.get(f.root.root()).is_some());
     assert!(f.cleanup.is_some());
 }
+
+#[test]
+fn script_settings_from_an_expired_hosted_issuer_do_not_advance_source() {
+    use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+    use surgeist_html::values::Namespace;
+
+    let cancel = cancel();
+    let (mut dom, source, document) = constructor();
+    let snapshot = dom.snapshot();
+    let document_view = snapshot.document(document).unwrap();
+    let environment = document_view.metadata().document_environment();
+    let association = environment.hosted.as_ref().unwrap();
+    let global = association.global;
+    let html = snapshot.node(document.node()).unwrap().children()[0];
+    let body = snapshot.node(html).unwrap().children()[1];
+
+    let mut batch = DomBatch::new();
+    let script = batch.create_element_ns(document, Namespace::html(), "script");
+    let text = batch.create_text(document, "globalThis.ran = true");
+    batch.insert_before(&text, &script, None);
+    let script = dom
+        .apply(batch, &cancel)
+        .unwrap()
+        .created(&script)
+        .unwrap()
+        .unwrap();
+    let facts = crate::DomDocumentScriptingFacts {
+        engine: HtmlScriptingEngine::Supported,
+        policy: HtmlScriptingPolicy {
+            user_allows: true,
+            automation_allows: true,
+        },
+    };
+    let backing = source
+        .retain_runtime_payload(
+            &mut dom,
+            crate::DomDocumentScriptRegistration::storage_bytes(),
+            &cancel,
+        )
+        .unwrap();
+    let (binding, _registration) = source
+        .attach_document_script_host(&mut dom, global, document, facts, backing, &cancel)
+        .unwrap();
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(script, body, None),
+            source_limits(),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Script(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("the original connected Script must request its live settings");
+    };
+    let observation = lease
+        .observe_script_settings(request, &source, &binding, facts, &cancel)
+        .unwrap();
+    assert!(observation.enabled());
+    drop(source);
+    assert_eq!(lease.snapshot().stamp(), request.basis());
+    assert_eq!(
+        lease.accept_script_settings(observation, &cancel),
+        Err(DomError::HostedSourceUnavailable)
+    );
+    let DomSourceProgress::Request(DomSourceRequest::Script(retry)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("the original Script must still be waiting for its live settings");
+    };
+    assert_eq!(retry, request);
+    assert_eq!(lease.snapshot().stamp(), request.basis());
+}
+
+#[test]
+fn style_denial_before_a_disabled_script_completes_the_original_insertion() {
+    use crate::{DomDocumentScriptingFacts, DomSourceScriptStep, DomStyleInlineCspObservation};
+    use surgeist_html::elements::script::{HtmlScriptKind, HtmlScriptResult};
+    use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+    use surgeist_html::values::Namespace;
+
+    let cancel = cancel();
+    let (mut dom, source, document) = constructor();
+    let initial = dom.snapshot();
+    let navigable = initial.document(document).unwrap().navigable().unwrap();
+    let hosted = initial.hosted_navigable(navigable).unwrap();
+    let global = hosted.global();
+    let html = initial.node(document.node()).unwrap().children()[0];
+    let body = initial.node(html).unwrap().children()[1];
+
+    let mut batch = DomBatch::new();
+    let wrapper = batch.create_element_ns(document, Namespace::html(), "div");
+    let style = batch.create_element_ns(document, Namespace::html(), "style");
+    let css = batch.create_text(document, "div { color: red }");
+    let script = batch.create_element_ns(document, Namespace::html(), "script");
+    let code = batch.create_text(document, "globalThis.ran = true");
+    batch.insert_before(&css, &style, None);
+    batch.insert_before(&style, &wrapper, None);
+    batch.insert_before(&code, &script, None);
+    batch.insert_before(&script, &wrapper, None);
+    let setup = dom.apply(batch, &cancel).unwrap();
+    let [wrapper, style, script] =
+        [wrapper, style, script].map(|node| setup.created(&node).unwrap().unwrap());
+
+    // This fixture drives the trusted canonical DOM protocol. Its current
+    // scripting preference can differ from the facts at attachment time.
+    let allowed = DomDocumentScriptingFacts {
+        engine: HtmlScriptingEngine::Supported,
+        policy: HtmlScriptingPolicy {
+            user_allows: true,
+            automation_allows: true,
+        },
+    };
+    let backing = source
+        .retain_runtime_payload(
+            &mut dom,
+            crate::DomDocumentScriptRegistration::storage_bytes(),
+            &cancel,
+        )
+        .unwrap();
+    let (binding, _registration) = source
+        .attach_document_script_host(&mut dom, global, document, allowed, backing, &cancel)
+        .unwrap();
+    let disabled = DomDocumentScriptingFacts {
+        policy: HtmlScriptingPolicy {
+            user_allows: false,
+            ..allowed.policy
+        },
+        ..allowed
+    };
+    let (operation, prefix) = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::insert_before(wrapper, body, None),
+                source_limits(),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("the first connected sibling must request Style CSP");
+        };
+        let operation = lease.operation();
+        assert_eq!(policy.source().element(), style);
+        assert_eq!(policy.source().operation(), operation);
+        let denial = DomStyleInlineCspObservation::evaluated(
+            policy.source(),
+            Arc::new(vec!["style-src 'none'".into()]),
+            1,
+            false,
+        );
+        lease.accept_inline_csp(&policy, &denial, &cancel).unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Script(read)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("the next connected sibling must request Script settings");
+        };
+        assert_eq!(read.operation(), operation);
+        assert_eq!(read.step(), DomSourceScriptStep::ReadScripting);
+        assert_eq!(read.subject(), Some(script));
+        assert_eq!(read.relevant_global(), Some(global));
+        let prefix = lease.snapshot();
+        assert_eq!(read.basis(), prefix.stamp());
+        assert_eq!(prefix.incomplete_source_operation(), Some(operation));
+        assert_eq!(prefix.node(wrapper).unwrap().parent(), Some(body));
+        assert!(
+            !prefix
+                .node(script)
+                .unwrap()
+                .as_html_script()
+                .unwrap()
+                .flags()
+                .already_started()
+        );
+
+        let observed = lease
+            .observe_script_settings(read, &source, &binding, disabled, &cancel)
+            .unwrap();
+        assert_eq!(observed.request(), read);
+        assert!(!observed.enabled());
+        lease.accept_script_settings(observed, &cancel).unwrap();
+        assert_eq!(
+            lease.source_script_step(read, &cancel),
+            Err(DomError::InvalidSourceOperation)
+        );
+        assert_eq!(lease.snapshot().stamp(), prefix.stamp());
+        (operation, prefix)
+    };
+    assert_eq!(dom.pending_source_edit().unwrap().operation(), operation);
+    let mut lease = dom
+        .resume_source_edit(operation, source_limits(), &cancel)
+        .unwrap();
+    let progress = lease
+        .advance(&cancel)
+        .expect("a consumed Style receipt must not strand the original Script tail");
+    let DomSourceProgress::Complete(done) = progress else {
+        panic!("the same insertion must complete after its disabled Script: {progress:?}");
+    };
+    assert_eq!(done.operation(), operation);
+    drop(lease);
+
+    assert!(dom.pending_source_edit().is_none());
+    let final_snapshot = dom.snapshot();
+    assert_eq!(final_snapshot.incomplete_source_operation(), None);
+    assert_ne!(final_snapshot.stamp(), prefix.stamp());
+    assert_eq!(final_snapshot.node(wrapper).unwrap().parent(), Some(body));
+    assert_eq!(
+        final_snapshot.node(wrapper).unwrap().children(),
+        [style, script]
+    );
+    assert!(
+        final_snapshot
+            .node(style)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .is_none()
+    );
+    let prepared = final_snapshot
+        .node(script)
+        .unwrap()
+        .as_html_script()
+        .unwrap();
+    assert!(prepared.flags().already_started());
+    assert_eq!(prepared.preparation_document(), Some(document));
+    assert_eq!(prepared.script_type(), Some(HtmlScriptKind::Classic));
+    assert_eq!(prepared.result(), HtmlScriptResult::Uninitialized);
+}
