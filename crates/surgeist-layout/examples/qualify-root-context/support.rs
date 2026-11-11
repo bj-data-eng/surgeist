@@ -1089,6 +1089,82 @@ impl Invocation {
     }
 }
 
+#[cfg(test)]
+mod invocation_tests {
+    use super::*;
+
+    struct ScratchDirectory(PathBuf);
+
+    impl ScratchDirectory {
+        fn new(label: &str) -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "surgeist-layout-reservation-{label}-{}-{nonce}",
+                std::process::id()
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for ScratchDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn concurrent_reservations_preserve_occupied_and_other_owned_paths() {
+        let scratch = ScratchDirectory::new("occupied");
+        let occupied = scratch.0.join("candidate");
+        fs::create_dir(&occupied).unwrap();
+        fs::write(occupied.join("evidence"), b"prior invocation").unwrap();
+
+        let start = std::sync::Barrier::new(2);
+        let reserve = || {
+            start.wait();
+            Invocation::reserve(&scratch.0, "candidate")
+        };
+        let (first, second) = std::thread::scope(|scope| {
+            let first = scope.spawn(reserve);
+            let second = scope.spawn(reserve);
+            (first.join().unwrap(), second.join().unwrap())
+        });
+        let first = first.expect("reserve a fresh directory after a collision");
+        let second = second.expect("reserve a second fresh directory");
+        assert_ne!(first.root, occupied);
+        assert_ne!(second.root, occupied);
+        assert_ne!(first.root, second.root);
+        assert_eq!(fs::read_dir(&first.root).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(&second.root).unwrap().count(), 0);
+
+        fs::write(second.root.join("evidence"), b"second invocation").unwrap();
+        fs::remove_dir_all(&first.root).unwrap();
+        assert_eq!(
+            fs::read(second.root.join("evidence")).unwrap(),
+            b"second invocation"
+        );
+        assert_eq!(
+            fs::read(occupied.join("evidence")).unwrap(),
+            b"prior invocation"
+        );
+    }
+
+    #[test]
+    fn reservation_propagates_other_filesystem_errors() {
+        let scratch = ScratchDirectory::new("missing-parent");
+        let missing_parent = scratch.0.join("missing");
+        let Err(error) = Invocation::reserve(&missing_parent, "candidate") else {
+            panic!("reservation must refuse a missing parent");
+        };
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
+        assert!(!missing_parent.exists());
+    }
+}
+
 fn qualify(
     root: &Path,
     owner: &Path,
