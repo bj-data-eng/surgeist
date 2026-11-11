@@ -890,8 +890,7 @@ pub(crate) async fn color_filter_cache_realization_observation_for_test(
             format!("color-filter checked shader realization failed validation: {error}"),
         ));
     }
-    update.ensure_commit_ready(&mut cache, &account)?;
-    update.commit(&mut cache);
+    update.commit_into(&mut cache, &account)?;
     let all_requests_are_cached = high.passes().iter().chain(reduced.passes()).all(|keys| {
         cache.contains_color_filter_pass_for_test(
             keys.samplers(),
@@ -951,8 +950,7 @@ async fn realize_copy_backdrop_requests(
             format!("backdrop checked backdrop-copy realization failed validation: {error}"),
         ));
     }
-    update.ensure_commit_ready(&mut cache, &account)?;
-    update.commit(&mut cache);
+    update.commit_into(&mut cache, &account)?;
     let all_requests_are_cached = requests.iter().all(|request| {
         cache.contains_copy_backdrop_pass_for_test(
             request.keys.samplers(),
@@ -1050,8 +1048,7 @@ pub(crate) async fn blur_cache_realization_observation_for_test(
             format!("spatial-filter checked blur realization failed validation: {error}"),
         ));
     }
-    update.ensure_commit_ready(&mut cache, &account)?;
-    update.commit(&mut cache);
+    update.commit_into(&mut cache, &account)?;
     let all_requests_are_cached = high.iter().chain(&reduced).all(|keys| {
         cache.contains_blur_pass_for_test(
             keys.samplers(),
@@ -1144,8 +1141,7 @@ pub(crate) async fn backdrop_blur_cache_realization_observation_for_test(
             format!("backdrop checked edge-aware blur realization failed validation: {error}"),
         ));
     }
-    update.ensure_commit_ready(&mut cache, &account)?;
-    update.commit(&mut cache);
+    update.commit_into(&mut cache, &account)?;
     let all_requests_are_cached = transparent.iter().chain(&mirrored).all(|keys| {
         cache.contains_blur_pass_for_test(
             keys.samplers(),
@@ -1264,8 +1260,7 @@ pub(crate) async fn drop_shadow_cache_realization_observation_for_test(
             format!("spatial-filter checked drop-shadow realization failed validation: {error}"),
         ));
     }
-    update.ensure_commit_ready(&mut cache, &account)?;
-    update.commit(&mut cache);
+    update.commit_into(&mut cache, &account)?;
     let all_requests_are_cached = [&high, &reduced].into_iter().all(|requests| {
         cache.contains_drop_shadow_colorize_pass_for_test(
             requests.colorize.samplers(),

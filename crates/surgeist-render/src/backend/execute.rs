@@ -263,7 +263,7 @@ impl Backend {
         operation: RuntimeOperation,
         account: &Account,
     ) -> Result<()> {
-        let Some(mut update) = update else {
+        let Some(update) = update else {
             return Ok(());
         };
         let ready = self.ready_state_mut(
@@ -272,9 +272,7 @@ impl Backend {
             BackendErrorCode::RenderFailed,
             "checked core pass objects lost their persistent device cache",
         )?;
-        update.ensure_commit_ready(&mut ready.pass_cache, account)?;
-        update.commit(&mut ready.pass_cache);
-        Ok(())
+        update.commit_into(&mut ready.pass_cache, account)
     }
 
     pub(crate) fn begin_gpu_operation(

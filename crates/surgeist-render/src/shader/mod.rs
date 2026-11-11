@@ -7,9 +7,9 @@ mod test_support;
 mod validate;
 
 pub(crate) use cache::{
-    DevicePassCache, ProvisionalColorFilterPassObjects, ProvisionalCompositePassObjects,
-    ProvisionalCopyBackdropPassObjects, ProvisionalCorePassObjects,
-    ProvisionalDevicePassCacheUpdate,
+    DevicePassCache, PassCacheCommitPreparation, ProvisionalColorFilterPassObjects,
+    ProvisionalCompositePassObjects, ProvisionalCopyBackdropPassObjects,
+    ProvisionalCorePassObjects, ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate,
 };
 #[cfg(test)]
 pub(crate) use cache::{ProvisionalBlurPassObjects, ProvisionalDropShadowColorizePassObjects};

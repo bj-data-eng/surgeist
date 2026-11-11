@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    Result,
+    Error, Result,
     accounting::{Account, CpuAccount, Generation, OwnedGpu, RenderResource, RenderWork},
 };
 
@@ -36,11 +36,27 @@ use super::validate::{
 #[must_use = "provisional pass-cache handles must be committed only after checked success"]
 pub(crate) struct ProvisionalDevicePassCacheUpdate {
     pub(super) cache_identity: Arc<()>,
-    commit_ready: bool,
     pub(super) samplers: HashMap<SamplerKey, OwnedGpu<wgpu::Sampler>>,
     pub(super) layouts: HashMap<BindGroupLayoutKey, OwnedGpu<wgpu::BindGroupLayout>>,
     pub(super) shaders: HashMap<ShaderModuleKey, OwnedGpu<wgpu::ShaderModule>>,
     pub(super) pipelines: HashMap<RenderPipelineKey, OwnedGpu<wgpu::RenderPipeline>>,
+}
+
+/// Keeps a rejected update available for its caller's ordered cleanup.
+#[must_use]
+pub(crate) enum PassCacheCommitPreparation<'cache> {
+    Ready(ReadyPassCacheUpdate<'cache>),
+    Rejected {
+        update: ProvisionalDevicePassCacheUpdate,
+        error: Error,
+    },
+}
+
+/// Owns the checked keys and the exclusive reservation in their destination.
+#[must_use = "ready pass-cache updates must be committed or aborted on drop"]
+pub(crate) struct ReadyPassCacheUpdate<'cache> {
+    update: ProvisionalDevicePassCacheUpdate,
+    cache: &'cache mut DevicePassCache,
 }
 
 /// Borrowed base graph objects that are ready for later bind-group creation and pass
@@ -135,7 +151,6 @@ impl DevicePassCache {
     pub(crate) fn provisional_update(&self) -> ProvisionalDevicePassCacheUpdate {
         ProvisionalDevicePassCacheUpdate {
             cache_identity: Arc::clone(&self.identity),
-            commit_ready: false,
             samplers: HashMap::new(),
             layouts: HashMap::new(),
             shaders: HashMap::new(),
@@ -168,7 +183,6 @@ impl ProvisionalDevicePassCacheUpdate {
                 "provisional core pass objects belong to another device cache",
             ));
         }
-        self.commit_ready = false;
         let description = validate_core_pass_keys(keys, Some(account))?;
 
         for sampler_key in keys.samplers {
@@ -306,7 +320,6 @@ impl ProvisionalDevicePassCacheUpdate {
                 "provisional backdrop-copy objects belong to another device cache",
             ));
         }
-        self.commit_ready = false;
         let description = validate_copy_backdrop_pass_keys(keys, Some(account))?;
         for sampler_key in keys.samplers {
             if !contains(&cache.samplers, sampler_key, account)?
@@ -431,7 +444,6 @@ impl ProvisionalDevicePassCacheUpdate {
                 "provisional color-filter objects belong to another device cache",
             ));
         }
-        self.commit_ready = false;
         let description = validate_color_filter_pass_keys(keys, Some(account))?;
         for sampler_key in keys.samplers {
             if !contains(&cache.samplers, sampler_key, account)?
@@ -537,7 +549,6 @@ impl ProvisionalDevicePassCacheUpdate {
                 "provisional blur objects belong to another device cache",
             ));
         }
-        self.commit_ready = false;
         let description = validate_blur_pass_keys(keys, Some(account))?;
         for sampler_key in keys.samplers {
             if !contains(&cache.samplers, sampler_key, account)?
@@ -617,7 +628,6 @@ impl ProvisionalDevicePassCacheUpdate {
                 "provisional drop-shadow objects belong to another device cache",
             ));
         }
-        self.commit_ready = false;
         let description = validate_drop_shadow_colorize_pass_keys(keys, Some(account))?;
         for sampler_key in keys.samplers {
             if !contains(&cache.samplers, sampler_key, account)?
@@ -816,7 +826,6 @@ impl ProvisionalDevicePassCacheUpdate {
                 "provisional composite pass objects belong to another device cache",
             ));
         }
-        self.commit_ready = false;
         let description = validate_composite_pass_keys(keys, Some(account))?;
         for sampler_key in keys.samplers {
             if !contains(&cache.samplers, sampler_key, account)?
@@ -945,8 +954,35 @@ impl ProvisionalDevicePassCacheUpdate {
         )
     }
 
-    pub(crate) fn ensure_commit_ready(
-        &mut self,
+    pub(crate) fn prepare_commit<'cache>(
+        self,
+        cache: &'cache mut DevicePassCache,
+        account: &Account,
+    ) -> PassCacheCommitPreparation<'cache> {
+        match self.reserve_commit_capacity(cache, account) {
+            Ok(()) => PassCacheCommitPreparation::Ready(ReadyPassCacheUpdate {
+                update: self,
+                cache,
+            }),
+            Err(error) => PassCacheCommitPreparation::Rejected {
+                update: self,
+                error,
+            },
+        }
+    }
+
+    pub(crate) fn commit_into(self, cache: &mut DevicePassCache, account: &Account) -> Result<()> {
+        match self.prepare_commit(cache, account) {
+            PassCacheCommitPreparation::Ready(ready) => {
+                ready.commit();
+                Ok(())
+            }
+            PassCacheCommitPreparation::Rejected { error, .. } => Err(error),
+        }
+    }
+
+    fn reserve_commit_capacity(
+        &self,
         cache: &mut DevicePassCache,
         account: &Account,
     ) -> Result<()> {
@@ -971,34 +1007,29 @@ impl ProvisionalDevicePassCacheUpdate {
         prepare!(layouts);
         prepare!(shaders);
         prepare!(pipelines);
-        self.commit_ready = true;
         Ok(())
     }
+}
 
-    pub(crate) fn commit(self, cache: &mut DevicePassCache) {
-        assert!(
-            self.commit_ready && Arc::ptr_eq(&self.cache_identity, &cache.identity),
-            "pass cache requires checked readiness"
-        );
-        assert!(
-            cache.samplers.capacity() - cache.samplers.len() >= self.samplers.len()
-                && cache.layouts.capacity() - cache.layouts.len() >= self.layouts.len()
-                && cache.shaders.capacity() - cache.shaders.len() >= self.shaders.len()
-                && cache.pipelines.capacity() - cache.pipelines.len() >= self.pipelines.len(),
-            "checked pass-cache capacity changed"
-        );
-        // No duplicate keys and sufficient capacity were proved before host authorization.
+impl ReadyPassCacheUpdate<'_> {
+    pub(crate) fn recheck(&mut self, account: &Account) -> Result<()> {
+        self.update.reserve_commit_capacity(self.cache, account)
+    }
+
+    pub(crate) fn commit(self) {
+        let Self { update, cache } = self;
+        // The exclusive destination borrow preserves the checked keys and capacity.
         // Individual insertion avoids HashMap::extend making a speculative reservation.
-        for (key, value) in self.samplers {
+        for (key, value) in update.samplers {
             cache.samplers.insert(key, value);
         }
-        for (key, value) in self.layouts {
+        for (key, value) in update.layouts {
             cache.layouts.insert(key, value);
         }
-        for (key, value) in self.shaders {
+        for (key, value) in update.shaders {
             cache.shaders.insert(key, value);
         }
-        for (key, value) in self.pipelines {
+        for (key, value) in update.pipelines {
             cache.pipelines.insert(key, value);
         }
     }
@@ -1225,6 +1256,392 @@ mod accounting_tests {
         RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
         RenderLimits,
     };
+
+    struct CheckedCorePassFixture {
+        backend: crate::backend::Backend,
+        identity: crate::backend::DeviceSlotIdentity,
+        generation: Generation,
+        cpu: CpuAccount,
+        keys: crate::pass::RuntimePassCacheKeys,
+    }
+
+    impl CheckedCorePassFixture {
+        fn new() -> Self {
+            use crate::backend::{Backend, DeviceCapabilities};
+            use crate::{
+                Antialiasing, Capabilities, Color, EffectQualityPolicy, Format, Rect, Scene, Size,
+            };
+
+            let options = RenderAccountingOptions::new();
+            let cpu = crate::accounting::RendererCpu::new(options).unwrap();
+            let mut backend =
+                Backend::new(crate::ResourceCacheBudget::DISABLED, cpu.clone(), options).unwrap();
+            let identity = pollster::block_on(backend.select_device(None))
+                .unwrap()
+                .unwrap();
+            let ready = backend
+                .ready_device_state_borrow_for_test(identity)
+                .unwrap();
+            let generation = ready.generation_for_test().clone();
+            let capabilities =
+                DeviceCapabilities::from_device(ready.adapter_for_test(), ready.device_for_test());
+            let format = capabilities
+                .resolve_effect_working_format(EffectQualityPolicy::AllowReducedPrecision)
+                .unwrap();
+            let setup = Account::for_test();
+            let mut scene = Scene::new();
+            scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+            let commands = scene.normalize(Capabilities::CURRENT, &setup).unwrap();
+            let context = crate::frame::FrameContext::try_new(
+                Size::new(2.0, 2.0),
+                1.0,
+                Antialiasing::Area,
+                Color::TRANSPARENT,
+            )
+            .unwrap();
+            let requests = crate::pass::core_pass_cache_requests_for_test(
+                commands,
+                context,
+                capabilities,
+                format,
+                Format::Rgba8,
+            )
+            .unwrap();
+            let keys = requests
+                .passes()
+                .iter()
+                .find(|keys| {
+                    crate::shader::core_pass_key_facts_for_test(
+                        keys.samplers(),
+                        keys.layout(),
+                        keys.shader(),
+                        keys.pipeline(),
+                    )
+                    .is_some_and(|facts| {
+                        facts.program == crate::shader::CorePassProgramForTest::CanonicalizeCapture
+                    })
+                })
+                .unwrap()
+                .clone();
+            assert_eq!(keys.samplers().len(), 1);
+            Self {
+                backend,
+                identity,
+                generation,
+                cpu: cpu.at(crate::RenderCpuScope::DeviceBacking),
+                keys,
+            }
+        }
+
+        fn empty_cache(&self) -> DevicePassCache {
+            DevicePassCache::new(self.generation.clone(), self.cpu.clone())
+        }
+
+        fn checked<T>(&mut self, realize: impl FnOnce(&wgpu::Device, &Account) -> Result<T>) -> T {
+            let operation = crate::RuntimeOperation::EffectRendering;
+            let transaction = self
+                .backend
+                .begin_gpu_operation(
+                    self.identity,
+                    crate::gpu_transaction::GpuOperationStage::Render,
+                    operation,
+                )
+                .unwrap();
+            let ready = self
+                .backend
+                .ready_device_state_borrow_for_test(self.identity)
+                .unwrap();
+            let account = Account::for_test();
+            let realized = realize(ready.device_for_test(), &account).unwrap();
+            pollster::block_on(transaction.finish(operation, Some(&account))).unwrap();
+            realized
+        }
+
+        fn update(&mut self, cache: &DevicePassCache) -> ProvisionalDevicePassCacheUpdate {
+            let mut update = cache.provisional_update();
+            let keys = self.keys.clone();
+            self.checked(|device, account| {
+                update
+                    .realize_core_pass(
+                        device,
+                        cache,
+                        account,
+                        CorePassKeyRefs {
+                            samplers: keys.samplers(),
+                            layout: keys.layout(),
+                            shader: keys.shader(),
+                            pipeline: keys.pipeline(),
+                        },
+                    )?
+                    .require_encoding_ready()
+            });
+            assert_eq!(
+                [
+                    update.samplers.len(),
+                    update.layouts.len(),
+                    update.shaders.len(),
+                    update.pipelines.len()
+                ],
+                [1; 4]
+            );
+            update
+        }
+
+        fn live_objects(&self) -> u64 {
+            let snapshot = self.generation.snapshot().unwrap();
+            assert_eq!(snapshot.fault(), None);
+            snapshot.usage().live(RenderResource::OpaqueGpuObjects)
+        }
+    }
+
+    fn cache_entries(cache: &DevicePassCache) -> [usize; 4] {
+        [
+            cache.samplers.len(),
+            cache.layouts.len(),
+            cache.shaders.len(),
+            cache.pipelines.len(),
+        ]
+    }
+
+    fn cache_capacity(cache: &DevicePassCache) -> [usize; 4] {
+        [
+            cache.samplers.capacity(),
+            cache.layouts.capacity(),
+            cache.shaders.capacity(),
+            cache.pipelines.capacity(),
+        ]
+    }
+
+    fn measure_readiness(
+        limit: u64,
+        run: impl FnOnce(&Account) -> Result<()>,
+    ) -> (Result<()>, crate::RenderStandaloneReport) {
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::ResourceProbes, limit)
+            .unwrap();
+        let options = RenderAccountingOptions::new()
+            .with_limits(limits)
+            .with_profile(crate::RenderProfile::Summary { timing: false });
+        let mut context = RenderAccountingContext::new(options);
+        let result = context.run(
+            RenderAttemptKind::Frame,
+            crate::RenderPhase::GpuPrepare,
+            run,
+        );
+        let report = context.take_last_attempt().unwrap();
+        assert_eq!(report.cleanup_fault(), None);
+        (result, report)
+    }
+
+    fn assert_readiness_work(report: &crate::RenderStandaloneReport, probes: u64) {
+        let attempt = report.attempt().unwrap();
+        assert_eq!(attempt.usage().work(RenderWork::ResourceProbes), probes);
+        assert_eq!(
+            attempt
+                .phase_usage(crate::RenderPhase::GpuPrepare)
+                .work(RenderWork::ResourceProbes),
+            probes
+        );
+        assert_eq!(
+            attempt.usage().work(RenderWork::ResourceAllocationRequests),
+            0
+        );
+        assert_eq!(attempt.usage().work(RenderWork::GpuObjectsCreated), 0);
+    }
+
+    #[test]
+    fn checked_pass_cache_readiness_preserves_probe_rounds_and_reserved_capacity() {
+        use crate::{
+            ErrorCode, RenderAccountingError, RenderPhase, RenderQuantity, RenderRefusalReason,
+        };
+
+        let mut fixture = CheckedCorePassFixture::new();
+        let baseline = fixture.live_objects();
+        for (rounds, limit, commit) in [
+            (1, 3, false),
+            (1, 4, true),
+            (2, 4, false),
+            (2, 7, false),
+            (2, 8, false),
+            (2, 8, true),
+        ] {
+            let mut cache = fixture.empty_cache();
+            let update = fixture.update(&cache);
+            assert_eq!(cache_entries(&cache), [0; 4]);
+            assert_eq!(cache_capacity(&cache), [0; 4]);
+            assert_eq!(fixture.live_objects(), baseline + 4);
+            let mut first_capacity = None;
+            let mut ready = None;
+            let mut rejected = None;
+            let (result, report) = measure_readiness(limit, {
+                let destination = &mut cache;
+                let first_capacity = &mut first_capacity;
+                let ready = &mut ready;
+                let rejected = &mut rejected;
+                move |account| {
+                    let mut bound = match update.prepare_commit(destination, account) {
+                        PassCacheCommitPreparation::Ready(bound) => bound,
+                        PassCacheCommitPreparation::Rejected { update, error } => {
+                            *rejected = Some(update);
+                            return Err(error);
+                        }
+                    };
+                    *first_capacity = Some(cache_capacity(bound.cache));
+                    let result = if rounds == 2 {
+                        bound.recheck(account)
+                    } else {
+                        Ok(())
+                    };
+                    *ready = Some(bound);
+                    result
+                }
+            });
+            let ready_capacity = ready.as_ref().map(|ready| {
+                assert_eq!(cache_entries(ready.cache), [0; 4]);
+                cache_capacity(ready.cache)
+            });
+            assert_eq!(fixture.live_objects(), baseline + 4);
+            assert_readiness_work(&report, limit);
+            if limit < 4 * rounds {
+                let error = result.unwrap_err();
+                let refusal = report.attempt().unwrap().refusal().unwrap();
+                assert_eq!(error.code(), ErrorCode::Accounting);
+                assert_eq!(
+                    error.accounting_diagnostic(),
+                    Some(RenderAccountingError::Refused(refusal))
+                );
+                assert_eq!(report.status(), RenderAttemptStatus::Refused);
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                assert_eq!(
+                    refusal.quantity(),
+                    RenderQuantity::Work(RenderWork::ResourceProbes)
+                );
+                assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
+                assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+            } else {
+                result.unwrap();
+                assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+                assert_eq!(report.attempt().unwrap().refusal(), None);
+            }
+            assert_eq!(first_capacity, ready_capacity);
+            assert_eq!(rejected.is_some(), limit == 3);
+
+            let expected = if commit {
+                let ready = ready.expect("successful readiness owns the destination");
+                let keys = &fixture.keys;
+                let sampler = ready.update.samplers[&keys.samplers()[0]].clone();
+                let layout = ready.update.layouts[keys.layout()].clone();
+                let shader = ready.update.shaders[keys.shader()].clone();
+                let pipeline = ready.update.pipelines[keys.pipeline()].clone();
+                ready.commit();
+                Some((sampler, layout, shader, pipeline))
+            } else {
+                drop(ready);
+                None
+            };
+            drop(rejected);
+            if let Some((sampler, layout, shader, pipeline)) = expected {
+                let keys = &fixture.keys;
+                assert_eq!(*cache.samplers[&keys.samplers()[0]], *sampler);
+                assert_eq!(*cache.layouts[keys.layout()], *layout);
+                assert_eq!(*cache.shaders[keys.shader()], *shader);
+                assert_eq!(*cache.pipelines[keys.pipeline()], *pipeline);
+            }
+            assert_eq!(cache_entries(&cache), [usize::from(commit); 4]);
+            let reserved = cache_capacity(&cache);
+            if limit == 3 {
+                assert_eq!(first_capacity, None);
+                assert_eq!(
+                    reserved.map(|capacity| capacity > 0),
+                    [true, true, true, false]
+                );
+            } else {
+                assert_eq!(ready_capacity, Some(reserved));
+                assert!(reserved.into_iter().all(|capacity| capacity >= 1));
+            }
+            assert_eq!(
+                fixture.live_objects(),
+                baseline + if commit { 4 } else { 0 }
+            );
+            drop(cache);
+            assert_eq!(fixture.live_objects(), baseline);
+        }
+    }
+
+    fn rejected_readiness(
+        update: ProvisionalDevicePassCacheUpdate,
+        cache: &mut DevicePassCache,
+        limit: u64,
+    ) -> (
+        ProvisionalDevicePassCacheUpdate,
+        Error,
+        crate::RenderStandaloneReport,
+    ) {
+        let mut rejected = None;
+        let (result, report) = measure_readiness(limit, |account| {
+            let PassCacheCommitPreparation::Rejected { update, error } =
+                update.prepare_commit(cache, account)
+            else {
+                panic!("expected readiness rejection");
+            };
+            rejected = Some(update);
+            Err(error)
+        });
+        (rejected.unwrap(), result.unwrap_err(), report)
+    }
+
+    #[test]
+    fn checked_pass_cache_readiness_refuses_foreign_destination_and_first_collision() {
+        let mut fixture = CheckedCorePassFixture::new();
+        let baseline = fixture.live_objects();
+        let mut cache = fixture.empty_cache();
+        let mut foreign = fixture.empty_cache();
+        let update = fixture.update(&cache);
+        let (update, error, report) = rejected_readiness(update, &mut foreign, 0);
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            "provisional pass objects cannot enter another device cache"
+        );
+        assert_eq!(error.accounting_diagnostic(), None);
+        assert_eq!(
+            report.status(),
+            RenderAttemptStatus::Failed(crate::ErrorCode::RenderFailed)
+        );
+        assert_readiness_work(&report, 0);
+        assert_eq!(cache_entries(&foreign), [0; 4]);
+        assert_eq!(cache_capacity(&foreign), [0; 4]);
+        assert_eq!(fixture.live_objects(), baseline + 4);
+
+        let key = fixture.keys.samplers()[0];
+        let sampler = fixture.checked(|device, account| {
+            create_sampler(&cache.generation, &cache.cpu, Some(account), device, key)
+        });
+        let expected = sampler.clone();
+        assert!(cache.samplers.insert(key, sampler).is_none());
+        let reserved = cache_capacity(&cache);
+        let (update, error, report) = rejected_readiness(update, &mut cache, 1);
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            "persistent pass cache changed during provisional realization"
+        );
+        assert_eq!(error.accounting_diagnostic(), None);
+        assert_eq!(
+            report.status(),
+            RenderAttemptStatus::Failed(crate::ErrorCode::RenderFailed)
+        );
+        assert_readiness_work(&report, 1);
+        assert_eq!(cache_entries(&cache), [1, 0, 0, 0]);
+        assert_eq!(cache_capacity(&cache), reserved);
+        assert_eq!(*cache.samplers[&key], *expected);
+        assert_eq!(fixture.live_objects(), baseline + 5);
+        drop(update);
+        drop(expected);
+        assert_eq!(fixture.live_objects(), baseline + 1);
+        drop(cache);
+        assert_eq!(fixture.live_objects(), baseline);
+    }
 
     #[test]
     fn visible_lookup_probes_charge_the_accepted_prefix_and_retry_with_a_fresh_cap() {
