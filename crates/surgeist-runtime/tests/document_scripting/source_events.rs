@@ -353,13 +353,13 @@ fn ordinary_throw_keeps_the_real_event_and_tail() {
     assert!(close.dialog_close().is_some());
 }
 
-fn conversion_time_native_refusal_retains_original_source(return_value: &str) {
+fn conversion_time_native_refusal_retains_original_source(conversion: &str) {
     let cancellation = Arc::new(cancel());
     let revoke = cancellation.clone();
     let jobs = Arc::new(AtomicUsize::new(0));
     let job_counter = jobs.clone();
     let handler = format!(
-        "(() => {{ try {{ detachIf({{ valueOf() {{ revokeNative(); return {return_value}; }} }}); }} catch (_) {{}} }})"
+        "(() => {{ try {{ detachIf({{ valueOf() {{ revokeNative(); {conversion}; }} }}); }} catch (_) {{}} sourceJob(); }})"
     );
     let mut fixture = fixture(&handler, cancellation.clone(), move |scope| {
         let job = Callback::new(move |_, _| {
@@ -401,8 +401,9 @@ fn conversion_time_native_refusal_retains_original_source(return_value: &str) {
         let DocumentScriptGuestResult::Refused(Error::HostFailure(failure)) = report.outcome()
         else {
             panic!(
-                "typed sticky native refusal required: {:?}",
-                report.outcome()
+                "{conversion}: typed sticky native refusal required: {:?}, guest calls after revocation: {}",
+                report.outcome(),
+                jobs.load(Ordering::Relaxed)
             );
         };
         let failure = failure.clone();
@@ -522,8 +523,13 @@ fn source_driver_refusal_keeps_the_original_cause() {
 
 pub(super) fn run() {
     ordinary_throw_keeps_the_real_event_and_tail();
-    for result in ["1", "0", "NaN"] {
-        conversion_time_native_refusal_retains_original_source(result);
+    for conversion in [
+        "return 1",
+        "return 0",
+        "return NaN",
+        "throw { sentinel: true }",
+    ] {
+        conversion_time_native_refusal_retains_original_source(conversion);
     }
     source_driver_refusal_keeps_the_original_cause();
 }

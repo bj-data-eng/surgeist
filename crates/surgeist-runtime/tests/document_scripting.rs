@@ -394,20 +394,7 @@ fn queue_observable_job(
     .unwrap();
 }
 
-fn real_retirement_revokes_and_abandons(foreign: &DocumentScriptPermit) {
-    let (session, top) = setup();
-    let mut host = prepare(session, Arc::new(cancel()))
-        .enable(top, ALLOW, hooks(&hook()))
-        .unwrap();
-    assert!(matches!(
-        host.in_document(foreign, |_| panic!("foreign permit entered guest")),
-        Err::<(), _>(DocumentScriptError::Native(
-            DocumentScriptNativeError::ForeignPermit
-        ))
-    ));
-    let permit = host.permit().unwrap();
-    let queued_calls = Arc::new(AtomicUsize::new(0));
-    queue_observable_job(&mut host, &permit, queued_calls.clone());
+fn retire_attached(host: &mut DocumentScriptHost, top: DomHostedTopLevel) {
     host.with_native(|dom, mut hosted, _| {
         let cancellation = cancel();
         let queued = hosted
@@ -424,6 +411,37 @@ fn real_retirement_revokes_and_abandons(foreign: &DocumentScriptPermit) {
         panic!("the original native retirement never completed");
     })
     .unwrap();
+}
+
+fn assert_immediate_retirement(host: &DocumentScriptHost, queued_calls: &Arc<AtomicUsize>) {
+    let revoked = matches!(host.permit(), Err(DocumentScriptNativeError::Revoked));
+    let calls = queued_calls.load(Ordering::Relaxed);
+    let captures = Arc::strong_count(queued_calls);
+    let replacement = Process::bootstrap(EngineKind::V8);
+    let available = replacement.is_ok();
+    drop(replacement);
+    assert!(
+        revoked && calls == 0 && captures == 1 && available,
+        "retirement must return with revoked permit, abandoned queue and released process: revoked={revoked}, calls={calls}, captures={captures}, available={available}"
+    );
+}
+
+fn real_retirement_revokes_and_abandons(foreign: &DocumentScriptPermit) {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    assert!(matches!(
+        host.in_document(foreign, |_| panic!("foreign permit entered guest")),
+        Err::<(), _>(DocumentScriptError::Native(
+            DocumentScriptNativeError::ForeignPermit
+        ))
+    ));
+    let permit = host.permit().unwrap();
+    let queued_calls = Arc::new(AtomicUsize::new(0));
+    queue_observable_job(&mut host, &permit, queued_calls.clone());
+    retire_attached(&mut host, top);
+    assert_immediate_retirement(&host, &queued_calls);
     assert!(matches!(
         host.checkpoint(),
         Err(DocumentScriptError::Native(
@@ -461,6 +479,8 @@ fn native_refusal_stays_typed_and_sticky() {
         .enable(top, ALLOW, hooks(&hook()))
         .unwrap();
     let permit = host.permit().unwrap();
+    let queued_calls = Arc::new(AtomicUsize::new(0));
+    queue_observable_job(&mut host, &permit, queued_calls.clone());
     let caught = host.in_document(&permit, |scope| {
         cancellation.store(true, Ordering::Relaxed);
         let script = "try { readChildCount(); } catch (_) {} 42"
@@ -481,6 +501,13 @@ fn native_refusal_stays_typed_and_sticky() {
         cause,
         first.cause::<DocumentScriptNativeError>().unwrap()
     ));
+    retire_attached(&mut host, top);
+    assert_immediate_retirement(&host, &queued_calls);
+    let retained_first = native_failure(host.checkpoint());
+    assert!(std::ptr::eq(
+        cause,
+        retained_first.cause::<DocumentScriptNativeError>().unwrap()
+    ));
     let _session = host.stop().into_session().unwrap();
     assert!(std::ptr::eq(
         cause,
@@ -496,6 +523,18 @@ fn native_failure(result: Result<(), DocumentScriptError>) -> surgeist_bindings_
 }
 
 fn main() {
+    if let Some(scenario) = std::env::args().nth(1) {
+        match scenario.as_str() {
+            "conversion-revocation" => source_events::run(),
+            "native-retirement" => {
+                let expired = native_read_snapshot_and_explicit_queue();
+                real_retirement_revokes_and_abandons(&expired);
+            }
+            "retirement-after-refusal" => native_refusal_stays_typed_and_sticky(),
+            _ => panic!("unknown scripting scenario: {scenario}"),
+        }
+        return;
+    }
     failed_enable_preserves_original_owner();
     let expired_permit = native_read_snapshot_and_explicit_queue();
     real_retirement_revokes_and_abandons(&expired_permit);
