@@ -196,6 +196,33 @@ impl Drop for CopiedBundle {
 }
 
 #[test]
+fn original_diagnostics_replay_a_recognized_historical_validator_stamp() {
+    const OWNER_HELPER: &str = "tests/layout/browser_parity/scripts/gentest/test_helper.js";
+    let bundle = CopiedBundle::new();
+    let mut receipt = bundle.receipt();
+    let historical = crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256;
+    receipt["capture_validation"]["validator_profile"] =
+        serde_json::json!("root-context-script-custody-v1");
+    receipt["capture_validation"]["validator_helper_sha256"] = serde_json::json!(historical);
+    receipt["current_owner_inputs"][OWNER_HELPER] = serde_json::json!(historical);
+    let pin = bundle.rewrite_receipt(receipt);
+    let receipt_path = bundle.root.join(authority::ORIGINAL_DIAGNOSTIC_RECEIPT);
+    let recorded = fs::read(&receipt_path).unwrap();
+
+    let replayed = admit_original_diagnostics(&bundle.owner, &pin)
+        .expect("a recognized recorded stamp can be revalidated using the live helper");
+    assert_eq!(replayed.cases.len(), 36);
+    assert_eq!(fs::read(&receipt_path).unwrap(), recorded);
+
+    let owner_helper = bundle.owner.join(OWNER_HELPER);
+    let mut changed = fs::read(&owner_helper).unwrap();
+    changed.push(b'\n');
+    fs::write(owner_helper, changed).unwrap();
+    let stale = replayed.freshness.verify().unwrap_err();
+    assert!(stale.to_string().contains(OWNER_HELPER), "{stale}");
+}
+
+#[test]
 fn paired_matching_refuses_missing_altered_or_stale_original_diagnostics() {
     let bundle = CopiedBundle::new();
     bundle.copy_controls();
