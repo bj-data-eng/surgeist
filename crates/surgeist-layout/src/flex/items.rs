@@ -573,6 +573,16 @@ where
     };
     let preferred_basis_probe =
         use_content_sizing_for_base && (child_owned_axes.width || child_owned_axes.height);
+    let child_sizing = if preferred_basis_probe {
+        child_sizing.with_axes(super::child_preferred_probe_axes(
+            constants.axes,
+            child_available,
+            child_known,
+            child_owned_axes,
+        ))
+    } else {
+        child_sizing
+    };
     let output = tree.compute_child(
         node,
         ComputeInputOf::for_child(
@@ -832,6 +842,12 @@ where
             .main_size(constants.sizing_request.axes())
             .with_operation(crate::SizingOperation::MinContent),
         cross,
+    );
+    let available = super::child_preferred_probe_axes(
+        constants.axes,
+        available,
+        child_known,
+        super::child_preferred_axes::<Tree, M>(tree, node),
     );
     let output = tree.compute_child(
         node,

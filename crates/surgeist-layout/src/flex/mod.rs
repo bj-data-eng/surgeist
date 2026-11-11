@@ -93,6 +93,33 @@ where
     )
 }
 
+fn preferred_intrinsic_request<S: LayoutScalar>() -> AxisSizingRequestOf<S> {
+    AxisSizingRequestOf::new(
+        crate::AvailableSpaceOf::Indefinite,
+        crate::SizingOperation::MaxContent,
+    )
+}
+
+/// A ContentSize probe omits the child's authored sizes. Retain the operations
+/// that its intrinsic preferences supply while preserving imposed dimensions
+/// and the specific main-axis contribution requested by the parent.
+fn child_preferred_probe_axes<S: LayoutScalar>(
+    axes: FlexAxes,
+    requests: Size<AxisSizingRequestOf<S>>,
+    known: Size<Option<S>>,
+    preferred: Size<bool>,
+) -> Size<AxisSizingRequestOf<S>> {
+    let mut main = axes.main_size(requests);
+    let mut cross = axes.cross_size(requests);
+    if axes.main_size(preferred) && axes.main_size(known).is_none() {
+        main = main.with_space(crate::AvailableSpaceOf::Indefinite);
+    }
+    if axes.cross_size(preferred) && axes.cross_size(known).is_none() {
+        cross = preferred_intrinsic_request();
+    }
+    axes.size_from_main_cross(main, cross)
+}
+
 pub(crate) fn compute_flex<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
@@ -684,10 +711,7 @@ impl<S: LayoutScalar> Constants<S> {
         let mut entry_axes = input.sizing_request().axes();
         // Preferred intrinsic sizes use Flex contributions independently of the
         // finite containing offer. An already imposed size retains its request.
-        let intrinsic = AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        );
+        let intrinsic = preferred_intrinsic_request();
         let preferred_inline_phase = if !max_content_main {
             PreferredInlinePhase::Ordinary
         } else if axes.main_size(node_outer_size).is_some() {

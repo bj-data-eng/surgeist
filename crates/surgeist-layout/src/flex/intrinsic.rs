@@ -235,10 +235,16 @@ where
     let child_known = axes.with_cross_size(child_known, cross);
     // A flex allocation can supply the cross extent but cannot measure the
     // item's intrinsic main content. Apply its authored main bounds below.
+    let child_owned_axes = super::child_preferred_axes::<Tree, M>(tree, item.node);
     let measure = |tree: &mut Tree, operation| {
-        let child_available = axes.size_from_main_cross(
-            constants.available_main.with_operation(operation),
-            cross_available,
+        let child_available = super::child_preferred_probe_axes(
+            axes,
+            axes.size_from_main_cross(
+                constants.available_main.with_operation(operation),
+                cross_available,
+            ),
+            child_known,
+            child_owned_axes,
         );
         tree.compute_child(
             item.node,
@@ -257,7 +263,6 @@ where
     let measured = axes.main_size(measure(tree, operation)?.size);
     let padding_border = (item.padding + item.border).sum_axes();
     let style = tree.node_input(item.node);
-    let child_owned_axes = super::child_preferred_axes::<Tree, M>(tree, item.node);
     let preferred = if axes.main_size(child_owned_axes) {
         if operation == SizingOperation::MaxContent {
             measured
