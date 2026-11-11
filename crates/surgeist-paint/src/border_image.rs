@@ -805,11 +805,14 @@ fn used_width(
                 Some(fraction) => fraction,
                 None => work.coordinate(|| slice.distance / source)?,
             };
-            if work.coordinate(|| fraction == 0.0)?
+            let check_exact_width = work.coordinate(|| {
+                fraction == 0.0 || (slice.fraction.is_none() && fraction < f64::MIN_POSITIVE)
+            })?;
+            if check_exact_width
                 && work.coordinate(|| slice.distance > 0.0)?
                 && work.coordinate(|| natural > 0.0)?
             {
-                return Err(geometry_error());
+                return narrow_natural_width(work, slice.distance, source, natural);
             }
             work.product(fraction, natural)
         }
@@ -821,6 +824,82 @@ fn used_width(
         }
         BorderImageWidth::BorderWidthMultiple(multiple) => work.product(multiple, border),
     }
+}
+
+// Resolve a source-unit quotient that would otherwise lose precision before
+// multiplication. All three inputs are finite and positive on this path.
+fn narrow_natural_width(
+    work: &mut GeometryWork<'_, '_, '_>,
+    distance: f64,
+    source: f64,
+    natural: f64,
+) -> Result<f64, PaintError> {
+    let product = ExactProduct::new(work, distance, natural)?;
+    let (denominator, source_exponent) = exact_parts(work, source)?;
+    let ratio_exponent = work.coordinate(|| product.exponent - source_exponent)?;
+
+    // Align the top significand bits to determine the exact binary exponent.
+    let order = work.coordinate(|| {
+        denominator.leading_zeros() as i32 - product.significand.leading_zeros() as i32
+    })?;
+    let (aligned_num, aligned_den) = shift_ratio(work, product.significand, denominator, -order)?;
+    let exponent =
+        work.coordinate(|| ratio_exponent + order - i32::from(aligned_num < aligned_den))?;
+    if work.coordinate(|| exponent < -1075)? {
+        return Err(geometry_error());
+    }
+
+    // Count representable units, including the fixed unit of subnormal values.
+    // In these units the exact ratio is at least 1/2 and below 2^53. The
+    // shifted numerator fits in 106 bits and the shifted denominator in 107.
+    let unit_exponent = work.coordinate(|| (exponent - 52).max(-1074))?;
+    let shift = work.coordinate(|| ratio_exponent - unit_exponent)?;
+    let (numerator, denominator) = shift_ratio(work, product.significand, denominator, shift)?;
+    let quotient = work
+        .coordinate(|| numerator.checked_div(denominator))?
+        .ok_or_else(geometry_error)?;
+    let remainder = work
+        .coordinate(|| numerator.checked_rem(denominator))?
+        .ok_or_else(geometry_error)?;
+    let half = work.coordinate(|| remainder.cmp(&(denominator - remainder)))?;
+    let round_up = work.coordinate(|| {
+        half == Ordering::Greater || (half == Ordering::Equal && quotient % 2 == 1)
+    })?;
+    let rounded = work.coordinate(|| quotient + u128::from(round_up))?;
+    if work.coordinate(|| rounded == 0)? {
+        return Err(geometry_error());
+    }
+
+    let unit = if work.coordinate(|| unit_exponent < -1022)? {
+        let bits = work
+            .coordinate(|| 1_u64.checked_shl((unit_exponent + 1074) as u32))?
+            .ok_or_else(geometry_error)?;
+        work.coordinate(|| f64::from_bits(bits))?
+    } else {
+        work.coordinate(|| f64::from_bits(((unit_exponent + 1023) as u64) << 52))?
+    };
+    // The rounded integer fits exactly in binary64 and the scaling is exact.
+    work.product(rounded as f64, unit)
+}
+
+fn shift_ratio(
+    work: &mut GeometryWork<'_, '_, '_>,
+    numerator: u128,
+    denominator: u128,
+    shift: i32,
+) -> Result<(u128, u128), PaintError> {
+    work.coordinate(|| {
+        if shift >= 0 {
+            numerator
+                .checked_shl(shift.unsigned_abs())
+                .map(|value| (value, denominator))
+        } else {
+            denominator
+                .checked_shl(shift.unsigned_abs())
+                .map(|value| (numerator, value))
+        }
+    })?
+    .ok_or_else(geometry_error)
 }
 
 fn compare_opposing(
@@ -1443,6 +1522,49 @@ mod tests {
             let plan = geometry(auto_width_request(distance, source, natural));
             assert_eq!(plan.used_widths().left, f64::from_bits(2));
         }
+    }
+
+    #[test]
+    fn natural_auto_width_refuses_exact_work_and_retries_without_retained_output() {
+        let distance = 2.0_f64.powi(-200);
+        let input = auto_width_request(distance, 2.0_f64.powi(900), 2.0_f64.powi(899));
+        let unlimited = options(PaintLimits::unlimited());
+        let area = resolve_border_image_area(
+            BorderImageAreaRequest {
+                border_origin: input.border_origin,
+                border_size: input.border_size,
+                border_widths: input.border_widths,
+                outsets: input.outsets,
+            },
+            unlimited,
+        )
+        .result
+        .unwrap();
+        let partition = BorderImagePartitionRequest {
+            source: input.source,
+            slices: input.slices,
+            widths: input.widths,
+            fill_center: input.fill_center,
+        };
+        let kind = WorkKind::BorderImageCoordinate;
+        // Admit the slices, the three other widths, the left-width checks,
+        // and the first bit extraction in the exact calculation.
+        let cap = 11 + 12 + 5 + 1;
+        let limited = options(PaintLimits::unlimited().with_work_limit(kind, cap));
+        let refused = resolve_border_image_in_area(area, partition, limited);
+        let Err(PaintError::Budget(refusal)) = refused.result else {
+            panic!("expected refusal during the exact width calculation");
+        };
+        assert_eq!(refusal.origin, PaintPhase::BorderImageGeometry);
+        assert_eq!(refusal.current, cap);
+        assert_eq!(refusal.change, PaintChange::Work { kind, amount: 1 });
+        let report = refused.report.unwrap();
+        assert_eq!(report.work(kind), cap);
+        assert_eq!(report.work(WorkKind::OutputRecord), 0);
+        assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
+        assert_eq!(report.live(ResourceKind::RetainedResultBytes), 0);
+        let retry = resolve_border_image_in_area(area, partition, unlimited);
+        assert_eq!(retry.result.unwrap().used_widths().left, distance * 0.5);
     }
 
     #[test]

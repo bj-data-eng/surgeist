@@ -51,8 +51,11 @@ the result and its views cannot outlive that source.
 widths in CSS pixels. The source carries its concrete coordinate extent and
 independently optional natural CSS-pixel dimensions. A raster slice can therefore
 refer to decoded image pixels while an automatic destination width uses the
-corresponding natural CSS-pixel extent. When that natural axis is absent, the
-automatic width uses the supplied border width.
+corresponding natural CSS-pixel extent. If a source-unit slice divided by its
+source extent rounds to a subnormal number or zero, geometry work resolves the
+final natural width from the original values and rounds it once. A positive
+width that rounds to zero produces `UnrepresentableGeometry`. When the natural
+axis is absent, the automatic width uses the supplied border width.
 
 The outset paint area supplies the percentage basis for destination widths.
 For a source that first needs sizing, call `resolve_border_image_area` with a
