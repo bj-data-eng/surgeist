@@ -171,7 +171,7 @@ impl DomSourceLease<'_> {
         let operation = self
             .dom
             .source_operation
-            .as_mut()
+            .as_ref()
             .ok_or(DomError::InvalidSourceOperation)?;
         let mut frame = operation.require_script_request(request)?;
         if operation.cancelled && !operation.published && !operation.event_exposed {
@@ -180,6 +180,30 @@ impl DomSourceLease<'_> {
         let Some(Boundary::Settings(Some(ordinal))) = frame.boundary else {
             return Err(DomError::InvalidSourceOperation);
         };
+        let global = request
+            .relevant_global()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        // The DOM stamp does not encode issuer disposal or role retirement.
+        // Requalify the exact association without resampling the policy.
+        self.dom
+            .dispatch_global_document_current_with::<DomHostedError>(global, &mut || {
+                operation
+                    .draft
+                    .source_step(cancel)
+                    .map_err(DomHostedError::from)
+            })
+            .map_err(|error| match error {
+                DomHostedError::Dom(error) => error,
+                DomHostedError::SourceExpired | DomHostedError::SourcePoisoned => {
+                    DomError::HostedSourceUnavailable
+                }
+                _ => DomError::InvalidSourceOperation,
+            })?;
+        let operation = self
+            .dom
+            .source_operation
+            .as_mut()
+            .ok_or(DomError::InvalidSourceOperation)?;
         operation.draft.source_step(cancel)?;
         let reply = if observation.enabled() {
             HtmlScriptPreparationReply::Enabled

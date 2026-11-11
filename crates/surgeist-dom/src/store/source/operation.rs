@@ -140,10 +140,12 @@ enum Receipt {
         observation: crate::DomStyleInlineCspObservation,
         bytes: usize,
         units: usize,
+        applied: bool,
     },
     Cssom {
         revision: surgeist_cssom::CssomRevision,
         sheet: Option<surgeist_cssom::CssomSheetId>,
+        applied: bool,
     },
 }
 /// Execution permission for exactly one DOM-owned source operation. Drop parks
@@ -2163,6 +2165,7 @@ impl DomSourceLease<'_> {
                         Ok(request) => request,
                         Err(error) => {
                             checkpoint.restore(&mut op.draft);
+                            op.restore_external_receipt(external_applied);
                             op.started = started;
                             return Err(error.into());
                         }
@@ -2756,6 +2759,7 @@ impl DomSourceLease<'_> {
             observation: observation.clone(),
             bytes,
             units,
+            applied: false,
         });
         Ok(())
     }
@@ -2989,6 +2993,7 @@ impl DomSourceLease<'_> {
         op.receipt = Some(Receipt::Cssom {
             revision: snapshot.revision().clone(),
             sheet,
+            applied: false,
         });
         Ok(token)
     }
@@ -3163,6 +3168,9 @@ impl Operation {
             }
             return Ok(());
         }
+        if self.external_receipt_applied() {
+            return Ok(());
+        }
         let request = self.request.as_ref().ok_or(DomError::StyleProtocol)?;
         let mut frame = self.frame()?;
         if frame.cursor.action() != request.action {
@@ -3173,7 +3181,9 @@ impl Operation {
                 unreachable!("external receipt handled above")
             }
             Receipt::Inline { observation, .. } => Reply::InlineAllowed(observation.allowed),
-            Receipt::Cssom { revision, sheet } => {
+            Receipt::Cssom {
+                revision, sheet, ..
+            } => {
                 let mut state = self.draft.style_state_mut(frame.key, cancel)?;
                 if matches!(
                     request.action,
@@ -3207,7 +3217,9 @@ impl Operation {
             .cursor
             .reply(reply)
             .map_err(|_| DomError::StyleProtocol)?;
-        self.draft.source_set_style_frame(frame, cancel)
+        self.draft.source_set_style_frame(frame, cancel)?;
+        self.restore_external_receipt(true);
+        Ok(())
     }
 }
 

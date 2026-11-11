@@ -1343,7 +1343,7 @@ impl Dom {
     ) -> Result<DocumentId, DomHostedError> {
         self.dispatch_global_document_current_with(global, &mut || Ok(()))
     }
-    fn dispatch_global_document_current_with<E>(
+    pub(super) fn dispatch_global_document_current_with<E>(
         &self,
         global: DomHostedGlobalId,
         step: &mut impl FnMut() -> Result<(), E>,

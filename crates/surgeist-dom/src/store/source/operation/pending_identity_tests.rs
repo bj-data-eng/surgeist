@@ -94,7 +94,10 @@ fn acknowledged_cssom_receipt_survives_pending_identity_refusal_and_same_source_
     let prefix = lease.snapshot();
     let (revision, receipt_sheet, frame, index, invocation, work) = {
         let op = lease.dom.source_operation.as_ref().unwrap();
-        let Some(Receipt::Cssom { revision, sheet }) = &op.receipt else {
+        let Some(Receipt::Cssom {
+            revision, sheet, ..
+        }) = &op.receipt
+        else {
             panic!("CSSOM acknowledgment retained before private tail");
         };
         assert_eq!(revision, cssom.revision());
@@ -147,6 +150,7 @@ fn acknowledged_cssom_receipt_survives_pending_identity_refusal_and_same_source_
         let Some(Receipt::Cssom {
             revision: retained_revision,
             sheet,
+            ..
         }) = &op.receipt
         else {
             panic!("private identity refusal must retain the original external receipt");
