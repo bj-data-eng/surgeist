@@ -276,6 +276,70 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     }
     assert!(!events.registry.borrow().has_registration(id));
     assert_eq!(events.budget.used.get(), before);
+
+    let kind = units("once budget");
+    let event = host
+        .create_guest_event(&permit, &kind, Default::default())
+        .unwrap();
+    let (id, slot) = host
+        .in_document(&permit, |scope| {
+            let global = scope.global()?;
+            let receiver = event_target.object(scope)?;
+            scope.set(
+                &global,
+                PropertyKey::String(&units("onceTarget")),
+                &receiver,
+            )?;
+            scope.evaluate(&units(
+                "onceTarget.addEventListener('once budget', () => { throw 1; }, { once: true })",
+            ))?;
+            let mut cursor = 0;
+            let (id, registered) = events
+                .registry
+                .borrow()
+                .next_guest_registration(
+                    &event_target.native.clone().into(),
+                    &kind,
+                    false,
+                    &mut cursor,
+                    &AtomicBool::new(false),
+                )
+                .unwrap()
+                .unwrap();
+            let RegisteredListenerObject::Traced(traced) = &registered.object else {
+                panic!("public registration must be traced from its target");
+            };
+            assert!(
+                scope
+                    .native_object_reference::<GuestTargetProjection>(&receiver, traced.slot)?
+                    .is_some()
+            );
+            Ok((id, traced.slot))
+        })
+        .unwrap();
+
+    // Reserve the direct report vector, its root bank and two root slots,
+    // then admit projection qualification and the first native advance.
+    // Callback work itself is one unit beyond this exact prefix.
+    let prefix = 4 + u64::try_from(limits.dispatch.failure_records).unwrap();
+    events.budget.work.set(limits.work - prefix);
+    let Err(refused) = host.dispatch_guest_event(&permit, &event_target, &event) else {
+        panic!("callback work must refuse after native once selection");
+    };
+    assert!(matches!(refused.error, DocumentGuestEventError::WorkLimit));
+    assert!(refused.exceptions().is_empty());
+    assert!(!events.registry.borrow().has_registration(id));
+    host.in_document(&permit, |scope| {
+        let receiver = event_target.object(scope)?;
+        assert!(
+            scope
+                .native_object_reference::<GuestTargetProjection>(&receiver, slot)?
+                .is_none(),
+            "the irreversible native once removal must release its traced edge"
+        );
+        Ok(())
+    })
+    .unwrap();
 }
 
 pub(in crate::document_scripting) fn refused_first_target_releases_prototype_capture() {

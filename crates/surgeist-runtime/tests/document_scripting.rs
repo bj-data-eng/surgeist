@@ -618,6 +618,14 @@ fn native_window_event_observes_its_live_standalone_dispatch() {
     let (mut host, _) = prepare_event_window();
     let permit = host.permit().unwrap();
     let initial = r#"(() => {
+        if (Object.keys(EventTarget.prototype).join() !== "addEventListener,removeEventListener,dispatchEvent") {
+            return "EventTarget operations must follow declaration order";
+        }
+        if (Object.getOwnPropertyNames(Event.prototype).join() !==
+            "type,target,srcElement,currentTarget,eventPhase,cancelBubble,bubbles,cancelable,returnValue,defaultPrevented,composed,timeStamp," +
+            "composedPath,stopPropagation,stopImmediatePropagation,preventDefault,initEvent,NONE,CAPTURING_PHASE,AT_TARGET,BUBBLING_PHASE,constructor") {
+            return "Event properties must follow interface definition order";
+        }
         const target = new EventTarget();
         const event = new Event("start", { cancelable: true, composed: true });
         if (event.target !== null || event.srcElement !== null || event.currentTarget !== null) {
