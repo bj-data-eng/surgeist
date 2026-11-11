@@ -410,6 +410,28 @@ where
     Ok(())
 }
 
+fn fixed_grid_axis<S: LayoutScalar>(components: &[crate::TrackComponentOf<S>]) -> bool {
+    let mut has_track = false;
+    let fixed = components.iter().all(|component| match component {
+        crate::TrackComponentOf::Track(track) => {
+            has_track = true;
+            track
+                .min
+                .definite(None)
+                .zip(track.max.definite(None))
+                .is_some_and(|(minimum, maximum)| minimum == maximum && minimum.is_finite())
+        }
+        crate::TrackComponentOf::LineNames(_) => true,
+        crate::TrackComponentOf::Repeat(repetition) => {
+            has_track = true;
+            matches!(repetition.repeat(), crate::TrackRepeat::Count(_))
+                && fixed_grid_axis(repetition.components())
+        }
+        crate::TrackComponentOf::Subgrid(_) => false,
+    });
+    fixed && has_track
+}
+
 fn admit_positioned_root<Node, S: LayoutScalar, M>(
     root: Node,
     style: &NodeInputOf<S>,
@@ -432,6 +454,12 @@ where
         && style.block_generation == crate::BlockGeneration::Principal
         && !style.item_is_table
         && style.size.height.is_auto();
+    let auto_fixed_grid = has_block_offset
+        && style.display == crate::Display::Grid
+        && style.size.width.is_auto()
+        && style.size.height.is_auto()
+        && fixed_grid_axis(&style.grid_template_columns)
+        && fixed_grid_axis(&style.grid_template_rows);
     let edges = match local_containing_size {
         Some(size) if horizontal => RootEdgeProfile::DefiniteInline {
             percentage_parent: size.width,
@@ -440,7 +468,7 @@ where
     };
     admit_root_box(root, style, crate::Position::Absolute, edges)?;
     let writing_mode_error = || root_context_error(root, crate::RootContextMismatch::WritingMode);
-    if !horizontal || has_block_offset {
+    if (!horizontal || has_block_offset) && !auto_fixed_grid {
         let basis = local_containing_size.ok_or_else(writing_mode_error)?;
         // Resolve only for admission. The normal box algorithm retains the
         // original preferred dimensions and owns their min/max constraints.
