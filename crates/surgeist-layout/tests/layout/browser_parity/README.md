@@ -80,6 +80,14 @@ original axis captures. It is separate from matching editions. Use the
 [diagnostic check](../../../examples/qualify-root-context/README.md#grid-lanes-original-diagnostics)
 to replay those comparisons.
 
+The [Grid Lanes axis controls](../../../examples/qualify-root-context/README.md#grid-lanes-axis-controls)
+cover the same nine families and four variants. The qualifier catalogue
+accounts for each original with its source-equivalent control. Matching
+authority requires zero raw differences for the control and exact Native
+geometry for the authenticated pair. The original differences remain in the
+diagnostic receipt. The Grid Lanes axis test checks the original both-template
+topology and executes the mapped controls.
+
 The ordinary default-feature test target runs all registered editions.
 
 ```sh

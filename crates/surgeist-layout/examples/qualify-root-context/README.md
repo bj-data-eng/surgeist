@@ -218,6 +218,26 @@ The check authenticates the retained inputs and outputs and replays every
 comparison. Numeric differences are recorded in the receipt; incomplete
 comparisons or changes to the pinned evidence fail the check.
 
+## Grid Lanes axis controls
+
+The [Grid Lanes matching edition](../../tests/layout/browser_parity/captured/grid-lanes-axis-controls/qualification.json)
+covers nine authored controls in both box modes and directions. The
+[catalogue](corpus.toml) maps each control to its original and pins the original
+diagnostic receipt. Each control removes only the template on the stacking
+axis in each of its two Grid Lanes containers.
+
+Check the matching edition and its original diagnostics without a browser:
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry grid-lanes-axis-controls
+~~~
+
+The check requires zero browser comparison differences for every control. It
+replays the original diagnostics, checks the source changes and root contexts,
+and compares the complete unrounded and final Native box packets, including
+scroll geometry, for each pair. Independent checks cover the selected axes,
+item placements and physical coordinates.
+
 ## Grid static-position edition
 
 The [Grid static-position policy](../../semantic/grid-static-position-policy.md)
