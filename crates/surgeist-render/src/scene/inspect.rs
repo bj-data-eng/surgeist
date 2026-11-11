@@ -53,11 +53,20 @@ fn inspect_body(commands: &[Command], account: &Account) -> Result<SceneSummary>
 }
 
 fn walk<'a>(
-    commands: &'a [Command],
+    mut commands: &'a [Command],
     account: &Account,
     images: &mut AccountedVec<&'a Image>,
 ) -> Result<()> {
-    for command in commands {
+    let mut pending = account.temporary(0)?;
+    loop {
+        let Some((command, siblings)) = commands.split_first() else {
+            let Some(siblings) = pending.pop() else {
+                return Ok(());
+            };
+            commands = siblings;
+            continue;
+        };
+        commands = siblings;
         account.work(RenderWork::CommandVisits, 1)?;
         account.work(RenderWork::AuthoredCommands, 1)?;
         match command {
@@ -109,11 +118,20 @@ fn walk<'a>(
             }
             Command::Layer { children, .. } => {
                 account.work(RenderWork::AuthoredLayers, 1)?;
-                walk(children, account, images)?;
+                if !children.is_empty() {
+                    // Only suspend a nonempty continuation. A single-child
+                    // chain uses the current slice without scratch backing.
+                    if !siblings.is_empty() {
+                        if pending.len() == pending.capacity() {
+                            pending.grow(pending.capacity().max(1))?;
+                        }
+                        pending.push(siblings)?;
+                    }
+                    commands = children;
+                }
             }
         }
     }
-    Ok(())
 }
 
 fn paint_image<'a>(
@@ -164,6 +182,140 @@ mod tests {
         Color, Image, ImageFit, Layer, Rect, RenderAccountingContext, RenderAccountingOptions,
         RenderLimits, RenderWork, Scene, Size,
     };
+
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn deeply_nested_layers_can_be_inspected_on_a_bounded_stack() {
+        use super::Command;
+        use crate::RenderResource;
+
+        std::thread::Builder::new()
+            .name("deep scene inspection".into())
+            .stack_size(256 * 1024)
+            .spawn(|| {
+                const LAYERS: u64 = 8_192;
+                let rect = Rect::new(0.0, 0.0, 1.0, 1.0);
+                for with_siblings in [false, true] {
+                    let mut scene = Scene::new();
+                    scene.fill(rect, Color::BLACK);
+                    for _ in 0..LAYERS {
+                        let child = scene;
+                        scene = Scene::new();
+                        scene.layer(Layer::new(), |target| *target = child);
+                        if with_siblings {
+                            scene.fill(rect, Color::BLACK);
+                        }
+                    }
+                    let mut context = RenderAccountingContext::default();
+                    let summary = scene.inspect(&mut context);
+
+                    // Each layer is first in its sequence. Drop the leaf
+                    // siblings before moving to the next child sequence.
+                    let mut commands = std::mem::take(&mut scene.commands);
+                    while let Some(command) = commands.pop() {
+                        if let Command::Layer { children, .. } = command {
+                            commands = children;
+                        }
+                    }
+
+                    let fills = 1 + u64::from(with_siblings) * LAYERS;
+                    let summary = summary.unwrap();
+                    assert_eq!(summary.commands, LAYERS + fills);
+                    assert_eq!(summary.layers, LAYERS);
+                    assert_eq!(summary.fills, fills);
+                    let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+                    assert_eq!(usage.work(RenderWork::CommandVisits), LAYERS + fills);
+                    let peak = usage.peak(RenderResource::ScratchCpuBytes);
+                    if with_siblings {
+                        assert!(peak >= LAYERS * std::mem::size_of::<&[Command]>() as u64);
+                        assert!(usage.work(RenderWork::StorageRelocations) < 2 * LAYERS);
+                    } else {
+                        assert_eq!(peak, 0);
+                    }
+                    assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn pending_siblings_are_admitted_before_inspecting_children() {
+        use super::Command;
+        use crate::{
+            RenderAccountingError, RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason,
+            RenderResource,
+        };
+
+        let rect = Rect::new(0.0, 0.0, 1.0, 1.0);
+        let mut scene = Scene::new();
+        scene.layer(Layer::new(), |child| {
+            child.fill(rect, Color::BLACK);
+        });
+        scene.layer(Layer::new(), |_| {});
+        let required = std::mem::size_of::<&[Command]>() as u64;
+        let short = required - 1;
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new()
+                .with_limits(RenderLimits::new().with_scratch_bytes(short)),
+        );
+        let error = scene.inspect(&mut context).unwrap_err();
+        assert_eq!(
+            error.accounting_diagnostic(),
+            Some(RenderAccountingError::Refused(RenderRefusal {
+                phase: RenderPhase::Attempt,
+                quantity: RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+                current: 0,
+                amount: required,
+                reason: RenderRefusalReason::Limit { limit: short },
+            }))
+        );
+        let report = context.last_attempt().unwrap();
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::AuthoredCommands), 1);
+        assert_eq!(usage.work(RenderWork::AuthoredLayers), 1);
+        assert_eq!(usage.work(RenderWork::AuthoredFills), 0);
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(report.cleanup_fault(), None);
+
+        let limits = RenderLimits::new()
+            .with_scratch_bytes(required)
+            .with_work_limit(RenderWork::AuthoredCommands, 2)
+            .unwrap();
+        context.set_options(RenderAccountingOptions::new().with_limits(limits));
+        let error = scene.inspect(&mut context).unwrap_err();
+        assert_eq!(
+            error.accounting_diagnostic(),
+            Some(RenderAccountingError::Refused(RenderRefusal {
+                phase: RenderPhase::Attempt,
+                quantity: RenderQuantity::Work(RenderWork::AuthoredCommands),
+                current: 2,
+                amount: 1,
+                reason: RenderRefusalReason::Limit { limit: 2 },
+            }))
+        );
+        let report = context.last_attempt().unwrap();
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::AuthoredLayers), 1);
+        assert_eq!(usage.work(RenderWork::AuthoredFills), 1);
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), required);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(report.cleanup_fault(), None);
+
+        context.set_options(
+            RenderAccountingOptions::new()
+                .with_limits(RenderLimits::new().with_scratch_bytes(required)),
+        );
+        let summary = scene.inspect(&mut context).unwrap();
+        assert_eq!(summary.commands, 3);
+        assert_eq!(summary.layers, 2);
+        assert_eq!(summary.fills, 1);
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), required);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+    }
 
     #[test]
     fn nested_authored_structure_and_exact_content_are_measured() {
