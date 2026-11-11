@@ -246,7 +246,7 @@ impl ImageAtlasPlan {
                     })?;
                 let mut draw: DrawImage = bytemuck::pod_read_unaligned(bytemuck::cast_slice(words));
                 if let Some(index) = index {
-                    let entry = &entries[index];
+                    let entry = entries.get(index).ok_or_else(invalid_entry_position)?;
                     draw.xy = (entry.origin[0] << 16) | entry.origin[1];
                     draw.width_height = (entry.extent().width() << 16) | entry.extent().height();
                 } else {
@@ -309,6 +309,11 @@ impl ImageAtlasPlan {
 }
 
 fn pack_entries(entries: &mut [AtlasEntry], area: u64, account: &Account) -> Result<PhysicalSize> {
+    if area > MAX_TEXELS {
+        return Err(failed(
+            "image atlas area exceeds the representable texel limit",
+        ));
+    }
     let mut order = account.temporary(entries.len())?;
     for index in 0..entries.len() {
         account.work(RenderWork::ResourceProbes, 1)?;
@@ -337,7 +342,7 @@ fn pack_entries(entries: &mut [AtlasEntry], area: u64, account: &Account) -> Res
         let mut fits = true;
         for &index in &order {
             account.work(RenderWork::ResourceProbes, 1)?;
-            let entry = &mut entries[index];
+            let entry = entries.get_mut(index).ok_or_else(invalid_entry_position)?;
             let extent = entry.extent();
             if x + extent.width() > width {
                 x = 0;
@@ -375,10 +380,18 @@ fn sort_order(order: &mut [usize], entries: &[AtlasEntry], account: &Account) ->
         account: &Account,
     ) -> Result<std::cmp::Ordering> {
         account.work(RenderWork::ResourceProbes, 1)?;
-        let ah = entries[a].extent().height();
+        let a_height = entries
+            .get(a)
+            .ok_or_else(invalid_entry_position)?
+            .extent()
+            .height();
         account.work(RenderWork::ResourceProbes, 1)?;
-        let bh = entries[b].extent().height();
-        Ok(bh.cmp(&ah).then_with(|| a.cmp(&b)))
+        let b_height = entries
+            .get(b)
+            .ok_or_else(invalid_entry_position)?
+            .extent()
+            .height();
+        Ok(b_height.cmp(&a_height).then_with(|| a.cmp(&b)))
     }
     fn sift(
         order: &mut [usize],
@@ -415,6 +428,10 @@ fn sort_order(order: &mut [usize], entries: &[AtlasEntry], account: &Account) ->
         sift(order, 0, end, entries, account)?;
     }
     Ok(())
+}
+
+fn invalid_entry_position() -> Error {
+    failed("image atlas position does not identify an entry")
 }
 
 fn failed(message: impl Into<String>) -> Error {
