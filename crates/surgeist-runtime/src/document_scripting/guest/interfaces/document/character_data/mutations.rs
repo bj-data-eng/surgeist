@@ -29,7 +29,7 @@ enum Operation {
 
 struct Method {
     name: &'static [u16],
-    length: u32,
+    length: u8,
     offset: Option<Argument<IntegerType>>,
     count: Option<Argument<IntegerType>>,
     data: Option<Argument<Type<DomString>>>,
@@ -101,7 +101,10 @@ pub(super) fn install_methods<'scope>(
             &Callback::new(move |scope, arguments| {
                 callback.character_operation(scope, arguments, operation)
             }),
-            FunctionMetadata { name, length },
+            FunctionMetadata {
+                name,
+                length: u32::from(length),
+            },
         )?;
         define_data(
             scope,
@@ -142,9 +145,14 @@ impl Capture {
                 scope.type_error(&ascii(b"CharacterData required"))?,
             ));
         };
+        let method = operation.method();
+        if arguments.len() < usize::from(method.length) {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Not enough arguments"))?,
+            ));
+        }
         let (owner, events) = self.active(scope)?;
         let result = (|| -> Result<_, DocumentGuestEventError> {
-            let method = operation.method();
             let (offset, count, data) = self
                 .callbacks
                 .conversion
