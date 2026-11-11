@@ -5,7 +5,9 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::ThreadId;
 
-use super::{CoercedString, ObjectPrototype, Operations, PropertyDescriptor, PropertyKey};
+use super::{
+    CoercedString, ObjectPrototype, Operations, PropertyDefinition, PropertyDescriptor, PropertyKey,
+};
 use crate::owner::OwnerState;
 use crate::{
     Arguments, Callback, Completion, ConstructorArguments, ConstructorCallback,
@@ -35,7 +37,7 @@ struct RootEntry {
 }
 
 enum NativeCallback {
-    Callable(Callback),
+    Callable(Callback, Option<i32>),
     Constructor(ConstructorCallback),
 }
 
@@ -659,8 +661,15 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
-    fn function(&mut self, callback: &Callback) -> Result<Root, Error> {
-        self.native_function(NativeCallback::Callable(callback.clone()), None)
+    fn function(
+        &mut self,
+        callback: &Callback,
+        fixed: Option<FunctionMetadata<'_>>,
+    ) -> Result<Root, Error> {
+        let prefix = fixed
+            .map(|metadata| i32::try_from(metadata.length).map_err(|_| Error::TooManyArguments))
+            .transpose()?;
+        self.native_function(NativeCallback::Callable(callback.clone(), prefix), fixed)
     }
 
     fn constructor(
@@ -895,6 +904,7 @@ impl Operations for Entered<'_, '_, '_> {
         object: &Root,
         key: PropertyKey<'_>,
         descriptor: PropertyDescriptor<'_>,
+        definition: PropertyDefinition,
     ) -> Result<(), Error> {
         self.validate_root(object)?;
         self.attempt(
@@ -934,6 +944,18 @@ impl Operations for Entered<'_, '_, '_> {
                 };
                 descriptor.set_enumerable(enumerable);
                 descriptor.set_configurable(configurable);
+                if matches!(definition, PropertyDefinition::RequireAbsent) {
+                    match object.has_own_property(scope, key) {
+                        Some(false) => (),
+                        Some(true) => return Err(Error::PropertyRejected),
+                        None => return Err(Error::BackendUnavailable),
+                    }
+                    // The own-property probe may have invoked a proxy trap.
+                    roots.available()?;
+                    if scope.is_execution_terminating() {
+                        return Err(Error::Terminated);
+                    }
+                }
                 match object.define_property(scope, key, &descriptor) {
                     Some(true) => Ok(()),
                     Some(false) => Err(Error::PropertyRejected),
@@ -1261,17 +1283,19 @@ fn invoke_callback<'s>(
         Throw(Root),
     }
     let outcome = match (&lease.callback, role) {
-        (NativeCallback::Callable(callback), 0) => {
+        (NativeCallback::Callable(callback, prefix), 0) => {
             let receiver = Value {
                 root: roots.retain(entered.scope, lease.realm, arguments.this().into())?,
                 invariant: std::marker::PhantomData,
             };
             let mut values = Vec::new();
-            let count = usize::try_from(arguments.length()).map_err(|_| Error::TooManyArguments)?;
+            let supplied = arguments.length();
+            let selected = prefix.map_or(supplied, |prefix| prefix.min(supplied));
+            let count = usize::try_from(selected).map_err(|_| Error::TooManyArguments)?;
             values
                 .try_reserve_exact(count)
                 .map_err(|_| Error::Allocation)?;
-            for index in 0..arguments.length() {
+            for index in 0..selected {
                 values.push(Value {
                     root: roots.retain(entered.scope, lease.realm, arguments.get(index))?,
                     invariant: std::marker::PhantomData,

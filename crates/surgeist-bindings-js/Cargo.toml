@@ -9,6 +9,8 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+surgeist-css = { path = "../surgeist-css", version = "=0.1.0" }
+surgeist-cssom = { path = "../surgeist-cssom", version = "=0.1.0" }
 surgeist-ledger = { path = "../surgeist-ledger", version = "=0.1.0" }
 v8 = "=152.2.0"
 

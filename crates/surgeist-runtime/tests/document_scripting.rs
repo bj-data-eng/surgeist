@@ -5,9 +5,13 @@ use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use surgeist_bindings_js::{
-    Callback, Completion, EngineKind, Error, Primitive, Process, PropertyKey, Scope,
+    Callback, Completion, EngineKind, Error, Primitive, Process, PropertyKey, Scope, ValueKind,
 };
-use surgeist_css::{query::media::CssMediaScripting, source::CssUtf16InputLimits};
+use surgeist_css::{
+    query::media::CssMediaScripting,
+    serialization::{CssSerializationError, CssomIdentifierLimits},
+    source::CssUtf16InputLimits,
+};
 use surgeist_dom::*;
 use surgeist_html::scripting::HtmlScriptingPolicy;
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlCapturedNodeKind, HtmlScriptingStatus};
@@ -135,6 +139,249 @@ fn eval(host: &mut DocumentScriptHost, permit: &DocumentScriptPermit, script: &s
         assert_script_number(scope, script, expected)
     })
     .unwrap();
+}
+
+fn native_window_exposes_css_escape() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    assert_eq!(permit.document(), top.document());
+
+    let kind = host
+        .in_document(&permit, |scope| {
+            let script: Vec<_> = "globalThis.CSS".encode_utf16().collect();
+            let value = scope.evaluate(&script)?;
+            scope.kind(&value)
+        })
+        .unwrap();
+    assert_eq!(
+        kind,
+        ValueKind::Object,
+        "native Window CSS namespace is missing"
+    );
+
+    for check in [
+        "Number(Object.getPrototypeOf(CSS) === Object.prototype)",
+        "Number(Object.prototype.toString.call(CSS) === '[object CSS]')",
+        "Number(CSS.escape.name === 'escape' && CSS.escape.length === 1)",
+        r#"Number((() => {
+            function data(object, key, value, writable, enumerable, configurable) {
+                const descriptor = Object.getOwnPropertyDescriptor(object, key);
+                return descriptor.value === value && descriptor.writable === writable
+                    && descriptor.enumerable === enumerable
+                    && descriptor.configurable === configurable;
+            }
+            const namespace = CSS;
+            const escape = CSS.escape;
+            return data(globalThis, "CSS", namespace, true, false, true)
+                && data(namespace, "escape", escape, true, true, true)
+                && data(namespace, Symbol.toStringTag, "CSS", false, false, true)
+                && data(escape, "name", "escape", false, false, true)
+                && data(escape, "length", 1, false, false, true)
+                && Object.getPrototypeOf(escape) === Function.prototype
+                && !Object.hasOwn(escape, "prototype")
+                && namespace === globalThis.CSS && escape === CSS.escape;
+        })())"#,
+        r#"Number((() => {
+            const escape = CSS.escape;
+            const sentinel = {};
+            const surplus = { toString() { throw sentinel; } };
+            let coercions = 0;
+            const result = escape.call({}, {
+                [Symbol.toPrimitive](hint) {
+                    if (hint !== "string") throw sentinel;
+                    coercions++;
+                    return "0a\u00a0\u00d7\ud800_\ud83d\ude42\udc00\0";
+                }
+            }, surplus);
+            let originalThrow = false;
+            try { escape({ toString() { throw sentinel; } }); }
+            catch (error) { originalThrow = error === sentinel; }
+            let symbolTypeError = false;
+            try { escape(Symbol()); }
+            catch (error) { symbolTypeError = error instanceof TypeError; }
+            return result === "\\30 a\u00a0\u00d7\ud800_\ud83d\ude42\udc00\ufffd"
+                && coercions === 1 && originalThrow && symbolTypeError
+                && escape(undefined) === "undefined" && escape(null) === "null";
+        })())"#,
+        r"Number(CSS.escape('a\u00a0\ud800\0') === 'a\u00a0\ud800\ufffd')",
+        "Number((() => { try { CSS.escape(); } catch (error) { return error instanceof TypeError; } return false; })())",
+        "Number((() => { try { Reflect.construct(function() {}, [], CSS.escape); } catch (error) { return error instanceof TypeError; } return false; })())",
+    ] {
+        eval(&mut host, &permit, check, 1.0);
+    }
+
+    let (original_realm, original_css) = host
+        .in_document(&permit, |scope| {
+            let css = scope.evaluate(&"CSS".encode_utf16().collect::<Vec<_>>())?;
+            Ok((scope.realm_authority()?.identity(), scope.retain(&css)))
+        })
+        .unwrap();
+    let session = host.stop().into_session().unwrap();
+    let mut replacement = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = replacement.permit().unwrap();
+    replacement
+        .in_document(&permit, |scope| {
+            assert_ne!(scope.realm_authority()?.identity(), original_realm);
+            assert!(matches!(
+                scope.import(&original_css),
+                Err(Error::ForeignOwner)
+            ));
+            Ok(())
+        })
+        .unwrap();
+    eval(
+        &mut replacement,
+        &permit,
+        "Number(CSS.escape('b') === 'b')",
+        1.0,
+    );
+}
+
+fn native_window_css_admission() {
+    fn configured(limits: CssNamespaceLimits) -> DocumentScriptHost {
+        let (session, top) = setup();
+        prepare(session, Arc::new(cancel()))
+            .with_css_namespace_limits(limits)
+            .enable(top, ALLOW, hooks(&hook()))
+            .unwrap()
+    }
+
+    const ESCAPE: &str = r#"CSS.escape("1\ud800_\ud83d\ude42\udc00")"#;
+    const EXACT: CssomIdentifierLimits = CssomIdentifierLimits::new(6, 18);
+    let mut host = configured(CssNamespaceLimits::new(2, 12, 12, EXACT));
+    let permit = host.permit().unwrap();
+    for _ in 0..2 {
+        eval(
+            &mut host,
+            &permit,
+            r#"Number(CSS.escape("1\ud800_\ud83d\ude42\udc00") === "\\31 \ud800_\ud83d\ude42\udc00")"#,
+            1.0,
+        );
+    }
+    assert!(matches!(
+        host.in_document(&permit, |scope| scope
+            .evaluate(&ESCAPE.encode_utf16().collect::<Vec<_>>())
+            .map(drop)),
+        Err(DocumentScriptError::Script(Error::ConversionLedger(_)))
+    ));
+    host.stop().into_session().unwrap();
+
+    for limits in [
+        CssNamespaceLimits::new(1, 5, 12, EXACT),
+        CssNamespaceLimits::new(1, 6, 11, EXACT),
+    ] {
+        let mut host = configured(limits);
+        let permit = host.permit().unwrap();
+        assert!(matches!(
+            host.in_document(&permit, |scope| scope
+                .evaluate(&ESCAPE.encode_utf16().collect::<Vec<_>>())
+                .map(drop)),
+            Err(DocumentScriptError::Script(Error::ConversionLedger(_)))
+        ));
+        host.stop().into_session().unwrap();
+    }
+
+    for (identifier, input_refused) in [
+        (CssomIdentifierLimits::new(5, 17), true),
+        (CssomIdentifierLimits::new(6, 17), false),
+    ] {
+        let mut host = configured(CssNamespaceLimits::new(1, 6, 12, identifier));
+        let permit = host.permit().unwrap();
+        let script = format!("try {{ {ESCAPE}; }} catch (_) {{}} 42");
+        let failure = native_failure(host.in_document(&permit, |scope| {
+            scope
+                .evaluate(&script.encode_utf16().collect::<Vec<_>>())
+                .map(drop)
+        }));
+        let cause = failure.cause::<CssSerializationError>().unwrap();
+        assert!(cause.is_resource_limit());
+        assert_eq!(cause.is_input_unit_limit(), input_refused);
+        assert_eq!(cause.is_byte_limit(), !input_refused);
+        let first = native_failure(host.checkpoint());
+        assert!(std::ptr::eq(
+            cause,
+            first.cause::<CssSerializationError>().unwrap()
+        ));
+        host.stop().into_session().unwrap();
+        assert_eq!(cause.is_input_unit_limit(), input_refused);
+    }
+}
+
+fn native_window_css_hook_collision_preserves_the_original_session() {
+    const CSS: &[u16] = &[67, 83, 83];
+    let global_this: Vec<_> = "globalThis".encode_utf16().collect();
+    let (session, top) = setup();
+    let before = session.snapshot();
+    let mut prepared = prepare(session, Arc::new(cancel()));
+    for names in [
+        DocumentScriptHooks {
+            child_count: CSS,
+            detach_source_node_if: &[65],
+        },
+        DocumentScriptHooks {
+            child_count: &[65],
+            detach_source_node_if: CSS,
+        },
+        DocumentScriptHooks {
+            child_count: &global_this,
+            detach_source_node_if: &[65],
+        },
+        DocumentScriptHooks {
+            child_count: &[65],
+            detach_source_node_if: &global_this,
+        },
+    ] {
+        let failure = match prepared.enable(top, ALLOW, names) {
+            Err(failure) => failure,
+            Ok(mut host) => {
+                let permit = host.permit().unwrap();
+                let observed = host
+                    .in_document(&permit, |scope| {
+                        let source: Vec<_> = "typeof globalThis.CSS + '/' + typeof CSS.escape"
+                            .encode_utf16()
+                            .collect();
+                        let value = scope.evaluate(&source)?;
+                        scope.to_utf16(&value)
+                    })
+                    .unwrap();
+                panic!(
+                    "conflicting hook published the attachment, guest globalThis.CSS/CSS.escape: {}",
+                    String::from_utf16(&observed).unwrap()
+                );
+            }
+        };
+        assert!(matches!(
+            failure.error,
+            DocumentScriptError::Script(Error::PropertyRejected)
+        ));
+        prepared = failure.owner;
+    }
+    let session = prepared.into_session().unwrap();
+    assert_eq!(session.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        session
+            .snapshot()
+            .document(top.document())
+            .unwrap()
+            .scripting(),
+        HtmlScriptingStatus::Disabled,
+    );
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    eval(&mut host, &permit, "Number(CSS.escape('a') === 'a')", 1.0);
+    eval(
+        &mut host,
+        &permit,
+        "Number(Object.getOwnPropertyDescriptor(globalThis, 'globalThis').configurable)",
+        1.0,
+    );
 }
 
 fn failed_enable_preserves_original_owner() {
@@ -732,6 +979,11 @@ fn stopped_session_reattaches_with_a_new_scripting_basis() {
 fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         match scenario.as_str() {
+            "css-namespace" => native_window_exposes_css_escape(),
+            "css-namespace-admission" => native_window_css_admission(),
+            "css-namespace-collision" => {
+                native_window_css_hook_collision_preserves_the_original_session()
+            }
             "conversion-revocation" => source_events::run(),
             "native-retirement" => {
                 let expired = native_read_snapshot_and_explicit_queue();
@@ -747,6 +999,9 @@ fn main() {
         }
         return;
     }
+    native_window_exposes_css_escape();
+    native_window_css_admission();
+    native_window_css_hook_collision_preserves_the_original_session();
     failed_enable_preserves_original_owner();
     let expired_permit = native_read_snapshot_and_explicit_queue();
     stopped_host_captures_known_no_engine();

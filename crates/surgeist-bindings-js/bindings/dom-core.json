@@ -2,6 +2,26 @@
   "schema": 1,
   "sources": [
     {
+      "id": "CSS.source",
+      "path": "references/cssom-1--editor-capture-20261009--d42e145ec395.md",
+      "anchor": "namespacedef-css",
+      "block": 0,
+      "sha256": "81b5c46c9d4068c4ae37644b4c99d4ad91ab64407bfa481d8e0a47260c6e080b",
+      "revision": "4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c",
+      "url": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs#L3164",
+      "entries": ["CSS"]
+    },
+    {
+      "id": "CSSOMString.source",
+      "path": "references/cssom-1--editor-capture-20261009--d42e145ec395.md",
+      "anchor": "cssomstring-type",
+      "block": 1,
+      "sha256": "de895183f79ee8af121073d4ef6b8775ca4a44eb99b0b9bc133f433cac805ff0",
+      "revision": "4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c",
+      "url": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+      "entries": ["CSSOMString"]
+    },
+    {
       "id": "NonElementParentNode.source",
       "path": "references/dom-foundation--editor-capture-20261010--08dff0a4827f.md",
       "anchor": "interface-nonelementparentnode",
@@ -351,6 +371,31 @@
     }
   ],
   "declarations": [
+    {
+      "id": "CSS",
+      "kind": "namespace",
+      "name": "CSS",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "id": "CSS.escape:0",
+          "kind": "operation",
+          "name": "escape",
+          "type": {"kind": "named", "name": "CSSOMString"},
+          "attributes": [],
+          "arguments": [
+            {"name": "ident", "type": {"kind": "named", "name": "CSSOMString"}, "presence": "required"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CSSOMString",
+      "kind": "typedef",
+      "name": "CSSOMString",
+      "attributes": [],
+      "type": {"kind": "named", "name": "DOMString"}
+    },
     {
       "id": "NonElementParentNode",
       "kind": "mixin",
@@ -3885,6 +3930,12 @@
     }
   ],
   "access_mappings": {
+    "CSS.escape:0/call": {
+      "kind": "native",
+      "adapter": "css.escape",
+      "producers": [{"owner": "surgeist-cssom", "path": "crates/surgeist-cssom/src/css.rs", "symbol": "escape"}],
+      "requirements": []
+    },
     "NonElementParentNode.getElementById:0/call": {
       "kind": "derived",
       "algorithm": "nonelementparentnode.getelementbyid_0.call",
@@ -7292,6 +7343,7 @@
     }
   },
   "semantics": {
+    "namespace_objects": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#namespace-object",
     "interface_objects": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#interface-object",
     "property_descriptors": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#js-attributes",
     "brands": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#js-platform-objects",

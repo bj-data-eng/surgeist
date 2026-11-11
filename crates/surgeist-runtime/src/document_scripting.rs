@@ -6,11 +6,12 @@ use std::mem::{size_of, size_of_val};
 use std::rc::{Rc, Weak};
 use std::sync::{Arc, atomic::AtomicBool};
 
+pub use surgeist_bindings_js::css::CssNamespaceLimits;
 use surgeist_bindings_js::{
     Callback, Completion, EngineKind, Error, HostFailureSlot, Primitive, Process,
-    PropertyDescriptor, PropertyKey, Realm, RealmAuthority, RealmId, RecordFailure, Scope,
+    PropertyDescriptor, PropertyKey, Realm, RealmAuthority, RealmId, RecordFailure, Scope, css,
 };
-use surgeist_css::query::media::CssMediaScripting;
+use surgeist_css::{query::media::CssMediaScripting, serialization::CssSerializationError};
 use surgeist_dom::{
     DocumentId, DomDocumentScriptBinding, DomDocumentScriptRegistration, DomDocumentScriptingFacts,
     DomDocumentScriptingObservation, DomError, DomHostedError, DomHostedRuntimeRetention,
@@ -142,6 +143,7 @@ struct NativeOwner {
     active_source: Cell<Option<source::ActiveSource>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
+    css_limits: Cell<CssNamespaceLimits>,
     _backing: DomHostedRuntimeRetention,
 }
 
@@ -276,9 +278,17 @@ impl PreparedDocumentScriptHost {
                 active_source: Cell::new(None),
                 cancellation,
                 storage_limit,
+                css_limits: Cell::new(CssNamespaceLimits::default()),
                 _backing: backing,
             }),
         })
+    }
+
+    /// Select the Window CSS conversion and native identifier limits before attachment.
+    #[must_use]
+    pub fn with_css_namespace_limits(self, limits: CssNamespaceLimits) -> Self {
+        self.native.css_limits.set(limits);
+        self
     }
 
     /// Recover the original unpublished Session.
@@ -287,7 +297,7 @@ impl PreparedDocumentScriptHost {
     }
 
     /// Attach an actual engine to the selected native top-level Document.
-    /// Installs the explicitly named host services in its realm.
+    /// Installs the Window CSS namespace and the explicitly named host services.
     pub fn enable(
         self,
         target: DomHostedTopLevel,
@@ -341,16 +351,28 @@ impl PreparedDocumentScriptHost {
         let failure_bytes = FailureSlot::storage_bytes();
         let source_failure_bytes = SourceFailureSlot::storage_bytes();
         let liveness_bytes = DomDocumentScriptRegistration::storage_bytes();
+        let css_bytes = css::callback_storage_bytes::<DomHostedRuntimeRetention>();
+        let css_failure_bytes =
+            HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes();
         let bytes = size_of::<NativeOwner>()
             .checked_add(hook_bytes)
             .and_then(|bytes| bytes.checked_add(failure_bytes))
             .and_then(|bytes| bytes.checked_add(source_failure_bytes))
             .and_then(|bytes| bytes.checked_add(liveness_bytes))
+            .and_then(|bytes| bytes.checked_add(css_bytes))
+            .and_then(|bytes| bytes.checked_add(css_failure_bytes))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         if bytes > owner.storage_limit {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
-        let (hook_backing, failure_backing, source_failure_backing, liveness_backing) = {
+        let (
+            hook_backing,
+            failure_backing,
+            source_failure_backing,
+            liveness_backing,
+            css_backing,
+            css_failure_backing,
+        ) = {
             let mut session = owner
                 .session
                 .try_borrow_mut()
@@ -368,7 +390,13 @@ impl PreparedDocumentScriptHost {
             let liveness = hosted
                 .retain_script_payload(&mut dom, liveness_bytes, cancel)
                 .map_err(DocumentScriptNativeError::from)?;
-            (hook, failure, source_failure, liveness)
+            let css = hosted
+                .retain_script_payload(&mut dom, css_bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?;
+            let css_failure = hosted
+                .retain_script_payload(&mut dom, css_failure_bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?;
+            (hook, failure, source_failure, liveness, css, css_failure)
         };
         let failures = FailureSlot::new(&authority, failure_backing)?;
         let source_failures = SourceFailureSlot::new(&authority, source_failure_backing)?;
@@ -382,7 +410,7 @@ impl PreparedDocumentScriptHost {
                 (hooks.detach_source_node_if, Callback::new(detach)),
             ] {
                 let hook = scope.function(&callback)?;
-                scope.define_property(
+                scope.define_new_property(
                     &global,
                     PropertyKey::String(name),
                     PropertyDescriptor::Data {
@@ -393,7 +421,12 @@ impl PreparedDocumentScriptHost {
                     },
                 )?;
             }
-            Ok(())
+            css::install_window_css(
+                scope,
+                owner.css_limits.get(),
+                css_backing,
+                css_failure_backing,
+            )
         })?;
 
         let mut session = owner

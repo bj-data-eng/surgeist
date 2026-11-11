@@ -370,7 +370,7 @@ def render_type(value, names):
         require(set(value) <= {"kind", "name", "attributes"}, "invalid named type fields")
         name = value.get("name")
         require(name in PRIMITIVES or name in names, f"unresolved type: {name}")
-        require(names.get(name) not in {"mixin", "external_mixin"}, f"mixin used as a type: {name}")
+        require(names.get(name) not in {"mixin", "external_mixin", "namespace"}, f"non-type definition used as a type: {name}")
         if annotation:
             require(name in {"DOMString", "USVString"}, "legacy string annotation on non-string")
         return prefix + name
@@ -489,7 +489,7 @@ def render_definition(definition, names):
     if "partial" in definition:
         boolean(definition["partial"], "partial")
     kind = definition["kind"]
-    require(kind in {"interface", "mixin", "callback_interface", "dictionary", "enumeration", "typedef"}, "unknown definition kind")
+    require(kind in {"interface", "mixin", "callback_interface", "dictionary", "enumeration", "typedef", "namespace"}, "unknown definition kind")
     prefix = attributes(definition["attributes"])
     require(not definition.get("partial", False) or kind in {"interface", "mixin"}, "invalid partial definition")
     require(all(x["name"] in {"Exposed", "LegacyOverrideBuiltIns", "LegacyUnenumerableNamedProperties"} for x in definition["attributes"]), "member attribute on a definition")
@@ -502,6 +502,18 @@ def render_definition(definition, names):
         require(len(set(definition["values"])) == len(definition["values"]), "duplicate enum value")
         return prefix + "enum " + definition["name"] + " { " + ", ".join(json.dumps(x) for x in definition["values"]) + " };"
     keys(definition, ["id", "kind", "name", "attributes", "members"], ["inherits", "partial"])
+    if kind == "namespace":
+        keys(definition, ["id", "kind", "name", "attributes", "members"])
+        require(definition["attributes"] == [{"name": "Exposed", "value": "Window"}],
+                "only Window namespace exposure is selected")
+        require(all(member["kind"] == "operation" and member.get("name") and
+                    not member.get("static", False) and "special" not in member and
+                    not member["attributes"] and "arguments" in member and
+                    all(argument["presence"] == "required" for argument in member["arguments"])
+                    for member in definition["members"]),
+                "only regular fixed-arity namespace operations are selected")
+        require(len({m["name"] for m in definition["members"]}) == len(definition["members"]),
+                "namespace overloads are outside the selected grammar")
     words = {"mixin": "interface mixin", "callback_interface": "callback interface"}
     header = prefix + ("partial " if definition.get("partial", False) else "") + words.get(kind, kind) + " " + definition["name"]
     if definition.get("inherits"):
@@ -634,7 +646,7 @@ def validate(data, root=ROOT):
             path = (root / producer["path"]).resolve()
             require(path.is_relative_to(root.resolve()) and path.is_file(), "native producer path missing")
             require(re.search(r"\b" + re.escape(producer["symbol"]) + r"\b", path.read_text()), "native producer symbol missing")
-    required_semantics = {"interface_objects", "property_descriptors", "brands", "argument_conversion",
+    required_semantics = {"interface_objects", "namespace_objects", "property_descriptors", "brands", "argument_conversion",
                           "legacy_platform_objects", "iterable", "same_object", "new_object", "unscopables"}
     require(set(data["semantics"]) == required_semantics, "shared installation semantics are incomplete")
     require(all(x.startswith("https://") for x in data["semantics"].values()), "invalid semantics source")
@@ -709,7 +721,9 @@ def lower_values(data):
             flattened = members(d["name"], set())
             if flattened is not None:
                 dictionaries.append({"name": d["name"], "members": flattened})
-    return {"enumerations": enumerations, "dictionaries": dictionaries}
+    return {"enumerations": enumerations, "dictionaries": dictionaries,
+            "typedefs": {d["name"]: d["type"] for d in definitions.values() if d["kind"] == "typedef"},
+            "namespaces": [d for d in definitions.values() if d["kind"] == "namespace"]}
 
 
 def code_units(value):
@@ -780,21 +794,28 @@ def emit_values(model):
     return "\n".join(result)
 
 
-def conversion_type(ty, model):
+def conversion_type(ty, model, aliases=frozenset()):
     """A complete supported type, never a successful partial brand conversion."""
     if ty.get("attributes"):
         return None
     if ty["kind"] == "nullable":
-        inner = conversion_type(ty["inner"], model)
+        inner = conversion_type(ty["inner"], model, aliases)
         if inner is None or ty["inner"]["kind"] != "named":
             return None
         # Dictionary nullability is forbidden in arguments and members.
-        if ty["inner"]["name"] in {d["name"] for d in model["dictionaries"]}:
+        if inner[0] in {d["name"] for d in model["dictionaries"]}:
             return None
         return ("Option<" + inner[0] + ">", "Nullable<" + inner[1] + ">", inner[2] + ".nullable()")
     if ty["kind"] != "named":
         return None
     name = ty["name"]
+    typedefs = model["typedefs"]
+    if name in typedefs:
+        require(name not in aliases, "typedef cycle")
+        underlying = typedefs[name]
+        if underlying["kind"] != "named":
+            return None
+        return conversion_type(underlying, model, aliases | {name})
     scalars = {"boolean": ("bool", "BOOLEAN"), "DOMString": ("DomString", "DOM_STRING"),
                "USVString": ("UsvString", "USV_STRING"), "ByteString": ("ByteString", "BYTE_STRING"),
                "float": ("f32", "FLOAT"), "double": ("f64", "DOUBLE"),
@@ -833,7 +854,7 @@ def lower_arguments(data, model):
 
 def emit_conversions(model, arguments=()):
     result = ["// Generated by tools/generate_bindings.py; do not edit.",
-              "// Source-adapted WHATWG declarations: licenses/whatwg/LICENSE and NOTICE.md.",
+              "// Source-adapted WHATWG and W3C declarations: see the crate NOTICE.md.",
               "//! Closed scoped conversion descriptors from the retained declarations.", "",
               "use super::{",
               "    Argument, Conversion, Converted, Enumeration, Failure, IntegerType, Nullable, Type, types,", "};"]
@@ -885,6 +906,17 @@ def emit_conversions(model, arguments=()):
             result += ["    Ok(cx.plain(" + name + " {"]
             result += ["        " + field_name(m["name"]) + "," for m in definition["members"]]
             result += ["    }))", "}", ""]
+    for namespace in model["namespaces"]:
+        stem = "WINDOW_" + field_name(namespace["name"]).upper()
+        result += ["pub(crate) const " + stem + "_NAME: &[u16] = &" +
+                   units_literal(namespace["name"]) + ";"]
+        for member in namespace["members"]:
+            operation = stem + "_" + field_name(member["name"]).upper()
+            result += ["pub(crate) const " + operation + "_NAME: &[u16] = &" +
+                       units_literal(member["name"]) + ";",
+                       "pub(crate) const " + operation + "_ARITY: u32 = " +
+                       str(len(member["arguments"])) + ";"]
+        result.append("")
     for lowered in arguments:
         arg, function = lowered["argument"], lowered["function"]
         output, descriptor_type, descriptor = lowered["info"]

@@ -26,6 +26,11 @@ pub(crate) enum PropertyDescriptor<'a> {
     },
 }
 
+pub(crate) enum PropertyDefinition {
+    AllowExisting,
+    RequireAbsent,
+}
+
 pub(crate) enum ObjectPrototype<'a> {
     Default,
     Null,
@@ -87,7 +92,11 @@ pub(crate) trait Operations {
     fn kind(&mut self, value: &Root) -> Result<ValueKind, Error>;
     fn is_callable(&mut self, value: &Root) -> Result<bool, Error>;
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error>;
-    fn function(&mut self, callback: &Callback) -> Result<Root, Error>;
+    fn function(
+        &mut self,
+        callback: &Callback,
+        fixed: Option<FunctionMetadata<'_>>,
+    ) -> Result<Root, Error>;
     fn constructor(
         &mut self,
         callback: &ConstructorCallback,
@@ -106,6 +115,7 @@ pub(crate) trait Operations {
         object: &Root,
         key: PropertyKey<'_>,
         descriptor: PropertyDescriptor<'_>,
+        definition: PropertyDefinition,
     ) -> Result<(), Error>;
     fn object(&mut self, prototype: ObjectPrototype<'_>) -> Result<Root, Error>;
     fn set_prototype(&mut self, object: &Root, prototype: ObjectPrototype<'_>)

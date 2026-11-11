@@ -86,11 +86,17 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
         )
         .unwrap();
     let permit = host.permit().unwrap();
-    let hook = host
+    let (hook, escape, window_type_error) = host
         .in_document(&permit, |scope| {
             let global = scope.global()?;
             let callback = scope.get(&global, PropertyKey::String(&read_name))?;
-            Ok(scope.retain(&callback))
+            let escape = scope.evaluate(&"CSS.escape".encode_utf16().collect::<Vec<_>>())?;
+            let type_error = scope.evaluate(&"TypeError".encode_utf16().collect::<Vec<_>>())?;
+            Ok((
+                scope.retain(&callback),
+                scope.retain(&escape),
+                scope.retain(&type_error),
+            ))
         })
         .unwrap();
 
@@ -106,6 +112,34 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
                 let global = scope.global()?;
                 let delegate = scope.import(&hook)?;
                 scope.set(&global, PropertyKey::String(&read_name), &delegate)?;
+                let escape = scope.import(&escape)?;
+                let window_type_error = scope.import(&window_type_error)?;
+                scope.set(
+                    &global,
+                    PropertyKey::String(&"windowEscape".encode_utf16().collect::<Vec<_>>()),
+                    &escape,
+                )?;
+                scope.set(
+                    &global,
+                    PropertyKey::String(&"windowTypeError".encode_utf16().collect::<Vec<_>>()),
+                    &window_type_error,
+                )?;
+                let observed = scope.evaluate(
+                    &r#"(() => {
+                        let fromWindow = false;
+                        try { windowEscape(); }
+                        catch (error) {
+                            fromWindow = error instanceof windowTypeError
+                                && !(error instanceof TypeError);
+                        }
+                        return !Object.hasOwn(globalThis, "CSS") && fromWindow
+                            && windowEscape("\ud800") === "\ud800";
+                    })()"#
+                        .encode_utf16()
+                        .collect::<Vec<_>>(),
+                )?;
+                let expected = scope.primitive(Primitive::Boolean(true))?;
+                assert!(scope.strict_equals(&observed, &expected)?);
                 Ok(())
             })
             .unwrap();
@@ -139,6 +173,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     }
 
     drop(caller);
+    drop(window_type_error);
+    drop(escape);
     drop(hook);
     let session = host.stop().into_session().unwrap();
     assert_eq!(

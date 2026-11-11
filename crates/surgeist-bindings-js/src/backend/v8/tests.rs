@@ -574,8 +574,46 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     invalid_native_identity_types_are_rejected()?;
     nested_callback_scopes_share_production_roots_and_release_self_cleared_custody()?;
     registry_failure_stays_terminal_across_guest_catches_and_native_coercion()?;
+    fixed_arity_captures_only_the_selected_prefix()?;
     cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal()?;
     crate::conversion::tests::run()?;
+    Ok(())
+}
+
+fn fixed_arity_captures_only_the_selected_prefix() -> TestResult {
+    let mut host = Host::new(Observations::default())?;
+    let callback = crate::Callback::new(|scope, arguments| {
+        let count = u32::try_from(arguments.len()).map_err(|_| Error::TooManyArguments)?;
+        let value = scope.primitive(crate::Primitive::Number(f64::from(count)))?;
+        Ok(crate::Completion::Return(value))
+    });
+    host.engine.with_context(&host.realm, |entered| {
+        let global = entered.global()?;
+        let fixed_name = [102, 105, 120, 101, 100];
+        let raw_name = [114, 97, 119];
+        let fixed = entered.function(
+            &callback,
+            Some(crate::FunctionMetadata {
+                name: &fixed_name,
+                length: 1,
+            }),
+        )?;
+        let raw = entered.function(&callback, None)?;
+        entered.set(
+            &global,
+            crate::backend::PropertyKey::String(&fixed_name),
+            &fixed,
+        )?;
+        entered.set(
+            &global,
+            crate::backend::PropertyKey::String(&raw_name),
+            &raw,
+        )?;
+        Ok(())
+    })?;
+    assert_eq!(host.eval("fixed()")?, "0");
+    assert_eq!(host.eval("fixed(undefined, 2, 3)")?, "1");
+    assert_eq!(host.eval("raw(undefined, 2, 3)")?, "3");
     Ok(())
 }
 
@@ -606,7 +644,7 @@ fn cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal() -> Test
             Ok(crate::Completion::Undefined)
         });
         host.engine.with_context(&host.realm, |entered| {
-            let function = entered.function(&callback)?;
+            let function = entered.function(&callback, None)?;
             let global = entered.global()?;
             entered.set(
                 &global,

@@ -154,8 +154,16 @@ first. Cleanup guards enter no SDK code, and cleanup diagnostics remain readable
 after an account drops. Enumeration attribute assignment ignores a nonmember
 after one coercion. Generated
 values and conversion descriptors derive from the single
-[authored description](bindings/dom-core.json); dictionaries requiring native
-brands, union/overload selection and installed interfaces remain separate work.
+[authored description](bindings/dom-core.json). Dictionaries that require native
+brands and union and overload selection have separate binding work.
+
+[Runtime's native document attachment](../surgeist-runtime/README.md) installs
+the standard `CSS` namespace in the selected Window realm. `CSS.escape` uses
+the generated required DOMString argument descriptor and the native CSSOM
+serializer. The fixed-arity callback captures at most one guest argument.
+Conversion consumes cumulative per-realm work and live Rust buffer limits.
+Native identifier limits bound each call, and a native refusal retains the
+original typed cause.
 
 ## Verification
 
