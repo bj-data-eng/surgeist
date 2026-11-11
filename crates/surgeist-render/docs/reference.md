@@ -912,6 +912,14 @@ and disjoint byte ranges before acquiring output scratch, then emits from those
 ranges in source order. A frame-owned observer retains its binding work in
 the frame attempt.
 
+The device pass cache admits usable sampler, layout, shader-module and
+pipeline index capacity under `DeviceBacking`. Its byte unit is the
+container's guaranteed record capacity times the key/value record size.
+Bucket storage beyond that capacity and allocator overhead are outside the unit. Both
+provisional and committed capacity count while their backings coexist.
+Growth admits the replacement before relocating records. Publication uses
+the capacity reserved by the checked cache update.
+
 `Summary` and `Detailed` optionally collect host elapsed time using Ledger's
 platform clock or `RenderClock::Host`. Timed phases surround actual work and
 awaits, including pending preparation, submission resolution and surface
