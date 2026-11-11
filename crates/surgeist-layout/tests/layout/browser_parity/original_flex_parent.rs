@@ -238,6 +238,48 @@ mod tests {
     }
 
     #[test]
+    fn original_percentage_parent_preserves_historical_grid_geometry() {
+        let historical = Golden::parse(include_str!(
+            "xml/grid/chrome_issue_325928327__border_box_ltr.xml"
+        ))
+        .unwrap();
+        // Authored test oracle for the original 800×600 frame and 40px boxes.
+        let current = Golden::parse(
+            r#"<test name="chrome_issue_325928327__border_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" direction="ltr" position="absolute" align-items="start" justify-content="start" width="max-content" height="max-content">
+      <div source-tag="div" display="grid" direction="ltr" justify-items="center" width="100%" height="40px">
+        <div source-tag="div" display="flex" direction="ltr" height="100%">
+          <div source-tag="div" display="flex" direction="ltr" height="100%" aspect-ratio="1"/>
+        </div>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="40" height="40">
+      <node x="0" y="0" width="40" height="40">
+        <node x="0" y="0" width="40" height="40">
+          <node x="0" y="0" width="40" height="40"/>
+        </node>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="40" height="40" scroll-width="40" scroll-height="40" client-width="40" client-height="40"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="40" height="40" scroll-width="40" scroll-height="40" client-width="40" client-height="40"/>
+    <world-rounded-layout node-path="0.0.0" x="0" y="0" width="40" height="40" scroll-width="40" scroll-height="40" client-width="40" client-height="40"/>
+    <world-rounded-layout node-path="0.0.0.0" x="0" y="0" width="40" height="40" scroll-width="40" scroll-height="40" client-width="40" client-height="40"/>
+  </diagnostics>
+</test>"#,
+        )
+        .unwrap();
+        let (raw, verdict) = compare(&current).unwrap();
+        assert!(raw.is_empty() && verdict.is_ok(), "{raw:?}");
+        verify_historical(&current, &historical).unwrap();
+    }
+
+    #[test]
     fn comparison_reports_a_signed_grid_offset_even_when_rounding_can_hide_it() {
         let (mut current, _) = pair();
         let (raw, verdict) = compare(&current).unwrap();
