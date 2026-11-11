@@ -68,10 +68,7 @@ use validate::validate_semantic_frame_graph;
 
 use super::{
     command::{RenderCommand, RenderCommands},
-    error::{
-        Error, PrimitiveFamily, PrimitiveOperation, Result, UnresolvedResource,
-        UnresolvedResourceKind, UnsupportedPrimitive,
-    },
+    error::{Error, Result, UnresolvedResource, UnresolvedResourceKind},
     geometry::{Rect, Size, Transform},
     paint::Color,
     renderer::Antialiasing,
@@ -171,16 +168,6 @@ impl FramePlan {
             let commands = contribution.commands;
             let selection_requirements =
                 graph_selection_requirements(&commands.commands, &account)?;
-            if selection_requirements.contains(&GraphSelectionRequirement::ForegroundBlur)
-                && selection_requirements.contains(&GraphSelectionRequirement::BoundedBackdrop)
-            {
-                return Err(Error::unsupported_render_primitive(
-                    UnsupportedPrimitive::new(
-                        PrimitiveFamily::OffscreenPipeline,
-                        PrimitiveOperation::BroadBackdropExecution,
-                    ),
-                ));
-            }
             if selection_requirements.is_empty() {
                 return Ok(Self::DirectVello(DirectVelloPlan {
                     commands,

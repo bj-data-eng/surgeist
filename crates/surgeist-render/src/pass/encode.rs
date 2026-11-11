@@ -269,6 +269,7 @@ pub(crate) struct CustomSpineEncodingSummary {
     pub(crate) copy_backdrop_source_and_result_are_distinct: bool,
     pub(crate) copy_backdrop_uses_validated_viewport_and_scissor: bool,
     pub(crate) copy_backdrop_preserves_signed_mapping: bool,
+    backdrop_filters_encoded: bool,
     pub(crate) backdrop_group_order_is_exact: bool,
     pub(crate) backdrop_group_resources_are_distinct: bool,
     #[cfg(test)]
@@ -501,6 +502,7 @@ impl CustomSpineEncodingProgress {
                 && self.copy_backdrop_regions_are_validated,
             copy_backdrop_preserves_signed_mapping: self.copy_backdrop_count > 0
                 && self.copy_backdrop_signed_mapping_is_exact,
+            backdrop_filters_encoded: backdrop.filters_encoded,
             backdrop_group_order_is_exact: backdrop.group_order_is_exact,
             backdrop_group_resources_are_distinct: backdrop.group_resources_are_distinct,
             #[cfg(test)]
@@ -618,6 +620,7 @@ fn scheduled_filter_raw_facts(
 
 #[derive(Clone, Copy, Debug, Default)]
 struct BackdropExecutionReceipt {
+    filters_encoded: bool,
     group_order_is_exact: bool,
     group_resources_are_distinct: bool,
     #[cfg(test)]
@@ -666,9 +669,24 @@ fn backdrop_execution_receipt(
             break;
         }
     }
-    let foreground_is_ordered = match backdrop.foreground_composite {
-        Some(pass) => position(pass)?
-            .is_some_and(|position| backdrop_composite < position && position < outer),
+    let assembled_group = match backdrop.foreground_composite {
+        Some(pass) => {
+            let Some(foreground) = position(pass)? else {
+                return Ok(BackdropExecutionReceipt::default());
+            };
+            foreground
+        }
+        None => backdrop_composite,
+    };
+    let group_blur_is_ordered = match backdrop.group_blur {
+        Some(blur) => {
+            let (Some(horizontal), Some(vertical)) =
+                (position(blur.horizontal)?, position(blur.vertical)?)
+            else {
+                return Ok(BackdropExecutionReceipt::default());
+            };
+            assembled_group < horizontal && horizontal < vertical && vertical < outer
+        }
         None => true,
     };
     let resources = [
@@ -678,6 +696,8 @@ fn backdrop_execution_receipt(
         Some(backdrop.completed_group),
         Some(backdrop.result),
         backdrop.foreground,
+        backdrop.group_blur.map(|blur| blur.intermediate),
+        backdrop.group_blur.map(|blur| blur.result),
     ];
     let mut resources_are_distinct = true;
     'resources: for (index, resource) in resources.iter().enumerate() {
@@ -704,10 +724,12 @@ fn backdrop_execution_receipt(
                     .any(|read| read.resource == backdrop.result)
         });
     Ok(BackdropExecutionReceipt {
-        group_order_is_exact: filters_are_ordered
+        filters_encoded: !backdrop.filter_steps.is_empty() && filters_are_ordered,
+        group_order_is_exact: copy < clear
             && clear < backdrop_composite
-            && backdrop_composite < outer
-            && foreground_is_ordered,
+            && (backdrop.foreground_composite.is_none() || backdrop_composite < assembled_group)
+            && assembled_group < outer
+            && group_blur_is_ordered,
         group_resources_are_distinct: resources_are_distinct,
         #[cfg(test)]
         later_sibling_transition_is_exact,
@@ -805,7 +827,7 @@ impl CustomSpineEncodingSummary {
             && exact_color_filters
             && exact_spatial_passes;
         let exact_backdrop = self.copy_backdrop_count == 1
-            && self.color_filter_count.saturating_add(self.blur_pass_count) > 0
+            && self.backdrop_filters_encoded
             && self.copy_backdrop_binds_exact_prepared_resources
             && self.copy_backdrop_source_and_result_are_distinct
             && self.copy_backdrop_uses_validated_viewport_and_scissor
