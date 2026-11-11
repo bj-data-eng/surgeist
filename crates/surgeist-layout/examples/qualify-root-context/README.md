@@ -200,6 +200,15 @@ separately pins the complete terminal digest. An existing capture directory
 alone establishes no authority. Each named cohort
 retains its published membership and bytes.
 
+The [FRI06 Subgrid edition](../../tests/layout/browser_parity/captured/fri06-subgrid-representatives/qualification.json)
+contains three original BlockFlow sources in both box modes and directions.
+The comparison checks ordinary box geometry, the six loaded-font paragraph
+and BR observations, and the declared Grid references for each case.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri06-subgrid-representatives
+~~~
+
 ## Grid Lanes original diagnostics
 
 The [Grid Lanes diagnostic receipt](../../tests/layout/browser_parity/captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
