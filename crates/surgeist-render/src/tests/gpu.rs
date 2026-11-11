@@ -2613,6 +2613,99 @@ fn terminal_straight_rgba8_rejects_rgb_leakage_at_zero_alpha() {
 }
 
 #[test]
+fn production_hue_rotation_matches_literal_matrix_vectors() {
+    let source = [
+        [255, 0, 0, 255],
+        [0, 255, 0, 255],
+        [0, 0, 255, 255],
+        [255, 96, 65, 255],
+        [64, 128, 32, 128],
+    ];
+    let cases = [
+        (0.0, source),
+        (
+            std::f64::consts::FRAC_PI_2,
+            [
+                [0, 91, 0, 255],
+                [0, 218, 255, 255],
+                [255, 0, 37, 255],
+                [65, 159, 0, 255],
+                [32, 125, 151, 128],
+            ],
+        ),
+        (
+            std::f64::consts::PI,
+            [
+                [0, 109, 109, 255],
+                [255, 110, 255, 255],
+                [37, 37, 0, 255],
+                [0, 159, 190, 255],
+                [151, 87, 183, 128],
+            ],
+        ),
+    ];
+    let width = u32::try_from(source.len()).unwrap();
+    let scene = color_filter_signed_source_scene_for_test(&source);
+    let format = WorkingFormat::HighPrecision;
+    let (mut renderer, mut surface) = color_filter_pixel_renderer_for_test(format, width);
+    for (radians, expected) in cases {
+        let operation = ColorFilterOp::HueRotate(FilterAngle::try_radians(radians).unwrap());
+        let rendered = render_color_filter_fixture_for_test(
+            &mut renderer,
+            &mut surface,
+            &scene,
+            vec![color_filter_list([operation])],
+            Parameters::default(),
+            format,
+        );
+        assert!(
+            color_filter_frame_has_exact_extent_origin_and_submission_for_test(&rendered, width)
+        );
+        assert_eq!(rendered.working_format, format);
+        assert!(
+            high_precision_terminal_error_for_test(rendered.output.rgba(), expected.as_flattened())
+                .is_some_and(|error| error <= 2),
+            "rotation {radians}: {:?} != {expected:?}",
+            rendered.output.rgba(),
+        );
+        assert!(
+            rendered
+                .output
+                .rgba()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|pixel| pixel[3])
+                .eq(source.iter().map(|pixel| pixel[3])),
+            "rotation {radians} changed alpha: {:?}",
+            rendered.output.rgba(),
+        );
+    }
+
+    // For the opaque mixed vector, 180° gives red 0.27/255 with a00 = -.574.
+    // With the alternate a00 = -.5746, red is 0.117/255. Amplify within the
+    // same filter run so terminal RGBA8 can distinguish those positive values.
+    let rendered = render_color_filter_fixture_for_test(
+        &mut renderer,
+        &mut surface,
+        &scene,
+        vec![color_filter_list([
+            ColorFilterOp::HueRotate(FilterAngle::try_radians(std::f64::consts::PI).unwrap()),
+            ColorFilterOp::Brightness(FilterAmount::try_new(512.0).unwrap()),
+        ])],
+        Parameters::default(),
+        format,
+    );
+    assert!(color_filter_frame_has_exact_extent_origin_and_submission_for_test(&rendered, width));
+    assert_eq!(rendered.working_format, format);
+    let pixel = pixel_rgba(&rendered.output, 3, 0);
+    assert!(
+        pixel[0].abs_diff(138) <= 3 && pixel[1..] == [255; 3],
+        "{pixel:?}"
+    );
+}
+
+#[test]
 fn high_precision_color_functions_match_cpu_oracle_for_boundary_pixels() {
     let source = color_filter_boundary_pixels_for_test();
     let width =
