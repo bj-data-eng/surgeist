@@ -1212,3 +1212,80 @@ fn uncanceled_host_delivery_defers_show_publication_until_original_source_tail_i
         "actual unavailable focus service retains its mandatory tail"
     );
 }
+
+#[test]
+fn dispatcher_drop_preserves_the_reported_host_refusal() {
+    let (mut session, _, dialog, _) = fixture();
+    let mut source = session.source_execution();
+    let mut original = dispatcher();
+    original
+        .add_listener(
+            &mut session.dom(),
+            dialog,
+            DomEventType::BeforeToggle,
+            DomEventCallback::host(5),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    original
+        .add_listener(
+            &mut session.dom(),
+            dialog,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(|_, _, calls: &mut Vec<u64>, _| {
+                calls.push(6);
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let request = show(&mut source, &mut session, dialog);
+    let stamp = session.snapshot().stamp();
+    let mut calls = Vec::new();
+    let mut invocation = pending(service(
+        &source,
+        &mut session,
+        &request,
+        &mut original,
+        &mut calls,
+    ));
+    invocation
+        .refuse(&original, DomEventHostError { code: 77 })
+        .unwrap();
+    assert!(invocation.event().current_target().is_none());
+    assert!(matches!(
+        invocation.refuse(&original, DomEventHostError { code: 88 }),
+        Err(DomEventDispatchError::AlreadyCompleted)
+    ));
+
+    drop(original);
+    let mut replacement = dispatcher();
+    let cancel = AtomicBool::new(false);
+    for _ in 0..2 {
+        let retry = source.service_event(
+            &mut session.dom(),
+            &request,
+            &mut replacement,
+            &mut calls,
+            limits(),
+            &cancel,
+        );
+        assert!(
+            matches!(
+                retry,
+                Err(crate::DomSourceRuntimeError::SourceEvent(
+                    DomSourceEventRuntimeError::Dispatch(DomEventDispatchError::HostRefused(
+                        DomEventHostError { code: 77 }
+                    ))
+                ))
+            ),
+            "the original Source request retains the reported refusal after dispatcher drop: {retry:?}"
+        );
+    }
+    assert!(calls.is_empty());
+    assert_eq!(session.snapshot().stamp(), stamp);
+    assert_eq!(
+        session.dom().pending_source_edit().unwrap().operation(),
+        request.operation()
+    );
+}
