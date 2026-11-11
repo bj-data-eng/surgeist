@@ -670,6 +670,34 @@ mod tests {
     }
 
     #[test]
+    fn zero_device_sigma_serializes_one_accounted_identity_sample() {
+        for (sigma, scale) in [(0.0, 1.0), (f64::from_bits(1), 0.5)] {
+            let options = RenderAccountingOptions::new();
+            let cpu = RendererCpu::new(options).unwrap();
+            let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let plan = GaussianKernelPlan::try_new(
+                        sigma,
+                        scale,
+                        2.5,
+                        GaussianKernelSamplingForm::PairedLinear,
+                        attempt.account(),
+                    )?;
+                    assert_eq!(plan.upload_bytes(), &[0, 0, 0, 0, 0, 0, 128, 63]);
+                    Ok(())
+                })
+                .unwrap()
+                .into_parts();
+            result.unwrap();
+            assert_eq!(fault, None);
+            let attempt = report.attempt().unwrap();
+            assert_eq!(attempt.status(), crate::RenderAttemptStatus::Succeeded);
+            assert_eq!(attempt.usage().work(RenderWork::KernelSampleVisits), 3);
+            assert_eq!(attempt.usage().work(RenderWork::SerializedBytes), 8);
+        }
+    }
+
+    #[test]
     fn nearest_kernel_serializes_three_literal_samples_and_counts_actual_loops() {
         let options = RenderAccountingOptions::new();
         let cpu = RendererCpu::new(options).unwrap();
