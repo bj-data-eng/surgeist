@@ -1343,3 +1343,49 @@ fn retired_select_skip_requires_idle_even_inside_actual_beforetoggle_dispatch_re
         Err(DomError::InvalidNativeTask)
     ));
 }
+
+#[test]
+fn ordinary_and_source_retirement_share_exact_canonical_destruction() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, executor, document, subject, _) = fixture();
+    let mut setup = DomBatch::new();
+    let a = setup.create_comment(document.node(), "ordinary");
+    let b = setup.create_comment(document.node(), "source");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let ordinary = commit.created(&a).unwrap().unwrap();
+    let source = commit.created(&b).unwrap().unwrap();
+    let limits = crate::DomNodeRetirementLimits::new(16_000_000, 1000);
+    let mut inbox = dom.node_retirement_inbox(limits, &cancel).unwrap();
+    let ordinary_watch = dom
+        .watch_node_retirement(ordinary, &inbox, 5, limits, &cancel)
+        .unwrap();
+
+    let event = request(&mut dom, subject);
+    assert!(matches!(
+        dom.node_retirement_inbox(limits, &cancel),
+        Err(DomError::SourceOperationPending)
+    ));
+    assert!(matches!(
+        dom.watch_node_retirement(source, &inbox, 6, limits, &cancel),
+        Err(DomError::SourceOperationPending)
+    ));
+    assert!(matches!(
+        dom.watch_source_event_node_retirement(&event, ordinary, &inbox, 9, &cancel),
+        Err(DomError::NodeRetirementAlreadyWatched)
+    ));
+    let source_watch = dom
+        .watch_source_event_node_retirement(&event, source, &inbox, 6, &cancel)
+        .unwrap();
+    let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
+    let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
+    let mut destroy = DomBatch::new();
+    destroy.destroy(ordinary);
+    destroy.destroy(source);
+    dom.apply(destroy, &cancel).unwrap();
+    let mut notices = [inbox.take().unwrap(), inbox.take().unwrap()]
+        .map(|notice| (notice.custody_key(), notice.node()));
+    notices.sort_unstable_by_key(|(key, _)| *key);
+    assert_eq!(notices, [(5, ordinary), (6, source)]);
+    assert!(inbox.take().is_none());
+    drop((ordinary_watch, source_watch, scope));
+}

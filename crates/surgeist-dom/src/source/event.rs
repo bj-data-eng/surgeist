@@ -292,7 +292,12 @@ pub struct DomSourceEventRetention {
 /// work, request, and execution scope. Drop the backing before this receipt.
 #[derive(Debug)]
 pub struct DomSourceEventPayloadRetention {
-    _debit: crate::store::custody::Debit,
+    debit: crate::store::custody::Debit,
+}
+impl DomSourceEventPayloadRetention {
+    pub(crate) fn into_debit(self) -> crate::store::custody::Debit {
+        self.debit
+    }
 }
 impl DomSourceEventRetention {
     /// Bytes still held by this affine receipt.
@@ -326,7 +331,7 @@ impl DomSourceEventRetention {
         self.work.bytes.fetch_sub(bytes, Ordering::Relaxed);
         self.work.units.fetch_sub(units, Ordering::Relaxed);
         Ok(DomSourceEventPayloadRetention {
-            _debit: custody.into_payload_debit(),
+            debit: custody.into_payload_debit(),
         })
     }
 

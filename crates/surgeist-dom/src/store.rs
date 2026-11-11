@@ -71,7 +71,8 @@ mod name_registry;
 mod navigable;
 mod node_retirement;
 pub use node_retirement::{
-    DomNodeRetirementInbox, DomNodeRetirementNotice, DomNodeRetirementWatch,
+    DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
+    DomNodeRetirementWatch,
 };
 #[cfg(test)]
 mod oracle_tests;
@@ -177,6 +178,8 @@ pub enum DomResource {
     InlineStyleScratch,
     /// Inline operation and sparse qualification work.
     InlineStyleWork,
+    /// Canonical custody union at ordinary node-retirement admission.
+    NodeRetirementCanonicalBytes,
     SourceRetainedBytes,
     SourceRetainedUnits,
     /// Directly owned name records, index capacity and operation receipts.
@@ -310,6 +313,10 @@ pub enum DomError {
     ForeignOwner,
     StaleNode,
     NodeRetirementAlreadyWatched,
+    /// Ordinary watch or inbox preparation exceeded its work allowance.
+    NodeRetirementWorkLimit {
+        limit: u64,
+    },
     ForeignBatch,
     UnavailableCreation,
     WrongNodeKind,
