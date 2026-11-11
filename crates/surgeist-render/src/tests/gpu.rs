@@ -9773,6 +9773,55 @@ fn bounded_backdrop_normalization_orders_capture_before_execution() {
 }
 
 #[test]
+fn exact_fit_rounded_clip_preserves_circle_coverage_in_the_direct_route() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(10.0, 10.0), 1.0)).unwrap();
+    let clip = Shape::rounded_rect(Rect::new(1.0, 1.0, 8.0, 8.0), Radii::all(4.0));
+    let mut scene = Scene::new();
+    scene.layer(Layer::new().try_clip(clip).unwrap(), |scene| {
+        scene.fill(Rect::new(0.0, 0.0, 10.0, 10.0), Color::BLACK);
+    });
+    let stats = pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+        .expect("a radius-four round clip fits its eight-unit square exactly");
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    assert_eq!(stats.route, Some(RenderRoute::DirectVello));
+    assert_eq!(pixel_rgba(&output, 4, 4), [0, 0, 0, 255]);
+    // The nearest point of the corner pixel is sqrt(18) from the center.
+    assert_eq!(pixel_rgba(&output, 1, 1), [0, 0, 0, 0]);
+}
+
+#[test]
+fn exact_fit_rounded_clip_preserves_circle_coverage_in_the_backdrop_graph() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(10.0, 10.0), 1.0)).unwrap();
+    let clip = Shape::rounded_rect(Rect::new(1.0, 1.0, 8.0, 8.0), Radii::all(4.0));
+    let backdrop = BackdropFilterInput::try_new(
+        color_filter_list([ColorFilterOp::Invert(
+            UnitFilterAmount::try_new(1.0).unwrap(),
+        )]),
+        BackdropCaptureBounds::try_new(Rect::new(0.0, 0.0, 10.0, 10.0)).unwrap(),
+        Some(ClipInput::try_shape(clip).unwrap()),
+    )
+    .unwrap();
+    let mut scene = Scene::new();
+    scene.layer(Layer::new().try_backdrop_filter(backdrop).unwrap(), |_| {});
+    let params = Parameters {
+        base_color: Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap(),
+        ..Parameters::default()
+    };
+    let stats = pollster::block_on(renderer.render(&mut surface, &scene, params))
+        .expect("the backdrop graph should realize its exact-fit round clip");
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+    assert_eq!(pixel_rgba(&output, 4, 4), [0, 255, 255, 255]);
+    assert_eq!(pixel_rgba(&output, 1, 1), [255, 0, 0, 255]);
+}
+
+#[test]
 fn backdrop_filter_chain_preserves_authored_inputs() {
     let source_rect = Rect::new(0.0, 0.0, 3.0, 1.0);
     let bounds = BackdropCaptureBounds::try_new(source_rect).unwrap();
