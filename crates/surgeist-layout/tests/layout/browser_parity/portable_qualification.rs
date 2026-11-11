@@ -1788,6 +1788,7 @@ fn admit_specialized(
         | SpecializedProfile::OriginalBlockAxes
         | SpecializedProfile::OriginalFlexAxes
         | SpecializedProfile::OriginalGridAxes
+        | SpecializedProfile::OriginalSubgridAxes
         | SpecializedProfile::OriginalSubgridBody
         | SpecializedProfile::PreparedAtomicPercentage
         | SpecializedProfile::HorizontalBrFontBand
@@ -1849,7 +1850,8 @@ fn admit_specialized(
                 }
                 SpecializedProfile::OriginalBlockAxes
                 | SpecializedProfile::OriginalFlexAxes
-                | SpecializedProfile::OriginalGridAxes => {
+                | SpecializedProfile::OriginalGridAxes
+                | SpecializedProfile::OriginalSubgridAxes => {
                     let historical = std::str::from_utf8(&historical)
                         .map_err(|error| malformed(error.to_string()))?;
                     qualification_catalogue::verify_historical_geometry(
