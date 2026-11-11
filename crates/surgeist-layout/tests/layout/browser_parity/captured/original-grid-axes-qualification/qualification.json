@@ -3869,7 +3869,7 @@
     "tests/layout/browser_parity/html/grid/grid_axes_vertical_parent_orthogonal_child.html": "b97113a60c81944899d36045c92ecd94c10e838595884fbbfda9416b62a2cea6",
     "tests/layout/browser_parity/html/grid/grid_axes_vertical_rl_parallel.html": "317b8415b1b2a12142b6997fffb3b124f3bfaeab0fb3cebb351606ff9952f872",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89",
     "tests/layout/browser_parity/xml/grid/grid_axes_horizontal_parent_orthogonal_child__border_box_ltr.xml": "2b3e67e457acdd847693b04d981a144aacb8815a2e9d1e578fa1ac7888fef749",
     "tests/layout/browser_parity/xml/grid/grid_axes_horizontal_parent_orthogonal_child__border_box_rtl.xml": "811a7f7422ae5fe2028bf08ac4a4d84e0d10f07fe02aa57f1cc31689cff0c829",
     "tests/layout/browser_parity/xml/grid/grid_axes_horizontal_parent_orthogonal_child__content_box_ltr.xml": "8c88240ac30fc8c7f3ac532f35c3bec94213c84e19c1b7c05cb947711b6deb0e",
@@ -3910,7 +3910,7 @@
   "capture_validation": {
     "producer_profile": "root-context-fixed-orthogonal-v1",
     "producer_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
-    "validator_profile": "root-context-fixed-orthogonal-v1",
-    "validator_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+    "validator_profile": "root-context-computed-margin-v1",
+    "validator_helper_sha256": "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89"
   }
 }

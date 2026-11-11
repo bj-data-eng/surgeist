@@ -541,7 +541,7 @@
     "tests/layout/browser_parity/html/grid-lanes/fri03_order_modified_lanes.html": "befc87c3a0767853dd66a4f7a29b14184bd0e71260fd43f6ee63e9408be11dcf",
     "tests/layout/browser_parity/html/grid/fri03_order_modified_grid.html": "d410f7e7f1730790f189cf446da9d9676990b3940d0e6636b134944b6edf867f",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89",
     "tests/layout/browser_parity/xml/grid-lanes/fri03_order_modified_lanes__border_box_ltr.xml": "0e218000856b85d1153b89cc6cb6bebcd6a076ff8fd303e96ef2a82bf960f50f",
     "tests/layout/browser_parity/xml/grid-lanes/fri03_order_modified_lanes__border_box_rtl.xml": "79cff689510e102f4d374c96e9a4696bdf2d2c97767458613d48886fc55bb736",
     "tests/layout/browser_parity/xml/grid-lanes/fri03_order_modified_lanes__content_box_ltr.xml": "c21127bbc283292703199f1a3443e565a6ebbb6c09db209de66b640269f24400",
@@ -554,7 +554,7 @@
   "capture_validation": {
     "producer_profile": "root-context-script-custody-v1",
     "producer_helper_sha256": "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4",
-    "validator_profile": "root-context-fixed-orthogonal-v1",
-    "validator_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+    "validator_profile": "root-context-computed-margin-v1",
+    "validator_helper_sha256": "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89"
   }
 }

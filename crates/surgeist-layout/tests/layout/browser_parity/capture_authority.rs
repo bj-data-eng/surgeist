@@ -125,7 +125,8 @@ impl MatchingMembership {
     }
 }
 pub(crate) const ROOT_HELPER_INPUT: &str = "scripts/gentest/test_helper.js";
-const ROOT_HELPER_OWNER: &str = "tests/layout/browser_parity/scripts/gentest/test_helper.js";
+pub(crate) const ROOT_HELPER_OWNER: &str =
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js";
 const ROOT_HELPER: &[u8] = include_bytes!("scripts/gentest/test_helper.js");
 const ROOT_CONTEXT_V4_HELPER_SHA256: &str =
     "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee";
@@ -172,14 +173,16 @@ pub(crate) enum RootCaptureProfile {
     RootContextScriptCustodyV1,
     #[serde(rename = "root-context-fixed-orthogonal-v1")]
     RootContextFixedOrthogonalV1,
+    #[serde(rename = "root-context-computed-margin-v1")]
+    RootContextComputedMarginV1,
 }
 
 const PREPARED_RANGE_HELPER_SHA256: &str =
     "bd1b351e488f846b2e73947746ced8d8b290f49b108e220c228b2c4d94c069c0";
 use crate::capture_helper_identity::{
-    FIXED_ORTHOGONAL_HELPER_SHA256, SCRIPT_CUSTODY_HELPER_SHA256,
+    COMPUTED_MARGIN_HELPER_SHA256, FIXED_ORTHOGONAL_HELPER_SHA256, SCRIPT_CUSTODY_HELPER_SHA256,
 };
-const CURRENT_ROOT_VALIDATOR: RootCaptureProfile = RootCaptureProfile::RootContextFixedOrthogonalV1;
+const CURRENT_ROOT_VALIDATOR: RootCaptureProfile = RootCaptureProfile::RootContextComputedMarginV1;
 
 pub(crate) fn root_helper_profile(digest: &str) -> Result<RootCaptureProfile> {
     match digest {
@@ -190,6 +193,7 @@ pub(crate) fn root_helper_profile(digest: &str) -> Result<RootCaptureProfile> {
         }
         SCRIPT_CUSTODY_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextScriptCustodyV1),
         FIXED_ORTHOGONAL_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextFixedOrthogonalV1),
+        COMPUTED_MARGIN_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextComputedMarginV1),
         _ => Err(changed("unsupported retained root proof helper")),
     }
 }
@@ -221,8 +225,8 @@ pub(crate) fn verify_grid_lanes_shared_inputs(
 pub(crate) struct CaptureValidation {
     producer_profile: RootCaptureProfile,
     producer_helper_sha256: String,
-    validator_profile: RootCaptureProfile,
-    validator_helper_sha256: String,
+    pub(crate) validator_profile: RootCaptureProfile,
+    pub(crate) validator_helper_sha256: String,
 }
 
 impl CaptureValidation {
@@ -242,6 +246,16 @@ impl CaptureValidation {
             validator_profile: CURRENT_ROOT_VALIDATOR,
             validator_helper_sha256: validator,
         })
+    }
+
+    fn validate_recorded(&self, retained: &BTreeMap<String, String>) -> Result<()> {
+        if retained.get(ROOT_HELPER_INPUT) != Some(&self.producer_helper_sha256)
+            || root_helper_profile(&self.producer_helper_sha256)? != self.producer_profile
+            || root_helper_profile(&self.validator_helper_sha256)? != self.validator_profile
+        {
+            return Err(malformed("original diagnostic recorded capture validation"));
+        }
+        Ok(())
     }
 }
 
@@ -2111,7 +2125,6 @@ impl OriginalDiagnosticReceipt {
             || self.report.path != "xml/generation-reports/all.json"
             || self.ownership.path != "xml/generation-ownership.json"
             || self.retained_inputs.get(&self.declaration.path) != Some(&self.declaration.sha256)
-            || self.capture_validation != CaptureValidation::from_retained(&self.retained_inputs)?
             || self.current_owner_inputs.get(ROOT_HELPER_OWNER)
                 != Some(&self.capture_validation.validator_helper_sha256)
             || self.records.len() != sources.len()
@@ -2119,6 +2132,8 @@ impl OriginalDiagnosticReceipt {
         {
             return Err(malformed("original diagnostic receipt identity or census"));
         }
+        self.capture_validation
+            .validate_recorded(&self.retained_inputs)?;
         verify_grid_lanes_producing_helper(&self.retained_inputs)?;
         for binding in [&self.declaration, &self.report, &self.ownership] {
             digest(&binding.sha256)?;

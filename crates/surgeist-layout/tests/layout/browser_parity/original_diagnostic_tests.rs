@@ -333,9 +333,12 @@ fn original_diagnostics_refuse_a_repinned_older_producing_helper() {
     assert_ne!(receipt["retained_inputs"][helper], older_digest);
     receipt["retained_inputs"][helper] = Value::from(older_digest);
     let inputs = serde_json::from_value(receipt["retained_inputs"].clone()).unwrap();
-    receipt["capture_validation"] =
+    let validation =
         serde_json::to_value(authority::CaptureValidation::from_retained(&inputs).unwrap())
             .unwrap();
+    for field in ["producer_profile", "producer_helper_sha256"] {
+        receipt["capture_validation"][field] = validation[field].clone();
+    }
     let pin = bundle.repin_report(receipt, report, bundle.browser_settings());
     assert_ne!(pin, RECEIPT_SHA256);
     bundle.expect_refusal(&pin, "Grid Lanes producing helper");

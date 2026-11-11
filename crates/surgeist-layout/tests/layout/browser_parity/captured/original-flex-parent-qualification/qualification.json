@@ -966,7 +966,7 @@
     "tests/layout/browser_parity/html/grid/grid_available_space_smaller_than_max_content.html": "95abfc426f1337c0a4c936852eaaab07b4a1d651366ecf99727d0844a67b84a0",
     "tests/layout/browser_parity/html/grid/grid_available_space_smaller_than_min_content.html": "eb8d3865e36202ddd5b1751bbcf3b428bbb0f5482f7e96af519a73afc4cd469d",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89",
     "tests/layout/browser_parity/xml/grid/grid_available_space_greater_than_max_content__border_box_ltr.xml": "a724c093788506a1f10012e9ef5b170e7b352b54129d99ba61df49f22a6099a5",
     "tests/layout/browser_parity/xml/grid/grid_available_space_greater_than_max_content__border_box_rtl.xml": "ae481fb49b00401ceae50a062e85536c56f441acdf749e3f8e7ccf57b17326e4",
     "tests/layout/browser_parity/xml/grid/grid_available_space_greater_than_max_content__content_box_ltr.xml": "30dd3cf875aea39f3f1c1154c1b0f1f0e9126bd75e7a6272be192489e68feacd",
@@ -983,7 +983,7 @@
   "capture_validation": {
     "producer_profile": "root-context-fixed-orthogonal-v1",
     "producer_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
-    "validator_profile": "root-context-fixed-orthogonal-v1",
-    "validator_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+    "validator_profile": "root-context-computed-margin-v1",
+    "validator_helper_sha256": "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89"
   }
 }

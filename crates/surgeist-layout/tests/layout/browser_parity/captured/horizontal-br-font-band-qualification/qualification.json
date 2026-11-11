@@ -308,7 +308,7 @@
     "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
     "tests/layout/browser_parity/html/block/block_br_inline_block_metrics.html": "e80f4d521108ff7481d3d4779cf1498f198ee9808106cde762e69f203173ea90",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89",
     "tests/layout/browser_parity/xml/block/block_br_inline_block_metrics__border_box_ltr.xml": "40283d33ea58b8219af603a1195a614dda8718245e98d8cd6304e2c8e5ab7a54",
     "tests/layout/browser_parity/xml/block/block_br_inline_block_metrics__border_box_rtl.xml": "20fecb326cf88693d3acd740b103a0174df734d585169d9ed6537a6141d00c8d",
     "tests/layout/browser_parity/xml/block/block_br_inline_block_metrics__content_box_ltr.xml": "ce9b81b9d77ed1bfd05baba50f09d95e9820a6f427c62d401ef73870e786039f",
@@ -317,7 +317,7 @@
   "capture_validation": {
     "producer_profile": "root-context-flex-composition-v1",
     "producer_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
-    "validator_profile": "root-context-fixed-orthogonal-v1",
-    "validator_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+    "validator_profile": "root-context-computed-margin-v1",
+    "validator_helper_sha256": "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89"
   }
 }

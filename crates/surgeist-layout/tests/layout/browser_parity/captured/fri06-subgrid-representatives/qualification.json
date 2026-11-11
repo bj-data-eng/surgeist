@@ -859,7 +859,7 @@
     "tests/layout/browser_parity/html/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first.html": "19c777698f1dd90458ec5550e31b5d885a229eba4a98aed4db14328563569115",
     "tests/layout/browser_parity/html/subgrid/subgrid_baseline_vertical_nested_inner_row1_first.html": "9592ab1e071d1f5e84d4cba8a418a6ae44e536ac4c73f25cda75603990308896",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89",
     "tests/layout/browser_parity/xml/subgrid/subgrid_baseline_inline_column_inner_col1_first__border_box_ltr.xml": "37f812de96ccc541c7fe427278d31f6b2734486394fbcfefb4aea8d51d3313e1",
     "tests/layout/browser_parity/xml/subgrid/subgrid_baseline_inline_column_inner_col1_first__border_box_rtl.xml": "0989f284ea78074136bcfe23a7bbcf371fc5629b79cafe07fb4b3ccbb0e85ae2",
     "tests/layout/browser_parity/xml/subgrid/subgrid_baseline_inline_column_inner_col1_first__content_box_ltr.xml": "c9c9a8ef24dacc396cbf470979d42c69525053b930b5a47a6ba718bf3e619a80",
@@ -876,7 +876,7 @@
   "capture_validation": {
     "producer_profile": "root-context-fixed-orthogonal-v1",
     "producer_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
-    "validator_profile": "root-context-fixed-orthogonal-v1",
-    "validator_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+    "validator_profile": "root-context-computed-margin-v1",
+    "validator_helper_sha256": "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89"
   }
 }

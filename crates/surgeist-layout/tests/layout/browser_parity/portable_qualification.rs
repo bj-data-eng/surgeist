@@ -605,52 +605,52 @@ impl AdmittedRegistry {
 // This seal admits only the publisher's complete terminal artifact. Retained
 // projections and directory existence do not establish capture authority.
 const REGISTERED_WRAPPING_WORLD_TERMINAL_SHA256: &str =
-    "efb16ee21c7723d55bb4f3fbb6798dc673649f059e34927a03e441a9a919ab14";
+    "137054d275661abdaac0e262a0f22798a022e989bd2e10fd515fcdfebc3621d0";
 const REGISTERED_MEASURED_GRID_TERMINAL_SHA256: &str =
-    "89c48b694219dbe5e0a12af765ae61fc235c07e8ba7a6d73aa762b805579d57e";
+    "3e6c87aa6461575497dab622e8258dd4ebeb844a0cbfaa6a5adb919403393136";
 
 const REGISTERED_FLEX_TEXT_TERMINAL_SHA256: &str =
-    "0b1022369cfbe3a7fdefcda0670b12704d272c6581d2a4d0f984f182e952675e";
+    "8a3ea4a284341a25ed10e4181bc002631db821ae7f5f4ba4a907aaf782da1980";
 
 const REGISTERED_PREPARED_RANGE_TERMINAL_SHA256: &str =
-    "142eaf2840440c66d78c0f47536bbba494afd1f59bdf1855d945d4447ab30d40";
+    "566d5cd7623f64b874f73034bbea51ce4f4248c1b2e56206b1819bb34bc85bac";
 
 const REGISTERED_FLEX_COMPOSITION_TERMINAL_SHA256: &str =
-    "3f893fbcff11d2a092cd0f7d28e2e03a94aa4b8925571f629b617dd21a11d4ef";
+    "dacacbe660aa1deb40e0562ae25ce0aade731b1edca84b2b2761f3a3180964c0";
 
 const REGISTERED_GRID_STATIC_POSITION_TERMINAL_SHA256: &str =
-    "7a37728e0bf757ff52214fca9142950a5995a4d143217b4445d3a08a7df44458";
+    "ea30464c1069db952dd4a5da5a2708b68f721f818cd9baec6a641e04eb2953a0";
 
 const REGISTERED_RELATIVE_INSET_TERMINAL_SHA256: &str =
-    "a750835d1871fdb2b8c518d0f7dd8f200793b034f4aa54edfa5a135fb5c3cfc6";
+    "88662184d32ce1c91d42787b2e9ad4039099e3c0520cb4381bf7ccf418927fb8";
 
 const REGISTERED_ORIGINAL_FLEX_PARENT_TERMINAL_SHA256: &str =
-    "3136e2f0c9c4ea5c32cdb33f6b95883ccf5751c0f5aa1cd6aac5ee6ee36a7d19";
+    "f62e6cdc0a502334d35b358015f00711d8f2d4b3e92659d4f800157f2c4cd932";
 
 const REGISTERED_ORIGINAL_FLEX_AXES_TERMINAL_SHA256: &str =
-    "2b27fb7562dbb00dc9098c8d812034358a4451cd8d7d3057a7c0f6731b4d2d90";
+    "a8ab6a194b6987772647699bd023eafcfb193bdac6800127d0a0a2c790fcf383";
 const REGISTERED_ORIGINAL_GRID_AXES_TERMINAL_SHA256: &str =
-    "ee1870dab4fe44cbf22e06745720bb7c5ec61e957ab58af123e417e579439c49";
+    "66ccdeda95c033a7bb1bb8184bf1cc23e80e5a657b3100fb5fbc5129f9ceab39";
 const REGISTERED_ORIGINAL_SUBGRID_AXES_TERMINAL_SHA256: &str =
-    "74bc368d800321d6937220b44cb62b562a80d0b4b46caaeaad6aa7eb5fa2e6c7";
+    "a57441f0515889afe92b7ef743c069c8c25edf7060173ce3c68981a6a44be80b";
 const REGISTERED_ORIGINAL_BLOCK_AXES_TERMINAL_SHA256: &str =
-    "8008320aeadedcd97a5b07e41ca5298ae5ffa08fc25e297449cedecba02cabab";
+    "afe304a8c36477d07ad6b75ec7f4680094a522a8eb2aa5d00e021ae4f5cd4320";
 const REGISTERED_ORIGINAL_PERCENTAGE_FLEX_PARENT_TERMINAL_SHA256: &str =
-    "06f3610d3477506e8d7bb1e67eb79700b4c471d52a4422774583ac0a287029f3";
+    "6bbaac25a4e75c2f946f7fb327fe41e7e31fa6d05e4630dd655293af15592290";
 
 const REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256: &str =
-    "cb95757f57de7ba86900c34d66d3a90c7a71a65a7570f1a74af5ce2eb14ccbc7";
+    "e4297604d1ec80d4ad3581e99b749fdd56d1992fe3a8bd0380fe96249c043dfb";
 const REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256: &str =
-    "dfecda65ccaf3bd7b8c88a9c6021de8e316282cd31fbe184906d9326cc856a4d";
+    "271bbdc7e9f3af1737fd5710df37afb206c9aa0bbc28502176aaa04ac5705215";
 
 const REGISTERED_HORIZONTAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
-    "c79a807c28351fc697cd37acd35bc7334c819a2e973c1af69b5f44a35c1bf3dc";
+    "3d6c9b470b90fee24fb095b0a9b32b706307d40880e9c06a7722d5c0ecca6411";
 
 const REGISTERED_VERTICAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
-    "13b587990167206f1b10928fe2e050646846b1b383c539a51d44a4b69838cbaf";
+    "75d51d05fc2501453fde9e492998bb686bc3920d92d9bc5d9af6da12fd191d0d";
 
 const REGISTERED_EMPTY_LINE_BR_FONT_BAND_TERMINAL_SHA256: &str =
-    "cdbae0252f9b77d6d3d6fa6e5dd9609a8bcb4a257ed9b17bad07b6080d2e92ce";
+    "33765cbc2e912b6b83148480853655c68ef21189b183b06f6706abf17855e6d6";
 
 pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEdition> {
     admit(
@@ -664,7 +664,7 @@ pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEditio
 
 // Register only a complete publisher terminal after reviewed capture/check.
 const REGISTERED_GRID_LANES_PAIRED_TERMINAL_SHA256: &str =
-    "18b755e5ada7fbb11a631bbbb40e962515e3c6a2ee43ffc41ab0473acfb7ec9e";
+    "46621079354f7591c94161c607ec0af48730de4d1f89432905cb201d05831d1d";
 
 pub(super) fn admit_grid_lanes_axis_controls(owner: &Path) -> Result<AdmittedEdition> {
     admit(
@@ -679,11 +679,11 @@ pub(super) fn admit_grid_lanes_axis_controls(owner: &Path) -> Result<AdmittedEdi
 const REGISTERED_MATCHING: &[(&str, &str)] = &[
     (
         "fri05-computed-overflow",
-        "6970a35892688b714ffd9266784d08c4b988c95c24501daf939a37101ad85381",
+        "98a947d925c1a416fccd7ff348e3cdf9b2c377297aa44fb329cb86e9e28efe86",
     ),
     (
         authority::FRI06_SUBGRID_EDITION,
-        "a9a95dcb6f77349cbe7180d9be1762d4166da726b11b481a67865ac8098c72f2",
+        "f811a8b0cacc8392b47df25baa87c275a5483993879ac8430cc7bb8e6df11bcf",
     ),
     (
         authority::GRID_LANES_PAIRED_EDITION,
@@ -691,19 +691,19 @@ const REGISTERED_MATCHING: &[(&str, &str)] = &[
     ),
     (
         "baseline-math",
-        "67103ca9a9de1abadf8f090d8c50d9127a5b296d46f030db57f67eafba7710b1",
+        "15d5871c69f5fa3299baa3460cfe22af70f4f842d0710bbf533b3f07d6b7da82",
     ),
     (
         "grid-order",
-        "424fc977f184c28f73cb9110c33a0f54e10bf4c624e13125499eef83dad7e3cf",
+        "5d32df8efe0859886891b6f1489bbf13bd2ec9aed85ae49ad0fbb4eb85050361",
     ),
     (
         "scriptless-order",
-        "c3c6336b0de926d8106ac31f016b543f51f25d57ebc15e082b9ded45ee90b7ed",
+        "d043eab70420b4c3a7dcb4a0b83527c6b90240ef932d8fa19abccc7afdb8fb32",
     ),
     (
         "box-controls",
-        "828d03b03d17b07def0bfe64d6c8fac352093d4d38953527fdfa4287415b1cc0",
+        "b6370879925b4c1bdd6a6ecd742007026cf3c73b4181959337a2e477f2aedbd6",
     ),
 ];
 
@@ -1249,13 +1249,19 @@ pub(super) fn admit_original_diagnostics(
             return Err(malformed("original diagnostic input/output overlap"));
         }
     }
+    let validator = authority::CaptureValidation::from_retained(&receipt.retained_inputs)?;
+    let mut owner_pins = receipt.current_owner_inputs.clone();
+    owner_pins.insert(
+        authority::ROOT_HELPER_OWNER.to_owned(),
+        validator.validator_helper_sha256,
+    );
     let freshness = Freshness {
         owner: owner.into(),
         root: root.clone(),
         artifact_root,
         receipt_name: authority::ORIGINAL_DIAGNOSTIC_RECEIPT,
         pins,
-        owner_pins: receipt.current_owner_inputs.clone(),
+        owner_pins,
         selected_records: selected_records(&root, &receipt)?,
     };
     freshness.verify()?;
@@ -1273,7 +1279,7 @@ pub(super) fn admit_original_diagnostics(
         .iter()
         .map(|(source, record)| (*source, record.source_kind))
         .collect();
-    verify_original_diagnostic_origin(&root, &receipt, &source_kinds)?;
+    verify_original_diagnostic_origin(&root, &receipt, &source_kinds, &freshness.owner_pins)?;
     let (report, _) = complete_report(&root, &receipt)?;
     if report.metadata.generator != authority::FIXED_GENERATOR
         || !report.metadata.source_imports.is_empty()
@@ -1450,6 +1456,7 @@ fn verify_original_diagnostic_origin(
     root: &Path,
     receipt: &authority::OriginalDiagnosticReceipt,
     source_kinds: &BTreeMap<&str, authority::SourceKind>,
+    current_owner_inputs: &BTreeMap<String, String>,
 ) -> Result<()> {
     let retained_json = |path: &str| -> Result<Value> {
         let hash = receipt
@@ -1475,12 +1482,12 @@ fn verify_original_diagnostic_origin(
     {
         return Err(changed("original diagnostic import receipt projection"));
     }
-    if authority::current_owner_bindings(
+    if &authority::current_owner_bindings(
         &receipt.retained_inputs,
         source_kinds,
         &BTreeSet::new(),
         sidecar,
-    )? != receipt.current_owner_inputs
+    )? != current_owner_inputs
     {
         return Err(changed("complete original diagnostic current-owner inputs"));
     }

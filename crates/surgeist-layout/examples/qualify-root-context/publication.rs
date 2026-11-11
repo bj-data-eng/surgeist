@@ -476,7 +476,22 @@ fn finish(
         };
         let bytes = if diagnostics {
             let cases = original_diagnostic_cases(&context, diagnostic_raw)?;
-            terminal_data(context, cases, |case| &case.case, |_| Vec::new())?.to_bytes()?
+            let mut receipt = terminal_data(context, cases, |case| &case.case, |_| Vec::new())?;
+            if let Some(stored) = stored_terminal.as_deref() {
+                let recorded =
+                    authority::OriginalDiagnosticReceipt::parse(std::str::from_utf8(stored)?)?;
+                // Replay used the live owner. Compare its result to the receipt
+                // with the validator stamp recorded at issuance.
+                receipt.capture_validation.validator_profile =
+                    recorded.capture_validation.validator_profile;
+                receipt.capture_validation.validator_helper_sha256 =
+                    recorded.capture_validation.validator_helper_sha256;
+                receipt.current_owner_inputs.insert(
+                    authority::ROOT_HELPER_OWNER.to_owned(),
+                    receipt.capture_validation.validator_helper_sha256.clone(),
+                );
+            }
+            receipt.to_bytes()?
         } else {
             terminal_authority(context, terminal_cases)?.to_bytes()?
         };
@@ -1375,7 +1390,13 @@ impl<'a> CheckedPairDiagnostics<'a> {
         {
             read_pair_input(&self.root, &entry.path, &entry.sha256)?;
         }
-        for (path, digest) in &self.receipt.current_owner_inputs {
+        let validator = authority::CaptureValidation::from_retained(&self.receipt.retained_inputs)?;
+        let mut owner_inputs = self.receipt.current_owner_inputs.clone();
+        owner_inputs.insert(
+            authority::ROOT_HELPER_OWNER.to_owned(),
+            validator.validator_helper_sha256,
+        );
+        for (path, digest) in &owner_inputs {
             read_pair_input(owner, path, digest)?;
         }
         require_current_inputs(owner)?;
