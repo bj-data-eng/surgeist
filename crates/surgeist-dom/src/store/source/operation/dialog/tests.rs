@@ -1356,6 +1356,7 @@ fn ordinary_and_source_retirement_share_exact_canonical_destruction() {
     let source = commit.created(&b).unwrap().unwrap();
     let limits = crate::DomNodeRetirementLimits::new(16_000_000, 1000);
     let mut inbox = dom.node_retirement_inbox(limits, &cancel).unwrap();
+    let mut peer_inbox = dom.node_retirement_inbox(limits, &cancel).unwrap();
     let ordinary_watch = dom
         .watch_node_retirement(ordinary, &inbox, 5, limits, &cancel)
         .unwrap();
@@ -1376,6 +1377,9 @@ fn ordinary_and_source_retirement_share_exact_canonical_destruction() {
     let source_watch = dom
         .watch_source_event_node_retirement(&event, source, &inbox, 6, &cancel)
         .unwrap();
+    let peer_watch = dom
+        .watch_source_event_node_retirement(&event, ordinary, &peer_inbox, 5, &cancel)
+        .unwrap();
     let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
     let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
     let mut destroy = DomBatch::new();
@@ -1387,5 +1391,8 @@ fn ordinary_and_source_retirement_share_exact_canonical_destruction() {
     notices.sort_unstable_by_key(|(key, _)| *key);
     assert_eq!(notices, [(5, ordinary), (6, source)]);
     assert!(inbox.take().is_none());
-    drop((ordinary_watch, source_watch, scope));
+    let notice = peer_inbox.take().unwrap();
+    assert_eq!((notice.custody_key(), notice.node()), (5, ordinary));
+    assert!(peer_inbox.take().is_none());
+    drop((ordinary_watch, source_watch, peer_watch, scope));
 }
