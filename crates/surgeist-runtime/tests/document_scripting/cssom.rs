@@ -4,6 +4,7 @@ use super::*;
 
 pub(super) fn run() {
     prototype_own_key_order();
+    prototype_cycles_are_rejected_by_ordinary_receivers();
     reuse_native_owner();
     indexed_properties_and_rule_custody();
     constructor_and_mutation_order();
@@ -54,6 +55,54 @@ pub(super) fn prototype_own_key_order() {
             .collect::<Vec<_>>(),
         expected,
         "installed stylesheet prototype own-key order"
+    );
+}
+
+pub(super) fn prototype_cycles_are_rejected_by_ordinary_receivers() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    let outcomes = host
+        .in_document(&permit, |scope| {
+            let source = r#"
+                (() => {
+                    const sheet = new CSSStyleSheet();
+                    return [["CSSRuleList", sheet.cssRules], ["MediaList", sheet.media]].map(([name, list]) => {
+                        const original = Reflect.getPrototypeOf(list);
+                        const bridge = Object.create(null);
+                        const first = Reflect.setPrototypeOf(list, bridge);
+                        const rejected = Reflect.setPrototypeOf(bridge, list);
+                        const bridgeUnchanged = Reflect.getPrototypeOf(bridge) === null;
+
+                        // Break a cycle on an affected backend before reading any properties.
+                        Reflect.setPrototypeOf(bridge, null);
+                        Reflect.setPrototypeOf(list, original);
+
+                        const reverse = Object.create(null);
+                        const reverseFirst = Reflect.setPrototypeOf(reverse, list);
+                        const reverseRejected = Reflect.setPrototypeOf(list, reverse);
+                        const listUnchanged = Reflect.getPrototypeOf(list) === original;
+                        Reflect.setPrototypeOf(reverse, null);
+                        Reflect.setPrototypeOf(list, original);
+
+                        return name + ":" + [first, rejected, bridgeUnchanged, reverseFirst,
+                            reverseRejected, listUnchanged].join(",");
+                    }).join(";");
+                })()
+            "#;
+            let value = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(
+        String::from_utf16(&outcomes).unwrap(),
+        concat!(
+            "CSSRuleList:true,false,true,true,false,true;",
+            "MediaList:true,false,true,true,false,true"
+        ),
+        "indexed CSSOM lists must reject prototype cycles in either direction"
     );
 }
 
