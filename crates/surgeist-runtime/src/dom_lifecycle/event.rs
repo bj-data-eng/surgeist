@@ -63,16 +63,42 @@ impl HostedState {
         let origin = self
             .event_settings(dom, association, cancel)?
             .navigation_start;
+        self.sample_event_creation_at_origin(dom, association.global, origin, cancel)
+    }
+
+    fn sample_event_creation_at_origin(
+        &mut self,
+        dom: &DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        origin: clock::CoarsenedSample,
+        cancel: &AtomicBool,
+    ) -> Result<EventCreation, DomHostedRuntimeError> {
         self.step(cancel)?;
         self.source
             .admit_runtime_work(dom.raw(), 1, cancel)
             .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
         let occurrence = self.clock.sample().map_err(clock_error)?;
         Ok(EventCreation(creation_observation(
-            association.global,
-            origin,
-            occurrence,
+            global, origin, occurrence,
         )?))
+    }
+}
+
+impl NativeTaskRunning {
+    pub(crate) fn sample_event_creation(
+        &self,
+        dom: &DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<EventCreation, DomHostedRuntimeError> {
+        let owner = self
+            .state
+            .upgrade()
+            .ok_or(DomHostedRuntimeError::OwnerDisposed)?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        state.sample_event_creation_at_origin(dom, self.global, self.time_origin, cancel)
     }
 }
 

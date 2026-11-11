@@ -447,8 +447,14 @@ mod tests {
             }
 
             fn session() -> DomSession {
+                session_with_dom_limits(std::convert::identity)
+            }
+
+            fn session_with_dom_limits(
+                configure: impl FnOnce(DomLimits) -> DomLimits,
+            ) -> DomSession {
                 DomSession::new(
-                    Dom::new(
+                    Dom::new(configure(
                         DomLimits::new(
                             512,
                             1_000_000,
@@ -463,7 +469,7 @@ mod tests {
                             .unwrap(),
                         )
                         .unwrap(),
-                    )
+                    ))
                     .unwrap(),
                     DomSessionLimits {
                         authored_events: crate::DomEventStorageLimits {
@@ -648,6 +654,185 @@ mod tests {
                     )
                     .unwrap();
                 assert_eq!(event.time_stamp().unwrap(), 0.6);
+            }
+
+            #[test]
+            fn hosted_details_samples_once_when_its_funded_event_is_formed() {
+                use crate::{
+                    DomElementTaskEventContext, DomElementTaskProgress, DomElementTaskRunLimits,
+                    DomElementTaskRuntime, DomElementTaskRuntimeError, DomElementTaskSourceKind,
+                    DomEventCallback, DomEventCreationObservation, DomEventDispatchLimits,
+                    DomEventDispatchOutcome, DomEventDispatcher, DomEventInit,
+                    DomEventListenerOptions, DomEventRegistryLimits, DomEventResource,
+                    DomEventType,
+                };
+
+                struct Context {
+                    tasks: DomElementTaskRuntime,
+                    samples: Vec<Option<DomEventCreationObservation>>,
+                }
+                impl DomElementTaskEventContext for Context {
+                    fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
+                        &mut self.tasks
+                    }
+                }
+
+                let cancel = AtomicBool::new(false);
+                let mut session = session_with_dom_limits(|limits| {
+                    limits
+                        .with_details_toggle_intentions(4)
+                        .unwrap()
+                        .with_dispatch_custody(
+                            surgeist_dom::DomDispatchCustodyLimits::new(
+                                8, 64, 1_000_000, 1_000_000, 100_000,
+                            )
+                            .unwrap(),
+                        )
+                });
+                let mut hosted = session.hosted_execution();
+                script(
+                    &hosted,
+                    &[
+                        Ok(150_001),
+                        Ok(260_001),
+                        Ok(700_001),
+                        Ok(1_245_001),
+                        Ok(2_360_001),
+                    ],
+                );
+                let host = hosted.create_host(&mut session.dom(), &cancel).unwrap();
+                let top = hosted
+                    .create_top_level(&mut session.dom(), host, &cancel)
+                    .unwrap();
+                let snapshot = session.snapshot();
+                let html = snapshot
+                    .document(top.document())
+                    .unwrap()
+                    .document_element()
+                    .unwrap();
+                let body = snapshot.node(html).unwrap().children()[1];
+                let mut batch = DomBatch::new();
+                let target = batch.create_element_ns(
+                    top.document(),
+                    surgeist_html::values::Namespace::html(),
+                    "details",
+                );
+                batch.insert_before(&target, body, None);
+                batch.set_attribute(&target, "open", "");
+                let target = session
+                    .dom()
+                    .apply(batch, &cancel)
+                    .unwrap()
+                    .created(&target)
+                    .unwrap()
+                    .unwrap();
+                let mut tasks = session.element_task_execution();
+                assert_eq!(tasks.ingest(&mut session.dom(), &cancel).unwrap(), 1);
+                let source = DomElementTaskSourceKind::DomManipulation;
+                let queued = tasks.pending_task(source, 0).unwrap().unwrap();
+                let mut context = Context {
+                    tasks,
+                    samples: Vec::new(),
+                };
+                let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+                    registrations: 2,
+                    pending_events: 1,
+                    nested_dispatches: 1,
+                    storage_bytes: 1_000_000,
+                    work: 100_000,
+                })
+                .unwrap();
+                for _ in 0..2 {
+                    registry
+                        .add_listener(
+                            &mut session.dom(),
+                            target,
+                            DomEventType::TOGGLE,
+                            DomEventCallback::new(|_, _, context: &mut Context, event| {
+                                context.samples.push(event.creation().copied());
+                                Ok(())
+                            }),
+                            DomEventListenerOptions::default(),
+                        )
+                        .unwrap();
+                }
+                let mut observe_clock = |session: &mut DomSession| {
+                    hosted
+                        .create_event(
+                            &mut session.dom(),
+                            top.global(),
+                            &[],
+                            DomEventInit::default(),
+                            &cancel,
+                        )
+                        .unwrap()
+                        .creation()
+                        .unwrap()
+                        .occurrence_microseconds()
+                };
+                assert_eq!(observe_clock(&mut session), 700);
+
+                let dispatch = DomEventDispatchLimits {
+                    path_items: 16,
+                    snapshot_listeners: 2,
+                    failure_records: 2,
+                    callbacks: 2,
+                    work: 10_000,
+                };
+                let mut run = |session: &mut DomSession, dispatch| {
+                    DomElementTaskRuntime::run_next(
+                        &mut session.dom(),
+                        source,
+                        &mut registry,
+                        &mut context,
+                        DomElementTaskRunLimits {
+                            dispatch,
+                            source: source_limits(),
+                        },
+                        &cancel,
+                    )
+                };
+                assert!(matches!(
+                    run(
+                        &mut session,
+                        DomEventDispatchLimits {
+                            path_items: 1_000_000,
+                            ..dispatch
+                        },
+                    ),
+                    Err(DomElementTaskRuntimeError::Admission)
+                ));
+                assert!(matches!(
+                    run(
+                        &mut session,
+                        DomEventDispatchLimits {
+                            callbacks: 1,
+                            ..dispatch
+                        },
+                    ).unwrap(),
+                    DomElementTaskProgress::Retained {
+                        task,
+                        dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks),
+                        ..
+                    } if task == queued
+                ));
+                let DomElementTaskProgress::Complete { task, receipt, .. } =
+                    run(&mut session, dispatch).unwrap()
+                else {
+                    panic!("the original Details task must complete");
+                };
+                assert_eq!(task, queued);
+                assert_eq!(receipt.callbacks(), 2);
+                assert!(receipt.failures().is_empty());
+                let [Some(first), Some(second)] = context.samples.as_slice() else {
+                    panic!("both callbacks must observe the funded Event's creation");
+                };
+                assert_eq!(first, second);
+                assert_eq!(first.global(), top.global());
+                assert_eq!(first.time_origin_microseconds(), 100);
+                assert_eq!(first.occurrence_microseconds(), 1_200);
+                assert_eq!(first.relative_microseconds(), 1_100);
+                assert_eq!(observe_clock(&mut session), 2_300);
             }
 
             #[test]

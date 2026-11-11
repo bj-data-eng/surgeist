@@ -264,9 +264,9 @@ authority therefore closes live work immediately while physically retained
 backing stays charged until its last observation drops. The original accounting
 counters include their own retained targets. The element task counter carries
 its separate DOM Source debit through its final shared reference, independent of
-task State. Legacy uninitialized Event construction and signal listener integration,
-callback realms, and authenticated creation observations for selected producers
-remain separate work.
+task State. Signal listener integration, callback realms, and authenticated
+creation observations for selected Style and Dialog producers remain separate
+work.
 
 For an external synchronous host, register `DomEventCallback::host(key)` instead
 of a borrowed Rust callback. The key is routing data owned by the application;
@@ -572,7 +572,10 @@ Source continuation. Toggle coalescing removes the tracked task and appends its
 replacement at that source's current tail, retaining first old and latest new
 state. Close tasks have no tracker and do not coalesce. Tasks preserve their
 original queued Document and Global across adoption; dispatch builds its path
-from the current tree. After a Toggle dispatch, the surviving Dialog's current
+from the current tree. A hosted Details Event samples that Global's clock when
+the task first constructs the funded Event and preserves the observation across
+dispatch retries. A Details task without a hosted association has unavailable
+creation timing. After a Toggle dispatch, the surviving Dialog's current
 tracker is cleared even when a callback replaced it; that clear does not remove
 the newer queued task. Close dispatch performs no toggle-tracker write and
 replays none of the initiating method's effects. A retired target never redirects

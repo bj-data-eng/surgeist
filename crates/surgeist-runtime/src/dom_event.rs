@@ -1654,7 +1654,10 @@ enum EventData {
     DialogCancel {
         cancelable: bool,
     },
-    DetailsToggle(DomToggleEvent),
+    DetailsToggle {
+        payload: DomToggleEvent,
+        creation: Option<crate::dom_lifecycle::EventCreation>,
+    },
     DialogToggle(DomToggleEvent),
     DialogBeforeToggle {
         payload: DomToggleEvent,
@@ -2185,18 +2188,21 @@ fn snapshot_formation_bytes(limits: DomEventDispatchLimits) -> Option<usize> {
 
 impl EventInvocationOwner {
     fn new(original: NodeId, data: EventData, backing: EventBodyCustody) -> Self {
-        let (cause, toggle, cancelable) = match data {
-            EventData::StyleLoad => (NativeEventCause::StyleLoad, None, false),
-            EventData::StyleError => (NativeEventCause::StyleError, None, false),
-            EventData::DialogClose => (NativeEventCause::DialogClose, None, false),
+        let (cause, toggle, cancelable, creation) = match data {
+            EventData::StyleLoad => (NativeEventCause::StyleLoad, None, false, None),
+            EventData::StyleError => (NativeEventCause::StyleError, None, false, None),
+            EventData::DialogClose => (NativeEventCause::DialogClose, None, false, None),
             EventData::DialogCancel { cancelable } => {
-                (NativeEventCause::DialogCancel, None, cancelable)
+                (NativeEventCause::DialogCancel, None, cancelable, None)
             }
-            EventData::DetailsToggle(payload) => {
-                (NativeEventCause::DetailsToggle, Some(payload), false)
-            }
+            EventData::DetailsToggle { payload, creation } => (
+                NativeEventCause::DetailsToggle,
+                Some(payload),
+                false,
+                creation,
+            ),
             EventData::DialogToggle(payload) => {
-                (NativeEventCause::DialogToggle, Some(payload), false)
+                (NativeEventCause::DialogToggle, Some(payload), false, None)
             }
             EventData::DialogBeforeToggle {
                 payload,
@@ -2205,6 +2211,7 @@ impl EventInvocationOwner {
                 NativeEventCause::DialogBeforeToggle,
                 Some(payload),
                 cancelable,
+                None,
             ),
         };
         let event = NativeDomEvent(
@@ -2217,7 +2224,7 @@ impl EventInvocationOwner {
                     composed: false,
                 }),
                 trusted: Cell::new(true),
-                creation: None,
+                creation: creation.map(crate::dom_lifecycle::EventCreation::into_observation),
                 toggle,
                 storage: backing.storage,
                 target: RefCell::new(None),
@@ -2483,14 +2490,18 @@ impl NativeDomEvent {
     pub(crate) fn details_toggle(
         target: NodeId,
         payload: surgeist_html::elements::details::HtmlDetailsToggleEvent,
+        creation: Option<crate::dom_lifecycle::EventCreation>,
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(
             target,
-            EventData::DetailsToggle(DomToggleEvent {
-                old_state: payload.old_state().as_str(),
-                new_state: payload.new_state().as_str(),
-            }),
+            EventData::DetailsToggle {
+                payload: DomToggleEvent {
+                    old_state: payload.old_state().as_str(),
+                    new_state: payload.new_state().as_str(),
+                },
+                creation,
+            },
             backing,
         )
     }

@@ -1831,6 +1831,8 @@ impl HostedRuntime {
 pub(crate) struct NativeTaskRunning {
     state: Weak<RefCell<HostedState>>,
     event_loop: Rc<RefCell<records::WindowLoop>>,
+    global: DomHostedGlobalId,
+    time_origin: clock::CoarsenedSample,
     complete: bool,
 }
 impl NativeTaskRunning {
@@ -1899,6 +1901,7 @@ impl HostedRuntime {
         if global.settings.document != Some(document) || !global.settings.ready {
             return Err(DomHostedRuntimeError::Inactive);
         }
+        let time_origin = global.settings.navigation_start;
         let loop_owner = cluster.agent.event_loop.clone();
         let mut event_loop = loop_owner
             .try_borrow_mut()
@@ -1944,6 +1947,8 @@ impl HostedRuntime {
         Ok(NativeTaskRunning {
             state: Rc::downgrade(&owner),
             event_loop: loop_owner,
+            global: association.global(),
+            time_origin,
             complete: false,
         })
     }

@@ -10,6 +10,7 @@ use crate::dom_event::{
     DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
     EventDispatchObservation, EventInvocationOwner, NativeDomEvent,
 };
+use crate::dom_lifecycle::NativeTaskRunning;
 use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::mem::size_of;
@@ -1218,6 +1219,7 @@ impl ElementTaskState {
         dom: &mut DomEventDom<'_>,
         dispatcher: &DomEventDispatcher<C>,
         value: DomElementTask,
+        native_task: Option<&NativeTaskRunning>,
         limits: DomElementTaskRunLimits,
         cancel: &AtomicBool,
     ) -> Result<PreparedEvent, DomElementTaskRuntimeError> {
@@ -1341,7 +1343,16 @@ impl ElementTaskState {
             let backing = crate::dom_event::EventBodyCustody::element(&mut retained, storage)?;
             task.event = Some(match value {
                 DomElementTask::DetailsToggle(details) => {
-                    NativeDomEvent::details_toggle(value.id().target(), details.event(), backing)
+                    let creation = native_task
+                        .map(|task| task.sample_event_creation(dom, cancel))
+                        .transpose()
+                        .map_err(DomElementTaskRuntimeError::Hosted)?;
+                    NativeDomEvent::details_toggle(
+                        value.id().target(),
+                        details.event(),
+                        creation,
+                        backing,
+                    )
                 }
                 DomElementTask::DialogClose(_) => {
                     NativeDomEvent::dialog_close(value.id().target(), backing)
@@ -1558,7 +1569,7 @@ impl DomElementTaskRuntime {
         let result = (|| {
             let prepared = {
                 let mut owner = state.borrow_mut();
-                owner.prepare_event(dom, dispatcher, value, limits, cancel)?
+                owner.prepare_event(dom, dispatcher, value, native_task.as_ref(), limits, cancel)?
             };
             let (event, _scope, funding) = match prepared {
                 PreparedEvent::Destroyed => return Ok(ElementTaskStep::Destroyed),

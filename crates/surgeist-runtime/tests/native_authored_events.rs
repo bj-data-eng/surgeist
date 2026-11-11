@@ -1003,7 +1003,6 @@ fn native_toggle_payload_and_receipt_survive_ordinary_body_reinitialization() {
             DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, context: &mut NativeContext, event| {
                 assert_eq!(event.is_trusted(), context.calls == 0);
-                assert!(event.time_stamp().is_err());
                 context.observed = Some(event.clone());
                 context.calls += 1;
                 Ok(())
@@ -1038,6 +1037,8 @@ fn native_toggle_payload_and_receipt_survive_ordinary_body_reinitialization() {
     assert_eq!(context.calls, 1);
     let event = context.observed.take().unwrap();
     let payload = *event.toggle_event().unwrap();
+    let creation = *event.creation().unwrap();
+    assert_eq!(creation.global(), top.global());
     let original_receipt_type = receipt.event_type();
     assert!(event.is_trusted());
     fire(&mut session, &mut registry, target, &event, &mut context);
@@ -1047,6 +1048,8 @@ fn native_toggle_payload_and_receipt_survive_ordinary_body_reinitialization() {
         .init_event(&mut session.dom(), &name, true, true, &cancel())
         .unwrap();
     assert_eq!(event.toggle_event(), Some(&payload));
+    assert_eq!(event.creation(), Some(&creation));
+    assert_eq!(event.time_stamp(), Ok(creation.milliseconds()));
     assert_eq!(receipt.event_type(), original_receipt_type);
     assert_eq!(receipt.event_type(), DomEventType::TOGGLE);
     assert_eq!(receipt.original_target(), target.into());

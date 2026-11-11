@@ -499,6 +499,42 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
 }
 
 #[test]
+fn never_hosted_details_delivers_with_an_unavailable_creation_clock() {
+    let (mut dom, document, target, _) = fixture();
+    assert_eq!(
+        dom.snapshot().relevant_global(document.node()).unwrap(),
+        None
+    );
+    let mut context = context(&mut dom);
+    let mut registry = registry();
+    let observed = Rc::new(Cell::new(None));
+    let listener = observed.clone();
+    registry
+        .add_listener(
+            &mut dom.dom(),
+            target,
+            DomEventType::TOGGLE,
+            DomEventCallback::new(move |_, _, _, event| {
+                listener.set(Some((event.creation().copied(), event.time_stamp())));
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    open(&mut dom, target);
+    ingest(&mut dom, &mut context);
+    let (task, receipt) = complete(&mut dom, &mut registry, &mut context);
+    assert_eq!(task.queue_association(), None);
+    assert_eq!(receipt.original_target(), target.into());
+    assert_eq!(receipt.callbacks(), 1);
+    assert!(receipt.failures().is_empty());
+    assert_eq!(
+        observed.get(),
+        Some((None, Err(crate::DomEventTimestampUnavailable)))
+    );
+}
+
+#[test]
 fn detach_and_adopt_preserve_target_but_retired_generation_is_skipped() {
     let (mut dom, _, a, b) = fixture();
     let mut c = context(&mut dom);
