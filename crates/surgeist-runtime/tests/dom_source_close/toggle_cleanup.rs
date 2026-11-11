@@ -140,6 +140,7 @@ fn accepted_toggle_reports_exact_retired_or_surviving_cleanup_after_later_once_l
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -159,6 +160,7 @@ fn accepted_toggle_reports_exact_retired_or_surviving_cleanup_after_later_once_l
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -309,6 +311,7 @@ fn toggle_retired_before_dispatch_is_skipped_without_postdispatch_result_or_call
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

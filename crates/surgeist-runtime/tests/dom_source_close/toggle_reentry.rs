@@ -17,6 +17,7 @@ fn show(session: &mut DomSession, subject: NodeId) {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -306,6 +307,7 @@ fn exercise(retain: bool) {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -336,6 +338,7 @@ fn exercise(retain: bool) {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -376,6 +379,7 @@ fn exercise(retain: bool) {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -492,6 +496,7 @@ fn exercise(retain: bool) {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

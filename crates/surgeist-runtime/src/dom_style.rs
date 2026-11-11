@@ -3420,6 +3420,7 @@ mod tests {
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();

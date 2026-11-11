@@ -186,7 +186,8 @@ fn canonical_registry_claim_rejects_parallel_lists_and_preserves_actual_delivery
                 callback.clone(),
                 DomEventListenerOptions {
                     capture: false,
-                    once: true
+                    once: true,
+                    passive: None,
                 }
             )
             .unwrap(),
@@ -687,6 +688,7 @@ fn canceled_receipt_is_actual_and_distinct_from_callback_failure_without_running
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -788,6 +790,7 @@ fn uncanceled_resume_publishes_open_and_toggle_tracker_without_replaying_callbac
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -979,6 +982,7 @@ fn hosted_uncanceled_resume_publishes_open_and_toggle_tracker_then_parks_at_reme
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2126,6 +2130,7 @@ fn retained_dispatch_survives_permission_replacement_and_never_repeats_listeners
                 DomEventListenerOptions {
                     capture: false,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -2196,6 +2201,7 @@ fn callback_cancellation_retains_frontier_before_acceptance_without_listener_rep
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2337,6 +2343,7 @@ fn callback_open_is_observed_by_separate_resume_without_queueing_toggle() {
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2419,6 +2426,7 @@ fn pending_nested_request_parks_original_dispatch_and_resumes_without_replay() {
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2435,6 +2443,7 @@ fn pending_nested_request_parks_original_dispatch_and_resumes_without_replay() {
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2534,6 +2543,7 @@ fn canceled_beforetoggle_completes_normally_after_actual_receiver_destruction() 
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2587,6 +2597,7 @@ fn uncanceled_beforetoggle_reports_precise_retired_receiver_after_actual_receipt
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2685,6 +2696,7 @@ fn replacement_permission_raises_exhausted_ancestor_without_replaying_retained_c
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2721,6 +2733,7 @@ fn replacement_permission_raises_exhausted_ancestor_without_replaying_retained_c
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2875,6 +2888,7 @@ fn late_adapter_work_refusal_recovers_same_receipt_through_qualified_monotonic_p
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -3076,6 +3090,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -3134,6 +3149,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
                 DomEventListenerOptions {
                     capture: false,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -3152,6 +3168,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();

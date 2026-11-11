@@ -441,6 +441,7 @@ fn native_wait_and_delivery_remain_distinct_beside_original_processing_rows() {
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();

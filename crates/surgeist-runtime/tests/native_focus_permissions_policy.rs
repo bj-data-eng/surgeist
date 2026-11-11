@@ -224,6 +224,7 @@ fn drive(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -867,6 +868,7 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

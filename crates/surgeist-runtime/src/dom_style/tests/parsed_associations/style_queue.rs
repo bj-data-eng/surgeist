@@ -180,6 +180,7 @@ fn authentic_queue_survives_current_authored_import_removal_output_drop_and_sess
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();

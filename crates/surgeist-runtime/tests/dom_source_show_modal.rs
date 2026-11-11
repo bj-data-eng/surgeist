@@ -788,6 +788,7 @@ fn started_beforetoggle_finishes_late_once_after_actual_receiver_retirement() {
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -851,6 +852,7 @@ fn canceled_and_callback_refused_service_retain_actual_dispatch_then_retry_witho
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

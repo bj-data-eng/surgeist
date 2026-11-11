@@ -234,6 +234,7 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
             DomEventListenerOptions {
                 capture: true,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -770,6 +771,7 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
             DomEventListenerOptions {
                 once: true,
                 capture: false,
+                passive: None,
             },
         )
         .unwrap();

@@ -341,6 +341,7 @@ fn nonbubbling_source_events_capture_ancestors_then_both_target_phases() {
                         DomEventListenerOptions {
                             capture,
                             once: false,
+                            passive: None,
                         },
                     )
                     .unwrap();
@@ -439,6 +440,7 @@ fn duplicate_key_ignores_once_change_but_capture_is_distinct_and_ids_do_not_alia
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -452,6 +454,7 @@ fn duplicate_key_ignores_once_change_but_capture_is_distinct_and_ids_do_not_alia
             DomEventListenerOptions {
                 capture: true,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -533,6 +536,7 @@ fn additions_are_snapshotted_at_each_invoke_and_not_at_dispatch_start() {
                         DomEventListenerOptions {
                             capture: true,
                             once: false,
+                            passive: None,
                         },
                     )
                     .unwrap();
@@ -541,6 +545,7 @@ fn additions_are_snapshotted_at_each_invoke_and_not_at_dispatch_start() {
             DomEventListenerOptions {
                 capture: true,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -678,6 +683,7 @@ fn once_is_removed_before_nested_dispatch_and_same_event_redispatch_is_rejected(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -729,6 +735,7 @@ fn stop_controls_apply_at_source_invoke_boundaries_including_target_second_invok
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -745,6 +752,7 @@ fn stop_controls_apply_at_source_invoke_boundaries_including_target_second_invok
                     DomEventListenerOptions {
                         capture,
                         once: false,
+                        passive: None,
                     },
                 )
                 .unwrap();
@@ -792,6 +800,7 @@ fn stop_controls_apply_at_source_invoke_boundaries_including_target_second_invok
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -855,6 +864,7 @@ fn callback_edits_real_dom_and_adopts_target_while_outer_path_stays_fixed_and_ne
             DomEventListenerOptions {
                 capture: true,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -876,6 +886,7 @@ fn callback_edits_real_dom_and_adopts_target_while_outer_path_stays_fixed_and_ne
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -959,6 +970,7 @@ fn noncomposed_shadow_origin_stops_at_its_first_target_root_in_both_modes_and_cl
                     DomEventListenerOptions {
                         capture: true,
                         once: false,
+                        passive: None,
                     },
                 )
                 .unwrap();
@@ -1020,6 +1032,7 @@ fn slotted_light_origin_crosses_shadow_host_and_closed_composed_path_hides_only_
                     DomEventListenerOptions {
                         capture: true,
                         once: false,
+                        passive: None,
                     },
                 )
                 .unwrap();
@@ -1108,6 +1121,7 @@ fn stored_assignment_not_fresh_slot_query_controls_event_path() {
             DomEventListenerOptions {
                 capture: true,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -1140,6 +1154,7 @@ fn document_load_and_error_stop_at_actual_native_no_browsing_context_boundary() 
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1377,6 +1392,7 @@ fn retained_current_snapshot_continues_after_stop_propagation_and_does_not_repla
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1672,6 +1688,7 @@ fn retirement_keeps_started_exact_path_and_never_delivers_or_mutates_reused_gene
             DomEventListenerOptions {
                 capture: true,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -2234,6 +2251,7 @@ fn callback_registry_replacement_retains_original_dispatch_and_restored_registry
             DomEventListenerOptions {
                 capture: true,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2465,6 +2483,7 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();

@@ -421,6 +421,7 @@ fn original_allow_policy_drives_both_invocations_despite_final_canonical_deny() 
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();

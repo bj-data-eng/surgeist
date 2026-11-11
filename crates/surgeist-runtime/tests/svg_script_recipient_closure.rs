@@ -80,6 +80,7 @@ fn register(
         DomEventListenerOptions {
             capture,
             once: false,
+            passive: None,
         },
     )
 }
@@ -446,6 +447,7 @@ fn duplicate_registration_has_one_lifetime_and_capture_remains_distinct() {
         DomEventListenerOptions {
             capture: false,
             once: false,
+            passive: None,
         },
     );
     let duplicate = register_callback(
@@ -457,6 +459,7 @@ fn duplicate_registration_has_one_lifetime_and_capture_remains_distinct() {
         DomEventListenerOptions {
             capture: false,
             once: true,
+            passive: None,
         },
     );
     assert_eq!(duplicate, first);
@@ -469,6 +472,7 @@ fn duplicate_registration_has_one_lifetime_and_capture_remains_distinct() {
         DomEventListenerOptions {
             capture: true,
             once: false,
+            passive: None,
         },
     );
     assert_ne!(capture, first);
@@ -753,6 +757,7 @@ fn one_dom_recipient_slot_is_shared_by_registrations_and_duplicate_keeps_its_ori
         DomEventListenerOptions {
             capture: false,
             once: true,
+            passive: None,
         },
     );
     assert_eq!(duplicate, first_id);

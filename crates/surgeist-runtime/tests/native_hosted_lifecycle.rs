@@ -158,6 +158,7 @@ fn listen(
             DomEventListenerOptions {
                 capture,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -1789,6 +1790,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1812,6 +1814,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
                     DomEventListenerOptions {
                         capture,
                         once: false,
+                        passive: None,
                     },
                 )
                 .unwrap();
@@ -1981,6 +1984,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
                 DomEventListenerOptions {
                     capture: true,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1996,6 +2000,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap()

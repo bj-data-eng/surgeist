@@ -522,6 +522,7 @@ fn real_style_load_consumes_once_ancestor_recipient_before_svg_processing_retry(
             DomEventListenerOptions {
                 capture: true,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

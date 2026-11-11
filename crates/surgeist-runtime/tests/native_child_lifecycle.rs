@@ -382,6 +382,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1820,6 +1821,7 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();

@@ -126,6 +126,7 @@ fn fixture_with_setup<T>(
             DomEventListenerOptions {
                 once: true,
                 capture: false,
+                passive: None,
             },
         )
         .unwrap();

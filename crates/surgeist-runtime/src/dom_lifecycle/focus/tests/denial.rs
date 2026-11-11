@@ -185,6 +185,7 @@ fn parked(
         DomEventListenerOptions {
             capture: false,
             once: false,
+            passive: None,
         },
     )?;
     if parent_work.is_some() {
@@ -223,6 +224,7 @@ fn parked(
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )?;
     }

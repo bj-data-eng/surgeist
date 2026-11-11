@@ -91,6 +91,7 @@ fn show_beforetoggle_capture_and_both_target_invocations_can_cancel() {
                     DomEventListenerOptions {
                         capture,
                         once: false,
+                        passive: None,
                     },
                 )
                 .unwrap();
@@ -195,6 +196,7 @@ fn retained_beforetoggle_keeps_cancellation_and_never_replays_delivered_capture(
                 DomEventListenerOptions {
                     capture,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();

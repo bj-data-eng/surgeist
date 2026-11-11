@@ -833,6 +833,7 @@ mod payload_tests {
                         DomEventListenerOptions {
                             capture: false,
                             once: false,
+                            passive: None,
                         },
                     )
                     .unwrap();

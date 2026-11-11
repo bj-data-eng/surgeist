@@ -243,6 +243,7 @@ fn listen(session: &mut DomSession, dispatcher: &mut DomEventDispatcher<Context>
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();

@@ -162,6 +162,7 @@ fn deliver_load(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

@@ -974,6 +974,7 @@ fn started_close_finishes_late_once_listener_then_reports_exact_retired_read_ope
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -1670,6 +1671,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();

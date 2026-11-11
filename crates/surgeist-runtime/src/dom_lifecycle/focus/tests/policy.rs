@@ -101,6 +101,7 @@ fn parked_live(denied: bool) -> LiveCase {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -612,6 +613,7 @@ fn real_modal_close_reserves_its_post_watcher_pending_removal_output_before_queu
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

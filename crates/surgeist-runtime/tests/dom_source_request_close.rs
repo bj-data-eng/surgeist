@@ -743,6 +743,7 @@ fn cancel_retirement_finishes_started_path_and_once_before_native_final_reset_fa
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -835,6 +836,7 @@ fn cancel_dispatch_suspension_drop_and_canceled_attempt_preserve_once_and_origin
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -969,6 +971,7 @@ fn nested_close_retirement_preserves_its_stopped_action_and_settles_original_wat
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -1393,6 +1396,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -1451,6 +1455,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

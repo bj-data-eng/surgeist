@@ -129,7 +129,7 @@ fn complete(outcome: DomEventDispatchOutcome) -> DomEventDispatchReceipt {
 fn fire<C>(
     session: &mut DomSession,
     registry: &mut DomEventDispatcher<C>,
-    target: NodeId,
+    target: impl Into<DomEventTarget>,
     event: &NativeDomEvent,
     context: &mut C,
 ) -> DomEventDispatchReceipt {
@@ -273,6 +273,7 @@ fn real_node_dispatch_orders_capture_and_bubble_and_reuses_sticky_cancellation()
                     DomEventListenerOptions {
                         capture,
                         once: false,
+                        passive: None,
                     },
                 )
                 .unwrap();
@@ -339,6 +340,7 @@ fn real_node_dispatch_orders_capture_and_bubble_and_reuses_sticky_cancellation()
             DomEventListenerOptions {
                 capture: true,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -548,6 +550,7 @@ fn host_unavailability_preserves_once_and_cursor_until_real_native_resume() {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -664,6 +667,7 @@ fn actual_composed_shadow_paths_retarget_and_filter_both_root_modes() {
                     DomEventListenerOptions {
                         capture,
                         once: false,
+                        passive: None,
                     },
                 )
                 .unwrap();
@@ -771,6 +775,7 @@ fn exact_document_load_exception_differs_from_case_distinct_load() {
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1038,6 +1043,7 @@ fn direct_global_load_has_one_at_target_path_without_node_custody() {
                 DomEventListenerOptions {
                     capture,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1315,5 +1321,284 @@ fn omitted_wheel_listener_is_passive_on_the_first_html_body_or_frameset() {
             (&canceled, canceled, canceled),
             "{name} on {target:?}"
         );
+    }
+}
+
+fn cancelable_event(
+    session: &mut DomSession,
+    global: DomHostedGlobalId,
+    name: &str,
+) -> NativeDomEvent {
+    session
+        .hosted_execution()
+        .create_event(
+            &mut session.dom(),
+            global,
+            &units(name),
+            DomEventInit {
+                cancelable: true,
+                ..DomEventInit::default()
+            },
+            &cancel(),
+        )
+        .unwrap()
+}
+
+#[test]
+fn passive_defaults_and_explicit_options_apply_to_exact_targets() {
+    let mut session = session();
+    let top = top(&mut session);
+    let snapshot = session.snapshot();
+    let root = snapshot
+        .document(top.document())
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let body = body(&snapshot, top.document());
+    let mut registry = new_registry::<Vec<(DomEventPhase, Option<DomEventTarget>, bool)>>();
+    let standalone = session
+        .hosted_execution()
+        .create_event_target(&mut session.dom(), &registry, top.global(), &cancel())
+        .unwrap();
+    for (target, name, passive, canceled) in [
+        (
+            DomEventTarget::Global(top.global()),
+            "touchstart",
+            None,
+            false,
+        ),
+        (top.document().node().into(), "touchmove", None, false),
+        (root.into(), "mousewheel", None, false),
+        (body.into(), "wheel", None, false),
+        (top.global().into(), "wheel", Some(false), true),
+        (standalone.clone().into(), "touchstart", None, true),
+        (standalone.into(), "ordinary", Some(true), false),
+    ] {
+        registry
+            .add_listener(
+                &mut session.dom(),
+                target.clone(),
+                units(name),
+                DomEventCallback::new(|_, _, trace: &mut Vec<_>, event| {
+                    event.set_return_value(false);
+                    trace.push((
+                        event.phase(),
+                        event.current_target(),
+                        event.default_prevented(),
+                    ));
+                    Ok(())
+                }),
+                DomEventListenerOptions {
+                    passive,
+                    ..DomEventListenerOptions::default()
+                },
+            )
+            .unwrap();
+        let event = cancelable_event(&mut session, top.global(), name);
+        let mut trace = Vec::new();
+        let receipt = fire(
+            &mut session,
+            &mut registry,
+            target.clone(),
+            &event,
+            &mut trace,
+        );
+        assert_eq!(receipt.callbacks(), 1, "{name} on {target:?}");
+        assert!(receipt.failures().is_empty());
+        assert_eq!(trace, [(DomEventPhase::AtTarget, Some(target), canceled)]);
+        assert_eq!(receipt.default_prevented(), canceled);
+        assert_eq!(event.default_prevented(), canceled);
+        event.set_return_value(false);
+        assert!(event.default_prevented());
+    }
+}
+
+#[test]
+fn duplicate_listener_keeps_its_original_default_after_body_order_changes() {
+    let mut session = session();
+    let top = top(&mut session);
+    let snapshot = session.snapshot();
+    let target = body(&snapshot, top.document());
+    let html = snapshot.node(target).unwrap().parent().unwrap();
+    let mut registry = new_registry::<Vec<(&'static str, bool)>>();
+    let original = DomEventCallback::new(|_, _, trace: &mut Vec<_>, event| {
+        event.prevent_default();
+        trace.push(("original", event.default_prevented()));
+        Ok(())
+    });
+    let first = registry
+        .add_listener(
+            &mut session.dom(),
+            target,
+            units("wheel"),
+            original.clone(),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+
+    let mut batch = DomBatch::new();
+    let earlier = batch.create_element_ns(top.document(), Namespace::html(), "frameset");
+    batch.insert_before(&earlier, html, Some(target.into()));
+    session.dom().apply(batch, &cancel()).unwrap();
+    for passive in [None, Some(false)] {
+        let duplicate = registry
+            .add_listener(
+                &mut session.dom(),
+                target,
+                units("wheel"),
+                original.clone(),
+                DomEventListenerOptions {
+                    once: true,
+                    passive,
+                    ..DomEventListenerOptions::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(duplicate, first);
+    }
+    registry
+        .add_listener(
+            &mut session.dom(),
+            target,
+            units("wheel"),
+            DomEventCallback::new(|_, _, trace: &mut Vec<_>, event| {
+                event.prevent_default();
+                trace.push(("new", event.default_prevented()));
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+
+    for _ in 0..2 {
+        let event = cancelable_event(&mut session, top.global(), "wheel");
+        let mut trace = Vec::new();
+        let receipt = fire(&mut session, &mut registry, target, &event, &mut trace);
+        assert_eq!(trace, [("original", false), ("new", true)]);
+        assert_eq!(receipt.callbacks(), 2);
+        assert!(receipt.failures().is_empty());
+        assert!(receipt.default_prevented());
+    }
+}
+
+#[test]
+fn borrowed_passive_scope_survives_nested_dispatch_and_ends_after_unwind_or_teardown() {
+    for teardown in [false, true] {
+        let mut session = session();
+        let top = top(&mut session);
+        let target = body(&session.snapshot(), top.document());
+        let outer = cancelable_event(&mut session, top.global(), "outer");
+        let inner = cancelable_event(&mut session, top.global(), "inner");
+        let mut registry = new_registry::<Vec<(&'static str, bool)>>();
+        let observed_outer = outer.clone();
+        registry
+            .add_listener(
+                &mut session.dom(),
+                target,
+                units("inner"),
+                DomEventCallback::new(move |_, _, trace: &mut Vec<_>, event| {
+                    observed_outer.prevent_default();
+                    trace.push(("outer during inner", observed_outer.default_prevented()));
+                    event.prevent_default();
+                    trace.push(("inner", event.default_prevented()));
+                    Ok(())
+                }),
+                DomEventListenerOptions {
+                    passive: Some(false),
+                    ..DomEventListenerOptions::default()
+                },
+            )
+            .unwrap();
+        registry
+            .add_listener(
+                &mut session.dom(),
+                target,
+                units("outer"),
+                DomEventCallback::new(move |dom, registry, trace: &mut Vec<_>, event| {
+                    event.prevent_default();
+                    trace.push(("outer entry", event.default_prevented()));
+                    let mut nested = registry
+                        .prepare_dispatch(dom, target, &inner, &cancel())
+                        .unwrap();
+                    assert!(
+                        complete(
+                            nested
+                                .advance(dom, registry, trace, limits(), &cancel())
+                                .unwrap()
+                        )
+                        .default_prevented()
+                    );
+                    if teardown {
+                        drop(std::mem::replace(registry, new_registry()));
+                        assert!(matches!(
+                            registry.prepare_dispatch(dom, target, event, &cancel()),
+                            Err(DomEventDispatchError::AlreadyDispatching)
+                        ));
+                    }
+                    event.set_return_value(false);
+                    trace.push(("outer exit", event.default_prevented()));
+                    if !teardown {
+                        panic!("intentional passive listener unwind");
+                    }
+                    Ok(())
+                }),
+                DomEventListenerOptions {
+                    passive: Some(true),
+                    ..DomEventListenerOptions::default()
+                },
+            )
+            .unwrap();
+        registry
+            .add_listener(
+                &mut session.dom(),
+                target,
+                units("outer"),
+                DomEventCallback::new(|_, _, trace: &mut Vec<_>, event| {
+                    event.prevent_default();
+                    trace.push(("active suffix", event.default_prevented()));
+                    Ok(())
+                }),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+
+        let mut invocation = registry
+            .prepare_dispatch(&mut session.dom(), target, &outer, &cancel())
+            .unwrap();
+        let mut trace = Vec::new();
+        let outcome = invocation.advance(
+            &mut session.dom(),
+            &mut registry,
+            &mut trace,
+            limits(),
+            &cancel(),
+        );
+        assert!(trace.len() >= 4, "{trace:?}");
+        assert_eq!(
+            trace[..4],
+            [
+                ("outer entry", false),
+                ("outer during inner", false),
+                ("inner", true),
+                ("outer exit", false)
+            ]
+        );
+        if teardown {
+            assert!(matches!(outcome, Err(DomEventDispatchError::Abandoned)));
+            assert_eq!(trace.len(), 4);
+            assert!(!outer.default_prevented());
+            outer.prevent_default();
+            assert!(outer.default_prevented());
+        } else {
+            let receipt = complete(outcome.unwrap());
+            assert_eq!(receipt.callbacks(), 2);
+            assert_eq!(receipt.failures().len(), 1);
+            assert_eq!(
+                receipt.failures()[0].kind,
+                DomEventListenerFailureKind::Panicked
+            );
+            assert_eq!(trace[4..], [("active suffix", true)]);
+            assert!(receipt.default_prevented());
+        }
     }
 }

@@ -552,6 +552,7 @@ fn deliver_load(fixture: &mut Fixture) {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

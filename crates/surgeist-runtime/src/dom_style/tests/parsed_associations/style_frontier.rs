@@ -32,6 +32,7 @@ fn options() -> DomEventListenerOptions {
     DomEventListenerOptions {
         capture: false,
         once: false,
+        passive: None,
     }
 }
 fn other_document(session: &DomSession, parsed: DocumentId) -> NodeId {

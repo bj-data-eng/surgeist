@@ -616,6 +616,75 @@ impl Owner {
 }
 
 impl Dom {
+    /// Whether this current Node is its Document, the document element, or the
+    /// first direct HTML body or frameset. The caller qualifies the event type.
+    /// Each observation charges the caller and any enclosing Source scope.
+    pub fn is_default_passive_listener_node<E>(
+        &self,
+        node: NodeId,
+        cancel: &AtomicBool,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E>
+    where
+        E: From<DomError>,
+    {
+        use surgeist_html::elements::style::{
+            HtmlDocumentBodyRole as Role, document_body_role_with,
+        };
+
+        if node.owner() != self.owner {
+            return Err(DomError::ForeignOwner.into());
+        }
+        let work = self.dispatch_hosted_read_work(cancel)?;
+        let mut tick = || -> Result<(), E> {
+            check_cancel(cancel)?;
+            step()?;
+            if let Some(work) = &work {
+                work.step(cancel)?;
+            }
+            Ok(())
+        };
+        tick()?;
+        let target = self.state.node(self.owner, node)?;
+        let document = target.document().node();
+        if node == document {
+            return Ok(true);
+        }
+        let (Some(parent), DomNodeKind::Element(element)) = (target.parent(), target.kind()) else {
+            return Ok(false);
+        };
+        // Canonical Document insertion permits only one Element child.
+        if parent == document {
+            return Ok(true);
+        }
+        if document_body_role_with(element.name(), |_| tick())? != Role::Body {
+            return Ok(false);
+        }
+        tick()?;
+        let root = self.state.node(self.owner, parent)?;
+        let DomNodeKind::Element(element) = root.kind() else {
+            return Ok(false);
+        };
+        if root.parent() != Some(document)
+            || document_body_role_with(element.name(), |_| tick())? != Role::Html
+        {
+            return Ok(false);
+        }
+        for &child in root.children() {
+            tick()?;
+            if child == node {
+                return Ok(true);
+            }
+            let sibling = self.state.node(self.owner, child)?;
+            if let DomNodeKind::Element(element) = sibling.kind()
+                && document_body_role_with(element.name(), |_| tick())? == Role::Body
+            {
+                return Ok(false);
+            }
+        }
+        Ok(false)
+    }
+
     /// Retain a positive native Load/Error recipient. Other event classes need
     /// no closure capability and return None. Dropping the affine result ends
     /// this occurrence. It grants no dispatch, callback or execution authority.

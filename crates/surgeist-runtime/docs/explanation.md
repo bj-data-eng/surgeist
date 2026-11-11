@@ -225,6 +225,14 @@ and invoke capture before noncapture. A standalone target holds its original
 registry identity through escaped observations. Dropping the dispatcher closes
 its listener list, and the last target observation releases its backing.
 
+Listener registration resolves omitted passive policy for exact `touchstart`,
+`touchmove`, `wheel`, and `mousewheel` on a native Window, Document, document
+element, or the first direct HTML body or frameset. Explicit policy overrides
+that default. Duplicate registration preserves the original policy. While a
+passive listener runs, `prevent_default` and `set_return_value(false)` leave
+the canceled flag unchanged. The policy remains in effect until the borrowed
+callback returns or the original owned host frame closes.
+
 `DomEventDispatcher::new` creates an empty, unbound listener owner. Its first
 accepted registration or dispatch claims the canonical DOM's one registry
 association; another dispatcher cannot select a parallel Node or Global list,
@@ -250,7 +258,7 @@ authority therefore closes live work immediately while physically retained
 backing stays charged until its last observation drops. The original accounting
 counters include their own retained targets. The element task counter carries
 its separate DOM Source debit through its final shared reference, independent of
-task State. Legacy uninitialized Event construction, passive and signal listener integration,
+task State. Legacy uninitialized Event construction and signal listener integration,
 callback realms, and authenticated creation observations for selected producers
 remain separate work.
 

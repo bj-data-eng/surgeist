@@ -149,6 +149,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -534,6 +535,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();

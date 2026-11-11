@@ -347,6 +347,7 @@ fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_e
                 crate::DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();

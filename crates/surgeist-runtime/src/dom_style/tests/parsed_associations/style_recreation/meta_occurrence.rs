@@ -272,6 +272,7 @@ fn original_utf16_b_then_a_then_a_preserves_owned_history_and_releases_real_fifo
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();

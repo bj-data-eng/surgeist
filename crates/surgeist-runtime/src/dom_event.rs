@@ -7,7 +7,8 @@
 //! The affine dispatch owns one invocation's path, cursor and admission. Details
 //! preserves its queued state and Dialog supplies its source-selected cancelability.
 //! Both selected ToggleEvent sources are null. Registration supports capture and
-//! once, borrowed Rust callbacks and owned host invocations at the Source front.
+//! once, passive listeners, borrowed Rust callbacks and owned host invocations
+//! at the Source front.
 //! A qualifying hosted Document's parent is its actual native Global. Selected
 //! family owners validate the actual Source operation and advance only on a
 //! matching one-shot receipt. Callback observations confer no producer authority.
@@ -48,6 +49,8 @@ mod invocation;
 pub use invocation::DomEventDispatch;
 mod target;
 pub use target::{DomEventTarget, DomStandaloneEventTarget};
+mod passive;
+use passive::{BorrowedPassive, PassiveScope};
 
 /// Scoped access to the original canonical DOM. The mutable owner cannot be
 /// extracted or replaced. A fresh reborrow is supplied to every listener.
@@ -173,6 +176,9 @@ pub struct DomEventListenerOptions {
     pub capture: bool,
     /// Remove this exact registration before calling its callback.
     pub once: bool,
+    /// Explicit passive policy. None selects the default for this exact type
+    /// and target when the listener is registered.
+    pub passive: Option<bool>,
 }
 /// Fixed registry storage and simultaneously owned dispatch bounds.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -653,7 +659,9 @@ struct HostFrame {
 struct Registration<C> {
     target: DomEventTarget,
     event_type: DomEventType,
-    options: DomEventListenerOptions,
+    capture: bool,
+    once: bool,
+    passive: bool,
     callback: DomEventCallback<C>,
     order: u64,
     // The actual callback occurrence drops before its positive DOM lease.
@@ -837,7 +845,7 @@ impl<C> DomEventDispatcher<C> {
             };
             registrations += 1;
             if r.target == target
-                && r.options.capture == options.capture
+                && r.capture == options.capture
                 && r.callback.same_identity(&callback)
                 && equal_units(r.event_type.code_units(), event_type, || {
                     self.storage.step(1, &synchronous)
@@ -859,6 +867,10 @@ impl<C> DomEventDispatcher<C> {
             .next_order
             .checked_add(1)
             .ok_or(DomEventDispatchError::IdentityExhausted)?;
+        let passive = match options.passive {
+            Some(value) => value,
+            None => self.default_passive(dom.raw(), &target, event_type, &synchronous)?,
+        };
         let event_type = DomEventType::retain(&self.storage, dom, event_type, &synchronous)?;
         let mut replacement = None;
         if reusable.is_none() {
@@ -931,7 +943,9 @@ impl<C> DomEventDispatcher<C> {
         entry.registration = Some(Registration {
             target,
             event_type,
-            options,
+            capture: options.capture,
+            once: options.once,
+            passive,
             callback,
             order,
             _recipient: recipient,
@@ -1261,6 +1275,7 @@ impl<C> DomEventDispatcher<C> {
             registration,
             current_target,
             key,
+            passive,
         })) = result
         {
             let sequence = dispatch.callbacks;
@@ -1280,6 +1295,9 @@ impl<C> DomEventDispatcher<C> {
             }));
             state.status.set(Status::HostPending);
             custody.lifetime.set(InvocationLifetime::Parked);
+            if passive {
+                custody.passive.set(PassiveScope::Host);
+            }
             return Ok(DomEventDispatchOutcome::HostInvocation(
                 DomEventHostInvocation {
                     event: event.event.clone(),
@@ -1473,7 +1491,7 @@ impl<C> DomEventDispatcher<C> {
                 };
                 if !equal_units(r.event_type.code_units(), event_type.code_units(), || {
                     budget.tick()
-                })? || r.options.capture != capture
+                })? || r.capture != capture
                 {
                     dispatch.listener += 1;
                     continue;
@@ -1487,7 +1505,7 @@ impl<C> DomEventDispatcher<C> {
                     item,
                     budget,
                 )? {
-                    let once = r.options.once;
+                    let once = r.once;
                     dispatch.listener += 1;
                     if once {
                         self.remove_listener(id);
@@ -1503,7 +1521,8 @@ impl<C> DomEventDispatcher<C> {
                 if matches!(&r.callback.0, CallbackKind::Host(_)) && !host {
                     return Err(RunStop::HostUnavailable);
                 }
-                let once = r.options.once;
+                let once = r.once;
+                let passive = r.passive;
                 let callback = r.callback.clone();
                 // Advance and remove once *before* calling user code; both survive
                 // nested dispatch and unwind, and no exclusive registry borrow escapes.
@@ -1524,10 +1543,12 @@ impl<C> DomEventDispatcher<C> {
                             registration: id,
                             current_target: item.invocation.clone(),
                             key: **key,
+                            passive,
                         });
                     }
                 };
                 let result = catch_unwind(AssertUnwindSafe(|| {
+                    let _passive = BorrowedPassive::begin(&custody.passive, passive);
                     let mut access = DomEventDom::borrow(dom);
                     callback(&mut access, self, context, event)
                 }));
@@ -2220,6 +2241,7 @@ impl EventInvocationOwner {
             clear_target: Cell::new(false),
             current: RefCell::new(None),
             phase: Cell::new(DomEventPhase::None),
+            passive: Cell::new(PassiveScope::None),
             path: Cell::new(None),
             dispatch: RefCell::new(None),
             host: Cell::new(None),
@@ -2558,9 +2580,14 @@ impl NativeDomEvent {
     pub fn default_prevented(&self) -> bool {
         self.0.canceled.get()
     }
-    /// Set the canceled flag only when the actual firing clause is cancelable.
+    /// Set the canceled flag when the Event is cancelable and no passive
+    /// listener is currently invoking it.
     pub fn prevent_default(&self) {
-        if self.cancelable() {
+        if self.cancelable()
+            && !self
+                .continuation()
+                .is_some_and(|invocation| invocation.passive.get() != PassiveScope::None)
+        {
             self.0.canceled.set(true);
         }
     }
@@ -2691,6 +2718,7 @@ struct EventContinuation {
     clear_target: Cell<bool>,
     current: RefCell<Option<DomEventTarget>>,
     phase: Cell<DomEventPhase>,
+    passive: Cell<PassiveScope>,
     path: Cell<Option<Rc<EventPath>>>,
     dispatch: RefCell<Option<Dispatch>>,
     host: Cell<Option<HostFrame>>,
@@ -2722,6 +2750,10 @@ impl EventContinuation {
         self.current.replace(None);
         self.phase.set(DomEventPhase::None);
         self.path.take();
+        // A borrowed callback still on the stack owns its passive guard.
+        if self.passive.get() == PassiveScope::Host {
+            self.passive.set(PassiveScope::None);
+        }
     }
 
     fn abandon(&self, state: &ContinuationState) {
@@ -2839,6 +2871,7 @@ enum RunStop {
         registration: DomEventRegistrationId,
         current_target: DomEventTarget,
         key: u64,
+        passive: bool,
     },
     Resource(DomEventResource),
     ParsedSynchronous(DomParsedHtmlStyleNotificationRequirement),

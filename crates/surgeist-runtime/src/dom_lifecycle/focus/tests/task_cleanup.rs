@@ -196,6 +196,7 @@ fn original_toggle_cleanup_result_survives_native_checkpoint_work_refusal_withou
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

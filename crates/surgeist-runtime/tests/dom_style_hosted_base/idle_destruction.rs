@@ -216,6 +216,7 @@ fn idle_native_document() -> IdleDocument {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

@@ -357,6 +357,7 @@ fn before_with_policy(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

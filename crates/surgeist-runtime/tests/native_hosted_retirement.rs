@@ -411,6 +411,7 @@ fn reentry_registry(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -433,6 +434,7 @@ fn reentry_registry(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

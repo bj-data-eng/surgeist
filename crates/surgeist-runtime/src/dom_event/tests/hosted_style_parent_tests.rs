@@ -155,6 +155,7 @@ fn dispatch_hosted(kind: DomEventType) {
                     DomEventListenerOptions {
                         capture,
                         once: false,
+                        passive: None,
                     },
                 )
                 .unwrap();

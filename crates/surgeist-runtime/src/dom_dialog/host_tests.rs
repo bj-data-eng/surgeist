@@ -119,6 +119,112 @@ fn dispatcher() -> DomEventDispatcher<Vec<u64>> {
 }
 
 #[test]
+fn passive_host_frame_guards_cancellation_until_the_original_scope_closes() {
+    #[derive(Clone, Copy)]
+    enum End {
+        Return,
+        Refuse,
+        TokenDrop,
+        RegistryDrop,
+    }
+    let cancel = AtomicBool::new(false);
+    for end in [End::Return, End::Refuse, End::TokenDrop, End::RegistryDrop] {
+        let (mut session, _, dialog, _) = fixture();
+        let mut source = session.source_execution();
+        let mut owner = dispatcher();
+        let registration = owner
+            .add_listener(
+                &mut session.dom(),
+                dialog,
+                DomEventType::BEFORE_TOGGLE,
+                DomEventCallback::host(17),
+                DomEventListenerOptions {
+                    once: true,
+                    passive: Some(true),
+                    ..DomEventListenerOptions::default()
+                },
+            )
+            .unwrap();
+        let request = show(&mut source, &mut session, dialog);
+        let mut calls = Vec::new();
+        let mut invocation = pending(service(
+            &source,
+            &mut session,
+            &request,
+            &mut owner,
+            &mut calls,
+        ));
+        let event = invocation.event().clone();
+        assert_eq!(event.current_target(), Some(dialog.into()));
+        assert_eq!(event.phase(), DomEventPhase::AtTarget);
+        assert!(event.cancelable());
+        assert!(!owner.remove_listener(registration));
+        event.prevent_default();
+        assert!(!event.default_prevented());
+        assert!(matches!(
+            invocation.complete(&dispatcher(), Ok(())),
+            Err(DomEventDispatchError::WrongContinuation)
+        ));
+        event.set_return_value(false);
+        assert!(!event.default_prevented());
+
+        match end {
+            End::Return => invocation.complete(&owner, Ok(())).unwrap(),
+            End::Refuse => invocation
+                .refuse(&owner, DomEventHostError { code: 70 })
+                .unwrap(),
+            End::TokenDrop => drop(invocation),
+            End::RegistryDrop => {
+                drop(std::mem::replace(&mut owner, dispatcher()));
+                assert!(matches!(
+                    invocation.complete(&owner, Ok(())),
+                    Err(DomEventDispatchError::Abandoned)
+                ));
+            }
+        }
+        assert_eq!(event.current_target(), None);
+        assert_eq!(event.phase(), DomEventPhase::None);
+        assert!(!event.default_prevented());
+        event.set_return_value(false);
+        assert!(event.default_prevented());
+        let outcome = source.service_event(
+            &mut session.dom(),
+            &request,
+            &mut owner,
+            &mut calls,
+            limits(),
+            &cancel,
+        );
+        match end {
+            End::Return => {
+                let DomSourceEventServiceProgress::Serviced { receipt } = outcome.unwrap() else {
+                    panic!("the original returned callback must produce its receipt");
+                };
+                assert_eq!(receipt.callbacks(), 1);
+                assert!(receipt.default_prevented());
+                assert!(receipt.failures().is_empty());
+                canceled_tail(&mut source, &mut session, &request);
+            }
+            End::Refuse => assert!(matches!(
+                outcome,
+                Err(crate::DomSourceRuntimeError::SourceEvent(
+                    DomSourceEventRuntimeError::Dispatch(DomEventDispatchError::HostRefused(
+                        DomEventHostError { code: 70 }
+                    ))
+                ))
+            )),
+            End::TokenDrop | End::RegistryDrop => assert!(matches!(
+                outcome,
+                Err(crate::DomSourceRuntimeError::SourceEvent(
+                    DomSourceEventRuntimeError::Dispatch(DomEventDispatchError::Abandoned)
+                ))
+            )),
+        }
+        assert!(calls.is_empty());
+    }
+}
+
+#[test]
 fn completed_source_body_custody_covers_host_event_and_index_observers_once() {
     for (index_first, owner_first) in [(false, false), (false, true), (true, false), (true, true)] {
         let (mut session, _, dialog, _) = fixture();
@@ -210,6 +316,7 @@ fn dispatcher_drop_abandons_pending_host_and_closes_the_original_source_scope() 
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -453,6 +560,7 @@ fn owned_host_invocation_releases_session_loan_and_retains_real_nested_source_au
             DomEventListenerOptions {
                 once: true,
                 capture: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -762,6 +870,7 @@ fn host_propagation_controls_stop_later_invocations_and_preserve_canceled_source
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -777,6 +886,7 @@ fn host_propagation_controls_stop_later_invocations_and_preserve_canceled_source
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1084,6 +1194,7 @@ fn one_short_callback_or_failure_admission_preserves_once_until_exact_host_selec
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();

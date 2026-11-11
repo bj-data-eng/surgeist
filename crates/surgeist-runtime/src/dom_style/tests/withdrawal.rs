@@ -230,6 +230,7 @@ impl Fixture {
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();

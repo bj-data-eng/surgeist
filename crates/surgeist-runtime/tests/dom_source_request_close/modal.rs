@@ -44,6 +44,7 @@ fn shown_and_initial_toggle_delivered(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -118,6 +119,7 @@ fn shown_and_initial_toggle_delivered(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -225,6 +227,7 @@ fn deliver_closed_tasks(session: &mut DomSession, top: DomHostedTopLevel, subjec
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();

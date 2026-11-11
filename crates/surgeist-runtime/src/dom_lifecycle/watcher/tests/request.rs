@@ -61,7 +61,7 @@ fn removed_record_stays_in_original_invocation_and_resets_without_touching_repla
         // ordinary current-owner reads above remain strict during publication.
         listeners.add_listener(dom, context.old_id.global(), DomEventType::CANCEL,
             DomEventCallback::new(|_,_,context: &mut Context,_| {context.global_callbacks += 1; Ok(())}),
-            DomEventListenerOptions {capture: true, once: true}).unwrap();
+            DomEventListenerOptions {capture: true, once: true, passive: None,}).unwrap();
         assert!(context.original.borrow().state.running_cancel_action());
         for edit in [DomSourceEdit::remove_attribute(subject, "open"), DomSourceEdit::set_attribute(subject, "open", "")] {
             let progress = context.source.apply(dom, edit, source_limits(), &mut DomSourceServices {meta: None,execution_scope: None, style_policy: &mut |_| None, url: None}, &AtomicBool::new(false)).unwrap();
@@ -702,6 +702,7 @@ fn retired_nested_close_cleanup_parks_at_settle_and_source_tail_without_replay()
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

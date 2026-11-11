@@ -220,6 +220,7 @@ fn initial_iframe_focus_policy_denial_completes_modal_before_focus_target_select
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

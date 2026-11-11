@@ -205,6 +205,7 @@ fn listen(session: &mut DomSession, dispatcher: &mut DomEventDispatcher<Context>
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -838,6 +839,7 @@ fn inflight_then_delivered_cleanup_refusal_cannot_ack_or_replay_callbacks() {
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -860,6 +862,7 @@ fn inflight_then_delivered_cleanup_refusal_cannot_ack_or_replay_callbacks() {
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();

@@ -316,6 +316,7 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();

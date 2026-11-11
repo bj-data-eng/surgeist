@@ -158,6 +158,7 @@ fn active_show_modal_publishes_modal_after_real_watcher_before_focusing_wait() {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
