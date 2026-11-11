@@ -140,7 +140,7 @@ fn failure_copy_work_refusal_preserves_original_banks_and_cursor_for_no_replay_r
         }
         assert_eq!(calls, [0]);
         assert_eq!(fixture.dom.snapshot().stamp(), stamp);
-        assert_eq!(event.0.status.get(), Status::Retained);
+        assert_eq!(event.state.status.get(), Status::Retained);
         assert_eq!(dispatcher.owner.pending.get(), 1);
         let continuation = event._custody.borrow();
         let dispatch = continuation.as_ref().unwrap();
@@ -170,5 +170,5 @@ fn failure_copy_work_refusal_preserves_original_banks_and_cursor_for_no_replay_r
     assert_eq!(receipt.failures().len(), 4);
     assert_eq!(dispatcher.owner.pending.get(), 0);
     assert!(event._custody.borrow().is_none());
-    assert_eq!(event.0.status.get(), Status::Complete);
+    assert_eq!(event.state.status.get(), Status::Complete);
 }

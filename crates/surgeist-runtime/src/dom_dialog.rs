@@ -601,7 +601,7 @@ impl SourceEventRuntime {
                     return Err(DomSourceEventRuntimeError::Protocol);
                 };
                 let scope = state.executor.enter_dispatch(dom.raw(), permit, cancel)?;
-                (std::ops::Deref::deref(&row.event).clone(), scope, funding)
+                (row.event.dispatch_observation(), scope, funding)
             };
             let outcome = dispatcher
                 .deliver(

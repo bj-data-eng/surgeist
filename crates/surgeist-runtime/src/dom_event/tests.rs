@@ -16,7 +16,7 @@ impl<C> DomEventDispatcher<C> {
         self.start_dispatch(
             dom,
             context,
-            event,
+            &event.dispatch_observation(),
             DispatchCall {
                 limits,
                 cancel,
@@ -37,7 +37,7 @@ impl<C> DomEventDispatcher<C> {
         self.continue_dispatch(
             dom,
             context,
-            event,
+            &event.dispatch_observation(),
             DispatchCall {
                 limits,
                 cancel,
@@ -61,7 +61,7 @@ impl<C> DomEventDispatcher<C> {
                 entry.value.strong_count() == 0 && !entry.value.ptr_eq(&std::rc::Weak::new())
             })
             .count()
-            * (std::mem::size_of::<EventContinuation>() + std::mem::size_of::<BodyCustody>());
+            * (std::mem::size_of::<EventContinuation>() + std::mem::size_of::<ContinuationState>());
         let association = match &self.association {
             RegistryAssociation::Unbound => 0,
             RegistryAssociation::Bound(association) => association.retained_bytes(),
@@ -70,13 +70,20 @@ impl<C> DomEventDispatcher<C> {
     }
 }
 impl NativeDomEvent {
+    fn dispatch_observation(&self) -> EventDispatchObservation {
+        EventDispatchObservation {
+            event: self.clone(),
+            continuation: self.0.continuation.clone(),
+        }
+    }
+
     pub(crate) fn inspect_continuation_body_bytes(&self) -> usize {
         std::mem::size_of::<EventContinuation>()
-            + std::mem::size_of_val(self.0.continuation._body.as_ref())
+            + std::mem::size_of_val(self.0.continuation.state.as_ref())
     }
 
     pub(crate) fn inspect_retained_dispatch_banks(&self) -> (usize, usize, usize) {
-        let custody = self.0.continuation.upgrade().unwrap();
+        let custody = self.continuation().unwrap();
         let retained = custody.dispatch.borrow();
         let dispatch = retained.as_ref().unwrap();
         assert!(matches!(
@@ -109,7 +116,7 @@ impl NativeDomEvent {
     }
 
     pub(crate) fn inspect_active_dispatch_bytes(&self) -> usize {
-        let custody = self.0.continuation.upgrade().unwrap();
+        let custody = self.continuation().unwrap();
         let retained = custody.dispatch.borrow();
         let dispatch = retained.as_ref().unwrap();
         let (_, path) = manipulation_observation_layout(self, &self.composed_path());
@@ -1487,6 +1494,34 @@ fn per_invoke_snapshot_and_failure_output_admission_are_retained_before_callback
         assert_eq!(count, 1);
     }
 }
+#[test]
+fn completed_observation_reports_original_invocation_after_the_owner_drops() {
+    let mut f = ordinary();
+    let mut listeners = registry();
+    let owner = NativeDomEvent::style_load(f.target, test_event_backing());
+    let observation = (*owner).clone();
+    let receipt = complete(
+        listeners
+            .dispatch(
+                &mut f.dom,
+                &mut (),
+                &owner,
+                limits(),
+                &AtomicBool::new(false),
+            )
+            .unwrap(),
+    );
+    assert_eq!(receipt.original_target(), f.target);
+    drop(owner);
+
+    let diagnostic = format!("{observation:?}");
+    assert!(diagnostic.contains("status: Complete"), "{diagnostic}");
+    assert!(
+        diagnostic.contains(&format!("original_target: {:?}", f.target)),
+        "{diagnostic}"
+    );
+}
+
 #[test]
 fn dropping_retained_event_releases_pending_admission_and_nested_limits_reject_before_delivery() {
     let mut f = ordinary();

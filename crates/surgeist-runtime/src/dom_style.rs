@@ -2533,7 +2533,7 @@ impl DomStyleRuntime {
                                 Delivery::Dispatching(event);
                         }
                         match &state.completions[index].task().delivery {
-                            Delivery::Dispatching(event) => Some((**event).clone()),
+                            Delivery::Dispatching(event) => Some(event.dispatch_observation()),
                             Delivery::Delivered(_) => None,
                             Delivery::NotStarted => unreachable!(),
                         }

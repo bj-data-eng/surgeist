@@ -8,7 +8,7 @@
 use crate::dom_event::{
     DispatchCall, DispatchFunding, DomEventDispatchError, DomEventDispatchLimits,
     DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
-    NativeDomEvent, NativeDomEventOwner,
+    EventDispatchObservation, NativeDomEvent, NativeDomEventOwner,
 };
 use std::cell::{Cell, RefCell};
 use std::fmt;
@@ -1207,7 +1207,7 @@ enum PreparedEvent {
     Destroyed,
     Delivered,
     Dispatch(
-        NativeDomEvent,
+        EventDispatchObservation,
         Option<surgeist_dom::DomSourceEventDispatchGuard>,
         DispatchFunding,
     ),
@@ -1366,7 +1366,7 @@ impl ElementTaskState {
             None
         };
         Ok(PreparedEvent::Dispatch(
-            (**event).clone(),
+            event.dispatch_observation(),
             scope,
             DispatchFunding::element(retained),
         ))
