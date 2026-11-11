@@ -3647,7 +3647,8 @@ where
     let preferred_size = grid_lanes_child_sizing_preflight(child_style, containing_physical_size)
         .map_err(|error| sizing_resolution_error(child, error))?;
     let logical_preferred_size = flow_axes.logical_size(preferred_size);
-    let logical_deferred = flow_axes.logical_size(child_style.flex_preferred_axes);
+    let flex_owns_preferred =
+        child_style.flex_preferred_axes.width || child_style.flex_preferred_axes.height;
     let (margin, known, parent, available) = {
         let unresolved_margin = flow_axes
             .zip_physical_edges_with_inline_extent(
@@ -3697,10 +3698,12 @@ where
                 );
                 logical_known.inline = if inherits_grid_axis {
                     Some(available_inline)
+                } else if flex_owns_preferred && !logical_style_size.inline.is_auto() {
+                    // The child applies its authored size, box edges and bounds.
+                    None
                 } else {
                     definite_preferred_size(logical_preferred_size.inline).or_else(|| {
-                        (!logical_deferred.inline && justify_self == AlignItems::Stretch)
-                            .then_some(available_inline)
+                        (justify_self == AlignItems::Stretch).then_some(available_inline)
                     })
                 };
                 logical_available.inline = AxisSizingRequestOf::new(
@@ -3735,12 +3738,12 @@ where
                 );
                 logical_known.block = if inherits_grid_axis {
                     Some(available_block)
+                } else if flex_owns_preferred && !logical_style_size.block.is_auto() {
+                    None
                 } else {
                     definite_preferred_size(logical_preferred_size.block).or_else(|| {
-                        (!logical_deferred.block
-                            && align_self == AlignItems::Stretch
-                            && child_style.aspect_ratio.is_none())
-                        .then_some(available_block)
+                        (align_self == AlignItems::Stretch && child_style.aspect_ratio.is_none())
+                            .then_some(available_block)
                     })
                 };
                 logical_available.block = AxisSizingRequestOf::new(
