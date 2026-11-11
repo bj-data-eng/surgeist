@@ -116,6 +116,33 @@ fn clip_coverage_transform(
         .then(initial_transform)
 }
 
+fn exact_fit_clip_circle(
+    rounded: kurbo::RoundedRect,
+    account: &Account,
+) -> Result<Option<kurbo::Circle>> {
+    let side = coordinate_action(account, || rounded.width())?;
+    let height = coordinate_action(account, || rounded.height())?;
+    let radius = coordinate_action(account, || side * 0.5)?;
+    if radius <= 0.0
+        || side != height
+        || rounded.radii() != kurbo::RoundedRectRadii::from_single_radius(radius)
+    {
+        return Ok(None);
+    }
+
+    let bounds = rounded.rect();
+    let x = coordinate_action(account, || bounds.x0 + radius)?;
+    let y = coordinate_action(account, || bounds.y0 + radius)?;
+    let opposite_x = coordinate_action(account, || bounds.x1 - radius)?;
+    let opposite_y = coordinate_action(account, || bounds.y1 - radius)?;
+    if x != opposite_x || y != opposite_y {
+        return Ok(None);
+    }
+    // The four corner arcs share a center. A circle has no straight joins
+    // whose generated endpoints can differ only by trigonometric roundoff.
+    Ok(Some(kurbo::Circle::new((x, y), radius)))
+}
+
 fn push_vello_clip(
     scene: &mut VelloScene,
     clip: &RenderClip,
@@ -130,12 +157,14 @@ fn push_vello_clip(
             &kurbo::Rect::from(*rect),
             account,
         ),
-        RenderClipGeometry::RoundedRect { rect, radii } => scene.push_clip_layer(
-            peniko::Fill::NonZero,
-            transform,
-            &kurbo_rounded_rect(*rect, *radii),
-            account,
-        ),
+        RenderClipGeometry::RoundedRect { rect, radii } => {
+            let rounded = kurbo_rounded_rect(*rect, *radii);
+            if let Some(circle) = exact_fit_clip_circle(rounded, account)? {
+                scene.push_clip_layer(peniko::Fill::NonZero, transform, &circle, account)
+            } else {
+                scene.push_clip_layer(peniko::Fill::NonZero, transform, &rounded, account)
+            }
+        }
         RenderClipGeometry::Circle { center, radius } => scene.push_clip_layer(
             peniko::Fill::NonZero,
             transform,
@@ -820,14 +849,28 @@ fn encode_layer_start(
             &kurbo::Rect::from(*rect),
             account,
         ),
-        RenderClipGeometry::RoundedRect { rect, radii } => push_vello_layer(
-            scene,
-            layer,
-            peniko::Fill::NonZero,
-            clip_transform,
-            &kurbo_rounded_rect(*rect, *radii),
-            account,
-        ),
+        RenderClipGeometry::RoundedRect { rect, radii } => {
+            let rounded = kurbo_rounded_rect(*rect, *radii);
+            if let Some(circle) = exact_fit_clip_circle(rounded, account)? {
+                push_vello_layer(
+                    scene,
+                    layer,
+                    peniko::Fill::NonZero,
+                    clip_transform,
+                    &circle,
+                    account,
+                )
+            } else {
+                push_vello_layer(
+                    scene,
+                    layer,
+                    peniko::Fill::NonZero,
+                    clip_transform,
+                    &rounded,
+                    account,
+                )
+            }
+        }
         RenderClipGeometry::Circle { center, radius } => push_vello_layer(
             scene,
             layer,
