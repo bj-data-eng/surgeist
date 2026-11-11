@@ -1674,9 +1674,10 @@ mod accounting_tests {
         );
         let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::RepeatTiles), 4);
-        // Two 20-action axis plans, three actions for each of the four
-        // positions, the grid count and limit, and both maxima for each tile.
-        assert_eq!(usage.work(RenderWork::CoordinateVisits), 62);
+        // Each axis spends 4 visits on input checks, 4 on the aligned
+        // first tile, 8 on the count and 1 on the cap. Add three for
+        // each position, two for the grid count and limit, and two per tile.
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 56);
         assert_eq!(
             usage.work(RenderWork::PreparedTransferredBytes),
             (resolved.tile_rects.capacity() * std::mem::size_of::<Rect>()) as u64

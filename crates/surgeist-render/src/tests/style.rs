@@ -447,6 +447,52 @@ fn image_repeat_resolves_finite_positions_with_overflowing_offsets() {
 }
 
 #[test]
+fn image_repeat_preserves_the_authored_phase_across_an_overflowing_span() {
+    let unit = 2.0_f64.powi(1023);
+    let period = 0.75 * unit;
+    let negative_anchor = -3.0 * (unit * 2.0_f64.powi(-55));
+    let positive_anchor = (0.25 * unit).next_up();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    for (clip, anchor, expected) in [
+        (
+            Rect::new(-unit, 0.0, 1.75 * unit, 1.0),
+            negative_anchor,
+            [
+                -1.5 * unit,
+                (-period).next_down(),
+                negative_anchor,
+                period.next_down(),
+            ],
+        ),
+        (
+            Rect::new(-0.625 * unit, 0.0, 1.875 * unit, 1.0),
+            positive_anchor,
+            [
+                -1.25 * unit,
+                (-0.5 * unit).next_up(),
+                positive_anchor,
+                unit,
+            ],
+        ),
+    ] {
+        // Both first starts round away the anchor adjustment. The anchor
+        // itself and the starts near zero still retain it. In the first
+        // case, this also keeps the fourth start below the clip end.
+        let placement =
+            ResolvedImagePlacement::from_parts(clip, Rect::new(anchor, 0.0, period, 1.0)).unwrap();
+        let repeated = repeat
+            .resolve(placement, &mut crate::RenderAccountingContext::default())
+            .unwrap();
+        assert_eq!(
+            repeated.tile_rects(),
+            expected.map(|x| Rect::new(x, 0.0, period, 1.0)),
+            "anchor {anchor}"
+        );
+    }
+}
+
+#[test]
 fn image_repeat_preserves_refusal_for_invalid_tiles_across_an_overflowing_span() {
     use crate::{RenderResource, RenderWork};
 
