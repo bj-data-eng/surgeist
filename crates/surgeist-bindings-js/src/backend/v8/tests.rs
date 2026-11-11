@@ -578,9 +578,43 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     fixed_arity_captures_only_the_selected_prefix()?;
     native_projection_custody_tracks_the_exact_guest_object()?;
     crate::callback_object::retired_prototype_refuses_before_native_allocation()?;
+    refused_native_projection_preserves_prototype_root_custody()?;
     native_references_follow_only_guest_reachability()?;
     cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal()?;
     crate::conversion::tests::run()?;
+    Ok(())
+}
+
+fn refused_native_projection_preserves_prototype_root_custody() -> TestResult {
+    use crate::{ObjectPrototype, Scope};
+
+    let mut host = Host::new(Observations::default())?;
+    host.engine.with_context(&host.realm, |entered| {
+        let roots = entered.roots.clone();
+        let mut scope = Scope {
+            operations: entered,
+            invariant: std::marker::PhantomData,
+        };
+        let object = scope.object(ObjectPrototype::Default)?;
+        let observed = scope.callback_object(&object)?;
+        let prototype = scope.retain_callback_object(observed, |_| Ok::<_, Error>(()))?;
+        let initial_roots = roots.entries.borrow().len();
+        for refused_charge in [1, 2, 1, 2] {
+            let mut charges = 0;
+            let result =
+                scope.project_retained_native_object_in_prototype_realm(&prototype, 17_u32, |_| {
+                    charges += 1;
+                    if charges == refused_charge {
+                        return Err(Error::Allocation);
+                    }
+                    Ok(())
+                });
+            assert!(matches!(result, Err(Error::Allocation)));
+            assert_eq!(charges, refused_charge);
+            assert_eq!(roots.entries.borrow().len(), initial_roots);
+        }
+        scope.release_callback_object(prototype)
+    })?;
     Ok(())
 }
 
