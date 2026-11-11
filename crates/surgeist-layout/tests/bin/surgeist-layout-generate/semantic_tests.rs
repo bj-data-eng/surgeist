@@ -3857,6 +3857,9 @@ function check(name, declarations, mode, direction, typed, resolved, expected) {
     getPropertyValue(property) {{
       return declarations.find(([key]) => key === property)?.[1] ?? "";
     }},
+    getPropertyPriority(property) {{
+      return declarations.find(([key]) => key === property)?.[2] ?? "";
+    }},
   }};
   const element = {{ style }};
   if (typed) {{
@@ -3904,6 +3907,16 @@ check("inline declarations preserve block auto and fixed lengths without Typed O
   ["margin-block", "auto 5px"], ["margin-right", "0px"]
 ], "sideways-lr", "rtl", null, {{ marginLeft: "27px", marginRight: "0px" }},
 {{ left: autoWire }});
+
+check("important logical block start wins over later physical length", [
+  ["margin-block-start", "auto", "important"], ["margin-top", "5px"]
+], "horizontal-tb", "ltr", null, {{ marginTop: "30px" }},
+{{ top: autoWire }});
+
+check("important physical edge wins over later logical shorthand", [
+  ["margin-right", "9px", "important"], ["margin-block", "auto"]
+], "vertical-lr", "rtl", null, {{ marginLeft: "18px", marginRight: "9px" }},
+{{ left: autoWire, right: px(9) }});
 }}
 "#
     );
