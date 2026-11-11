@@ -4,6 +4,7 @@ use crate::horizontal_br_font_band_profile;
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, FLEX_COMPOSITION_SOURCE_SHA256,
 };
+use crate::original_flex_parent_profile;
 use crate::original_subgrid_body_profile;
 use crate::prepared_atomic_percentage_profile;
 use crate::xml::{escape_attr, generate_xml};
@@ -220,6 +221,17 @@ impl LayoutAdapter {
                 "Flex composition requires its registered original source".into(),
             ));
         }
+        if request == BoxObservationRequest::OriginalFlexParent
+            && !original_flex_parent_profile::source_digest(input.fixture().source().as_str())
+                .is_some_and(|expected| {
+                    surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
+                        == expected
+                })
+        {
+            return Err(AdapterError::Preparation(
+                "original Flex parent capture requires its exact source".into(),
+            ));
+        }
         if request == BoxObservationRequest::OriginalSubgridBody
             && (input.fixture().source().as_str() != original_subgrid_body_profile::SOURCE
                 || surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
@@ -296,7 +308,10 @@ impl LayoutAdapter {
         };
         let font_path = RelativePath::new("fonts/Ahem.ttf")
             .map_err(|error| AdapterError::Preparation(error.to_string()))?;
-        let font_bytes = if request == BoxObservationRequest::EmptyLineBrFontBand {
+        let font_bytes = if matches!(
+            request,
+            BoxObservationRequest::EmptyLineBrFontBand | BoxObservationRequest::OriginalFlexParent
+        ) {
             &[]
         } else {
             input.input_bytes(&font_path).ok_or_else(|| {
@@ -319,7 +334,19 @@ impl LayoutAdapter {
                     "observation proof script changed or is missing".into(),
                 ));
             }
-            if request == BoxObservationRequest::OriginalSubgridBody {
+            if request == BoxObservationRequest::OriginalFlexParent {
+                let font = crate::pinned_font::AHEM_STYLESHEET_WOFF2;
+                if surgeist_generator::Sha256Digest::from_bytes(font).as_str()
+                    != crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
+                {
+                    return Err(AdapterError::Preparation(
+                        "pinned stylesheet Ahem changed".into(),
+                    ));
+                }
+                let arguments = serde_json::to_string(&(source, input.base_url(), style, font))
+                    .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+                format!("globalThis.captureOriginalFlexParent(...{arguments})")
+            } else if request == BoxObservationRequest::OriginalSubgridBody {
                 let serialize = |value| {
                     serde_json::to_string(value)
                         .map_err(|error| AdapterError::Preparation(error.to_string()))
@@ -535,6 +562,22 @@ fn helper_setup_expression(
     {
         return Err(AdapterError::Preparation(
             "root-context source profile does not qualify the captured base stylesheet".into(),
+        ));
+    }
+    if request == BoxObservationRequest::OriginalFlexParent {
+        let digest = surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes());
+        if !original_flex_parent_profile::accepts_helper(digest.as_str()) {
+            return Err(AdapterError::Preparation(
+                "original Flex parent capture helper changed".into(),
+            ));
+        }
+        let script = original_flex_parent_profile::SCRIPT;
+        let helper = serde_json::to_string(&format!(
+            "{helper}\n globalThis.captureOriginalFlexParent = ({script});"
+        ))
+        .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+        return Ok(format!(
+            "(() => {{ (0, eval)({helper});\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}; return true; }})()"
         ));
     }
     if request == BoxObservationRequest::OriginalSubgridBody

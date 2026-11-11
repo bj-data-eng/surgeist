@@ -11,6 +11,7 @@ use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::fixture_variants::fixture_cases;
+use crate::original_flex_parent_profile as original_flex_parent;
 use crate::prepared_atomic_percentage_profile as atomic_percentage;
 
 pub(crate) const EDITION: &str = "canonical-box-differences";
@@ -283,6 +284,10 @@ pub(crate) fn current_owner_bindings(
                     atomic_percentage::REQUEST,
                 ),
                 (
+                    "original_flex_parent_request.json",
+                    original_flex_parent::REQUEST,
+                ),
+                (
                     "original_subgrid_body_request.json",
                     original_subgrid_body::REQUEST,
                 ),
@@ -306,6 +311,8 @@ pub(crate) fn current_owner_bindings(
             format!("tests/bin/surgeist-layout-generate/measurement/{file}")
         } else if name == flex_content_text::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/flex_content_text.js".to_owned()
+        } else if name == original_flex_parent::SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/original_flex_parent.js".to_owned()
         } else if name == original_subgrid_body::PROOF_SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/original_subgrid_body.js".to_owned()
         } else if name == atomic_percentage::SCRIPT_PATH {
@@ -623,6 +630,13 @@ pub(crate) fn capture_binding_from_verified_inputs(
     {
         return Err(changed("source/variant/capture mapping"));
     }
+    if observation_request != SpecializedProfile::OriginalFlexParent.observation_request()
+        && full_inputs.contains_key(original_flex_parent::SCRIPT_PATH)
+    {
+        return Err(changed(
+            "original Flex parent proof requires its observation request",
+        ));
+    }
     if observation_request != SpecializedProfile::OriginalSubgridBody.observation_request()
         && full_inputs.contains_key(original_subgrid_body::PROOF_SCRIPT_PATH)
     {
@@ -728,6 +742,35 @@ pub(crate) fn capture_binding_from_verified_inputs(
                 }
             }
             ("canonical-flex-content-text", flex_content_text::PROFILE)
+        }
+        ("original-flex-parent", Some(request_sha256)) => {
+            let proof_sha256 = sha256(original_flex_parent::SCRIPT.as_bytes());
+            if original_flex_parent::source_digest(&case.source) != Some(&artifact.source_sha256)
+                || request_sha256 != sha256(original_flex_parent::REQUEST)
+                || !artifact.linked_resources.is_empty()
+                || !full_inputs
+                    .get(ROOT_HELPER_INPUT)
+                    .is_some_and(|digest| original_flex_parent::accepts_helper(digest))
+                || excluded_specs.contains(ROOT_HELPER_INPUT)
+            {
+                return Err(changed("original Flex parent capture profile"));
+            }
+            for (path, expected) in [
+                (case.source.as_str(), artifact.source_sha256.as_str()),
+                (OBSERVATION_REQUEST, request_sha256),
+                (original_flex_parent::SCRIPT_PATH, proof_sha256.as_str()),
+                (
+                    "scripts/gentest/test_base_style.css",
+                    pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
+                ),
+            ] {
+                if full_inputs.get(path).map(String::as_str) != Some(expected)
+                    || excluded_specs.contains(path)
+                {
+                    return Err(changed(format!("original Flex parent input: {path}")));
+                }
+            }
+            ("canonical-original-flex-parent", "ahem-10px-zwsp")
         }
         ("original-subgrid-body", Some(request_sha256)) => {
             let proof_sha256 = sha256(original_subgrid_body::PROOF_SCRIPT);
@@ -1062,6 +1105,7 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
     let policy = input.policy_sha256;
     digest(policy)?;
     let required = match input.observation_request {
+        "original-flex-parent" => Some(sha256(original_flex_parent::SCRIPT.as_bytes())),
         "original-subgrid-body" => Some(sha256(original_subgrid_body::PROOF_SCRIPT)),
         "prepared-atomic-percentage" => Some(sha256(atomic_percentage::SCRIPT.as_bytes())),
         "horizontal-br-font-band" => Some(sha256(super::br_font_band::SCRIPT.as_bytes())),
@@ -1211,6 +1255,7 @@ pub(crate) struct ExactCase {
 pub(crate) enum SpecializedProfile {
     PreparedRange,
     FlexComposition,
+    OriginalFlexParent,
     OriginalSubgridBody,
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
@@ -1234,6 +1279,9 @@ impl SpecializedProfile {
             Self::FlexComposition => {
                 "tests/layout/browser_parity/captured/flex-composition-qualification"
             }
+            Self::OriginalFlexParent => {
+                "tests/layout/browser_parity/captured/original-flex-parent-qualification"
+            }
             Self::OriginalSubgridBody => {
                 "tests/layout/browser_parity/captured/original-subgrid-body-qualification"
             }
@@ -1256,6 +1304,7 @@ impl SpecializedProfile {
         match self {
             Self::PreparedRange => "prepared-ranges",
             Self::FlexComposition => "flex-composition",
+            Self::OriginalFlexParent => "original-flex-parent",
             Self::OriginalSubgridBody => "original-subgrid-body",
             Self::PreparedAtomicPercentage => "prepared-atomic-percentage",
             Self::HorizontalBrFontBand => "horizontal-br-font-band",
@@ -1268,6 +1317,7 @@ impl SpecializedProfile {
         match self {
             Self::PreparedRange => &[prepared_range_qualification::SOURCE],
             Self::FlexComposition => &[flex_composition::SOURCE],
+            Self::OriginalFlexParent => original_flex_parent::SOURCES,
             Self::OriginalSubgridBody => &[original_subgrid_body::SOURCE],
             Self::PreparedAtomicPercentage => &[atomic_percentage::SOURCE],
             Self::HorizontalBrFontBand => &[super::br_font_band::SOURCE],
@@ -1280,6 +1330,7 @@ impl SpecializedProfile {
         [
             Self::PreparedRange,
             Self::FlexComposition,
+            Self::OriginalFlexParent,
             Self::OriginalSubgridBody,
             Self::PreparedAtomicPercentage,
             Self::HorizontalBrFontBand,
@@ -1288,6 +1339,15 @@ impl SpecializedProfile {
         ]
         .into_iter()
         .find(|profile| profile.edition() == edition)
+    }
+}
+
+pub(crate) fn original_flex_parent_evidence() -> SpecializedEvidence {
+    SpecializedEvidence::OriginalFlexParent {
+        proof_script: PathDigest {
+            path: original_flex_parent::SCRIPT_PATH.to_owned(),
+            sha256: sha256(original_flex_parent::SCRIPT.as_bytes()),
+        },
     }
 }
 
@@ -1312,6 +1372,9 @@ pub(crate) enum SpecializedEvidence {
         native_oracle: PathDigest,
         gutter_control: PathDigest,
     },
+    OriginalFlexParent {
+        proof_script: PathDigest,
+    },
     OriginalSubgridBody {
         proof_script: PathDigest,
     },
@@ -1334,6 +1397,7 @@ impl SpecializedEvidence {
         match self {
             Self::PreparedRange { .. } => SpecializedProfile::PreparedRange,
             Self::FlexComposition { .. } => SpecializedProfile::FlexComposition,
+            Self::OriginalFlexParent { .. } => SpecializedProfile::OriginalFlexParent,
             Self::OriginalSubgridBody { .. } => SpecializedProfile::OriginalSubgridBody,
             Self::PreparedAtomicPercentage { .. } => SpecializedProfile::PreparedAtomicPercentage,
             Self::HorizontalBrFontBand { .. } => SpecializedProfile::HorizontalBrFontBand,
@@ -1345,7 +1409,8 @@ impl SpecializedEvidence {
     pub(crate) fn policy_digest(&self) -> String {
         match self {
             Self::PreparedRange { policy } => policy.sha256.clone(),
-            Self::OriginalSubgridBody { proof_script }
+            Self::OriginalFlexParent { proof_script }
+            | Self::OriginalSubgridBody { proof_script }
             | Self::PreparedAtomicPercentage { proof_script }
             | Self::HorizontalBrFontBand { proof_script }
             | Self::VerticalBrFontBand { proof_script }
@@ -1363,7 +1428,8 @@ impl SpecializedEvidence {
     pub(crate) fn bindings(&self) -> Vec<&PathDigest> {
         match self {
             Self::PreparedRange { policy } => vec![policy],
-            Self::OriginalSubgridBody { proof_script }
+            Self::OriginalFlexParent { proof_script }
+            | Self::OriginalSubgridBody { proof_script }
             | Self::PreparedAtomicPercentage { proof_script }
             | Self::HorizontalBrFontBand { proof_script }
             | Self::VerticalBrFontBand { proof_script }
@@ -2185,6 +2251,9 @@ impl Qualification {
             }
             SpecializedEvidence::FlexComposition { .. } => {
                 flex_composition_qualification::evidence(variant).as_ref() == Some(&case.evidence)
+            }
+            SpecializedEvidence::OriginalFlexParent { .. } => {
+                original_flex_parent_evidence() == case.evidence
             }
             SpecializedEvidence::OriginalSubgridBody { .. } => {
                 original_subgrid_body::evidence() == case.evidence

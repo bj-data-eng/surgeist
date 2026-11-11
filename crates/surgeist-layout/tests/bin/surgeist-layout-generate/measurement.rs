@@ -17,6 +17,7 @@ mod flex_content_text;
 #[path = "measurement/measured_leaf.rs"]
 mod measured_leaf;
 use crate::horizontal_br_font_band_profile;
+use crate::original_flex_parent_profile;
 use crate::original_subgrid_body_profile;
 use crate::prepared_atomic_percentage_profile;
 use crate::{empty_line_br_font_band_profile, vertical_br_font_band_profile};
@@ -30,6 +31,7 @@ pub(super) enum BoxObservationRequest {
     FlexContentText,
     PreparedRanges,
     FlexComposition,
+    OriginalFlexParent,
     OriginalSubgridBody,
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
@@ -63,6 +65,9 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::FlexComposition.input_bytes() => {
                 Ok(Self::FlexComposition)
             }
+            Some(bytes) if Some(bytes) == Self::OriginalFlexParent.input_bytes() => {
+                Ok(Self::OriginalFlexParent)
+            }
             Some(bytes) if Some(bytes) == Self::OriginalSubgridBody.input_bytes() => {
                 Ok(Self::OriginalSubgridBody)
             }
@@ -88,6 +93,10 @@ impl BoxObservationRequest {
             Self::FlexContentText => Some((
                 "scripts/gentest/flex_content_text.js",
                 include_str!("measurement/flex_content_text.js"),
+            )),
+            Self::OriginalFlexParent => Some((
+                original_flex_parent_profile::SCRIPT_PATH,
+                original_flex_parent_profile::SCRIPT,
             )),
             Self::OriginalSubgridBody => Some((
                 original_subgrid_body_profile::SCRIPT_PATH,
@@ -130,6 +139,7 @@ impl BoxObservationRequest {
             Self::FlexContentText => {
                 Some(include_bytes!("measurement/flex_content_text_request.json"))
             }
+            Self::OriginalFlexParent => Some(original_flex_parent_profile::REQUEST),
             Self::OriginalSubgridBody => Some(original_subgrid_body_profile::REQUEST),
             Self::PreparedAtomicPercentage => Some(prepared_atomic_percentage_profile::REQUEST),
             Self::HorizontalBrFontBand => Some(horizontal_br_font_band_profile::REQUEST),
@@ -716,6 +726,14 @@ pub(super) fn decode(
             "stylesheet break font requires the original empty-line observation profile",
         )?;
     }
+    if request == BoxObservationRequest::OriginalFlexParent {
+        context.compatible(
+            root_local_positioned && use_rounding,
+            "viewport",
+            "original Flex parent requires an absolute root-local observation",
+        )?;
+        wire.validate_original_flex_parent(&context)?;
+    }
     if request == BoxObservationRequest::OriginalSubgridBody {
         context.compatible(
             !root_local_positioned && use_rounding,
@@ -766,6 +784,7 @@ pub(super) fn decode(
         BoxObservationRequest::Geometry
         | BoxObservationRequest::PreparedRanges
         | BoxObservationRequest::FlexComposition
+        | BoxObservationRequest::OriginalFlexParent
         | BoxObservationRequest::OriginalSubgridBody
         | BoxObservationRequest::PreparedAtomicPercentage
         | BoxObservationRequest::HorizontalBrFontBand
@@ -1949,6 +1968,53 @@ impl WireNode {
     }
 }
 impl WireNode {
+    fn validate_original_flex_parent(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
+        let parent = context.required(self.style.as_ref(), "style")?;
+        let children = context.required(self.children.as_deref(), "children")?;
+        context.compatible(
+            self.tag_name.as_deref() == Some("div")
+                && self.layout_input == LayoutInput::Box
+                && self.text_content.is_none()
+                && parent.position.as_deref() == Some("absolute")
+                && parent.display.as_deref() == Some("flex")
+                && children.len() == 1,
+            "children",
+            "original capture requires the actual Flex parent and its sole Grid child",
+        )?;
+        let grid = &children[0];
+        let grid_context = context.child(0);
+        let style = grid_context.required(grid.style.as_ref(), "style")?;
+        let leaves = grid_context.required(grid.children.as_deref(), "children")?;
+        grid_context.compatible(
+            grid.tag_name.as_deref() == Some("div")
+                && grid.layout_input == LayoutInput::Box
+                && grid.text_content.is_none()
+                && style.display.as_deref() == Some("grid")
+                && leaves.len() == 2,
+            "children",
+            "original Grid requires two source text boxes",
+        )?;
+        for (index, leaf) in leaves.iter().enumerate() {
+            let leaf_context = grid_context.child(index);
+            let style = leaf_context.required(leaf.style.as_ref(), "style")?;
+            let text = leaf_context.required(leaf.text_content.as_deref(), "textContent")?;
+            leaf_context.compatible(
+                leaf.tag_name.as_deref() == Some("div")
+                    && leaf.layout_input == LayoutInput::Box
+                    && leaf.children.as_ref().is_some_and(Vec::is_empty)
+                    && style.display.as_deref() == Some("flex")
+                    && style.has_direct_flex_text_style()
+                    && text.contains('\u{200b}')
+                    && text
+                        .split('\u{200b}')
+                        .all(|word| !word.is_empty() && word.bytes().all(|byte| byte == b'H')),
+                "textContent",
+                "original Grid text boxes require captured Ahem break opportunities",
+            )?;
+        }
+        Ok(())
+    }
+
     fn validate_original_subgrid_body(
         &self,
         context: &Context<'_>,

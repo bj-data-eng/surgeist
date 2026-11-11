@@ -3123,3 +3123,15 @@ containing_direction = "ltr"
 hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
+
+[[specialized_publications]]
+source = "html/grid/grid_available_space_greater_than_max_content.html"
+profile = "original-flex-parent"
+
+[[specialized_publications]]
+source = "html/grid/grid_available_space_smaller_than_max_content.html"
+profile = "original-flex-parent"
+
+[[specialized_publications]]
+source = "html/grid/grid_available_space_smaller_than_min_content.html"
+profile = "original-flex-parent"

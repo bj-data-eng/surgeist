@@ -302,6 +302,9 @@ fn finish(
     invocation: PublicationInvocation<'_>,
 ) -> Result<()> {
     let PublicationInvocation { mode, output } = invocation;
+    if edition == Edition::Specialized(SpecializedProfile::OriginalFlexParent) {
+        require_original_flex_parent_inputs(owner)?;
+    }
     if edition == Edition::Specialized(SpecializedProfile::OriginalSubgridBody) {
         require_original_subgrid_inputs(owner)?;
     }
@@ -404,6 +407,9 @@ fn finish(
     // Catch source/input changes during the invocation, as well as stale binaries
     // whose include_bytes resources differ from the current handwritten owner.
     require_current_inputs(owner)?;
+    if edition == Edition::Specialized(SpecializedProfile::OriginalFlexParent) {
+        require_original_flex_parent_inputs(owner)?;
+    }
     if edition == Edition::Specialized(SpecializedProfile::OriginalSubgridBody) {
         require_original_subgrid_inputs(owner)?;
     }
@@ -551,6 +557,23 @@ fn require_current_inputs(owner: &Path) -> Result<()> {
     )?;
     if fs::read(owner.join("examples/qualify-root-context/corpus.toml"))? != DECLARATION {
         return Err("current qualification declaration differs from this executable".into());
+    }
+    Ok(())
+}
+
+fn require_original_flex_parent_inputs(owner: &Path) -> Result<()> {
+    use crate::original_flex_parent_profile as profile;
+    for (name, bytes) in [
+        ("original_flex_parent.js", profile::SCRIPT.as_bytes()),
+        ("original_flex_parent_request.json", profile::REQUEST),
+    ] {
+        let path = RelativePath::new(format!(
+            "tests/bin/surgeist-layout-generate/measurement/{name}"
+        ))?;
+        require_regular_input(owner, &path)?;
+        if fs::read(owner.join(path.as_str()))? != bytes {
+            return Err(format!("current original Flex parent input differs: {name}").into());
+        }
     }
     Ok(())
 }
@@ -1419,6 +1442,9 @@ fn specialized_cases(
                 SpecializedProfile::FlexComposition => {
                     flex_composition_qualification::evidence(&artifact.variant)
                         .ok_or("invalid Flex composition variant")?
+                }
+                SpecializedProfile::OriginalFlexParent => {
+                    authority::original_flex_parent_evidence()
                 }
                 SpecializedProfile::OriginalSubgridBody => original_subgrid_body::evidence(),
                 SpecializedProfile::PreparedAtomicPercentage => {

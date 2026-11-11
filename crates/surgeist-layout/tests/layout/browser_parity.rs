@@ -775,6 +775,36 @@ fn grid_lanes_item_order_variants_match_browser() {
 }
 
 #[test]
+fn fri_03_original_fixed_width_flex_parents_match_native() {
+    use crate::original_flex_parent_profile::SOURCES;
+    let paths = fri_03_fixture_paths(browser_parity_fixture_paths())
+        .expect("complete FRI-03 historical fixture matrix");
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
+    let originals: Vec<_> = paths
+        .into_iter()
+        .filter(|path| {
+            let stem = path
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .split_once("__")
+                .unwrap()
+                .0;
+            SOURCES.iter().any(|source| {
+                source
+                    .strip_prefix("html/grid/")
+                    .and_then(|s| s.strip_suffix(".html"))
+                    == Some(stem)
+            })
+        })
+        .map(|path| corpus.join(path))
+        .collect();
+    assert_eq!(originals.len(), 12);
+    assert_registered_originals_match(&originals);
+}
+
+#[test]
 fn runs_fri_03_box_participation_against_surgeist_layout() {
     let paths = fri_03_fixture_paths(browser_parity_fixture_paths())
         .unwrap_or_else(|error| panic!("FRI-03 fixture matrix is incomplete: {error}"));

@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::support::{
-    self, original_subgrid_body, prepared_atomic_percentage,
+    self, original_flex_parent, original_subgrid_body, prepared_atomic_percentage,
     prepared_range_qualification as prepared_range,
 };
 use support::capture_authority::{
@@ -326,6 +326,7 @@ enum AdmittedComparison {
     PreparedRange {
         variant: String,
     },
+    OriginalFlexParent,
     OriginalSubgridBody {
         variant: String,
     },
@@ -474,6 +475,9 @@ impl AdmittedEdition {
                 AdmittedComparison::PreparedRange { variant } => {
                     compare_prepared_range(&case.golden, variant)
                 }
+                AdmittedComparison::OriginalFlexParent => {
+                    original_flex_parent::compare(&case.golden)
+                }
                 AdmittedComparison::OriginalSubgridBody { variant } => {
                     original_subgrid_body::compare(&case.golden, variant).map(
                         |(fields, qualified)| {
@@ -620,6 +624,9 @@ const REGISTERED_GRID_STATIC_POSITION_TERMINAL_SHA256: &str =
 const REGISTERED_RELATIVE_INSET_TERMINAL_SHA256: &str =
     "a750835d1871fdb2b8c518d0f7dd8f200793b034f4aa54edfa5a135fb5c3cfc6";
 
+const REGISTERED_ORIGINAL_FLEX_PARENT_TERMINAL_SHA256: &str =
+    "3136e2f0c9c4ea5c32cdb33f6b95883ccf5751c0f5aa1cd6aac5ee6ee36a7d19";
+
 const REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256: &str =
     "cb95757f57de7ba86900c34d66d3a90c7a71a65a7570f1a74af5ce2eb14ccbc7";
 const REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256: &str =
@@ -720,6 +727,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             Registration {
                 edition: Edition::Specialized(SpecializedProfile::FlexComposition),
                 terminal_sha256: REGISTERED_FLEX_COMPOSITION_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Specialized(SpecializedProfile::OriginalFlexParent),
+                terminal_sha256: REGISTERED_ORIGINAL_FLEX_PARENT_TERMINAL_SHA256,
             },
         )?,
         admit(
@@ -1732,6 +1746,7 @@ fn admit_specialized(
         std::str::from_utf8(report_bytes).map_err(|error| malformed(error.to_string()))?;
     let flex_inputs = match profile {
         SpecializedProfile::PreparedRange
+        | SpecializedProfile::OriginalFlexParent
         | SpecializedProfile::OriginalSubgridBody
         | SpecializedProfile::PreparedAtomicPercentage
         | SpecializedProfile::HorizontalBrFontBand
@@ -1779,6 +1794,17 @@ fn admit_specialized(
                     support::Golden::parse(xml),
                     AdmittedComparison::PreparedRange { variant },
                 ),
+                SpecializedProfile::OriginalFlexParent => {
+                    let current = support::Golden::parse(xml)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    let historical = std::str::from_utf8(&historical)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    let historical = support::Golden::parse(historical)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    original_flex_parent::verify_historical(&current, &historical)
+                        .map_err(|error| changed(error.to_string()))?;
+                    (Ok(current), AdmittedComparison::OriginalFlexParent)
+                }
                 SpecializedProfile::OriginalSubgridBody => {
                     let current = support::Golden::parse(xml)
                         .map_err(|error| malformed(error.to_string()))?;

@@ -103,6 +103,59 @@ impl Fixture {
     }
 }
 #[test]
+fn original_flex_parent_identity_refuses_rebound_inputs_and_wrong_profile() {
+    let source = original_flex_parent::SOURCES[0];
+    let source_digest = original_flex_parent::source_digest(source).unwrap();
+    let request = sha256(original_flex_parent::REQUEST);
+    let proof = sha256(original_flex_parent::SCRIPT.as_bytes());
+    let mut fixture = Fixture::new(&"a".repeat(64));
+    fixture.case.source = source.into();
+    fixture.artifact.source = source.into();
+    fixture.artifact.source_sha256 = source_digest.into();
+    fixture.policy = proof.clone();
+    let bound = [
+        (source, source_digest),
+        (OBSERVATION_REQUEST, request.as_str()),
+        (original_flex_parent::SCRIPT_PATH, proof.as_str()),
+        (
+            ROOT_HELPER_INPUT,
+            crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256,
+        ),
+        (
+            "scripts/gentest/test_base_style.css",
+            pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
+        ),
+    ];
+    fixture
+        .inputs
+        .extend(bound.map(|(path, digest)| (path.into(), digest.into())));
+    fixture.metadata.inputs = fixture.inputs.clone();
+    let observation = SpecializedProfile::OriginalFlexParent.observation_request();
+    let verified = fixture
+        .with_observation(observation, Some(&request))
+        .unwrap();
+    assert_eq!(verified.projection().font_demand, "ahem-10px-zwsp");
+    assert!(fixture.with_observation("geometry", None).is_err());
+    for (path, digest) in bound {
+        let altered = "0".repeat(64);
+        fixture.inputs.insert(path.into(), altered.clone());
+        fixture.metadata.inputs = fixture.inputs.clone();
+        if path == source {
+            fixture.artifact.source_sha256 = altered;
+        }
+        assert!(
+            fixture
+                .with_observation(observation, Some(&request))
+                .is_err(),
+            "a consistent report cannot rebind {path}"
+        );
+        fixture.inputs.insert(path.into(), digest.into());
+        fixture.metadata.inputs = fixture.inputs.clone();
+        fixture.artifact.source_sha256 = source_digest.into();
+    }
+}
+
+#[test]
 fn measured_identity_requires_the_exact_request_capture_script_and_stylesheet() {
     let request = sha256(b"{\"schema_version\":1,\"element_scroll_sizes\":\"horizontal-zero-edge-divs\",\"measured_leaf\":\"ahem-10px-zwsp\"}\n");
     let script = sha256(include_bytes!(
