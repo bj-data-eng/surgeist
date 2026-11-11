@@ -48,8 +48,8 @@ fn named_atomic_metric_decoder_and_real_reader_keep_explicit_certificate() {
     assert!(!xml.contains("atomic-paragraph-metrics="));
     let physical = browser_parity_support::Golden::parse(&xml).unwrap();
     for actual in std::iter::once(&physical.root).chain(&physical.root.children) {
-        assert_eq!(actual.style.get("font-family"), None);
-        assert_eq!(actual.style.get("font-size"), None);
+        assert_eq!(actual.style.get("font-family"), Some("ahem"));
+        assert_eq!(actual.style.get("font-size"), Some("10px"));
     }
 }
 #[test]

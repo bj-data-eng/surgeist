@@ -3497,7 +3497,7 @@ fn xml_generation_preserves_non_default_font_family() {
 }
 
 #[test]
-fn xml_generation_elides_default_ahem_font_size() {
+fn xml_generation_preserves_supplied_default_font_size() {
     let node = json!({"layoutInput": "box",
         "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
@@ -3515,7 +3515,9 @@ fn xml_generation_elides_default_ahem_font_size() {
 
     let xml = generate_xml("font_size__border_box_ltr", &node);
 
-    assert!(!xml.contains("font-size"));
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let root = xml_input_root(&document);
+    assert_eq!(root.attribute("font-size"), Some("10px"));
 }
 
 #[test]

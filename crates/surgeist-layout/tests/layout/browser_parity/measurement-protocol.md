@@ -811,8 +811,8 @@ containing-root line registry. No protocol step renumbers these identities.
 Supported captured font families, font sizes and numeric line heights serialize
 explicitly. The fixture reader inherits omitted typography from the parent.
 
-XML attribute order, default-value omission, whitespace, escaping, text trimming,
-and formatting are preservation contracts. The fixture reader in `support.rs`
+XML attribute order, field-specific default omission, whitespace, escaping,
+text trimming, and formatting are preservation contracts. The fixture reader in `support.rs`
 remains an independent consumer: it parses generated XML and compares layout
 without importing private measurement types. Versioned recapture retains original
 XML bytes and exact raw comparisons in history. Fresh metadata/diagnostics come
