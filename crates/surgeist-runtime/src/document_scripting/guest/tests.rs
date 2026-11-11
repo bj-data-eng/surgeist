@@ -1,6 +1,6 @@
 use super::*;
 use crate::DomEventRegistryLimits;
-use surgeist_bindings_js::{Primitive, PropertyKey};
+use surgeist_bindings_js::{ExceptionPhase, Primitive, PropertyKey};
 
 fn units(text: &str) -> Vec<u16> {
     text.encode_utf16().collect()
@@ -209,6 +209,174 @@ fn assert_guest(scope: &mut Scope<'_>, expression: &str) -> Result<(), Error> {
     let yes = scope.primitive(Primitive::Boolean(true))?;
     assert!(scope.strict_equals(&observed, &yes)?, "{expression}");
     Ok(())
+}
+
+pub(in crate::document_scripting) fn attached_object_listeners_look_up_handle_event_when_invoked() {
+    let mut host = host(Arc::new(AtomicBool::new(false)));
+    let permit = host.permit().unwrap();
+    attach_registry(&mut host, &permit);
+    let target = host.create_guest_event_target(&permit).unwrap();
+    let kind = [u16::from(b'x')];
+    let event = host
+        .create_guest_event(&permit, &kind, DomEventInit::default())
+        .unwrap();
+    let callbacks = host
+        .in_document(&permit, |scope| {
+            let global = scope.global()?;
+            let target = target.object(scope)?;
+            let event = event.object(scope)?;
+            scope.set(
+                &global,
+                PropertyKey::String(&units("expectedTarget")),
+                &target,
+            )?;
+            scope.set(
+                &global,
+                PropertyKey::String(&units("expectedEvent")),
+                &event,
+            )?;
+            scope.evaluate(&units(
+                "globalThis.trace = [];
+            globalThis.getterMarker = {};
+            globalThis.callMarker = {};
+            globalThis.attachedTypeError = TypeError;
+            globalThis.TypeError = function ReplacementTypeError() {};
+            globalThis.normalMethod = 7;
+            globalThis.normalListener = {
+                get handleEvent() {
+                    if (this !== normalListener) throw 1;
+                    trace.push('normal-get');
+                    return normalMethod;
+                }
+            };
+            globalThis.getterFailure = {
+                get handleEvent() {
+                    if (this !== getterFailure) throw 2;
+                    trace.push('throw-get');
+                    throw getterMarker;
+                }
+            };
+            globalThis.callFailure = {
+                get handleEvent() {
+                    if (this !== callFailure) throw 3;
+                    trace.push('call-get');
+                    return function(e) {
+                        if (this !== callFailure || e !== expectedEvent) throw 4;
+                        trace.push('call-throw');
+                        throw callMarker;
+                    };
+                }
+            };
+            globalThis.noncallable = {
+                get handleEvent() { trace.push('number-get'); return 17; }
+            };
+            globalThis.later = function(e) {
+                if (this !== expectedTarget || e !== expectedEvent) throw 5;
+                trace.push('later');
+            };",
+            ))?;
+            let mut root = |name| {
+                let value = scope.get(&global, PropertyKey::String(&units(name)))?;
+                Ok::<_, Error>(scope.retain(&value))
+            };
+            Ok([
+                root("normalListener")?,
+                root("getterFailure")?,
+                root("callFailure")?,
+                root("noncallable")?,
+                root("later")?,
+            ])
+        })
+        .unwrap();
+    let attempted = callbacks.each_ref().map(|callback| {
+        host.add_guest_event_listener(
+            &permit,
+            &target,
+            &kind,
+            callback,
+            DomEventListenerOptions::default(),
+        )
+    });
+    let duplicate = host
+        .in_document(&permit, |scope| {
+            assert_guest(scope, "trace.length === 0")?;
+            let original = scope.evaluate(&units("normalListener"))?;
+            Ok(scope.retain(&original))
+        })
+        .unwrap();
+    let [normal, getter, caller, number, later] = attempted.map(|registration| {
+        registration
+            .unwrap_or_else(|error| panic!("attached EventListener registration failed: {error:?}"))
+    });
+    let replacement_options = DomEventListenerOptions {
+        once: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        host.add_guest_event_listener(&permit, &target, &kind, &duplicate, replacement_options)
+            .unwrap(),
+        normal
+    );
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "trace.length === 0")?;
+        scope.evaluate(&units(
+            "normalMethod = function(e) {
+                if (this !== normalListener || e !== expectedEvent) throw 6;
+                trace.push('normal-call');
+            };",
+        ))?;
+        Ok(())
+    })
+    .unwrap();
+
+    let report = host.dispatch_guest_event(&permit, &target, &event).unwrap();
+    assert_eq!(report.receipt().callbacks(), 5);
+    assert_eq!(
+        report
+            .receipt()
+            .failures()
+            .iter()
+            .map(|failure| failure.registration)
+            .collect::<Vec<_>>(),
+        [getter, caller, number]
+    );
+    let [getter_error, call_error, not_callable] = report.exceptions() else {
+        panic!("expected exactly three ordinary listener exceptions");
+    };
+    assert_eq!(getter_error.registration, getter);
+    assert_eq!(getter_error.exception.phase(), ExceptionPhase::PropertyRead);
+    assert_eq!(call_error.registration, caller);
+    assert_eq!(call_error.exception.phase(), ExceptionPhase::Invoke);
+    assert_eq!(not_callable.registration, number);
+    assert_eq!(not_callable.realm, permit.realm);
+    host.in_document(&permit, |scope| {
+        for (error, marker) in [(getter_error, "getterMarker"), (call_error, "callMarker")] {
+            let original = scope.evaluate(&units(marker))?;
+            let reported = scope.import(error.exception.value())?;
+            assert!(scope.strict_equals(&original, &reported)?);
+        }
+        let type_error = scope.import(not_callable.exception.value())?;
+        let check = scope.evaluate(&units(
+            "value => value instanceof attachedTypeError && !(value instanceof TypeError)",
+        ))?;
+        let undefined = scope.primitive(Primitive::Undefined)?;
+        let is_original_intrinsic = scope.call(&check, &undefined, &[type_error])?;
+        let yes = scope.primitive(Primitive::Boolean(true))?;
+        assert!(scope.strict_equals(&is_original_intrinsic, &yes)?);
+        assert_guest(scope,
+            "trace.join(',') === 'normal-get,normal-call,throw-get,call-get,call-throw,number-get,later'",
+        )
+    }).unwrap();
+    for registration in [normal, getter, caller, number, later] {
+        assert!(
+            host.remove_guest_event_listener(&permit, registration)
+                .unwrap()
+        );
+    }
+    assert!(!host.remove_guest_event_listener(&permit, normal).unwrap());
+    let report = host.dispatch_guest_event(&permit, &target, &event).unwrap();
+    assert_eq!(report.receipt().callbacks(), 0);
+    assert!(report.exceptions().is_empty());
 }
 
 pub(in crate::document_scripting) fn attached_proxy_uses_its_own_realm() {
