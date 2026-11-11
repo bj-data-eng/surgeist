@@ -1029,6 +1029,10 @@ impl<C> DomEventDispatcher<C> {
         slot.registration.as_ref()
     }
     #[cfg(feature = "document-scripting")]
+    pub(crate) fn is_bound(&self) -> bool {
+        matches!(self.association, RegistryAssociation::Bound(_))
+    }
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn qualify_guest_registry(
         &self,
         dom: &DomEventDom<'_>,

@@ -445,11 +445,45 @@ fn native_window_relation_work_is_admitted_at_the_callback() {
     assert_eq!(probe(accepted + 5, WRITE), Probe::CallbackRefused);
 }
 
-fn native_window_constructs_event_with_exact_type_flags_and_clock() {
-    let (session, top) = setup();
-    let mut host = prepare(session, Arc::new(cancel()))
-        .enable(top, ALLOW, hooks(&hook()))
+fn prepare_event_window() -> (DocumentScriptHost, DomHostedTopLevel) {
+    let (mut session, top) = setup();
+    let cancellation = Arc::new(cancel());
+    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 16,
+        pending_events: 4,
+        nested_dispatches: 4,
+        storage_bytes: 128_000,
+        work: 100_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancellation).unwrap();
+    let mut registry = Some(registry);
+    let host = prepare(session, cancellation)
+        .enable_with_guest_event_registry(
+            top,
+            ALLOW,
+            hooks(&hook()),
+            &mut registry,
+            DocumentGuestEventLimits {
+                storage_bytes: 64_000,
+                work: 10_000,
+                pending_exception_reports: 16,
+                dispatch: DomEventDispatchLimits {
+                    path_items: 4,
+                    snapshot_listeners: 16,
+                    failure_records: 8,
+                    callbacks: 16,
+                    work: 10_000,
+                },
+            },
+        )
         .unwrap();
+    assert!(registry.is_none());
+    (host, top)
+}
+
+fn native_window_constructs_event_with_exact_type_flags_and_clock() {
+    let (mut host, top) = prepare_event_window();
     let permit = host.permit().unwrap();
     let native_timestamp = |host: &mut DocumentScriptHost| {
         host.with_native(|dom, mut hosted, _| {
@@ -520,10 +554,7 @@ fn native_window_constructs_event_with_exact_type_flags_and_clock() {
 }
 
 fn native_window_constructs_distinct_event_targets_with_the_interface_prototype() {
-    let (session, top) = setup();
-    let mut host = prepare(session, Arc::new(cancel()))
-        .enable(top, ALLOW, hooks(&hook()))
-        .unwrap();
+    let (mut host, _) = prepare_event_window();
     let permit = host.permit().unwrap();
     let script = r#"(() => {
         try {

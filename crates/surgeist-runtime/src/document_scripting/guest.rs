@@ -43,6 +43,8 @@ pub enum DocumentGuestEventError {
     CallbackRealmUnavailable,
     /// This host has no installed guest registry, or it already has one.
     RegistryState,
+    /// The supplied registry must first claim the exact native DOM.
+    RegistryUnbound,
     /// Finite cumulative guest adapter work refused.
     WorkLimit,
     /// The next listener requires a different host route.
@@ -282,6 +284,168 @@ impl GuestEvents {
     }
 }
 
+/// Refused Window activation with the original unpublished native owner.
+#[derive(Debug)]
+pub struct EnableDocumentGuestEventsFailure {
+    /// Original native preparation, available for a new attempt.
+    pub owner: PreparedDocumentScriptHost,
+    /// Exact native, registry, or bindings refusal.
+    pub error: DocumentGuestEventError,
+}
+
+impl PreparedDocumentScriptHost {
+    /// Attach an engine and take the already-bound native event registry.
+    /// Refusal returns the unpublished owner and restores the registry slot.
+    pub fn enable_with_guest_event_registry(
+        self,
+        target: DomHostedTopLevel,
+        policy: HtmlScriptingPolicy,
+        hooks: DocumentScriptHooks<'_>,
+        registry: &mut Option<DomEventDispatcher<()>>,
+        limits: DocumentGuestEventLimits,
+    ) -> Result<DocumentScriptHost, EnableDocumentGuestEventsFailure> {
+        let Some(input) = registry.take() else {
+            return Err(EnableDocumentGuestEventsFailure {
+                owner: self,
+                error: DocumentGuestEventError::RegistryState,
+            });
+        };
+        match self.enable_guest_engine(target, policy, hooks, &input, limits) {
+            Ok((mut engine, admission)) => {
+                let reports = admission.install(&mut engine, input);
+                Ok(self.into_host(engine, Some(reports)))
+            }
+            Err(error) => {
+                *registry = Some(input);
+                Err(EnableDocumentGuestEventsFailure { owner: self, error })
+            }
+        }
+    }
+
+    fn enable_guest_engine(
+        &self,
+        target: DomHostedTopLevel,
+        policy: HtmlScriptingPolicy,
+        hooks: DocumentScriptHooks<'_>,
+        input: &DomEventDispatcher<()>,
+        limits: DocumentGuestEventLimits,
+    ) -> Result<(ScriptEngine, GuestEventAdmission), DocumentGuestEventError> {
+        if !input.is_bound() {
+            return Err(DocumentGuestEventError::RegistryUnbound);
+        }
+        {
+            let mut session = self
+                .native
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            input.qualify_guest_registry(&session.dom())?;
+        }
+        let script = self.prepare_engine(target, hooks)?;
+        let admission = GuestEventAdmission::prepare(
+            &self.native,
+            input,
+            limits,
+            script.retained_bytes.checked_add(limits.storage_bytes),
+            &script.authority,
+        )?;
+        let engine = script.publish(&self.native, policy)?;
+        Ok((engine, admission))
+    }
+}
+
+struct GuestEventAdmission {
+    limits: DocumentGuestEventLimits,
+    required: usize,
+    reports: Rc<GuestExceptionReports>,
+    refusal: reports::DispatchFailure,
+    backing: DomHostedRuntimeRetention,
+}
+
+impl GuestEventAdmission {
+    fn prepare(
+        owner: &NativeOwner,
+        input: &DomEventDispatcher<()>,
+        limits: DocumentGuestEventLimits,
+        total: Option<usize>,
+        authority: &RealmAuthority,
+    ) -> Result<Self, DocumentGuestEventError> {
+        let fixed = size_of::<GuestEvents>() + size_of::<Cell<usize>>();
+        let report_bytes = GuestExceptionReports::storage_bytes(limits.pending_exception_reports)
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        let refusal_bytes = reports::DispatchFailure::storage_bytes();
+        let required = fixed
+            .checked_add(report_bytes)
+            .and_then(|bytes| bytes.checked_add(refusal_bytes))
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        if limits.storage_bytes < required || total.is_none_or(|total| total > owner.storage_limit)
+        {
+            return Err(DocumentScriptNativeError::StorageLimit.into());
+        }
+        let (backing, report_backing, refusal_backing) = {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            input.qualify_guest_registry(&session.dom())?;
+            let hosted = session.hosted_execution();
+            let mut dom = session.dom();
+            let mut retain = |bytes| {
+                hosted
+                    .retain_script_payload(&mut dom, bytes, &owner.cancellation)
+                    .map_err(DocumentScriptNativeError::from)
+            };
+            (
+                retain(fixed)?,
+                retain(report_bytes)?,
+                retain(refusal_bytes)?,
+            )
+        };
+        let reports = Rc::new(GuestExceptionReports::new(
+            limits.pending_exception_reports,
+            report_backing,
+        )?);
+        let refusal = reports::DispatchFailure::new(authority, refusal_backing)?;
+        Ok(Self {
+            limits,
+            required,
+            reports,
+            refusal,
+            backing,
+        })
+    }
+
+    fn install(
+        self,
+        engine: &mut ScriptEngine,
+        registry: DomEventDispatcher<()>,
+    ) -> Rc<GuestExceptionReports> {
+        let Self {
+            limits,
+            required,
+            reports,
+            refusal,
+            backing,
+        } = self;
+        let exception_root_bytes = engine.process.managed_object_storage_bytes();
+        engine.guest_events = Some(Rc::new(GuestEvents {
+            registry: RefCell::new(registry),
+            limits,
+            used: Rc::new(Cell::new(required)),
+            work: Cell::new(0),
+            next_callback: Cell::new(0),
+            exception_root_bytes,
+            reports: reports.clone(),
+            refusal,
+            window_event: engine.window_event.clone(),
+            target_prototype: OnceCell::new(),
+            _backing: backing,
+        }));
+        engine.retained_bytes += limits.storage_bytes;
+        reports
+    }
+}
+
 impl DocumentScriptHost {
     /// Transfer the original native listener registry to this attached host.
     /// A refusal leaves the input registry in its original slot.
@@ -303,71 +467,23 @@ impl DocumentScriptHost {
         let input = registry
             .as_ref()
             .ok_or(DocumentGuestEventError::RegistryState)?;
-        let fixed = size_of::<GuestEvents>() + size_of::<Cell<usize>>();
-        let report_bytes = GuestExceptionReports::storage_bytes(limits.pending_exception_reports)
-            .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        let refusal_bytes = reports::DispatchFailure::storage_bytes();
-        let required = fixed
-            .checked_add(report_bytes)
-            .and_then(|bytes| bytes.checked_add(refusal_bytes))
-            .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        if limits.storage_bytes < required
-            || engine
-                .retained_bytes_with(limits.storage_bytes)
-                .is_none_or(|total| total > self.native.storage_limit)
-        {
-            return Err(DocumentScriptNativeError::StorageLimit.into());
-        }
-        let (backing, report_backing, refusal_backing) = {
-            let mut session = self
-                .native
-                .session
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            input.qualify_guest_registry(&session.dom())?;
-            let hosted = session.hosted_execution();
-            let mut dom = session.dom();
-            let mut retain = |bytes| {
-                hosted
-                    .retain_script_payload(&mut dom, bytes, &self.native.cancellation)
-                    .map_err(DocumentScriptNativeError::from)
-            };
-            (
-                retain(fixed)?,
-                retain(report_bytes)?,
-                retain(refusal_bytes)?,
-            )
-        };
-        let reports = Rc::new(GuestExceptionReports::new(
-            limits.pending_exception_reports,
-            report_backing,
-        )?);
         let authority = &self
             .native
             .attachment
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?
             .realm;
-        let refusal = reports::DispatchFailure::new(authority, refusal_backing)?;
+        let admission = GuestEventAdmission::prepare(
+            &self.native,
+            input,
+            limits,
+            engine.retained_bytes_with(limits.storage_bytes),
+            authority,
+        )?;
         let registry = registry
             .take()
             .ok_or(DocumentGuestEventError::RegistryState)?;
-        let exception_root_bytes = engine.process.managed_object_storage_bytes();
-        engine.guest_events = Some(Rc::new(GuestEvents {
-            registry: RefCell::new(registry),
-            limits,
-            used: Rc::new(Cell::new(required)),
-            work: Cell::new(0),
-            next_callback: Cell::new(0),
-            exception_root_bytes,
-            reports: reports.clone(),
-            refusal,
-            window_event: engine.window_event.clone(),
-            target_prototype: OnceCell::new(),
-            _backing: backing,
-        }));
-        self.guest_exception_reports = Some(reports);
-        engine.retained_bytes += limits.storage_bytes;
+        self.guest_exception_reports = Some(admission.install(engine, registry));
         Ok(())
     }
 

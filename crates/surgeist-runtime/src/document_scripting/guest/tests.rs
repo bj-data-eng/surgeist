@@ -73,6 +73,132 @@ fn attach_registry_with_limits(
     assert!(registry.is_none());
 }
 
+pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bound_registry() {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    let (mut foreign, _) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    let registry_limits = DomEventRegistryLimits {
+        registrations: 2,
+        pending_events: 2,
+        nested_dispatches: 2,
+        storage_bytes: 32_000,
+        work: 1_000,
+    };
+    let mut bound = DomEventDispatcher::new(registry_limits).unwrap();
+    bound.bind(&mut session.dom(), &cancellation).unwrap();
+    let kind = units("retained");
+    let original_registration = bound
+        .add_listener(
+            &mut session.dom(),
+            target.global(),
+            &kind,
+            DomEventCallback::new(|_, _, _: &mut (), _| Ok(())),
+            Default::default(),
+        )
+        .unwrap();
+    let mut unbound = Some(DomEventDispatcher::new(registry_limits).unwrap());
+    let mut foreign_registry = DomEventDispatcher::new(registry_limits).unwrap();
+    foreign_registry
+        .bind(&mut foreign.dom(), &cancellation)
+        .unwrap();
+    let mut foreign_registry = Some(foreign_registry);
+    let mut bound = Some(bound);
+    let limits = DocumentGuestEventLimits {
+        storage_bytes: 32_000,
+        work: 1_000,
+        pending_exception_reports: 2,
+        dispatch: DomEventDispatchLimits {
+            path_items: 1,
+            snapshot_listeners: 2,
+            failure_records: 2,
+            callbacks: 2,
+            work: 1_000,
+        },
+    };
+    let policy = HtmlScriptingPolicy {
+        user_allows: true,
+        automation_allows: true,
+    };
+    let read = units("readChildCount");
+    let detach = units("detachIf");
+    let hooks = || DocumentScriptHooks {
+        child_count: &read,
+        detach_source_node_if: &detach,
+    };
+    let prepared = PreparedDocumentScriptHost::prepare(session, 2_000_000, cancellation).unwrap();
+
+    let Err(unbound_failure) =
+        prepared.enable_with_guest_event_registry(target, policy, hooks(), &mut unbound, limits)
+    else {
+        panic!("an unbound competitor must not publish a Window");
+    };
+    assert!(matches!(
+        unbound_failure.error,
+        DocumentGuestEventError::RegistryUnbound
+    ));
+    assert!(unbound.is_some());
+    assert!(unbound_failure.owner.native.attachment.get().is_none());
+
+    let Err(foreign_failure) = unbound_failure.owner.enable_with_guest_event_registry(
+        target,
+        policy,
+        hooks(),
+        &mut foreign_registry,
+        limits,
+    ) else {
+        panic!("a foreign bound registry must not publish a Window");
+    };
+    assert!(matches!(
+        foreign_failure.error,
+        DocumentGuestEventError::Dispatch(DomEventDispatchError::Dom(
+            surgeist_dom::DomError::ForeignOwner
+        ))
+    ));
+    assert!(foreign_registry.is_some());
+    assert!(foreign_failure.owner.native.attachment.get().is_none());
+
+    let Err(storage_failure) = foreign_failure.owner.enable_with_guest_event_registry(
+        target,
+        policy,
+        hooks(),
+        &mut bound,
+        DocumentGuestEventLimits {
+            storage_bytes: 0,
+            ..limits
+        },
+    ) else {
+        panic!("insufficient event backing must leave the Window unpublished");
+    };
+    assert!(matches!(
+        storage_failure.error,
+        DocumentGuestEventError::Document(DocumentScriptError::Native(
+            DocumentScriptNativeError::StorageLimit
+        ))
+    ));
+    assert!(bound.is_some());
+    assert!(storage_failure.owner.native.attachment.get().is_none());
+
+    let mut host = storage_failure
+        .owner
+        .enable_with_guest_event_registry(target, policy, hooks(), &mut bound, limits)
+        .unwrap();
+    assert!(bound.is_none());
+    let permit = host.permit().unwrap();
+    assert!(
+        host.remove_guest_event_listener(&permit, original_registration)
+            .unwrap()
+    );
+    let event_target = host.create_guest_event_target(&permit).unwrap();
+    let event = host
+        .create_guest_event(&permit, &kind, Default::default())
+        .unwrap();
+    let report = host
+        .dispatch_guest_event(&permit, &event_target, &event)
+        .unwrap();
+    assert_eq!(report.receipt().event_type().code_units(), kind);
+    assert_eq!(report.receipt().callbacks(), 0);
+}
+
 pub(in crate::document_scripting) fn refused_first_target_releases_prototype_capture() {
     let (prototype_bytes, target_bytes) = {
         let mut host = host(Arc::new(AtomicBool::new(false)));
