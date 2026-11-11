@@ -1,7 +1,7 @@
 //! Element projection over a current canonical Document read.
 
 use super::*;
-use surgeist_dom::{DomError, DomQualifiedName};
+use surgeist_dom::DomQualifiedName;
 use surgeist_html::{
     bounded::lexical::validate_custom_element_name_with, vocabulary::KnownHtmlElement,
 };
@@ -74,24 +74,13 @@ enum ElementMember {
     TagName,
 }
 
-enum RootReadError {
-    Dom(DomError),
-    Guest(DocumentGuestEventError),
-}
-
-impl From<DomError> for RootReadError {
-    fn from(error: DomError) -> Self {
-        Self::Dom(error)
-    }
-}
-
-impl From<RootReadError> for DocumentGuestEventError {
-    fn from(error: RootReadError) -> Self {
-        match error {
-            RootReadError::Dom(error) => DocumentScriptNativeError::from(error).into(),
-            RootReadError::Guest(error) => error,
-        }
-    }
+enum NativeProjection {
+    Document(DocumentId),
+    Element {
+        origin: DomHostedGlobalId,
+        attached: DomHostedGlobalId,
+        interface: ElementInterface,
+    },
 }
 
 impl ElementBindings {
@@ -339,6 +328,78 @@ fn install_named<'scope>(
     Ok(install(scope, global, units, parent_constructor, parent)?)
 }
 
+impl PublicEventBindings {
+    pub(in crate::document_scripting::guest) fn project_node<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        node: NodeId,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let bindings = &self.document;
+        if let Some(value) = bindings.find(scope, events, node)? {
+            return Ok(value);
+        }
+        let projection = self.callbacks.with_native(owner, |session, attached| {
+            let snapshot = session.snapshot();
+            let node = snapshot.node_with(node, || events.step())?;
+            if let Some(document) = node.as_document() {
+                return Ok(NativeProjection::Document(document.id()));
+            }
+            let element = node
+                .as_element()
+                .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+            events.step()?;
+            let origin = node
+                .relevant_global()
+                .map_err(DomHostedRuntimeError::Dom)
+                .map_err(DocumentScriptNativeError::from)?
+                .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
+            Ok(NativeProjection::Element {
+                origin,
+                attached,
+                interface: element_interface(element.name(), events)?,
+            })
+        })?;
+        let (origin, attached, interface) = match projection {
+            NativeProjection::Document(document) => {
+                return self.project_document(scope, owner, events, document);
+            }
+            NativeProjection::Element {
+                origin,
+                attached,
+                interface,
+            } => (origin, attached, interface),
+        };
+        let project = |elements: &ElementBindings| {
+            let prototype = elements.prototype(events, interface)?;
+            bindings.ordinary.project(
+                scope,
+                owner,
+                events,
+                ordinary::NodePrototype::Creation(prototype),
+                |inbox, key| {
+                    self.callbacks.with_native(owner, |session, _| {
+                        let watch = session.dom().raw_mut().watch_node_retirement(
+                            node,
+                            inbox,
+                            key,
+                            events.limits.node_retirement,
+                            &owner.cancellation,
+                        )?;
+                        Ok((GuestNode::Element(node), watch))
+                    })
+                },
+            )
+        };
+        if origin == attached {
+            project(&bindings.element)
+        } else {
+            self.with_origin(events, origin, |origin| project(&origin.elements))
+        }
+    }
+}
+
 impl Capture {
     fn document_element<'scope>(
         &self,
@@ -354,64 +415,18 @@ impl Capture {
         };
         let (owner, events) = self.active(scope)?;
         let result = (|| {
-            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-            let bindings = &public.document;
             let root = self.with_native(&owner, |session, _| {
-                let snapshot = session.snapshot();
-                Ok(snapshot.document_element_with(document, || {
-                    events.step().map_err(RootReadError::Guest)
-                })?)
+                session
+                    .snapshot()
+                    .document_element_with(document, || events.step())
             })?;
-            let Some(root) = root else {
-                return Ok(scope.primitive(Primitive::Null)?);
-            };
-            if let Some(value) = bindings.ordinary.open(scope, &events, root)? {
-                return Ok(value);
-            }
-            let (origin, attached, interface) = self.with_native(&owner, |session, global| {
-                let snapshot = session.snapshot();
-                events.step()?;
-                let origin = snapshot.relevant_global(root).map_err(|error| {
-                    DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Dom(error))
-                })?;
-                let origin = origin.ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
-                events.step()?;
-                let element = snapshot
-                    .node(root)
-                    .map_err(DocumentScriptNativeError::from)?
-                    .as_element()
-                    .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                Ok((origin, global, element_interface(element.name(), &events)?))
-            })?;
-            let project = |elements: &ElementBindings| {
-                let prototype = elements.prototype(&events, interface)?;
-                bindings.ordinary.project(
-                    scope,
-                    &owner,
-                    &events,
-                    ordinary::NodePrototype::Creation(prototype),
-                    |inbox, key| {
-                        self.with_native(&owner, |session, _| {
-                            let watch = session
-                                .dom()
-                                .raw_mut()
-                                .watch_node_retirement(
-                                    root,
-                                    inbox,
-                                    key,
-                                    events.limits.node_retirement,
-                                    &owner.cancellation,
-                                )
-                                .map_err(DocumentScriptNativeError::from)?;
-                            Ok((GuestNode::Element(root), watch))
-                        })
-                    },
-                )
-            };
-            if origin == attached {
-                project(&bindings.element)
-            } else {
-                public.with_origin(&events, origin, |origin| project(&origin.elements))
+            match root {
+                Some(root) => events
+                    .public
+                    .as_ref()
+                    .ok_or(Error::ExpiredIdentity)?
+                    .project_node(scope, &owner, &events, root),
+                None => Ok(scope.primitive(Primitive::Null)?),
             }
         })();
         complete(scope, &events, result)

@@ -79,7 +79,7 @@ pub(super) fn event_target_value<'scope>(
                 .public
                 .as_ref()
                 .ok_or(Error::ExpiredIdentity)?
-                .document_object(scope, events, *node);
+                .project_node(scope, owner, events, *node);
         }
         DomEventTarget::Standalone(expected) => {
             let value = scope

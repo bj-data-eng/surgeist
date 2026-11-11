@@ -199,18 +199,16 @@ impl DocumentBindings {
         })
     }
 
-    pub(super) fn open<'scope>(
+    fn find<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         events: &GuestEvents,
         node: surgeist_dom::NodeId,
-    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
         if let Some(value) = self.open_document(scope, events, node)? {
-            return Ok(value);
+            return Ok(Some(value));
         }
-        self.ordinary
-            .open(scope, events, node)?
-            .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
+        self.ordinary.open(scope, events, node)
     }
 
     fn open_document<'scope>(
@@ -478,6 +476,25 @@ fn install_getter<'scope>(
     )
 }
 
+impl PublicEventBindings {
+    fn project_document<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        document: DocumentId,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let bindings = &self.document;
+        if let Some(value) = bindings.open_document(scope, events, document.node())? {
+            return Ok(value);
+        }
+        let prototype = scope.open_callback_object(&bindings.prototype)?;
+        // Published Document nodes survive for the native owner lifetime.
+        // Their guest pins belong to this attachment, like new Document().
+        bindings.publish_document(scope, owner, events, &prototype, || Ok(document))
+    }
+}
+
 impl Capture {
     fn window_document<'scope>(
         &self,
@@ -504,7 +521,9 @@ impl Capture {
                     .map_err(DocumentScriptNativeError::from)?;
                 Ok(())
             })?;
-            bindings.open(scope, &events, bindings.attached_id.node())
+            bindings
+                .open_document(scope, &events, bindings.attached_id.node())?
+                .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
         })();
         complete(scope, &events, result)
     }
@@ -530,16 +549,18 @@ impl Capture {
             events.step()?;
             let observation = self.with_native(&owner, |session, _| {
                 let snapshot = session.snapshot();
-                let node = snapshot
-                    .node(id.node())
-                    .map_err(DocumentScriptNativeError::from)?;
+                let node = snapshot.node_with(id.node(), || events.step())?;
                 let node_type = id.node_type(node.kind())?;
                 Ok(match member {
                     NodeMember::Type => Observation::Number(node_type),
                     NodeMember::Name => Observation::String(node.node_name()),
                     NodeMember::OwnerDocument => Observation::Document(node.owner_document()),
                     NodeMember::Parent => Observation::Node(node.parent()),
-                    NodeMember::Connected => Observation::Boolean(node.is_connected()),
+                    NodeMember::Connected => Observation::Boolean(
+                        node.root_with(true, || events.step())?
+                            .as_document()
+                            .is_some(),
+                    ),
                 })
             })?;
             match observation {
@@ -559,35 +580,15 @@ impl Capture {
                     .public
                     .as_ref()
                     .ok_or(Error::ExpiredIdentity)?
-                    .document
-                    .open(scope, &events, node),
-                Observation::Document(Some(document)) => {
-                    self.project_document(scope, &owner, &events, document)
-                }
+                    .project_node(scope, &owner, &events, node),
+                Observation::Document(Some(document)) => events
+                    .public
+                    .as_ref()
+                    .ok_or(Error::ExpiredIdentity)?
+                    .project_document(scope, &owner, &events, document),
             }
         })();
         complete(scope, &events, result)
-    }
-
-    fn project_document<'scope>(
-        &self,
-        scope: &mut Scope<'scope>,
-        owner: &NativeOwner,
-        events: &GuestEvents,
-        document: DocumentId,
-    ) -> Result<Value<'scope>, DocumentGuestEventError> {
-        let bindings = &events
-            .public
-            .as_ref()
-            .ok_or(Error::ExpiredIdentity)?
-            .document;
-        if let Some(value) = bindings.open_document(scope, events, document.node())? {
-            return Ok(value);
-        }
-        let prototype = scope.open_callback_object(&bindings.prototype)?;
-        // Published Document nodes survive for the native owner lifetime.
-        // Their guest pins belong to this attachment, like new Document().
-        bindings.publish_document(scope, owner, events, &prototype, || Ok(document))
     }
 
     fn root_node<'scope>(
@@ -609,10 +610,7 @@ impl Capture {
                 .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
             events.step()?;
             self.with_native(&owner, |session, _| {
-                session
-                    .snapshot()
-                    .node(id.node())
-                    .map_err(DocumentScriptNativeError::from)?;
+                session.snapshot().node_with(id.node(), || events.step())?;
                 Ok(())
             })?;
             let options = node_get_root_node_0_options();
@@ -628,30 +626,11 @@ impl Capture {
             };
             scope.check_active()?;
             events.step()?;
-            let (root, document) = self.with_native(&owner, |session, _| {
+            let root = self.with_native(&owner, |session, _| {
                 let snapshot = session.snapshot();
-                let node = snapshot
-                    .node(id.node())
-                    .map_err(DocumentScriptNativeError::from)?;
-                let root = if options.composed {
-                    node.shadow_including_root()
-                } else {
-                    node.root()
-                };
-                if root == id.node() {
-                    return Ok((root, None));
-                }
-                events.step()?;
-                let document = snapshot
-                    .node(root)
-                    .map_err(DocumentScriptNativeError::from)?
-                    .as_document()
-                    .map(|document| document.id());
-                Ok((root, document))
+                let node = snapshot.node_with(id.node(), || events.step())?;
+                Ok(node.root_with(options.composed, || events.step())?.id())
             })?;
-            if let Some(document) = document {
-                return self.project_document(scope, &owner, &events, document);
-            }
             if root == id.node() {
                 let receiver = scope.retain(arguments.receiver());
                 return Ok(scope.import(&receiver)?);
@@ -660,8 +639,7 @@ impl Capture {
                 .public
                 .as_ref()
                 .ok_or(Error::ExpiredIdentity)?
-                .document
-                .open(scope, &events, root)
+                .project_node(scope, &owner, &events, root)
         })();
         complete(scope, &events, result)
     }

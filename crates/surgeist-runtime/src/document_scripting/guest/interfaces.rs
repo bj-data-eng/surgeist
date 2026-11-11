@@ -91,6 +91,10 @@ struct OriginAuthority {
     _backing: GuestBacking,
 }
 
+impl OriginAuthority {
+    const STORAGE_BYTES: usize = size_of::<Self>() + 2 * size_of::<usize>();
+}
+
 struct OriginBindings {
     global: DomHostedGlobalId,
     target: RetainedCallbackObject,
@@ -361,7 +365,7 @@ impl PublicEventBindings {
         let origin_cost = origin_cost
             .get()
             .include(size_of::<OriginBindings>())?
-            .include(size_of::<OriginAuthority>())?
+            .include(OriginAuthority::STORAGE_BYTES)?
             .include(dom_exception::constructor_storage_bytes::<GuestBacking>())?;
         Ok(Self {
             callbacks,
@@ -394,7 +398,7 @@ impl PublicEventBindings {
         let authority = Rc::new(OriginAuthority {
             global,
             realm,
-            _backing: fund(size_of::<OriginAuthority>())?,
+            _backing: fund(OriginAuthority::STORAGE_BYTES)?,
         });
         let capture = |bytes| -> Result<Capture, DocumentGuestEventError> {
             Ok(Capture {
@@ -473,15 +477,6 @@ impl PublicEventBindings {
         scope: &mut Scope<'scope>,
     ) -> Result<Value<'scope>, Error> {
         scope.open_callback_object(&self.target)
-    }
-
-    pub(super) fn document_object<'scope>(
-        &self,
-        scope: &mut Scope<'scope>,
-        events: &GuestEvents,
-        node: surgeist_dom::NodeId,
-    ) -> Result<Value<'scope>, DocumentGuestEventError> {
-        self.document.open(scope, events, node)
     }
 
     pub(super) fn event_prototype<'scope>(
@@ -575,6 +570,32 @@ fn install_event_interface<'scope>(
     let global = scope.global()?;
     document::install_interface(scope, &global, name, &constructor, prototype)?;
     Ok(())
+}
+
+impl Callbacks {
+    fn with_native<T>(
+        &self,
+        owner: &NativeOwner,
+        action: impl FnOnce(&mut DomSession, DomHostedGlobalId) -> Result<T, DocumentGuestEventError>,
+    ) -> Result<T, DocumentGuestEventError> {
+        let attachment = owner
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        if attachment.realm.identity() != self.permit.realm
+            || attachment.target.document() != self.permit.document
+        {
+            return Err(DocumentScriptNativeError::ForeignPermit.into());
+        }
+        let mut session = owner
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        if owner.observe(attachment, &mut session)?.status() != HtmlScriptingStatus::Enabled {
+            return Err(DocumentScriptNativeError::Revoked.into());
+        }
+        action(&mut session, attachment.target.global())
+    }
 }
 
 impl Capture {
@@ -749,23 +770,7 @@ impl Capture {
         owner: &NativeOwner,
         action: impl FnOnce(&mut DomSession, DomHostedGlobalId) -> Result<T, DocumentGuestEventError>,
     ) -> Result<T, DocumentGuestEventError> {
-        let attachment = owner
-            .attachment
-            .get()
-            .ok_or(DocumentScriptNativeError::Revoked)?;
-        if attachment.realm.identity() != self.callbacks.permit.realm
-            || attachment.target.document() != self.callbacks.permit.document
-        {
-            return Err(DocumentScriptNativeError::ForeignPermit.into());
-        }
-        let mut session = owner
-            .session
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        if owner.observe(attachment, &mut session)?.status() != HtmlScriptingStatus::Enabled {
-            return Err(DocumentScriptNativeError::Revoked.into());
-        }
-        action(&mut session, attachment.target.global())
+        self.callbacks.with_native(owner, action)
     }
 
     fn get<'scope>(

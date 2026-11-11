@@ -72,7 +72,15 @@ impl DomSnapshot {
         self.state.details_intentions.len()
     }
     pub fn node(&self, id: NodeId) -> Result<DomNode<'_>, DomError> {
-        let node = self.state.node(self.owner, id)?;
+        self.node_with(id, || Ok(()))
+    }
+    /// Read an exact node and admit the canonical lookup and its visited pages.
+    pub fn node_with<E: From<DomError>>(
+        &self,
+        id: NodeId,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<DomNode<'_>, E> {
+        let node = self.state.node_with(self.owner, id, &mut step)?;
         Ok(DomNode {
             snapshot: self,
             id,
@@ -409,6 +417,16 @@ impl<'a> DomNode<'a> {
     pub fn id(self) -> NodeId {
         self.id
     }
+    /// The authentic historical Global of this already qualified node.
+    pub fn relevant_global(
+        self,
+    ) -> Result<Option<crate::DomHostedGlobalId>, crate::DomHostedError> {
+        let global = self.node.relevant_global();
+        if global.is_some_and(|id| id.source.owner != self.snapshot.owner) {
+            return Err(crate::DomHostedError::ForeignSource);
+        }
+        Ok(global)
+    }
     pub fn kind(self) -> DomNodeKind<'a> {
         self.node.kind()
     }
@@ -597,6 +615,23 @@ impl<'a> DomNode<'a> {
                 .expect("snapshot parent invariant");
         }
         id
+    }
+    /// Return the root of the ordinary or shadow-including tree. Admit each
+    /// exact ancestor lookup in order and stop at the first refusal.
+    pub fn root_with<E: From<DomError>>(
+        self,
+        composed: bool,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Self, E> {
+        let mut node = self;
+        while let Some(parent) = if composed {
+            node.shadow_including_parent()
+        } else {
+            node.parent()
+        } {
+            node = self.snapshot.node_with(parent, &mut step)?;
+        }
+        Ok(node)
     }
     pub fn is_connected(self) -> bool {
         matches!(

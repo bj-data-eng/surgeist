@@ -88,6 +88,12 @@ impl From<DocumentScriptNativeError> for DocumentGuestEventError {
     }
 }
 
+impl From<DomError> for DocumentGuestEventError {
+    fn from(error: DomError) -> Self {
+        DocumentScriptNativeError::from(error).into()
+    }
+}
+
 impl From<Error> for DocumentGuestEventError {
     fn from(error: Error) -> Self {
         DocumentScriptError::from(error).into()
