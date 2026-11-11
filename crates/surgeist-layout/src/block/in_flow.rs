@@ -1528,7 +1528,15 @@ where
     let child_flow_axes = child_style.common.flow_axes;
     let child_parent_size = constants.child_containing_block_size(child_flow_axes);
     let child_logical_node_inner_size = child_flow_axes.logical_size(child_parent_size);
-    let child_logical_available = child_flow_axes.logical_size(pass_request.axes());
+    let mut child_logical_available = child_flow_axes.logical_size(pass_request.axes());
+    if child_flow_axes.inline_axis() != constants.flow_axes.inline_axis()
+        && child_logical_node_inner_size.inline.is_none()
+    {
+        // An auto block extent supplies indefinite inline space to an
+        // orthogonal child. Its separate fallback stays on the request.
+        child_logical_available.inline =
+            in_flow_child_block_request(child_logical_available.inline);
+    }
     let child_non_auto_margin = child_flow_axes
         .logical_edges(unresolved_margin)
         .map(resolved_length_auto_fallback_zero);
