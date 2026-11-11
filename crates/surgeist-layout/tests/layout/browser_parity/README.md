@@ -89,6 +89,11 @@ covers 36 variants across nine parent and child writing-mode combinations.
 The focused Grid axis test checks the original tracks and diagonal placement,
 then compares each registered rectangle tree through Native layout.
 
+The [original Subgrid axis edition](../../../examples/qualify-root-context/README.md#original-subgrid-axes-qualification)
+covers 36 variants across nine parent and child writing-mode combinations.
+The focused Subgrid axis test checks both inherited axes and the original
+topology, then compares each registered rectangle tree through Native layout.
+
 The [Grid Lanes original diagnostic receipt](captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
 records the complete raw numeric differences from all 36 source-qualified
 original axis captures. It is separate from matching editions. Use the
