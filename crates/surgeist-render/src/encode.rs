@@ -1379,6 +1379,114 @@ pub(crate) fn image_transform(size: Size, rect: Rect, fit: ImageFit) -> Result<k
 }
 
 #[cfg(test)]
+mod image_fit_accounting_tests {
+    use super::*;
+    use crate::accounting::{FrameFixture, RendererCpu};
+
+    fn positive_image() -> Image {
+        Image::from_rgba(Size::new(4.0, 2.0), [255, 0, 0, 255].repeat(8)).unwrap()
+    }
+
+    fn assert_fit_refuses_before_downstream_work(image: &Image) {
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::CoordinateVisits, 0)
+            .unwrap()
+            .with_work_limit(RenderWork::PathElementVisits, 0)
+            .unwrap();
+        let options = RenderAccountingOptions::new()
+            .with_limits(limits)
+            .with_profile(RenderProfile::Detailed {
+                timing: false,
+                event_limit: 16,
+                filter: RenderPhaseFilter::Phase(RenderPhase::Encode),
+            });
+        let cpu = RendererCpu::new(options).unwrap();
+        let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let account = attempt.account().at(RenderPhase::Encode);
+                account.phase(RenderPhase::Encode, || {
+                    let mut scene = VelloScene::default();
+                    encode_image(
+                        &mut scene,
+                        kurbo::Affine::translate((8.0, -3.0)),
+                        image,
+                        Rect::try_new(1.0, 0.0, 2.0, 2.0).unwrap(),
+                        ImageFit::Fill,
+                        &account,
+                    )
+                })
+            })
+            .unwrap()
+            .into_parts();
+        assert_eq!(fault, None);
+        let attempt = report.attempt().unwrap();
+        assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
+        let refusal = attempt.refusal().unwrap();
+        assert_eq!(
+            result.unwrap_err().accounting_diagnostic(),
+            Some(RenderAccountingError::Refused(refusal))
+        );
+        assert_eq!(refusal.phase(), RenderPhase::Attempt);
+        assert_eq!((refusal.current(), refusal.amount()), (0, 1));
+        assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 0 });
+        assert!(attempt.events().any(|event| matches!(
+            event,
+            RenderEvent::Refused {
+                phase: RenderPhase::Encode,
+                ..
+            }
+        )));
+        assert_eq!(
+            refusal.quantity(),
+            RenderQuantity::Work(RenderWork::CoordinateVisits),
+            "image fit must admit its first coordinate before downstream work"
+        );
+
+        let encode = attempt.phase_usage(RenderPhase::Encode);
+        for work in [
+            RenderWork::CoordinateVisits,
+            RenderWork::PathElementVisits,
+            RenderWork::PaintVisits,
+            RenderWork::ResourceProbes,
+            RenderWork::ImageSourceBytes,
+            RenderWork::AtlasTexels,
+        ] {
+            assert_eq!(encode.work(work), 0, "{work:?}");
+        }
+        let cpu = report.renderer_cpu().unwrap();
+        for scope in [RenderCpuScope::ImagePayloads, RenderCpuScope::FrameBacking] {
+            let usage = cpu.scope_usage(scope);
+            for resource in [
+                RenderResource::RetainedCpuBytes,
+                RenderResource::ScratchCpuBytes,
+            ] {
+                assert_eq!(
+                    usage.peak(resource),
+                    usage.opening_live(resource),
+                    "{scope:?} {resource:?} peak"
+                );
+                assert_eq!(
+                    usage.live(resource),
+                    usage.opening_live(resource),
+                    "{scope:?} {resource:?} live"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ordinary_image_fit_refuses_coordinates_before_path_preparation() {
+        assert_fit_refuses_before_downstream_work(&positive_image());
+    }
+
+    #[test]
+    fn pixelated_image_fit_refuses_coordinates_before_path_preparation() {
+        let image = positive_image().rendering(ImageRendering::Pixelated);
+        assert_fit_refuses_before_downstream_work(&image);
+    }
+}
+
+#[cfg(test)]
 mod ordinary_gradient_accounting_tests {
     use super::*;
     use crate::accounting::RenderAttemptKind;
