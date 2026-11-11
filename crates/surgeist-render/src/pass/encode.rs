@@ -27,6 +27,7 @@ use super::super::{
     },
 };
 use super::{
+    PassMap,
     close::{ExecutableFilterStepFacts, ExecutableVelloCaptureFacts, preparation_error},
     model::{
         RuntimeBlurInput, RuntimeColorFilter, RuntimeComposite, RuntimeCompositeKind,
@@ -37,7 +38,8 @@ use super::{
     },
     parameters::backdrop_blur_edge_uniform_bytes,
     prepare::{
-        PreparedGraph, PreparedSpatialFilterPassObjects, PreparedTextureBinding,
+        PreparedColorFilterOperationBinding, PreparedGraph, PreparedKernelBinding,
+        PreparedResourceBinding, PreparedSpatialFilterPassObjects, PreparedTextureBinding,
         RuntimePassPreparationRequest, VELLO_CAPTURE_TEXTURE_USAGES,
     },
 };
@@ -951,6 +953,168 @@ struct CompletedPassReleases {
     resources: SharedValue<Vec<RuntimeResourceId>>,
     kernels: SharedValue<Vec<GaussianKernelKey>>,
     color_buffer_taken: bool,
+}
+
+/// Scheduled bindings from the graph whose frame resolved their exact leases.
+struct ResolvedPassReleases<'graph> {
+    pass: RuntimePassId,
+    resources: SharedValue<Vec<RuntimeResourceId>>,
+    kernels: SharedValue<Vec<GaussianKernelKey>>,
+    releases_color_filter_operation: bool,
+    resource_bindings: &'graph mut PassMap<RuntimeResourceId, PreparedResourceBinding>,
+    kernel_bindings: &'graph mut PassMap<GaussianKernelKey, PreparedKernelBinding>,
+    color_filter_operation_bindings:
+        &'graph mut PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
+}
+
+impl<'graph> ResolvedPassReleases<'graph> {
+    fn try_resolve(
+        graph: &'graph mut PreparedGraph<'_>,
+        pass: RuntimePassId,
+        account: &Account,
+    ) -> Result<Self> {
+        let request = graph.require_current_pass(pass, account)?;
+        let resource_releases = request.runtime.releases.clone();
+        let kernel_releases = request.kernel_releases.clone();
+        let releases_color_filter_operation = request.color_filter_operations.is_some();
+
+        for resource in &resource_releases {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            let binding = graph
+                .resource_bindings
+                .get(resource, account)?
+                .ok_or_else(|| preparation_error("prepared runtime release binding is missing"))?;
+            if binding.lease.is_none() {
+                return Err(preparation_error(
+                    "prepared runtime release is stale or duplicate",
+                ));
+            }
+        }
+        for kernel in &kernel_releases {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            let binding = graph
+                .kernel_bindings
+                .get(kernel, account)?
+                .ok_or_else(|| preparation_error("prepared Gaussian release binding is missing"))?;
+            if binding.lease.is_none() {
+                return Err(preparation_error(
+                    "prepared Gaussian release is stale or duplicate",
+                ));
+            }
+        }
+        if releases_color_filter_operation
+            && graph
+                .color_filter_operation_bindings
+                .get(&pass, account)?
+                .is_none_or(|binding| binding.buffer.is_none())
+        {
+            return Err(preparation_error(
+                "prepared color-filter operation release is stale or missing",
+            ));
+        }
+
+        let PreparedGraph {
+            resource_bindings,
+            kernel_bindings,
+            color_filter_operation_bindings,
+            frame_scope,
+            ..
+        } = graph;
+        let mut leases = account.temporary(resource_releases.len() + kernel_releases.len())?;
+        for resource in &resource_releases {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            let lease = resource_bindings
+                .get(resource, account)?
+                .and_then(|binding| binding.lease.as_ref())
+                .ok_or_else(|| {
+                    preparation_error("prepared resource release is unavailable after validation")
+                })?;
+            leases.append_slot()?.write(lease);
+        }
+        for kernel in &kernel_releases {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            let lease = kernel_bindings
+                .get(kernel, account)?
+                .and_then(|binding| binding.lease.as_ref())
+                .ok_or_else(|| {
+                    preparation_error("prepared Gaussian release is unavailable after validation")
+                })?;
+            leases.append_slot()?.write(lease);
+        }
+        frame_scope
+            .as_mut()
+            .ok_or_else(|| preparation_error("prepared frame resource scope is closed"))?
+            .resolve_leases_atomically(&leases)?;
+        drop(leases);
+        Ok(Self {
+            pass,
+            resources: resource_releases,
+            kernels: kernel_releases,
+            releases_color_filter_operation,
+            resource_bindings,
+            kernel_bindings,
+            color_filter_operation_bindings,
+        })
+    }
+
+    fn take_bindings(self) -> Result<CompletedPassReleases> {
+        let mut first_missing = None;
+        for resource in self.resources.iter() {
+            let binding = self
+                .resource_bindings
+                .maintenance_get_mut(resource)
+                .and_then(|binding| binding.lease.take());
+            Self::drop_required_binding(
+                binding,
+                "prepared resource release is unavailable after atomic resolution",
+                &mut first_missing,
+            );
+        }
+        for kernel in self.kernels.iter() {
+            let binding = self
+                .kernel_bindings
+                .maintenance_get_mut(kernel)
+                .and_then(|binding| binding.lease.take());
+            Self::drop_required_binding(
+                binding,
+                "prepared Gaussian release is unavailable after atomic resolution",
+                &mut first_missing,
+            );
+        }
+        if self.releases_color_filter_operation {
+            let binding = self
+                .color_filter_operation_bindings
+                .maintenance_get_mut(&self.pass)
+                .and_then(|binding| binding.buffer.take());
+            Self::drop_required_binding(
+                binding,
+                "prepared color-filter operation release is unavailable after atomic resolution",
+                &mut first_missing,
+            );
+        }
+        if let Some(message) = first_missing {
+            return Err(preparation_error(message));
+        }
+        Ok(CompletedPassReleases {
+            pass: self.pass,
+            resources: self.resources,
+            kernels: self.kernels,
+            color_buffer_taken: self.releases_color_filter_operation,
+        })
+    }
+
+    fn drop_required_binding<T>(
+        binding: Option<T>,
+        missing: &'static str,
+        first_missing: &mut Option<&'static str>,
+    ) {
+        match binding {
+            Some(binding) => drop(binding),
+            None => {
+                first_missing.get_or_insert(missing);
+            }
+        }
+    }
 }
 
 struct CompletedReleaseFacts {
@@ -4149,103 +4313,9 @@ impl<'device> PreparedGraph<'device> {
         pass: RuntimePassId,
         account: &Account,
     ) -> Result<CompletedPassReleases> {
-        let request = self.require_current_pass(pass, account)?;
-        let resource_releases = request.runtime.releases.clone();
-        let kernel_releases = request.kernel_releases.clone();
-        let releases_color_filter_operation = request.color_filter_operations.is_some();
-
-        for resource in &resource_releases {
-            account.work(RenderWork::GraphEdgeVisits, 1)?;
-            let binding = self
-                .resource_bindings
-                .get(resource, account)?
-                .ok_or_else(|| preparation_error("prepared runtime release binding is missing"))?;
-            if binding.lease.is_none() {
-                return Err(preparation_error(
-                    "prepared runtime release is stale or duplicate",
-                ));
-            }
-        }
-        for kernel in &kernel_releases {
-            account.work(RenderWork::GraphEdgeVisits, 1)?;
-            let binding = self
-                .kernel_bindings
-                .get(kernel, account)?
-                .ok_or_else(|| preparation_error("prepared Gaussian release binding is missing"))?;
-            if binding.lease.is_none() {
-                return Err(preparation_error(
-                    "prepared Gaussian release is stale or duplicate",
-                ));
-            }
-        }
-        if releases_color_filter_operation
-            && self
-                .color_filter_operation_bindings
-                .get(&pass, account)?
-                .is_none_or(|binding| binding.buffer.is_none())
-        {
-            return Err(preparation_error(
-                "prepared color-filter operation release is stale or missing",
-            ));
-        }
-
-        let Self {
-            resource_bindings,
-            kernel_bindings,
-            color_filter_operation_bindings,
-            frame_scope,
-            ..
-        } = self;
-        let mut leases = account.temporary(resource_releases.len() + kernel_releases.len())?;
-        for resource in &resource_releases {
-            account.work(RenderWork::GraphEdgeVisits, 1)?;
-            let lease = resource_bindings
-                .get(resource, account)?
-                .and_then(|binding| binding.lease.as_ref())
-                .expect("prepared resource releases were validated before atomic resolution");
-            leases.append_slot()?.write(lease);
-        }
-        for kernel in &kernel_releases {
-            account.work(RenderWork::GraphEdgeVisits, 1)?;
-            let lease = kernel_bindings
-                .get(kernel, account)?
-                .and_then(|binding| binding.lease.as_ref())
-                .expect("prepared kernel releases were validated before atomic resolution");
-            leases.append_slot()?.write(lease);
-        }
-        frame_scope
-            .as_mut()
-            .ok_or_else(|| preparation_error("prepared frame resource scope is closed"))?
-            .resolve_leases_atomically(&leases)?;
-        drop(leases);
-        for resource in resource_releases.iter() {
-            let _ = resource_bindings
-                .maintenance_get_mut(resource)
-                .and_then(|binding| binding.lease.take())
-                .expect("atomically resolved prepared resource must remain bound");
-        }
-        for kernel in kernel_releases.iter() {
-            let _ = kernel_bindings
-                .maintenance_get_mut(kernel)
-                .and_then(|binding| binding.lease.take())
-                .expect("atomically resolved prepared kernel must remain bound");
-        }
-        let color_buffer_taken = if releases_color_filter_operation {
-            let _ = color_filter_operation_bindings
-                .maintenance_get_mut(&pass)
-                .and_then(|binding| binding.buffer.take())
-                .expect("validated color-filter operation buffer must remain bound");
-            true
-        } else {
-            false
-        };
+        let completed = ResolvedPassReleases::try_resolve(self, pass, account)?.take_bindings()?;
         self.next_pass = self.next_pass.saturating_add(1);
-        Ok(CompletedPassReleases {
-            pass,
-            resources: resource_releases,
-            kernels: kernel_releases,
-            color_buffer_taken,
-        })
+        Ok(completed)
     }
 
     pub(crate) fn finish_graph_submission(
@@ -4738,12 +4808,44 @@ mod repeated_proof_accounting_tests {
                 // Select the real prepared release boundary without claiming
                 // that this isolated fixture encoded the preceding frame.
                 prepared.next_pass = index;
+                let generation = prepared.resources.generation().clone();
+                let cache_custody = || {
+                    [
+                        generation.cache_bytes().unwrap(),
+                        generation.registered_cache_bytes().unwrap(),
+                        generation.idle_cache_bytes().unwrap(),
+                    ]
+                };
+                let cache_before = cache_custody();
+                let probes_before = generation.cache_work(RenderWork::ResourceProbes).unwrap();
+                let returns = |class| {
+                    generation
+                        .class_usage(class)
+                        .unwrap()
+                        .work(RenderWork::ResourceLeaseReturns)
+                };
+                let texture_before = returns(GenerationClass::CacheEffects);
+                let kernel_before = returns(GenerationClass::CacheKernels);
                 let (result, report) =
                     measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
                         prepared
                             .complete_pass_inner(pass, &account.at(RenderPhase::Encode))
                             .map(|completed| completed.pass)
                     });
+                let completed = u64::from(limit == 4);
+                assert_eq!(cache_custody(), cache_before);
+                assert_eq!(
+                    generation.cache_work(RenderWork::ResourceProbes).unwrap() - probes_before,
+                    completed * 4
+                );
+                assert_eq!(
+                    returns(GenerationClass::CacheEffects) - texture_before,
+                    completed
+                );
+                assert_eq!(
+                    returns(GenerationClass::CacheKernels) - kernel_before,
+                    completed
+                );
                 if limit == 4 {
                     result.unwrap();
                     // Each of the two relationships is inspected once while
@@ -4814,6 +4916,367 @@ mod repeated_proof_accounting_tests {
                         .work(RenderWork::Submissions),
                     0
                 );
+            }
+        });
+    }
+
+    #[test]
+    fn prepared_color_release_admits_its_exact_forward_prefix() {
+        use crate::accounting::{FrameFixture, RenderCpuScope, RenderProfile};
+        use crate::{RenderAccountingError, RenderQuantity, RenderRefusalReason, RenderResource};
+
+        pollster::block_on(async {
+            let (mut backend, identity) = backend().await;
+            let options = RenderAccountingOptions::new()
+                .with_profile(RenderProfile::Summary { timing: false });
+            let preparation_cpu = RendererCpu::new(options).unwrap();
+            let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
+                crate::FilterAmount::try_new(1.25).unwrap(),
+            )])
+            .unwrap();
+            let lowered = lower_filter_proof_fixture(vec![filters]);
+            let (result, _, _, fault) = FrameFixture::new(&preparation_cpu, options)
+                .run(async |attempt| {
+                    let setup = attempt.account();
+                    let transaction = backend.begin_gpu_operation(
+                        identity,
+                        crate::gpu_transaction::GpuOperationStage::Render,
+                        crate::RuntimeOperation::EffectRendering,
+                    )?;
+                    let mut prepared = backend.prepare_graph_resources(
+                        identity,
+                        lowered,
+                        crate::EffectQualityPolicy::AllowReducedPrecision,
+                        setup,
+                    )?;
+                    let index = prepared
+                        .plan
+                        .passes
+                        .iter()
+                        .position(|request| {
+                            matches!(request.runtime.kind, RuntimePassKind::ColorFilter(Some(_)))
+                        })
+                        .unwrap();
+                    let request = &prepared.plan.passes[index];
+                    assert_eq!(request.runtime.releases.len(), 1);
+                    assert!(request.kernel_releases.is_empty());
+                    let pass = request.runtime.id;
+                    let source = request.runtime.releases[0];
+                    assert_eq!(prepared.resource_bindings.len(), 7);
+                    assert_eq!(prepared.resource_bindings.entries[4].0, source);
+                    assert_eq!(prepared.color_filter_operation_bindings.len(), 1);
+                    assert_eq!(prepared.color_filter_operation_bindings.entries[0].0, pass);
+                    let source_id = prepared.resource_bindings.entries[4]
+                        .1
+                        .lease
+                        .as_ref()
+                        .unwrap()
+                        .resource_identity();
+                    assert_eq!(
+                        prepared.color_filter_operation_bindings.entries[0]
+                            .1
+                            .buffer
+                            .as_ref()
+                            .unwrap()
+                            .size(),
+                        48
+                    );
+                    prepared.next_pass = index;
+
+                    let generation = prepared.resources.generation().clone();
+                    let cache_custody = || {
+                        [
+                            generation.cache_bytes().unwrap(),
+                            generation.registered_cache_bytes().unwrap(),
+                            generation.idle_cache_bytes().unwrap(),
+                        ]
+                    };
+                    let buffer_bytes = || {
+                        generation
+                            .class_usage(GenerationClass::PassBuffers)
+                            .unwrap()
+                            .live(RenderResource::GpuBytes)
+                    };
+                    let texture_returns = || {
+                        generation
+                            .class_usage(GenerationClass::CacheEffects)
+                            .unwrap()
+                            .work(RenderWork::ResourceLeaseReturns)
+                    };
+                    let cleanup_probes = || {
+                        preparation_cpu
+                            .snapshot()
+                            .unwrap()
+                            .scope_usage(RenderCpuScope::Cleanup)
+                            .unwrap()
+                            .work(RenderWork::ResourceProbes)
+                    };
+                    // A search for index four among seven sorted keys compares
+                    // indices three, five and four. The color map has one key.
+                    // Two source searches and one color search need seven probes.
+                    for limit in [6, 7] {
+                        let cache_before = cache_custody();
+                        let buffer_before = buffer_bytes();
+                        let returns_before = texture_returns();
+                        let probes_before =
+                            generation.cache_work(RenderWork::ResourceProbes).unwrap();
+                        let cleanup_before = cleanup_probes();
+                        let (result, report) =
+                            measure_proof_work(RenderWork::ResourceProbes, limit, |account| {
+                                prepared
+                                    .complete_pass_inner(pass, &account.at(RenderPhase::Encode))
+                                    .map(|receipt| (receipt.pass, receipt.color_buffer_taken))
+                            });
+                        let attempt = report.attempt().unwrap();
+                        let usage = attempt.usage();
+                        assert_eq!(usage.work(RenderWork::GraphNodeVisits), 1);
+                        assert_eq!(usage.work(RenderWork::GraphEdgeVisits), 2);
+                        assert_eq!(usage.work(RenderWork::ResourceProbes), limit);
+                        let succeeded = limit == 7;
+                        if succeeded {
+                            assert_eq!(result.unwrap(), (pass, true));
+                            assert_eq!(attempt.refusal(), None);
+                        } else {
+                            let refusal = attempt.refusal().unwrap();
+                            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                            assert_eq!(
+                                refusal.quantity(),
+                                RenderQuantity::Work(RenderWork::ResourceProbes)
+                            );
+                            assert_eq!((refusal.current(), refusal.amount()), (6, 1));
+                            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 6 });
+                            assert_eq!(
+                                result.unwrap_err().accounting_diagnostic(),
+                                Some(RenderAccountingError::Refused(refusal))
+                            );
+                        }
+                        assert_eq!(prepared.next_pass, index + usize::from(succeeded));
+                        assert_eq!(
+                            prepared.resource_bindings.entries[4]
+                                .1
+                                .lease
+                                .as_ref()
+                                .map(|lease| lease.resource_identity()),
+                            (!succeeded).then_some(source_id)
+                        );
+                        assert_eq!(
+                            prepared.color_filter_operation_bindings.entries[0]
+                                .1
+                                .buffer
+                                .as_ref()
+                                .map(|buffer| buffer.size()),
+                            (!succeeded).then_some(48)
+                        );
+                        assert_eq!(cache_custody(), cache_before);
+                        assert_eq!(buffer_before - buffer_bytes(), 48 * u64::from(succeeded));
+                        assert_eq!(texture_returns() - returns_before, u64::from(succeeded));
+                        assert_eq!(
+                            generation.cache_work(RenderWork::ResourceProbes).unwrap()
+                                - probes_before,
+                            2 * u64::from(succeeded)
+                        );
+                        assert_eq!(cleanup_probes() - cleanup_before, 4 * u64::from(succeeded));
+                    }
+                    drop(prepared);
+                    transaction
+                        .finish(crate::RuntimeOperation::EffectRendering, Some(setup))
+                        .await
+                })
+                .await
+                .unwrap()
+                .into_parts();
+            result.unwrap();
+            assert_eq!(fault, None);
+        });
+    }
+
+    #[test]
+    fn late_release_fault_continues_gaussian_and_color_takes() {
+        use crate::RenderResource;
+        use crate::accounting::{FrameFixture, RenderCpuScope, RenderProfile};
+        use surgeist_ledger::Dimension;
+
+        enum Case {
+            LaterKernel,
+            MissingKernel,
+            LaterColorBuffer,
+        }
+
+        pollster::block_on(async {
+            let (mut backend, identity) = backend().await;
+            let options = RenderAccountingOptions::new()
+                .with_profile(RenderProfile::Summary { timing: false });
+            let preparation_cpu = RendererCpu::new(options).unwrap();
+            for case in [
+                Case::LaterKernel,
+                Case::MissingKernel,
+                Case::LaterColorBuffer,
+            ] {
+                let color = matches!(case, Case::LaterColorBuffer);
+                let filter = if color {
+                    crate::FilterOp::brightness(crate::FilterAmount::try_new(1.25).unwrap())
+                } else {
+                    crate::FilterOp::blur(crate::FilterBlur::try_new(0.25).unwrap())
+                };
+                let lowered = lower_filter_proof_fixture(vec![
+                    crate::FilterList::try_ops(vec![filter]).unwrap(),
+                ]);
+                let (result, _, _, fault) = FrameFixture::new(&preparation_cpu, options)
+                    .run(async |attempt| {
+                        let setup = attempt.account();
+                        let transaction = backend.begin_gpu_operation(
+                            identity,
+                            crate::gpu_transaction::GpuOperationStage::Render,
+                            crate::RuntimeOperation::EffectRendering,
+                        )?;
+                        let mut prepared = backend.prepare_graph_resources(
+                            identity,
+                            lowered,
+                            crate::EffectQualityPolicy::AllowReducedPrecision,
+                            setup,
+                        )?;
+                        let index = prepared
+                            .plan
+                            .passes
+                            .iter()
+                            .position(|request| {
+                                if color {
+                                    matches!(
+                                        request.runtime.kind,
+                                        RuntimePassKind::ColorFilter(Some(_))
+                                    )
+                                } else {
+                                    matches!(
+                                        request.runtime.kind,
+                                        RuntimePassKind::BlurVertical(Some(_))
+                                    )
+                                }
+                            })
+                            .unwrap();
+                        let request = &prepared.plan.passes[index];
+                        assert_eq!(request.runtime.releases.len(), 1);
+                        assert_eq!(request.kernel_releases.len(), usize::from(!color));
+                        let pass = request.runtime.id;
+                        let source = request.runtime.releases[0];
+                        let kernel = request.kernel_releases.first().cloned();
+                        // Brightness follows the inner composite at index four.
+                        // Vertical blur follows its horizontal intermediate at five.
+                        let source_index = if color { 4 } else { 5 };
+                        assert_eq!(prepared.resource_bindings.len(), if color { 7 } else { 8 });
+                        assert_eq!(prepared.resource_bindings.entries[source_index].0, source);
+                        assert_eq!(prepared.kernel_bindings.len(), usize::from(!color));
+                        assert_eq!(
+                            prepared.color_filter_operation_bindings.len(),
+                            usize::from(color)
+                        );
+                        prepared.next_pass = index;
+
+                        let generation = prepared.resources.generation().clone();
+                        let cache_custody = || {
+                            [
+                                generation.cache_bytes().unwrap(),
+                                generation.registered_cache_bytes().unwrap(),
+                                generation.idle_cache_bytes().unwrap(),
+                            ]
+                        };
+                        let operation_bytes = || {
+                            generation
+                                .class_usage(GenerationClass::PassBuffers)
+                                .unwrap()
+                                .live(RenderResource::GpuBytes)
+                        };
+                        let cleanup_probes = || {
+                            preparation_cpu
+                                .snapshot()
+                                .unwrap()
+                                .scope_usage(RenderCpuScope::Cleanup)
+                                .unwrap()
+                                .work(RenderWork::ResourceProbes)
+                        };
+                        let returns_before =
+                            generation.cache_work(RenderWork::ResourceLeaseReturns)?;
+                        let resolved =
+                            ResolvedPassReleases::try_resolve(&mut prepared, pass, setup)?;
+                        assert_eq!(
+                            generation.cache_work(RenderWork::ResourceLeaseReturns)?
+                                - returns_before,
+                            if color { 1 } else { 2 }
+                        );
+                        // The private receipt permits exercising an unavailable
+                        // slot after real atomic resolution. Leave its key in
+                        // the original map and observe the scheduled takes alone.
+                        drop(
+                            resolved
+                                .resource_bindings
+                                .maintenance_get_mut(&source)
+                                .unwrap()
+                                .lease
+                                .take()
+                                .unwrap(),
+                        );
+                        if matches!(case, Case::MissingKernel) {
+                            drop(
+                                resolved
+                                    .kernel_bindings
+                                    .maintenance_get_mut(kernel.as_ref().unwrap())
+                                    .unwrap()
+                                    .lease
+                                    .take()
+                                    .unwrap(),
+                            );
+                        }
+                        let cache_before = cache_custody();
+                        let bytes_before = operation_bytes();
+                        let work_before = generation.usage()?;
+                        let cleanup_before = cleanup_probes();
+                        let probes_before = setup.work_count(RenderWork::ResourceProbes)?;
+                        let edges_before = setup.work_count(RenderWork::GraphEdgeVisits)?;
+
+                        let error = resolved.take_bindings().err().unwrap();
+                        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+                        assert_eq!(
+                            error.message(),
+                            "prepared resource release is unavailable after atomic resolution"
+                        );
+                        assert_eq!(prepared.next_pass, index);
+                        assert!(
+                            prepared.resource_bindings.entries[source_index]
+                                .1
+                                .lease
+                                .is_none()
+                        );
+                        if color {
+                            assert!(
+                                prepared.color_filter_operation_bindings.entries[0]
+                                    .1
+                                    .buffer
+                                    .is_none()
+                            );
+                        } else {
+                            assert!(prepared.kernel_bindings.entries[0].1.lease.is_none());
+                        }
+                        // Both source searches take three comparisons. The
+                        // single later kernel or color binding adds one.
+                        assert_eq!(cleanup_probes() - cleanup_before, 4);
+                        assert_eq!(setup.work_count(RenderWork::ResourceProbes)?, probes_before);
+                        assert_eq!(setup.work_count(RenderWork::GraphEdgeVisits)?, edges_before);
+                        assert_eq!(cache_custody(), cache_before);
+                        assert_eq!(bytes_before - operation_bytes(), if color { 48 } else { 0 });
+                        let work_after = generation.usage()?;
+                        for &work in RenderWork::ALL {
+                            assert_eq!(work_after.work(work), work_before.work(work));
+                        }
+                        drop(prepared);
+                        assert_eq!(cache_custody(), [0, 0, 0]);
+                        transaction
+                            .finish(crate::RuntimeOperation::EffectRendering, Some(setup))
+                            .await
+                    })
+                    .await
+                    .unwrap()
+                    .into_parts();
+                result.unwrap();
+                assert_eq!(fault, None);
             }
         });
     }
