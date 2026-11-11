@@ -193,7 +193,7 @@ impl CssomStore {
     }
 }
 
-fn prepare_data(store: &mut CssomStore, batch: CssomBatch) -> Result<Ready, CssomError> {
+fn prepare_data(store: &mut CssomStore, mut batch: CssomBatch) -> Result<Ready, CssomError> {
     // Keep direct commit's qualification/error precedence intact.
     store.check_guard(&CssomEditGuard {
         revision: batch.base.revision.clone(),
@@ -205,6 +205,8 @@ fn prepare_data(store: &mut CssomStore, batch: CssomBatch) -> Result<Ready, Csso
     if batch.poisoned {
         return Err(CssomError::BatchAborted);
     }
+    // Only the selected rows cross the publication boundary.
+    batch.discard_media_restorations();
     let reserved = store.replacement_reservations(batch.terminal_replacement.as_ref())?;
     batch
         .staged

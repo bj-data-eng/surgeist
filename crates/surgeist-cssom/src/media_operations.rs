@@ -83,7 +83,7 @@ impl CssomBatch {
                 CssomSheetText::Utf8(source) => source.is_empty(),
                 CssomSheetText::Utf16(source) => source.is_empty(),
             };
-            let (mut value, diagnostics, work) = if empty {
+            let (value, diagnostics, work) = if empty {
                 (CssMediaQueryList::new(Vec::new()), Vec::new(), 0)
             } else {
                 let (value, diagnostics, work) =
@@ -93,7 +93,10 @@ impl CssomBatch {
                     .map_err(CssomError::Media)?;
                 (value, diagnostics, work)
             };
-            let source_changed = if exact {
+            let mut restored = None;
+            let source_changed = if empty {
+                exact_media_source(current).map(|_| true)
+            } else if exact {
                 let mut remaining = sheet_utf16_limits(&this.limits)
                     .max_work
                     .saturating_sub(work);
@@ -101,24 +104,20 @@ impl CssomBatch {
                 // Returning to the original exact input reuses its source owner.
                 // The prepared commit can then recognize a net no-op by identity.
                 if changed == Some(true)
-                    && let Some(base) = this.base.media.get(id)
+                    && let Some(base) = this.base.media.get_shared(id)
                     && exact_media_source_differs(Some(current), Some(base))
                     && exact_source_changed(base, &value, &mut remaining, cancel)? == Some(false)
                 {
-                    value = base.clone();
+                    restored = Some(base.clone());
                 }
                 changed
             } else {
                 None
             };
+            this.media_restorations.remove(id);
+            let value = restored.unwrap_or_else(|| Arc::new(value));
             Ok(CssomMediaEdit {
-                changed: this.replace_media(
-                    id,
-                    value,
-                    false,
-                    source_changed,
-                    MediaReplacement::Explicit,
-                )?,
+                changed: this.replace_media(id, value, false, source_changed)?,
                 diagnostics,
             })
         })?;
@@ -222,11 +221,16 @@ impl CssomBatch {
                 // can shift this append into any earlier position. Reuse a
                 // matching original now while this append owns work and polling.
                 if let Some(work) = work
-                    && let Some(base) = this
-                        .base
-                        .media
-                        .get(id)
-                        .filter(|base| !std::ptr::eq(*base, current))
+                    && let Some(base) =
+                        this.media_restoration_row(id).map(Arc::as_ref).or_else(|| {
+                            if exact_media_source(current).is_some() {
+                                return None;
+                            }
+                            this.base
+                                .media
+                                .get(id)
+                                .filter(|base| !std::ptr::eq(*base, current))
+                        })
                     && let Some(original) = retained_base_member(
                         base,
                         &candidate,
@@ -240,23 +244,9 @@ impl CssomBatch {
                 }
                 selected.push(candidate);
             }
-            let value = if let Some(base) = this.base.media.get(id)
-                && exact_media_source(base).is_some()
-                && !this.explicit_media_replacements.contains(id)
-                && base.same_retained_members(&selected)
-            {
-                base.clone()
-            } else {
-                CssMediaQueryList::new(selected)
-            };
+            let value = this.media_after_member_edit(id, selected)?;
             Ok(CssomMediaEdit {
-                changed: this.replace_media(
-                    id,
-                    value,
-                    false,
-                    None,
-                    MediaReplacement::MemberEdit,
-                )?,
+                changed: this.replace_media(id, value, false, None)?,
                 diagnostics,
             })
         })?;
@@ -387,9 +377,20 @@ fn recovered<T>(report: CssParseReport<T>) -> Result<(T, Vec<CssRecoveryDiagnost
     Ok(report.into_parts())
 }
 
-enum MediaReplacement {
-    Explicit,
-    MemberEdit,
+pub(crate) enum MediaRestoration {
+    /// The batch already owns this row through its original capture.
+    Committed,
+    /// A row created or replaced while staging, now displaced by member edits.
+    Displaced(Arc<CssMediaQueryList>),
+}
+
+impl MediaRestoration {
+    pub(crate) fn displaced(&self) -> Option<&CssMediaQueryList> {
+        match self {
+            Self::Committed => None,
+            Self::Displaced(row) => Some(row.as_ref()),
+        }
+    }
 }
 
 impl CssomBatch {
@@ -408,69 +409,87 @@ impl CssomBatch {
         value: CssMediaQueryList,
         retain_input: bool,
     ) -> Result<bool, CssomError> {
-        self.replace_media(id, value, retain_input, None, MediaReplacement::Explicit)
+        self.apply(|this| {
+            this.staged.media(id)?;
+            this.media_restorations.remove(id);
+            this.replace_media(id, Arc::new(value), retain_input, None)
+        })
+    }
+
+    fn media_restoration_row(&self, id: &CssomMediaListId) -> Option<&Arc<CssMediaQueryList>> {
+        match self.media_restorations.get(id)? {
+            MediaRestoration::Committed => self.base.media.get_shared(id),
+            MediaRestoration::Displaced(row) => Some(row),
+        }
+    }
+
+    fn media_after_member_edit(
+        &mut self,
+        id: &CssomMediaListId,
+        selected: Vec<CssMediaQuery>,
+    ) -> Result<Arc<CssMediaQueryList>, CssomError> {
+        if let Some(baseline) = self.media_restoration_row(id) {
+            if baseline.same_retained_members(&selected) {
+                let baseline = baseline.clone();
+                self.media_restorations.remove(id);
+                return Ok(baseline);
+            }
+        } else if let Some(current) = self.staged.media.get_shared(id)
+            && exact_media_source(current).is_some()
+        {
+            let restoration = if self
+                .base
+                .media
+                .get_shared(id)
+                .is_some_and(|base| Arc::ptr_eq(base, current))
+            {
+                MediaRestoration::Committed
+            } else {
+                MediaRestoration::Displaced(current.clone())
+            };
+            // A restoration belongs to one already admitted staged media ID.
+            self.media_restorations
+                .try_reserve(1)
+                .map_err(|_| CssomError::Limit {
+                    resource: "media restoration rows",
+                    maximum: self.limits.max_objects,
+                })?;
+            self.media_restorations.insert(id.clone(), restoration);
+        }
+        Ok(Arc::new(CssMediaQueryList::new(selected)))
     }
 
     fn replace_media(
         &mut self,
         id: &CssomMediaListId,
-        value: CssMediaQueryList,
+        value: Arc<CssMediaQueryList>,
         retain_input: bool,
         source_changed: Option<bool>,
-        replacement: MediaReplacement,
     ) -> Result<bool, CssomError> {
-        self.apply(|this| {
-            let current = this.staged.media(id)?;
-            let changed = source_changed.unwrap_or_else(|| !same_provenance(current, &value));
-            if matches!(replacement, MediaReplacement::Explicit)
-                && let Some(base) = this.base.media.get(id)
-                && exact_media_source(base).is_some()
-            {
-                // At most one barrier per admitted base media object. An
-                // explicit clear also ends a pending member-only restoration
-                // when the staged list was already empty.
-                let retained = if changed || retain_input {
-                    &value
-                } else {
-                    current
-                };
-                if exact_media_source_differs(Some(retained), Some(base)) {
-                    if !this.explicit_media_replacements.contains(id) {
-                        this.explicit_media_replacements
-                            .try_reserve(1)
-                            .map_err(|_| CssomError::Limit {
-                                resource: "media source replacements",
-                                maximum: this.limits.max_objects,
-                            })?;
-                        this.explicit_media_replacements.insert(id.clone());
-                    }
-                } else {
-                    this.explicit_media_replacements.remove(id);
-                }
-            }
-            if !changed && !retain_input {
-                return Ok(false);
-            }
-            let sheets = this
-                .staged
+        let current = self.staged.media(id)?;
+        let changed = source_changed.unwrap_or_else(|| !same_provenance(current, value.as_ref()));
+        if !changed && !retain_input {
+            return Ok(false);
+        }
+        let sheets = self
+            .staged
+            .sheets
+            .iter()
+            .filter(|(_, sheet)| &sheet.media == id)
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        for sheet in sheets {
+            self.staged
                 .sheets
-                .iter()
-                .filter(|(_, sheet)| &sheet.media == id)
-                .map(|(id, _)| id.clone())
-                .collect::<Vec<_>>();
-            for sheet in sheets {
-                this.staged
-                    .sheets
-                    .get_mut(&sheet)
-                    .expect("selected sheet")
-                    .inputs
-                    .media = value.clone();
-            }
-            this.staged.media.insert(id.clone(), value);
-            if changed {
-                this.affect(CssomObjectId::MediaList(id.clone()), &[CssomChange::Media]);
-            }
-            Ok(changed)
-        })
+                .get_mut(&sheet)
+                .expect("selected sheet")
+                .inputs
+                .media = value.as_ref().clone();
+        }
+        self.staged.media.insert_shared(id.clone(), value);
+        if changed {
+            self.affect(CssomObjectId::MediaList(id.clone()), &[CssomChange::Media]);
+        }
+        Ok(changed)
     }
 }

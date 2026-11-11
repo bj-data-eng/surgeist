@@ -1,9 +1,18 @@
 //! Synchronous admission accounting for complete retained CSSOM state.
 use crate::{model::State, *};
 use std::{collections::HashSet, sync::Arc};
+use surgeist_css::query::media::CssMediaQueryList;
 
 impl State {
     pub(crate) fn check_limits(&self, limits: &CssomLimits) -> Result<(), CssomError> {
+        self.check_limits_with_displaced_media(limits, std::iter::empty())
+    }
+
+    pub(crate) fn check_limits_with_displaced_media<'a>(
+        &self,
+        limits: &CssomLimits,
+        displaced: impl Iterator<Item = &'a CssMediaQueryList> + Clone,
+    ) -> Result<(), CssomError> {
         for context in std::iter::once(self.context.as_ref()).chain(self.inline_contexts()) {
             context.validate()?;
         }
@@ -327,8 +336,11 @@ impl State {
                 _ => {}
             }
         }
+        for media in displaced.clone() {
+            add(&mut entries, media.queries().len());
+        }
         limit(entries, limits.max_entries, "entries")?;
-        self.check_source_limits(limits)?;
+        self.check_source_limits(limits, displaced)?;
         limit(
             strings,
             limits.max_string_bytes,

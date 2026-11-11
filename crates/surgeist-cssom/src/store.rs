@@ -4,7 +4,7 @@ use crate::{
     *,
 };
 use std::{
-    collections::{BTreeSet, HashMap, HashSet, VecDeque},
+    collections::{BTreeSet, HashMap, VecDeque},
     sync::Arc,
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -98,7 +98,7 @@ impl CssomStore {
             declaration_changes: Vec::new(),
             counter_changes: Vec::new(),
             owner_updates: Vec::new(),
-            explicit_media_replacements: HashSet::new(),
+            media_restorations: HashMap::new(),
             pending_preparations: Arc::new(AtomicUsize::new(0)),
         })
     }
@@ -263,7 +263,8 @@ pub struct CssomBatch {
     pub(crate) declaration_changes: Vec<CssomBlockId>,
     pub(crate) counter_changes: Vec<CssomBlockId>,
     pub(crate) owner_updates: Vec<(CssomBlockId, crate::declaration_budget::DeclarationBudget)>,
-    pub(crate) explicit_media_replacements: HashSet<CssomMediaListId>,
+    pub(crate) media_restorations:
+        HashMap<CssomMediaListId, crate::media_operations::MediaRestoration>,
     pub(crate) pending_preparations: Arc<AtomicUsize>,
     pub(crate) terminal_replacement: Option<CssomReplaceToken>,
 }
@@ -302,14 +303,26 @@ impl CssomBatch {
         }
         let result = operation(self).and_then(|value| {
             self.staged
-                .check_limits(&self.limits)
+                .check_limits_with_displaced_media(
+                    &self.limits,
+                    self.media_restorations
+                        .values()
+                        .filter_map(crate::media_operations::MediaRestoration::displaced),
+                )
                 .map(|()| value)
                 .map_err(E::from)
         });
         if result.is_err() {
-            self.poisoned = true;
+            self.abort_staging();
         }
         result
+    }
+    pub(crate) fn abort_staging(&mut self) {
+        self.poisoned = true;
+        self.discard_media_restorations();
+    }
+    pub(crate) fn discard_media_restorations(&mut self) {
+        self.media_restorations = HashMap::new();
     }
     pub(crate) fn affect(&mut self, id: CssomObjectId, changes: &[CssomChange]) {
         self.categories.extend(changes.iter().copied());

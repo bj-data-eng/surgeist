@@ -22,6 +22,9 @@ impl<K: Eq + Hash, V> SharedTable<K, V> {
     pub(crate) fn get(&self, key: &K) -> Option<&V> {
         self.0.get(key).map(Arc::as_ref)
     }
+    pub(crate) fn get_shared(&self, key: &K) -> Option<&Arc<V>> {
+        self.0.get(key)
+    }
     pub(crate) fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.0.iter().map(|(key, value)| (key, value.as_ref()))
     }
@@ -39,7 +42,10 @@ impl<K: Eq + Hash + Clone, V: Clone> SharedTable<K, V> {
         Arc::make_mut(&mut self.0).get_mut(key).map(Arc::make_mut)
     }
     pub(crate) fn insert(&mut self, key: K, value: V) {
-        Arc::make_mut(&mut self.0).insert(key, Arc::new(value));
+        self.insert_shared(key, Arc::new(value));
+    }
+    pub(crate) fn insert_shared(&mut self, key: K, value: Arc<V>) {
+        Arc::make_mut(&mut self.0).insert(key, value);
     }
 }
 impl<K: Eq + Hash + Clone, V> SharedTable<K, V> {

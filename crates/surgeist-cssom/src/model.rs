@@ -60,7 +60,8 @@ pub struct CssomLimits {
     pub max_input_bytes: usize,
     /// Preparation policy for one exact UTF-16 stylesheet or MediaList input.
     pub sheet_utf16_input: CssUtf16InputLimits,
-    /// Actual shared parse-source backing retained by this canonical state.
+    /// Actual shared parse-source backing retained by the selected state and
+    /// any additional parse sources held during an edit.
     pub max_retained_source_bytes: usize,
     /// Actual source payload visits, identity comparisons and retained-state walk actions.
     pub max_source_traversal_steps: usize,

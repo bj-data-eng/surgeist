@@ -306,6 +306,119 @@ fn empty_utf8_and_utf16_both_clear_exact_comment_only_media_source() {
 }
 
 #[test]
+fn displaced_exact_list_shares_source_backing_with_a_surviving_staged_member() {
+    let original = Arc::new(exact_media("print, speech"));
+    let report = CssMediaQueryList::parse_utf16(
+        &CssParser::default(),
+        original.clone(),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, std::convert::Infallible>(()),
+    )
+    .unwrap();
+    let source = report.syntax().parse_source().unwrap().source();
+    let mut store = CssomStore::new(
+        CssomLimits {
+            max_retained_source_bytes: source.storage_usage().retained_bytes(),
+            ..Default::default()
+        },
+        Default::default(),
+    )
+    .unwrap();
+    let media = source_free_media(&mut store);
+    let proceed = AtomicBool::new(false);
+    let mut edit = batch(&store);
+    assert!(
+        edit.set_media_text(
+            media.id(),
+            CssomSheetText::Utf16(original.clone()),
+            &proceed
+        )
+        .unwrap()
+        .changed()
+    );
+    assert!(
+        edit.delete_medium(media.id(), "print", &proceed)
+            .unwrap()
+            .changed()
+    );
+    assert!(matches!(
+        store.commit(edit).unwrap().publication(),
+        CssomPublication::Changed(_)
+    ));
+    let current = store.snapshot();
+    let list = current.media(media.id()).unwrap();
+    assert!(list.parse_source().is_none());
+    let [member] = list.queries() else {
+        panic!("expected the surviving speech member");
+    };
+    let CssValueOrigin::Parsed(origin) = member.origin() else {
+        panic!("expected an authored speech member");
+    };
+    assert!(Arc::ptr_eq(
+        origin.source().original_utf16().unwrap(),
+        &original
+    ));
+    assert_eq!(media.media_text(&store, limits()).unwrap(), "speech");
+}
+
+#[test]
+fn displaced_exact_source_releases_when_superseded_aborted_or_published() {
+    enum Finish {
+        Supersede,
+        Cancel,
+        Publish,
+    }
+    for finish in [Finish::Supersede, Finish::Cancel, Finish::Publish] {
+        let original = Arc::new(exact_media(""));
+        let custody = Arc::downgrade(&original);
+        let mut store = new_store();
+        let media = source_free_media(&mut store);
+        let proceed = AtomicBool::new(false);
+        let before = store.snapshot();
+        let mut edit = batch(&store);
+        assert!(
+            edit.set_media_text(media.id(), CssomSheetText::Utf16(original), &proceed)
+                .unwrap()
+                .changed()
+        );
+        assert!(
+            edit.append_medium(media.id(), "print", &proceed)
+                .unwrap()
+                .changed()
+        );
+        assert!(custody.upgrade().is_some());
+        match finish {
+            Finish::Supersede => {
+                assert!(
+                    edit.set_media_text(media.id(), "", &proceed)
+                        .unwrap()
+                        .changed()
+                );
+                assert!(custody.upgrade().is_none());
+                unchanged(&store.commit(edit).unwrap());
+            }
+            Finish::Cancel => {
+                assert!(matches!(
+                    edit.delete_medium(media.id(), "print", &AtomicBool::new(true)),
+                    Err(CssomError::Cancelled)
+                ));
+                assert!(custody.upgrade().is_none());
+                assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
+                assert_eq!(store.snapshot().revision(), before.revision());
+            }
+            Finish::Publish => {
+                assert!(matches!(
+                    store.commit(edit).unwrap().publication(),
+                    CssomPublication::Changed(_)
+                ));
+                assert!(custody.upgrade().is_none());
+                assert_eq!(media.media_text(&store, limits()).unwrap(), "print");
+            }
+        }
+    }
+}
+
+#[test]
 fn utf16_setter_retains_original_units_and_changes_only_distinct_source_values() {
     let mut store = new_store();
     let media = source_free_media(&mut store);

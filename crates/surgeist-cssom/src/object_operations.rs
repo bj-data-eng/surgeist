@@ -95,7 +95,7 @@ struct StagingGuard<'a> {
 impl Drop for StagingGuard<'_> {
     fn drop(&mut self) {
         if !self.completed {
-            self.batch.poisoned = true;
+            self.batch.abort_staging();
         }
     }
 }

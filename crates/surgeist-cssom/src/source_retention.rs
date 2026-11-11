@@ -1,6 +1,7 @@
 //! CSS owns source payload traversal and accounting; this adapter supplies the
 //! actual retained canonical tables, including detached objects and edited data.
 use crate::{model::State, *};
+use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::rule::CssImportTarget;
 use surgeist_css::source::{
     CssRetainedSources, CssSourceRetention, CssSourceRetentionError, CssSourceRetentionResource,
@@ -134,10 +135,11 @@ impl CssRetainedSources for CssomBlockData {
     }
 }
 impl State {
-    pub(crate) fn check_source_limits(&self, limits: &CssomLimits) -> Result<(), CssomError> {
-        self.source_traversal_steps(limits).map(|_| ())
-    }
-    fn source_traversal_steps(&self, limits: &CssomLimits) -> Result<usize, CssomError> {
+    pub(crate) fn check_source_limits<'a>(
+        &self,
+        limits: &CssomLimits,
+        displaced: impl Iterator<Item = &'a CssMediaQueryList>,
+    ) -> Result<(), CssomError> {
         let mut sources = CssSourceRetention::with_shared_original_utf16(
             limits.max_retained_source_bytes,
             limits.max_source_traversal_steps,
@@ -237,7 +239,10 @@ impl State {
                     Ok(())
                 })?;
             }
-            Ok(sources.steps())
+            for media in displaced {
+                sources.visit(media)?;
+            }
+            Ok(())
         })();
         result.map_err(|error: CssSourceRetentionError| {
             assert!(

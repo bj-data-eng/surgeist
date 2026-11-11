@@ -353,7 +353,7 @@ impl CssomBatch {
         staged: T,
         cancel: &AtomicBool,
     ) -> Result<T, CssomError> {
-        check_cancellation(cancel).inspect_err(|_| self.poisoned = true)?;
+        check_cancellation(cancel).inspect_err(|_| self.abort_staging())?;
         Ok(staged)
     }
     /// Publishes the supplied selected host collection; CSSOM does not select a DOM list.
