@@ -94,7 +94,7 @@ pub(crate) enum RealmProfile {
 }
 
 pub(crate) struct WindowInterface {
-    pub(crate) constructor: Root,
+    pub(crate) prototype: Root,
     pub(crate) event_target_prototype: Root,
 }
 

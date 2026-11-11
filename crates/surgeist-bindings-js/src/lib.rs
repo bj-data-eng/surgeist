@@ -248,24 +248,56 @@ impl Execution<'_> {
     ) -> Result<(Realm, T), E> {
         let result = self.in_pending_window_realm(&pending, |scope| {
             let interface = scope.operations.window_interface()?;
-            let window = scope.import(&interface.constructor)?;
+            let window_prototype = scope.import(&interface.prototype)?;
             let prototype = scope.import(&interface.event_target_prototype)?;
             let (parent, value) = match install(scope, &prototype) {
                 Ok(result) => result,
                 Err(error) => return Ok(Err(error)),
             };
-            let parent_prototype =
-                scope.get(&parent, PropertyKey::String(&b"prototype".map(u16::from)))?;
+            let prototype_key = &b"prototype".map(u16::from);
+            let parent_prototype = scope.get(&parent, PropertyKey::String(prototype_key))?;
             if !scope.is_callable(&parent)?
                 || !scope.strict_equals(&parent_prototype, &prototype)?
             {
                 return Err(Error::PropertyRejected);
             }
+            let name = &b"Window".map(u16::from);
+            let constructor = ConstructorCallback::bounded(
+                0,
+                // The interface always refuses before consulting NewTarget.
+                |_| Err(Error::BackendUnavailable),
+                |scope, _| {
+                    Ok(ConstructorCompletion::Throw(
+                        scope.type_error(&b"Illegal constructor".map(u16::from))?,
+                    ))
+                },
+            );
+            let window = scope.constructor(&constructor, FunctionMetadata { name, length: 0 })?;
             scope.set_prototype(&window, ObjectPrototype::Object(&parent))?;
+            scope.define_property(
+                &window,
+                PropertyKey::String(prototype_key),
+                PropertyDescriptor::Data {
+                    value: &window_prototype,
+                    writable: false,
+                    enumerable: false,
+                    configurable: false,
+                },
+            )?;
+            scope.define_new_property(
+                &window_prototype,
+                PropertyKey::String(&b"constructor".map(u16::from)),
+                PropertyDescriptor::Data {
+                    value: &window,
+                    writable: true,
+                    enumerable: false,
+                    configurable: true,
+                },
+            )?;
             let global = scope.global()?;
             scope.define_new_property(
                 &global,
-                PropertyKey::String(&b"Window".map(u16::from)),
+                PropertyKey::String(name),
                 PropertyDescriptor::Data {
                     value: &window,
                     writable: true,

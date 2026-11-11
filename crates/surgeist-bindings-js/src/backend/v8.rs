@@ -31,7 +31,7 @@ static NEXT_OWNER: AtomicU64 = AtomicU64::new(0);
 
 const ERROR_CONSTRUCTOR_FIELD: usize = 6;
 const DOM_EXCEPTION_PROFILE_FIELD: usize = 7;
-const WINDOW_CONSTRUCTOR_FIELD: usize = 8;
+const WINDOW_PROTOTYPE_FIELD: usize = 8;
 const WINDOW_EVENT_TARGET_PROTOTYPE_FIELD: usize = 9;
 
 struct ActiveOwner;
@@ -429,8 +429,8 @@ impl super::Engine for Engine {
                 return Err(Error::BackendUnavailable);
             }
             if let Some(window) = window {
-                let (constructor, target) = window.open(scope)?;
-                if !intrinsics.set_internal_field(WINDOW_CONSTRUCTOR_FIELD, constructor.into())
+                let (prototype, target) = window.open(scope)?;
+                if !intrinsics.set_internal_field(WINDOW_PROTOTYPE_FIELD, prototype.into())
                     || !intrinsics
                         .set_internal_field(WINDOW_EVENT_TARGET_PROTOTYPE_FIELD, target.into())
                 {
@@ -712,11 +712,11 @@ impl Operations for Entered<'_, '_, '_> {
         self.attempt(
             ExceptionPhase::PropertyRead,
             |scope, roots, realm, intrinsics| {
-                let constructor = captured_value(scope, intrinsics, WINDOW_CONSTRUCTOR_FIELD)?;
+                let window = captured_value(scope, intrinsics, WINDOW_PROTOTYPE_FIELD)?;
                 let prototype =
                     captured_value(scope, intrinsics, WINDOW_EVENT_TARGET_PROTOTYPE_FIELD)?;
                 Ok(WindowInterface {
-                    constructor: roots.retain(scope, realm, constructor)?,
+                    prototype: roots.retain(scope, realm, window)?,
                     event_target_prototype: roots.retain(scope, realm, prototype)?,
                 })
             },

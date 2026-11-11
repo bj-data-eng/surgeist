@@ -31,7 +31,6 @@ impl<'scope> Templates<'scope> {
         let window = v8::FunctionTemplate::new(scope, reject_construction);
         window.inherit(named_properties);
         window.set_class_name(v8::String::new(scope, "Window").ok_or(Error::BackendUnavailable)?);
-        window.read_only_prototype();
         window.instance_template(scope).set_immutable_proto();
         let prototype = window.prototype_template(scope);
         prototype.set_immutable_proto();
@@ -53,14 +52,8 @@ impl<'scope> Templates<'scope> {
     pub(super) fn open(
         self,
         scope: &mut v8::PinScope<'scope, '_>,
-    ) -> Result<
-        (
-            v8::Local<'scope, v8::Function>,
-            v8::Local<'scope, v8::Object>,
-        ),
-        Error,
-    > {
-        let constructor = self
+    ) -> Result<(v8::Local<'scope, v8::Object>, v8::Local<'scope, v8::Object>), Error> {
+        let window = self
             .window
             .get_function(scope)
             .ok_or(Error::BackendUnavailable)?;
@@ -73,6 +66,10 @@ impl<'scope> Templates<'scope> {
             .get_function(scope)
             .ok_or(Error::BackendUnavailable)?;
         let prototype = v8::String::new(scope, "prototype").ok_or(Error::BackendUnavailable)?;
+        let window = window
+            .get(scope, prototype.into())
+            .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+            .ok_or(Error::BackendUnavailable)?;
         let names = names
             .get(scope, prototype.into())
             .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
@@ -93,10 +90,12 @@ impl<'scope> Templates<'scope> {
             .get(scope, prototype.into())
             .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
             .ok_or(Error::BackendUnavailable)?;
-        if target.delete(scope, constructor_name.into()) != Some(true) {
+        if target.delete(scope, constructor_name.into()) != Some(true)
+            || window.delete(scope, constructor_name.into()) != Some(true)
+        {
             return Err(Error::BackendUnavailable);
         }
-        Ok((constructor, target))
+        Ok((window, target))
     }
 }
 
