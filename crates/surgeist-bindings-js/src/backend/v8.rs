@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::ThreadId;
 
 use super::{
-    CoercedString, DomExceptionProfile, ObjectPrototype, Operations, PropertyDefinition,
-    PropertyDescriptor, PropertyKey, RealmProfile, WindowInterface,
+    CoercedString, DomExceptionProfile, IndexedTrap, ObjectPrototype, Operations, PropertyDefinition,
+    PropertyDescriptor, PropertyKey, Projection, RealmProfile, WindowInterface,
 };
 use crate::callback_object::CallbackObjectIdentity;
 use crate::conversion::ConversionAccount;
@@ -21,6 +21,7 @@ use crate::{
 
 mod callback_object;
 mod native_object;
+mod cssom;
 #[cfg(test)]
 mod tests;
 mod window;
@@ -33,6 +34,8 @@ const ERROR_CONSTRUCTOR_FIELD: usize = 6;
 const DOM_EXCEPTION_PROFILE_FIELD: usize = 7;
 const WINDOW_PROTOTYPE_FIELD: usize = 8;
 const WINDOW_EVENT_TARGET_PROTOTYPE_FIELD: usize = 9;
+const CSSOM_PROTOTYPES_FIELD: usize = 10;
+const INDEXED_REFLECT_FIELD: usize = 11;
 
 struct ActiveOwner;
 
@@ -102,6 +105,7 @@ enum RootHandle {
 enum NativeCallback {
     Callable(Callback, Option<i32>),
     Constructor(ConstructorCallback),
+    Projection(Rc<dyn std::any::Any>),
 }
 
 struct CallbackLease {
@@ -119,7 +123,7 @@ enum CallbackRole {
 struct CallbackEntry {
     // Release the ORIGINAL weak handle before dropping arbitrary captures.
     // Cloning an SDK Weak would lose its finalizer.
-    _function: v8::Weak<v8::Function>,
+    object: v8::Weak<v8::Value>,
     retired: Rc<Cell<bool>>,
     // The SDK finalizer previously held this same strong lease. Registry
     // custody adds no guest root: the function handle above remains weak.
@@ -202,10 +206,11 @@ struct Roots {
     callback_objects: callback_object::CallbackObjects,
     native_objects: native_object::NativeObjects,
     next_callback: Cell<u32>,
-    callbacks: RefCell<BTreeMap<u32, CallbackEntry>>,
+    callbacks: RefCell<BTreeMap<u32, Rc<CallbackEntry>>>,
     interrupt: v8::IsolateHandle,
     dom_exception_key: v8::Global<v8::Private>,
     declared_constructor_key: v8::Global<v8::Private>,
+    projection_key: v8::Global<v8::Private>,
     cleanup_interrupt: Cell<bool>,
     // Completed empty frames release only at owned post-SDK reaping boundaries.
     callback_frames: PanicRecords,
@@ -415,6 +420,32 @@ impl Roots {
         self.fail(Error::RegistryConflict)
     }
 
+    fn register_callback(
+        &self,
+        scope: &mut v8::PinScope,
+        id: u32,
+        object: v8::Local<v8::Value>,
+        lease: Rc<CallbackLease>,
+    ) -> Result<(), Error> {
+        let retired = Rc::new(Cell::new(false));
+        let signal = retired.clone();
+        let object =
+            v8::Weak::with_guaranteed_finalizer(scope, object, Box::new(move || signal.set(true)));
+        self.callbacks
+            .try_borrow_mut()
+            .map_err(|_| self.conflict())?
+            .insert(
+                id,
+                Rc::new(CallbackEntry {
+                    object,
+                    retired,
+                    lease,
+                    _preparation: None,
+                }),
+            );
+        Ok(())
+    }
+
     fn reap(&self) {
         self.callback_frames.drain();
         // Destructors may reenter and insert records. Only visit identities
@@ -531,13 +562,15 @@ impl Engine {
             .map_err(|_| Error::IdentityExhausted)?;
         let mut isolate = v8::Isolate::new(Default::default());
         isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
-        let (dom_exception_key, declared_constructor_key) = {
+        let (dom_exception_key, declared_constructor_key, projection_key) = {
             v8::scope!(let scope, &mut isolate);
             let dom_exception = v8::Private::new(scope, None);
             let declared_constructor = v8::Private::new(scope, None);
+            let projection = v8::Private::new(scope, None);
             (
                 v8::Global::new(scope, dom_exception),
                 v8::Global::new(scope, declared_constructor),
+                v8::Global::new(scope, projection),
             )
         };
         let roots = Rc::new(Roots {
@@ -551,6 +584,7 @@ impl Engine {
             interrupt: isolate.thread_safe_handle(),
             dom_exception_key,
             declared_constructor_key,
+            projection_key,
             cleanup_interrupt: Cell::new(false),
             callback_frames: PanicRecords::default(),
             panic_payloads: PanicRecords::default(),
@@ -723,13 +757,9 @@ impl super::Engine for Engine {
                 .map_err(|_| Error::BackendUnavailable)?;
             let bind = pristine_method(scope, function_prototype, "bind")?;
             let construct = pristine_method(scope, reflect, "construct")?;
+            let indexed = cssom::capture_reflect(scope, reflect)?;
             let template = v8::ObjectTemplate::new(scope);
-            let fields = if window.is_some() {
-                WINDOW_EVENT_TARGET_PROTOTYPE_FIELD + 1
-            } else {
-                DOM_EXCEPTION_PROFILE_FIELD + 1
-            };
-            if !template.set_internal_field_count(fields) {
+            if !template.set_internal_field_count(INDEXED_REFLECT_FIELD + 1) {
                 return Err(Error::BackendUnavailable);
             }
             let intrinsics = template
@@ -742,6 +772,7 @@ impl super::Engine for Engine {
                 || !intrinsics.set_internal_field(4, construct.into())
                 || !intrinsics.set_internal_field(5, object_constructor.into())
                 || !intrinsics.set_internal_field(ERROR_CONSTRUCTOR_FIELD, error_constructor.into())
+                || !intrinsics.set_internal_field(INDEXED_REFLECT_FIELD, indexed.into())
             {
                 return Err(Error::BackendUnavailable);
             }
@@ -1082,12 +1113,12 @@ impl Entered<'_, '_, '_> {
                     .map_err(|_| roots.conflict())?
                     .insert(
                         id,
-                        CallbackEntry {
-                            _function: weak,
+                        Rc::new(CallbackEntry {
+                            object: weak,
                             retired,
                             lease,
                             _preparation: preparation,
-                        },
+                        }),
                     );
                 Ok(root)
             },
@@ -1959,6 +1990,152 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
+    fn projection_storage_bytes(&self) -> usize {
+        size_of::<CallbackEntry>()
+            + size_of::<CallbackLease>()
+            + size_of::<Cell<bool>>()
+            + size_of::<(u32, Rc<CallbackEntry>)>()
+    }
+
+    fn project(
+        &mut self,
+        object: &Root,
+        state: Rc<dyn std::any::Any>,
+        links: &[&Root],
+    ) -> Result<Projection, Error> {
+        self.attempt(
+            ExceptionPhase::Prototype,
+            |scope, roots, realm, intrinsics| {
+                cssom::project(scope, roots, realm, intrinsics, object, state, links)
+            },
+        )
+    }
+
+    fn projection(&mut self, object: &Root) -> Result<Option<Rc<dyn std::any::Any>>, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, _, _| {
+            let object = roots.local(scope, object)?;
+            Ok(cssom::projection(scope, roots, object)?.map(|(_, state)| state))
+        })
+    }
+
+    fn projection_link(&mut self, object: &Root, index: usize) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+            let object = roots.local(scope, object)?;
+            let (holder, _) =
+                cssom::projection(scope, roots, object)?.ok_or(Error::ExpectedObject)?;
+            let value = captured_value(scope, holder, 4 + index)?;
+            roots.retain(scope, realm, value)
+        })
+    }
+
+    fn reopen_projection(&mut self, identity: Projection) -> Result<Option<Root>, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+            if identity.realm.owner != realm.owner {
+                return Err(Error::ForeignOwner);
+            }
+            let value = cssom::reopen(scope, roots, identity)?;
+            value
+                .map(|value| roots.retain(scope, realm, value))
+                .transpose()
+        })
+    }
+
+    fn cssom_prototypes(&mut self, prototypes: &[&Root]) -> Result<(), Error> {
+        self.attempt(ExceptionPhase::Prototype, |scope, roots, _, intrinsics| {
+            let prototypes = cssom::values::<5>(scope, roots, prototypes)?;
+            let array = v8::Array::new_with_elements(scope, &prototypes);
+            if intrinsics.set_internal_field(CSSOM_PROTOTYPES_FIELD, array.into()) {
+                Ok(())
+            } else {
+                Err(Error::BackendUnavailable)
+            }
+        })
+    }
+
+    fn cssom_prototype(&mut self, index: u32) -> Result<Root, Error> {
+        self.attempt(
+            ExceptionPhase::Prototype,
+            |scope, roots, realm, intrinsics| {
+                let prototypes = captured_value(scope, intrinsics, CSSOM_PROTOTYPES_FIELD)?;
+                let array = v8::Local::<v8::Array>::try_from(prototypes)
+                    .map_err(|_| Error::BackendUnavailable)?;
+                if index >= array.length() {
+                    return Err(Error::BackendUnavailable);
+                }
+                let prototype = array
+                    .get_index(scope, index)
+                    .ok_or(Error::BackendUnavailable)?;
+                roots.retain(scope, realm, prototype)
+            },
+        )
+    }
+
+    fn indexed_proxy(&mut self, prototype: &Root, handlers: &[&Root; 9]) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::Prototype, |scope, roots, realm, _| {
+            let proxy = cssom::indexed_proxy(scope, roots, prototype, handlers)?;
+            roots.retain(scope, realm, proxy.into())
+        })
+    }
+
+    fn indexed_key(&mut self, key: &Root) -> Result<Option<u32>, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, _, _| {
+            cssom::indexed_key(scope, roots.local(scope, key)?)
+        })
+    }
+
+    fn indexed_fallback(&mut self, trap: IndexedTrap, arguments: &[&Root]) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, intrinsics| {
+            let value = cssom::fallback(scope, roots, intrinsics, trap, arguments)?;
+            roots.retain(scope, realm, value)
+        })
+    }
+
+    fn indexed_own_keys(&mut self, target: &Root) -> Result<(Root, u32), Error> {
+        self.attempt(
+            ExceptionPhase::PropertyRead,
+            |scope, roots, realm, intrinsics| {
+                let target = roots.local(scope, target)?;
+                let keys = cssom::own_keys(scope, intrinsics, target)?;
+                Ok((roots.retain(scope, realm, keys.into())?, keys.length()))
+            },
+        )
+    }
+
+    fn indexed_keys(&mut self, own_keys: &Root, length: u32) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+            let keys = v8::Local::<v8::Array>::try_from(roots.local(scope, own_keys)?)
+                .map_err(|_| Error::BackendUnavailable)?;
+            let array = cssom::keys(scope, keys, length)?;
+            roots.retain(scope, realm, array.into())
+        })
+    }
+
+    fn indexed_prototype_step(
+        &mut self,
+        target: &Root,
+        candidate: &Root,
+    ) -> Result<super::PrototypeStep, Error> {
+        self.attempt(ExceptionPhase::Prototype, |scope, roots, realm, _| {
+            let target = roots.local(scope, target)?;
+            let candidate = roots.local(scope, candidate)?;
+            Ok(
+                match cssom::prototype_step(scope, roots, target, candidate)? {
+                    Ok(None) => super::PrototypeStep::Complete,
+                    Err(()) => super::PrototypeStep::Cycle,
+                    Ok(Some(next)) => super::PrototypeStep::Next(roots.retain(scope, realm, next)?),
+                },
+            )
+        })
+    }
+
+    fn indexed_descriptor(&mut self, value: &Root) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+            let value = roots.local(scope, value)?;
+            let descriptor = cssom::descriptor(scope, value)?;
+            roots.retain(scope, realm, descriptor.into())
+        })
+    }
+
     fn set_prototype(
         &mut self,
         object: &Root,
@@ -2450,6 +2627,29 @@ fn invoke_callback<'s>(
         )),
         Err(error) => Err(error),
     }
+}
+
+fn managed_holder<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    object: v8::Local<'s, v8::Value>,
+    context: v8::Local<'s, v8::Context>,
+    intrinsics: v8::Local<'s, v8::Object>,
+    fields: usize,
+) -> Result<v8::Local<'s, v8::Object>, Error> {
+    let template = v8::ObjectTemplate::new(scope);
+    if !template.set_internal_field_count(fields) {
+        return Err(Error::BackendUnavailable);
+    }
+    let holder = template
+        .new_instance(scope)
+        .ok_or(Error::BackendUnavailable)?;
+    if !holder.set_internal_field(0, object.into())
+        || !holder.set_internal_field(1, context.into())
+        || !holder.set_internal_field(2, intrinsics.into())
+    {
+        return Err(Error::BackendUnavailable);
+    }
+    Ok(holder)
 }
 
 fn callback_data<'s>(

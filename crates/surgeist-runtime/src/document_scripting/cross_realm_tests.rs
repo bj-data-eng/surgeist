@@ -646,7 +646,9 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         + HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes()
         + dom_exception
         + window_relations
-        + window_event;
+        + window_event
+        + surgeist_bindings_js::cssom::installation_storage_bytes::<cssom::Host>()
+        + cssom::FailureSlot::storage_bytes();
     drop(read);
     drop(detach);
     // Backend-private process, realm, root and registration bodies are qualified

@@ -78,6 +78,7 @@ mod callback_object;
 pub mod conversion;
 pub mod css;
 mod custom_elements;
+pub mod cssom;
 pub mod declarations;
 pub mod dom_exception;
 mod error;
@@ -1076,7 +1077,7 @@ impl<'scope> Scope<'scope> {
     /// Callback clones share Rust behavior; each function has distinct guest
     /// identity and preserves its own creation realm.
     pub fn function(&mut self, callback: &Callback) -> Result<Value<'scope>, Error> {
-        let root = self.operations.function(callback, None)?;
+        let root = self.operations.function(callback, None, None)?;
         Ok(self.value(root))
     }
 

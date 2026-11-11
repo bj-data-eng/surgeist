@@ -34,6 +34,7 @@ use crate::{
 
 pub(crate) mod guest;
 mod preparation;
+mod cssom;
 mod projection;
 mod traversal_retirement;
 pub use guest::{
@@ -271,6 +272,8 @@ struct NativeOwner {
     trusted_types_reports: RefCell<Option<Box<guest::ViolationQueue>>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
+    stylesheet_base: Cell<usize>,
+    stylesheet_bytes: Cell<usize>,
     css_limits: Cell<CssNamespaceLimits>,
     dom_exception_limits: Cell<DomExceptionLimits>,
     timer_limits: Cell<Option<WindowTimerLimits>>,
@@ -681,6 +684,8 @@ impl PreparedDocumentScriptHost {
                 trusted_types_reports: RefCell::new(None),
                 cancellation,
                 storage_limit,
+                stylesheet_base: Cell::new(0),
+                stylesheet_bytes: Cell::new(0),
                 css_limits: Cell::new(CssNamespaceLimits::default()),
                 dom_exception_limits: Cell::new(DomExceptionLimits::default()),
                 timer_limits: Cell::new(None),
@@ -851,6 +856,9 @@ impl PreparedDocumentScriptHost {
                 .ok_or(DocumentScriptNativeError::RepresentationExhausted)?,
             None => 0,
         };
+        let stylesheet_bytes =
+            surgeist_bindings_js::cssom::installation_storage_bytes::<cssom::Host>();
+        let stylesheet_failure_bytes = cssom::FailureSlot::storage_bytes();
         let bytes = size_of::<NativeOwner>()
             .checked_add(setup_bytes.get())
             .and_then(|bytes| bytes.checked_add(hook_bytes))
@@ -864,6 +872,8 @@ impl PreparedDocumentScriptHost {
             .and_then(|bytes| bytes.checked_add(window_event_bytes))
             .and_then(|bytes| bytes.checked_add(media_job_bytes))
             .and_then(|bytes| bytes.checked_add(timer_bytes))
+            .and_then(|bytes| bytes.checked_add(stylesheet_bytes))
+            .and_then(|bytes| bytes.checked_add(stylesheet_failure_bytes))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         if bytes > owner.storage_limit {
             return Err(DocumentScriptNativeError::StorageLimit.into());
@@ -880,6 +890,8 @@ impl PreparedDocumentScriptHost {
             window_event_backing,
             media_job_backing,
             timer_backing,
+            stylesheet_backing,
+            stylesheet_failure_backing,
         ) = {
             let mut session = owner
                 .session
@@ -934,6 +946,12 @@ impl PreparedDocumentScriptHost {
                 })
                 .transpose()
                 .map_err(DocumentScriptNativeError::from)?;
+            let stylesheet = hosted
+                .retain_script_payload(&mut dom, stylesheet_bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?;
+            let stylesheet_failure = hosted
+                .retain_script_payload(&mut dom, stylesheet_failure_bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?;
             (
                 hook,
                 failure,
@@ -946,6 +964,8 @@ impl PreparedDocumentScriptHost {
                 window_event,
                 media_job,
                 timer,
+                stylesheet,
+                stylesheet_failure,
             )
         };
         let preparation = preparation::Prepared::install(&mut process, owner, &authority, bytes)?;
@@ -972,6 +992,7 @@ impl PreparedDocumentScriptHost {
         let window_event = window_event::WindowEvent::new(window_event_backing);
         let window_timers = timer_backing
             .map(|(limits, backing)| window_timers::WindowTimers::new(limits, backing));
+        let stylesheet_failures = cssom::FailureSlot::new(&authority, stylesheet_failure_backing)?;
 
         // Drop Process before releasing the installed hook's debit on failure.
         let mut process = process;
@@ -1031,7 +1052,15 @@ impl PreparedDocumentScriptHost {
             if let Some(timers) = &window_timers {
                 timers.install(owner, scope)?;
             }
-            Ok(())
+            surgeist_bindings_js::cssom::install(
+                scope,
+                cssom::Host {
+                    owner: Rc::downgrade(owner),
+                    permit,
+                    failures: stylesheet_failures,
+                },
+                cssom::Retention::installation(owner, stylesheet_backing),
+            )
         })?;
 
         let media_removal_job = realm.enter(&mut process, |scope| {
@@ -1155,6 +1184,7 @@ impl UnpublishedScriptEngine {
             _registration_access_backing: registration_access_backing,
         });
         owner.media_removal_job.replace(Some(media_removal_job));
+        owner.stylesheet_base.set(bytes);
         Ok(ScriptEngine {
             registration,
             guest_events: None,
@@ -1570,6 +1600,11 @@ impl DocumentScriptHost {
             .engine
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
+        self.native.stylesheet_base.set(
+            engine
+                .retained_bytes_with(0)
+                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?,
+        );
         let result = engine.process.execution().in_realm(&engine.realm, action);
         engine.settle_engine_cleanup(&self.native, &attachment.realm);
         Ok(result?)
@@ -1598,6 +1633,11 @@ impl DocumentScriptHost {
             .engine
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
+        self.native.stylesheet_base.set(
+            engine
+                .retained_bytes_with(0)
+                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?,
+        );
         let result = engine.process.execution().checkpoint();
         engine.settle_engine_cleanup(&self.native, &attachment.realm);
         Ok(result?)
