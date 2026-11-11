@@ -441,6 +441,38 @@ impl super::Engine for Engine {
         self.contexts
             .retain(|_, entry| entry.identity.strong_count() != 0);
     }
+
+    fn realm_storage_bytes(&self) -> usize {
+        std::mem::size_of::<RealmIdentity>()
+            + std::mem::size_of::<(u64, ContextEntry)>()
+            + std::mem::size_of::<RealmKey>()
+    }
+
+    fn managed_object_storage_bytes(&self) -> usize {
+        std::mem::size_of::<RootIdentity>()
+            + std::mem::size_of::<RootEntry>()
+            + std::mem::size_of::<(u64, Rc<RootEntry>)>()
+    }
+
+    fn release_managed_object(&mut self, holder: Root) -> Result<(), Error> {
+        if holder.0.realm.owner != self.roots.owner.id() {
+            return Err(Error::ForeignOwner);
+        }
+        let entry = {
+            let mut entries = self
+                .roots
+                .entries
+                .try_borrow_mut()
+                .map_err(|_| self.roots.conflict())?;
+            entries.remove(&holder.0.index)
+        };
+        let entry = entry.ok_or_else(|| self.roots.conflict())?;
+        if !entry.identity.ptr_eq(&Rc::downgrade(&holder.0)) {
+            return Err(self.roots.conflict());
+        }
+        drop(entry);
+        Ok(())
+    }
 }
 
 impl Drop for Engine {
@@ -974,6 +1006,45 @@ impl Operations for Entered<'_, '_, '_> {
                 roots.retain(scope, realm, object.into())
             },
         )
+    }
+
+    fn managed_object(&mut self) -> Result<Root, Error> {
+        self.attempt(
+            ExceptionPhase::Prototype,
+            |scope, roots, realm, intrinsics| {
+                let template = v8::ObjectTemplate::new(scope);
+                if !template.set_internal_field_count(3) {
+                    return Err(Error::BackendUnavailable);
+                }
+                let holder = template
+                    .new_instance(scope)
+                    .ok_or(Error::BackendUnavailable)?;
+                let object = v8::Object::new(scope);
+                let context = scope.get_current_context();
+                if !holder.set_internal_field(0, object.into())
+                    || !holder.set_internal_field(1, context.into())
+                    || !holder.set_internal_field(2, intrinsics.into())
+                {
+                    return Err(Error::BackendUnavailable);
+                }
+                roots.retain(scope, realm, holder.into())
+            },
+        )
+    }
+
+    fn open_managed_object(&mut self, holder: &Root) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+            let holder = roots.local(scope, holder).map_err(|error| match error {
+                Error::ExpiredIdentity => roots.conflict(),
+                error => error,
+            })?;
+            let holder = v8::Local::<v8::Object>::try_from(holder).map_err(|_| roots.conflict())?;
+            let object = holder
+                .get_internal_field(scope, 0)
+                .and_then(|value| v8::Local::<v8::Value>::try_from(value).ok())
+                .ok_or_else(|| roots.conflict())?;
+            roots.retain(scope, realm, object)
+        })
     }
 
     fn set_prototype(

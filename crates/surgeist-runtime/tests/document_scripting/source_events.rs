@@ -1,7 +1,7 @@
 //! Real Source listener selection, guest reentry, report and mandatory tail.
 
 use super::*;
-use surgeist_bindings_js::Root;
+use surgeist_bindings_js::{Root, ValueKind};
 
 const ROUTE: u64 = 71;
 const SOURCE: DomSourceLimits =
@@ -29,6 +29,7 @@ struct Fixture {
     dispatcher: DomEventDispatcher<NativeTrace>,
     context: NativeTrace,
     registration: DomEventRegistrationId,
+    later_registration: DomEventRegistrationId,
     request: DomSourceEventRequest,
     handler: Root,
     dialog: NodeId,
@@ -41,6 +42,26 @@ fn fixture(
     cancellation: Arc<AtomicBool>,
     initialize: impl FnOnce(&mut Scope<'_>) -> Result<(), Error>,
 ) -> Fixture {
+    fixture_with_storage(handler, cancellation, initialize, STORAGE).unwrap()
+}
+
+fn fixture_with_storage(
+    handler: &str,
+    cancellation: Arc<AtomicBool>,
+    initialize: impl FnOnce(&mut Scope<'_>) -> Result<(), Error>,
+    storage: usize,
+) -> Result<Fixture, DocumentScriptError> {
+    fixture_with_setup(handler, cancellation, initialize, storage, |_, _, _| ())
+        .map(|(fixture, ())| fixture)
+}
+
+fn fixture_with_setup<T>(
+    handler: &str,
+    cancellation: Arc<AtomicBool>,
+    initialize: impl FnOnce(&mut Scope<'_>) -> Result<(), Error>,
+    storage: usize,
+    setup: impl FnOnce(&mut DocumentScriptHost, &DocumentScriptPermit, DomHostedTopLevel) -> T,
+) -> Result<(Fixture, T), DocumentScriptError> {
     let mut policy = limits();
     policy.source_events.jobs = 8;
     let mut session = session(policy);
@@ -106,7 +127,7 @@ fn fixture(
             },
         )
         .unwrap();
-    dispatcher
+    let later_registration = dispatcher
         .add_listener(
             &mut session.dom(),
             dialog,
@@ -129,10 +150,12 @@ fn fixture(
         )
         .unwrap();
 
-    let mut host = prepare(session, cancellation.clone())
+    let mut host = PreparedDocumentScriptHost::prepare(session, storage, cancellation.clone())
+        .map_err(|failure| DocumentScriptError::Native(failure.error))?
         .enable(top, ALLOW, hooks(&hook()))
-        .unwrap();
+        .map_err(|failure| failure.error)?;
     let permit = host.permit().unwrap();
+    let additional = setup(&mut host, &permit, top);
     let handler = host
         .in_document(&permit, |scope| {
             initialize(scope)?;
@@ -167,31 +190,42 @@ fn fixture(
         })
         .unwrap();
 
-    Fixture {
-        host,
-        permit,
-        execution,
-        dispatcher,
-        context: NativeTrace::default(),
-        registration,
-        request,
-        handler,
-        dialog,
-        comment,
-        document,
-    }
+    Ok((
+        Fixture {
+            host,
+            permit,
+            execution,
+            dispatcher,
+            context: NativeTrace::default(),
+            registration,
+            later_registration,
+            request,
+            handler,
+            dialog,
+            comment,
+            document,
+        },
+        additional,
+    ))
 }
 
 fn ordinary_throw_keeps_the_real_event_and_tail() {
     let mut fixture = fixture(
         "globalThis.thrown = {}; globalThis.before = 0; globalThis.after = 0;
-         globalThis.neutral = 0;
-         (() => { before = readChildCount();
+         globalThis.neutral = 0; globalThis.rejectedForgedComment = 0;
+         ((comment) => { globalThis.delegatedComment = comment;
+                   before = readChildCount();
+                   if (comment !== null && typeof comment === 'object') {
+                       const forged = Object.create(Object.getPrototypeOf(comment));
+                       let coerced = false;
+                       try { detachIf({ valueOf() { coerced = true; return 0; } }, forged); }
+                       catch (error) { rejectedForgedComment = Number(error instanceof TypeError && !coerced); }
+                   }
                    const coercionFailure = {};
-                   try { detachIf({ valueOf() { throw coercionFailure; } }); }
+                   try { detachIf({ valueOf() { throw coercionFailure; } }, comment); }
                    catch (error) { if (error !== coercionFailure) throw error; }
-                   detachIf({ valueOf() { neutral += readChildCount(); return 0; } });
-                   detachIf({ valueOf() { before += readChildCount(); return 1; } });
+                   detachIf({ valueOf() { neutral += readChildCount(); return 0; } }, comment);
+                   detachIf({ valueOf() { before += readChildCount(); return 1; } }, comment);
                    after = readChildCount(); throw thrown; })",
         Arc::new(cancel()),
         |_| Ok(()),
@@ -330,7 +364,7 @@ fn ordinary_throw_keeps_the_real_event_and_tail() {
             );
         })
         .unwrap();
-    fixture
+    let (comment_kind, rejected_forged_comment) = fixture
         .host
         .in_document(&fixture.permit, |scope| {
             let result = scope.import(exception.value())?;
@@ -338,7 +372,14 @@ fn ordinary_throw_keeps_the_real_event_and_tail() {
             assert!(scope.strict_equals(&result, &original)?);
             assert_script_number(scope, "neutral", 2.0)?;
             assert_script_number(scope, "before", 4.0)?;
-            assert_script_number(scope, "after", 1.0)
+            assert_script_number(scope, "after", 1.0)?;
+            let comment = scope.evaluate(&"delegatedComment".encode_utf16().collect::<Vec<_>>())?;
+            let rejected = scope.evaluate(
+                &"rejectedForgedComment === 1"
+                    .encode_utf16()
+                    .collect::<Vec<_>>(),
+            )?;
+            Ok((scope.kind(&comment)?, scope.boolean(&rejected)?))
         })
         .unwrap();
     assert_eq!(fixture.context.later, 1);
@@ -351,6 +392,15 @@ fn ordinary_throw_keeps_the_real_event_and_tail() {
         .unwrap();
     assert_eq!(close.id().target(), fixture.dialog);
     assert!(close.dialog_close().is_some());
+    assert_eq!(
+        comment_kind,
+        ValueKind::Object,
+        "selected Source listener did not receive its delegated native Comment"
+    );
+    assert!(
+        rejected_forged_comment,
+        "detach must reject a forged Comment argument before coercing the condition"
+    );
 }
 
 fn conversion_time_native_refusal_retains_original_source(conversion: &str) {
@@ -359,7 +409,7 @@ fn conversion_time_native_refusal_retains_original_source(conversion: &str) {
     let jobs = Arc::new(AtomicUsize::new(0));
     let job_counter = jobs.clone();
     let handler = format!(
-        "(() => {{ try {{ detachIf({{ valueOf() {{ revokeNative(); {conversion}; }} }}); }} catch (_) {{}} sourceJob(); }})"
+        "((comment) => {{ try {{ detachIf({{ valueOf() {{ revokeNative(); {conversion}; }} }}, comment); }} catch (_) {{}} sourceJob(); }})"
     );
     let mut fixture = fixture(&handler, cancellation.clone(), move |scope| {
         let job = Callback::new(move |_, _| {
@@ -476,7 +526,11 @@ fn conversion_time_native_refusal_retains_original_source(conversion: &str) {
 }
 
 fn source_driver_refusal_keeps_the_original_cause() {
-    let mut fixture = fixture("(() => detachIf(1))", Arc::new(cancel()), |_| Ok(()));
+    let mut fixture = fixture(
+        "((comment) => detachIf(1, comment))",
+        Arc::new(cancel()),
+        |_| Ok(()),
+    );
     let no_nested_work = DomSourceLimits::new(32_000_000, 1_000_000, 0, 128, 4096, 4096, 8);
     {
         let progress = fixture
@@ -521,6 +575,802 @@ fn source_driver_refusal_keeps_the_original_cause() {
     let _session = fixture.host.stop().into_session().unwrap();
 }
 
+fn finish_projected_close(fixture: &mut Fixture, delegated: NodeId) {
+    {
+        let progress = fixture
+            .host
+            .select_source_event(
+                &fixture.permit,
+                &fixture.request,
+                &mut fixture.dispatcher,
+                &mut fixture.context,
+                EVENT,
+            )
+            .unwrap();
+        let DocumentScriptEventProgress::Selected(selected) = progress else {
+            panic!("the original dispatcher must select the routed host listener");
+        };
+        let mut report = selected.invoke(&fixture.handler, delegated, SOURCE);
+        assert!(
+            matches!(report.outcome(), DocumentScriptGuestResult::Returned),
+            "{:?}",
+            report.outcome()
+        );
+        report.report(&fixture.dispatcher).unwrap();
+    }
+    fixture
+        .host
+        .with_native(|dom, _, _| {
+            assert_eq!(
+                dom.pending_source_edit().unwrap().operation(),
+                fixture.request.operation()
+            );
+            let snapshot = dom.snapshot();
+            assert_eq!(snapshot.node(delegated).unwrap().parent(), None);
+            assert!(
+                snapshot
+                    .node(fixture.dialog)
+                    .unwrap()
+                    .attribute(&"open".into())
+                    .is_some()
+            );
+        })
+        .unwrap();
+    let progress = fixture
+        .host
+        .select_source_event(
+            &fixture.permit,
+            &fixture.request,
+            &mut fixture.dispatcher,
+            &mut fixture.context,
+            EVENT,
+        )
+        .unwrap();
+    assert!(matches!(
+        progress,
+        DocumentScriptEventProgress::Native(DomSourceEventServiceProgress::Serviced { .. })
+    ));
+    drop(progress);
+    fixture
+        .host
+        .with_native(|dom, _, mut source| {
+            let progress = source
+                .resume(
+                    dom,
+                    fixture.request.operation(),
+                    SOURCE,
+                    &mut DomSourceServices {
+                        meta: None,
+                        execution_scope: Some(&fixture.execution),
+                        style_policy: &mut |_| None,
+                        url: None,
+                    },
+                    &cancel(),
+                )
+                .unwrap();
+            assert!(matches!(
+                progress,
+                DomSourceDriveProgress::Complete(complete)
+                    if complete.operation() == fixture.request.operation()
+            ));
+            let snapshot = dom.snapshot();
+            assert_eq!(snapshot.node(delegated).unwrap().parent(), None);
+            assert!(
+                snapshot
+                    .node(fixture.dialog)
+                    .unwrap()
+                    .attribute(&"open".into())
+                    .is_none()
+            );
+            assert_eq!(snapshot.incomplete_source_operation(), None);
+        })
+        .unwrap();
+}
+
+fn start_another_close(fixture: &mut Fixture, replacement: bool) -> NodeId {
+    let original = fixture.comment;
+    open_and_close(fixture, |dom, document| {
+        if replacement {
+            let mut create = DomBatch::new();
+            let comment = create.create_comment(document, "delegated Source comment");
+            create.insert_before(&comment, document, None);
+            dom.apply(create, &cancel())
+                .unwrap()
+                .created(&comment)
+                .unwrap()
+                .unwrap()
+        } else {
+            let mut insert = DomBatch::new();
+            insert.insert_before(original, document, None);
+            dom.apply(insert, &cancel()).unwrap();
+            original
+        }
+    })
+}
+
+fn open_and_close(
+    fixture: &mut Fixture,
+    delegate: impl FnOnce(&mut DomEventDom<'_>, NodeId) -> NodeId,
+) -> NodeId {
+    let (request, delegated) = fixture
+        .host
+        .with_native(|dom, _, mut source| {
+            let delegated = delegate(dom, fixture.document.node());
+            fixture
+                .dispatcher
+                .add_listener(
+                    dom,
+                    fixture.dialog,
+                    DomEventType::BeforeToggle,
+                    DomEventCallback::host(ROUTE),
+                    DomEventListenerOptions {
+                        once: true,
+                        capture: false,
+                    },
+                )
+                .unwrap();
+            let mut services = DomSourceServices {
+                meta: None,
+                execution_scope: Some(&fixture.execution),
+                style_policy: &mut |_| None,
+                url: None,
+            };
+            assert!(matches!(
+                source
+                    .apply(
+                        dom,
+                        DomSourceEdit::set_attribute(fixture.dialog, "open", ""),
+                        SOURCE,
+                        &mut services,
+                        &cancel(),
+                    )
+                    .unwrap(),
+                DomSourceDriveProgress::Complete(_)
+            ));
+            let progress = source
+                .apply(
+                    dom,
+                    DomSourceEdit::close_dialog(fixture.dialog, None),
+                    SOURCE,
+                    &mut services,
+                    &cancel(),
+                )
+                .unwrap();
+            let DomSourceDriveProgress::Pending {
+                request: DomSourceRequest::Event(request),
+                reason: DomSourceUnavailable::Event,
+            } = progress
+            else {
+                panic!("the next actual Dialog Close must reach beforetoggle: {progress:?}");
+            };
+            (request, delegated)
+        })
+        .unwrap();
+    fixture.request = request;
+    delegated
+}
+
+fn retire_projected_comment_during_unwind(fixture: &mut Fixture) {
+    let original = fixture.comment;
+    let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = fixture.host.with_native(|dom, _, mut source| {
+            let no_work = DomSourceLimits::new(32_000_000, 1_000_000, 0, 128, 4096, 4096, 8);
+            assert!(matches!(
+                source.apply(
+                    dom,
+                    DomSourceEdit::destroy(original),
+                    no_work,
+                    &mut DomSourceServices {
+                        meta: None,
+                        execution_scope: None,
+                        style_policy: &mut |_| None,
+                        url: None,
+                    },
+                    &cancel(),
+                ),
+                Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+                    DomError::SourceWorkLimit { limit: 0 }
+                )))
+            ));
+            assert!(dom.snapshot().node(original).is_ok());
+            let mut destroy = DomBatch::new();
+            destroy.destroy(original);
+            dom.apply(destroy, &cancel()).unwrap();
+            std::panic::panic_any("committed projected Comment destruction");
+        });
+    }));
+    assert_eq!(
+        unwound.unwrap_err().downcast_ref::<&str>(),
+        Some(&"committed projected Comment destruction")
+    );
+    assert!(matches!(
+        fixture.host.snapshot().unwrap().node(original),
+        Err(DomError::StaleNode)
+    ));
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StorageAdmission {
+    BeforeOperation,
+    Refused,
+    Admitted,
+}
+
+fn observe_pin_admission(storage: usize) -> StorageAdmission {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let count = calls.clone();
+    let mut fixture = match fixture_with_storage(
+        "((comment) => { reachedGuest(); detachIf(1, comment); })",
+        Arc::new(cancel()),
+        |scope| {
+            let callback = Callback::new(move |_, _| {
+                count.fetch_add(1, Ordering::Relaxed);
+                Ok(Completion::Undefined)
+            });
+            let global = scope.global()?;
+            let function = scope.function(&callback)?;
+            let name = "reachedGuest".encode_utf16().collect::<Vec<_>>();
+            scope.set(&global, PropertyKey::String(&name), &function)
+        },
+        storage,
+    ) {
+        Ok(fixture) => fixture,
+        Err(DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)) => {
+            return StorageAdmission::BeforeOperation;
+        }
+        Err(error) => panic!("unexpected host admission failure: {error:?}"),
+    };
+    let outcome = {
+        let progress = fixture.host.select_source_event(
+            &fixture.permit,
+            &fixture.request,
+            &mut fixture.dispatcher,
+            &mut fixture.context,
+            EVENT,
+        );
+        let selected = match progress {
+            Ok(DocumentScriptEventProgress::Selected(selected)) => selected,
+            Err(DocumentScriptEventError::Access(DocumentScriptError::Native(
+                DocumentScriptNativeError::StorageLimit,
+            ))) => return StorageAdmission::BeforeOperation,
+            Err(error) => panic!("unexpected listener selection failure: {error:?}"),
+            Ok(_) => panic!("the original dispatcher must select the routed host listener"),
+        };
+        let mut report = selected.invoke(&fixture.handler, fixture.comment, SOURCE);
+        let outcome = match report.outcome() {
+            DocumentScriptGuestResult::Returned => StorageAdmission::Admitted,
+            DocumentScriptGuestResult::Refused(Error::HostFailure(failure))
+                if matches!(
+                    failure.cause::<DocumentScriptNativeError>(),
+                    Some(DocumentScriptNativeError::StorageLimit)
+                ) =>
+            {
+                StorageAdmission::Refused
+            }
+            other => panic!("unexpected projection outcome: {other:?}"),
+        };
+        report.report(&fixture.dispatcher).unwrap();
+        outcome
+    };
+    let admitted = outcome == StorageAdmission::Admitted;
+    assert_eq!(calls.load(Ordering::Relaxed), usize::from(admitted));
+    assert_eq!(
+        fixture
+            .host
+            .snapshot()
+            .unwrap()
+            .node(fixture.comment)
+            .unwrap()
+            .parent(),
+        (!admitted).then_some(fixture.document.node())
+    );
+    outcome
+}
+
+fn exact_one_pin_storage() -> usize {
+    let mut short = 0;
+    let mut exact = STORAGE;
+    assert_eq!(observe_pin_admission(exact), StorageAdmission::Admitted);
+    while exact - short > 1 {
+        let probe = short + (exact - short) / 2;
+        if observe_pin_admission(probe) == StorageAdmission::Admitted {
+            exact = probe;
+        } else {
+            short = probe;
+        }
+    }
+    // Selection still succeeds at one byte short. The typed refusal must be
+    // from projection, and the guest marker and native node must be untouched.
+    assert_eq!(observe_pin_admission(short), StorageAdmission::Refused);
+    exact
+}
+
+fn projected_comment_survives_detach_but_does_not_alias_a_replacement() {
+    let storage = exact_one_pin_storage();
+    let mut fixture = fixture_with_storage(
+        "globalThis.turn = 0; globalThis.same = 0; globalThis.fresh = 0;
+         globalThis.rejected = 0; globalThis.coercions = 0; globalThis.traps = 0;
+         ((comment) => {
+             if (++turn === 1) { globalThis.original = comment; comment.mark = 17; }
+             if (turn === 2) same = Number(comment === original && comment.mark === 17);
+             if (turn === 3) {
+                 fresh = Number(comment !== original && comment.mark === undefined);
+                 const proxy = new Proxy(comment, {
+                     getPrototypeOf() { ++traps; return null; },
+                     get() { ++traps; }
+                 });
+                 for (const wrong of [original, proxy, undefined]) {
+                     try { detachIf({ valueOf() { ++coercions; return 0; } }, wrong); }
+                     catch (error) { if (error instanceof TypeError) ++rejected; }
+                 }
+             }
+             detachIf(1, comment);
+         })",
+        Arc::new(cancel()),
+        |_| Ok(()),
+        storage,
+    )
+    .unwrap();
+    let original = fixture.comment;
+    finish_projected_close(&mut fixture, original);
+    assert!(
+        fixture
+            .dispatcher
+            .remove_listener(fixture.later_registration)
+    );
+    let delegated = start_another_close(&mut fixture, false);
+    assert_eq!(delegated, original);
+    finish_projected_close(&mut fixture, delegated);
+    retire_projected_comment_during_unwind(&mut fixture);
+    let replacement = start_another_close(&mut fixture, true);
+    assert_ne!(replacement, original);
+    finish_projected_close(&mut fixture, replacement);
+    fixture
+        .host
+        .in_document(&fixture.permit, |scope| {
+            assert_script_number(scope, "same", 1.0)?;
+            assert_script_number(scope, "fresh", 1.0)?;
+            assert_script_number(scope, "rejected", 3.0)?;
+            assert_script_number(scope, "coercions", 0.0)?;
+            assert_script_number(scope, "traps", 0.0)
+        })
+        .unwrap();
+}
+
+fn retiring_a_second_pin_preserves_the_other_wrapper() {
+    let mut fixture = fixture(
+        "globalThis.turn = 0; globalThis.preserved = 0;
+         ((comment) => {
+             if (++turn === 1) { globalThis.original = comment; comment.mark = 23; }
+             if (turn === 2 && comment === original) throw Error('same native wrapper');
+             if (turn === 3) preserved = Number(comment === original && comment.mark === 23);
+             detachIf(1, comment);
+         })",
+        Arc::new(cancel()),
+        |_| Ok(()),
+    );
+    let original = fixture.comment;
+    finish_projected_close(&mut fixture, original);
+    assert!(
+        fixture
+            .dispatcher
+            .remove_listener(fixture.later_registration)
+    );
+    let second = start_another_close(&mut fixture, true);
+    finish_projected_close(&mut fixture, second);
+    fixture
+        .host
+        .with_native(|dom, _, _| {
+            let mut destroy = DomBatch::new();
+            destroy.destroy(second);
+            dom.apply(destroy, &cancel()).unwrap();
+            assert!(dom.snapshot().node(original).is_ok());
+        })
+        .unwrap();
+    let delegated = start_another_close(&mut fixture, false);
+    finish_projected_close(&mut fixture, delegated);
+    fixture
+        .host
+        .in_document(&fixture.permit, |scope| {
+            assert_script_number(scope, "preserved", 1.0)
+        })
+        .unwrap();
+}
+
+fn native_creation_host(host: &mut DocumentScriptHost) -> (DomHostedTopLevel, [NodeId; 2]) {
+    host.with_native(|dom, mut hosted, _| {
+        let owner = hosted.create_headless_host(dom, &cancel()).unwrap();
+        let top = hosted.create_top_level(dom, owner, &cancel()).unwrap();
+        let document = top.document().node();
+        let mut batch = DomBatch::new();
+        let original = batch.create_comment(document, "project before creation Host retirement");
+        let first_after = batch.create_comment(document, "project after creation Host retirement");
+        batch.insert_before(&original, document, None);
+        batch.insert_before(&first_after, document, None);
+        let committed = dom.apply(batch, &cancel()).unwrap();
+        let nodes =
+            [original, first_after].map(|ticket| committed.created(&ticket).unwrap().unwrap());
+        (top, nodes)
+    })
+    .unwrap()
+}
+
+fn insert_comment(dom: &mut DomEventDom<'_>, node: NodeId, document: NodeId) -> NodeId {
+    let mut batch = DomBatch::new();
+    batch.insert_before(node, document, None);
+    dom.apply(batch, &cancel()).unwrap();
+    assert_eq!(dom.snapshot().node(node).unwrap().parent(), Some(document));
+    node
+}
+
+fn retire_creation_host(fixture: &mut Fixture, origin: DomHostedTopLevel) {
+    fixture
+        .host
+        .with_native(|dom, mut hosted, _| {
+            let task = hosted
+                .destroy_top_level(dom, origin.navigable(), &cancel())
+                .unwrap();
+            let completed = (0..256).any(|_| {
+                matches!(
+                    hosted.run_next(dom, task.traversable(), &cancel()).unwrap(),
+                    DomHostedTaskProgress::Complete { operation } if operation == task.operation()
+                )
+            });
+            assert!(completed);
+            hosted.destroy_host(dom, origin.host(), &cancel()).unwrap();
+            let snapshot = dom.snapshot();
+            assert!(
+                !snapshot
+                    .document(origin.document())
+                    .unwrap()
+                    .is_fully_active()
+                    .unwrap()
+            );
+            assert!(
+                snapshot
+                    .document(fixture.document)
+                    .unwrap()
+                    .is_fully_active()
+                    .unwrap()
+            );
+            assert_eq!(
+                snapshot.global_document(origin.global()).unwrap(),
+                origin.document()
+            );
+        })
+        .unwrap();
+}
+
+fn unregistered_creation_is_refused_before_guest() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let count = calls.clone();
+    let (mut fixture, delegated) = fixture_with_setup(
+        "((comment) => { reachedGuest(); detachIf(1, comment); })",
+        Arc::new(cancel()),
+        |scope| {
+            let callback = Callback::new(move |_, _| {
+                count.fetch_add(1, Ordering::Relaxed);
+                Ok(Completion::Undefined)
+            });
+            let global = scope.global()?;
+            let function = scope.function(&callback)?;
+            let name = "reachedGuest".encode_utf16().collect::<Vec<_>>();
+            scope.set(&global, PropertyKey::String(&name), &function)
+        },
+        STORAGE,
+        |host, permit, receiving| {
+            let (_foreign_session, foreign) = super::setup();
+            assert!(matches!(
+                host.register_node_creation_realm(permit, foreign),
+                Err(DocumentScriptError::Native(
+                    DocumentScriptNativeError::Hosted(DomHostedRuntimeError::TargetNotFound)
+                ))
+            ));
+            let (origin, [delegated, _]) = native_creation_host(host);
+            host.with_native(|dom, _, _| {
+                insert_comment(dom, delegated, receiving.document().node());
+                let snapshot = dom.snapshot();
+                assert_eq!(
+                    snapshot.relevant_global(delegated).unwrap(),
+                    Some(origin.global())
+                );
+            })
+            .unwrap();
+            delegated
+        },
+    )
+    .unwrap();
+
+    {
+        let DocumentScriptEventProgress::Selected(selected) = fixture
+            .host
+            .select_source_event(
+                &fixture.permit,
+                &fixture.request,
+                &mut fixture.dispatcher,
+                &mut fixture.context,
+                EVENT,
+            )
+            .unwrap()
+        else {
+            panic!("the original native dispatcher must select the routed host listener");
+        };
+        let mut report = selected.invoke(&fixture.handler, delegated, SOURCE);
+        assert!(
+            matches!(
+                report.outcome(),
+                DocumentScriptGuestResult::Refused(Error::HostFailure(failure))
+                    if matches!(
+                        failure.cause::<DocumentScriptNativeError>(),
+                        Some(DocumentScriptNativeError::CreationGlobalUnavailable)
+                    )
+            ),
+            "{:?}",
+            report.outcome()
+        );
+        report.report(&fixture.dispatcher).unwrap();
+    }
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+    fixture
+        .host
+        .with_native(|dom, _, _| {
+            assert_eq!(
+                dom.pending_source_edit().unwrap().operation(),
+                fixture.request.operation()
+            );
+            assert_eq!(
+                dom.snapshot().node(delegated).unwrap().parent(),
+                Some(fixture.document.node())
+            );
+            assert!(
+                dom.snapshot()
+                    .node(fixture.dialog)
+                    .unwrap()
+                    .attribute(&"open".into())
+                    .is_some()
+            );
+        })
+        .unwrap();
+}
+
+fn adopted_comments_keep_creation_realm_through_retirement() {
+    let (mut fixture, (origin, [original, first_after])) = fixture_with_setup(
+        "globalThis.turn = 0; globalThis.preserved = 0; globalThis.afterRetirement = 0;
+         globalThis.otherPreserved = 0;
+         ((comment) => {
+             const prototype = Object.getPrototypeOf(comment);
+             switch (++turn) {
+                 case 1:
+                     if (prototype !== Object.prototype) throw Error('receiving realm control');
+                     break;
+                 case 2:
+                     if (prototype === Object.prototype || prototype === null)
+                         throw Error('creation realm must differ from receiving realm');
+                     globalThis.saved = comment;
+                     globalThis.originPrototype = prototype;
+                     saved.mark = 51;
+                     break;
+                 case 3:
+                     preserved = Number(comment === saved && comment.mark === 51
+                         && prototype === originPrototype);
+                     break;
+                 case 4:
+                     afterRetirement = Number(comment !== saved && comment.mark === undefined
+                         && prototype === originPrototype);
+                     globalThis.other = comment;
+                     other.mark = 63;
+                     break;
+                 case 5:
+                     otherPreserved = Number(comment === other && comment.mark === 63
+                         && prototype === originPrototype);
+                     break;
+             }
+             detachIf({ valueOf() { if (readChildCount() < 2) throw Error('wrong receiving Document');
+                                    return 1; } }, comment);
+         })",
+        Arc::new(cancel()),
+        |_| Ok(()),
+        STORAGE,
+        |host, permit, receiving| {
+            let (origin, nodes) = native_creation_host(host);
+            assert_ne!(origin.host(), receiving.host());
+            host.register_node_creation_realm(permit, origin).unwrap();
+            assert!(matches!(
+                host.register_node_creation_realm(permit, origin),
+                Err(DocumentScriptError::Native(
+                    DocumentScriptNativeError::CreationRealmAlreadyRegistered
+                ))
+            ));
+            let snapshot = host.snapshot().unwrap();
+            assert_eq!(
+                snapshot.document(origin.document()).unwrap().scripting(),
+                HtmlScriptingStatus::Disabled
+            );
+            assert_eq!(
+                host.observe_scripting(permit).unwrap().status(),
+                HtmlScriptingStatus::Enabled
+            );
+            (origin, nodes)
+        },
+    )
+    .unwrap();
+
+    let receiving_control = fixture.comment;
+    finish_projected_close(&mut fixture, receiving_control);
+    assert!(
+        fixture
+            .dispatcher
+            .remove_listener(fixture.later_registration)
+    );
+
+    let delegated = open_and_close(&mut fixture, |dom, document| {
+        insert_comment(dom, original, document);
+        let snapshot = dom.snapshot();
+        assert_eq!(
+            snapshot
+                .node(original)
+                .unwrap()
+                .owner_document()
+                .unwrap()
+                .node(),
+            document
+        );
+        assert_eq!(
+            snapshot.relevant_global(original).unwrap(),
+            Some(origin.global())
+        );
+        original
+    });
+    finish_projected_close(&mut fixture, delegated);
+    fixture
+        .host
+        .with_native(|dom, _, _| {
+            let document = fixture.document.node();
+            insert_comment(dom, original, origin.document().node());
+            insert_comment(dom, original, document);
+            insert_comment(dom, first_after, document);
+        })
+        .unwrap();
+    retire_creation_host(&mut fixture, origin);
+    assert!(matches!(
+        fixture
+            .host
+            .register_node_creation_realm(&fixture.permit, origin),
+        Err(DocumentScriptError::Native(
+            DocumentScriptNativeError::Hosted(DomHostedRuntimeError::TargetNotFound)
+        ))
+    ));
+    for node in [original, first_after] {
+        let snapshot = fixture.host.snapshot().unwrap();
+        assert_eq!(
+            snapshot.node(node).unwrap().owner_document(),
+            Some(fixture.document)
+        );
+        assert_eq!(
+            snapshot.relevant_global(node).unwrap(),
+            Some(origin.global())
+        );
+        let delegated = open_and_close(&mut fixture, |dom, document| {
+            assert_eq!(dom.snapshot().node(node).unwrap().parent(), Some(document));
+            node
+        });
+        finish_projected_close(&mut fixture, delegated);
+    }
+
+    fixture
+        .host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            batch.destroy(original);
+            dom.apply(batch, &cancel()).unwrap();
+            assert!(matches!(
+                dom.snapshot().node(original),
+                Err(DomError::StaleNode)
+            ));
+            assert!(dom.snapshot().node(first_after).is_ok());
+        })
+        .unwrap();
+    let delegated = open_and_close(&mut fixture, |dom, document| {
+        insert_comment(dom, first_after, document)
+    });
+    finish_projected_close(&mut fixture, delegated);
+    fixture
+        .host
+        .in_document(&fixture.permit, |scope| {
+            assert_script_number(scope, "preserved", 1.0)?;
+            assert_script_number(scope, "afterRetirement", 1.0)?;
+            assert_script_number(scope, "otherPreserved", 1.0)
+        })
+        .unwrap();
+}
+
+fn observe_creation_admission(storage: usize) -> StorageAdmission {
+    let (session, receiving) = super::setup();
+    let prepared = match PreparedDocumentScriptHost::prepare(session, storage, Arc::new(cancel())) {
+        Ok(prepared) => prepared,
+        Err(failure) if matches!(failure.error, DocumentScriptNativeError::StorageLimit) => {
+            return StorageAdmission::BeforeOperation;
+        }
+        Err(failure) => panic!("unexpected native owner admission: {failure:?}"),
+    };
+    let mut host = match prepared.enable(receiving, ALLOW, hooks(&hook())) {
+        Ok(host) => host,
+        Err(failure)
+            if matches!(
+                failure.error,
+                DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+            ) =>
+        {
+            return StorageAdmission::BeforeOperation;
+        }
+        Err(failure) => panic!("unexpected script owner admission: {failure:?}"),
+    };
+    let permit = host.permit().unwrap();
+    let (origin, _) = native_creation_host(&mut host);
+    let outcome = match host.register_node_creation_realm(&permit, origin) {
+        Ok(()) => {
+            assert!(matches!(
+                host.register_node_creation_realm(&permit, origin),
+                Err(DocumentScriptError::Native(
+                    DocumentScriptNativeError::CreationRealmAlreadyRegistered
+                ))
+            ));
+            StorageAdmission::Admitted
+        }
+        Err(DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)) => {
+            assert!(matches!(
+                host.register_node_creation_realm(&permit, origin),
+                Err(DocumentScriptError::Native(
+                    DocumentScriptNativeError::StorageLimit
+                ))
+            ));
+            StorageAdmission::Refused
+        }
+        Err(error) => panic!("unexpected creation realm admission: {error:?}"),
+    };
+    assert_eq!(
+        host.observe_scripting(&permit).unwrap().status(),
+        HtmlScriptingStatus::Enabled
+    );
+    assert_eq!(
+        host.snapshot()
+            .unwrap()
+            .document(origin.document())
+            .unwrap()
+            .scripting(),
+        HtmlScriptingStatus::Disabled
+    );
+    outcome
+}
+
+fn exact_creation_storage_is_required() {
+    let mut short = 0;
+    let mut exact = STORAGE;
+    assert_eq!(
+        observe_creation_admission(exact),
+        StorageAdmission::Admitted
+    );
+    while exact - short > 1 {
+        let probe = short + (exact - short) / 2;
+        if observe_creation_admission(probe) == StorageAdmission::Admitted {
+            exact = probe;
+        } else {
+            short = probe;
+        }
+    }
+    assert_eq!(
+        observe_creation_admission(exact),
+        StorageAdmission::Admitted
+    );
+    assert_eq!(observe_creation_admission(short), StorageAdmission::Refused);
+}
+
+pub(super) fn run_creation_realms() {
+    unregistered_creation_is_refused_before_guest();
+    adopted_comments_keep_creation_realm_through_retirement();
+    exact_creation_storage_is_required();
+}
+
 pub(super) fn run() {
     ordinary_throw_keeps_the_real_event_and_tail();
     for conversion in [
@@ -532,4 +1382,6 @@ pub(super) fn run() {
         conversion_time_native_refusal_retains_original_source(conversion);
     }
     source_driver_refusal_keeps_the_original_cause();
+    projected_comment_survives_detach_but_does_not_alias_a_replacement();
+    retiring_a_second_pin_preserves_the_other_wrapper();
 }

@@ -14,8 +14,8 @@ use surgeist_bindings_js::{
 use surgeist_css::{query::media::CssMediaScripting, serialization::CssSerializationError};
 use surgeist_dom::{
     DocumentId, DomDocumentScriptBinding, DomDocumentScriptRegistration, DomDocumentScriptingFacts,
-    DomDocumentScriptingObservation, DomError, DomHostedError, DomHostedRuntimeRetention,
-    DomSnapshot,
+    DomDocumentScriptingObservation, DomError, DomHostedError, DomHostedGlobalId,
+    DomHostedRuntimeRetention, DomSnapshot,
 };
 use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
 use surgeist_html_semantics::HtmlScriptingStatus;
@@ -25,6 +25,7 @@ use crate::{
     HostedRuntime,
 };
 
+mod projection;
 mod source;
 pub use source::{
     DocumentScriptEventError, DocumentScriptEventProgress, DocumentScriptEventReport,
@@ -52,6 +53,12 @@ pub enum DocumentScriptNativeError {
     SourcePending,
     /// This hook lacks the selected native event's exact Source authority.
     SourceAccess,
+    /// The native Comment's creation Global is unavailable in this attachment.
+    CreationGlobalUnavailable,
+    /// The exact native Global already has a creation realm.
+    CreationRealmAlreadyRegistered,
+    /// A previously admitted projected node lost its managed pin record.
+    ProjectionCustody,
     /// The result cannot be represented in the supported service profile.
     RepresentationExhausted,
 }
@@ -198,8 +205,9 @@ impl NativeOwner {
 pub struct DocumentScriptHooks<'a> {
     /// Reads the attached Document's current direct child count.
     pub child_count: &'a [u16],
-    /// During a selected Source event, converts its argument to Number and
-    /// detaches the delegated direct Document comment for a nonzero, non-NaN result.
+    /// During a selected Source event, takes a condition and the exact projected
+    /// Comment. After authenticating the Comment, converts the condition to
+    /// Number and detaches it for a nonzero, non-NaN result.
     pub detach_source_node_if: &'a [u16],
 }
 
@@ -403,12 +411,21 @@ impl PreparedDocumentScriptHost {
 
         // Drop Process before releasing the installed hook's debit on failure.
         let mut process = process;
-        process.execution().in_realm(&realm, |scope| {
-            let global = scope.global()?;
-            for (name, callback) in [
-                (hooks.child_count, Callback::new(read)),
-                (hooks.detach_source_node_if, Callback::new(detach)),
-            ] {
+        for (name, callback) in [
+            (hooks.child_count, Callback::new(read)),
+            (hooks.detach_source_node_if, Callback::new(detach)),
+        ] {
+            {
+                let mut session = owner
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                hosted
+                    .admit_script_work(&session.dom(), name.len(), cancel)
+                    .map_err(DocumentScriptNativeError::from)?;
+            }
+            process.execution().in_realm(&realm, |scope| {
+                let global = scope.global()?;
                 let hook = scope.function(&callback)?;
                 scope.define_new_property(
                     &global,
@@ -419,8 +436,10 @@ impl PreparedDocumentScriptHost {
                         enumerable: false,
                         configurable: false,
                     },
-                )?;
-            }
+                )
+            })?;
+        }
+        process.execution().in_realm(&realm, |scope| {
             css::install_window_css(
                 scope,
                 owner.css_limits.get(),
@@ -462,6 +481,8 @@ impl PreparedDocumentScriptHost {
             registration,
             process,
             realm,
+            comments: projection::ProjectedComments::default(),
+            creations: CreationRealms::default(),
             retained_bytes: bytes,
             _hook_backing: hook_backing,
         })
@@ -483,13 +504,69 @@ impl DocumentScriptPermit {
     }
 }
 
+#[derive(Default)]
+struct CreationRealms(Option<Box<CreationRealm>>);
+
+impl CreationRealms {
+    fn find<E>(
+        &self,
+        global: DomHostedGlobalId,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<&Realm>, E> {
+        let mut entry = self.0.as_deref();
+        while let Some(record) = entry {
+            step()?;
+            if record.global == global {
+                return Ok(Some(&record.realm));
+            }
+            entry = record.next.as_deref();
+        }
+        Ok(None)
+    }
+}
+
+impl Drop for CreationRealms {
+    fn drop(&mut self) {
+        while let Some(mut entry) = self.0.take() {
+            self.0 = entry.next.take();
+        }
+    }
+}
+
+struct CreationRealm {
+    next: Option<Box<CreationRealm>>,
+    global: DomHostedGlobalId,
+    realm: Realm,
+    _backing: DomHostedRuntimeRetention,
+}
+
 struct ScriptEngine {
     // Close the canonical engine fact before releasing SDK handles/captures.
     registration: DomDocumentScriptRegistration,
     process: Process,
     realm: Realm,
+    comments: projection::ProjectedComments,
+    creations: CreationRealms,
     retained_bytes: usize,
     _hook_backing: DomHostedRuntimeRetention,
+}
+
+impl ScriptEngine {
+    fn retained_bytes_with(&self, additional: usize) -> Option<usize> {
+        self.comments
+            .len()
+            .checked_mul(projection::ProjectedComments::pin_bytes(&self.process)?)?
+            .checked_add(self.retained_bytes)?
+            .checked_add(self.comments.slot_bytes()?)?
+            .checked_add(additional)
+    }
+
+    fn finish_projection_cleanup(&mut self, realm: &RealmAuthority) {
+        self.comments.drain_retirements(&mut self.process);
+        if realm.check_owner_active().is_err() {
+            self.comments.release_all(&mut self.process);
+        }
+    }
 }
 
 enum ScriptRetirement {
@@ -504,11 +581,22 @@ pub struct DocumentScriptHost {
     retirement: Option<ScriptRetirement>,
 }
 
-struct NativeLoanExit<'a>(&'a mut DocumentScriptHost);
+struct NativeLoanExit<'a> {
+    host: &'a mut DocumentScriptHost,
+    acquired: bool,
+}
 
 impl Drop for NativeLoanExit<'_> {
     fn drop(&mut self) {
-        self.0.dispose_retired_engine();
+        if !self.acquired {
+            return;
+        }
+        self.host.dispose_retired_engine();
+        if let Some(engine) = self.host.engine.as_mut()
+            && let Some(attachment) = self.host.native.attachment.get()
+        {
+            engine.finish_projection_cleanup(&attachment.realm);
+        }
     }
 }
 
@@ -605,6 +693,74 @@ impl DocumentScriptHost {
         }
     }
 
+    /// Admit a creation realm for nodes originating at a live
+    /// top level in this attachment's native Session. The original attachment
+    /// remains the sole script execution entry. The creation realm stays
+    /// available for adopted nodes after their original top level retires.
+    pub fn register_node_creation_realm(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        origin: DomHostedTopLevel,
+    ) -> Result<(), DocumentScriptError> {
+        self.check_permit(permit)?;
+        self.observe()?;
+        let attachment = self.attachment()?;
+        let receiving_global = attachment.target.global();
+        let engine = self
+            .engine
+            .as_mut()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        let bytes = size_of::<CreationRealm>()
+            .checked_add(engine.process.realm_storage_bytes())
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let retained_bytes = engine
+            .retained_bytes
+            .checked_add(bytes)
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let total = engine
+            .retained_bytes_with(bytes)
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let cancel = &self.native.cancellation;
+        let backing = {
+            let mut session = self
+                .native
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let hosted = session.hosted_execution();
+            let mut dom = session.dom();
+            hosted
+                .with_script_target(&mut dom, origin, cancel, |_, _| Ok(()))
+                .map_err(DocumentScriptNativeError::from)?;
+            let registered = origin.global() == receiving_global
+                || engine
+                    .creations
+                    .find(origin.global(), || {
+                        hosted.admit_script_work(&dom, 1, cancel)
+                    })
+                    .map_err(DocumentScriptNativeError::from)?
+                    .is_some();
+            if registered {
+                return Err(DocumentScriptNativeError::CreationRealmAlreadyRegistered.into());
+            }
+            if total > self.native.storage_limit {
+                return Err(DocumentScriptNativeError::StorageLimit.into());
+            }
+            hosted
+                .retain_script_payload(&mut dom, bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?
+        };
+        let realm = engine.process.execution().create_realm()?;
+        engine.creations.0 = Some(Box::new(CreationRealm {
+            next: engine.creations.0.take(),
+            global: origin.global(),
+            realm,
+            _backing: backing,
+        }));
+        engine.retained_bytes = retained_bytes;
+        Ok(())
+    }
+
     /// Sample the current scripting fact for the exact native snapshot.
     pub fn observe_scripting(
         &mut self,
@@ -623,11 +779,18 @@ impl DocumentScriptHost {
     ) -> Result<T, DocumentScriptError> {
         self.check_permit(permit)?;
         self.observe()?;
+        let attachment = self
+            .native
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
         let engine = self
             .engine
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        Ok(engine.process.execution().in_realm(&engine.realm, action)?)
+        let result = engine.process.execution().in_realm(&engine.realm, action);
+        engine.finish_projection_cleanup(&attachment.realm);
+        Ok(result?)
     }
 
     /// Run the shared guest queue only after current native qualification and
@@ -644,11 +807,18 @@ impl DocumentScriptHost {
             });
         }
         self.observe()?;
+        let attachment = self
+            .native
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
         let engine = self
             .engine
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        Ok(engine.process.execution().checkpoint()?)
+        let result = engine.process.execution().checkpoint();
+        engine.finish_projection_cleanup(&attachment.realm);
+        Ok(result?)
     }
 
     /// Historical native snapshot; it carries no live script authority.
@@ -670,13 +840,17 @@ impl DocumentScriptHost {
     ) -> Result<T, DocumentScriptNativeError> {
         // The Session loan and DOM view must end before Process disposal,
         // including if caller code unwinds after canonical retirement.
-        let exit = NativeLoanExit(self);
+        let mut exit = NativeLoanExit {
+            host: self,
+            acquired: false,
+        };
         let mut session = exit
-            .0
+            .host
             .native
             .session
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
+        exit.acquired = true;
         let hosted = session.hosted_execution();
         let source = session.source_execution();
         Ok(action(&mut session.dom(), hosted, source))
@@ -768,7 +942,7 @@ fn read_child_count<'scope>(
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let status = match native.active_source() {
-            Some(active) => native.qualify_event(attachment, &mut session, &active)?,
+            Some(active) => native.qualify_event(attachment, &mut session, active.request())?,
             None => native.observe(attachment, &mut session)?.status(),
         };
         if status != HtmlScriptingStatus::Enabled {

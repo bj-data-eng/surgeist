@@ -511,11 +511,15 @@ impl<E: core::error::Error + 'static, Storage: 'static> surgeist_bindings_js::Ho
 pub fn surgeist_bindings_js::HostFailureSlot<E, Storage>::new(authority: &surgeist_bindings_js::RealmAuthority, storage: Storage) -> core::result::Result<Self, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::HostFailureSlot<E, Storage>::record(&self, cause: E) -> core::result::Result<surgeist_bindings_js::HostFailure, surgeist_bindings_js::RecordFailure<E>>
 pub const fn surgeist_bindings_js::HostFailureSlot<E, Storage>::storage_bytes() -> usize
+pub struct surgeist_bindings_js::ManagedObject
 pub struct surgeist_bindings_js::Process
 impl surgeist_bindings_js::Process
 pub fn surgeist_bindings_js::Process::bootstrap(kind: surgeist_bindings_js::EngineKind) -> core::result::Result<Self, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Process::conversion_cleanup_status(&self) -> surgeist_bindings_js::conversion::CleanupStatus
 pub fn surgeist_bindings_js::Process::execution(&mut self) -> surgeist_bindings_js::Execution<'_>
+pub fn surgeist_bindings_js::Process::managed_object_storage_bytes(&self) -> usize
+pub fn surgeist_bindings_js::Process::realm_storage_bytes(&self) -> usize
+pub fn surgeist_bindings_js::Process::release_managed_object(&mut self, object: surgeist_bindings_js::ManagedObject) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub struct surgeist_bindings_js::Realm(_)
 pub struct surgeist_bindings_js::RealmAuthority
 impl surgeist_bindings_js::RealmAuthority
@@ -547,7 +551,9 @@ pub fn surgeist_bindings_js::Scope<'scope>::integer(&mut self, value: &surgeist_
 pub fn surgeist_bindings_js::Scope<'scope>::intrinsic(&mut self, intrinsic: surgeist_bindings_js::Intrinsic) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::is_callable(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<bool, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::kind(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<surgeist_bindings_js::ValueKind, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::managed_object(&mut self) -> core::result::Result<surgeist_bindings_js::ManagedObject, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::object(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::open_managed_object(&mut self, object: &surgeist_bindings_js::ManagedObject) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::primitive(&mut self, primitive: surgeist_bindings_js::Primitive) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::realm_authority(&self) -> core::result::Result<surgeist_bindings_js::RealmAuthority, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::refuse_host(&self, failure: &surgeist_bindings_js::HostFailure) -> surgeist_bindings_js::Error

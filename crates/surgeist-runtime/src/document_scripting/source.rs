@@ -3,8 +3,8 @@
 use super::*;
 use surgeist_bindings_js::{Arguments, Exception, Root};
 use surgeist_dom::{
-    DomNodeKind, DomSourceEdit, DomSourceEventRequest, DomSourceEventRetention, DomSourceLimits,
-    NodeId,
+    DomNodeKind, DomNodeRetirementWatch, DomSourceEdit, DomSourceEventPayloadRetention,
+    DomSourceEventRequest, DomSourceEventRetention, DomSourceLimits, NodeId,
 };
 
 use crate::{
@@ -18,7 +18,15 @@ use crate::{
 pub(super) struct ActiveSource {
     request: DomSourceEventRequest,
     delegated: NodeId,
+    creation_global: DomHostedGlobalId,
     limits: DomSourceLimits,
+    argument: Root,
+}
+
+impl ActiveSource {
+    pub(super) fn request(&self) -> &DomSourceEventRequest {
+        &self.request
+    }
 }
 
 struct ActiveGuard<'a>(&'a Cell<Option<ActiveSource>>);
@@ -77,6 +85,10 @@ pub enum DocumentScriptEventProgress<'host> {
     Native(DomSourceEventServiceProgress),
 }
 
+fn event_report_bytes() -> usize {
+    size_of::<SelectedDocumentScriptListener<'_>>().max(size_of::<DocumentScriptEventReport<'_>>())
+}
+
 impl DocumentScriptHost {
     /// Service the exact original event request through the supplied native
     /// registry. A selected listener contains no dispatcher or context loan.
@@ -94,30 +106,24 @@ impl DocumentScriptHost {
             .engine
             .as_ref()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        let bytes = size_of::<SelectedDocumentScriptListener<'_>>()
-            .max(size_of::<DocumentScriptEventReport<'_>>());
+        let bytes = event_report_bytes();
         if engine
-            .retained_bytes
-            .checked_add(bytes)
+            .retained_bytes_with(bytes)
             .is_none_or(|total| total > self.native.storage_limit)
         {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
 
-        let (progress, backing) = {
-            let cancel = &self.native.cancellation;
-            let mut session = self
-                .native
-                .session
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            let source = session.source_execution();
-            let mut dom = session.dom();
+        let cancellation = self.native.cancellation.clone();
+        let (progress, backing) = self.with_native(|dom, _, source| {
+            let cancel = &cancellation;
             let root = dom
                 .pending_source_edit()
                 .ok_or(DocumentScriptNativeError::SourceAccess)?;
             if root.operation() != request.operation() {
-                return Err(DocumentScriptNativeError::SourceAccess.into());
+                return Err(DocumentScriptEventError::from(
+                    DocumentScriptNativeError::SourceAccess,
+                ));
             }
             dom.raw()
                 .source_event_step(request, cancel)
@@ -131,10 +137,10 @@ impl DocumentScriptHost {
                 .retain_source_event_payload(request, bytes, 0, cancel)
                 .map_err(DocumentScriptNativeError::from)?;
             let progress = source
-                .service_event(&mut dom, request, dispatcher, context, limits, cancel)
+                .service_event(dom, request, dispatcher, context, limits, cancel)
                 .map_err(DocumentScriptEventError::Service)?;
-            (progress, backing)
-        };
+            Ok((progress, backing))
+        })??;
 
         match progress {
             DomSourceEventServiceProgress::Retained {
@@ -172,9 +178,9 @@ impl<'host> SelectedDocumentScriptListener<'host> {
         self.invocation.registration()
     }
 
-    /// Invoke the rooted guest handler selected by the application. The
-    /// nested detach hook receives access only to the explicit delegated
-    /// direct Document comment, while this original invocation is active.
+    /// Invoke the rooted guest handler with the projected direct Document
+    /// Comment. The nested detach hook accepts that exact argument only while
+    /// this original invocation is active.
     pub fn invoke(
         self,
         handler: &Root,
@@ -187,12 +193,7 @@ impl<'host> SelectedDocumentScriptListener<'host> {
             request,
             _backing,
         } = self;
-        let active = ActiveSource {
-            request,
-            delegated,
-            limits,
-        };
-        let outcome = match call_guest(host, handler, active) {
+        let outcome = match call_guest(host, handler, request, delegated, limits) {
             Ok(()) => DocumentScriptGuestResult::Returned,
             Err(Error::Exception(exception)) => DocumentScriptGuestResult::Threw(exception),
             Err(error) => DocumentScriptGuestResult::Refused(error),
@@ -256,33 +257,170 @@ impl DocumentScriptEventReport<'_> {
 fn call_guest(
     host: &mut DocumentScriptHost,
     handler: &Root,
-    active: ActiveSource,
+    request: DomSourceEventRequest,
+    delegated: NodeId,
+    limits: DomSourceLimits,
 ) -> Result<(), Error> {
+    enum PreparedPin {
+        Existing(usize),
+        Funded {
+            plan: projection::SlotPlan,
+            watch: DomNodeRetirementWatch,
+            backing: DomSourceEventPayloadRetention,
+            slots_backing: Option<DomSourceEventPayloadRetention>,
+        },
+    }
+
     let native = &host.native;
     let engine = host.engine.as_mut().ok_or(Error::ExpiredIdentity)?;
     let attachment = native.attachment.get().ok_or(Error::ExpiredIdentity)?;
     if native.active_source().is_some() {
         return Err(Error::BackendUnavailable);
     }
-    native.active_source.set(Some(active.clone()));
-    let _active = ActiveGuard(&native.active_source);
-    engine.process.execution().in_realm(&engine.realm, |scope| {
-        let qualified = (|| {
-            let mut session = native
-                .session
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            native.qualify_event(attachment, &mut session, &active)?;
-            require_delegated_comment(&session, attachment, active.delegated)
-        })();
-        if let Err(error) = qualified {
-            return refuse(scope, &attachment.failures, error);
-        }
-        let handler = scope.import(handler)?;
-        let receiver = scope.primitive(Primitive::Undefined)?;
-        scope.call(&handler, &receiver, &[])?;
-        Ok(())
-    })
+    let active = ActiveGuard(&native.active_source);
+    let pin_bytes = projection::ProjectedComments::pin_bytes(&engine.process);
+    let plan = engine.comments.plan_slot();
+    let slot_bytes = plan.and_then(projection::SlotPlan::growth_bytes);
+    let miss_bytes = pin_bytes
+        .zip(slot_bytes)
+        .and_then(|(pin, slots)| pin.checked_add(slots))
+        .and_then(|bytes| bytes.checked_add(event_report_bytes()))
+        .and_then(|additional| engine.retained_bytes_with(additional));
+    let comments = &mut engine.comments;
+    let receiving_realm = &engine.realm;
+    let result = (|| {
+        let mut execution = engine.process.execution();
+        let (creation_global, creation_realm, prepared) =
+            execution.in_realm(receiving_realm, |scope| {
+                let prepare = (|| {
+                    let mut session = native
+                        .session
+                        .try_borrow_mut()
+                        .map_err(|_| DocumentScriptNativeError::Busy)?;
+                    native.qualify_event(attachment, &mut session, &request)?;
+                    let creation_global =
+                        delegated_comment_global(&session, attachment, delegated)?;
+                    let mut dom = session.dom();
+                    let step = || {
+                        dom.raw()
+                            .source_event_step(&request, &native.cancellation)
+                            .map_err(DocumentScriptNativeError::from)
+                    };
+                    let creation_realm = if creation_global == attachment.target.global() {
+                        receiving_realm
+                    } else {
+                        engine
+                            .creations
+                            .find(creation_global, step)?
+                            .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?
+                    };
+                    step()?;
+                    if let Some(existing) = comments.find(delegated, step)? {
+                        return Ok((
+                            creation_global,
+                            creation_realm,
+                            PreparedPin::Existing(existing),
+                        ));
+                    }
+                    if miss_bytes.is_none_or(|total| total > native.storage_limit) {
+                        return Err(DocumentScriptNativeError::StorageLimit);
+                    }
+                    let pin_bytes =
+                        pin_bytes.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                    let slot_bytes =
+                        slot_bytes.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                    let plan = plan.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                    let bytes = pin_bytes
+                        .checked_add(slot_bytes)
+                        .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                    let mut retained = dom.raw().retain_source_event_payload(
+                        &request,
+                        bytes,
+                        0,
+                        &native.cancellation,
+                    )?;
+                    let backing = retained.split_payload(pin_bytes, 0)?;
+                    let slots_backing = (slot_bytes != 0)
+                        .then(|| retained.split_payload(slot_bytes, 0))
+                        .transpose()?;
+                    let watch = comments.arm(
+                        dom.raw_mut(),
+                        &request,
+                        delegated,
+                        plan,
+                        &native.cancellation,
+                    )?;
+                    Ok((
+                        creation_global,
+                        creation_realm,
+                        PreparedPin::Funded {
+                            plan,
+                            watch,
+                            backing,
+                            slots_backing,
+                        },
+                    ))
+                })();
+                let prepared = match prepare {
+                    Ok(prepared) => prepared,
+                    Err(error) => return refuse(scope, &attachment.failures, error),
+                };
+                scope.import(handler)?;
+                Ok(prepared)
+            })?;
+
+        let key = match prepared {
+            PreparedPin::Existing(key) => key,
+            PreparedPin::Funded {
+                plan,
+                watch,
+                backing,
+                slots_backing,
+            } => {
+                if let Err(error) = comments.grow(plan, slots_backing) {
+                    return execution.in_realm(receiving_realm, |scope| {
+                        refuse(scope, &attachment.failures, error.into())
+                    });
+                }
+                let Some(vacant) = comments.vacant(plan.key) else {
+                    return execution.in_realm(receiving_realm, |scope| {
+                        refuse(
+                            scope,
+                            &attachment.failures,
+                            DocumentScriptNativeError::ProjectionCustody,
+                        )
+                    });
+                };
+                let object = execution.in_realm(creation_realm, |scope| scope.managed_object())?;
+                vacant.install(delegated, object, watch, backing);
+                plan.key
+            }
+        };
+        execution.in_realm(receiving_realm, |scope| {
+            let handler = scope.import(handler)?;
+            let Some(object) = comments.object(key) else {
+                return refuse(
+                    scope,
+                    &attachment.failures,
+                    DocumentScriptNativeError::ProjectionCustody,
+                );
+            };
+            let argument = scope.open_managed_object(object)?;
+            native.active_source.set(Some(ActiveSource {
+                request,
+                delegated,
+                creation_global,
+                limits,
+                argument: scope.retain(&argument),
+            }));
+            let receiver = scope.primitive(Primitive::Undefined)?;
+            scope.call(&handler, &receiver, &[argument])?;
+            Ok(())
+        })
+    })();
+    drop(active);
+    engine.finish_projection_cleanup(&attachment.realm);
+    result
 }
 
 impl NativeOwner {
@@ -297,7 +435,7 @@ impl NativeOwner {
         &self,
         attachment: &Attachment,
         session: &mut DomSession,
-        active: &ActiveSource,
+        request: &DomSourceEventRequest,
     ) -> Result<HtmlScriptingStatus, DocumentScriptNativeError> {
         let cancel = &self.cancellation;
         let hosted = session.hosted_execution();
@@ -305,20 +443,20 @@ impl NativeOwner {
         let current = dom
             .pending_source_edit()
             .ok_or(DocumentScriptNativeError::SourceAccess)?;
-        if current.operation() != active.request.operation() {
+        if current.operation() != request.operation() {
             return Err(DocumentScriptNativeError::SourceAccess);
         }
         let status = hosted.with_script_settings(
             &mut dom,
             attachment.target,
-            Some(&active.request),
+            Some(request),
             cancel,
             |source, dom| {
                 source
                     .document_scripting_during_dispatch(
                         dom.raw(),
                         &attachment.canonical,
-                        &active.request,
+                        request,
                         DomDocumentScriptingFacts {
                             engine: HtmlScriptingEngine::Supported,
                             policy: attachment.policy,
@@ -335,7 +473,7 @@ impl NativeOwner {
         }
         let snapshot = dom.snapshot();
         let document = snapshot.document(attachment.target.document())?;
-        document.node(active.request.subject())?;
+        document.node(request.subject())?;
         Ok(status)
     }
 }
@@ -362,23 +500,31 @@ pub(super) fn detach_callback(
                 DocumentScriptNativeError::SourceAccess,
             );
         };
-        let admitted = native
-            .session
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)
-            .and_then(|mut session| {
-                session
-                    .dom()
-                    .raw()
-                    .source_event_step(&active.request, &native.cancellation)
-                    .map_err(DocumentScriptNativeError::from)
-            });
-        if let Err(error) = admitted {
+        if let Err(error) = admit_detach_work(&native, &active.request, 1) {
             return refuse(scope, &attachment.failures, error);
         }
+        let expected = scope.import(&active.argument)?;
+        let matches = match arguments.get(1) {
+            Some(candidate) => scope.strict_equals(candidate, &expected)?,
+            None => false,
+        };
+        if !matches {
+            return detach_type_error(
+                scope,
+                &native,
+                attachment,
+                &active.request,
+                b"Delegated Comment required",
+            );
+        }
         let Some(value) = arguments.get(0) else {
-            let message = b"Number required".map(u16::from);
-            return Ok(Completion::Throw(scope.type_error(&message)?));
+            return detach_type_error(
+                scope,
+                &native,
+                attachment,
+                &active.request,
+                b"Number required",
+            );
         };
         let converted = scope.unrestricted_double(value);
         scope.check_active()?;
@@ -401,11 +547,41 @@ pub(super) fn detach_callback(
     }
 }
 
-fn require_delegated_comment(
+fn admit_detach_work(
+    native: &NativeOwner,
+    request: &DomSourceEventRequest,
+    steps: usize,
+) -> Result<(), DocumentScriptNativeError> {
+    let mut session = native
+        .session
+        .try_borrow_mut()
+        .map_err(|_| DocumentScriptNativeError::Busy)?;
+    let dom = session.dom();
+    for _ in 0..steps {
+        dom.raw().source_event_step(request, &native.cancellation)?;
+    }
+    Ok(())
+}
+
+fn detach_type_error<'scope, const N: usize>(
+    scope: &mut Scope<'scope>,
+    native: &NativeOwner,
+    attachment: &Attachment,
+    request: &DomSourceEventRequest,
+    ascii: &[u8; N],
+) -> Result<Completion<'scope>, Error> {
+    if let Err(error) = admit_detach_work(native, request, N) {
+        return refuse(scope, &attachment.failures, error);
+    }
+    let message = ascii.map(u16::from);
+    Ok(Completion::Throw(scope.type_error(&message)?))
+}
+
+fn delegated_comment_global(
     session: &DomSession,
     attachment: &Attachment,
     delegated: NodeId,
-) -> Result<(), DocumentScriptNativeError> {
+) -> Result<DomHostedGlobalId, DocumentScriptNativeError> {
     let snapshot = session.snapshot();
     let node = snapshot.node(delegated)?;
     if !matches!(node.kind(), DomNodeKind::Comment(_))
@@ -413,7 +589,10 @@ fn require_delegated_comment(
     {
         return Err(DocumentScriptNativeError::SourceAccess);
     }
-    Ok(())
+    snapshot
+        .relevant_global(delegated)
+        .map_err(DomHostedRuntimeError::Dom)?
+        .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)
 }
 
 fn finish_detach_conversion(
@@ -429,12 +608,17 @@ fn finish_detach_conversion(
             .session
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        native.qualify_event(attachment, &mut session, &active)?;
+        native.qualify_event(attachment, &mut session, &active.request)?;
         if !should_detach {
             return Ok(None);
         }
-        require_delegated_comment(&session, attachment, active.delegated)?;
-        let execution = session.source_execution_scope(attachment.target.host(), cancel)?;
+        if delegated_comment_global(&session, attachment, active.delegated)?
+            != active.creation_global
+        {
+            return Err(DocumentScriptNativeError::CreationGlobalUnavailable);
+        }
+        // The parent request authenticates the receiving Document. Native
+        // detach captures its own creation provenance from the exact Comment.
         let mut source = session.source_execution();
         Ok(Some(source.apply(
             &mut session.dom(),
@@ -442,7 +626,7 @@ fn finish_detach_conversion(
             active.limits,
             &mut DomSourceServices {
                 meta: None,
-                execution_scope: Some(&execution),
+                execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
             },

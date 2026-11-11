@@ -573,6 +573,7 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     distinct_realms_share_native_state_without_sharing_globals()?;
     invalid_native_identity_types_are_rejected()?;
     nested_callback_scopes_share_production_roots_and_release_self_cleared_custody()?;
+    missing_managed_holder_refuses_and_allows_other_pins_to_release()?;
     registry_failure_stays_terminal_across_guest_catches_and_native_coercion()?;
     fixed_arity_captures_only_the_selected_prefix()?;
     cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal()?;
@@ -614,6 +615,34 @@ fn fixed_arity_captures_only_the_selected_prefix() -> TestResult {
     assert_eq!(host.eval("fixed()")?, "0");
     assert_eq!(host.eval("fixed(undefined, 2, 3)")?, "1");
     assert_eq!(host.eval("raw(undefined, 2, 3)")?, "3");
+    Ok(())
+}
+
+fn missing_managed_holder_refuses_and_allows_other_pins_to_release() -> TestResult {
+    let mut engine = Engine::bootstrap()?;
+    let realm = engine.create_realm()?;
+    let (missing, retained) = engine.with_context(&realm, |entered| {
+        Ok((entered.managed_object()?, entered.managed_object()?))
+    })?;
+    assert!(
+        engine
+            .roots
+            .entries
+            .borrow_mut()
+            .remove(&missing.0.index)
+            .is_some()
+    );
+    assert!(matches!(
+        engine.with_context(&realm, |entered| entered.open_managed_object(&missing)),
+        Err(Error::RegistryConflict)
+    ));
+    let retained_index = retained.0.index;
+    engine.release_managed_object(retained)?;
+    assert!(!engine.roots.entries.borrow().contains_key(&retained_index));
+    assert!(matches!(
+        engine.roots.owner.available(),
+        Err(Error::RegistryConflict)
+    ));
     Ok(())
 }
 

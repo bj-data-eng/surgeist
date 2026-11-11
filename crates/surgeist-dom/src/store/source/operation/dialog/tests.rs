@@ -805,6 +805,205 @@ fn detached_event_payload_transfers_only_its_original_ledger_extent() {
 }
 
 #[test]
+fn node_retirement_notice_requires_the_exact_committed_generation() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, executor, document, first, surviving) = fixture();
+    let mut setup = DomBatch::new();
+    let comment = setup.create_comment(document.node(), "watched");
+    let unrelated = setup.create_comment(document.node(), "unrelated");
+    setup.insert_before(&comment, document.node(), None);
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let original = commit.created(&comment).unwrap().unwrap();
+    let unrelated = commit.created(&unrelated).unwrap().unwrap();
+    let event = request(&mut dom, first);
+    let mut inbox = dom
+        .source_event_node_retirement_inbox(&event, &cancel)
+        .unwrap();
+    let watch = dom
+        .watch_source_event_node_retirement(&event, original, &inbox, 11, &cancel)
+        .unwrap();
+    let surviving_watch = dom
+        .watch_source_event_node_retirement(&event, surviving, &inbox, 33, &cancel)
+        .unwrap();
+    assert!(matches!(
+        dom.watch_source_event_node_retirement(&event, original, &inbox, 22, &cancel),
+        Err(DomError::NodeRetirementAlreadyWatched)
+    ));
+    let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
+    let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
+
+    let mut detach = DomBatch::new();
+    detach.detach(original);
+    detach.destroy(unrelated);
+    dom.apply(detach, &cancel).unwrap();
+    assert!(dom.snapshot().node(original).is_ok());
+    assert!(inbox.take().is_none());
+
+    let mut refused = DomBatch::new();
+    refused.destroy(original);
+    refused.insert_before(document.node(), document.node(), None);
+    assert!(matches!(
+        dom.apply(refused, &cancel),
+        Err(DomError::HierarchyRequest)
+    ));
+    assert!(dom.snapshot().node(original).is_ok());
+    assert!(inbox.take().is_none());
+
+    let mut destroy = DomBatch::new();
+    destroy.destroy(original);
+    dom.apply(destroy, &cancel).unwrap();
+    let mut replacement = DomBatch::new();
+    let comment = replacement.create_comment(document.node(), "replacement");
+    let fresh = dom
+        .apply(replacement, &cancel)
+        .unwrap()
+        .created(&comment)
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        dom.snapshot().node(original),
+        Err(DomError::StaleNode)
+    ));
+    assert!(dom.snapshot().node(fresh).is_ok());
+    assert_eq!(fresh.slot, original.slot);
+    assert_ne!(fresh.generation, original.generation);
+    assert!(matches!(
+        dom.watch_source_event_node_retirement(&event, original, &inbox, 44, &cancel),
+        Err(DomError::StaleNode)
+    ));
+    let notice = inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (original, 11));
+    assert!(inbox.take().is_none());
+
+    let fresh_watch = dom
+        .watch_source_event_node_retirement(&event, fresh, &inbox, 22, &cancel)
+        .unwrap();
+    drop(watch);
+    assert!(inbox.take().is_none());
+    let mut destroy = DomBatch::new();
+    destroy.destroy(fresh);
+    dom.apply(destroy, &cancel).unwrap();
+    let notice = inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (fresh, 22));
+    assert!(inbox.take().is_none());
+    drop(fresh_watch);
+
+    // Retiring both observed generations left the other branch armed.
+    assert!(dom.snapshot().node(surviving).is_ok());
+    let mut destroy = DomBatch::new();
+    destroy.destroy(surviving);
+    let prepared = dom.prepare(destroy, &cancel).unwrap();
+    let mut publication = dom.prepare_publication(prepared, &cancel).unwrap();
+    publication.close_ordinary_sharing(&cancel).unwrap();
+    drop(surviving_watch);
+    dom.publish_prepared(publication);
+    assert!(inbox.take().is_none());
+    drop(scope);
+}
+
+#[test]
+fn a_deep_duplicate_watch_requires_each_original_source_work_step() {
+    // Four consecutive slots aligned to two bits require two independent
+    // slot-bit decisions to identify any watched generation, then the exact
+    // leaf comparison. The Source entry also costs one step.
+    const EXACT: u64 = 1 + 2 + 1;
+    for remaining in [EXACT - 1, EXACT] {
+        let cancel = AtomicBool::new(false);
+        let (mut dom, _executor, document, dialog, _) = fixture();
+        let mut batch = DomBatch::new();
+        let tickets = (0..7)
+            .map(|_| batch.create_comment(document.node(), "retirement work"))
+            .collect::<Vec<_>>();
+        let commit = dom.apply(batch, &cancel).unwrap();
+        let nodes = tickets
+            .iter()
+            .map(|ticket| commit.created(ticket).unwrap().unwrap())
+            .collect::<Vec<_>>();
+        let group = nodes
+            .windows(4)
+            .find(|group| {
+                group[0].slot & 3 == 0
+                    && group
+                        .iter()
+                        .enumerate()
+                        .all(|(offset, node)| node.slot == group[0].slot + offset)
+            })
+            .expect("four aligned, actually allocated native slots");
+        let target = group[3];
+        let tight = DomSourceLimits {
+            work: 4_096,
+            ..limits()
+        };
+        let event = {
+            let mut lease = dom
+                .begin_source_edit(DomSourceEdit::show_dialog(dialog), tight, &cancel)
+                .unwrap();
+            let DomSourceProgress::Request(DomSourceRequest::Event(event)) =
+                lease.advance(&cancel).unwrap()
+            else {
+                panic!("actual Dialog Source event");
+            };
+            event
+        };
+        let mut inbox = dom
+            .source_event_node_retirement_inbox(&event, &cancel)
+            .unwrap();
+        let mut watches = group
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(key, node)| {
+                dom.watch_source_event_node_retirement(&event, node, &inbox, key, &cancel)
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        let spent = dom.pending_source_edit().unwrap().spent_work();
+        assert!(spent < tight.work() - remaining);
+        for _ in spent..tight.work() - remaining {
+            dom.source_event_step(&event, &cancel).unwrap();
+        }
+        let stamp = dom.snapshot().stamp();
+        let ledger = dom.custody_registry.ledger().clone();
+        let backing = ledger.total();
+        let work_limit = DomError::SourceWorkLimit {
+            limit: tight.work(),
+        };
+        let expected = if remaining == EXACT {
+            DomError::NodeRetirementAlreadyWatched
+        } else {
+            work_limit.clone()
+        };
+        assert_eq!(
+            dom.watch_source_event_node_retirement(&event, target, &inbox, 42, &cancel)
+                .err(),
+            Some(expected),
+            "{remaining} steps remained on the original Source"
+        );
+        assert_eq!(dom.snapshot().stamp(), stamp);
+        assert_eq!(ledger.total(), backing);
+        assert_eq!(
+            dom.pending_source_edit().unwrap().operation(),
+            event.operation()
+        );
+        assert!(inbox.take().is_none());
+        if remaining == EXACT {
+            assert_eq!(dom.source_event_step(&event, &cancel), Err(work_limit));
+            // An admitted watch can disarm after the original guest work is
+            // exhausted. A later fresh admission can watch that same node.
+            drop(watches.pop().unwrap());
+            dom.raise_source_event_limits(&event, limits(), &cancel)
+                .unwrap();
+            let replacement = dom
+                .watch_source_event_node_retirement(&event, target, &inbox, 42, &cancel)
+                .unwrap();
+            drop(replacement);
+            assert!(inbox.take().is_none());
+        }
+    }
+}
+
+#[test]
 fn legacy_details_transfer_refuses_during_observation_and_preserves_the_actual_intention() {
     let cancel = AtomicBool::new(false);
     let (mut dom, executor, document, first, _) = fixture();
