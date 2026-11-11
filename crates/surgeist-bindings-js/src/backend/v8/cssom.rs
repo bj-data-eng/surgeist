@@ -159,11 +159,10 @@ pub(super) fn projection<'s>(
     Ok(Some((holder, state.clone())))
 }
 
-pub(super) fn reopen<'s>(
-    scope: &v8::PinScope<'s, '_>,
+pub(super) fn live_projection(
     roots: &Roots,
     identity: Projection,
-) -> Result<Option<v8::Local<'s, v8::Value>>, Error> {
+) -> Result<Option<Rc<CallbackEntry>>, Error> {
     let Some(entry) = callback_entry(roots, identity.id)? else {
         return Ok(None);
     };
@@ -172,7 +171,15 @@ pub(super) fn reopen<'s>(
     {
         return Err(roots.conflict());
     }
-    Ok(entry.object.to_local(scope))
+    Ok((!entry.object.is_empty()).then_some(entry))
+}
+
+pub(super) fn reopen<'s>(
+    scope: &v8::PinScope<'s, '_>,
+    roots: &Roots,
+    identity: Projection,
+) -> Result<Option<v8::Local<'s, v8::Value>>, Error> {
+    Ok(live_projection(roots, identity)?.and_then(|entry| entry.object.to_local(scope)))
 }
 
 pub(super) fn indexed_proxy<'s>(

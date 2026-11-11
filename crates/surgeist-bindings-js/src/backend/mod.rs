@@ -224,6 +224,7 @@ pub(crate) trait Operations {
     ) -> Result<Projection, Error>;
     fn projection(&mut self, object: &Root) -> Result<Option<Rc<dyn Any>>, Error>;
     fn projection_link(&mut self, object: &Root, index: usize) -> Result<Root, Error>;
+    fn projection_is_live(&self, identity: Projection) -> Result<bool, Error>;
     fn reopen_projection(&mut self, identity: Projection) -> Result<Option<Root>, Error>;
     fn cssom_prototypes(&mut self, prototypes: &[&Root]) -> Result<(), Error>;
     fn cssom_prototype(&mut self, index: u32) -> Result<Root, Error>;

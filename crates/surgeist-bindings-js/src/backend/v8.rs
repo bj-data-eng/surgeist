@@ -1250,6 +1250,14 @@ impl Operations for Entered<'_, '_, '_> {
         })
     }
 
+    fn projection_is_live(&self, identity: Projection) -> Result<bool, Error> {
+        self.check_active()?;
+        if identity.realm.owner != self.realm.owner {
+            return Err(Error::ForeignOwner);
+        }
+        Ok(cssom::live_projection(&self.roots, identity)?.is_some())
+    }
+
     fn reopen_projection(&mut self, identity: Projection) -> Result<Option<Root>, Error> {
         self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
             if identity.realm.owner != realm.owner {

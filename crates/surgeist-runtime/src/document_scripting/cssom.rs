@@ -141,13 +141,8 @@ impl Host {
                 .batch(CssomEditGuard::from_snapshot(&snapshot))
                 .map_err(Failure::Owner)?;
             let result = action(&mut batch, &owner.cancellation).map_err(Failure::Cssom)?;
-            if owner
-                .cancellation
-                .load(std::sync::atomic::Ordering::Relaxed)
-            {
-                return Err(Failure::Cssom(CssomError::Cancelled));
-            }
-            root.commit(&mut Some(batch)).map_err(Failure::Owner)?;
+            root.commit_with_cancellation(&mut Some(batch), &owner.cancellation)
+                .map_err(Failure::Owner)?;
             Ok(result)
         })();
         match result {

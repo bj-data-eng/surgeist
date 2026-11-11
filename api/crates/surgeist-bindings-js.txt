@@ -16,6 +16,16 @@ pub fn surgeist_bindings_js::conversion::declarations::character_data_substring_
 pub fn surgeist_bindings_js::conversion::declarations::character_data_substring_data_0_offset() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
 pub fn surgeist_bindings_js::conversion::declarations::comment_constructor_0_data() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::css_escape_0_ident() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::css_rule_list_item_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::css_style_sheet_delete_rule_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::css_style_sheet_insert_rule_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::css_style_sheet_insert_rule_0_rule() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::css_style_sheet_legacy_add_rule_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::css_style_sheet_legacy_add_rule_0_selector() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::css_style_sheet_legacy_add_rule_0_style() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::css_style_sheet_legacy_remove_rule_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::css_style_sheet_replace_0_text() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::UsvString>>
+pub fn surgeist_bindings_js::conversion::declarations::css_style_sheet_replace_sync_0_text() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::UsvString>>
 pub fn surgeist_bindings_js::conversion::declarations::document_create_attribute_0_local_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::document_create_attribute_ns_0_namespace() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>>
 pub fn surgeist_bindings_js::conversion::declarations::document_create_attribute_ns_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -98,6 +108,9 @@ pub fn surgeist_bindings_js::conversion::declarations::event_target_remove_event
 pub fn surgeist_bindings_js::conversion::declarations::get_root_node_options() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::GetRootNodeOptions>
 pub fn surgeist_bindings_js::conversion::declarations::html_collection_item_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
 pub fn surgeist_bindings_js::conversion::declarations::html_collection_named_item_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::media_list_append_medium_0_medium() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::media_list_delete_medium_0_medium() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::media_list_item_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_ns_0_local_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_ns_0_namespace() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>>
@@ -295,6 +308,27 @@ impl core::default::Default for surgeist_bindings_js::css::CssNamespaceLimits
 pub fn surgeist_bindings_js::css::CssNamespaceLimits::default() -> Self
 pub const fn surgeist_bindings_js::css::callback_storage_bytes<Storage>() -> usize
 pub fn surgeist_bindings_js::css::install_window_css<Storage: 'static>(scope: &mut surgeist_bindings_js::Scope<'_>, limits: surgeist_bindings_js::css::CssNamespaceLimits, callback_backing: Storage, failure_backing: Storage) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub mod surgeist_bindings_js::cssom
+pub enum surgeist_bindings_js::cssom::MediaEdit
+pub surgeist_bindings_js::cssom::MediaEdit::Append
+pub surgeist_bindings_js::cssom::MediaEdit::Delete
+pub surgeist_bindings_js::cssom::MediaEdit::SetText
+pub trait surgeist_bindings_js::cssom::StylesheetHost: 'static
+pub type surgeist_bindings_js::cssom::StylesheetHost::Sheet: 'static
+pub type surgeist_bindings_js::cssom::StylesheetHost::Storage: 'static
+pub fn surgeist_bindings_js::cssom::StylesheetHost::construct(&self, scope: &mut surgeist_bindings_js::Scope<'_>, init: surgeist_cssom::sheet_operations::CssomSheetInit<'_>) -> core::result::Result<Self::Sheet, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::cssom::StylesheetHost::delete(&self, scope: &mut surgeist_bindings_js::Scope<'_>, sheet: &Self::Sheet, index: u32) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::cssom::StylesheetHost::disable(&self, scope: &mut surgeist_bindings_js::Scope<'_>, sheet: &Self::Sheet, disabled: bool) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::cssom::StylesheetHost::edit_media(&self, scope: &mut surgeist_bindings_js::Scope<'_>, sheet: &Self::Sheet, media: &surgeist_cssom::identity::CssomMediaListId, edit: surgeist_bindings_js::cssom::MediaEdit, text: alloc::sync::Arc<alloc::vec::Vec<u16>>) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::cssom::StylesheetHost::insert(&self, scope: &mut surgeist_bindings_js::Scope<'_>, sheet: &Self::Sheet, text: alloc::sync::Arc<alloc::vec::Vec<u16>>, index: u32) -> core::result::Result<u32, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::cssom::StylesheetHost::refuse(&self, scope: &mut surgeist_bindings_js::Scope<'_>, error: surgeist_cssom::model::CssomError) -> surgeist_bindings_js::Error
+pub fn surgeist_bindings_js::cssom::StylesheetHost::retain(&self, scope: &mut surgeist_bindings_js::Scope<'_>, bytes: usize) -> core::result::Result<Self::Storage, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::cssom::StylesheetHost::sheet_id(sheet: &Self::Sheet) -> &surgeist_cssom::identity::CssomSheetId
+pub fn surgeist_bindings_js::cssom::StylesheetHost::snapshot(&self, scope: &mut surgeist_bindings_js::Scope<'_>, sheet: &Self::Sheet) -> core::result::Result<surgeist_cssom::model::CssomSnapshot, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::cssom::StylesheetHost::work(&self, scope: &mut surgeist_bindings_js::Scope<'_>, units: usize) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::cssom::install<H: surgeist_bindings_js::cssom::StylesheetHost>(scope: &mut surgeist_bindings_js::Scope<'_>, host: H, backing: <H as surgeist_bindings_js::cssom::StylesheetHost>::Storage) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub const fn surgeist_bindings_js::cssom::installation_storage_bytes<H: surgeist_bindings_js::cssom::StylesheetHost>() -> usize
+pub fn surgeist_bindings_js::cssom::stylesheet_exception(scope: &mut surgeist_bindings_js::Scope<'_>, name: surgeist_cssom::model::CssomException) -> surgeist_bindings_js::Error
 pub mod surgeist_bindings_js::declarations
 pub enum surgeist_bindings_js::declarations::DocumentReadyState
 pub surgeist_bindings_js::declarations::DocumentReadyState::Complete

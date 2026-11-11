@@ -1,5 +1,4 @@
 //! One-operation publication and explicitly staged object edits.
-use crate::sheet_operations::check_cancellation;
 use crate::*;
 use std::sync::atomic::AtomicBool;
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
@@ -129,10 +128,10 @@ pub(crate) fn execute_with_cancellation<T>(
     let mut batch = store.batch(CssomEditGuard::from_snapshot(&store.snapshot()))?;
     let staged = stage(&mut batch, operation)?;
     let prepared = store.prepare_commit(batch)?;
-    if let Some(cancel) = cancel {
-        check_cancellation(cancel)?;
-    }
-    let (commit, retirement) = prepared.publish();
+    let (commit, retirement) = match cancel {
+        Some(cancel) => prepared.publish_with_cancellation(cancel)?,
+        None => prepared.publish(),
+    };
     drop(retirement);
     let (publication, effects) = commit.into_operation_parts();
     Ok(CssomOperationOutcome::from_parts(

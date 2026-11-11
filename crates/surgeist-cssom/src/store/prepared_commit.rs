@@ -4,6 +4,7 @@ use crate::sheet_replacement::PendingReplacement;
 use std::{
     collections::hash_map::{Entry, OccupiedEntry},
     fmt,
+    sync::atomic::AtomicBool,
 };
 
 /// Private completed producer work under one exclusive Store loan. Only narrow
@@ -85,6 +86,16 @@ impl CssomPreparedCommit<'_> {
             CssomPublication::Unchanged { revision } => revision,
         };
         Ok(CssomPreparedSheet { id, revision })
+    }
+
+    /// Check cancellation after all fallible preparation, immediately before
+    /// publishing. A cancelled preparation is discarded under its Store loan.
+    pub fn publish_with_cancellation(
+        self,
+        cancel: &AtomicBool,
+    ) -> Result<(CssomCommit, CssomCommitRetirement), CssomError> {
+        crate::sheet_operations::check_cancellation(cancel)?;
+        Ok(self.publish())
     }
 
     /// Publish by prechecked moves, prelocated removal and reserved deque work.
@@ -302,6 +313,60 @@ fn prepare_data(store: &mut CssomStore, mut batch: CssomBatch) -> Result<Ready, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cancelling_after_preparation_preserves_the_published_sheet_and_allows_retry() {
+        let cancel = AtomicBool::new(false);
+        let mut store = CssomStore::new(Default::default(), Default::default()).unwrap();
+        let mut batch = store
+            .batch(CssomEditGuard::from_snapshot(&store.snapshot()))
+            .unwrap();
+        let inputs = CssomSheetInputs::constructed(
+            CssomInputVersion {
+                role: CssomInputRole::Document,
+                identity: "document".into(),
+                revision: 1,
+            },
+            "document".into(),
+            None,
+        );
+        let ticket = batch.create_typed_sheet(CssSheet::new(), inputs).unwrap();
+        let sheet = store.commit(batch).unwrap().sheet(&ticket).unwrap().clone();
+        let before = store.snapshot();
+        let stage = |store: &CssomStore| {
+            let mut batch = store.batch(CssomEditGuard::from_snapshot(&before)).unwrap();
+            batch
+                .insert_sheet_rule(&sheet, "main {}", 0, &cancel)
+                .unwrap();
+            batch
+        };
+
+        let batch = stage(&store);
+        let prepared = store.prepare_commit(batch).unwrap();
+        cancel.store(true, Ordering::Relaxed);
+        assert!(matches!(
+            prepared.publish_with_cancellation(&cancel),
+            Err(CssomError::Cancelled)
+        ));
+        let after = store.snapshot();
+        assert_eq!(after.revision(), before.revision());
+        assert!(after.sheet_rules(&sheet).unwrap().is_empty());
+        assert!(matches!(
+            store.changes_since(&before),
+            CssomChanges::Unchanged
+        ));
+
+        cancel.store(false, Ordering::Relaxed);
+        let batch = stage(&store);
+        let (commit, retirement) = store
+            .prepare_commit(batch)
+            .unwrap()
+            .publish_with_cancellation(&cancel)
+            .unwrap();
+        drop(retirement);
+        assert!(matches!(commit.publication(), CssomPublication::Changed(_)));
+        assert_eq!(store.snapshot().sheet_rules(&sheet).unwrap().len(), 1);
+    }
 
     #[test]
     fn sheet_metadata_rejects_a_same_batch_ticket_pointing_to_another_created_kind() {
