@@ -1035,3 +1035,120 @@ fn preferred_main_max_content_preserves_auto_imposed_size_placement_control() {
         );
     }
 }
+
+#[test]
+fn preferred_main_max_content_preserves_independent_cross_through_parent_bounds() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let child = NodeInputOf {
+        display: Display::Flex,
+        size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::px(40.0)),
+        min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+        max_size: Size::new(MaxSizeOf::px(20.0), MaxSizeOf::NONE),
+        aspect_ratio: AspectRatioOf::new(2.0),
+        align_self: Some(AlignItems::Start),
+        align_items: Some(AlignItems::Start),
+        justify_self: Some(AlignItems::Start),
+        ..NodeInputOf::default()
+    };
+    let root = PublicLayoutTreeOf::<f64>::new()
+        .children(0, [1])
+        .children(1, [])
+        .style(0, child.clone())
+        .style(1, NodeInputOf::default())
+        .measure(1, Size::new(65.0, 10.0));
+    let root_batch = compute_layout(&root, 0, request(flow, Some(300.0), None)).unwrap();
+    let expected = Size::new(20.0, 40.0);
+    for phase in [Phase::Unrounded, Phase::Final] {
+        assert_eq!(
+            readback::single_box_output(&root_batch, 0, phase).size,
+            expected
+        );
+    }
+
+    let mut differences = Vec::new();
+    for display in [Display::Block, Display::Flex, Display::Grid] {
+        let tree = PublicLayoutTreeOf::<f64>::new()
+            .children(0, [1])
+            .children(1, [2])
+            .children(2, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display,
+                    size: Size::new(PreferredSizeOf::px(100.0), PreferredSizeOf::AUTO),
+                    align_items: Some(AlignItems::Start),
+                    grid_template_columns: if display == Display::Grid {
+                        vec![TrackComponentOf::px(100.0)]
+                    } else {
+                        Vec::new()
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(1, child.clone())
+            .style(2, NodeInputOf::default())
+            .measure(2, Size::new(65.0, 10.0));
+        let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
+        for phase in [Phase::Unrounded, Phase::Final] {
+            let observed = readback::single_box_output(&batch, 1, phase).size;
+            if observed != expected {
+                differences.push((display, observed));
+            }
+        }
+    }
+    assert!(
+        differences.is_empty(),
+        "expected {expected:?}; {differences:?}"
+    );
+}
+
+#[test]
+fn preferred_main_max_content_preserves_the_existing_intrinsic_cross_preference() {
+    let original = percentage_tree::<f64>(Direction::Ltr, BoxSizing::BorderBox);
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let mut refused = Vec::new();
+    for (display, position) in [
+        (Display::Flex, Position::Relative),
+        (Display::Block, Position::Absolute),
+        (Display::Flex, Position::Absolute),
+        (Display::Grid, Position::Absolute),
+    ] {
+        let mut flex = original.node_input(0).clone();
+        flex.position = position;
+        let tree = PublicLayoutTreeOf::<f64>::new()
+            .children(0, [1])
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [4])
+            .children(4, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display,
+                    size: Size::new(PreferredSizeOf::px(800.0), PreferredSizeOf::px(600.0)),
+                    align_items: Some(AlignItems::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(1, flex)
+            .style(2, original.node_input(1).clone())
+            .style(3, original.node_input(2).clone())
+            .style(4, original.node_input(3).clone());
+        match compute_layout(&tree, 0, request(flow, Some(800.0), None)) {
+            Ok(batch) => {
+                for phase in [Phase::Unrounded, Phase::Final] {
+                    for node in 1..5 {
+                        let output = readback::single_box_output(&batch, node, phase);
+                        assert_eq!(
+                            output.size,
+                            Size::new(40.0, 40.0),
+                            "{display:?}/{position:?} node {node}"
+                        );
+                    }
+                }
+            }
+            Err(error) => refused.push((display, position, error)),
+        }
+    }
+    assert!(refused.is_empty(), "{refused:?}");
+}
