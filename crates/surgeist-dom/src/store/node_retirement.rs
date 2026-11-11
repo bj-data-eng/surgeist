@@ -508,6 +508,10 @@ struct WatchAdmission<'a> {
     cancel: &'a AtomicBool,
 }
 
+// A watch's path can grow after admission. Each slot bit can add one
+// descent and one unwind, followed by the exact leaf removal.
+const RADIX_DISARM_WORK: u32 = 2 * usize::BITS + 1;
+
 impl WatchAdmission<'_> {
     fn step(&self) -> Result<(), DomError> {
         match &self.funding {
@@ -525,12 +529,14 @@ impl WatchAdmission<'_> {
             .ok_or(DomError::RepresentationExhausted)?;
         let mut retained = match &self.funding {
             Funding::Source(dom, request) => {
-                Reserved::Source(dom.retain_source_event_payload(request, bytes, 0, self.cancel)?)
+                let retained = dom.retain_source_event_payload(request, bytes, 0, self.cancel)?;
+                for _ in 0..RADIX_DISARM_WORK {
+                    dom.source_event_step(request, self.cancel)?;
+                }
+                Reserved::Source(retained)
             }
             Funding::Ordinary(admission) => {
-                // The path can grow after arming. Reserve the upper bound for
-                // descent, unwind and leaf removal before publishing the row.
-                admission.admit_work(2 * u64::from(usize::BITS) + 1)?;
+                admission.admit_work(u64::from(RADIX_DISARM_WORK))?;
                 Reserved::Ordinary(admission.retain(bytes)?)
             }
         };
@@ -678,7 +684,9 @@ impl Dom {
             return Err(DomError::ForeignOwner);
         }
         self.source_event_step(request, cancel)?;
-        self.state.node(self.owner, node)?;
+        self.state.node_with(self.owner, node, &mut || {
+            self.source_event_step(request, cancel)
+        })?;
         let admission = WatchAdmission {
             funding: Funding::Source(self, request),
             inbox,
