@@ -57,11 +57,17 @@ use passive::{BorrowedPassive, PassiveScope};
 /// extracted or replaced. A fresh reborrow is supplied to every listener.
 pub struct DomEventDom<'a> {
     dom: &'a mut Dom,
+    #[cfg(test)]
+    running_dispatch: Option<&'a Dispatch>,
 }
 impl<'a> DomEventDom<'a> {
     /// Borrows a standalone owner through the same controlled event view.
     pub fn borrow(dom: &'a mut Dom) -> Self {
-        Self { dom }
+        Self {
+            dom,
+            #[cfg(test)]
+            running_dispatch: None,
+        }
     }
     /// Exact canonical owner identity.
     pub fn owner(&self) -> surgeist_dom::DomOwnerId {
@@ -1723,6 +1729,10 @@ impl<C> DomEventDispatcher<C> {
                 let result = catch_unwind(AssertUnwindSafe(|| {
                     let _passive = BorrowedPassive::begin(&custody.passive, passive);
                     let mut access = DomEventDom::borrow(dom);
+                    #[cfg(test)]
+                    {
+                        access.running_dispatch = Some(dispatch);
+                    }
                     callback(&mut access, self, context, event)
                 }));
                 let failure = match &result {

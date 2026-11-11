@@ -168,6 +168,19 @@ impl EventInvocationOwner {
     }
 }
 
+impl DomEventDom<'_> {
+    pub(crate) fn inspect_running_element_source_bytes(&self) -> Option<usize> {
+        let dispatch = self.running_dispatch?;
+        let Funding::Element(retained) = &dispatch.funding.0 else {
+            return None;
+        };
+        let PathFunding::Element { _retained: path } = &dispatch.path._funding else {
+            return None;
+        };
+        retained.source().checked_add(path.source())
+    }
+}
+
 impl DomEventComposedPath {
     pub(crate) fn inspect_element_task_source_bytes(&self) -> usize {
         let PathFunding::Element {
