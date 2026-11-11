@@ -1218,3 +1218,102 @@ fn standalone_uses_its_own_global_and_registry_without_a_dom_recipient() {
         Err(DomEventDispatchError::WrongTargetRegistry)
     ));
 }
+
+#[test]
+fn omitted_wheel_listener_is_passive_on_the_first_html_body_or_frameset() {
+    let mut session = session();
+    let top = top(&mut session);
+    let document = top.document();
+    let snapshot = session.snapshot();
+    let html = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let &[head, later_body] = snapshot.node(html).unwrap().children() else {
+        panic!("the hosted HTML root must start with its head and body");
+    };
+    let mut batch = DomBatch::new();
+    let frameset = batch.create_element_ns(document, Namespace::html(), "frameset");
+    batch.insert_before(&frameset, html, Some(later_body.into()));
+    let commit = session.dom().apply(batch, &cancel()).unwrap();
+    let frameset = commit.created(&frameset).unwrap().unwrap();
+
+    // The HTML body getter selects the first direct HTML body or frameset.
+    let snapshot = session.snapshot();
+    assert_eq!(
+        snapshot.node(html).unwrap().children(),
+        [head, frameset, later_body]
+    );
+    let html_namespace = DocumentString::from("http://www.w3.org/1999/xhtml");
+    for (node, local_name) in [(head, "head"), (frameset, "frameset"), (later_body, "body")] {
+        let view = snapshot.node(node).unwrap();
+        assert_eq!(view.owner_document(), Some(document));
+        assert_eq!(view.parent(), Some(html));
+        let name = view.as_element().unwrap().name();
+        assert_eq!(name.namespace_uri(), Some(&html_namespace));
+        assert_eq!(name.local_name(), &DocumentString::from(local_name));
+    }
+
+    let mut hosted = session.hosted_execution();
+    let mut registry = new_registry::<Vec<(DomEventPhase, Option<DomEventTarget>, bool, bool)>>();
+    // A later body and a case-distinct type on the selected frameset are
+    // independent controls. Both must be able to cancel through the same API.
+    for (target, name, canceled) in [
+        (later_body, "wheel", true),
+        (frameset, "Wheel", true),
+        (frameset, "wheel", false),
+    ] {
+        let name_units = units(name);
+        registry
+            .add_listener(
+                &mut session.dom(),
+                target,
+                &name_units,
+                DomEventCallback::new(|_, _, trace: &mut Vec<_>, event| {
+                    let before = event.default_prevented();
+                    event.prevent_default();
+                    trace.push((
+                        event.phase(),
+                        event.current_target(),
+                        before,
+                        event.default_prevented(),
+                    ));
+                    Ok(())
+                }),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+        let event = hosted
+            .create_event(
+                &mut session.dom(),
+                top.global(),
+                &name_units,
+                DomEventInit {
+                    cancelable: true,
+                    ..DomEventInit::default()
+                },
+                &cancel(),
+            )
+            .unwrap();
+        assert!(event.cancelable());
+        let mut trace = Vec::new();
+        let receipt = fire(&mut session, &mut registry, target, &event, &mut trace);
+        assert_eq!(receipt.callbacks(), 1, "{name} on {target:?}");
+        assert!(receipt.failures().is_empty());
+        assert_eq!(trace.len(), 1);
+        let (phase, current, before, after) = &trace[0];
+        assert_eq!(*phase, DomEventPhase::AtTarget);
+        assert_eq!(*current, Some(target.into()));
+        assert!(!*before);
+        assert_eq!(
+            (
+                after,
+                receipt.default_prevented(),
+                event.default_prevented()
+            ),
+            (&canceled, canceled, canceled),
+            "{name} on {target:?}"
+        );
+    }
+}
