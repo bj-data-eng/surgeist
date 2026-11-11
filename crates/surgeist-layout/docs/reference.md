@@ -1424,8 +1424,14 @@ its own main or cross axis to select intrinsic contribution sizing with
 indefinite availability in that axis. Authored minimum and maximum sizes
 bound the result, and an imposed size takes precedence. A Normal inline
 request uses the accepted inline extent in the separate contents pass.
-An intrinsic main preference with the container's own aspect ratio and an
-unresolved automatic cross size reports an unsupported sizing behavior.
+For an automatic cross size, the container transfers the accepted inline
+size through its own physical aspect ratio in the selected sizing box.
+The ratio-dependent automatic minimum uses the min-content cross size,
+capped by the authored maximum, for a non-replaced box with non-scrollable
+overflow in that axis. Explicit minima and maxima constrain the result. A cross
+size derived from a layout-dependent inline size sets line geometry
+without establishing a descendant cross percentage basis.
+[CSS Sizing 4 aspect-ratio rules](../../../references/css-sizing-4--WD-css-sizing-4-20260904--faaa86589559.md#aspect-ratio)
 
 Cyclic Flex gap percentages
 [resolve against zero](../../../references/css-align-3--WD-css-align-3-20260130--7361249cbb73.md#gap-percent)

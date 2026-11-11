@@ -71,6 +71,7 @@ pub(super) struct CollectedFlexItem<Node, S: LayoutScalar> {
     pub(super) size: Size<Option<S>>,
     pub(super) authored_cross_size: Option<S>,
     pub(super) indefinite_percentage_axis: Option<PhysicalAxis>,
+    pub(super) ratio_cross_has_percentage_basis: bool,
     pub(super) initial_output: ComputeOutputOf<S>,
     pub(super) initial_output_is_preferred_basis: bool,
     pub(super) flex_base: FlexBaseSize<S>,
@@ -99,6 +100,7 @@ pub(super) struct ResolvedFlexItem<Node, S: LayoutScalar> {
     pub(super) source_index: usize,
     pub(super) authored_cross_size: Option<S>,
     pub(super) indefinite_percentage_axis: Option<PhysicalAxis>,
+    pub(super) ratio_cross_has_percentage_basis: bool,
     pub(super) initial_output: ComputeOutputOf<S>,
     pub(super) initial_output_is_preferred_basis: bool,
     pub(super) flex_base: FlexBaseSize<S>,
@@ -148,6 +150,7 @@ impl<Node, S: LayoutScalar> From<CollectedFlexItem<Node, S>> for ResolvedFlexIte
             source_index: item.source_index,
             authored_cross_size: item.authored_cross_size,
             indefinite_percentage_axis: item.indefinite_percentage_axis,
+            ratio_cross_has_percentage_basis: item.ratio_cross_has_percentage_basis,
             initial_output: item.initial_output,
             initial_output_is_preferred_basis: item.initial_output_is_preferred_basis,
             flex_base: item.flex_base,
@@ -550,12 +553,13 @@ where
     let child_sizing = constants.sizing_request.with_axes(child_available);
     let child_known = if use_content_sizing_for_base
         && constants.axes.main_size(child_owned_axes)
+        && constants.axes.cross_size(child_owned_axes)
         && style.common.aspect_ratio.is_some()
         && constants.axes.cross_size(child_known).is_none()
     {
-        // The basis probe disregards authored sizes. Consult the child in
-        // InherentSize when an independent cross extent has not been imposed,
-        // so the basis probe cannot bypass the child's ratio sizing admission.
+        // Measure the independent intrinsic cross preference before the
+        // ContentSize basis probe, which disregards authored preferred sizes.
+        // An automatic ratio cross size is settled from the main size later.
         let cross = tree.compute_child(
             node,
             ComputeInputOf::for_child(
@@ -740,6 +744,23 @@ where
         && resolved_flex_basis.is_none()
         && !ratio_supplies_basis)
         .then_some(main_axis);
+    let ratio_cross_has_percentage_basis =
+        if cross_size_is_auto && style.common.aspect_ratio.is_some() {
+            // Flex definiteness comes from the container's independent main size
+            // or a definite basis, not a percentage basis installed by replay.
+            !constants.axes.main_size(child_owned_axes)
+                || constants
+                    .axes
+                    .main_size(constants.entry_percentage_basis)
+                    .is_some()
+                || matches!(
+                    resolve_flex_basis(style.flex_basis, main_axis, None)
+                        .map_err(|error| sizing_resolution_error(node, error))?,
+                    ResolvedFlexBasis::Definite(_)
+                )
+        } else {
+            false
+        };
     let baseline = FlexItemBaseline::from_output(output, child_flow_axes);
 
     Ok(CollectedFlexItem {
@@ -755,6 +776,7 @@ where
         size: authored_size,
         authored_cross_size,
         indefinite_percentage_axis,
+        ratio_cross_has_percentage_basis,
         initial_output: output,
         initial_output_is_preferred_basis: preferred_basis_probe,
         flex_base: FlexBaseSize::from_outer(flex_basis, padding_border_main),
@@ -1058,6 +1080,27 @@ fn suppress_padding_floor_flex_basis_content_overflow<Node, S: LayoutScalar>(
     }
 }
 
+impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
+    pub(super) fn settled_indefinite_percentage_axis(
+        &self,
+        axes: super::FlexAxes,
+        child_flow: crate::FlowAxes,
+    ) -> Option<PhysicalAxis> {
+        let cross_axis = axes.cross_physical_axis();
+        let cross_is_fixed_by_bounds = axes
+            .cross_size(self.min_size)
+            .zip(axes.cross_size(self.max_size))
+            .is_some_and(|(min, max)| max <= min);
+        let indefinite_cross = (child_flow.block_axis() == cross_axis
+            && self.authored_cross_size.is_none()
+            && !cross_is_fixed_by_bounds
+            && !self.ratio_cross_has_percentage_basis
+            && !self.stretches_cross(axes))
+        .then_some(cross_axis);
+        self.indefinite_percentage_axis.or(indefinite_cross)
+    }
+}
+
 pub(super) fn compute_sized_item<'input, Tree, M>(
     tree: &mut Tree,
     item: &ResolvedFlexItem<Tree::Node, Tree::Scalar>,
@@ -1071,19 +1114,6 @@ where
     let known = final_item_size::<Tree, M>(tree, item, style, constants)?;
 
     let axes = constants.axes;
-    let cross_axis = axes.cross_physical_axis();
-    let cross_is_fixed_by_bounds = axes
-        .cross_size(item.min_size)
-        .zip(axes.cross_size(item.max_size))
-        .is_some_and(|(min, max)| max <= min);
-    let ratio_supplies_cross = item.cross_size_is_auto && style.common.aspect_ratio.is_some();
-    let indefinite_cross = (style.common.flow_axes.block_axis() == cross_axis
-        && item.authored_cross_size.is_none()
-        && !cross_is_fixed_by_bounds
-        && !ratio_supplies_cross
-        && !item.stretches_cross(axes))
-    .then_some(cross_axis);
-
     let available = crate::layout_math::transpose_axis_requests_at_node(
         item.node,
         Size::new(
@@ -1122,7 +1152,9 @@ where
             constants.sizing_request.with_axes(available),
         )
         .with_physical_baseline_demand(mode == RunMode::ComputeSize)
-        .with_indefinite_percentage_axis(item.indefinite_percentage_axis.or(indefinite_cross))
+        .with_indefinite_percentage_axis(
+            item.settled_indefinite_percentage_axis(axes, style.common.flow_axes),
+        )
         .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
     )
 }
