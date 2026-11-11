@@ -13,6 +13,11 @@ pub(super) enum NodePrototype<'value, 'scope> {
     Creation(&'value RetainedCallbackObject),
 }
 
+enum Publication<Publish> {
+    Pending(Publish),
+    Watched(GuestNode, DomNodeRetirementWatch),
+}
+
 #[derive(Default)]
 struct OrdinaryPins {
     slots: Vec<Slot>,
@@ -199,17 +204,26 @@ impl OrdinaryBindings {
             node: Cell::new(None),
             lifetime: Some(lifetime.clone()),
         };
-        let holder = match prototype {
-            NodePrototype::Selected(prototype) => {
-                events.project(owner, scope, ObjectPrototype::Object(prototype), payload)?
-            }
+        let (holder, publication) = match prototype {
+            NodePrototype::Selected(prototype) => (
+                events.project(owner, scope, ObjectPrototype::Object(prototype), payload)?,
+                Publication::Pending(publish),
+            ),
             NodePrototype::Creation(prototype) => {
                 events.step()?;
-                scope.project_retained_native_object_in_prototype_realm(
+                let mut watched = None;
+                let holder = scope.project_retained_native_object_in_prototype_realm(
                     prototype,
                     payload,
-                    |bytes| events.reserve(owner, bytes),
-                )?
+                    |payload, holder| {
+                        let payload = events.reserve(owner, payload)?;
+                        let holder = events.reserve(owner, holder)?;
+                        watched = Some(publish(&inbox, key)?);
+                        Ok::<_, DocumentGuestEventError>((payload, holder))
+                    },
+                )?;
+                let (node, watch) = watched.ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+                (holder, Publication::Watched(node, watch))
             }
         };
         let value = scope.open_callback_object(&holder)?;
@@ -222,17 +236,20 @@ impl OrdinaryBindings {
             lifetime,
             _backing: backing,
         });
-        let (node, watch) = match publish(&inbox, key) {
-            Ok(created) => created,
-            Err(error) => {
-                let first = refuse(scope, &events.refusal, error);
-                let pin = {
-                    let allocation = pin;
-                    *allocation
-                };
-                let _ = scope.release_callback_object(pin.holder);
-                return first.map_err(Into::into);
-            }
+        let (node, watch) = match publication {
+            Publication::Watched(node, watch) => (node, watch),
+            Publication::Pending(publish) => match publish(&inbox, key) {
+                Ok(created) => created,
+                Err(error) => {
+                    let first = refuse(scope, &events.refusal, error);
+                    let pin = {
+                        let allocation = pin;
+                        *allocation
+                    };
+                    let _ = scope.release_callback_object(pin.holder);
+                    return first.map_err(Into::into);
+                }
+            },
         };
         projection.payload().node.set(Some(node));
         pin.live = Some(LivePin {

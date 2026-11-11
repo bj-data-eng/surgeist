@@ -84,8 +84,11 @@ impl<'scope> Scope<'scope> {
 
     /// Project a typed native object in the retained prototype's actual
     /// creation realm, including from a callback entered in another realm.
-    /// The prototype must belong to this engine owner. Admission funds the
-    /// payload and persistent holder before the new object is published.
+    /// The prototype must belong to this engine owner. Admission receives
+    /// the payload and persistent holder sizes together, in that order,
+    /// and returns their respective guards before the engine forms either.
+    /// Each guard follows the backing it funds and may not retain engine
+    /// custody.
     pub fn project_retained_native_object_in_prototype_realm<
         T: 'static,
         Storage: 'static,
@@ -94,12 +97,14 @@ impl<'scope> Scope<'scope> {
         &mut self,
         prototype: &RetainedCallbackObject,
         payload: T,
-        mut admit: impl FnMut(usize) -> Result<Storage, E>,
+        admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
     ) -> Result<RetainedCallbackObject, E> {
         let realm = prototype.associated_realm().clone();
         let prototype = prototype.validated_holder(self)?;
-        let projection = admit(self.native_projection_bytes::<T, Storage>()?)?;
-        let holder_backing = admit(self.callback_object_bytes::<Storage>()?)?;
+        let (projection, holder_backing) = admit(
+            self.native_projection_bytes::<T, Storage>()?,
+            self.callback_object_bytes::<Storage>()?,
+        )?;
         let holder = self
             .operations
             .project_retained_native_object_in_prototype_realm(

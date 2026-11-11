@@ -601,14 +601,18 @@ fn refused_native_projection_preserves_prototype_root_custody() -> TestResult {
         let initial_roots = roots.entries.borrow().len();
         for refused_charge in [1, 2, 1, 2] {
             let mut charges = 0;
-            let result =
-                scope.project_retained_native_object_in_prototype_realm(&prototype, 17_u32, |_| {
-                    charges += 1;
-                    if charges == refused_charge {
-                        return Err(Error::Allocation);
-                    }
-                    Ok(())
-                });
+            let mut charge = || {
+                charges += 1;
+                if charges == refused_charge {
+                    return Err(Error::Allocation);
+                }
+                Ok(())
+            };
+            let result = scope.project_retained_native_object_in_prototype_realm(
+                &prototype,
+                17_u32,
+                |_, _| Ok((charge()?, charge()?)),
+            );
             assert!(matches!(result, Err(Error::Allocation)));
             assert_eq!(charges, refused_charge);
             assert_eq!(roots.entries.borrow().len(), initial_roots);

@@ -1690,9 +1690,9 @@ fn new_object_paths_preserve_the_first_host_failure() -> Result<(), Error> {
             ));
             let mut admitted = false;
             let projected =
-                scope.project_retained_native_object_in_prototype_realm(&prototype, (), |_| {
+                scope.project_retained_native_object_in_prototype_realm(&prototype, (), |_, _| {
                     admitted = true;
-                    Ok::<(), Error>(())
+                    Ok::<_, Error>(((), ()))
                 });
             count += usize::from(matches!(projected, Err(Error::IntegerOutOfRange)) && !admitted);
             observed.set(count);

@@ -357,6 +357,7 @@ pub(in crate::document_scripting) fn element_projection_admits_exact_work_and_ba
         before,
         "watch refusal must release all wrapper backing"
     );
+    drop((host, events));
 
     let mut host = public_node_host(native_work, 20_000);
     let permit = host.permit().unwrap();
