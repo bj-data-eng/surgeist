@@ -576,8 +576,60 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     missing_managed_holder_refuses_and_allows_other_pins_to_release()?;
     registry_failure_stays_terminal_across_guest_catches_and_native_coercion()?;
     fixed_arity_captures_only_the_selected_prefix()?;
+    native_projection_custody_tracks_the_exact_guest_object()?;
     cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal()?;
     crate::conversion::tests::run()?;
+    Ok(())
+}
+
+fn native_projection_custody_tracks_the_exact_guest_object() -> TestResult {
+    use crate::{ObjectPrototype, PropertyKey, Scope};
+
+    let mut host = Host::new(Observations::default())?;
+    let owner = Rc::new(17_u32);
+    let funding = Rc::new(());
+    let payload = Rc::downgrade(&owner);
+    let funded = Rc::downgrade(&funding);
+    let key = b"nativeProbe".map(u16::from);
+    let lease = host.engine.with_context(&host.realm, |entered| {
+        let mut scope = Scope {
+            operations: entered,
+            invariant: std::marker::PhantomData,
+        };
+        let object = scope.project_native_object(ObjectPrototype::Default, owner, |bytes| {
+            assert!(bytes > size_of::<Rc<u32>>() + size_of::<Rc<()>>());
+            Ok::<_, Error>(funding)
+        })?;
+        let global = scope.global()?;
+        scope.set(&global, PropertyKey::String(&key), &object)?;
+        let proxy = scope.evaluate(
+            &"new Proxy(nativeProbe, {})"
+                .encode_utf16()
+                .collect::<Vec<_>>(),
+        )?;
+        let inherited = scope.evaluate(
+            &"Object.create(nativeProbe)"
+                .encode_utf16()
+                .collect::<Vec<_>>(),
+        )?;
+        assert!(scope.native_object::<Rc<u32>>(&proxy)?.is_none());
+        assert!(scope.native_object::<Rc<u32>>(&inherited)?.is_none());
+        assert!(scope.native_object::<u32>(&object)?.is_none());
+        Ok(scope.native_object::<Rc<u32>>(&object)?.unwrap())
+    })?;
+    host.collect()?;
+    host.engine.reap();
+    assert_eq!(host.engine.roots.native_objects.entries_count(), 1);
+    assert_eq!(**lease.payload(), 17);
+    host.eval("delete globalThis.nativeProbe")?;
+    host.collect()?;
+    host.engine.reap();
+    assert_eq!(host.engine.roots.native_objects.entries_count(), 0);
+    assert!(payload.upgrade().is_some());
+    assert!(funded.upgrade().is_some());
+    drop(lease);
+    assert!(payload.upgrade().is_none());
+    assert!(funded.upgrade().is_none());
     Ok(())
 }
 

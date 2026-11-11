@@ -13,8 +13,9 @@ use crate::{Error, RealmKey};
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct RealmId(pub(crate) RealmKey);
 
-/// An actual entered-realm observation with weak process liveness.
-/// A host still needs its own native attachment and a live realm entry token.
+/// An engine Realm observation with weak process liveness.
+/// The host establishes native attachment, incumbent settings, and entry
+/// authority separately.
 #[derive(Clone)]
 pub struct RealmAuthority {
     pub(crate) key: RealmKey,

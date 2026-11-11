@@ -26,8 +26,15 @@ use crate::{
     HostedRuntime,
 };
 
+pub(crate) mod guest;
 mod projection;
+pub use guest::{
+    DocumentGuestEvent, DocumentGuestEventDispatchFailure, DocumentGuestEventError,
+    DocumentGuestEventLimits, DocumentGuestEventReport, DocumentGuestEventTarget,
+    DocumentGuestListenerException,
+};
 mod source;
+mod window_event;
 mod window_relations;
 pub use source::{
     DocumentScriptEventError, DocumentScriptEventProgress, DocumentScriptEventReport,
@@ -328,6 +335,7 @@ impl PreparedDocumentScriptHost {
                 engine: Some(engine),
                 native: self.native,
                 retirement: None,
+                guest_exception_reports: None,
             }),
             Err(error) => Err(EnableDocumentScriptFailure { owner: self, error }),
         }
@@ -375,6 +383,7 @@ impl PreparedDocumentScriptHost {
             HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes();
         let dom_exception_bytes =
             dom_exception::constructor_storage_bytes::<DomHostedRuntimeRetention>();
+        let window_event_bytes = window_event::WindowEvent::storage_bytes();
         let bytes = size_of::<NativeOwner>()
             .checked_add(hook_bytes)
             .and_then(|bytes| bytes.checked_add(failure_bytes))
@@ -384,6 +393,7 @@ impl PreparedDocumentScriptHost {
             .and_then(|bytes| bytes.checked_add(css_failure_bytes))
             .and_then(|bytes| bytes.checked_add(dom_exception_bytes))
             .and_then(|bytes| bytes.checked_add(window_relations::storage_bytes()))
+            .and_then(|bytes| bytes.checked_add(window_event_bytes))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         if bytes > owner.storage_limit {
             return Err(DocumentScriptNativeError::StorageLimit.into());
@@ -397,6 +407,7 @@ impl PreparedDocumentScriptHost {
             css_failure_backing,
             dom_exception_backing,
             window_relations_backing,
+            window_event_backing,
         ) = {
             let mut session = owner
                 .session
@@ -430,6 +441,9 @@ impl PreparedDocumentScriptHost {
             hosted
                 .admit_script_work(&dom, window_relations::installation_work(), cancel)
                 .map_err(DocumentScriptNativeError::from)?;
+            let window_event = hosted
+                .retain_script_payload(&mut dom, window_event_bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?;
             (
                 hook,
                 failure,
@@ -439,10 +453,12 @@ impl PreparedDocumentScriptHost {
                 css_failure,
                 dom_exception,
                 window_relations,
+                window_event,
             )
         };
         let failures = FailureSlot::new(&authority, failure_backing)?;
         let source_failures = SourceFailureSlot::new(&authority, source_failure_backing)?;
+        let window_event = window_event::WindowEvent::new(window_event_backing);
 
         // Drop Process before releasing the installed hook's debit on failure.
         let mut process = process;
@@ -491,7 +507,8 @@ impl PreparedDocumentScriptHost {
                 scope,
                 owner.dom_exception_limits.get(),
                 dom_exception_backing,
-            )
+            )?;
+            window_event.install(scope)
         })?;
 
         let mut session = owner
@@ -525,6 +542,8 @@ impl PreparedDocumentScriptHost {
         });
         Ok(ScriptEngine {
             registration,
+            guest_events: None,
+            window_event,
             process,
             realm,
             comments: projection::ProjectedComments::default(),
@@ -589,6 +608,8 @@ struct CreationRealm {
 struct ScriptEngine {
     // Close the canonical engine fact before releasing SDK handles/captures.
     registration: DomDocumentScriptRegistration,
+    guest_events: Option<Rc<guest::GuestEvents>>,
+    window_event: Rc<window_event::WindowEvent>,
     process: Process,
     realm: Realm,
     comments: projection::ProjectedComments,
@@ -625,6 +646,7 @@ pub struct DocumentScriptHost {
     engine: Option<ScriptEngine>,
     native: Rc<NativeOwner>,
     retirement: Option<ScriptRetirement>,
+    guest_exception_reports: Option<Rc<guest::GuestExceptionReports>>,
 }
 
 struct NativeLoanExit<'a> {

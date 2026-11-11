@@ -41,7 +41,7 @@ impl<C> DomEventDispatcher<C> {
             DispatchCall {
                 limits,
                 cancel,
-                host: false,
+                host: DispatchHost::Unavailable,
                 funding: DispatchFunding(Funding::Fixture),
             },
         )
@@ -62,7 +62,7 @@ impl<C> DomEventDispatcher<C> {
             DispatchCall {
                 limits,
                 cancel,
-                host: false,
+                host: DispatchHost::Unavailable,
                 funding: DispatchFunding(Funding::Fixture),
             },
         )

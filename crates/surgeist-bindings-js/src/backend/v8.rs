@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
 use std::sync::OnceLock;
@@ -9,6 +9,7 @@ use super::{
     CoercedString, DomExceptionProfile, ObjectPrototype, Operations, PropertyDefinition,
     PropertyDescriptor, PropertyKey,
 };
+use crate::callback_object::CallbackObjectIdentity;
 use crate::conversion::ConversionAccount;
 use crate::owner::OwnerState;
 use crate::{
@@ -18,6 +19,8 @@ use crate::{
     ValueKind, WellKnownSymbol,
 };
 
+mod callback_object;
+mod native_object;
 #[cfg(test)]
 mod tests;
 
@@ -39,6 +42,7 @@ impl Drop for ActiveOwner {
 struct RootEntry {
     identity: Weak<RootIdentity>,
     value: v8::Global<v8::Value>,
+    backing: OnceCell<Box<dyn std::any::Any>>,
 }
 
 enum NativeCallback {
@@ -72,6 +76,8 @@ struct Roots {
     owner: Rc<OwnerState>,
     next: Cell<u64>,
     entries: RefCell<BTreeMap<u64, Rc<RootEntry>>>,
+    callback_objects: callback_object::CallbackObjects,
+    native_objects: native_object::NativeObjects,
     next_callback: Cell<u32>,
     callbacks: RefCell<BTreeMap<u32, CallbackEntry>>,
     interrupt: v8::IsolateHandle,
@@ -105,6 +111,7 @@ impl Roots {
         let entry = RootEntry {
             identity: Rc::downgrade(&root.0),
             value: v8::Global::new(scope, value),
+            backing: OnceCell::new(),
         };
         self.entries
             .try_borrow_mut()
@@ -187,6 +194,8 @@ impl Roots {
             }
         };
         drop(retired);
+        self.callback_objects.reap(self);
+        self.native_objects.reap(self);
         let retired = match self.callbacks.try_borrow_mut() {
             Ok(mut entries) => {
                 let dead: Vec<_> = entries
@@ -257,6 +266,8 @@ impl Engine {
             owner: Rc::new(OwnerState::new(owner)),
             next: Cell::new(0),
             entries: RefCell::new(BTreeMap::new()),
+            callback_objects: callback_object::CallbackObjects::default(),
+            native_objects: native_object::NativeObjects::default(),
             next_callback: Cell::new(0),
             callbacks: RefCell::new(BTreeMap::new()),
             interrupt: isolate.thread_safe_handle(),
@@ -487,6 +498,13 @@ impl super::Engine for Engine {
         drop(entry);
         Ok(())
     }
+
+    fn release_callback_object(
+        &mut self,
+        holder: &Rc<CallbackObjectIdentity>,
+    ) -> Result<(), Error> {
+        self.roots.callback_objects.release(&self.roots, holder)
+    }
 }
 
 impl Drop for Engine {
@@ -634,6 +652,7 @@ impl Entered<'_, '_, '_> {
             } else {
                 (function.into(), function)
             };
+            let root = roots.retain(scope, realm, value)?;
             let retired = Rc::new(Cell::new(false));
             let retirement_signal = retired.clone();
             let weak = v8::Weak::with_guaranteed_finalizer(
@@ -656,7 +675,7 @@ impl Entered<'_, '_, '_> {
                         lease,
                     },
                 );
-            roots.retain(scope, realm, value)
+            Ok(root)
         })
     }
 }
@@ -891,6 +910,27 @@ impl Operations for Entered<'_, '_, '_> {
                 Ok(roots.local(scope, value)?.is_function())
             },
         )
+    }
+
+    fn callback_object_realm(&mut self, value: &Root) -> Result<RealmKey, Error> {
+        self.observe_callback_object(value)
+    }
+
+    fn callback_object_storage_bytes(&self) -> usize {
+        callback_object::CallbackObjects::storage_bytes()
+    }
+
+    fn retain_callback_object(
+        &mut self,
+        object: &Root,
+        realm: RealmKey,
+        backing: Box<dyn std::any::Any>,
+    ) -> Result<Rc<CallbackObjectIdentity>, Error> {
+        self.pin_callback_object(object, realm, backing)
+    }
+
+    fn open_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>) -> Result<Root, Error> {
+        self.open_pinned_callback_object(holder)
     }
 
     fn native_error(&mut self) -> Result<Root, Error> {
@@ -1190,6 +1230,43 @@ impl Operations for Entered<'_, '_, '_> {
                 roots.retain(scope, realm, holder.into())
             },
         )
+    }
+
+    fn native_object_storage_bytes(&self) -> usize {
+        native_object::NativeObjects::storage_bytes()
+    }
+
+    fn project_native_object(
+        &mut self,
+        prototype: ObjectPrototype<'_>,
+        payload: Rc<dyn std::any::Any>,
+    ) -> Result<Root, Error> {
+        self.project_payload(prototype, payload)
+    }
+
+    fn project_retained_native_object(
+        &mut self,
+        prototype: ObjectPrototype<'_>,
+        payload: Rc<dyn std::any::Any>,
+        backing: Box<dyn std::any::Any>,
+    ) -> Result<Rc<CallbackObjectIdentity>, Error> {
+        self.project_pinned_payload(prototype, payload, backing)
+    }
+
+    fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn std::any::Any>>, Error> {
+        self.native_payload(object)
+    }
+
+    fn retain_root_backing(
+        &mut self,
+        root: &Root,
+        backing: Box<dyn std::any::Any>,
+    ) -> Result<(), Error> {
+        let entry = self.roots.entry(root)?;
+        entry
+            .backing
+            .set(backing)
+            .map_err(|_| Error::RegistryConflict)
     }
 
     fn open_managed_object(&mut self, holder: &Root) -> Result<Root, Error> {

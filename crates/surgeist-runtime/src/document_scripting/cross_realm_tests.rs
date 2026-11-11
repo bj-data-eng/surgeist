@@ -16,7 +16,10 @@ use surgeist_dom::{
 };
 use surgeist_html::values::Namespace;
 
-fn hosted_session(cancel: &AtomicBool, source_jobs: usize) -> (DomSession, DomHostedTopLevel) {
+pub(super) fn hosted_session(
+    cancel: &AtomicBool,
+    source_jobs: usize,
+) -> (DomSession, DomHostedTopLevel) {
     let dom = Dom::new(
         DomLimits::new(
             128,
@@ -192,6 +195,18 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     projected_comment_custody_outlives_collection_and_the_origin_realm_token();
     rejected_comment_requires_each_diagnostic_utf16_work_unit();
     window_binding_storage_admits_exact_and_refuses_one_byte_short();
+    super::guest::tests::refused_first_target_releases_prototype_capture();
+    super::guest::tests::refused_projection_releases_native_backing_before_retry();
+    super::guest::tests::attached_registered_function_uses_the_exact_native_invocation();
+    super::guest::tests::attached_proxy_uses_its_own_realm();
+    super::guest::tests::attached_object_listeners_look_up_handle_event_when_invoked();
+    super::guest::tests::attached_window_event_follows_the_listener_invocation();
+    super::guest::tests::attached_window_event_clears_on_terminal_listener_refusal();
+    super::guest::tests::attached_guest_dispatch_restores_the_outer_window_event();
+    super::guest::tests::direct_guest_dispatch_preserves_reports_and_object_custody();
+    super::guest::tests::nested_guest_reports_keep_observation_order_and_depth();
+    super::guest::tests::full_guest_report_reservation_keeps_exact_invalid_state();
+    super::guest::tests::full_guest_report_bank_preserves_original_registry_work();
 }
 
 fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
@@ -220,6 +235,14 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         HostFailureSlot<CssSerializationError, DomHostedRuntimeRetention>,
         DomHostedRuntimeRetention,
     )>() + account;
+    let window_event =
+        size_of::<(RefCell<Option<Root>>, DomHostedRuntimeRetention)>() + 2 * size_of::<Rc<()>>();
+    // The four relations each have a getter. Only window has no setter.
+    let window_relations = size_of::<(
+        Weak<NativeOwner>,
+        DocumentScriptPermit,
+        DomHostedRuntimeRetention,
+    )>() + 7 * size_of::<(Rc<()>, &'static ())>();
     let exact = size_of::<NativeOwner>()
         + size_of_val(&read)
         + size_of_val(&detach)
@@ -228,7 +251,9 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         + DomDocumentScriptRegistration::storage_bytes()
         + escape
         + HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes()
-        + dom_exception;
+        + dom_exception
+        + window_relations
+        + window_event;
     drop(read);
     drop(detach);
 
@@ -245,9 +270,16 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
     let native_bindings_are_live = |host: &mut DocumentScriptHost| {
         let permit = host.permit().unwrap();
         host.in_document(&permit, |scope| {
-            let script = r#"new DOMException().name === "Error" && CSS.escape("0") === "\\30 ""#
-                .encode_utf16()
-                .collect::<Vec<_>>();
+            let script = r#"(() => {
+                const current = Object.getOwnPropertyDescriptor(globalThis, "event");
+                return new DOMException().name === "Error" && CSS.escape("0") === "\\30 " &&
+                       window === globalThis && self === window && parent === window && opener === null &&
+                       globalThis.event === undefined && current.enumerable && current.configurable &&
+                       current.get.name === "get event" && current.get.length === 0 &&
+                       current.set.name === "set event" && current.set.length === 1;
+            })()"#
+            .encode_utf16()
+            .collect::<Vec<_>>();
             let value = scope.evaluate(&script)?;
             assert_eq!(scope.to_utf16(&value)?, [116, 114, 117, 101]);
             Ok(())
@@ -273,7 +305,7 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
             native_bindings_are_live(&mut host);
             let charged = host.engine.as_ref().unwrap().retained_bytes;
             panic!(
-                "one-byte-short native Window published CSS.escape and DOMException: limit={one_short}, required={exact}, charged={charged}, account={account}"
+                "one-byte-short native Window published bindings: limit={one_short}, required={exact}, charged={charged}, account={account}"
             );
         }
     };

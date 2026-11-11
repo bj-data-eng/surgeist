@@ -1,5 +1,9 @@
 pub(crate) mod v8;
 
+use std::any::Any;
+use std::rc::Rc;
+
+use crate::callback_object::CallbackObjectIdentity;
 use crate::conversion::ConversionAccount;
 use crate::{
     Callback, ConstructorCallback, Error, FunctionMetadata, Intrinsic, Primitive,
@@ -78,6 +82,8 @@ pub(crate) trait Engine {
     fn realm_storage_bytes(&self) -> usize;
     fn managed_object_storage_bytes(&self) -> usize;
     fn release_managed_object(&mut self, holder: Root) -> Result<(), Error>;
+    fn release_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>)
+    -> Result<(), Error>;
     fn reap(&mut self);
 }
 
@@ -101,6 +107,15 @@ pub(crate) trait Operations {
     fn primitive(&mut self, primitive: Primitive) -> Result<Root, Error>;
     fn kind(&mut self, value: &Root) -> Result<ValueKind, Error>;
     fn is_callable(&mut self, value: &Root) -> Result<bool, Error>;
+    fn callback_object_realm(&mut self, value: &Root) -> Result<RealmKey, Error>;
+    fn callback_object_storage_bytes(&self) -> usize;
+    fn retain_callback_object(
+        &mut self,
+        object: &Root,
+        realm: RealmKey,
+        backing: Box<dyn Any>,
+    ) -> Result<Rc<CallbackObjectIdentity>, Error>;
+    fn open_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>) -> Result<Root, Error>;
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error>;
     fn native_error(&mut self) -> Result<Root, Error>;
     fn dom_exception_profile(&mut self) -> Result<Option<DomExceptionProfile>, Error>;
@@ -149,6 +164,20 @@ pub(crate) trait Operations {
         definition: PropertyDefinition,
     ) -> Result<(), Error>;
     fn object(&mut self, prototype: ObjectPrototype<'_>) -> Result<Root, Error>;
+    fn native_object_storage_bytes(&self) -> usize;
+    fn project_native_object(
+        &mut self,
+        prototype: ObjectPrototype<'_>,
+        payload: Rc<dyn Any>,
+    ) -> Result<Root, Error>;
+    fn project_retained_native_object(
+        &mut self,
+        prototype: ObjectPrototype<'_>,
+        payload: Rc<dyn Any>,
+        backing: Box<dyn Any>,
+    ) -> Result<Rc<CallbackObjectIdentity>, Error>;
+    fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn Any>>, Error>;
+    fn retain_root_backing(&mut self, root: &Root, backing: Box<dyn Any>) -> Result<(), Error>;
     fn managed_object(&mut self) -> Result<Root, Error>;
     fn open_managed_object(&mut self, holder: &Root) -> Result<Root, Error>;
     fn set_prototype(&mut self, object: &Root, prototype: ObjectPrototype<'_>)

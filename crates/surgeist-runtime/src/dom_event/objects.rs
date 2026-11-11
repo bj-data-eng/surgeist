@@ -256,7 +256,7 @@ impl NativeDomEvent {
         Ok(())
     }
 
-    pub(super) fn check_dispatch_state(&self) -> Result<(), DomEventDispatchError> {
+    pub(crate) fn check_dispatch_state(&self) -> Result<(), DomEventDispatchError> {
         if self.is_dispatching() {
             return Err(DomEventDispatchError::AlreadyDispatching);
         }

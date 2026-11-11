@@ -69,6 +69,25 @@ impl DomEventDispatch {
         limits: DomEventDispatchLimits,
         cancel: &AtomicBool,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        self.advance_with_host(
+            dom,
+            dispatcher,
+            context,
+            limits,
+            cancel,
+            DispatchHost::Unavailable,
+        )
+    }
+
+    pub(crate) fn advance_with_host<C>(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        dispatcher: &mut DomEventDispatcher<C>,
+        context: &mut C,
+        limits: DomEventDispatchLimits,
+        cancel: &AtomicBool,
+        host: DispatchHost,
+    ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
         if self.registry != dispatcher.owner.id {
             return Err(DomEventDispatchError::WrongContinuation);
         }
@@ -104,7 +123,7 @@ impl DomEventDispatch {
             DispatchCall {
                 limits,
                 cancel,
-                host: false,
+                host,
                 funding: DispatchFunding(Funding::Owned(allocation)),
             },
         )

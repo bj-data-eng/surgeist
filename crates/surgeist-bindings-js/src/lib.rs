@@ -74,6 +74,7 @@
 )]
 
 mod backend;
+mod callback_object;
 pub mod conversion;
 pub mod css;
 pub mod declarations;
@@ -81,14 +82,17 @@ pub mod dom_exception;
 mod error;
 mod host;
 mod idl;
+mod native_object;
 mod owner;
 
 use std::marker::PhantomData;
 use std::rc::Rc;
 
+pub use callback_object::{CallbackObject, RetainedCallbackObject};
 pub use error::{Error, Exception, ExceptionPhase};
 pub use host::{HostFailure, HostFailureSlot, RealmAuthority, RealmId, RecordFailure};
 pub use idl::{ByteString, DomString, IntegerKind, IntegerMode, IntegerValue, UsvString};
+pub use native_object::NativeObject;
 
 /// Engine selected before creating any realm or heap values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1091,5 +1095,19 @@ impl<'scope> Scope<'scope> {
     pub fn import(&mut self, root: &Root) -> Result<Value<'scope>, Error> {
         self.operations.validate_root(root)?;
         Ok(self.value(root.clone()))
+    }
+
+    /// Transfer already admitted backing to the exact original exception
+    /// root. The engine releases it after the persistent handle is destroyed.
+    /// The guard covers the managed-root extent and its own boxed storage,
+    /// and must contain no engine custody. A root accepts one guard.
+    pub fn retain_exception_backing(
+        &mut self,
+        exception: &Exception,
+        backing: Box<dyn std::any::Any>,
+    ) -> Result<(), Error> {
+        self.check_active()?;
+        self.operations
+            .retain_root_backing(exception.value(), backing)
     }
 }

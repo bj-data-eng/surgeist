@@ -442,12 +442,16 @@ pub struct DomEventCallback<C>(CallbackKind<C>);
 enum CallbackKind<C> {
     Native(Rc<Listener<C>>),
     Host(Rc<u64>),
+    #[cfg(feature = "document-scripting")]
+    Guest(Rc<crate::document_scripting::guest::RegisteredGuestListener>),
 }
 impl<C> Clone for DomEventCallback<C> {
     fn clone(&self) -> Self {
         Self(match &self.0 {
             CallbackKind::Native(callback) => CallbackKind::Native(callback.clone()),
             CallbackKind::Host(key) => CallbackKind::Host(key.clone()),
+            #[cfg(feature = "document-scripting")]
+            CallbackKind::Guest(callback) => CallbackKind::Guest(callback.clone()),
         })
     }
 }
@@ -475,10 +479,18 @@ impl<C> DomEventCallback<C> {
     pub fn host(key: u64) -> Self {
         Self(CallbackKind::Host(Rc::new(key)))
     }
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn guest(
+        callback: Rc<crate::document_scripting::guest::RegisteredGuestListener>,
+    ) -> Self {
+        Self(CallbackKind::Guest(callback))
+    }
     fn same_identity(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
             (CallbackKind::Native(a), CallbackKind::Native(b)) => Rc::ptr_eq(a, b),
             (CallbackKind::Host(a), CallbackKind::Host(b)) => Rc::ptr_eq(a, b),
+            #[cfg(feature = "document-scripting")]
+            (CallbackKind::Guest(a), CallbackKind::Guest(b)) => Rc::ptr_eq(a, b),
             _ => false,
         }
     }
@@ -499,6 +511,8 @@ pub struct DomEventHostInvocation {
     sequence: usize,
     registration: DomEventRegistrationId,
     key: u64,
+    #[cfg(feature = "document-scripting")]
+    guest: Option<Rc<crate::document_scripting::guest::RegisteredGuestListener>>,
     reported: bool,
 }
 impl std::fmt::Debug for DomEventHostInvocation {
@@ -523,6 +537,12 @@ impl DomEventHostInvocation {
     /// Authentic live event observation and propagation/default controls.
     pub fn event(&self) -> &NativeDomEvent {
         &self.event
+    }
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn selected_guest(
+        &self,
+    ) -> Option<&crate::document_scripting::guest::RegisteredGuestListener> {
+        self.guest.as_deref()
     }
     /// Record ordinary guest completion once. A guest error joins normal
     /// callback failure reporting; later listeners remain eligible. This closes
@@ -980,6 +1000,52 @@ impl<C> DomEventDispatcher<C> {
         (slot.generation == id.generation).then_some(())?;
         slot.registration.as_ref()
     }
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn qualify_guest_registry(
+        &self,
+        dom: &DomEventDom<'_>,
+    ) -> Result<(), DomEventDispatchError> {
+        self.association.validate(dom.raw())
+    }
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn next_guest_registration(
+        &self,
+        target: &DomEventTarget,
+        event_type: &[u16],
+        capture: bool,
+        cursor: &mut usize,
+        cancel: &AtomicBool,
+    ) -> Result<
+        Option<(
+            DomEventRegistrationId,
+            Rc<crate::document_scripting::guest::RegisteredGuestListener>,
+        )>,
+        DomEventDispatchError,
+    > {
+        while let Some(slot) = self.slots.get(*cursor) {
+            self.storage.step(1, cancel)?;
+            let index = *cursor;
+            *cursor += 1;
+            if let Some(registration) = &slot.registration
+                && let CallbackKind::Guest(callback) = &registration.callback.0
+                && registration.target == *target
+                && registration.capture == capture
+                && equal_units(registration.event_type.code_units(), event_type, || {
+                    self.storage.step(1, cancel)
+                })?
+            {
+                return Ok(Some((
+                    DomEventRegistrationId {
+                        registry: self.owner.id,
+                        slot: index,
+                        generation: slot.generation,
+                    },
+                    callback.clone(),
+                )));
+            }
+        }
+        Ok(None)
+    }
     pub(crate) fn deliver(
         &mut self,
         dom: &mut Dom,
@@ -1261,7 +1327,7 @@ impl<C> DomEventDispatcher<C> {
         event: &EventDispatchObservation,
         mut dispatch: Dispatch,
         mut budget: Budget<'_>,
-        host: bool,
+        host: DispatchHost,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
         let custody = event.custody()?;
         let state = event.state();
@@ -1277,6 +1343,8 @@ impl<C> DomEventDispatcher<C> {
             registration,
             current_target,
             key,
+            #[cfg(feature = "document-scripting")]
+            guest,
             passive,
         })) = result
         {
@@ -1307,6 +1375,8 @@ impl<C> DomEventDispatcher<C> {
                     sequence,
                     registration,
                     key,
+                    #[cfg(feature = "document-scripting")]
+                    guest,
                     reported: false,
                 },
             ));
@@ -1399,7 +1469,7 @@ impl<C> DomEventDispatcher<C> {
         event: &EventDispatchObservation,
         dispatch: &mut Dispatch,
         budget: &mut Budget<'_>,
-        host: bool,
+        host: DispatchHost,
     ) -> Result<(), RunStop> {
         let custody = event.custody().map_err(|_| RunStop::Abandoned)?;
         let state = event.state();
@@ -1520,8 +1590,15 @@ impl<C> DomEventDispatcher<C> {
                 if dispatch.failures.len() >= budget.limits.failure_records {
                     return Err(DomEventResource::FailureRecords.into());
                 }
-                if matches!(&r.callback.0, CallbackKind::Host(_)) && !host {
-                    return Err(RunStop::HostUnavailable);
+                match &r.callback.0 {
+                    CallbackKind::Host(_) if host != DispatchHost::Source => {
+                        return Err(RunStop::HostUnavailable);
+                    }
+                    #[cfg(feature = "document-scripting")]
+                    CallbackKind::Guest(_) if host != DispatchHost::Guest => {
+                        return Err(RunStop::HostUnavailable);
+                    }
+                    _ => (),
                 }
                 let once = r.once;
                 let passive = r.passive;
@@ -1545,6 +1622,18 @@ impl<C> DomEventDispatcher<C> {
                             registration: id,
                             current_target: item.invocation.clone(),
                             key: **key,
+                            #[cfg(feature = "document-scripting")]
+                            guest: None,
+                            passive,
+                        });
+                    }
+                    #[cfg(feature = "document-scripting")]
+                    CallbackKind::Guest(callback) => {
+                        return Err(RunStop::HostInvocation {
+                            registration: id,
+                            current_target: item.invocation.clone(),
+                            key: callback.code,
+                            guest: Some(callback.clone()),
                             passive,
                         });
                     }
@@ -2172,8 +2261,16 @@ pub(crate) struct DispatchFormation {
 pub(crate) struct DispatchCall<'a> {
     pub(crate) limits: DomEventDispatchLimits,
     pub(crate) cancel: &'a AtomicBool,
-    pub(crate) host: bool,
+    pub(crate) host: DispatchHost,
     pub(crate) funding: DispatchFunding,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DispatchHost {
+    Unavailable,
+    Source,
+    #[cfg(feature = "document-scripting")]
+    Guest,
 }
 
 fn snapshot_formation_bytes(limits: DomEventDispatchLimits) -> Option<usize> {
@@ -2905,6 +3002,8 @@ enum RunStop {
         registration: DomEventRegistrationId,
         current_target: DomEventTarget,
         key: u64,
+        #[cfg(feature = "document-scripting")]
+        guest: Option<Rc<crate::document_scripting::guest::RegisteredGuestListener>>,
         passive: bool,
     },
     Resource(DomEventResource),

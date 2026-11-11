@@ -33,7 +33,7 @@ pub use withdrawal::{
 };
 
 use crate::dom_event::{
-    DispatchCall, DispatchFunding, DomEventDispatchLimits, DomEventDispatchOutcome,
+    DispatchCall, DispatchFunding, DispatchHost, DomEventDispatchLimits, DomEventDispatchOutcome,
     DomEventDispatchReceipt, DomEventDispatcher, DomEventDom, EventInvocationOwner, NativeDomEvent,
 };
 use std::sync::{
@@ -2640,7 +2640,7 @@ impl DomStyleRuntime {
                                 DispatchCall {
                                     limits,
                                     cancel,
-                                    host: false,
+                                    host: DispatchHost::Unavailable,
                                     funding,
                                 },
                             )
