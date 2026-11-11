@@ -4507,15 +4507,30 @@ fn foreground_backdrop_reads_the_blurred_predecessor_in_scene_order() {
 
 #[test]
 fn foreground_backdrop_same_layer_blurs_the_clipped_backdrop_and_child_group() {
-    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
-    let mut surface =
-        pollster::block_on(renderer.create_headless(Size::new(9.0, 9.0), 1.0)).unwrap();
-    let backdrop = BackdropFilterInput::try_new(
+    assert_foreground_backdrop_group_pixels(color_filter_list([ColorFilterOp::Invert(
+        UnitFilterAmount::try_new(1.0).unwrap(),
+    )]));
+}
+
+#[test]
+fn foreground_backdrop_mirror_sampling_stays_inside_the_backdrop_stage() {
+    // The mirrored blur preserves the uniform white capture before the
+    // ordinary Gaussian sees the clipped backdrop and red child.
+    assert_foreground_backdrop_group_pixels(
         FilterList::try_ops(vec![
             FilterOp::invert(UnitFilterAmount::try_new(1.0).unwrap()),
             FilterOp::blur(FilterBlur::try_new(1.25).unwrap()),
         ])
         .unwrap(),
+    );
+}
+
+fn assert_foreground_backdrop_group_pixels(filters: FilterList) {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(9.0, 9.0), 1.0)).unwrap();
+    let backdrop = BackdropFilterInput::try_new(
+        filters,
         BackdropCaptureBounds::try_new(Rect::new(2.0, 2.0, 5.0, 5.0)).unwrap(),
         Some(ClipInput::try_shape(Shape::rect(Rect::new(3.0, 3.0, 3.0, 3.0))).unwrap()),
     )
@@ -4548,7 +4563,6 @@ fn foreground_backdrop_same_layer_blurs_the_clipped_backdrop_and_child_group() {
         .expect("foreground blur should consume the combined backdrop and child group");
     let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
 
-    // The backdrop's mirrored blur preserves the uniform white capture.
     // The center receives about 199 from the blurred 3x3 white square, and
     // the red child replaces about 41 of its green and blue. Mask and opacity
     // together contribute about one quarter. The halo crosses the inner clip
