@@ -659,8 +659,16 @@ impl Draft {
         )?;
         #[cfg(test)]
         let mut retirements_written = super::sequence::CopyObservation::default();
+        let mut node_retirement_candidates = Vec::new();
         for &(target, document) in &self.dispatch_retirements {
             self.source_step(cancel)?;
+            if let Some(index) = &dom.node_retirements
+                && index.prepare_match(target, || self.source_step(cancel))?
+            {
+                source::formation::reserve(&mut node_retirement_candidates, 1, budget, cancel)?;
+                self.source_step(cancel)?;
+                node_retirement_candidates.push(target);
+            }
             if dom
                 .dispatch_custody
                 .tracks(target, || self.source_step(cancel))?
@@ -676,6 +684,7 @@ impl Draft {
         let semantic_changed = !changes.is_empty();
         Ok((
             Prepared {
+                node_retirement_candidates,
                 inline_echo: self.inline_echo.clone(),
                 sharing: None,
                 inline_recording: self.inline_recording.clone(),

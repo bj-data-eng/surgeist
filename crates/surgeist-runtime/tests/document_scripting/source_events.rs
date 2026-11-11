@@ -621,19 +621,12 @@ fn finish_projected_close(fixture: &mut Fixture, delegated: NodeId) {
         .unwrap();
 }
 
-fn start_another_close(fixture: &mut Fixture, retire_original: bool) -> NodeId {
+fn start_another_close(fixture: &mut Fixture, replacement: bool) -> NodeId {
     let (request, delegated) = fixture
         .host
         .with_native(|dom, _, mut source| {
             let document = fixture.document.node();
-            let delegated = if retire_original {
-                let mut destroy = DomBatch::new();
-                destroy.destroy(fixture.comment);
-                dom.apply(destroy, &cancel()).unwrap();
-                assert!(matches!(
-                    dom.snapshot().node(fixture.comment),
-                    Err(DomError::StaleNode)
-                ));
+            let delegated = if replacement {
                 let mut create = DomBatch::new();
                 let comment = create.create_comment(document, "delegated Source comment");
                 create.insert_before(&comment, document, None);
@@ -700,6 +693,45 @@ fn start_another_close(fixture: &mut Fixture, retire_original: bool) -> NodeId {
         .unwrap();
     fixture.request = request;
     delegated
+}
+
+fn retire_projected_comment_during_unwind(fixture: &mut Fixture) {
+    let original = fixture.comment;
+    let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = fixture.host.with_native(|dom, _, mut source| {
+            let no_work = DomSourceLimits::new(32_000_000, 1_000_000, 0, 128, 4096, 4096, 8);
+            assert!(matches!(
+                source.apply(
+                    dom,
+                    DomSourceEdit::destroy(original),
+                    no_work,
+                    &mut DomSourceServices {
+                        meta: None,
+                        execution_scope: None,
+                        style_policy: &mut |_| None,
+                        url: None,
+                    },
+                    &cancel(),
+                ),
+                Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+                    DomError::SourceWorkLimit { limit: 0 }
+                )))
+            ));
+            assert!(dom.snapshot().node(original).is_ok());
+            let mut destroy = DomBatch::new();
+            destroy.destroy(original);
+            dom.apply(destroy, &cancel()).unwrap();
+            std::panic::panic_any("committed projected Comment destruction");
+        });
+    }));
+    assert_eq!(
+        unwound.unwrap_err().downcast_ref::<&str>(),
+        Some(&"committed projected Comment destruction")
+    );
+    assert!(matches!(
+        fixture.host.snapshot().unwrap().node(original),
+        Err(DomError::StaleNode)
+    ));
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -834,6 +866,7 @@ fn projected_comment_survives_detach_but_does_not_alias_a_replacement() {
     let delegated = start_another_close(&mut fixture, false);
     assert_eq!(delegated, original);
     finish_projected_close(&mut fixture, delegated);
+    retire_projected_comment_during_unwind(&mut fixture);
     let replacement = start_another_close(&mut fixture, true);
     assert_ne!(replacement, original);
     finish_projected_close(&mut fixture, replacement);
@@ -845,6 +878,46 @@ fn projected_comment_survives_detach_but_does_not_alias_a_replacement() {
             assert_script_number(scope, "rejected", 3.0)?;
             assert_script_number(scope, "coercions", 0.0)?;
             assert_script_number(scope, "traps", 0.0)
+        })
+        .unwrap();
+}
+
+fn retiring_a_second_pin_preserves_the_other_wrapper() {
+    let mut fixture = fixture(
+        "globalThis.turn = 0; globalThis.preserved = 0;
+         ((comment) => {
+             if (++turn === 1) { globalThis.original = comment; comment.mark = 23; }
+             if (turn === 2 && comment === original) throw Error('same native wrapper');
+             if (turn === 3) preserved = Number(comment === original && comment.mark === 23);
+             detachIf(1, comment);
+         })",
+        Arc::new(cancel()),
+        |_| Ok(()),
+    );
+    let original = fixture.comment;
+    finish_projected_close(&mut fixture, original);
+    assert!(
+        fixture
+            .dispatcher
+            .remove_listener(fixture.later_registration)
+    );
+    let second = start_another_close(&mut fixture, true);
+    finish_projected_close(&mut fixture, second);
+    fixture
+        .host
+        .with_native(|dom, _, _| {
+            let mut destroy = DomBatch::new();
+            destroy.destroy(second);
+            dom.apply(destroy, &cancel()).unwrap();
+            assert!(dom.snapshot().node(original).is_ok());
+        })
+        .unwrap();
+    let delegated = start_another_close(&mut fixture, false);
+    finish_projected_close(&mut fixture, delegated);
+    fixture
+        .host
+        .in_document(&fixture.permit, |scope| {
+            assert_script_number(scope, "preserved", 1.0)
         })
         .unwrap();
 }
@@ -861,4 +934,5 @@ pub(super) fn run() {
     }
     source_driver_refusal_keeps_the_original_cause();
     projected_comment_survives_detach_but_does_not_alias_a_replacement();
+    retiring_a_second_pin_preserves_the_other_wrapper();
 }

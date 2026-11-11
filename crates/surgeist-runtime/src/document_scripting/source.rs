@@ -1,10 +1,10 @@
 //! Guest execution of an already-selected native Source listener.
 
 use super::*;
-use surgeist_bindings_js::{Arguments, Exception, ManagedObject, Root};
+use surgeist_bindings_js::{Arguments, Exception, Root};
 use surgeist_dom::{
-    DomNodeKind, DomSourceEdit, DomSourceEventPayloadRetention, DomSourceEventRequest,
-    DomSourceEventRetention, DomSourceLimits, NodeId,
+    DomNodeKind, DomNodeRetirementWatch, DomSourceEdit, DomSourceEventPayloadRetention,
+    DomSourceEventRequest, DomSourceEventRetention, DomSourceLimits, NodeId,
 };
 
 use crate::{
@@ -260,9 +260,14 @@ fn call_guest(
     delegated: NodeId,
     limits: DomSourceLimits,
 ) -> Result<(), Error> {
-    enum PreparedComment<'a> {
-        Pinned(&'a ManagedObject),
-        Funded(DomSourceEventPayloadRetention),
+    enum PreparedComment {
+        Pinned(usize),
+        Funded {
+            plan: projection::SlotPlan,
+            watch: DomNodeRetirementWatch,
+            backing: DomSourceEventPayloadRetention,
+            slots_backing: Option<DomSourceEventPayloadRetention>,
+        },
     }
 
     let native = &host.native;
@@ -273,7 +278,11 @@ fn call_guest(
     }
     let active = ActiveGuard(&native.active_source);
     let pin_bytes = projection::ProjectedComments::pin_bytes(&engine.process);
+    let plan = engine.comments.plan_slot();
+    let slot_bytes = plan.and_then(projection::SlotPlan::growth_bytes);
     let miss_bytes = pin_bytes
+        .zip(slot_bytes)
+        .and_then(|(pin, slots)| pin.checked_add(slots))
         .and_then(|bytes| bytes.checked_add(event_report_bytes()))
         .and_then(|additional| engine.retained_bytes_with(additional));
     let comments = &mut engine.comments;
@@ -285,7 +294,7 @@ fn call_guest(
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             native.qualify_event(attachment, &mut session, &request)?;
             require_delegated_comment(&session, attachment, delegated)?;
-            let dom = session.dom();
+            let mut dom = session.dom();
             let step = || dom.raw().source_event_step(&request, &native.cancellation);
             step()?;
             if let Some(existing) = comments.find(delegated, || step().map_err(Into::into))? {
@@ -294,24 +303,68 @@ fn call_guest(
             if miss_bytes.is_none_or(|total| total > native.storage_limit) {
                 return Err(DocumentScriptNativeError::StorageLimit);
             }
-            let bytes = pin_bytes.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-            let backing = dom
-                .raw()
-                .retain_source_event_payload(&request, bytes, 0, &native.cancellation)?
-                .split_payload(bytes, 0)?;
-            Ok(PreparedComment::Funded(backing))
+            let pin_bytes = pin_bytes.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+            let slot_bytes =
+                slot_bytes.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+            let plan = plan.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+            let bytes = pin_bytes
+                .checked_add(slot_bytes)
+                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+            let mut retained =
+                dom.raw()
+                    .retain_source_event_payload(&request, bytes, 0, &native.cancellation)?;
+            let backing = retained.split_payload(pin_bytes, 0)?;
+            let slots_backing = (slot_bytes != 0)
+                .then(|| retained.split_payload(slot_bytes, 0))
+                .transpose()?;
+            let watch = comments.arm(
+                dom.raw_mut(),
+                &request,
+                delegated,
+                plan,
+                &native.cancellation,
+            )?;
+            Ok(PreparedComment::Funded {
+                plan,
+                watch,
+                backing,
+                slots_backing,
+            })
         })();
         let prepare = match prepare {
             Ok(prepare) => prepare,
             Err(error) => return refuse(scope, &attachment.failures, error),
         };
         let handler = scope.import(handler)?;
-        let object = match prepare {
-            PreparedComment::Pinned(existing) => existing,
-            PreparedComment::Funded(backing) => {
+        let key = match prepare {
+            PreparedComment::Pinned(key) => key,
+            PreparedComment::Funded {
+                plan,
+                watch,
+                backing,
+                slots_backing,
+            } => {
+                if let Err(error) = comments.grow(plan, slots_backing) {
+                    return refuse(scope, &attachment.failures, error.into());
+                }
+                let Some(vacant) = comments.vacant(plan.key) else {
+                    return refuse(
+                        scope,
+                        &attachment.failures,
+                        DocumentScriptNativeError::ProjectionCustody,
+                    );
+                };
                 let object = scope.managed_object()?;
-                comments.insert(delegated, object, backing)
+                vacant.install(delegated, object, watch, backing);
+                plan.key
             }
+        };
+        let Some(object) = comments.object(key) else {
+            return refuse(
+                scope,
+                &attachment.failures,
+                DocumentScriptNativeError::ProjectionCustody,
+            );
         };
         let argument = scope.open_managed_object(object)?;
         native.active_source.set(Some(ActiveSource {
@@ -325,7 +378,7 @@ fn call_guest(
         Ok(())
     });
     drop(active);
-    engine.release_terminal_comments(&attachment.realm);
+    engine.finish_projection_cleanup(&attachment.realm);
     result
 }
 

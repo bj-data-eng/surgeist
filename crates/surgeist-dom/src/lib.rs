@@ -303,8 +303,8 @@ pub use store::source::operation::dialog_queue::{
     DomDialogTaskQueuePlan, DomDialogTaskQueuePublication, DomDialogToggleTaskInfo,
 };
 pub use store::{
-    Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits, DomResource,
-    DomUsage,
+    Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits,
+    DomNodeRetirementInbox, DomNodeRetirementNotice, DomNodeRetirementWatch, DomResource, DomUsage,
 };
 pub use surgeist_html::{
     construction::{

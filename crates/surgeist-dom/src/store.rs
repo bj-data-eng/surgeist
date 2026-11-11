@@ -65,6 +65,10 @@ pub(crate) mod meta_atomic;
 mod method;
 mod name_registry;
 mod navigable;
+mod node_retirement;
+pub use node_retirement::{
+    DomNodeRetirementInbox, DomNodeRetirementNotice, DomNodeRetirementWatch,
+};
 #[cfg(test)]
 mod oracle_tests;
 mod output;
@@ -301,6 +305,7 @@ pub enum DomError {
     SourceUrlUnavailable,
     ForeignOwner,
     StaleNode,
+    NodeRetirementAlreadyWatched,
     ForeignBatch,
     UnavailableCreation,
     WrongNodeKind,
@@ -1291,6 +1296,7 @@ pub struct Dom {
     next_fullscreen_exit: u64,
     element_tasks: Option<std::sync::Weak<crate::element_tasks::Binding>>,
     dispatch_custody: dispatch::CustodyBank,
+    node_retirements: Option<Arc<node_retirement::Index>>,
     event_recipients: Option<Arc<event::Owner>>,
     event_registry: Option<crate::event::RegistryObservation>,
     owner: DomOwnerId,
@@ -1388,6 +1394,7 @@ impl Dom {
             fullscreen_exits: fullscreen::custody::Invocations::new(&registry),
             next_fullscreen_exit: 1,
             dispatch_custody: dispatch::CustodyBank::default(),
+            node_retirements: None,
             event_recipients: None,
             event_registry: None,
             inline_styles: None,
@@ -1788,6 +1795,7 @@ impl Dom {
             _transition_outputs,
             created_ranges,
             retirements,
+            node_retirement_candidates,
             state,
             allocation_ids,
             owner,
@@ -1888,6 +1896,13 @@ impl Dom {
             formation.as_ref(),
             cancelled,
         )?;
+        let node_retirement_publication = if node_retirement_candidates.is_empty() {
+            None
+        } else {
+            self.node_retirements.clone().map(|index| {
+                node_retirement::PublicationPlan::new(index, node_retirement_candidates)
+            })
+        };
         // This independently held candidate is prepared last: its registry
         // owns its actual peak, and this non-retaining gate includes all prior
         // publication storage before the final fence.
@@ -1931,6 +1946,7 @@ impl Dom {
             revision,
             history_plan,
             retirement_publication,
+            node_retirement_publication,
             style_custody,
             inline_index,
             inline_retirement,
@@ -2025,6 +2041,7 @@ impl PublicationFields<'_> {
             revision,
             history_plan,
             retirement_publication,
+            node_retirement_publication,
             style_custody,
             inline_index,
             inline_retirement,
@@ -2078,6 +2095,9 @@ impl PublicationFields<'_> {
             *self.style_cssom_roots = style_custody;
         }
         retirement_publication.publish();
+        if let Some(plan) = node_retirement_publication {
+            plan.publish();
+        }
         if let Some(auth) = retired_authority {
             auth.destroy_if_pending();
             *self.active_task = std::sync::Weak::new();
@@ -2261,6 +2281,7 @@ pub(crate) struct PreparedPublication {
     revision: DomRevision,
     history_plan: history::Plan,
     retirement_publication: dispatch::PublicationPlan,
+    node_retirement_publication: Option<node_retirement::PublicationPlan>,
     style_custody: Option<style_custody::Bank>,
     inline_index: Option<inline_style::Index>,
     inline_retirement: Option<inline_style::RetirementPlan>,
@@ -2288,6 +2309,7 @@ pub(crate) struct PreparedPublication {
     sharing: Option<SharingPublication>,
 }
 struct Prepared {
+    node_retirement_candidates: Vec<NodeId>,
     inline_echo: Option<inline_style::feedback::Echo>,
     state: State,
     inline_positions: Option<transaction::slot_index::PositionChanges>,

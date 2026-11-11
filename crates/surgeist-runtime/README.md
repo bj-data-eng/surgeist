@@ -254,8 +254,10 @@ the script owner. The selected guest handler receives the explicitly delegated
 Document Comment as a host object. The detach hook requires that exact object
 as its second argument and converts the first argument to Number before applying
 the nested Source edit. Repeated exposure preserves the wrapper and its expandos
-until native destruction or attachment teardown. Guest execution releases native
-loans and retains any exact guest exception for the native report. The original
+until native destruction or attachment teardown. Canonical destruction publishes
+an admitted notice for the exact native generation. Runtime releases the pin
+after the native loan ends, even during unwind or terminal refusal. Guest
+execution retains any exact guest exception for the native report. The original
 dispatcher then continues delivery and the caller resumes the same Source
 operation. Standard DOM interfaces and parser execution belong to their own
 contributions.

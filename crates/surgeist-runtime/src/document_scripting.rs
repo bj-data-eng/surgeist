@@ -15,7 +15,7 @@ use surgeist_css::{query::media::CssMediaScripting, serialization::CssSerializat
 use surgeist_dom::{
     DocumentId, DomDocumentScriptBinding, DomDocumentScriptRegistration, DomDocumentScriptingFacts,
     DomDocumentScriptingObservation, DomError, DomHostedError, DomHostedRuntimeRetention,
-    DomSnapshot, DomStamp,
+    DomSnapshot,
 };
 use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
 use surgeist_html_semantics::HtmlScriptingStatus;
@@ -55,6 +55,8 @@ pub enum DocumentScriptNativeError {
     SourceAccess,
     /// The native Comment's creation Global is unavailable in this attachment.
     CreationGlobalUnavailable,
+    /// A previously admitted projected node lost its managed pin record.
+    ProjectionCustody,
     /// The result cannot be represented in the supported service profile.
     RepresentationExhausted,
 }
@@ -504,10 +506,12 @@ impl ScriptEngine {
             .len()
             .checked_mul(projection::ProjectedComments::pin_bytes(&self.process)?)?
             .checked_add(self.retained_bytes)?
+            .checked_add(self.comments.slot_bytes()?)?
             .checked_add(additional)
     }
 
-    fn release_terminal_comments(&mut self, realm: &RealmAuthority) {
+    fn finish_projection_cleanup(&mut self, realm: &RealmAuthority) {
+        self.comments.drain_retirements(&mut self.process);
         if realm.check_owner_active().is_err() {
             self.comments.release_all(&mut self.process);
         }
@@ -528,24 +532,19 @@ pub struct DocumentScriptHost {
 
 struct NativeLoanExit<'a> {
     host: &'a mut DocumentScriptHost,
-    projection_basis: Option<DomStamp>,
+    acquired: bool,
 }
 
 impl Drop for NativeLoanExit<'_> {
     fn drop(&mut self) {
+        if !self.acquired {
+            return;
+        }
         self.host.dispose_retired_engine();
-        if let Some(basis) = self.projection_basis
-            && let Some(engine) = self.host.engine.as_mut()
-            && let Ok(session) = self.host.native.session.try_borrow()
+        if let Some(engine) = self.host.engine.as_mut()
+            && let Some(attachment) = self.host.native.attachment.get()
         {
-            let snapshot = session.snapshot();
-            drop(session);
-            if snapshot.stamp() != basis {
-                engine.comments.retire(&snapshot, &mut engine.process);
-            }
-            if let Some(attachment) = self.host.native.attachment.get() {
-                engine.release_terminal_comments(&attachment.realm);
-            }
+            engine.finish_projection_cleanup(&attachment.realm);
         }
     }
 }
@@ -671,7 +670,7 @@ impl DocumentScriptHost {
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let result = engine.process.execution().in_realm(&engine.realm, action);
-        engine.release_terminal_comments(&attachment.realm);
+        engine.finish_projection_cleanup(&attachment.realm);
         Ok(result?)
     }
 
@@ -699,7 +698,7 @@ impl DocumentScriptHost {
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let result = engine.process.execution().checkpoint();
-        engine.release_terminal_comments(&attachment.realm);
+        engine.finish_projection_cleanup(&attachment.realm);
         Ok(result?)
     }
 
@@ -724,7 +723,7 @@ impl DocumentScriptHost {
         // including if caller code unwinds after canonical retirement.
         let mut exit = NativeLoanExit {
             host: self,
-            projection_basis: None,
+            acquired: false,
         };
         let mut session = exit
             .host
@@ -732,13 +731,9 @@ impl DocumentScriptHost {
             .session
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
+        exit.acquired = true;
         let hosted = session.hosted_execution();
         let source = session.source_execution();
-        if let Some(engine) = exit.host.engine.as_ref()
-            && engine.comments.len() != 0
-        {
-            exit.projection_basis = Some(session.snapshot().stamp());
-        }
         Ok(action(&mut session.dom(), hosted, source))
     }
 
