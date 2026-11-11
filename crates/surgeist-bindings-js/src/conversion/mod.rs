@@ -5,6 +5,7 @@ mod account;
 mod composition;
 pub mod declarations;
 mod failure;
+mod listener;
 mod sequence;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -27,6 +28,7 @@ pub use composition::{Argument, ArgumentValue, Descriptor, Nullable};
 pub use failure::{
     CleanupFailure, CleanupFault, CleanupPrimary, CleanupStage, Failure, FailureKind, Rule,
 };
+pub use listener::StandaloneListenerOptions;
 pub use sequence::Sequence;
 
 use account::{Account, Storage};

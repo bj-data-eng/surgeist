@@ -124,7 +124,8 @@ fn exact_target<'scope>(
     let original = scope
         .native_object::<GuestTargetProjection>(&value)?
         .ok_or(Error::RegistryConflict)?;
-    if matches!(target, DomEventTarget::Standalone(expected) if expected == &original.payload().0) {
+    if matches!(target, DomEventTarget::Standalone(expected) if expected == &original.payload().native)
+    {
         Ok(value)
     } else {
         Err(Error::RegistryConflict)

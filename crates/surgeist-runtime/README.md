@@ -274,6 +274,21 @@ retains any exact guest exception for the native report. The original
 dispatcher then continues delivery and the caller resumes the same Source
 operation.
 
+Hosts can claim the original empty listener registry with
+`DomEventDispatcher::bind` and transfer it through
+`PreparedDocumentScriptHost::enable_with_guest_event_registry`. Runtime
+installs `Event` and standalone `EventTarget` before the Window becomes
+visible. The constructors use the native creation Global and clock.
+Standalone dispatch uses the original registry for duplicate, capture, once
+and passive behavior. Target and path observations preserve the exact
+guest wrapper, and ordinary callback throws remain available for host
+reporting. Guest listener references follow heap reachability, so an
+unreachable target and its listener cycle can retire together. Rust callers
+can inspect or control an authored Event through its borrowed native view.
+Host and guest initialization clear the same native target and guest reference.
+Node and Window EventTarget projections and AbortSignal integration have
+separate native prerequisites.
+
 Native HTML Script preparation
 can pause for the original relevant Global's live scripting settings.
 `DocumentScriptHost::service_script_settings` supplies that fact through the

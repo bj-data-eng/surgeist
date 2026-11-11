@@ -16,6 +16,7 @@ struct Entry {
 }
 
 struct ResolvedObject<'scope> {
+    index: u32,
     object: v8::Local<'scope, v8::Object>,
     entry: Rc<Entry>,
 }
@@ -165,6 +166,38 @@ impl Entered<'_, '_, '_> {
         })
     }
 
+    pub(super) fn native_index(
+        &mut self,
+        root: &Root,
+        brand: TypeId,
+    ) -> Result<Option<u32>, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, _, _| {
+            Ok(find_native(scope, roots, root)?
+                .filter(|resolved| resolved.entry.payload.as_ref().type_id() == brand)
+                .map(|resolved| resolved.index))
+        })
+    }
+
+    pub(super) fn open_native_index(
+        &mut self,
+        index: u32,
+        brand: TypeId,
+    ) -> Result<Option<Root>, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+            let Some(entry) = find_entry(roots, index)? else {
+                return Ok(None);
+            };
+            if entry.payload.as_ref().type_id() != brand {
+                return Err(Error::ExpectedNativeObject);
+            }
+            entry
+                .object
+                .to_local(scope)
+                .map(|object| roots.retain(scope, realm, object.into()))
+                .transpose()
+        })
+    }
+
     pub(super) fn read_native_reference(
         &mut self,
         root: &Root,
@@ -217,7 +250,7 @@ fn reference_holder<'s>(
     root: &Root,
     brand: TypeId,
 ) -> Result<v8::Local<'s, v8::Object>, Error> {
-    let Some(ResolvedObject { object, entry }) = find_native(scope, roots, root)? else {
+    let Some(ResolvedObject { object, entry, .. }) = find_native(scope, roots, root)? else {
         return Err(Error::ExpectedNativeObject);
     };
     if entry.payload.as_ref().type_id() != brand {
@@ -247,19 +280,27 @@ fn find_native<'s>(
     else {
         return Ok(None);
     };
-    let entry = roots
-        .native_objects
-        .entries
-        .try_borrow()
-        .map_err(|_| roots.conflict())?
-        .get(&index.value())
-        .cloned();
-    let Some(entry) = entry else {
+    let index = index.value();
+    let Some(entry) = find_entry(roots, index)? else {
         return Ok(None);
     };
     Ok(entry
         .object
         .to_local(scope)
         .filter(|original| *original == object)
-        .map(|_| ResolvedObject { object, entry }))
+        .map(|_| ResolvedObject {
+            index,
+            object,
+            entry,
+        }))
+}
+
+fn find_entry(roots: &Roots, index: u32) -> Result<Option<Rc<Entry>>, Error> {
+    Ok(roots
+        .native_objects
+        .entries
+        .try_borrow()
+        .map_err(|_| roots.conflict())?
+        .get(&index)
+        .cloned())
 }

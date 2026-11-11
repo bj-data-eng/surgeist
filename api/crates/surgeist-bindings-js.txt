@@ -172,10 +172,12 @@ pub fn surgeist_bindings_js::conversion::Resource::get<T: surgeist_ledger::dimen
 pub fn surgeist_bindings_js::conversion::Resource::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_bindings_js::conversion::ResourceTable<T>, key: Self) -> &mut T
 #[non_exhaustive] pub enum surgeist_bindings_js::conversion::Rule
 pub surgeist_bindings_js::conversion::Rule::ByteString
+pub surgeist_bindings_js::conversion::Rule::CallbackInterface(&'static str)
 pub surgeist_bindings_js::conversion::Rule::Dictionary(&'static str)
 pub surgeist_bindings_js::conversion::Rule::Enumeration(&'static str)
 pub surgeist_bindings_js::conversion::Rule::FloatingRange
 pub surgeist_bindings_js::conversion::Rule::IntegerRange
+pub surgeist_bindings_js::conversion::Rule::Interface(&'static str)
 pub surgeist_bindings_js::conversion::Rule::RequiredArgument(&'static str)
 pub surgeist_bindings_js::conversion::Rule::RequiredMember(&'static str)
 pub surgeist_bindings_js::conversion::Rule::Sequence
@@ -214,6 +216,10 @@ impl<'scope> surgeist_bindings_js::conversion::Conversion<'_, 'scope>
 pub fn surgeist_bindings_js::conversion::Conversion<'_, 'scope>::copy_to_js(&mut self, units: &[u16]) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::conversion::Failure>
 pub fn surgeist_bindings_js::conversion::Conversion<'_, 'scope>::enum_assignment<E>(&mut self, ty: &surgeist_bindings_js::conversion::Enumeration<E>, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<surgeist_bindings_js::conversion::EnumAssignment<E>, surgeist_bindings_js::conversion::Failure>
 pub fn surgeist_bindings_js::conversion::Conversion<'_, 'scope>::value<D: surgeist_bindings_js::conversion::Descriptor>(&mut self, ty: &D, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<surgeist_bindings_js::conversion::Converted<<D as surgeist_bindings_js::conversion::Descriptor>::Output>, surgeist_bindings_js::conversion::Failure>
+impl<'scope> surgeist_bindings_js::conversion::Conversion<'_, 'scope>
+pub fn surgeist_bindings_js::conversion::Conversion<'_, 'scope>::event_listener_argument(&mut self, input: core::option::Option<&surgeist_bindings_js::Value<'scope>>) -> core::result::Result<bool, surgeist_bindings_js::conversion::Failure>
+pub fn surgeist_bindings_js::conversion::Conversion<'_, 'scope>::event_listener_removal_capture(&mut self, input: core::option::Option<&surgeist_bindings_js::Value<'scope>>) -> core::result::Result<bool, surgeist_bindings_js::conversion::Failure>
+pub fn surgeist_bindings_js::conversion::Conversion<'_, 'scope>::standalone_add_listener_options(&mut self, input: core::option::Option<&surgeist_bindings_js::Value<'scope>>) -> core::result::Result<surgeist_bindings_js::conversion::StandaloneListenerOptions, surgeist_bindings_js::conversion::Failure>
 pub struct surgeist_bindings_js::conversion::ConversionAccount(_)
 impl surgeist_bindings_js::conversion::ConversionAccount
 pub fn surgeist_bindings_js::conversion::ConversionAccount::cleanup_status(&self) -> surgeist_bindings_js::conversion::CleanupStatus
@@ -262,6 +268,10 @@ pub fn surgeist_bindings_js::conversion::Sequence<D>::nullable(self) -> surgeist
 pub fn surgeist_bindings_js::conversion::Sequence<D>::sequence(self) -> surgeist_bindings_js::conversion::Sequence<Self>
 impl<D: surgeist_bindings_js::conversion::Descriptor> surgeist_bindings_js::conversion::Descriptor for surgeist_bindings_js::conversion::Sequence<D>
 pub type surgeist_bindings_js::conversion::Sequence<D>::Output = alloc::vec::Vec<surgeist_bindings_js::conversion::Converted<<D as surgeist_bindings_js::conversion::Descriptor>::Output>>
+pub struct surgeist_bindings_js::conversion::StandaloneListenerOptions
+pub surgeist_bindings_js::conversion::StandaloneListenerOptions::capture: bool
+pub surgeist_bindings_js::conversion::StandaloneListenerOptions::once: bool
+pub surgeist_bindings_js::conversion::StandaloneListenerOptions::passive: core::option::Option<bool>
 pub struct surgeist_bindings_js::conversion::Type<T>
 impl<T> surgeist_bindings_js::conversion::Type<T>
 pub fn surgeist_bindings_js::conversion::Type<T>::nullable(self) -> surgeist_bindings_js::conversion::Nullable<Self>
@@ -571,6 +581,7 @@ pub struct surgeist_bindings_js::ManagedObject
 pub struct surgeist_bindings_js::NativeObject<T>
 impl<T> surgeist_bindings_js::NativeObject<T>
 pub fn surgeist_bindings_js::NativeObject<T>::payload(&self) -> &T
+pub struct surgeist_bindings_js::NativeObjectToken<T>
 pub struct surgeist_bindings_js::Process
 impl surgeist_bindings_js::Process
 pub fn surgeist_bindings_js::Process::bootstrap(kind: surgeist_bindings_js::EngineKind) -> core::result::Result<Self, surgeist_bindings_js::Error>
@@ -644,6 +655,8 @@ pub fn surgeist_bindings_js::Scope<'scope>::retain_callback_object<Storage: 'sta
 impl<'scope> surgeist_bindings_js::Scope<'scope>
 pub fn surgeist_bindings_js::Scope<'scope>::native_object<T: 'static>(&mut self, object: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<core::option::Option<alloc::rc::Rc<surgeist_bindings_js::NativeObject<T>>>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::native_object_reference<T: 'static>(&mut self, object: &surgeist_bindings_js::Value<'scope>, slot: u32) -> core::result::Result<core::option::Option<surgeist_bindings_js::Value<'scope>>, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::native_object_token<T: 'static>(&mut self, object: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<core::option::Option<surgeist_bindings_js::NativeObjectToken<T>>, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::open_native_object<T: 'static>(&mut self, token: &surgeist_bindings_js::NativeObjectToken<T>) -> core::result::Result<core::option::Option<surgeist_bindings_js::Value<'scope>>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::project_native_object<T: 'static, Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>, payload: T, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<Storage, E>) -> core::result::Result<surgeist_bindings_js::Value<'scope>, E>
 pub fn surgeist_bindings_js::Scope<'scope>::project_retained_native_object<T: 'static, Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>, payload: T, admit: impl core::ops::function::FnMut(usize) -> core::result::Result<Storage, E>) -> core::result::Result<surgeist_bindings_js::RetainedCallbackObject, E>
 pub fn surgeist_bindings_js::Scope<'scope>::set_native_object_reference<T: 'static>(&mut self, object: &surgeist_bindings_js::Value<'scope>, slot: u32, reference: core::option::Option<&surgeist_bindings_js::Value<'scope>>) -> core::result::Result<(), surgeist_bindings_js::Error>

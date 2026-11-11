@@ -790,7 +790,7 @@ fn native_window_registers_and_removes_guest_event_listeners() {
         const forged = new Proxy(target, { get() { traps++; }, getPrototypeOf() { traps++; } });
         for (const action of [
             () => EventTarget.prototype.addEventListener.call(forged, { toString() { coercions++; } }, tail),
-            () => target.addEventListener("missing"),
+            () => target.addEventListener({ toString() { coercions++; return "missing"; } }),
             () => target.addEventListener("invalid", 1),
             () => target.addEventListener("signal", tail, { signal: {} }),
         ]) {
@@ -799,6 +799,7 @@ fn native_window_registers_and_removes_guest_event_listeners() {
         if (traps || coercions || invalid !== 4) return "wrong brand or callback conversion";
         target.addEventListener("absent", null);
         globalThis.originalListenerError = {};
+        globalThis.listenerTestTarget = target;
         target.addEventListener("throw", { handleEvent() { throw originalListenerError; } });
         let later = false;
         target.addEventListener("throw", () => { later = true; });
@@ -823,6 +824,21 @@ fn native_window_registers_and_removes_guest_event_listeners() {
         Ok(())
     })
     .unwrap();
+    assert!(
+        host.remove_guest_event_listener(&permit, report.registration)
+            .unwrap()
+    );
+    assert!(
+        !host
+            .remove_guest_event_listener(&permit, report.registration)
+            .unwrap()
+    );
+    eval(
+        &mut host,
+        &permit,
+        "Number(listenerTestTarget.dispatchEvent(new Event('throw')))",
+        1.0,
+    );
     assert!(
         host.take_guest_listener_exception(&permit)
             .unwrap()

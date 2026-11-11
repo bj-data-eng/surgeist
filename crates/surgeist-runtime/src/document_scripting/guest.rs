@@ -1,6 +1,7 @@
 //! Registered guest callbacks for ordinary authored standalone dispatch.
 
 mod interfaces;
+mod listeners;
 mod reports;
 mod wrapper;
 
@@ -16,7 +17,9 @@ use crate::dom_event::{
 use interfaces::PublicEventBindings;
 pub(super) use reports::GuestExceptionReports;
 use reports::{DirectExceptions, ExceptionRoots};
-use surgeist_bindings_js::{Exception, ObjectPrototype, RetainedCallbackObject, Root, Value};
+use surgeist_bindings_js::{
+    Exception, NativeObjectToken, ObjectPrototype, RetainedCallbackObject, Root, Value,
+};
 
 /// Guest adapter limits in addition to the original registry and Hosted limits.
 #[derive(Clone, Copy, Debug)]
@@ -92,7 +95,30 @@ impl From<DomEventDispatchError> for DocumentGuestEventError {
     }
 }
 
-struct GuestTargetProjection(DomStandaloneEventTarget);
+struct GuestTargetProjection {
+    native: DomStandaloneEventTarget,
+    lifetime: Option<Rc<GuestTargetLifetime>>,
+}
+
+impl Drop for GuestTargetProjection {
+    fn drop(&mut self) {
+        if let Some(lifetime) = &self.lifetime {
+            lifetime.retired.set(true);
+            lifetime.events.retired_targets.set(true);
+        }
+    }
+}
+
+struct GuestTargetLifetime {
+    retired: Cell<bool>,
+    events: Rc<GuestFixedBacking>,
+    _backing: GuestBacking,
+}
+
+struct GuestFixedBacking {
+    retired_targets: Cell<bool>,
+    _retention: DomHostedRuntimeRetention,
+}
 
 /// An explicitly host-owned guest projection of a native standalone target.
 pub struct DocumentGuestEventTarget {
@@ -327,11 +353,29 @@ impl Drop for GuestBacking {
     }
 }
 
+struct TracedListener {
+    realm: RealmAuthority,
+    target: NativeObjectToken<GuestTargetProjection>,
+    slot: u32,
+    lifetime: Rc<GuestTargetLifetime>,
+}
+
+enum RegisteredListenerObject {
+    Retained(RetainedCallbackObject),
+    Traced(TracedListener),
+}
+
 pub(crate) struct RegisteredGuestListener {
     pub(crate) code: u64,
-    object: RetainedCallbackObject,
+    object: RegisteredListenerObject,
     registration_window: DomHostedTopLevel,
     _backing: GuestBacking,
+}
+
+impl RegisteredGuestListener {
+    pub(crate) fn target_retired(&self) -> bool {
+        matches!(&self.object, RegisteredListenerObject::Traced(traced) if traced.lifetime.retired.get())
+    }
 }
 
 pub(super) struct GuestEvents {
@@ -345,7 +389,7 @@ pub(super) struct GuestEvents {
     window_event: Rc<window_event::WindowEvent>,
     target_prototype: OnceCell<RetainedCallbackObject>,
     public: Option<PublicEventBindings>,
-    backing: Rc<DomHostedRuntimeRetention>,
+    backing: Rc<GuestFixedBacking>,
 }
 
 struct GuestBudget {
@@ -517,9 +561,8 @@ impl GuestEventAdmission {
         total: Option<usize>,
         authority: &RealmAuthority,
     ) -> Result<Self, DocumentGuestEventError> {
-        let fixed = size_of::<GuestEvents>()
-            + size_of::<Cell<usize>>()
-            + size_of::<DomHostedRuntimeRetention>();
+        let fixed =
+            size_of::<GuestEvents>() + size_of::<Cell<usize>>() + size_of::<GuestFixedBacking>();
         let report_bytes = GuestExceptionReports::storage_bytes(limits.pending_exception_reports)
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
         let refusal_bytes = reports::DispatchFailure::storage_bytes();
@@ -593,7 +636,10 @@ impl GuestEventAdmission {
             window_event: engine.window_event.clone(),
             target_prototype: OnceCell::new(),
             public,
-            backing: Rc::new(backing),
+            backing: Rc::new(GuestFixedBacking {
+                retired_targets: Cell::new(false),
+                _retention: backing,
+            }),
         });
         if let Some(public) = &events.public {
             public.activate(&events);
@@ -710,7 +756,7 @@ impl DocumentScriptHost {
                     &owner,
                     scope,
                     ObjectPrototype::Object(&prototype),
-                    GuestTargetProjection(native.clone()),
+                    events.target_projection(&owner, native.clone())?,
                 )?;
                 Ok(DocumentGuestEventTarget { native, object })
             })())
@@ -822,29 +868,21 @@ impl DocumentScriptHost {
                 if observed.associated_realm().identity() != permit.realm {
                     return Err(DocumentGuestEventError::CallbackRealmUnavailable);
                 }
-                let target = DomEventTarget::from(target.native.clone());
-                let mut cursor = 0;
-                loop {
-                    let candidate = events
-                        .registry
-                        .try_borrow()
-                        .map_err(|_| DocumentScriptNativeError::Busy)?
-                        .next_guest_registration(
-                            &target,
-                            event_type,
-                            options.capture,
-                            &mut cursor,
-                            &owner.cancellation,
-                        )?;
-                    let Some((registration, candidate)) = candidate else {
-                        break;
-                    };
-                    events.step()?;
-                    let existing = scope.open_callback_object(&candidate.object)?;
-                    if scope.strict_equals(&value, &existing)? {
-                        return Ok(registration);
-                    }
+                let receiver = target.object(scope)?;
+                if let Some(registration) = events.find_listener(
+                    &owner,
+                    scope,
+                    listeners::ListenerMatch {
+                        receiver: &receiver,
+                        target: &target.native,
+                        event_type,
+                        callback: &value,
+                        capture: options.capture,
+                    },
+                )? {
+                    return Ok(registration);
                 }
+                let target = DomEventTarget::from(target.native.clone());
                 let backing = events.reserve(&owner, size_of::<RegisteredGuestListener>())?;
                 let object = scope
                     .retain_callback_object(observed, |bytes| events.reserve(&owner, bytes))?;
@@ -855,7 +893,7 @@ impl DocumentScriptHost {
                     .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
                 let callback = DomEventCallback::guest(Rc::new(RegisteredGuestListener {
                     code,
-                    object,
+                    object: RegisteredListenerObject::Retained(object),
                     registration_window,
                     _backing: backing,
                 }));
@@ -888,15 +926,8 @@ impl DocumentScriptHost {
     ) -> Result<bool, DocumentGuestEventError> {
         self.check_permit(permit)?;
         let events = self.guest_events()?;
-        self.in_document(permit, |_| {
-            Ok((|| {
-                events.step()?;
-                let mut registry = events
-                    .registry
-                    .try_borrow_mut()
-                    .map_err(|_| DocumentScriptNativeError::Busy)?;
-                Ok(registry.remove_listener(registration))
-            })())
+        self.in_document(permit, |scope| {
+            Ok(events.remove_registration(scope, registration))
         })?
     }
 
@@ -1082,7 +1113,7 @@ impl GuestEvents {
             };
             if let Some((event, target)) = &projection
                 && matches!(event.payload().0.target(), Some(DomEventTarget::Standalone(ref actual))
-                    if actual == &target.payload().0)
+                    if actual == &target.payload().native)
             {
                 if let Err(error) = scope.set_native_object_reference::<GuestEventProjection>(
                     argument,
@@ -1136,7 +1167,7 @@ impl GuestEvents {
                 let callback = selected
                     .selected_guest()
                     .ok_or(DocumentGuestEventError::RegistryState)?;
-                let authority = callback.object.associated_realm();
+                let authority = callback.realm();
                 authority.check_owner_active()?;
                 if callback.registration_window != attachment.target
                     || authority.identity() != attachment.realm.identity()
@@ -1156,7 +1187,15 @@ impl GuestEvents {
                     }
                 }
                 self.step()?;
-                let object = scope.open_callback_object(&callback.object)?;
+                let object = callback.open(scope, receiver)?;
+                let once_removed = !self
+                    .registry
+                    .try_borrow()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?
+                    .has_registration(selected.registration());
+                if once_removed {
+                    callback.clear_receiver(scope, receiver)?;
+                }
                 // A standalone path item is outside any shadow tree.
                 current_event = Some(self.window_event.enter(scope.retain(argument)));
                 let arguments = std::slice::from_ref(argument);

@@ -1261,6 +1261,22 @@ impl Operations for Entered<'_, '_, '_> {
         self.native_payload(object)
     }
 
+    fn native_object_index(
+        &mut self,
+        object: &Root,
+        brand: std::any::TypeId,
+    ) -> Result<Option<u32>, Error> {
+        self.native_index(object, brand)
+    }
+
+    fn open_native_object(
+        &mut self,
+        index: u32,
+        brand: std::any::TypeId,
+    ) -> Result<Option<Root>, Error> {
+        self.open_native_index(index, brand)
+    }
+
     fn native_object_reference(
         &mut self,
         object: &Root,

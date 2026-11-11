@@ -644,7 +644,7 @@ fn native_references_follow_only_guest_reachability() -> TestResult {
     let funded = Rc::downgrade(&funding);
     let key = b"traceNative".map(u16::from);
     let slot = 3;
-    host.engine.with_context(&host.realm, |entered| {
+    let token = host.engine.with_context(&host.realm, |entered| {
         let mut scope = Scope {
             operations: entered,
             invariant: std::marker::PhantomData,
@@ -690,7 +690,11 @@ fn native_references_follow_only_guest_reachability() -> TestResult {
                 .native_object_reference::<Rc<u32>>(&object, slot)?
                 .is_none()
         );
-        scope.set_native_object_reference::<Rc<u32>>(&object, slot, Some(&callback))
+        scope.set_native_object_reference::<Rc<u32>>(&object, slot, Some(&callback))?;
+        let token = scope.native_object_token::<Rc<u32>>(&object)?.unwrap();
+        let reopened = scope.open_native_object(&token)?.unwrap();
+        assert!(scope.strict_equals(&object, &reopened)?);
+        Ok::<_, Error>(token)
     })?;
 
     host.engine.reap();
@@ -719,6 +723,14 @@ fn native_references_follow_only_guest_reachability() -> TestResult {
     assert_eq!(host.engine.roots.native_objects.entries_count(), 0);
     assert!(payload.upgrade().is_none());
     assert!(funded.upgrade().is_none());
+    host.engine.with_context(&host.realm, |entered| {
+        let mut scope = Scope {
+            operations: entered,
+            invariant: std::marker::PhantomData,
+        };
+        assert!(scope.open_native_object(&token)?.is_none());
+        Ok::<_, Error>(())
+    })?;
     Ok(())
 }
 

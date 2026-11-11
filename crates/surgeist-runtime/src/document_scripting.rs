@@ -690,6 +690,9 @@ impl ScriptEngine {
 
     fn finish_projection_cleanup(&mut self, realm: &RealmAuthority) {
         self.comments.drain_retirements(&mut self.process);
+        if let Some(events) = &self.guest_events {
+            events.reap_retired_targets();
+        }
         if realm.check_owner_active().is_err() {
             self.comments.release_all(&mut self.process);
         }

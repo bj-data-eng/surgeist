@@ -92,7 +92,7 @@ pub use callback_object::{CallbackObject, RetainedCallbackObject};
 pub use error::{Error, Exception, ExceptionPhase};
 pub use host::{HostFailure, HostFailureSlot, RealmAuthority, RealmId, RecordFailure};
 pub use idl::{ByteString, DomString, IntegerKind, IntegerMode, IntegerValue, UsvString};
-pub use native_object::NativeObject;
+pub use native_object::{NativeObject, NativeObjectToken};
 
 /// Engine selected before creating any realm or heap values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

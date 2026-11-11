@@ -11,8 +11,9 @@ conversion, metered scalar, enumeration, nullable, dictionary and synchronous
 sequence conversion,
 declared argument defaults, scoped Rust callbacks,
 declared constructors and explicit shared microtask checkpoints.
-Installed Web IDL interfaces, DOM, CSSOM and Runtime adapters are not
-yet implemented. This is not a browser environment or a WPT runner.
+The [Runtime adapter](../surgeist-runtime/README.md) uses this boundary
+for attached Window services and standalone Event dispatch. Native owners
+retain their own interface state and execution authority.
 
 ## Ownership
 
@@ -29,7 +30,10 @@ cleanup at the host exit. Scoped values cannot escape that closure. Explicit
 `Root` tokens contain
 checked owner and allocation identities; the backend keeps the actual handles.
 Foreign tokens fail before SDK conversion. Context and value roots are reaped
-at operation boundaries after their external Rust custody is dropped. Callback
+at operation boundaries after their external Rust custody is dropped. Native
+projections can store private object references traced by the guest heap.
+A weak projection token can reopen the exact live wrapper in its owning
+heap without prolonging its lifetime. Callback
 registrations retain their creation context and pristine intrinsics through
 guest heap edges, allowing unreachable context/function cycles to be collected.
 Guest references and pending jobs can retain their objects after Rust roots

@@ -4,7 +4,7 @@ use surgeist_bindings_js::{Arguments, FunctionMetadata};
 struct DispatchMethod {
     owner: Weak<NativeOwner>,
     events: Weak<GuestEvents>,
-    _event_backing: Rc<DomHostedRuntimeRetention>,
+    _event_backing: Rc<GuestFixedBacking>,
     _backing: GuestBacking,
 }
 
@@ -135,7 +135,7 @@ pub(super) fn call_dispatch_event<'scope>(
         owner,
         scope,
         receiver,
-        &target.payload().0,
+        &target.payload().native,
         argument,
         &event.payload().0,
     ) {

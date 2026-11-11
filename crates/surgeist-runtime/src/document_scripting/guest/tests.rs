@@ -218,6 +218,64 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
         .unwrap();
     assert_eq!(report.receipt().event_type().code_units(), kind);
     assert_eq!(report.receipt().callbacks(), 0);
+
+    // Settle the earlier temporary dispatch before measuring this cycle.
+    host.checkpoint().unwrap();
+    host.engine
+        .as_mut()
+        .unwrap()
+        .process
+        .execution()
+        .memory_pressure();
+    host.in_document(&permit, |_| Ok(())).unwrap();
+    let events = host.guest_events().unwrap();
+    let before = events.budget.used.get();
+    let id = host
+        .in_document(&permit, |scope| {
+            let value = scope.evaluate(&units(
+                r#"(() => {
+            const target = new EventTarget();
+            const callback = () => target;
+            target.addEventListener("cycle", callback);
+            return target;
+        })()"#,
+            ))?;
+            let projected = scope
+                .native_object::<GuestTargetProjection>(&value)?
+                .unwrap();
+            let id = events
+                .registry
+                .borrow()
+                .next_guest_registration(
+                    &projected.payload().native.clone().into(),
+                    &units("cycle"),
+                    false,
+                    &mut 0,
+                    &AtomicBool::new(false),
+                )
+                .unwrap()
+                .unwrap()
+                .0;
+            Ok(id)
+        })
+        .unwrap();
+    assert!(events.registry.borrow().has_registration(id));
+    assert!(events.budget.used.get() > before);
+    for _ in 0..8 {
+        host.checkpoint().unwrap();
+        host.engine
+            .as_mut()
+            .unwrap()
+            .process
+            .execution()
+            .memory_pressure();
+        host.in_document(&permit, |_| Ok(())).unwrap();
+        if !events.registry.borrow().has_registration(id) {
+            break;
+        }
+    }
+    assert!(!events.registry.borrow().has_registration(id));
+    assert_eq!(events.budget.used.get(), before);
 }
 
 pub(in crate::document_scripting) fn refused_first_target_releases_prototype_capture() {
@@ -760,7 +818,7 @@ pub(in crate::document_scripting) fn full_guest_report_reservation_keeps_exact_i
     let owner = host.native.clone();
     let listener = host.in_document(&permit, |scope| {
         let global = scope.global()?;
-        let legacy = events.project(&owner, scope, ObjectPrototype::Default, legacy.clone()).unwrap();
+        let legacy = events.project(&owner, scope, ObjectPrototype::Default, GuestEventProjection(legacy.clone())).unwrap();
         for (key, value) in [
             ("target", target.object(scope)?),
             ("active", event.object(scope)?),

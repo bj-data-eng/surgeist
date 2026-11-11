@@ -1029,6 +1029,33 @@ impl<C> DomEventDispatcher<C> {
         slot.registration.as_ref()
     }
     #[cfg(feature = "document-scripting")]
+    pub(crate) fn has_registration(&self, id: DomEventRegistrationId) -> bool {
+        self.registration(id).is_some()
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn guest_registration(
+        &self,
+        id: DomEventRegistrationId,
+    ) -> Option<Rc<crate::document_scripting::guest::RegisteredGuestListener>> {
+        let CallbackKind::Guest(listener) = &self.registration(id)?.callback.0 else {
+            return None;
+        };
+        Some(listener.clone())
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn reap_guest_target_registrations(&mut self) {
+        for slot in &mut self.slots {
+            if slot.registration.as_ref().is_some_and(|entry| {
+                matches!(&entry.callback.0, CallbackKind::Guest(listener) if listener.target_retired())
+            }) {
+                slot.registration.take();
+            }
+        }
+    }
+
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn is_bound(&self) -> bool {
         matches!(self.association, RegistryAssociation::Bound(_))
     }

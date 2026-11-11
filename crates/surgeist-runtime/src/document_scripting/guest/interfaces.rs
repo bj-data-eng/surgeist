@@ -1,5 +1,6 @@
 //! Public Event constructors on the authenticated, unpublished Window.
 
+mod listener_methods;
 mod operations;
 
 use super::*;
@@ -65,7 +66,7 @@ enum Attribute {
 struct GuestAccess {
     events: Weak<GuestEvents>,
     // The weak pointer still retains the allocation's target backing.
-    _backing: Rc<DomHostedRuntimeRetention>,
+    _backing: Rc<GuestFixedBacking>,
 }
 
 struct Callbacks {
@@ -229,6 +230,8 @@ impl PublicEventBindings {
             true,
             true,
         )?;
+
+        listener_methods::install(scope, &target, &capture)?;
 
         for (kind, prototype) in [(Interface::Event, &event), (Interface::Target, &target)] {
             let fallback = capture(size_of::<(Capture, Interface)>())?;
@@ -485,7 +488,7 @@ impl Capture {
         })?;
         scope.project_native_object(
             ObjectPrototype::Object(selected.prototype()),
-            GuestTargetProjection(native),
+            events.target_projection(owner, native)?,
             |bytes| events.reserve(owner, bytes),
         )
     }
