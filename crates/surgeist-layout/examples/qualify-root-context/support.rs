@@ -4,7 +4,7 @@ use crate::parity_support::exact_differences::PublishedEdition;
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1060,10 +1060,16 @@ impl Invocation {
         let parent = owner.join("tmp/qualify-root-context");
         fs::create_dir_all(&parent)?;
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let root = parent.join(format!("{}-{nonce}", std::process::id()));
+        let candidate = format!("{}-{nonce}", std::process::id());
+        Self::reserve(&parent, &candidate).map_err(Into::into)
+    }
+
+    fn reserve(parent: &Path, candidate: &str) -> io::Result<Self> {
+        let root = parent.join(candidate);
         fs::create_dir(&root)?;
         Ok(Self { root })
     }
+
     fn check_terminal(&self) -> Result<()> {
         let profiles = self.root.join(".surgeist-generator/profiles/browser");
         match fs::read_dir(&profiles) {
