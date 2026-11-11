@@ -555,7 +555,7 @@ not establish pixel-value-independent execution timing.
 
 ## Layer composition and isolation
 
-`LayerComposition::try_porter_duff(operator, blend)` pairs one of the twelve
+`LayerComposition::try_porter_duff(operator, blend)` pairs one of the twelve basic
 `PorterDuffOperator` choices with a mixing function. It rejects `BlendMode::Plus`
 with typed invalid input because Plus is an entire local operation. Install the
 pair with `Layer::with_composition` and inspect it with `Layer::composition`.
@@ -569,6 +569,16 @@ and Xor. Blending first computes the joint or separable bounded `B(Cb,Cs)` on
 straight RGB, then `Cs'=(1-ab)Cs+ab*B`. The selected factors produce premultiplied
 `co=as*Fa*Cs'+ab*Fb*Cb` and `ao=as*Fa+ab*Fb`. Mixing does not change output alpha.
 Straight color has no meaningful mathematical value when `ao=0`.
+
+`LayerComposition::try_porter_duff(PorterDuffOperator::PlusLighter, BlendMode::Normal)`
+selects saturating additive composition from
+[Compositing and Blending Level 2](https://drafts.csswg.org/compositing/#porterduffcompositingoperators_plus_lighter).
+It rejects every other mixing choice. The graph sums premultiplied source and
+backdrop, capping each RGB channel and alpha independently at one. Layer clip
+coverage, mask alpha and opacity attenuate the source before the sum.
+Transparent source samples preserve the normalized backdrop. An isolated group
+can use this operation for paired cross-fades over its own transparent
+starting image.
 
 A basic operation runs over the finite current parent or group image in parent
 coordinates. Source samples outside source support are transparent. Masks and
@@ -601,7 +611,8 @@ available. The graph retains sampled parent, source and replacement result as
 distinct admitted resources through their proven last uses.
 
 `CompositingCapabilities::supports_basic_porter_duff_modes` reports the twelve
-basic choices; `supports_isolated_layers` reports explicit resolved groups.
+basic choices. `supports_plus_lighter` reports saturating addition and
+`supports_isolated_layers` reports explicit resolved groups.
 The broad `supports_porter_duff_composite_modes` flag remains false: the pinned
 lighter equations print unbounded color and alpha sums while another clause
 requires normalized range. Existing local Plus behavior does not resolve that

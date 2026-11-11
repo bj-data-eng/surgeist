@@ -367,6 +367,7 @@ pub surgeist_render::PorterDuffOperator::DestinationAtop
 pub surgeist_render::PorterDuffOperator::DestinationIn
 pub surgeist_render::PorterDuffOperator::DestinationOut
 pub surgeist_render::PorterDuffOperator::DestinationOver
+pub surgeist_render::PorterDuffOperator::PlusLighter
 pub surgeist_render::PorterDuffOperator::SourceAtop
 pub surgeist_render::PorterDuffOperator::SourceIn
 pub surgeist_render::PorterDuffOperator::SourceOut
@@ -450,6 +451,7 @@ pub surgeist_render::PrimitiveOperation::OutlineAutoStyle
 pub surgeist_render::PrimitiveOperation::OutlineDoubleStyle
 pub surgeist_render::PrimitiveOperation::PersistentEffectResources
 pub surgeist_render::PrimitiveOperation::PerspectiveTransform
+pub surgeist_render::PrimitiveOperation::PlusLighterComposition
 pub surgeist_render::PrimitiveOperation::PorterDuffCompositeMode
 pub surgeist_render::PrimitiveOperation::RepeatingGradient
 pub surgeist_render::PrimitiveOperation::ResolvedAlphaMaskExecution
@@ -1049,6 +1051,7 @@ pub const fn surgeist_render::CompositingCapabilities::supports_basic_porter_duf
 pub const fn surgeist_render::CompositingCapabilities::supports_blend_modes(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_isolated_layers(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_layer_opacity(self) -> bool
+pub const fn surgeist_render::CompositingCapabilities::supports_plus_lighter(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_porter_duff_composite_modes(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_root_backdrop_policy(self) -> bool
 pub struct surgeist_render::CoordinateSpaceId

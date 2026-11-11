@@ -14,7 +14,7 @@ struct CompositeParameters {
     blend: u32,
     mask_quality: u32,
     mask_extend: u32,
-    // Clip presence, mask presence, source coordinate space, basic operator code.
+    // Clip presence, mask presence, source coordinate space, operator code.
     presence: vec4<u32>,
 }
 
@@ -473,8 +473,10 @@ fn porter_duff_factors(source_alpha: f32, backdrop_alpha: f32, operation: u32) -
     }
 }
 
+const PLUS_LIGHTER_OPERATOR: u32 = 12u;
+
 fn composite_against_parent(source: vec4<f32>, backdrop: vec4<f32>) -> vec4<f32> {
-    if (parameters.blend == 6u) {
+    if (parameters.blend == 6u || parameters.presence.w == PLUS_LIGHTER_OPERATOR) {
         return clamp(source + backdrop, vec4<f32>(0.0), vec4<f32>(1.0));
     }
 
@@ -546,7 +548,7 @@ fn fragment_destination(@builtin(position) position: vec4<f32>) -> @location(0) 
 
 @fragment
 fn fragment_destination_clip(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-    if (parameters.presence.w == 0u) {
+    if (parameters.presence.w == 0u || parameters.presence.w == PLUS_LIGHTER_OPERATOR) {
         return destination_composite(source_with_clip(position.xy), position.xy);
     }
     return covered_destination_composite(
@@ -563,7 +565,7 @@ fn fragment_destination_mask(@builtin(position) position: vec4<f32>) -> @locatio
 
 @fragment
 fn fragment_destination_clip_mask(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-    if (parameters.presence.w == 0u) {
+    if (parameters.presence.w == 0u || parameters.presence.w == PLUS_LIGHTER_OPERATOR) {
         return destination_composite(source_with_clip_mask(position.xy), position.xy);
     }
     return covered_destination_composite(

@@ -644,7 +644,8 @@ impl SemanticCommandContribution {
             Some(
                 PorterDuffOperator::SourceOver
                 | PorterDuffOperator::DestinationOver
-                | PorterDuffOperator::Xor,
+                | PorterDuffOperator::Xor
+                | PorterDuffOperator::PlusLighter,
             )
             | None => current_parent.try_union(source_bounds)?,
         };

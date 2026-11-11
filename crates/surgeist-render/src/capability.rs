@@ -252,6 +252,7 @@ impl Capabilities {
             background_blend_modes: false,
             porter_duff_composite_modes: false,
             basic_porter_duff_modes: true,
+            plus_lighter: true,
             isolated_layers: true,
         },
         offscreen_pipeline: OffscreenPipelineCapabilities {
@@ -547,6 +548,7 @@ impl Capabilities {
             PrimitiveOperation::BasicPorterDuffCompositeMode => {
                 self.compositing.supports_basic_porter_duff_modes()
             }
+            PrimitiveOperation::PlusLighterComposition => self.compositing.supports_plus_lighter(),
             PrimitiveOperation::IsolatedLayerExecution => {
                 self.compositing.supports_isolated_layers()
             }
@@ -1187,6 +1189,7 @@ pub struct CompositingCapabilities {
     background_blend_modes: bool,
     porter_duff_composite_modes: bool,
     basic_porter_duff_modes: bool,
+    plus_lighter: bool,
     isolated_layers: bool,
 }
 
@@ -1224,10 +1227,16 @@ impl CompositingCapabilities {
         self.porter_duff_composite_modes
     }
 
-    /// Returns whether all twelve [`crate::PorterDuffOperator`] choices execute.
+    /// Returns whether the twelve basic [`crate::PorterDuffOperator`] choices execute.
     #[must_use]
     pub const fn supports_basic_porter_duff_modes(self) -> bool {
         self.basic_porter_duff_modes
+    }
+
+    /// Returns whether saturating PlusLighter layer composition executes.
+    #[must_use]
+    pub const fn supports_plus_lighter(self) -> bool {
+        self.plus_lighter
     }
 
     /// Returns whether explicitly isolated resolved layer groups execute.

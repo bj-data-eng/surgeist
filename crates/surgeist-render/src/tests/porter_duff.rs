@@ -938,6 +938,185 @@ fn triangular_clip() -> Shape {
 }
 
 #[test]
+fn plus_lighter_is_a_complete_composition() {
+    let value = composition(Op::PlusLighter, BlendMode::Normal);
+    assert_eq!(value.operator(), Some(Op::PlusLighter));
+    assert_eq!(value.blend_mode(), BlendMode::Normal);
+    for (mix, _) in MIXES
+        .into_iter()
+        .filter(|(mix, _)| *mix != BlendMode::Normal)
+    {
+        let error = LayerComposition::try_porter_duff(Op::PlusLighter, mix).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+    }
+    let error = LayerComposition::try_porter_duff(Op::PlusLighter, BlendMode::Plus).unwrap_err();
+    assert_eq!(error.code(), ErrorCode::InvalidInput);
+    assert!(
+        crate::Capabilities::CURRENT
+            .compositing()
+            .supports_plus_lighter()
+    );
+}
+
+#[test]
+fn plus_lighter_cross_fades_within_the_isolated_group() {
+    let (mut renderer, mut surface) = renderer_and_surface(Size::new(2.0, 2.0));
+    let formats = graph_supported_working_formats_for_test(&mut renderer);
+    let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
+    let fade = Layer::new()
+        .with_composition(composition(Op::PlusLighter, BlendMode::Normal))
+        .try_opacity(0.5)
+        .unwrap();
+    let mut scene = Scene::new();
+    scene.fill(bounds, straight_color(HALF_GREEN));
+    scene.layer(Layer::new().isolated(), |scene| {
+        scene.layer(fade.clone(), |scene| {
+            scene.fill(bounds, straight_color([0.5, 0.0, 0.0, 0.5]));
+        });
+        scene.layer(fade, |scene| {
+            scene.fill(bounds, straight_color([0.0, 0.0, 0.5, 0.5]));
+        });
+    });
+    // The group is half-opaque purple. Source-over retains half of the
+    // external green backdrop, yielding three equal premultiplied channels.
+    for format in formats {
+        let output = render_pixels(&mut renderer, &mut surface, &scene, Some(format));
+        assert_pixel(
+            pixel_rgba(&output, 0, 0),
+            [0.25, 0.25, 0.25, 0.75],
+            &format!("isolated plus-lighter {format:?}"),
+        );
+    }
+}
+
+#[test]
+fn plus_lighter_caps_rgb_and_alpha_before_later_draws() {
+    let (mut renderer, mut surface) = renderer_and_surface(Size::new(4.0, 2.0));
+    let formats = graph_supported_working_formats_for_test(&mut renderer);
+    let bounds = Rect::new(0.0, 0.0, 4.0, 2.0);
+    let mut scene = Scene::new();
+    scene.fill(bounds, straight_color([0.75, 0.25, 0.0, 0.75]));
+    scene.layer(
+        Layer::new().with_composition(composition(Op::PlusLighter, BlendMode::Normal)),
+        |scene| {
+            scene.fill(
+                Rect::new(0.0, 0.0, 2.0, 2.0),
+                straight_color([0.75, 0.0, 0.25, 0.75]),
+            );
+        },
+    );
+    scene.fill(bounds, straight_color([0.0, 0.0, 0.0, 0.5]));
+    // The additive result is (1, 1/4, 1/4, 1), before half-black.
+    for format in formats {
+        let output = render_pixels(&mut renderer, &mut surface, &scene, Some(format));
+        assert_pixel(
+            pixel_rgba(&output, 0, 0),
+            [0.5, 0.125, 0.125, 1.0],
+            &format!("plus-lighter before later drawing {format:?}"),
+        );
+        assert_pixel(
+            pixel_rgba(&output, 3, 0),
+            [0.375, 0.125, 0.0, 0.875],
+            &format!("transparent plus-lighter source {format:?}"),
+        );
+    }
+}
+
+#[test]
+fn plus_lighter_attenuates_clip_and_mask_before_saturation() {
+    let (mut renderer, mut surface) = renderer_and_surface(Size::new(4.0, 2.0));
+    let formats = graph_supported_working_formats_for_test(&mut renderer);
+    let bounds = Rect::new(0.0, 0.0, 4.0, 2.0);
+    let composition = composition(Op::PlusLighter, BlendMode::Normal);
+    let plain = Layer::new().with_composition(composition);
+    let masked = masked_layer(BlendMode::Normal, bounds, 128).with_composition(composition);
+    for (layer, half) in [(plain, 1.0), (masked, 0.9375)] {
+        let mut scene = Scene::new();
+        scene.fill(bounds, straight_color([0.75, 0.0, 0.0, 1.0]));
+        scene.layer(layer.try_clip(triangular_clip()).unwrap(), |scene| {
+            scene.fill(bounds, straight_color([0.75, 0.0, 0.0, 1.0]));
+        });
+        for format in formats.iter().copied() {
+            let output = render_pixels(&mut renderer, &mut surface, &scene, Some(format));
+            for (x, y, red) in [(0, 0, 1.0), (1, 0, half), (3, 0, 0.75)] {
+                assert_pixel(
+                    pixel_rgba(&output, x, y),
+                    [red, 0.0, 0.0, 1.0],
+                    &format!("plus-lighter clip {format:?} half={half} ({x},{y})"),
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn plus_lighter_obeys_the_ledger_composite_budget() {
+    use crate::{
+        Parameters, RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus,
+        RenderLimits, RenderQuantity, RenderRefusalReason, RenderWork,
+    };
+
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::CompositePasses, 0)
+        .unwrap();
+    let options = Options::default()
+        .with_effect_quality_policy(EffectQualityPolicy::AllowReducedPrecision)
+        .with_accounting(RenderAccountingOptions::new().with_limits(limits));
+    let mut renderer = pollster::block_on(Renderer::new(options)).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+    let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
+    let mut baseline = Scene::new();
+    baseline.fill(bounds, straight_color(RED));
+    let before = render_noop_control(&mut renderer, &mut surface, &baseline);
+    let before_stats = renderer.stats();
+    let before_publications = surface.headless_publication_count_for_test();
+
+    let mut scene = Scene::new();
+    scene.fill(bounds, straight_color(RED));
+    scene.layer(
+        Layer::new().with_composition(composition(Op::PlusLighter, BlendMode::Normal)),
+        |scene| {
+            scene.fill(bounds, straight_color(BLUE));
+        },
+    );
+    let error = pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+        .unwrap_err();
+    let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+        panic!("expected a composite pass refusal, got {error:?}");
+    };
+    assert_eq!(
+        refusal.quantity(),
+        RenderQuantity::Work(RenderWork::CompositePasses)
+    );
+    assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 0 });
+    let report = renderer.last_attempt().unwrap();
+    assert_eq!(report.status(), RenderAttemptStatus::Refused);
+    assert_eq!(report.cleanup_fault(), None);
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::Submissions),
+        0
+    );
+    assert_eq!(renderer.stats(), before_stats);
+    assert_eq!(
+        surface.headless_publication_count_for_test(),
+        before_publications
+    );
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        before
+    );
+    assert_eq!(
+        render_noop_control(&mut renderer, &mut surface, &baseline),
+        before
+    );
+}
+
+#[test]
 fn porter_duff_fractional_nonrectangular_clip_interpolates_the_complete_operation() {
     let (mut renderer, mut surface) = renderer_and_surface(Size::new(4.0, 2.0));
     let formats = graph_supported_working_formats_for_test(&mut renderer);

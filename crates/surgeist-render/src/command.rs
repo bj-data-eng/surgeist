@@ -419,14 +419,18 @@ impl LayerPassPlan {
 
         let composition = layer.composition();
         if !composition.is_source_over() && !composition.is_plus() {
+            let operation =
+                if composition.operator() == Some(crate::PorterDuffOperator::PlusLighter) {
+                    PrimitiveOperation::PlusLighterComposition
+                } else {
+                    PrimitiveOperation::BasicPorterDuffCompositeMode
+                };
             capabilities.ensure_supported(UnsupportedPrimitive::new(
                 PrimitiveFamily::Compositing,
-                PrimitiveOperation::BasicPorterDuffCompositeMode,
+                operation,
             ))?;
             return Ok(Self::new(
-                LayerPassRequirement::OffscreenTexture(
-                    PrimitiveOperation::BasicPorterDuffCompositeMode,
-                ),
+                LayerPassRequirement::OffscreenTexture(operation),
                 LayerPassKind::OffscreenTexture,
                 bounds,
             ));
