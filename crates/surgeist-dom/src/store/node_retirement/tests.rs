@@ -578,9 +578,10 @@ fn shared_watch_storage_and_growth_are_admitted_before_changing_custody() {
     assert_eq!(bytes(&dom), before_second);
 
     // One native page, one index leaf and the original custody admit. The
-    // new two-entry bank prepays both entries' eventual release.
+    // new two-entry bank prepays both entries' eventual release and both
+    // exact slot unlinks, including the watch already armed.
     let disarm = 2 * u64::from(usize::BITS) + 1;
-    let second_work = disarm + 7;
+    let second_work = disarm + 9;
     let second_peak = before_second + per_watch + size_of::<watches::Shared>() + 2 * per_slot;
     assert!(matches!(
         dom.watch_node_retirement(
@@ -622,9 +623,9 @@ fn shared_watch_storage_and_growth_are_admitted_before_changing_custody() {
     ));
 
     // The replacement vector has four slots. Admit its overlap with the
-    // still-live two-slot vector and its relocation/teardown visits.
+    // still-live two-slot vector, relocation/teardown visits and one unlink.
     let third_peak = second_peak + per_watch + 4 * per_slot;
-    let third_work = disarm + 13;
+    let third_work = disarm + 14;
     assert!(matches!(
         dom.watch_node_retirement(
             node,

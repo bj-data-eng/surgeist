@@ -1396,3 +1396,32 @@ fn ordinary_and_source_retirement_share_exact_canonical_destruction() {
     assert!(peer_inbox.take().is_none());
     drop((ordinary_watch, source_watch, peer_watch, scope));
 }
+
+#[test]
+fn source_promotion_prepays_both_shared_slot_unlinks() {
+    fn source_watch_work(promote: bool) -> u64 {
+        let cancel = AtomicBool::new(false);
+        let (mut dom, _executor, _, subject, node) = fixture();
+        let limits = crate::DomNodeRetirementLimits::new(16_000_000, 1000);
+        let host_inbox = dom.node_retirement_inbox(limits, &cancel).unwrap();
+        let host_watch = promote.then(|| {
+            dom.watch_node_retirement(node, &host_inbox, 7, limits, &cancel)
+                .unwrap()
+        });
+        let event = request(&mut dom, subject);
+        let source_inbox = dom
+            .source_event_node_retirement_inbox(&event, &cancel)
+            .unwrap();
+        let before = dom.pending_source_edit().unwrap().spent_work();
+        let watch = dom
+            .watch_source_event_node_retirement(&event, node, &source_inbox, 7, &cancel)
+            .unwrap();
+        let spent = dom.pending_source_edit().unwrap().spent_work() - before;
+        drop((host_watch, watch));
+        spent
+    }
+
+    // Both routes visit one original index position. Promotion adds two
+    // vacancy teardown visits and two independent future slot unlinks.
+    assert_eq!(source_watch_work(true), source_watch_work(false) + 4);
+}
