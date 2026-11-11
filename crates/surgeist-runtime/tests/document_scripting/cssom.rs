@@ -3,11 +3,58 @@
 use super::*;
 
 pub(super) fn run() {
+    prototype_own_key_order();
     reuse_native_owner();
     indexed_properties_and_rule_custody();
     constructor_and_mutation_order();
     media_mutations_and_branched_copy();
     constructor_admission_rolls_back_before_publication();
+}
+
+pub(super) fn prototype_own_key_order() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    let keys = host
+        .in_document(&permit, |scope| {
+            let source = r#"(() => {
+                return [StyleSheet, CSSStyleSheet, CSSRuleList, MediaList, CSSRule].map(ctor => {
+                    const prototype = ctor.prototype;
+                    const keys = Reflect.ownKeys(prototype);
+                    const strings = keys.filter(key => typeof key === 'string'
+                        && (ctor !== MediaList || key !== 'toString'));
+                    const symbols = keys.filter(key => typeof key === 'symbol').map(key =>
+                        key === Symbol.toStringTag ? 'toStringTag' :
+                        key === Symbol.iterator ? 'iterator' : 'unexpected');
+                    const stringifier = ctor === MediaList && Object.hasOwn(prototype, 'toString');
+                    return ctor.name + ': ' + strings.join(',') + ' / ' + symbols.join(',')
+                        + (stringifier ? ' / own toString' : '');
+                }).join('\n');
+            })()"#;
+            let value = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    // Web IDL installs the regular attributes, operations and iteration
+    // members before constructor. Its stringifier property is specified
+    // declaratively, so only its own presence is compared here.
+    let expected = [
+        "StyleSheet: type,href,media,disabled,constructor / toStringTag",
+        "CSSStyleSheet: cssRules,rules,insertRule,deleteRule,constructor / toStringTag",
+        "CSSRuleList: length,item,constructor / toStringTag,iterator",
+        "MediaList: mediaText,length,item,appendMedium,deleteMedium,constructor / toStringTag,iterator / own toString",
+        "CSSRule: cssText,type,constructor / toStringTag",
+    ];
+    assert_eq!(
+        String::from_utf16(&keys)
+            .unwrap()
+            .lines()
+            .collect::<Vec<_>>(),
+        expected,
+        "installed stylesheet prototype own-key order"
+    );
 }
 
 fn reuse_native_owner() {
