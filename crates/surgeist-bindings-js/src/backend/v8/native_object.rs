@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::ops::Bound::{Excluded, Unbounded};
 use std::rc::Rc;
 
+use crate::callback_object::CallbackObjectIdentity;
 use crate::{Error, ExceptionPhase, Root};
 
 use super::{Entered, ObjectPrototype, Roots, prototype_value};
@@ -12,6 +13,12 @@ struct Entry {
     object: v8::Weak<v8::Object>,
     retired: Rc<Cell<bool>>,
     payload: Rc<dyn Any>,
+}
+
+struct PreparedObject {
+    index: u32,
+    root: Root,
+    entry: Rc<Entry>,
 }
 
 #[derive(Default)]
@@ -62,6 +69,45 @@ impl Entered<'_, '_, '_> {
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
     ) -> Result<Root, Error> {
+        let PreparedObject { index, root, entry } = self.prepare_payload(prototype, payload)?;
+        self.roots
+            .native_objects
+            .entries
+            .try_borrow_mut()
+            .map_err(|_| self.roots.conflict())?
+            .insert(index, entry);
+        Ok(root)
+    }
+
+    pub(super) fn project_pinned_payload(
+        &mut self,
+        prototype: ObjectPrototype<'_>,
+        payload: Rc<dyn Any>,
+        backing: Box<dyn Any>,
+    ) -> Result<Rc<CallbackObjectIdentity>, Error> {
+        let prepared = self.prepare_payload(prototype, payload)?;
+        let holder = self.pin_callback_object(&prepared.root, self.realm, backing)?;
+        let roots = &self.roots;
+        match roots.native_objects.entries.try_borrow_mut() {
+            Ok(mut entries) => {
+                entries.insert(prepared.index, prepared.entry);
+                Ok(holder)
+            }
+            Err(_) => {
+                let error = roots.conflict();
+                // Neither the holder nor the object has escaped. Drop the
+                // exact persistent entry before releasing its backing.
+                let _ = roots.callback_objects.release(roots, &holder);
+                Err(error)
+            }
+        }
+    }
+
+    fn prepare_payload(
+        &mut self,
+        prototype: ObjectPrototype<'_>,
+        payload: Rc<dyn Any>,
+    ) -> Result<PreparedObject, Error> {
         self.attempt(ExceptionPhase::Prototype, |scope, roots, realm, _| {
             let bank = &roots.native_objects;
             let index = bank
@@ -92,18 +138,15 @@ impl Entered<'_, '_, '_> {
                 object,
                 Box::new(move || signal.set(true)),
             );
-            bank.entries
-                .try_borrow_mut()
-                .map_err(|_| roots.conflict())?
-                .insert(
-                    index,
-                    Rc::new(Entry {
-                        object,
-                        retired,
-                        payload,
-                    }),
-                );
-            Ok(root)
+            Ok(PreparedObject {
+                index,
+                root,
+                entry: Rc::new(Entry {
+                    object,
+                    retired,
+                    payload,
+                }),
+            })
         })
     }
 

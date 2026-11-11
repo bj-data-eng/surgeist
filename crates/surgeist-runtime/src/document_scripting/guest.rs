@@ -278,10 +278,7 @@ impl GuestEvents {
         native: T,
     ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
         self.step()?;
-        let object =
-            scope.project_native_object(prototype, native, |bytes| self.reserve(owner, bytes))?;
-        let observation = scope.callback_object(&object)?;
-        scope.retain_callback_object(observation, |bytes| self.reserve(owner, bytes))
+        scope.project_retained_native_object(prototype, native, |bytes| self.reserve(owner, bytes))
     }
 }
 

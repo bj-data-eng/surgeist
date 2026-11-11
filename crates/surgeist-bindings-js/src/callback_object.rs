@@ -31,6 +31,10 @@ pub struct RetainedCallbackObject {
 }
 
 impl RetainedCallbackObject {
+    pub(crate) fn new(holder: Rc<CallbackObjectIdentity>, realm: RealmAuthority) -> Self {
+        Self { holder, realm }
+    }
+
     /// The same engine Realm observed before this object was retained.
     pub fn associated_realm(&self) -> &RealmAuthority {
         &self.realm
@@ -38,6 +42,13 @@ impl RetainedCallbackObject {
 }
 
 impl<'scope> Scope<'scope> {
+    pub(crate) fn callback_object_bytes<Storage>(&self) -> Result<usize, Error> {
+        self.operations
+            .callback_object_storage_bytes()
+            .checked_add(size_of::<Storage>())
+            .ok_or(Error::Allocation)
+    }
+
     /// Observe an object's engine creation Realm without invoking guest code.
     /// The observation uses the original object, including a Proxy, and is
     /// independent of the scope that retained its root. An unavailable
@@ -67,21 +78,13 @@ impl<'scope> Scope<'scope> {
         admit: impl FnOnce(usize) -> Result<Storage, E>,
     ) -> Result<RetainedCallbackObject, E> {
         self.check_active()?;
-        let bytes = self
-            .operations
-            .callback_object_storage_bytes()
-            .checked_add(size_of::<Storage>())
-            .ok_or(Error::Allocation)?;
-        let storage = admit(bytes)?;
+        let storage = admit(self.callback_object_bytes::<Storage>()?)?;
         let holder = self.operations.retain_callback_object(
             &callback.object.root,
             callback.realm.key,
             Box::new(storage),
         )?;
-        Ok(RetainedCallbackObject {
-            holder,
-            realm: callback.realm,
-        })
+        Ok(RetainedCallbackObject::new(holder, callback.realm))
     }
 
     /// Open the exact retained object in a scope of its owning heap.

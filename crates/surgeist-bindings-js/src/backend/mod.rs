@@ -170,6 +170,12 @@ pub(crate) trait Operations {
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
     ) -> Result<Root, Error>;
+    fn project_retained_native_object(
+        &mut self,
+        prototype: ObjectPrototype<'_>,
+        payload: Rc<dyn Any>,
+        backing: Box<dyn Any>,
+    ) -> Result<Rc<CallbackObjectIdentity>, Error>;
     fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn Any>>, Error>;
     fn retain_root_backing(&mut self, root: &Root, backing: Box<dyn Any>) -> Result<(), Error>;
     fn managed_object(&mut self) -> Result<Root, Error>;
