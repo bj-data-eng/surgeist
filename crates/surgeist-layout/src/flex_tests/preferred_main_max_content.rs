@@ -1114,6 +1114,57 @@ fn preferred_main_max_content_settles_nested_ratio_cross_from_flexed_inline() {
 }
 
 #[test]
+fn preferred_main_max_content_nested_ratio_cross_respects_main_definiteness() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    for (outer_inline, inline, cross, percentage_cross) in [
+        (PreferredSizeOf::MAX_CONTENT, 65.0, 32.5, 10.0),
+        (PreferredSizeOf::px(100.0), 100.0, 50.0, 50.0),
+    ] {
+        let tree = nested_ratio_flex::<f64>(outer_inline, PreferredSizeOf::AUTO, 2.0);
+        let mut leaf = tree.node_input(2).clone();
+        leaf.size.height = PreferredSizeOf::percent(1.0);
+        let tree = tree.style(2, leaf);
+        let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
+        assert_eq!(
+            readback::single_box_output(&batch, 1, Phase::Unrounded).size,
+            Size::new(inline, cross),
+        );
+        assert_eq!(
+            readback::single_box_output(&batch, 2, Phase::Unrounded)
+                .size
+                .height,
+            percentage_cross,
+        );
+    }
+}
+
+#[test]
+fn preferred_main_max_content_nested_ratio_cross_cannot_feed_back_into_flex_basis() {
+    fn measure(input: LeafMeasureInputOf<f64>) -> Size<f64> {
+        let known = input.known_content_size();
+        let available_cross = input.content_sizing_request().axes().height.space();
+        let main = if known.height.is_some() || available_cross.definite_size().is_some() {
+            90.0
+        } else {
+            65.0
+        };
+        Size::new(known.width.unwrap_or(main), known.height.unwrap_or(10.0))
+    }
+
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let tree = nested_ratio_flex::<f64>(PreferredSizeOf::px(200.0), PreferredSizeOf::AUTO, 2.0);
+    let mut inner = tree.node_input(1).clone();
+    inner.flex_grow = FlexGrowOf::ZERO;
+    inner.align_items = Some(AlignItems::Stretch);
+    let tree = tree.style(1, inner).measure_with(2, measure);
+    let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
+    assert_eq!(
+        readback::single_box_output(&batch, 1, Phase::Unrounded).size,
+        Size::new(65.0, 32.5),
+    );
+}
+
+#[test]
 fn preferred_main_max_content_keeps_nested_ratio_out_of_intrinsic_contribution() {
     let tree = nested_ratio_flex::<f64>(
         PreferredSizeOf::MAX_CONTENT,
