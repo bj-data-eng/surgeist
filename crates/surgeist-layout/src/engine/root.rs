@@ -439,14 +439,15 @@ where
     let has_block_offset = local_context
         .and_then(|context| context.hypothetical_block_offset())
         .is_some();
+    let principal_block = style.display == crate::Display::Block
+        && style.block_generation == crate::BlockGeneration::Principal
+        && !style.item_is_table;
     let orthogonal_auto_inline = has_block_offset
+        && principal_block
         && matches!(
             style.writing_mode,
             crate::WritingMode::VerticalLr | crate::WritingMode::VerticalRl
         )
-        && style.display == crate::Display::Block
-        && style.block_generation == crate::BlockGeneration::Principal
-        && !style.item_is_table
         && style.size.height.is_auto();
     let edges = match local_containing_size {
         Some(size) if horizontal => RootEdgeProfile::DefiniteInline {
@@ -455,10 +456,14 @@ where
         _ => RootEdgeProfile::Zero,
     };
     admit_root_box(root, style, crate::Position::Absolute, edges)?;
-    let auto_fixed_grid = has_block_offset
+    let auto_size_with_block_offset =
+        has_block_offset && style.size.width.is_auto() && style.size.height.is_auto();
+    let horizontal_auto_block = auto_size_with_block_offset
+        && horizontal
+        && principal_block
+        && !tree.has_leaf_measurement(root);
+    let auto_fixed_grid = auto_size_with_block_offset
         && style.display == crate::Display::Grid
-        && style.size.width.is_auto()
-        && style.size.height.is_auto()
         && !tree.has_leaf_measurement(root)
         && fixed_grid_axis(&style.grid_template_columns, true)
         && fixed_grid_axis(&style.grid_template_rows, true)
@@ -468,7 +473,7 @@ where
             .chain(&style.grid_auto_rows)
             .all(|component| matches!(component, crate::TrackComponentOf::Track(_)));
     let writing_mode_error = || root_context_error(root, crate::RootContextMismatch::WritingMode);
-    if (!horizontal || has_block_offset) && !auto_fixed_grid {
+    if (!horizontal || has_block_offset) && !auto_fixed_grid && !horizontal_auto_block {
         let basis = local_containing_size.ok_or_else(writing_mode_error)?;
         // Resolve only for admission. The normal box algorithm retains the
         // original preferred dimensions and owns their min/max constraints.

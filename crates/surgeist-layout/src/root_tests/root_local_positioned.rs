@@ -1491,7 +1491,7 @@ fn auto_grid_tree<S: LayoutScalar>(root: NodeInputOf<S>) -> PublicLayoutTreeOf<S
         .style(2, child(2))
 }
 
-fn auto_grid_request<S: LayoutScalar>(
+fn positioned_frame_request<S: LayoutScalar>(
     inline_offset: f64,
     block_offset: f64,
 ) -> LayoutRootRequestOf<S> {
@@ -1557,7 +1557,7 @@ fn assert_root_local_auto_grid_geometry<S: LayoutScalar>() {
     ] {
         let tree = auto_grid_tree(auto_fixed_grid::<S>(mode));
         for (inline, block) in [(0.0, 0.0), (780.0, 585.0)] {
-            let batch = compute_layout(&tree, 0, auto_grid_request(inline, block)).unwrap();
+            let batch = compute_layout(&tree, 0, positioned_frame_request(inline, block)).unwrap();
             for finalized in [false, true] {
                 for (node, [x, y, width, height]) in [0, 1, 2].into_iter().zip(expected) {
                     let actual = output(&batch, node, finalized);
@@ -1580,7 +1580,7 @@ fn assert_root_local_auto_grid_geometry<S: LayoutScalar>() {
             MinSizeOf::value(LengthPercentageOf::from_percent_fraction(n(0.25)).unwrap());
         root.max_size.height = MaxSizeOf::percent(n(0.0625));
         let tree = auto_grid_tree(root);
-        let batch = compute_layout(&tree, 0, auto_grid_request(780.0, 585.0)).unwrap();
+        let batch = compute_layout(&tree, 0, positioned_frame_request(780.0, 585.0)).unwrap();
         for (finalized, height) in [(false, 37.5), (true, 38.0)] {
             let actual = output(&batch, 0, finalized);
             assert_eq!(actual.location, Point::ZERO, "{mode:?}");
@@ -1609,7 +1609,8 @@ fn root_local_auto_grid_refuses_nested_counted_tracks() {
         TrackRepetitionOf::count_components(1, vec![TrackComponentOf::Repeat(inner)]).unwrap();
     root.grid_template_columns = vec![TrackComponentOf::Repeat(outer)];
 
-    let error = compute_layout(&auto_grid_tree(root), 0, auto_grid_request(0.0, 0.0)).unwrap_err();
+    let error =
+        compute_layout(&auto_grid_tree(root), 0, positioned_frame_request(0.0, 0.0)).unwrap_err();
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
     assert_eq!(error.operation(), LayoutOperation::RootLayout);
     assert!(matches!(
@@ -1628,7 +1629,7 @@ fn root_local_auto_grid_refuses_leaf_measurement() {
         .style(0, root)
         .measure(0, Size::new(12.0, 10.0));
 
-    let error = compute_layout(&tree, 0, auto_grid_request(0.0, 0.0)).unwrap_err();
+    let error = compute_layout(&tree, 0, positioned_frame_request(0.0, 0.0)).unwrap_err();
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
     assert_eq!(error.operation(), LayoutOperation::RootLayout);
     assert!(matches!(
@@ -1663,7 +1664,7 @@ fn root_local_auto_grid_refuses_nonfixed_implicit_track() {
             .style(0, root.clone())
             .style(1, child.clone());
 
-        let result = compute_layout(&tree, 0, auto_grid_request(0.0, 0.0));
+        let result = compute_layout(&tree, 0, positioned_frame_request(0.0, 0.0));
         let error = result.expect_err("the implicit column is not fixed");
         assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
         assert_eq!(error.operation(), LayoutOperation::RootLayout);
@@ -1674,4 +1675,125 @@ fn root_local_auto_grid_refuses_nonfixed_implicit_track() {
             ))
         ));
     }
+}
+
+fn block_with_orthogonal_subgrids<S: LayoutScalar>(root: NodeInputOf<S>) -> PublicLayoutTreeOf<S> {
+    let mode = WritingMode::VerticalRl;
+    let mut grid = auto_fixed_grid::<S>(mode);
+    grid.position = Position::Relative;
+    grid.gap = Size::new(LengthOf::px(n(7.0)), LengthOf::px(n(11.0)));
+    let mut column_subgrid = grid.clone();
+    column_subgrid.grid_template_columns = vec![TrackComponentOf::Subgrid(
+        crate::SubgridTrack::new(Vec::new()),
+    )];
+    column_subgrid.grid_column = GridPlacement::try_lines(1, 3).unwrap();
+    column_subgrid.grid_row = GridPlacement::try_lines(1, 3).unwrap();
+    let mut row_subgrid = column_subgrid.clone();
+    row_subgrid.grid_template_columns = grid.grid_template_columns.clone();
+    row_subgrid.grid_template_rows = vec![TrackComponentOf::Subgrid(crate::SubgridTrack::new(
+        Vec::new(),
+    ))];
+    let cell = |start| NodeInputOf {
+        display: Display::Flex,
+        writing_mode: mode,
+        grid_column: GridPlacement::try_lines(start, start + 1).unwrap(),
+        grid_row: GridPlacement::try_lines(start, start + 1).unwrap(),
+        ..NodeInputOf::default()
+    };
+
+    PublicLayoutTreeOf::new()
+        .children(0, [1, 5])
+        .children(1, [2])
+        .children(2, [3, 4])
+        .children(3, [])
+        .children(4, [])
+        .children(5, [6])
+        .children(6, [7, 8])
+        .children(7, [])
+        .children(8, [])
+        .style(0, root)
+        .style(1, grid.clone())
+        .style(2, column_subgrid)
+        .style(3, cell(1))
+        .style(4, cell(2))
+        .style(5, grid)
+        .style(6, row_subgrid)
+        .style(7, cell(1))
+        .style(8, cell(2))
+}
+
+fn assert_root_local_auto_block_with_subgrids<S: LayoutScalar>() {
+    let mut root = root_style::<S>(Direction::Ltr);
+    let tree = block_with_orthogonal_subgrids(root.clone());
+    for (inline, block) in [(0.0, 0.0), (780.0, 585.0)] {
+        let batch = compute_layout(&tree, 0, positioned_frame_request(inline, block)).unwrap();
+        for finalized in [false, true] {
+            for (node, [x, y, width, height]) in [
+                [0.0, 0.0, 117.0, 162.0],
+                [0.0, 0.0, 117.0, 81.0],
+                [0.0, 0.0, 117.0, 81.0],
+                [67.0, 0.0, 50.0, 30.0],
+                [0.0, 41.0, 60.0, 40.0],
+                [0.0, 81.0, 117.0, 81.0],
+                [0.0, 0.0, 117.0, 81.0],
+                [67.0, 0.0, 50.0, 30.0],
+                [0.0, 41.0, 60.0, 40.0],
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let actual = output(&batch, u32::try_from(node).unwrap(), finalized);
+                assert_eq!(actual.location, Point::new(n(x), n(y)), "node {node}");
+                assert_eq!(actual.size, Size::new(n(width), n(height)), "node {node}");
+            }
+        }
+    }
+
+    root.min_size.width =
+        MinSizeOf::value(LengthPercentageOf::from_percent_fraction(n(0.25)).unwrap());
+    root.max_size.height = MaxSizeOf::percent(n(0.0625));
+    let tree = block_with_orthogonal_subgrids(root);
+    let batch = compute_layout(&tree, 0, positioned_frame_request(780.0, 585.0)).unwrap();
+    for (finalized, height) in [(false, 37.5), (true, 38.0)] {
+        let actual = output(&batch, 0, finalized);
+        assert_eq!(actual.location, Point::ZERO);
+        assert_eq!(actual.size, Size::new(n(200.0), n(height)));
+    }
+}
+
+#[test]
+fn root_local_auto_block_uses_orthogonal_subgrid_geometry_f32() {
+    assert_root_local_auto_block_with_subgrids::<f32>();
+}
+
+#[test]
+fn root_local_auto_block_uses_orthogonal_subgrid_geometry_f64() {
+    assert_root_local_auto_block_with_subgrids::<f64>();
+}
+
+#[test]
+fn orthogonal_float_keeps_its_existing_available_inline_offer() {
+    let tree = PublicLayoutTreeOf::<f64>::new()
+        .children(0, [1])
+        .children(1, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Block,
+                writing_mode: WritingMode::VerticalRl,
+                float: Float::Left,
+                size: Size::new(PreferredSizeOf::px(20.0), PreferredSizeOf::AUTO),
+                ..NodeInputOf::default()
+            },
+        )
+        .measure(1, Size::new(20.0, 30.0));
+    let batch = compute_layout(&tree, 0, inset_container_request()).unwrap();
+    assert_eq!(output(&batch, 1, false).size, Size::new(20.0, 100.0));
 }
