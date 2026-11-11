@@ -320,3 +320,76 @@ pub(super) fn lower(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Resu
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn original_nested_flex_items_use_prepared_text_intrinsic_bases() {
+        let historical = include_str!("xml/flex/fri07_intrinsic_flex_basis__border_box_ltr.xml");
+        let mut golden = Golden::parse(historical).expect("retained source topology");
+        let viewport = roxmltree::Document::parse(
+            r#"<viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>"#,
+        )
+        .unwrap();
+        golden.viewport.root_context =
+            super::super::parse_root_context(viewport.root_element(), Some("4")).unwrap();
+        for (property, value) in [
+            ("position", "absolute"),
+            ("font-family", "ahem"),
+            ("font-size", "10px"),
+            ("line-height", "10px"),
+        ] {
+            golden
+                .root
+                .style
+                .attrs
+                .insert(property.into(), value.into());
+        }
+        golden
+            .viewport
+            .root_context
+            .validate_root(&golden.root)
+            .unwrap();
+        let request = super::super::root_request(&golden.viewport.root_context).unwrap();
+        let mut tree =
+            TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context)).unwrap();
+        let proof = Proof {
+            rows: vec![layout::Direction::Ltr; 4],
+            source: Box::new(golden.root.clone()),
+            viewport: golden.viewport.clone(),
+        };
+        lower(&mut tree, &golden, &proof)
+            .expect("four prepared Text occurrences under two Flex rows");
+        let batch = super::super::compute_actual_batch(&tree, &golden.name, request)
+            .expect("the original nested Flex tree accepts all four prepared paragraphs");
+        tree.apply_completed_batch(&batch);
+        let rows = &tree.nodes[0].children;
+        assert_eq!(rows.len(), 2);
+        for (&row, expected) in rows.iter().zip([
+            [(0.0, 75.0, 3), (75.0, 185.0, 1)],
+            [(0.0, 36.0, 3), (36.0, 84.0, 3)],
+        ]) {
+            let items = &tree.nodes[row].children;
+            assert_eq!(items.len(), 2);
+            for (&item, (x, width, lines)) in items.iter().zip(expected) {
+                let occurrence = tree
+                    .flex_text
+                    .iter()
+                    .find(|occurrence| occurrence.source == item)
+                    .unwrap();
+                assert_eq!(tree.nodes[item].final_layout.location.x, x);
+                assert_eq!(tree.nodes[item].final_layout.size.width, width);
+                let placement = batch
+                    .placed_text()
+                    .iter()
+                    .find(|placement| placement.container() == occurrence.wrapper)
+                    .unwrap();
+                assert_eq!(placement.layout().lines().len(), lines);
+            }
+        }
+        super::super::flex_text_projection::validate(&tree, &batch)
+            .expect("nested Text placement projects through its original item and row");
+    }
+}
