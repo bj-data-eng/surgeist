@@ -314,6 +314,7 @@ fn native_window_css_admission() {
 
 fn native_window_css_hook_collision_preserves_the_original_session() {
     const CSS: &[u16] = &[67, 83, 83];
+    let global_this: Vec<_> = "globalThis".encode_utf16().collect();
     let (session, top) = setup();
     let before = session.snapshot();
     let mut prepared = prepare(session, Arc::new(cancel()));
@@ -326,8 +327,34 @@ fn native_window_css_hook_collision_preserves_the_original_session() {
             child_count: &[65],
             detach_source_node_if: CSS,
         },
+        DocumentScriptHooks {
+            child_count: &global_this,
+            detach_source_node_if: &[65],
+        },
+        DocumentScriptHooks {
+            child_count: &[65],
+            detach_source_node_if: &global_this,
+        },
     ] {
-        let failure = prepared.enable(top, ALLOW, names).unwrap_err();
+        let failure = match prepared.enable(top, ALLOW, names) {
+            Err(failure) => failure,
+            Ok(mut host) => {
+                let permit = host.permit().unwrap();
+                let observed = host
+                    .in_document(&permit, |scope| {
+                        let source: Vec<_> = "typeof globalThis.CSS + '/' + typeof CSS.escape"
+                            .encode_utf16()
+                            .collect();
+                        let value = scope.evaluate(&source)?;
+                        scope.to_utf16(&value)
+                    })
+                    .unwrap();
+                panic!(
+                    "conflicting hook published the attachment, guest globalThis.CSS/CSS.escape: {}",
+                    String::from_utf16(&observed).unwrap()
+                );
+            }
+        };
         assert!(matches!(
             failure.error,
             DocumentScriptError::Script(Error::PropertyRejected)
@@ -349,6 +376,12 @@ fn native_window_css_hook_collision_preserves_the_original_session() {
         .unwrap();
     let permit = host.permit().unwrap();
     eval(&mut host, &permit, "Number(CSS.escape('a') === 'a')", 1.0);
+    eval(
+        &mut host,
+        &permit,
+        "Number(Object.getOwnPropertyDescriptor(globalThis, 'globalThis').configurable)",
+        1.0,
+    );
 }
 
 fn failed_enable_preserves_original_owner() {
