@@ -4,7 +4,7 @@ use crate::parity_support::exact_differences::PublishedEdition;
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1060,10 +1060,25 @@ impl Invocation {
         let parent = owner.join("tmp/qualify-root-context");
         fs::create_dir_all(&parent)?;
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let root = parent.join(format!("{}-{nonce}", std::process::id()));
-        fs::create_dir(&root)?;
-        Ok(Self { root })
+        let candidate = format!("{}-{nonce}", std::process::id());
+        Self::reserve(&parent, &candidate).map_err(Into::into)
     }
+
+    fn reserve(parent: &Path, candidate: &str) -> io::Result<Self> {
+        let mut root = parent.join(candidate);
+        let mut suffix = 0_u64;
+        loop {
+            match fs::create_dir(&root) {
+                Ok(()) => return Ok(Self { root }),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                    suffix = suffix.checked_add(1).ok_or(error)?;
+                    root = parent.join(format!("{candidate}-{suffix}"));
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
     fn check_terminal(&self) -> Result<()> {
         let profiles = self.root.join(".surgeist-generator/profiles/browser");
         match fs::read_dir(&profiles) {
@@ -1080,6 +1095,82 @@ impl Invocation {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.into()),
         }
+    }
+}
+
+#[cfg(test)]
+mod invocation_tests {
+    use super::*;
+
+    struct ScratchDirectory(PathBuf);
+
+    impl ScratchDirectory {
+        fn new(label: &str) -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "surgeist-layout-reservation-{label}-{}-{nonce}",
+                std::process::id()
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for ScratchDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn concurrent_reservations_preserve_occupied_and_other_owned_paths() {
+        let scratch = ScratchDirectory::new("occupied");
+        let occupied = scratch.0.join("candidate");
+        fs::create_dir(&occupied).unwrap();
+        fs::write(occupied.join("evidence"), b"prior invocation").unwrap();
+
+        let start = std::sync::Barrier::new(2);
+        let reserve = || {
+            start.wait();
+            Invocation::reserve(&scratch.0, "candidate")
+        };
+        let (first, second) = std::thread::scope(|scope| {
+            let first = scope.spawn(reserve);
+            let second = scope.spawn(reserve);
+            (first.join().unwrap(), second.join().unwrap())
+        });
+        let first = first.expect("reserve a fresh directory after a collision");
+        let second = second.expect("reserve a second fresh directory");
+        assert_ne!(first.root, occupied);
+        assert_ne!(second.root, occupied);
+        assert_ne!(first.root, second.root);
+        assert_eq!(fs::read_dir(&first.root).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(&second.root).unwrap().count(), 0);
+
+        fs::write(second.root.join("evidence"), b"second invocation").unwrap();
+        fs::remove_dir_all(&first.root).unwrap();
+        assert_eq!(
+            fs::read(second.root.join("evidence")).unwrap(),
+            b"second invocation"
+        );
+        assert_eq!(
+            fs::read(occupied.join("evidence")).unwrap(),
+            b"prior invocation"
+        );
+    }
+
+    #[test]
+    fn reservation_propagates_other_filesystem_errors() {
+        let scratch = ScratchDirectory::new("missing-parent");
+        let missing_parent = scratch.0.join("missing");
+        let Err(error) = Invocation::reserve(&missing_parent, "candidate") else {
+            panic!("reservation must refuse a missing parent");
+        };
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
+        assert!(!missing_parent.exists());
     }
 }
 
