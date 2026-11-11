@@ -22,7 +22,7 @@ pub surgeist_paint::BorderImageAxisPlacement::Repeat
 pub surgeist_paint::BorderImageAxisPlacement::Repeat::anchor: f64
 pub surgeist_paint::BorderImageAxisPlacement::Space
 pub surgeist_paint::BorderImageAxisPlacement::Space::count: core::num::nonzero::NonZeroU64
-pub surgeist_paint::BorderImageAxisPlacement::Space::uncovered: f64
+pub surgeist_paint::BorderImageAxisPlacement::Space::uncovered: [f64; 3]
 pub enum surgeist_paint::BorderImageGeometryError
 pub surgeist_paint::BorderImageGeometryError::InvalidBorderWidth
 pub surgeist_paint::BorderImageGeometryError::InvalidBox

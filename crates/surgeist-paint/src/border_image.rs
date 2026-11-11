@@ -870,6 +870,21 @@ impl ExactProduct {
         })
     }
 
+    fn integer_multiple(
+        work: &mut GeometryWork<'_, '_, '_>,
+        value: f64,
+        count: u64,
+    ) -> Result<Self, PaintError> {
+        let (significand, exponent) = exact_parts(work, value)?;
+        // A binary64 significand uses at most 53 bits and count at most 64.
+        let count = work.coordinate(|| u128::from(count))?;
+        let significand = work.coordinate(|| significand * count)?;
+        Ok(Self {
+            significand,
+            exponent,
+        })
+    }
+
     fn word_at(
         &self,
         work: &mut GeometryWork<'_, '_, '_>,
@@ -922,8 +937,11 @@ fn compare_product_sums(
     for term in [&x_first, &x_last, &y_first, &y_last] {
         if work.coordinate(|| term.significand != 0)? {
             start = work.coordinate(|| start.min(term.exponent))?;
-            // Include a possible carry above the product's 106 bits.
-            end = work.coordinate(|| end.max(term.exponent + 107))?;
+            // Include a possible carry above the product.
+            let leading = work.coordinate(|| term.significand.leading_zeros())?;
+            let bits_with_carry = work.coordinate(|| 129 - leading as i32)?;
+            let top = work.coordinate(|| term.exponent + bits_with_carry)?;
+            end = work.coordinate(|| end.max(top))?;
         }
     }
 

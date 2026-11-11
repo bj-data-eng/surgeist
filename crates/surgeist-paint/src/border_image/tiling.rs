@@ -35,9 +35,15 @@ pub enum BorderImageAxisPlacement {
     Repeat { anchor: f64 },
     /// Divide the exact uncovered extent into `count + 1` equal gaps.
     ///
+    /// The terms of `uncovered` sum to the uncovered extent in real
+    /// arithmetic. Use the sum without rounding it to one scalar.
+    ///
     /// In real arithmetic, tile `i` starts at
-    /// `i * extent + (i + 1) * uncovered / (count + 1)` for `0 <= i < count`.
-    Space { count: NonZeroU64, uncovered: f64 },
+    /// `i * extent + (i + 1) * sum(uncovered) / (count + 1)` for `0 <= i < count`.
+    Space {
+        count: NonZeroU64,
+        uncovered: [f64; 3],
+    },
 }
 
 impl BorderImageAxisPattern {
@@ -204,14 +210,16 @@ fn edge(
     let Some((source, clip)) = pair(work, region)? else {
         return Ok((None, None));
     };
-    let (along, across) = direction.split(size(work, clip)?);
+    let (along, across) = direction.split(bounds(clip));
+    let along = ClipSpan::between(work, along)?;
+    let across = work.coordinate(|| across.1 - across.0)?;
     let basis = if repeat == BorderImageRepeat::Stretch {
         None
     } else {
         let (span, thickness) = direction.split(size(work, source)?);
         Some(proportional(work, span, across, thickness)?)
     };
-    let Some(pattern) = axis_pattern(work, repeat, along, basis.unwrap_or(along))? else {
+    let Some(pattern) = axis_pattern(work, repeat, along, basis.unwrap_or(along.nominal))? else {
         // Space can discard this edge while its proportional scale is still
         // the preferred basis for the middle on the same axis.
         return Ok((None, basis));
@@ -229,11 +237,13 @@ fn center(
     let Some((source, clip)) = pair(work, region)? else {
         return Ok(None);
     };
-    let extent = size(work, clip)?;
+    let extent = bounds(clip);
+    let x_span = ClipSpan::between(work, extent.width)?;
+    let y_span = ClipSpan::between(work, extent.height)?;
     let Some(x) = center_axis(
         work,
         repeat.width,
-        extent.width,
+        x_span,
         basis.width,
         source.min.x,
         source.max.x,
@@ -244,7 +254,7 @@ fn center(
     let Some(y) = center_axis(
         work,
         repeat.height,
-        extent.height,
+        y_span,
         basis.height,
         source.min.y,
         source.max.y,
@@ -258,13 +268,13 @@ fn center(
 fn center_axis(
     work: &mut GeometryWork<'_, '_, '_>,
     repeat: BorderImageRepeat,
-    extent: f64,
+    extent: ClipSpan,
     basis: Option<f64>,
     source_min: f64,
     source_max: f64,
 ) -> Result<Option<BorderImageAxisPattern>, PaintError> {
     if repeat == BorderImageRepeat::Stretch {
-        return Ok(Some(BorderImageAxisPattern::stretch(extent)));
+        return Ok(Some(BorderImageAxisPattern::stretch(extent.nominal)));
     }
     let tile = match basis {
         Some(basis) => basis,
@@ -288,6 +298,41 @@ fn size(
         work.coordinate(|| rect.max.x - rect.min.x)?,
         work.coordinate(|| rect.max.y - rect.min.y)?,
     ))
+}
+
+fn bounds(rect: BorderImageRect) -> Size<(f64, f64)> {
+    Size::new((rect.min.x, rect.max.x), (rect.min.y, rect.max.y))
+}
+
+#[derive(Clone, Copy)]
+struct ClipSpan {
+    nominal: f64,
+    correction: f64,
+}
+
+impl ClipSpan {
+    fn between(
+        work: &mut GeometryWork<'_, '_, '_>,
+        (min, max): (f64, f64),
+    ) -> Result<Self, PaintError> {
+        let nominal = work.coordinate(|| max - min)?;
+        let max_magnitude = work.coordinate(|| max.abs())?;
+        let min_magnitude = work.coordinate(|| min.abs())?;
+        let neg_min = work.coordinate(|| -min)?;
+        let (larger, smaller) = if work.coordinate(|| max_magnitude >= min_magnitude)? {
+            (max, neg_min)
+        } else {
+            (neg_min, max)
+        };
+        // Ordered by magnitude, the subtraction and residual form an
+        // error-free sum of the endpoints when the nominal span is finite.
+        let rounded_smaller = work.coordinate(|| nominal - larger)?;
+        let correction = work.coordinate(|| smaller - rounded_smaller)?;
+        Ok(Self {
+            nominal,
+            correction,
+        })
+    }
 }
 
 fn emit(
@@ -333,36 +378,22 @@ fn positive(work: &mut GeometryWork<'_, '_, '_>, value: f64) -> Result<f64, Pain
 fn axis_pattern(
     work: &mut GeometryWork<'_, '_, '_>,
     repeat: BorderImageRepeat,
-    extent: f64,
+    span: ClipSpan,
     tile: f64,
 ) -> Result<Option<BorderImageAxisPattern>, PaintError> {
     match repeat {
-        BorderImageRepeat::Stretch => Ok(Some(BorderImageAxisPattern::stretch(extent))),
+        BorderImageRepeat::Stretch => Ok(Some(BorderImageAxisPattern::stretch(span.nominal))),
         BorderImageRepeat::Repeat => {
-            // Remove whole periods before centering. Subtracting a small
-            // tile from the original clip extent could erase half its phase.
-            let double_tile = work.coordinate(|| tile * 2.0)?;
-            let reduced_extent = if work.coordinate(|| double_tile.is_finite())? {
-                work.coordinate(|| extent % double_tile)?
-            } else {
-                // The finite clip is already shorter than two tiles.
-                extent
-            };
-            let delta = work.coordinate(|| reduced_extent - tile)?;
-            let anchor = work.coordinate(|| delta * 0.5)?;
-            let restored = work.coordinate(|| anchor * 2.0)?;
-            if work.coordinate(|| restored != delta)? {
-                return Err(geometry_error());
-            }
+            let anchor = repeat_anchor(work, span, tile)?;
             Ok(Some(BorderImageAxisPattern {
                 extent: tile,
                 placement: BorderImageAxisPlacement::Repeat { anchor },
             }))
         }
         BorderImageRepeat::Round => {
-            let (whole, remainder) = whole_tiles(work, extent, tile)?;
-            let count = round_count(work, extent, tile, whole, remainder)?;
-            let length = work.coordinate(|| extent / count)?;
+            let whole = whole_tiles(work, span, tile)?;
+            let count = round_count(work, span, tile, whole)?;
+            let length = work.coordinate(|| span.nominal / count)?;
             Ok(Some(BorderImageAxisPattern {
                 extent: positive(work, length)?,
                 placement: BorderImageAxisPlacement::Fit {
@@ -371,7 +402,7 @@ fn axis_pattern(
             }))
         }
         BorderImageRepeat::Space => {
-            let (whole, uncovered) = whole_tiles(work, extent, tile)?;
+            let whole = whole_tiles(work, span, tile)?;
             if work.coordinate(|| whole == 0.0)? {
                 return Ok(None);
             }
@@ -379,11 +410,36 @@ fn axis_pattern(
                 extent: tile,
                 placement: BorderImageAxisPlacement::Space {
                     count: tile_count(work, whole)?,
-                    uncovered,
+                    uncovered: uncovered(work, span, tile, whole)?,
                 },
             }))
         }
     }
+}
+
+fn repeat_anchor(
+    work: &mut GeometryWork<'_, '_, '_>,
+    span: ClipSpan,
+    tile: f64,
+) -> Result<f64, PaintError> {
+    // Remove whole periods before centering. Reduce the low part separately
+    // so an endpoint's contribution survives a large nominal span.
+    let double_tile = work.coordinate(|| tile * 2.0)?;
+    let (nominal, correction) = if work.coordinate(|| double_tile.is_finite())? {
+        let nominal = work.coordinate(|| span.nominal % double_tile)?;
+        let correction = work.coordinate(|| span.correction % double_tile)?;
+        (nominal, correction)
+    } else {
+        (span.nominal, span.correction)
+    };
+    let centered = work.coordinate(|| nominal - tile)?;
+    let delta = work.coordinate(|| centered + correction)?;
+    let anchor = work.coordinate(|| delta * 0.5)?;
+    let restored = work.coordinate(|| anchor * 2.0)?;
+    if work.coordinate(|| restored != delta)? {
+        return Err(geometry_error());
+    }
+    Ok(anchor)
 }
 
 // Integer counts below this limit have individually distinguishable adjacent
@@ -392,58 +448,107 @@ const TILE_COUNT_LIMIT: f64 = 9_007_199_254_740_992.0;
 
 fn whole_tiles(
     work: &mut GeometryWork<'_, '_, '_>,
-    extent: f64,
+    span: ClipSpan,
     tile: f64,
-) -> Result<(f64, f64), PaintError> {
-    let ratio = work.coordinate(|| extent / tile)?;
-    if work.coordinate(|| ratio > TILE_COUNT_LIMIT)? {
-        return Err(geometry_error());
+) -> Result<f64, PaintError> {
+    let ratio = work.coordinate(|| span.nominal / tile)?;
+    let floor = work.coordinate(|| ratio.floor())?;
+    let mut whole = work.coordinate(|| floor.min(TILE_COUNT_LIMIT))?;
+    // For a count below the limit, rounding the span can shift its ratio by
+    // at most one tile. The rounded division adds at most half a tile there.
+    // Two adjustments and a final proof suffice for a representable count.
+    for _ in 0..3 {
+        if compare_whole(work, span, tile, whole)? == Ordering::Less {
+            whole = work.coordinate(|| whole - 1.0)?;
+            continue;
+        }
+        if work.coordinate(|| whole >= TILE_COUNT_LIMIT)? {
+            return Err(geometry_error());
+        }
+        let next = work.coordinate(|| whole + 1.0)?;
+        if compare_whole(work, span, tile, next)? == Ordering::Less {
+            return Ok(whole);
+        }
+        whole = next;
     }
-    let mut whole = work.coordinate(|| ratio.floor())?;
-    let mut remainder = work.coordinate(|| (-whole).mul_add(tile, extent))?;
-    // Division can round a fraction just below an integer up to that integer.
-    // A fused product retains the sign of the exact remainder.
-    if work.coordinate(|| remainder.is_sign_negative())? {
-        whole = work.coordinate(|| whole - 1.0)?;
-        remainder = work.coordinate(|| (-whole).mul_add(tile, extent))?;
+    Err(geometry_error())
+}
+
+fn compare_whole(
+    work: &mut GeometryWork<'_, '_, '_>,
+    span: ClipSpan,
+    tile: f64,
+    count: f64,
+) -> Result<Ordering, PaintError> {
+    if work.coordinate(|| span.correction == 0.0)? {
+        let remainder = work.coordinate(|| (-count).mul_add(tile, span.nominal))?;
+        return work
+            .coordinate(|| remainder.partial_cmp(&0.0))?
+            .ok_or_else(geometry_error);
     }
-    if work.coordinate(|| whole >= TILE_COUNT_LIMIT)? {
-        return Err(geometry_error());
+    let count = work.coordinate(|| count as u64)?;
+    compare_scaled_span(work, span, 1.0, tile, count)
+}
+
+fn compare_scaled_span(
+    work: &mut GeometryWork<'_, '_, '_>,
+    span: ClipSpan,
+    scale: f64,
+    tile: f64,
+    count: u64,
+) -> Result<Ordering, PaintError> {
+    let nominal = ExactProduct::new(work, span.nominal, scale)?;
+    let magnitude = work.coordinate(|| span.correction.abs())?;
+    let correction = ExactProduct::new(work, magnitude, scale)?;
+    let coverage = ExactProduct::integer_multiple(work, tile, count)?;
+    if work.coordinate(|| span.correction < 0.0)? {
+        compare_product_sums(work, [nominal, ExactProduct::ZERO], [coverage, correction])
+    } else {
+        compare_product_sums(work, [nominal, correction], [coverage, ExactProduct::ZERO])
     }
-    // For a nonzero count, both terms are multiples of the tile's binary64
-    // quantum. The remainder is smaller than a tile, so that same quantum
-    // represents it exactly, including in the subnormal range.
-    Ok((whole, remainder))
 }
 
 fn round_count(
     work: &mut GeometryWork<'_, '_, '_>,
-    extent: f64,
+    span: ClipSpan,
     tile: f64,
     whole: f64,
-    remainder: f64,
 ) -> Result<f64, PaintError> {
-    let half = work.coordinate(|| tile * 0.5)?;
-    let order = work
-        .coordinate(|| remainder.partial_cmp(&half))?
-        .ok_or_else(geometry_error)?;
-    let order = if order == Ordering::Equal {
-        // Determine the exact side of the half-tile boundary when rounded
-        // remainders compare equal. Compare 2*extent with 2*whole*tile + tile.
-        let doubled = work.coordinate(|| whole * 2.0)?;
-        let extent = ExactProduct::new(work, extent, 2.0)?;
-        let covered = ExactProduct::new(work, tile, doubled)?;
-        let tile = ExactProduct::new(work, tile, 1.0)?;
-        compare_product_sums(work, [extent, ExactProduct::ZERO], [covered, tile])?
-    } else {
-        order
-    };
+    // Compare 2*span with (2*whole + 1)*tile. The odd multiplier can need
+    // one more bit than binary64 can hold near the count limit.
+    let whole_integer = work.coordinate(|| whole as u64)?;
+    let doubled = work.coordinate(|| whole_integer * 2)?;
+    let half_threshold = work.coordinate(|| doubled + 1)?;
+    let order = compare_scaled_span(work, span, 2.0, tile, half_threshold)?;
     let nearest = if order == Ordering::Less {
         whole
     } else {
         work.coordinate(|| whole + 1.0)?
     };
     work.coordinate(|| nearest.max(1.0))
+}
+
+fn uncovered(
+    work: &mut GeometryWork<'_, '_, '_>,
+    span: ClipSpan,
+    tile: f64,
+    whole: f64,
+) -> Result<[f64; 3], PaintError> {
+    if work.coordinate(|| span.correction == 0.0)? {
+        // The exact remainder is less than a tile and is an integer
+        // multiple of the tile's binary64 quantum.
+        return Ok([
+            work.coordinate(|| (-whole).mul_add(tile, span.nominal))?,
+            0.0,
+            0.0,
+        ]);
+    }
+    let product = work.coordinate(|| whole * tile)?;
+    let product_error = work.coordinate(|| (-whole).mul_add(tile, product))?;
+    // Positive whole-tile coverage is between half the span and the full
+    // span. The rounded leading terms therefore subtract exactly.
+    let remainder = work.coordinate(|| span.nominal - product)?;
+    Ok([remainder, span.correction, product_error])
 }
 
 fn tile_count(work: &mut GeometryWork<'_, '_, '_>, count: f64) -> Result<NonZeroU64, PaintError> {
@@ -609,7 +714,17 @@ mod tests {
             OperationKind::BorderImageTiling,
             PaintPhase::BorderImageTiling,
             None::<fn(&mut GeometryWork<'_, '_, '_>) -> Result<(), PaintError>>,
-            |work| axis_pattern(work, repeat, extent, tile),
+            |work| {
+                axis_pattern(
+                    work,
+                    repeat,
+                    ClipSpan {
+                        nominal: extent,
+                        correction: 0.0,
+                    },
+                    tile,
+                )
+            },
         )
         .0
     }
@@ -666,7 +781,7 @@ mod tests {
     fn spaced(count: u64, uncovered: f64) -> BorderImageAxisPlacement {
         BorderImageAxisPlacement::Space {
             count: NonZeroU64::new(count).unwrap(),
-            uncovered,
+            uncovered: [uncovered, 0.0, 0.0],
         }
     }
 
@@ -762,7 +877,10 @@ mod tests {
         assert_eq!(region.clip().max().x, 9_007_199_254_740_992.0);
         assert_eq!(
             region.axes().width.placement(),
-            spaced(4_503_599_627_370_495, 1.5)
+            BorderImageAxisPlacement::Space {
+                count: NonZeroU64::new(4_503_599_627_370_495).unwrap(),
+                uncovered: [2.0, -0.5, 0.0],
+            }
         );
     }
 

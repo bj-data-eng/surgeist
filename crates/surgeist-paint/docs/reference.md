@@ -96,12 +96,13 @@ whole count, with half ties toward the higher count, then divides the clip
 extent evenly. Stretch and Round use the clip endpoints for the first and
 final boundaries of the subdivision.
 
-Space retains only whole tiles and records the exact uncovered extent.
-The equal gap is `uncovered / (count + 1)` before, after, and between the
-tiles. The start of tile `i` in real arithmetic is
-`i * extent + (i + 1) * uncovered / (count + 1)`. This representation
-retains equal gaps even when that quotient rounds in binary64. Space omits
-a region when a tile cannot fit on an axis using that mode. Finite counts
+Space retains only whole tiles and records terms whose sum is the exact
+uncovered extent. In real arithmetic, the gap is
+`sum(uncovered) / (count + 1)` before, after, and between the tiles. Tile
+`i` starts at `i * extent + (i + 1) * sum(uncovered) / (count + 1)`.
+These terms preserve equal gaps when the quotient or endpoint subtraction
+would round in binary64. Space omits a region when a tile cannot fit on
+an axis using that mode. Finite counts
 retain distinguishable binary64 indices and an exactly representable extra
 gap count. Unrepresentable arithmetic returns the typed border-image
 geometry error.
