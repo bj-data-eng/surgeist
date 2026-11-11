@@ -358,14 +358,16 @@ impl PublicEventBindings {
             let origin = node
                 .relevant_global()
                 .map_err(DomHostedRuntimeError::Dom)
-                .map_err(DocumentScriptNativeError::from)?
-                .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
+                .map_err(DocumentScriptNativeError::from)?;
             if let Some(document) = node.as_document() {
-                if origin != attached {
+                // Rust-created Documents with no Global acquire their
+                // attachment's Document interface on first exposure.
+                if origin.is_some_and(|origin| origin != attached) {
                     return Err(DocumentScriptNativeError::CreationGlobalUnavailable.into());
                 }
                 return Ok(NativeProjection::Document(document.id()));
             }
+            let origin = origin.ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
             let element = node
                 .as_element()
                 .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
