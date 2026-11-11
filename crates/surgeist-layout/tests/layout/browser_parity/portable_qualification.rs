@@ -629,6 +629,8 @@ const REGISTERED_ORIGINAL_FLEX_PARENT_TERMINAL_SHA256: &str =
 
 const REGISTERED_ORIGINAL_FLEX_AXES_TERMINAL_SHA256: &str =
     "2b27fb7562dbb00dc9098c8d812034358a4451cd8d7d3057a7c0f6731b4d2d90";
+const REGISTERED_ORIGINAL_GRID_AXES_TERMINAL_SHA256: &str =
+    "ee1870dab4fe44cbf22e06745720bb7c5ec61e957ab58af123e417e579439c49";
 const REGISTERED_ORIGINAL_BLOCK_AXES_TERMINAL_SHA256: &str =
     "8008320aeadedcd97a5b07e41ca5298ae5ffa08fc25e297449cedecba02cabab";
 const REGISTERED_ORIGINAL_PERCENTAGE_FLEX_PARENT_TERMINAL_SHA256: &str =
@@ -762,6 +764,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             Registration {
                 edition: Edition::Specialized(SpecializedProfile::OriginalFlexAxes),
                 terminal_sha256: REGISTERED_ORIGINAL_FLEX_AXES_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Specialized(SpecializedProfile::OriginalGridAxes),
+                terminal_sha256: REGISTERED_ORIGINAL_GRID_AXES_TERMINAL_SHA256,
             },
         )?,
         admit(
