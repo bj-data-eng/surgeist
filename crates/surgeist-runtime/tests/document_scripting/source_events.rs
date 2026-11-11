@@ -1,7 +1,7 @@
 //! Real Source listener selection, guest reentry, report and mandatory tail.
 
 use super::*;
-use surgeist_bindings_js::Root;
+use surgeist_bindings_js::{Root, ValueKind};
 
 const ROUTE: u64 = 71;
 const SOURCE: DomSourceLimits =
@@ -185,13 +185,20 @@ fn fixture(
 fn ordinary_throw_keeps_the_real_event_and_tail() {
     let mut fixture = fixture(
         "globalThis.thrown = {}; globalThis.before = 0; globalThis.after = 0;
-         globalThis.neutral = 0;
-         (() => { before = readChildCount();
+         globalThis.neutral = 0; globalThis.rejectedForgedComment = 0;
+         ((comment) => { globalThis.delegatedComment = comment;
+                   before = readChildCount();
+                   if (comment !== null && typeof comment === 'object') {
+                       const forged = Object.create(Object.getPrototypeOf(comment));
+                       let coerced = false;
+                       try { detachIf({ valueOf() { coerced = true; return 0; } }, forged); }
+                       catch (error) { rejectedForgedComment = Number(error instanceof TypeError && !coerced); }
+                   }
                    const coercionFailure = {};
-                   try { detachIf({ valueOf() { throw coercionFailure; } }); }
+                   try { detachIf({ valueOf() { throw coercionFailure; } }, comment); }
                    catch (error) { if (error !== coercionFailure) throw error; }
-                   detachIf({ valueOf() { neutral += readChildCount(); return 0; } });
-                   detachIf({ valueOf() { before += readChildCount(); return 1; } });
+                   detachIf({ valueOf() { neutral += readChildCount(); return 0; } }, comment);
+                   detachIf({ valueOf() { before += readChildCount(); return 1; } }, comment);
                    after = readChildCount(); throw thrown; })",
         Arc::new(cancel()),
         |_| Ok(()),
@@ -330,7 +337,7 @@ fn ordinary_throw_keeps_the_real_event_and_tail() {
             );
         })
         .unwrap();
-    fixture
+    let (comment_kind, rejected_forged_comment) = fixture
         .host
         .in_document(&fixture.permit, |scope| {
             let result = scope.import(exception.value())?;
@@ -338,7 +345,14 @@ fn ordinary_throw_keeps_the_real_event_and_tail() {
             assert!(scope.strict_equals(&result, &original)?);
             assert_script_number(scope, "neutral", 2.0)?;
             assert_script_number(scope, "before", 4.0)?;
-            assert_script_number(scope, "after", 1.0)
+            assert_script_number(scope, "after", 1.0)?;
+            let comment = scope.evaluate(&"delegatedComment".encode_utf16().collect::<Vec<_>>())?;
+            let rejected = scope.evaluate(
+                &"rejectedForgedComment === 1"
+                    .encode_utf16()
+                    .collect::<Vec<_>>(),
+            )?;
+            Ok((scope.kind(&comment)?, scope.boolean(&rejected)?))
         })
         .unwrap();
     assert_eq!(fixture.context.later, 1);
@@ -351,6 +365,15 @@ fn ordinary_throw_keeps_the_real_event_and_tail() {
         .unwrap();
     assert_eq!(close.id().target(), fixture.dialog);
     assert!(close.dialog_close().is_some());
+    assert_eq!(
+        comment_kind,
+        ValueKind::Object,
+        "selected Source listener did not receive its delegated native Comment"
+    );
+    assert!(
+        rejected_forged_comment,
+        "detach must reject a forged Comment argument before coercing the condition"
+    );
 }
 
 fn conversion_time_native_refusal_retains_original_source(conversion: &str) {
