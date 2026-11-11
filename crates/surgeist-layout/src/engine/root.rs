@@ -272,7 +272,7 @@ where
             )
         }
         crate::LayoutRootContextOf::PositionedAutoInsets(context) => {
-            admit_positioned_root(root, style, None)?;
+            admit_positioned_root(tree, root, style, None)?;
             (
                 context.containing_flow_axes(),
                 crate::ParentFormattingContext::BlockFlow,
@@ -283,7 +283,7 @@ where
             )
         }
         crate::LayoutRootContextOf::RootLocalPositioned(context) => {
-            admit_positioned_root(root, style, Some(context))?;
+            admit_positioned_root(tree, root, style, Some(context))?;
             (
                 context.containing_flow_axes(),
                 crate::ParentFormattingContext::BlockFlow,
@@ -410,7 +410,10 @@ where
     Ok(())
 }
 
-fn fixed_grid_axis<S: LayoutScalar>(components: &[crate::TrackComponentOf<S>]) -> bool {
+fn fixed_grid_axis<S: LayoutScalar>(
+    components: &[crate::TrackComponentOf<S>],
+    allow_counted_repeat: bool,
+) -> bool {
     let mut has_track = false;
     let fixed = components.iter().all(|component| match component {
         crate::TrackComponentOf::Track(track) => {
@@ -422,23 +425,25 @@ fn fixed_grid_axis<S: LayoutScalar>(components: &[crate::TrackComponentOf<S>]) -
                 .is_some_and(|(minimum, maximum)| minimum == maximum && minimum.is_finite())
         }
         crate::TrackComponentOf::LineNames(_) => true,
-        crate::TrackComponentOf::Repeat(repetition) => {
+        crate::TrackComponentOf::Repeat(repetition) if allow_counted_repeat => {
             has_track = true;
+            // CSS track repeat notation cannot nest.
             matches!(repetition.repeat(), crate::TrackRepeat::Count(_))
-                && fixed_grid_axis(repetition.components())
+                && fixed_grid_axis(repetition.components(), false)
         }
-        crate::TrackComponentOf::Subgrid(_) => false,
+        crate::TrackComponentOf::Repeat(_) | crate::TrackComponentOf::Subgrid(_) => false,
     });
     fixed && has_track
 }
 
-fn admit_positioned_root<Node, S: LayoutScalar, M>(
-    root: Node,
-    style: &NodeInputOf<S>,
-    local_context: Option<crate::RootLocalPositionedContextOf<S>>,
-) -> LayoutResultOf<Node, (), S, M>
+fn admit_positioned_root<'input, Tree, M>(
+    tree: &Tree,
+    root: Tree::Node,
+    style: &NodeInputOf<Tree::Scalar>,
+    local_context: Option<crate::RootLocalPositionedContextOf<Tree::Scalar>>,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
 where
-    Node: Copy,
+    Tree: Compute<'input, M>,
 {
     let horizontal = style.writing_mode == crate::WritingMode::HorizontalTb;
     let local_containing_size = local_context.map(|context| context.containing_size());
@@ -454,12 +459,6 @@ where
         && style.block_generation == crate::BlockGeneration::Principal
         && !style.item_is_table
         && style.size.height.is_auto();
-    let auto_fixed_grid = has_block_offset
-        && style.display == crate::Display::Grid
-        && style.size.width.is_auto()
-        && style.size.height.is_auto()
-        && fixed_grid_axis(&style.grid_template_columns)
-        && fixed_grid_axis(&style.grid_template_rows);
     let edges = match local_containing_size {
         Some(size) if horizontal => RootEdgeProfile::DefiniteInline {
             percentage_parent: size.width,
@@ -467,6 +466,13 @@ where
         _ => RootEdgeProfile::Zero,
     };
     admit_root_box(root, style, crate::Position::Absolute, edges)?;
+    let auto_fixed_grid = has_block_offset
+        && style.display == crate::Display::Grid
+        && style.size.width.is_auto()
+        && style.size.height.is_auto()
+        && !tree.has_leaf_measurement(root)
+        && fixed_grid_axis(&style.grid_template_columns, true)
+        && fixed_grid_axis(&style.grid_template_rows, true);
     let writing_mode_error = || root_context_error(root, crate::RootContextMismatch::WritingMode);
     if (!horizontal || has_block_offset) && !auto_fixed_grid {
         let basis = local_containing_size.ok_or_else(writing_mode_error)?;
