@@ -175,15 +175,18 @@ impl Scene {
     /// Applies an ordered stack of resolved masks to one isolated group of children.
     ///
     /// Supply masks from top to bottom. Coverage combines from bottom to top,
-    /// starting with the bottom mask's coverage. An empty stack adds the children
-    /// directly to this scene. A transparent entry still participates in the fold.
+    /// starting with the bottom mask's coverage. The callback builds a fresh
+    /// child scene. An empty stack adds its commands directly to this scene.
+    /// A transparent entry still participates in the fold.
     pub fn masked_group(
         &mut self,
         masks: &[ResolvedMaskLayer],
         children: impl FnOnce(&mut Scene),
     ) -> &mut Self {
         let Some((bottom, above)) = masks.split_last() else {
-            children(self);
+            let mut child = Scene::new();
+            children(&mut child);
+            self.commands.append(&mut child.commands);
             return self;
         };
         self.layer(Layer::new().isolated(), |target| {
