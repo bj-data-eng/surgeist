@@ -1368,6 +1368,61 @@ fn descriptors_preserve_attributes_reentry_and_original_throws(
     Ok(())
 }
 
+fn new_property_refuses_own_keys_and_preserves_proxy_probe_exceptions(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let object = scope.evaluate(&units(
+            "Object.create({chosen: 0}, {ownUndefined: {value: undefined, configurable: true}})",
+        ))?;
+        let value = scope.primitive(Primitive::Number(7.0))?;
+        let descriptor = || PropertyDescriptor::Data {
+            value: &value,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+        };
+        let inherited = units("chosen");
+        let own = units("ownUndefined");
+        assert!(matches!(
+            scope.define_new_property(&object, PropertyKey::String(&own), descriptor()),
+            Err(Error::PropertyRejected)
+        ));
+        let original = scope.get(&object, PropertyKey::String(&own))?;
+        assert_eq!(scope.kind(&original)?, ValueKind::Undefined);
+        scope.define_new_property(&object, PropertyKey::String(&inherited), descriptor())?;
+        let observed = scope.get(&object, PropertyKey::String(&inherited))?;
+        assert!(scope.strict_equals(&observed, &value)?);
+        assert!(matches!(
+            scope.define_new_property(&object, PropertyKey::String(&inherited), descriptor()),
+            Err(Error::PropertyRejected)
+        ));
+
+        let proxy = scope.evaluate(&units(
+            "globalThis.probeFailure = {}; globalThis.definitionCalls = 0;
+             new Proxy({}, {
+                 getOwnPropertyDescriptor() { throw probeFailure; },
+                 defineProperty() { definitionCalls++; return true; }
+             })",
+        ))?;
+        let Err(Error::Exception(exception)) =
+            scope.define_new_property(&proxy, PropertyKey::String(&own), descriptor())
+        else {
+            return Err(Error::BackendUnavailable);
+        };
+        assert_eq!(exception.phase(), ExceptionPhase::DefineProperty);
+        let original = scope.evaluate(&units("probeFailure"))?;
+        let thrown = scope.import(exception.value())?;
+        assert!(scope.strict_equals(&thrown, &original)?);
+        let calls = scope.evaluate(&units("definitionCalls"))?;
+        let zero = scope.primitive(Primitive::Number(0.0))?;
+        assert!(scope.strict_equals(&calls, &zero)?);
+        Ok(())
+    })
+}
+
 fn objects_prototypes_and_dense_arrays_preserve_identity(
     process: &mut Process,
 ) -> Result<(), Error> {
@@ -2137,6 +2192,7 @@ fn main() -> Result<(), Error> {
     native_callback_capture_collection_and_owner_teardown(&mut process)?;
     property_keys_are_exact_and_never_coerce(&mut process)?;
     descriptors_preserve_attributes_reentry_and_original_throws(&mut process)?;
+    new_property_refuses_own_keys_and_preserves_proxy_probe_exceptions(&mut process)?;
     objects_prototypes_and_dense_arrays_preserve_identity(&mut process)?;
     captured_intrinsics_survive_guest_replacement_and_realm_lease_release(&mut process)?;
     declared_constructors_preserve_calls_metadata_and_installed_descriptors(&mut process)?;

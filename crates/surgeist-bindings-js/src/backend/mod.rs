@@ -26,6 +26,11 @@ pub(crate) enum PropertyDescriptor<'a> {
     },
 }
 
+pub(crate) enum PropertyDefinition {
+    AllowExisting,
+    RequireAbsent,
+}
+
 pub(crate) enum ObjectPrototype<'a> {
     Default,
     Null,
@@ -103,7 +108,6 @@ pub(crate) trait Operations {
         fallback: &PrototypeResolver,
     ) -> Result<Root, Error>;
     fn global(&mut self) -> Result<Root, Error>;
-    fn has_own_property(&mut self, object: &Root, key: PropertyKey<'_>) -> Result<bool, Error>;
     fn get(&mut self, object: &Root, key: PropertyKey<'_>) -> Result<Root, Error>;
     fn set(&mut self, object: &Root, key: PropertyKey<'_>, value: &Root) -> Result<(), Error>;
     fn define_property(
@@ -111,6 +115,7 @@ pub(crate) trait Operations {
         object: &Root,
         key: PropertyKey<'_>,
         descriptor: PropertyDescriptor<'_>,
+        definition: PropertyDefinition,
     ) -> Result<(), Error>;
     fn object(&mut self, prototype: ObjectPrototype<'_>) -> Result<Root, Error>;
     fn set_prototype(&mut self, object: &Root, prototype: ObjectPrototype<'_>)

@@ -410,7 +410,7 @@ impl PreparedDocumentScriptHost {
                 (hooks.detach_source_node_if, Callback::new(detach)),
             ] {
                 let hook = scope.function(&callback)?;
-                scope.define_property(
+                scope.define_new_property(
                     &global,
                     PropertyKey::String(name),
                     PropertyDescriptor::Data {

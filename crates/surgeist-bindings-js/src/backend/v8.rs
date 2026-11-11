@@ -5,7 +5,9 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::ThreadId;
 
-use super::{CoercedString, ObjectPrototype, Operations, PropertyDescriptor, PropertyKey};
+use super::{
+    CoercedString, ObjectPrototype, Operations, PropertyDefinition, PropertyDescriptor, PropertyKey,
+};
 use crate::owner::OwnerState;
 use crate::{
     Arguments, Callback, Completion, ConstructorArguments, ConstructorCallback,
@@ -852,22 +854,6 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
-    fn has_own_property(&mut self, object: &Root, key: PropertyKey<'_>) -> Result<bool, Error> {
-        self.validate_root(object)?;
-        self.attempt(
-            ExceptionPhase::PropertyRead,
-            |scope, roots, _realm, _intrinsics| {
-                let value = roots.local(scope, object)?;
-                let object =
-                    v8::Local::<v8::Object>::try_from(value).map_err(|_| Error::ExpectedObject)?;
-                let name = property_key(scope, roots, key)?;
-                object
-                    .has_own_property(scope, name)
-                    .ok_or(Error::BackendUnavailable)
-            },
-        )
-    }
-
     fn get(&mut self, object: &Root, key: PropertyKey<'_>) -> Result<Root, Error> {
         self.validate_root(object)?;
         self.attempt(
@@ -918,6 +904,7 @@ impl Operations for Entered<'_, '_, '_> {
         object: &Root,
         key: PropertyKey<'_>,
         descriptor: PropertyDescriptor<'_>,
+        definition: PropertyDefinition,
     ) -> Result<(), Error> {
         self.validate_root(object)?;
         self.attempt(
@@ -957,6 +944,18 @@ impl Operations for Entered<'_, '_, '_> {
                 };
                 descriptor.set_enumerable(enumerable);
                 descriptor.set_configurable(configurable);
+                if matches!(definition, PropertyDefinition::RequireAbsent) {
+                    match object.has_own_property(scope, key) {
+                        Some(false) => (),
+                        Some(true) => return Err(Error::PropertyRejected),
+                        None => return Err(Error::BackendUnavailable),
+                    }
+                    // The own-property probe may have invoked a proxy trap.
+                    roots.available()?;
+                    if scope.is_execution_terminating() {
+                        return Err(Error::Terminated);
+                    }
+                }
                 match object.define_property(scope, key, &descriptor) {
                     Some(true) => Ok(()),
                     Some(false) => Err(Error::PropertyRejected),

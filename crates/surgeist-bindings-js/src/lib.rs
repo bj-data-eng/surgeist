@@ -828,8 +828,31 @@ impl<'scope> Scope<'scope> {
         key: PropertyKey<'_, 'scope>,
         descriptor: PropertyDescriptor<'_, 'scope>,
     ) -> Result<(), Error> {
-        self.operations
-            .define_property(&object.root, key.input(), descriptor.input())
+        self.operations.define_property(
+            &object.root,
+            key.input(),
+            descriptor.input(),
+            backend::PropertyDefinition::AllowExisting,
+        )
+    }
+
+    /// Defines a complete own property after checking that the key has no own
+    /// property. An existing own property returns [`Error::PropertyRejected`].
+    /// On proxies the probe and definition are separate observable steps.
+    /// Either trap can throw, and reentrant guest code can change the object
+    /// between the two steps.
+    pub fn define_new_property(
+        &mut self,
+        object: &Value<'scope>,
+        key: PropertyKey<'_, 'scope>,
+        descriptor: PropertyDescriptor<'_, 'scope>,
+    ) -> Result<(), Error> {
+        self.operations.define_property(
+            &object.root,
+            key.input(),
+            descriptor.input(),
+            backend::PropertyDefinition::RequireAbsent,
+        )
     }
 
     /// Creates an empty object with an explicit prototype selection.

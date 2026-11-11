@@ -108,13 +108,6 @@ pub fn install_window_css<Storage: 'static>(
 ) -> Result<(), Error> {
     let global = scope.global()?;
     let css_key = PropertyKey::String(WINDOW_CSS_NAME);
-    if scope
-        .operations
-        .has_own_property(&global.root, css_key.input())?
-    {
-        return Err(Error::PropertyRejected);
-    }
-
     let conversion_limits = Limits::from_fn(
         |work| match work {
             Work::Argument | Work::Value => limits.calls,
@@ -169,7 +162,7 @@ pub fn install_window_css<Storage: 'static>(
             configurable: true,
         },
     )?;
-    scope.define_property(
+    scope.define_new_property(
         &global,
         css_key,
         PropertyDescriptor::Data {
