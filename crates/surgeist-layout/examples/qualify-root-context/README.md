@@ -236,9 +236,10 @@ Check the retained edition without a browser:
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-grid-lanes-original-diagnostics
 ~~~
 
-The check authenticates the retained inputs and outputs and replays every
-comparison. Numeric differences are recorded in the receipt; incomplete
-comparisons or changes to the pinned evidence fail the check.
+The receipt records the validator at issuance. The check authenticates that
+stamp and the retained inputs and outputs, verifies the current owner
+bindings, and replays all 36 comparisons. Each replay must reproduce the
+recorded differences. Checking preserves the receipt bytes.
 
 ## Grid Lanes axis controls
 
@@ -258,7 +259,8 @@ The check requires zero browser comparison differences for every control. It
 replays the original diagnostics, checks the source changes and root contexts,
 and compares the complete unrounded and final Native box packets, including
 scroll geometry, for each pair. Independent checks cover the selected axes,
-item placements and physical coordinates.
+item placements and physical coordinates. The matching terminal binds the
+current validator and the original diagnostic receipt digest.
 
 ## Grid static-position edition
 

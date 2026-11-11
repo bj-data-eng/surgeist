@@ -168,8 +168,14 @@ the same physical side refuse with `Root context: ConflictingEdgeDeclarations`;
 distinct or opposite sides remain independent, with existing literal, calc and
 percentage projection checks. The absolute-root-local source closure refuses
 logical block padding/inset declarations with
-`Root context: UnrepresentedLogicalBlockEdges`; this does not add block-edge,
-border or margin normalization or a cascade interpreter.
+`Root context: UnrepresentedLogicalBlockEdges`.
+
+Margins use physical computed values from Typed OM when available. The
+descriptor preserves `auto` and the supported length projections. The inline
+fallback projects physical and logical margin declarations in declaration
+order using the node's writing mode and direction. Logical block margins
+therefore reach the physical margin fields with `auto` intact.
+
 After root-context source checks, parsed inline `border-block*` and
 `border-inline*` declarations on the root or its descendants refuse with
 `Root context: UnrepresentedLogicalBorder`. This includes shorthands and
