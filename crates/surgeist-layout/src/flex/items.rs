@@ -11,8 +11,8 @@ use crate::inline_wrapping::{EdgeEffect, WrappingMode};
 use crate::layout_math::{MaxBeforeMinScalarClampExt, OptionalSizeExt};
 use crate::output::MeasuredInsetBasisOf;
 use crate::sizing::resolve::{
-    EdgesResultExt, ResolvedFlexBasis, SizeResultExt, resolve_flex_basis, resolve_maximum_optional,
-    resolve_minimum_optional, resolve_preferred_optional, select_relative_insets,
+    EdgesResultExt, ResolvedFlexBasis, SizeResultExt, resolve_child_preferred_size,
+    resolve_flex_basis, resolve_maximum_optional, resolve_minimum_optional, select_relative_insets,
 };
 use crate::{
     AlignItems, BoxSizing, Compute, ComputeInputOf, ComputeOutputOf, ComputedOverflow,
@@ -326,28 +326,24 @@ where
     } else {
         Size::ZERO
     };
-    let resolved_preferred_size = Size::new(
-        resolve_preferred_optional(
-            &style.common.size.width,
-            SizingAlgorithm::Flex,
-            PhysicalAxis::Horizontal,
-            constants.percentage_parent_size.width,
-            true,
-        ),
-        resolve_preferred_optional(
-            &style.common.size.height,
-            SizingAlgorithm::Flex,
-            PhysicalAxis::Vertical,
-            constants.percentage_parent_size.height,
-            true,
-        ),
+    let child_owned_axis = super::child_preferred_inline_axis::<Tree, M>(tree, node);
+    let resolved_preferred_size = resolve_child_preferred_size(
+        style.common.size,
+        constants.percentage_parent_size,
+        SizingAlgorithm::Flex,
+        child_owned_axis,
     )
     .transpose_with_node(tree, node)?;
     let authored_cross_size = constants
         .axes
         .cross_size(resolved_preferred_size.add_optional(box_sizing_adjustment));
     let authored_size = resolved_preferred_size
-        .apply_aspect_ratio(*style.common.aspect_ratio)
+        .apply_aspect_ratio(
+            style
+                .common
+                .aspect_ratio
+                .filter(|_| child_owned_axis.is_none()),
+        )
         .add_optional(box_sizing_adjustment);
     let flex_basis_resolution = resolve_flex_basis(
         style.flex_basis,
@@ -362,9 +358,14 @@ where
         | ResolvedFlexBasis::MaxContent
         | ResolvedFlexBasis::Definite(_) => false,
     };
+    let basis_is_preferred_max_content = matches!(flex_basis_resolution, ResolvedFlexBasis::Auto)
+        && child_owned_axis == Some(constants.axes.main_physical_axis());
     let intrinsic_flex_basis = match flex_basis_resolution {
         ResolvedFlexBasis::MinContent => Some(IntrinsicFlexBasis::MinContent),
         ResolvedFlexBasis::MaxContent => Some(IntrinsicFlexBasis::MaxContent),
+        ResolvedFlexBasis::Auto if basis_is_preferred_max_content => {
+            Some(IntrinsicFlexBasis::MaxContent)
+        }
         ResolvedFlexBasis::Auto | ResolvedFlexBasis::Content | ResolvedFlexBasis::Definite(_) => {
             None
         }
@@ -613,7 +614,7 @@ where
             && (tree.child_count(node) > 0
                 || constants.axes.main_size(output.content_size) <= basis)
     });
-    let intrinsic_main_size = if flex_basis_uses_padding_floor {
+    let intrinsic_main_size = if flex_basis_uses_padding_floor || basis_is_preferred_max_content {
         flex_basis
     } else if style.flex_basis.is_auto() && authored_main_size.is_some() {
         authored_main_size.unwrap_or(Tree::Scalar::ZERO)
@@ -728,24 +729,20 @@ where
     {
         return Ok(None);
     }
-    let authored_size = Size::new(
-        resolve_preferred_optional(
-            &style.common.size.width,
-            SizingAlgorithm::Flex,
-            PhysicalAxis::Horizontal,
-            constants.percentage_parent_size.width,
-            true,
-        ),
-        resolve_preferred_optional(
-            &style.common.size.height,
-            SizingAlgorithm::Flex,
-            PhysicalAxis::Vertical,
-            constants.percentage_parent_size.height,
-            true,
-        ),
+    let child_owned_axis = super::child_preferred_inline_axis::<Tree, M>(tree, node);
+    let authored_size = resolve_child_preferred_size(
+        style.common.size,
+        constants.percentage_parent_size,
+        SizingAlgorithm::Flex,
+        child_owned_axis,
     )
     .transpose_with_node(tree, node)?
-    .apply_aspect_ratio(*style.common.aspect_ratio)
+    .apply_aspect_ratio(
+        style
+            .common
+            .aspect_ratio
+            .filter(|_| child_owned_axis.is_none()),
+    )
     .add_optional(box_sizing_adjustment);
     let min_size = Size::new(
         resolve_minimum_optional(
@@ -1129,24 +1126,20 @@ where
     } else {
         Size::<Tree::Scalar>::ZERO
     };
-    let authored = Size::new(
-        resolve_preferred_optional(
-            &style.common.size.width,
-            SizingAlgorithm::Flex,
-            PhysicalAxis::Horizontal,
-            constants.percentage_parent_size.width,
-            true,
-        ),
-        resolve_preferred_optional(
-            &style.common.size.height,
-            SizingAlgorithm::Flex,
-            PhysicalAxis::Vertical,
-            constants.percentage_parent_size.height,
-            true,
-        ),
+    let child_owned_axis = super::child_preferred_inline_axis::<Tree, M>(tree, item.node);
+    let authored = resolve_child_preferred_size(
+        style.common.size,
+        constants.percentage_parent_size,
+        SizingAlgorithm::Flex,
+        child_owned_axis,
     )
     .transpose_with_node(tree, item.node)?
-    .apply_aspect_ratio(*style.common.aspect_ratio)
+    .apply_aspect_ratio(
+        style
+            .common
+            .aspect_ratio
+            .filter(|_| child_owned_axis.is_none()),
+    )
     .add_optional(box_sizing_adjustment);
 
     let mut known = Size::new(Some(item.target_size.width), Some(item.target_size.height));

@@ -76,6 +76,25 @@ pub(crate) fn preferred_inline_axis<S: LayoutScalar>(
         .then_some(axis)
 }
 
+pub(crate) fn child_preferred_inline_axis<'input, Tree, M>(
+    tree: &Tree,
+    child: Tree::Node,
+) -> Option<PhysicalAxis>
+where
+    Tree: Compute<'input, M>,
+{
+    if tree.has_leaf_measurement(child) {
+        return None;
+    }
+    let input = tree.node_input(child);
+    preferred_inline_axis(
+        input.display,
+        input.flex_direction,
+        FlowAxes::new(input.writing_mode, input.direction),
+        &input.size,
+    )
+}
+
 pub(crate) fn compute_flex<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
