@@ -706,3 +706,6 @@ fn refuse<T, E: std::error::Error + 'static>(
         Err(RecordFailure::Inactive { error, .. }) => Err(error),
     }
 }
+
+#[cfg(test)]
+mod cross_realm_tests;
