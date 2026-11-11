@@ -1012,6 +1012,25 @@ mod tests {
     }
 
     #[test]
+    fn partition_collapses_both_axes_at_equal_proportional_fit_ratios() {
+        let mut input = partition_request(0.0, 1.0, 0.125, 1.2499999999999996);
+        input.border_size.height = 1.5;
+        let px = |value| BorderImageWidth::LengthPercentage(LengthPercentageOf::px(value).unwrap());
+        // The y extent and both y widths are exactly 1.5 times their x equivalents.
+        input.widths.top = px(0.1875);
+        input.widths.bottom = px(1.8749999999999993);
+        let result = geometry(input);
+        for (row_index, row) in result.regions().iter().enumerate() {
+            for (column_index, region) in row.iter().enumerate() {
+                assert_eq!(
+                    region.destination().is_some(),
+                    row_index != 1 && column_index != 1
+                );
+            }
+        }
+    }
+
+    #[test]
     fn partition_keeps_meeting_fraction_and_source_units_empty_in_either_order() {
         let mut input = request();
         input.source.coordinate_size.width = 0.9;
