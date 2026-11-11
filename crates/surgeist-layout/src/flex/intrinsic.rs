@@ -89,11 +89,10 @@ fn determine_container_main_size<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let fallback_outer_main_size = if constants
-        .axes
-        .main_size(constants.node_outer_size)
-        .is_none()
-    {
+    let outer_main_size = if let Some(size) = constants.axes.main_size(constants.node_outer_size) {
+        // Entry dimensions and accepted allocations already carry their own bounds.
+        size
+    } else {
         let main_request = constants.available_main;
         let content_main = match (main_request.operation(), main_request.space()) {
             (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(available_main)) => {
@@ -119,33 +118,20 @@ where
                 intrinsic_container_main_size(tree, constants, items, lines, intrinsic)?
             }
         };
-        Some(
-            content_main
-                + constants
-                    .axes
-                    .main_size(constants.content_box_inset.sum_axes()),
-        )
-    } else {
-        None
-    };
-    let Some(outer_main_size) = constants
-        .axes
-        .main_size(constants.node_outer_size)
-        .or(fallback_outer_main_size)
-    else {
-        return Ok(());
-    };
-
-    let outer_main_size = outer_main_size
+        (content_main
+            + constants
+                .axes
+                .main_size(constants.content_box_inset.sum_axes()))
         .clamp_max_before_min_optional(
             constants.axes.main_size(constants.min_outer_size),
             constants.axes.main_size(constants.max_outer_size),
         )
-        .max(
-            constants
-                .axes
-                .main_size(constants.non_gutter_box_inset.sum_axes()),
-        );
+    };
+    let outer_main_size = outer_main_size.max(
+        constants
+            .axes
+            .main_size(constants.non_gutter_box_inset.sum_axes()),
+    );
     let inner_main_size = (outer_main_size
         - constants
             .axes

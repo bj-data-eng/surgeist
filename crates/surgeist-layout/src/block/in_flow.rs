@@ -6,7 +6,7 @@ use super::inline_run::{
 use super::scroll::{BlockScrollContributions, retained_child_scroll_geometry};
 use super::sizing::{maximum_size, minimum_size, preferred_size, resolve_length_or_zero};
 use super::*;
-use crate::AxisSizingRequestOf;
+use crate::{AxisSizingRequestOf, Display};
 
 /// Raw baseline or float work needed even by an otherwise definite size query.
 /// This does not establish named absence or discharge a named-fact demand.
@@ -840,6 +840,7 @@ where
                 let mut band_available = child_flow_axes.physical_size(LogicalSizeOf::new(
                     in_flow_child_inline_request(
                         &child_style,
+                        tree.has_leaf_measurement(child),
                         child_flow_axes,
                         band_available_child_inline,
                         child_logical_available.inline,
@@ -1568,6 +1569,7 @@ where
             child_flow_axes.physical_size(LogicalSizeOf::new(
                 in_flow_child_inline_request(
                     child_style,
+                    tree.has_leaf_measurement(child),
                     child_flow_axes,
                     available_child_inline,
                     child_logical_available.inline,
@@ -1606,6 +1608,16 @@ where
     Tree: Compute<'input, M>,
 {
     let parent = child_flow_axes.physical_size(parent);
+    let inline_size = match child_flow_axes.inline_axis() {
+        crate::PhysicalAxis::Horizontal => &style.common.size.width,
+        crate::PhysicalAxis::Vertical => &style.common.size.height,
+    };
+    let measured = tree.has_leaf_measurement(child);
+    let ratio = if flex_owns_preferred_inline(style.display, inline_size, measured) {
+        None
+    } else {
+        *style.common.aspect_ratio
+    };
     let box_sizing_adjustment = if style.common.box_sizing == BoxSizing::ContentBox {
         padding_border.sum_axes()
     } else {
@@ -1617,15 +1629,12 @@ where
         .transpose_with_node(tree, child)?;
     let ratio_transferred_in_block =
         normal_block_inline_ratio(&style.common, style.display, style.float)
-            .filter(|_| available_inline.is_some() && !tree.has_leaf_measurement(child));
+            .filter(|_| ratio.is_some() && available_inline.is_some() && !measured);
     let (min_size, max_size) = if let Some(ratio) = ratio_transferred_in_block {
         transfer_block_ratio_inline_limits(child_flow_axes, ratio, min_size, max_size)
             .map_err(|status| crate::error::sizing_resolution_error(child, status.into()))?
     } else {
-        (
-            min_size.apply_aspect_ratio(*style.common.aspect_ratio),
-            max_size,
-        )
+        (min_size.apply_aspect_ratio(ratio), max_size)
     };
     let min_size = super::fragment_minimum::apply(
         tree.fragment_minimum(child),
@@ -1636,9 +1645,7 @@ where
     let aspect_height_limit = if ratio_transferred_in_block.is_some() {
         None
     } else {
-        style
-            .common
-            .aspect_ratio
+        ratio
             .zip(max_size.height)
             .and_then(|(ratio, height)| max_size.width.is_none().then_some(height * ratio.get()))
     };
@@ -1647,17 +1654,13 @@ where
     }
     let known = preferred_size(style.common.size, parent, SizingAlgorithm::Block, true)
         .transpose_with_node(tree, child)?
-        .apply_aspect_ratio(*style.common.aspect_ratio)
+        .apply_aspect_ratio(ratio)
         .add_optional(box_sizing_adjustment)
         .clamp_max_before_min_optional(min_size, max_size);
 
     let mut known = child_flow_axes.logical_size(known);
     let min_size = child_flow_axes.logical_size(min_size);
     let max_size = child_flow_axes.logical_size(max_size);
-    let inline_size = match child_flow_axes.inline_axis() {
-        crate::PhysicalAxis::Horizontal => &style.common.size.width,
-        crate::PhysicalAxis::Vertical => &style.common.size.height,
-    };
     if !style.common.item_is_table
         && !style.common.item_is_replaced
         && known.inline.is_none()
@@ -1670,7 +1673,7 @@ where
             let physical_known = child_flow_axes.physical_size(known);
             known = child_flow_axes.logical_size(
                 physical_known
-                    .apply_aspect_ratio(*style.common.aspect_ratio)
+                    .apply_aspect_ratio(ratio)
                     .clamp_max_before_min_optional(
                         child_flow_axes.physical_size(min_size),
                         child_flow_axes.physical_size(max_size),
@@ -1692,8 +1695,17 @@ pub(super) fn in_flow_child_block_request<S: LayoutScalar>(
     }
 }
 
+fn flex_owns_preferred_inline<S: LayoutScalar>(
+    display: Display,
+    preferred: &crate::PreferredSizeOf<S>,
+    measured: bool,
+) -> bool {
+    display == Display::Flex && !measured && preferred.is_max_content()
+}
+
 pub(super) fn in_flow_child_inline_request<S: LayoutScalar>(
     style: &BlockChildProjection<'_, S>,
+    measured: bool,
     child_flow_axes: crate::geometry::FlowAxes,
     available_inline: Option<S>,
     inherited: AxisSizingRequestOf<S>,
@@ -1704,7 +1716,9 @@ pub(super) fn in_flow_child_inline_request<S: LayoutScalar>(
     };
     let request = if inline_size.is_min_content() {
         inherited.with_operation(crate::SizingOperation::MinContent)
-    } else if inline_size.is_max_content() {
+    } else if inline_size.is_max_content()
+        && !flex_owns_preferred_inline(style.display, inline_size, measured)
+    {
         inherited.with_operation(crate::SizingOperation::MaxContent)
     } else {
         inherited

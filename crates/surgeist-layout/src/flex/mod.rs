@@ -148,9 +148,23 @@ where
         );
     }
 
-    let mut collected_items = collect_items(tree, node, &constants, input.run_mode())?;
+    let requested_inline_operation = constants
+        .flow_axes
+        .logical_size(input.sizing_request().axes())
+        .inline
+        .operation();
+    let first_run_mode = if requested_inline_operation == crate::SizingOperation::Normal
+        && constants.axes.main_logical_axis() == LogicalAxis::Inline
+        && constants.available_main.operation() == crate::SizingOperation::MaxContent
+    {
+        // Preferred-size discovery has no accepted percentage basis yet.
+        RunMode::ComputeSize
+    } else {
+        input.run_mode()
+    };
+    let mut collected_items = collect_items(tree, node, &constants, first_run_mode)?;
     let (mut layout_constants, mut resolved_items, mut lines) =
-        resolve_flex_collection(tree, node, input.run_mode(), &constants, &collected_items)?;
+        resolve_flex_collection(tree, node, first_run_mode, &constants, &collected_items)?;
     let mut sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
     let scroll_box_for = |tree: &Tree, constants: &Constants<S>, size: Size<S>| {
         DistributionNumber::finite(constants.axes.main_size(size)).map_err(|value| {
@@ -172,11 +186,6 @@ where
     // Normal size queries need the same accepted inline frame as publication.
     // Constructing this internal box does not stage output geometry.
     let mut final_scroll_box = scroll_box_for(tree, &layout_constants, sizes.output)?;
-    let requested_inline_operation = constants
-        .flow_axes
-        .logical_size(input.sizing_request().axes())
-        .inline
-        .operation();
     if !collected_items.is_empty()
         && let Some(contents_constants) = constants
             .normal_inline_contents(final_scroll_box, requested_inline_operation)
