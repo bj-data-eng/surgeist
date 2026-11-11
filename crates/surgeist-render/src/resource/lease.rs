@@ -1,6 +1,7 @@
 use super::{
     AllocationGeneration, FrameIdentity, ManagerIdentity, ResourceAccountingFault,
     ResourceCacheKey, ResourceIdentity,
+    entries::ResourceEntries,
     gaussian::{GaussianKernelBufferLimits, GaussianKernelPlan},
     lock_state,
     manager::{
@@ -19,7 +20,6 @@ use crate::{
     vello_engine::{VelloAtlasOutcome, VelloBufferKey, VelloImageKey},
 };
 use std::{
-    collections::BTreeMap,
     fmt,
     sync::{Arc, Mutex},
 };
@@ -79,7 +79,7 @@ impl ResourceManagerState {
         let complete_frame = matches!(mode, ResolutionProofMode::CompleteFrame);
         scratch.indices.clear();
         if complete_frame {
-            for (identity, entry) in &self.entries {
+            for (identity, entry) in self.entries.iter() {
                 self.cpu
                     .at(RenderCpuScope::Cleanup)
                     .maintenance(RenderWork::ResourceProbes, 1);
@@ -117,7 +117,7 @@ impl ResourceManagerState {
         }
         if complete_frame {
             let mut covered = scratch.indices.iter().map(|(_, id)| *id);
-            for (identity, entry) in &self.entries {
+            for (identity, entry) in self.entries.iter() {
                 self.cpu
                     .at(RenderCpuScope::Cleanup)
                     .maintenance(RenderWork::ResourceProbes, 1);
@@ -176,7 +176,7 @@ impl ResourceManagerState {
 
         let mut reusable = None;
         if idle_reuse == IdleReuse::Allowed {
-            for (identity, entry) in &self.entries {
+            for (identity, entry) in self.entries.iter() {
                 self.generation
                     .probe(entry.key.generation_class(), observer)?;
                 if let ResourceEntryState::Idle { last_used_frame } = entry.state
@@ -223,6 +223,9 @@ impl ResourceManagerState {
             for scratch in self.active_frames.values_mut() {
                 scratch.reserve(required)?;
             }
+            self.entries.reserve(1, &self.cpu)?;
+            let resource = ResourceIdentity(next_resource);
+            let slot = self.entries.append_slot(resource)?;
             #[cfg(test)]
             {
                 self.payload_creation_attempts = self.payload_creation_attempts.saturating_add(1);
@@ -235,25 +238,21 @@ impl ResourceManagerState {
                     "must match its exact resource cache-key namespace",
                 ));
             }
-            let resource = ResourceIdentity(next_resource);
             let allocation_generation = AllocationGeneration(1);
             let registration = self
                 .generation
                 .cache_registration(key.generation_class(), byte_len)?;
+            slot.write(ResourceEntry {
+                key,
+                allocation_generation,
+                byte_len,
+                state: ResourceEntryState::Leased { frame },
+                payload: payload.clone(),
+                registration,
+                resolved: false,
+                provisional: true,
+            });
             self.next_resource = next_resource;
-            self.entries.insert(
-                resource,
-                ResourceEntry {
-                    key,
-                    allocation_generation,
-                    byte_len,
-                    state: ResourceEntryState::Leased { frame },
-                    payload: payload.clone(),
-                    registration,
-                    resolved: false,
-                    provisional: true,
-                },
-            );
             (resource, allocation_generation, payload)
         };
 
@@ -344,7 +343,7 @@ impl ResourceManagerState {
 
     /// Checks the entry after the caller admits the frame and qualifies the token identity.
     fn validate_lease_entry(
-        entries: &BTreeMap<ResourceIdentity, ResourceEntry>,
+        entries: &ResourceEntries,
         generation: &Generation,
         frame: FrameIdentity,
         token: &ResourceLeaseToken,
@@ -547,6 +546,7 @@ impl ResourceManagerState {
         token: ResourceLeaseToken,
     ) -> Result<()> {
         self.validate_lease(manager_identity, frame, &token, None)?;
+        let cpu_was_healthy = self.cpu.ensure_healthy().is_ok();
         let generation_health_before = self.generation.ensure_healthy();
         let retained_before = self.generation.registered_cache_bytes()?;
         self.generation.probe_cache(None)?;
@@ -562,7 +562,11 @@ impl ResourceManagerState {
             return Ok(());
         }
         generation_health_before?;
-        self.accounting_after_removal(retained_before, removed_bytes)
+        self.accounting_after_removal(retained_before, removed_bytes)?;
+        if cpu_was_healthy {
+            self.cpu.ensure_healthy()?;
+        }
+        Ok(())
     }
 
     fn return_entry_to_idle(
@@ -595,7 +599,7 @@ impl ResourceManagerState {
             return FrameCleanup::default();
         };
         let mut transition_failed = false;
-        for (identity, entry) in &mut self.entries {
+        for (identity, entry) in self.entries.iter_mut() {
             let _ = self.generation.probe(entry.key.generation_class(), None);
             if entry.state == (ResourceEntryState::Leased { frame })
                 && Self::return_entry_to_idle(&self.generation, *identity, entry, frame).is_err()
@@ -618,7 +622,7 @@ impl ResourceManagerState {
             return FrameCleanup::default();
         }
         let mut transition_failed = false;
-        for (identity, entry) in &mut self.entries {
+        for (identity, entry) in self.entries.iter_mut() {
             let _ = self.generation.probe(entry.key.generation_class(), None);
             if entry.state == (ResourceEntryState::Leased { frame })
                 && !entry.provisional
@@ -645,14 +649,15 @@ impl ResourceManagerState {
             return FrameCleanup::default();
         };
         scratch.indices.clear();
-        for (identity, entry) in &self.entries {
+        for (identity, entry) in self.entries.iter() {
             self.cpu
                 .at(RenderCpuScope::Cleanup)
                 .maintenance(RenderWork::ResourceProbes, 1);
             if entry.state == (ResourceEntryState::Leased { frame })
                 && scratch.push_index(0, *identity).is_err()
             {
-                self.record_accounting_fault(ResourceAccountingFault::GenerationAccountingFailure);
+                self.accounting_fault
+                    .get_or_insert(ResourceAccountingFault::GenerationAccountingFailure);
                 break;
             }
         }
@@ -738,21 +743,27 @@ impl ResourceManagerState {
             return self
                 .complete_cleanup(FrameCleanup::with_reserved(scratch.evicted, scratch.cpu));
         }
-        for (identity, entry) in &self.entries {
+        let mut probe_failed = false;
+        for (identity, entry) in self.entries.iter() {
             if self
                 .generation
                 .probe(entry.key.generation_class(), None)
                 .is_err()
             {
-                return self
-                    .complete_cleanup(FrameCleanup::with_reserved(scratch.evicted, scratch.cpu));
+                probe_failed = true;
+                break;
             }
             if let ResourceEntryState::Idle { last_used_frame } = entry.state
                 && scratch.push_index(last_used_frame.0, *identity).is_err()
             {
-                self.record_accounting_fault(ResourceAccountingFault::GenerationAccountingFailure);
+                self.accounting_fault
+                    .get_or_insert(ResourceAccountingFault::GenerationAccountingFailure);
                 break;
             }
+        }
+        if probe_failed {
+            return self
+                .complete_cleanup(FrameCleanup::with_reserved(scratch.evicted, scratch.cpu));
         }
         let cpu = scratch.cpu.clone();
         scratch.indices.sort_unstable_by(|a, b| {

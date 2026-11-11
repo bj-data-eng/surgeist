@@ -946,6 +946,9 @@ impl<T> AccountedVec<T> {
         self.values.get(index)?;
         Some(self.values.remove(index))
     }
+    pub(crate) fn retain(&mut self, retain: impl FnMut(&T) -> bool) {
+        self.values.retain(retain);
+    }
     pub(crate) fn clear(&mut self) {
         self.values.clear();
     }

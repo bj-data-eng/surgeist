@@ -927,6 +927,15 @@ and retains capacity for later frames until manager disposal. Cleanup removes
 records in place and records shifted entries as `ActiveFrameRecordMoves`.
 Frame cleanup scratch has its own separate backing.
 
+The per-device resource cache reserves usable index record capacity under
+`DeviceBacking` before creating native payloads. Graph preflight reserves for
+the fresh records in its validated batch. Each acquisition binds a checked
+slot before native creation. The index retains resource-identity order and
+accounts for overlapping backing during growth. Removal detaches the selected
+entry without allocating, and compaction reclaims vacant positions while
+charging `ResourceCacheRecordMoves` for live records moved in place. Cache
+registration and payload custody still resolve at the selected removal.
+
 Native Vello recordings use consecutive typed resource handles. Render
 validates the intent order and reserves one scratch table under
 `FrameBacking` before requesting any native buffer or texture. Each

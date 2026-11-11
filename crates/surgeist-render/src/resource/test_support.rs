@@ -119,7 +119,7 @@ impl ResourceManager {
 
     #[cfg(test)]
     pub(crate) fn is_empty_for_test(&self) -> bool {
-        lock_state(&self.state).entries.is_empty()
+        lock_state(&self.state).entries.len() == 0
     }
 
     #[cfg(test)]

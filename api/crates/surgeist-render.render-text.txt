@@ -745,6 +745,7 @@ pub surgeist_render::RenderWork::ReadbackTransferredBytes
 pub surgeist_render::RenderWork::RepeatTiles
 pub surgeist_render::RenderWork::ResourceAllocationRequests
 pub surgeist_render::RenderWork::ResourceAllocations
+pub surgeist_render::RenderWork::ResourceCacheRecordMoves
 pub surgeist_render::RenderWork::ResourceEvictions
 pub surgeist_render::RenderWork::ResourceLeaseReturns
 pub surgeist_render::RenderWork::ResourceProbes
@@ -1864,6 +1865,7 @@ pub surgeist_render::RenderWorkTable::ReadbackTransferredBytes: T
 pub surgeist_render::RenderWorkTable::RepeatTiles: T
 pub surgeist_render::RenderWorkTable::ResourceAllocationRequests: T
 pub surgeist_render::RenderWorkTable::ResourceAllocations: T
+pub surgeist_render::RenderWorkTable::ResourceCacheRecordMoves: T
 pub surgeist_render::RenderWorkTable::ResourceEvictions: T
 pub surgeist_render::RenderWorkTable::ResourceLeaseReturns: T
 pub surgeist_render::RenderWorkTable::ResourceProbes: T

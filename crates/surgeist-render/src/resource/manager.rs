@@ -1,5 +1,6 @@
 use super::{
     active_frames::ActiveFrames,
+    entries::ResourceEntries,
     gaussian::{GaussianKernelKey, GaussianKernelPlan},
 };
 use crate::{
@@ -13,7 +14,7 @@ use crate::{
     texture::{EffectTextureDescriptor, EffectTextureKey},
     vello_engine::{VelloAtlasOutcome, VelloBufferKey, VelloImageKey},
 };
-use std::{collections::BTreeMap, fmt, sync::Arc};
+use std::{fmt, sync::Arc};
 
 #[derive(Clone)]
 pub(crate) struct ManagerIdentity(Arc<()>);
@@ -242,7 +243,7 @@ pub(super) struct ResourceManagerState {
     pub(super) next_resource: u64,
     pub(super) accounting_fault: Option<ResourceAccountingFault>,
     pub(super) active_frames: ActiveFrames,
-    pub(super) entries: BTreeMap<ResourceIdentity, ResourceEntry>,
+    pub(super) entries: ResourceEntries,
     pub(super) pending_vello_atlas_recovery: Option<VelloAtlasOutcome>,
     #[cfg(test)]
     pub(super) payload_creation_attempts: u64,
@@ -301,7 +302,7 @@ impl ResourceManagerState {
 
     pub(super) fn remove_selected_entry(
         generation: &Generation,
-        entries: &mut BTreeMap<ResourceIdentity, ResourceEntry>,
+        entries: &mut ResourceEntries,
         identity: ResourceIdentity,
     ) -> std::result::Result<u64, ResourceAccountingFault> {
         let entry = entries
@@ -314,7 +315,7 @@ impl ResourceManagerState {
     }
 
     pub(super) fn selected_entry_mut(
-        entries: &mut BTreeMap<ResourceIdentity, ResourceEntry>,
+        entries: &mut ResourceEntries,
         identity: ResourceIdentity,
     ) -> std::result::Result<&mut ResourceEntry, ResourceAccountingFault> {
         entries
@@ -426,7 +427,7 @@ impl ResourceManagerState {
             }
 
             let mut reusable = None;
-            for (identity, entry) in &self.entries {
+            for (identity, entry) in self.entries.iter() {
                 self.generation
                     .probe(entry.key.generation_class(), observer)?;
                 if let ResourceEntryState::Idle { last_used_frame } = entry.state
@@ -465,7 +466,8 @@ impl ResourceManagerState {
 
         self.generation
             .preview_cache_allocations(allocation_bytes.iter().copied(), observer)
-            .map_err(Self::allocation_preflight_error)
+            .map_err(Self::allocation_preflight_error)?;
+        self.entries.reserve(allocation_bytes.len(), &self.cpu)
     }
 
     pub(super) fn record_vello_atlas_recovery(&mut self, outcome: VelloAtlasOutcome) {
@@ -484,7 +486,7 @@ impl ResourceManagerState {
             .get_mut(&frame)
             .ok_or(RenderAccountingError::Invariant)?;
         scratch.indices.clear();
-        for (identity, entry) in &self.entries {
+        for (identity, entry) in self.entries.iter() {
             self.generation.probe(entry.key.generation_class(), None)?;
             if entry.key.is_vello_atlas() && matches!(entry.state, ResourceEntryState::Idle { .. })
             {
