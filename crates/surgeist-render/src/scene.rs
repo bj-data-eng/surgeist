@@ -2,6 +2,7 @@ use super::{
     command::{RenderCommands, normalize_commands},
     *,
 };
+use std::{fmt, mem, ops::Deref};
 mod inspect;
 pub use inspect::SceneSummary;
 
@@ -10,6 +11,9 @@ pub use inspect::SceneSummary;
 /// Scene builders append commands in call order. Nested layers own child command
 /// sequences, and the default scene is empty. Validation and capability
 /// normalization occur when a renderer consumes the scene.
+/// Clearing or dropping a scene releases its commands with a bounded call
+/// stack. Nested disposal may use temporary storage for layers with pending
+/// siblings.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Scene {
     pub(crate) commands: Vec<Command>,
@@ -167,7 +171,7 @@ impl Scene {
         children(&mut child);
         self.commands.push(Command::Layer {
             layer,
-            children: child.commands,
+            children: child.commands.into(),
         });
         self
     }
@@ -319,6 +323,67 @@ pub(crate) enum Command {
     },
     Layer {
         layer: Layer,
-        children: Vec<Command>,
+        children: LayerCommands,
     },
+}
+
+/// Owns a layer's authored children and disposes of their tree iteratively.
+#[derive(Clone, PartialEq)]
+pub(crate) struct LayerCommands(Vec<Command>);
+
+impl From<Vec<Command>> for LayerCommands {
+    fn from(commands: Vec<Command>) -> Self {
+        Self(commands)
+    }
+}
+
+impl Deref for LayerCommands {
+    type Target = Vec<Command>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl fmt::Debug for LayerCommands {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl Drop for LayerCommands {
+    fn drop(&mut self) {
+        if self.0.is_empty() {
+            return;
+        }
+        let mut commands = mem::take(&mut self.0).into_iter();
+        // The authored scene owns this temporary backing. It holds one
+        // iterator per ancestor with pending siblings and stays empty
+        // for a single-child chain.
+        let mut pending = Vec::new();
+        loop {
+            let Some(command) = commands.next() else {
+                let Some(siblings) = pending.pop() else {
+                    return;
+                };
+                commands = siblings;
+                continue;
+            };
+            if let Command::Layer {
+                layer,
+                mut children,
+            } = command
+            {
+                drop(layer);
+                if !children.is_empty() {
+                    if !commands.as_slice().is_empty() {
+                        pending.push(commands);
+                    }
+                    // Empty the nested owner before it drops. Its allocation
+                    // and the remaining commands now belong to the iterator.
+                    commands = mem::take(&mut children.0).into_iter();
+                }
+            }
+        }
+    }
 }

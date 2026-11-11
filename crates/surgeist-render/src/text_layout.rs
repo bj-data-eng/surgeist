@@ -359,7 +359,10 @@ fn prepare_inner<'a>(
         let layer = Layer::new().with_transform(placement);
         commands.push(Command::Layer {
             layer,
-            children: decoration_commands.into_preparation()?.into_retained(),
+            children: decoration_commands
+                .into_preparation()?
+                .into_retained()
+                .into(),
         })?;
     }
     // These actual buffers are disposed before their custody can leave the builder.

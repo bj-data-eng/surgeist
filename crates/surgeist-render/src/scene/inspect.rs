@@ -213,8 +213,8 @@ mod tests {
                     // siblings before moving to the next child sequence.
                     let mut commands = std::mem::take(&mut scene.commands);
                     while let Some(command) = commands.pop() {
-                        if let Command::Layer { children, .. } = command {
-                            commands = children;
+                        if let Command::Layer { mut children, .. } = command {
+                            commands = std::mem::take(&mut children.0);
                         }
                     }
 
