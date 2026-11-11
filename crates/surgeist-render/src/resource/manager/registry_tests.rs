@@ -217,6 +217,94 @@ fn graph_preflight_reserves_all_fresh_entry_slots_before_creation() {
 }
 
 #[test]
+fn resource_entry_compaction_fault_blocks_creation_and_allows_cleanup() {
+    use crate::accounting::{RenderCpuScope, RendererCpu};
+
+    let options = RenderAccountingOptions::new();
+    let cpu = RendererCpu::new(options).unwrap();
+    let manager = ResourceManager::with_generation(
+        ResourceCacheBudget::DISABLED,
+        Generation::new(options).unwrap(),
+        cpu.at(RenderCpuScope::DeviceBacking),
+    );
+    let mut frame = manager.begin_frame(None).unwrap();
+    let first = frame.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+    let second = frame.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+    frame.discard(first).unwrap();
+    cpu.at(RenderCpuScope::Cleanup)
+        .checked_work(RenderWork::ResourceCacheRecordMoves, u64::MAX)
+        .unwrap();
+
+    let error = frame
+        .acquire(ResourceCacheKey::VelloAtlas, 4)
+        .expect_err("the compaction accounting fault must stop fresh creation");
+    assert!(matches!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::CpuRefused {
+            quantity: RenderQuantity::Work(RenderWork::ResourceCacheRecordMoves),
+            current: u64::MAX,
+            amount: 1,
+            reason: RenderRefusalReason::Overflow,
+            ..
+        })
+    ));
+    assert_eq!(registry_facts(&manager), (1, 1, 1, 2));
+    assert_eq!(manager.observation_for_test().payload_creation_attempts, 2);
+    let remaining = second.resource_identity();
+    assert_eq!(frame.finish().evicted_resources(), &[remaining]);
+    assert_eq!(registry_facts(&manager), (0, 0, 1, 2));
+    assert_eq!(manager.generation().registered_cache_bytes().unwrap(), 0);
+    assert_eq!(
+        cpu.ensure_healthy().unwrap_err().accounting_diagnostic(),
+        error.accounting_diagnostic()
+    );
+}
+
+#[test]
+fn resource_entry_compaction_fault_returns_after_exact_discard() {
+    use crate::accounting::{RenderCpuScope, RendererCpu};
+
+    let options = RenderAccountingOptions::new();
+    let cpu = RendererCpu::new(options).unwrap();
+    let manager = ResourceManager::with_generation(
+        ResourceCacheBudget::DISABLED,
+        Generation::new(options).unwrap(),
+        cpu.at(RenderCpuScope::DeviceBacking),
+    );
+    let mut frame = manager.begin_frame(None).unwrap();
+    let first = frame.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+    let second = frame.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+    let third = frame.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+    cpu.at(RenderCpuScope::Cleanup)
+        .checked_work(RenderWork::ResourceCacheRecordMoves, u64::MAX)
+        .unwrap();
+    frame.discard(first).unwrap();
+
+    let error = frame
+        .discard(second)
+        .expect_err("discard must return the new CPU fault");
+    assert!(matches!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::CpuRefused {
+            quantity: RenderQuantity::Work(RenderWork::ResourceCacheRecordMoves),
+            current: u64::MAX,
+            amount: 1,
+            reason: RenderRefusalReason::Overflow,
+            ..
+        })
+    ));
+    assert_eq!(registry_facts(&manager), (1, 1, 1, 3));
+    assert_eq!(manager.generation().registered_cache_bytes().unwrap(), 4);
+    frame.discard(third).unwrap();
+    drop(frame.finish());
+    assert_eq!(manager.generation().registered_cache_bytes().unwrap(), 0);
+    assert_eq!(
+        cpu.ensure_healthy().unwrap_err().accounting_diagnostic(),
+        error.accounting_diagnostic()
+    );
+}
+
+#[test]
 fn active_frame_admission_refuses_unfunded_index_without_advancing_identity() {
     use crate::accounting::{RenderCpuScope, RenderResource, RendererCpu};
 
