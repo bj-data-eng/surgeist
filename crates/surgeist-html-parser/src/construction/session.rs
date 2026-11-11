@@ -407,11 +407,6 @@ impl ParserArenaSession {
     ) -> Result<FrozenArena, SessionError> {
         let fragment_root = self.active_mut()?.prepare_freeze(control)?;
         self.active_mut()?.prepare_association_documents(control)?;
-        // A stopped append keeps its buffer for cleanup and cannot publish.
-        // The check precedes publication, so a refusal consumes nothing.
-        if self.active()?.failed_text_append.is_some() {
-            return Err(latch_registry_row(control));
-        }
         // Only a parser-initialized session carries this actual variable owner.
         // Prepay its active-to-frozen move before storage is taken; a stopped
         // share restores that same owner without useful recovery work.
@@ -453,7 +448,6 @@ impl ParserArenaSession {
             standalone_ineligibility: _,
             construction,
             payloads,
-            failed_text_append: _,
             appended_units: _,
             style_order_floor: _,
             token_end: _,
@@ -462,8 +456,6 @@ impl ParserArenaSession {
             style_subtree: _,
             detached_order: _,
             meta_batches: _,
-            #[cfg(test)]
-                cancel_after_text_append_chunk: _,
         } = self.storage.take().ok_or(SessionError::Consumed)?;
         let view = match result {
             surgeist_html::construction::HtmlConstructionResult::Document(value) => {

@@ -31,16 +31,11 @@ fn shared_history_reconstructs_every_literal_prefix_without_retired_prefix_backi
         }
         node = Some(inserted._node);
         let storage = session.active().unwrap();
-        let slot = storage
-            .field_slot(&mut c, FieldRef::Text(node.as_ref().unwrap().index))
-            .unwrap();
-        let RetainedPayload::String {
-            origins: Some(group),
-            ..
-        } = &storage.payloads.values[slot]
-        else {
-            panic!("current actual group");
-        };
+        let group = storage
+            .payloads
+            .detail_origins
+            .peek(FieldRef::Text(node.as_ref().unwrap().index))
+            .expect("current actual group");
         histories.push(
             storage
                 .evidence
@@ -50,13 +45,13 @@ fn shared_history_reconstructs_every_literal_prefix_without_retired_prefix_backi
                 .unwrap(),
         );
     }
-    // Exactly eight unique input units + eight current native units. Six
-    // retired aggregate slots carry fixed history descriptors, not Vecs.
+    // Exactly the eight units of the text: the tokens it absorbed are ranges of it, and the
+    // retired aggregates carry fixed history descriptors, not Vecs.
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::ManagedUtf16Units)
             .current,
-        16
+        8
     );
     assert_eq!(
         session
@@ -67,7 +62,7 @@ fn shared_history_reconstructs_every_literal_prefix_without_retired_prefix_backi
             .iter()
             .filter(|p| matches!(p, RetainedPayload::HistoricalString { .. }))
             .count(),
-        6
+        0
     );
     let before = c
         .usage()
@@ -77,7 +72,7 @@ fn shared_history_reconstructs_every_literal_prefix_without_retired_prefix_backi
         let storage = session.active().unwrap();
         let evidence = storage.evidence.as_ref().unwrap();
         let reconstructed = evidence
-            .materialize_group(&mut c, &storage.payloads, group)
+            .materialize_group(&mut c, storage.leaf_strings(), group)
             .unwrap();
         assert_eq!(
             reconstructed.text().code_units(),
@@ -104,64 +99,6 @@ fn shared_history_reconstructs_every_literal_prefix_without_retired_prefix_backi
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
-#[test]
-fn aggregate_alias_is_refused_before_next_token_transfer_and_reclaims_after_drop() {
-    let mut c = control();
-    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-    let root = session.root(&mut c).unwrap();
-    for unit in [65, 66] {
-        let mut input = Some(owned_text(&mut c, &[unit]));
-        session
-            .insert_text(&mut c, &root, None, &mut input, None)
-            .unwrap();
-    }
-    let index = session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(0)
-        .expect("retained construction position")
-        .child_at(0)
-        .expect("retained child ordinal")
-        .position();
-    let value = session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(index)
-        .expect("retained construction position")
-        .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
-        .expect("text");
-    let alias = value.clone();
-    let units = c
-        .usage()
-        .resource(HtmlParseResource::ManagedUtf16Units)
-        .current;
-    let mut input = Some(owned_text(&mut c, &[67]));
-    assert_eq!(
-        session
-            .insert_text(&mut c, &root, None, &mut input, None)
-            .err(),
-        Some(SessionError::AliasedPayload)
-    );
-    assert!(input.is_some());
-    assert!(c.stop().is_none());
-    assert_eq!(alias.code_units(), [65, 66]);
-    assert_eq!(
-        c.usage()
-            .resource(HtmlParseResource::ManagedUtf16Units)
-            .current,
-        units
-    );
-    drop(alias);
-    session
-        .insert_text(&mut c, &root, None, &mut input, None)
-        .unwrap();
-    assert!(input.is_none());
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
 fn two_leaf_history(
     limits: crate::HtmlParseLimits,
     cancel: HtmlParseCancellation,
@@ -200,16 +137,11 @@ fn two_leaf_history(
     }
     lexer.release(&mut c).unwrap();
     let storage = session.active().unwrap();
-    let slot = storage
-        .field_slot(&mut c, FieldRef::Text(node.unwrap().index))
-        .unwrap();
-    let RetainedPayload::String {
-        origins: Some(group),
-        ..
-    } = &storage.payloads.values[slot]
-    else {
-        panic!("group");
-    };
+    let group = storage
+        .payloads
+        .detail_origins
+        .peek(FieldRef::Text(node.unwrap().index))
+        .expect("group");
     let group = storage
         .evidence
         .as_ref()
@@ -251,7 +183,7 @@ fn history_cursor_cancellation_keeps_canonical_snapshot_and_reclaims_real_frames
     assert_eq!(c.first_stop_usage(), Some(&snapshot));
     assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
     assert!(matches!(
-        evidence.materialize_group(&mut c, &session.active().unwrap().payloads, &group),
+        evidence.materialize_group(&mut c, session.active().unwrap().leaf_strings(), &group),
         Err(SessionError::Stop(HtmlParseStop::Cancelled))
     ));
     session.release(&mut c).unwrap();
@@ -445,7 +377,7 @@ fn foreign_history_cursor_lender_disposal_keeps_cleanup_owned() {
         .evidence
         .as_ref()
         .unwrap()
-        .materialize_group(&mut c, &storage.payloads, &group)
+        .materialize_group(&mut c, storage.leaf_strings(), &group)
         .unwrap();
     assert_eq!(output.text().code_units(), [65, 66]);
     ParseEvidence::release_materialized_group(&mut c, &mut Some(output)).unwrap();
@@ -480,7 +412,7 @@ fn historical_materialization_exact_one_short_releases_output_and_traversal_on_f
         .evidence
         .as_ref()
         .unwrap()
-        .materialize_group(&mut measured, &storage.payloads, &group)
+        .materialize_group(&mut measured, storage.leaf_strings(), &group)
         .unwrap();
     assert_eq!(output.text().code_units(), [65, 66]);
     let complete = measured
@@ -507,12 +439,11 @@ fn historical_materialization_exact_one_short_releases_output_and_traversal_on_f
             .resource(HtmlParseResource::ManagedCapacityBytes)
             .current;
         let storage = session.active().unwrap();
-        let result =
-            storage
-                .evidence
-                .as_ref()
-                .unwrap()
-                .materialize_group(&mut c, &storage.payloads, &group);
+        let result = storage.evidence.as_ref().unwrap().materialize_group(
+            &mut c,
+            storage.leaf_strings(),
+            &group,
+        );
         if short {
             assert!(matches!(
                 result,
@@ -589,7 +520,7 @@ fn invalidated_pi_map_keeps_exact_retired_decoded_values_for_completion() {
             && evidence.require_group(group).unwrap().retirement.is_some()
         {
             let reconstructed = evidence
-                .materialize_group(&mut c, &storage.payloads, group)
+                .materialize_group(&mut c, storage.leaf_strings(), group)
                 .unwrap();
             let rows = evidence.observed_origins(group, &mut c).unwrap();
             retired.push((
@@ -670,7 +601,7 @@ fn raw_retirement_keeps_transformed_leaf_but_reclaims_equal_copy_aggregate() {
             expected_leaf
         );
         let observed = evidence
-            .materialize_group(&mut c, &storage.payloads, group)
+            .materialize_group(&mut c, storage.leaf_strings(), group)
             .unwrap();
         assert_eq!(observed.text().code_units(), units);
         ParseEvidence::release_materialized_group(&mut c, &mut Some(observed)).unwrap();
@@ -759,7 +690,7 @@ fn materialized_history_alias_and_foreign_refusals_preserve_slot_for_real_cleanu
             .evidence
             .as_ref()
             .unwrap()
-            .materialize_group(&mut c, &storage.payloads, &group)
+            .materialize_group(&mut c, storage.leaf_strings(), &group)
             .unwrap(),
     );
     let alias = output.as_ref().unwrap().text().clone();
@@ -793,7 +724,7 @@ fn materialized_history_alias_and_foreign_refusals_preserve_slot_for_real_cleanu
             .evidence
             .as_ref()
             .unwrap()
-            .materialize_group(&mut c, &storage.payloads, &group)
+            .materialize_group(&mut c, storage.leaf_strings(), &group)
             .unwrap(),
     );
     // Actual work exhaustion latches the snapshot before cleanup.
@@ -892,7 +823,8 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
                     .unwrap(),
             );
             assert_eq!(last.as_ref().unwrap()._offset, position);
-            let allowance = if position == 0 { 1 } else { 2 * (position + 1) };
+            // The text holds the units of its data: one for each token merged so far.
+            let allowance = position + 1;
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::ManagedUtf16Units)
@@ -931,7 +863,9 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
         if count == 256 {
             let storage = session.active().unwrap();
             assert_eq!(storage.construction.test_storage().len(), 2);
-            assert_eq!(storage.payloads.values.len(), 2 * count + 1);
+            // The registry holds the two node-cause rows and no string row: the text is the
+            // record's own, and the groups of its tokens are parts of one group.
+            assert_eq!(storage.payloads.values.len(), 2);
             assert_eq!(
                 storage
                     .payloads
@@ -951,13 +885,15 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
                         RetainedPayload::String { .. } | RetainedPayload::HistoricalString { .. }
                     ))
                     .count(),
-                2 * count - 1
+                0
             );
+            // Two registry rows, a join cell and a child ticket slot for each of the two
+            // records, and the one entry of the table of origins that holds the text's group.
             assert_eq!(
                 retained
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                (2 * count + 5) as u64
+                2 + 2 * 2 + 1
             );
         }
         let projection = session.prepare_native_associations(&mut c, &source);
@@ -976,9 +912,10 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
                 first.resource(HtmlParseResource::SourceMapEntries).current,
                 2046
             );
+            // The merged text holds its 256 units and nothing more.
             assert_eq!(
                 first.resource(HtmlParseResource::ManagedUtf16Units).current,
-                512
+                256
             );
             assert_eq!(
                 session.native_associations(&mut c).err(),
@@ -1011,17 +948,16 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
         );
         {
             let mut rows = session.native_associations(&mut c).unwrap();
-            // Actual payload registration orders the first Text leaf
-            // before that Text's node-cause slot. After a merge, its
-            // detached leaf emits no row and the current aggregate follows
-            // both node-cause slots. Only current Text emits output rows.
+            // The node-cause rows come first, in registry order; the rows of the text's field
+            // follow them, as the rows of the non-element fields do. Only current Text emits
+            // output rows.
             assert_eq!(rows.len(), if count == 0 { 1 } else { count + 2 });
             assert!(rows.node_for(0, &root).unwrap());
             if let Some(last) = &last {
-                assert!(rows.node_for(if count == 1 { 2 } else { 1 }, last).unwrap());
+                assert!(rows.node_for(1, last).unwrap());
             }
             for index in 0..count {
-                let output_row = index + if count == 1 { 1 } else { 2 };
+                let output_row = index + 2;
                 assert!(rows.text_for(output_row, last.as_ref().unwrap()).unwrap());
                 let (row, _) = rows.row(output_row).unwrap().unwrap();
                 assert_eq!((row.start, row.end), (index, index + 1));
@@ -1226,13 +1162,10 @@ fn assert_merged_text_retains_qualified_origins(
                     assert_eq!(inserted._node.index, node.index);
                 } else {
                     let storage = session.active_mut().unwrap();
-                    let slot = storage
-                        .field_slot(&mut c, FieldRef::Text(inserted._node.index))
-                        .unwrap();
-                    let RetainedPayload::String { origins, .. } = &storage.payloads.values[slot]
-                    else {
-                        panic!("registered native Text field");
-                    };
+                    let origins = storage
+                        .payloads
+                        .detail_origins
+                        .peek(FieldRef::Text(inserted._node.index));
                     first_origins = origins.as_ref().map(|origins| {
                         storage
                             .observed_origins(origins, &mut c)
@@ -1253,12 +1186,10 @@ fn assert_merged_text_retains_qualified_origins(
     let node = original.unwrap();
     let units = native_text(&session, &node);
     let storage = session.active_mut().unwrap();
-    let slot = storage
-        .field_slot(&mut c, FieldRef::Text(node.index))
-        .unwrap();
-    let RetainedPayload::String { origins, .. } = &storage.payloads.values[slot] else {
-        panic!("registered native Text field");
-    };
+    let origins = storage
+        .payloads
+        .detail_origins
+        .peek(FieldRef::Text(node.index));
     let actual = origins.as_ref().map(|origins| {
         storage
             .observed_origins(origins, &mut c)

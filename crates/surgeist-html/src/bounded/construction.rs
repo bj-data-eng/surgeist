@@ -12,11 +12,9 @@ pub use crate::internal::construction::bounded::operations::{
     HtmlConstructionRetirement, HtmlConstructionRetirementAction,
     HtmlConstructionRetirementDescription, HtmlConstructionStepWork,
 };
-pub use crate::internal::construction::bounded::text_append::{
-    HtmlConstructionTextAppend, HtmlConstructionTextAppendAction,
-    HtmlConstructionTextAppendCapacity, HtmlConstructionTextAppendCompletion,
-    HtmlConstructionTextAppendDescription, HtmlConstructionTextAppendObservation,
-    HtmlConstructionTextAppendReady, HtmlConstructionTextAppendWork,
+pub use crate::internal::construction::bounded::text_data::{
+    HtmlConstructionTextCapacity, HtmlConstructionTextError, HtmlConstructionTextGrowth,
+    HtmlTextAdmission,
 };
 pub use crate::internal::construction::bounded::{
     HtmlConstructionAllocationId, HtmlConstructionAllocationRole,
@@ -24,5 +22,5 @@ pub use crate::internal::construction::bounded::{
     HtmlConstructionInitialization, HtmlConstructionInitializationAction,
     HtmlConstructionInitializationObservation, HtmlConstructionLease, HtmlConstructionNode,
     HtmlConstructionReadyInitialization, HtmlConstructionRecovery, HtmlConstructionRefusal,
-    HtmlConstructionRetired, HtmlConstructionStorage, HtmlStoredString,
+    HtmlConstructionRetired, HtmlConstructionStorage,
 };

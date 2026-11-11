@@ -1,11 +1,8 @@
 //! Recovered tags, prologue nodes and document mode in the parser session.
 
 use super::*;
-use surgeist_html::{
-    construction::{
-        ConstructionNodeKind, HtmlDoctype, HtmlDocumentMode, HtmlProcessingInstruction,
-    },
-    values::DocumentString,
+use surgeist_html::construction::{
+    ConstructionNodeKind, HtmlDoctype, HtmlDocumentMode, HtmlProcessingInstruction,
 };
 
 impl ParserArenaSession {
@@ -206,7 +203,7 @@ impl ParserArenaSession {
         let document = storage.creation_document(control, intended_parent)?;
         let prepared = storage.prepare_document_allocation(control, document, false)?;
         let text = take_payload(input, control)?;
-        let (value, ticket) = storage.register_text(control, text)?;
+        let FieldString { value, group } = storage.absorb_text_field(control, text)?;
         control.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
         let node = storage.allocate_prepared_owned(
             control,
@@ -216,9 +213,7 @@ impl ParserArenaSession {
             0,
             prepared,
         )?;
-        storage
-            .bind_string(ticket, FieldRef::Comment(node.index))
-            .map_err(|_| latch_registry_row(control))?;
+        storage.bind_field(control, FieldRef::Comment(node.index), group, 0)?;
         Ok(node)
     }
     pub(crate) fn allocate_processing_instruction(
@@ -237,14 +232,20 @@ impl ParserArenaSession {
         let map = storage.prepare_pi_map(control)?;
         payload_write::<Option<usize>>(control, 1)?;
         let (target, data) = take_payload(input, control)?;
-        let (target, target_ticket) = match storage.register_text(control, target) {
+        let FieldString {
+            value: target,
+            group: target_group,
+        } = match storage.absorb_text_field(control, target) {
             Ok(value) => value,
             Err(error) => {
                 data.release(control)?;
                 return Err(error);
             }
         };
-        let (data, data_ticket) = storage.register_text(control, data)?;
+        let FieldString {
+            value: data,
+            group: data_group,
+        } = storage.absorb_text_field(control, data)?;
         control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
         // Recovered PI data is exact storage, not checked native authoring input.
         let node = storage.allocate_prepared_owned(
@@ -257,15 +258,18 @@ impl ParserArenaSession {
             0,
             prepared,
         )?;
-        storage
-            .bind_string(
-                target_ticket,
-                FieldRef::ProcessingInstructionTarget(node.index),
-            )
-            .map_err(|_| latch_registry_row(control))?;
-        storage
-            .bind_string(data_ticket, FieldRef::ProcessingInstructionData(node.index))
-            .map_err(|_| latch_registry_row(control))?;
+        storage.bind_field(
+            control,
+            FieldRef::ProcessingInstructionTarget(node.index),
+            target_group,
+            0,
+        )?;
+        storage.bind_field(
+            control,
+            FieldRef::ProcessingInstructionData(node.index),
+            data_group,
+            0,
+        )?;
         storage.bind_pi_map(control, map, node.index)?;
         storage.parse_pi_map(control, node.index, map)?;
         Ok(node)
@@ -295,26 +299,26 @@ impl ParserArenaSession {
             ..
         } = take_payload(input, control)?;
         let mut incoming = [name, public_id, system_id];
-        let mut registered: [Option<(DocumentString, usize)>; 3] = [None, None, None];
+        let mut registered: [Option<FieldString>; 3] = [None, None, None];
         let result = (|| {
             let mut units = 0usize;
             for (field, slot) in incoming.iter_mut().zip(registered.iter_mut()) {
                 payload_write::<Option<Text>>(control, 2)?;
                 let value = if let Some(text) = field.take() {
-                    storage.register_text(control, text)?
+                    storage.absorb_text_field(control, text)?
                 } else {
                     let empty = literal_string(control, b"")?;
-                    storage.register_string(control, empty, None)?
+                    storage.absorb_field_string(control, empty, None)?
                 };
                 control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                units = units.checked_add(value.0.len()).ok_or_else(|| {
+                units = units.checked_add(value.value.len()).ok_or_else(|| {
                     control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                 })?;
-                payload_write::<Option<(DocumentString, usize)>>(control, 2)?;
+                payload_write::<Option<FieldString>>(control, 2)?;
                 *slot = Some(value);
             }
-            payload_write::<[Option<(DocumentString, usize)>; 3]>(control, 3)?;
-            let [Some((name, a)), Some((public_id, b)), Some((system_id, d))] = registered else {
+            payload_write::<[Option<FieldString>; 3]>(control, 3)?;
+            let [Some(name), Some(public_id), Some(system_id)] = registered else {
                 return Err(latch_registry_row(control));
             };
             control.charge(HtmlParseWorkCategory::RecordWrite, 4)?;
@@ -322,20 +326,28 @@ impl ParserArenaSession {
             // strings. Native authored Option data keeps its separate meaning.
             let node = storage.allocate(
                 control,
-                NewRecord::Doctype(HtmlDoctype::new(name, Some(public_id), Some(system_id))),
+                NewRecord::Doctype(HtmlDoctype::new(
+                    name.value,
+                    Some(public_id.value),
+                    Some(system_id.value),
+                )),
                 false,
                 0,
                 0,
             )?;
-            storage
-                .bind_string(a, FieldRef::DoctypeName(node.index))
-                .map_err(|_| latch_registry_row(control))?;
-            storage
-                .bind_string(b, FieldRef::DoctypePublic(node.index))
-                .map_err(|_| latch_registry_row(control))?;
-            storage
-                .bind_string(d, FieldRef::DoctypeSystem(node.index))
-                .map_err(|_| latch_registry_row(control))?;
+            storage.bind_field(control, FieldRef::DoctypeName(node.index), name.group, 0)?;
+            storage.bind_field(
+                control,
+                FieldRef::DoctypePublic(node.index),
+                public_id.group,
+                0,
+            )?;
+            storage.bind_field(
+                control,
+                FieldRef::DoctypeSystem(node.index),
+                system_id.group,
+                0,
+            )?;
             Ok(node)
         })();
         for text in incoming.into_iter().flatten() {

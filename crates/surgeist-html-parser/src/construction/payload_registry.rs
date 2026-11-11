@@ -356,10 +356,6 @@ fn row_join(row: &RetainedPayload) -> Option<(Join, usize)> {
         RetainedPayload::LookupRegistry {
             node: Some(node), ..
         } => (Join::LookupRegistry, *node),
-        RetainedPayload::String {
-            location: FieldRef::ProcessingInstructionData(node),
-            ..
-        } => (Join::ProcessingInstructionData, *node),
         RetainedPayload::PiAttributes {
             node: Some(node), ..
         } => (Join::ProcessingInstructionAttributes, *node),
@@ -437,8 +433,9 @@ impl PayloadStorage {
         }
     }
     /// The origin group of the string the row at `slot` holds. A string bound to an attribute
-    /// field has its group in the table of attribute origins once the install of the attribute
-    /// is done; until then, and for every other string, the row holds it.
+    /// field has its group in the table of origins once the install of the attribute is done;
+    /// until then, and for every other string a row holds, the row holds it. The strings of the
+    /// non-element fields have no row: their groups are in the table of origins.
     pub(super) fn row_group(
         &self,
         control: &mut ParseControl,
@@ -453,6 +450,8 @@ impl PayloadStorage {
                 self.detail_origins.get(control, *location)
             }
             Some(RetainedPayload::String { .. }) => Ok(None),
+            // A string disposed of as an aggregate keeps the group of the units it held.
+            Some(RetainedPayload::HistoricalString { origins }) => Ok(Some(origins)),
             _ => Err(SessionError::WrongToken),
         }
     }
@@ -543,15 +542,6 @@ impl PayloadStorage {
         if let Some(cell) = self.node_joins.get_mut(node) {
             cell.clear(join);
         }
-    }
-    /// The registry row now holding a record's merged text.
-    pub(super) fn join_text(&mut self, node: usize, slot: usize) -> Result<(), SessionError> {
-        let cell = self
-            .node_joins
-            .get_mut(node)
-            .ok_or_else(SessionError::registry_row)?;
-        cell.text = Some(joined_cell(slot)?);
-        Ok(())
     }
     /// The registry row holding a record's textarea state.
     pub(super) fn join_textarea(&mut self, node: usize, slot: usize) -> Result<(), SessionError> {

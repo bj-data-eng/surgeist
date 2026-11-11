@@ -2474,7 +2474,7 @@ mod tests {
                 .evidence
                 .as_ref()
                 .unwrap()
-                .materialize_group(&mut c, &storage.payloads, &group)
+                .materialize_group(&mut c, storage.leaf_strings(), &group)
                 .unwrap(),
         );
         assert_eq!(materialized.as_ref().unwrap().text().code_units(), &[97]);

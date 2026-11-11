@@ -26,26 +26,6 @@ impl fmt::Display for HtmlConstructionChargeFault {
 }
 impl std::error::Error for HtmlConstructionChargeFault {}
 
-/// A string that a non-element record stores.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlStoredString {
-    /// The data of a text record.
-    Text,
-    /// The data of a comment record.
-    Comment,
-    /// The target of a processing-instruction record.
-    ProcessingInstructionTarget,
-    /// The data of a processing-instruction record.
-    ProcessingInstructionData,
-    /// The name of a doctype record.
-    DoctypeName,
-    /// The public identifier of a doctype record, when it has one.
-    DoctypePublicId,
-    /// The system identifier of a doctype record, when it has one.
-    DoctypeSystemId,
-}
-
 pub(crate) mod attribute_list;
 
 pub(crate) mod operations;
@@ -54,14 +34,13 @@ use operations::{
     HtmlConstructionRetirement, HtmlConstructionStepWork,
 };
 
-pub(crate) mod text_append;
+pub(crate) mod text_data;
 
 /// Test adapters that keep a protocol owner in an `Option` slot, as a driver that stores it in a
 /// field does, and put the owner back when its consuming step refuses it.
 #[cfg(test)]
 mod slots {
     use super::operations::HtmlConstructionReadyOperation;
-    use super::text_append::*;
     use super::*;
 
     fn step<T, R>(
@@ -87,11 +66,6 @@ mod slots {
         slot: &mut Option<HtmlConstructionOperation>,
     ) -> Result<HtmlConstructionReadyOperation, HtmlConstructionError> {
         step(slot, HtmlConstructionOperation::try_ready)
-    }
-    pub(super) fn text_append(
-        slot: &mut Option<HtmlConstructionTextAppend>,
-    ) -> Result<HtmlConstructionTextAppendReady, HtmlConstructionError> {
-        step(slot, HtmlConstructionTextAppend::try_ready)
     }
     pub(super) fn recover(
         result: &mut Option<HtmlConstructionResult>,
@@ -461,26 +435,6 @@ impl<'a> HtmlConstructionNode<'a> {
     }
     fn content(self) -> &'a NodeContent {
         &self.arena.records[self.index.position()].kind
-    }
-    /// The shared string that `field` names in this record, or `None` when the record is not of
-    /// the kind the field belongs to or the field is absent.
-    pub fn stored_string(self, field: HtmlStoredString) -> Option<&'a DocumentString> {
-        match (field, self.content()) {
-            (HtmlStoredString::Text, NodeContent::Text(value))
-            | (HtmlStoredString::Comment, NodeContent::Comment(value)) => Some(value),
-            (
-                HtmlStoredString::ProcessingInstructionTarget,
-                NodeContent::ProcessingInstruction(value),
-            ) => Some(value.target()),
-            (
-                HtmlStoredString::ProcessingInstructionData,
-                NodeContent::ProcessingInstruction(value),
-            ) => Some(value.data()),
-            (HtmlStoredString::DoctypeName, NodeContent::Doctype(value)) => Some(value.name()),
-            (HtmlStoredString::DoctypePublicId, NodeContent::Doctype(value)) => value.public_id(),
-            (HtmlStoredString::DoctypeSystemId, NodeContent::Doctype(value)) => value.system_id(),
-            _ => None,
-        }
     }
     /// The number of ordinary children, excluding template contents and shadow contents.
     pub fn child_count(self) -> usize {

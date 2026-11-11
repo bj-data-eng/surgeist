@@ -2666,7 +2666,13 @@ reopen execution or alter that snapshot. Its
   otherwise lends `associations()`, `lexical()`, `omissions()`, `history()` and
   `diagnostics()` for the kinds selected, with `cause_of(subject)` for the
   construction cause of a dialog, image, style, hyperlink, missing meta fact or
-  pending association occurrence. The `detail` cargo feature of
+  pending association occurrence.
+  The association inventory lists the rows of the fields that registry rows hold (the
+  names and namespaces of elements, the strings of attributes and the raw values) in
+  the order their rows were registered, then the rows of the strings of the non-element
+  records in node order and, within a record, in field order: the data of a text or
+  comment, the target and data of a processing instruction, and the name, public
+  identifier and system identifier of a doctype. The `detail` cargo feature of
   `surgeist-html-parser`, on by default, provides these readers and the detail
   types; without it a non-empty selection is refused with
   `HtmlParseDetailUnavailable`, and `detail()` does not exist.
@@ -3014,12 +3020,13 @@ The same fresh driver consumes the actual AfterHead handoff and continues throug
 ordinary InBody and trailing body modes. It handles block, heading, list, ruby,
 void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
-storage, preserving order and exact origins. Text insertion uses the shared
-[controlled append owner](../../crates/surgeist-html/src/internal/construction/bounded/text_append.rs):
-immutable history leaves remain unchanged, while a uniquely held aggregate reuses
-its admitted geometric capacity. A derived current-ticket/textarea index avoids
-registry walks; source/provenance, immediate native readers and stopped cleanup
-remain with the original parser controller. These bounds concern append copying
+storage, preserving order and exact origins. Text insertion calls
+[`HtmlConstructionStorage::append_text`](../../crates/surgeist-html/src/internal/construction/bounded/text_data.rs)
+([direct text appends](html-crate-contracts.md#direct-text-appends)): the text
+grows in place, a leaf of its history is a range of the record's string, and the
+textarea join is the one join that finds a node's text. Source/provenance,
+immediate native readers and stopped cleanup remain with the original parser
+controller. These bounds concern append copying
 and lookup, rather than every tree effect or text reconstruction. Late head delegation removes the
 stored head entry by identity and restores the actual insertion mode.
 Other resettable control creation retains untouched-token continuations when

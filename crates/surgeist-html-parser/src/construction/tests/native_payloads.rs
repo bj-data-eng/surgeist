@@ -155,11 +155,13 @@ fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimab
         session.active().unwrap().construction.test_storage().len(),
         1
     );
+    // The token's string was counted as managed text before the record bank refused its
+    // record; the parse holds it until the release below.
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::ManagedUtf16Units)
             .current,
-        0
+        1
     );
     session.release(&mut c).unwrap();
     storage_zero(&c);
@@ -180,11 +182,11 @@ fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimab
             resource: HtmlParseResource::AuxiliaryEntries,
             limit: 2,
             current: 2,
-            requested_delta: 1
+            // The record's join cell and its child ticket slot: no registry row is asked for.
+            requested_delta: 2
         }))
     ));
     assert!(session.active().unwrap().payloads.values.is_empty());
-    assert!(session.active().unwrap().payloads.values.capacity() > 0);
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
@@ -300,12 +302,12 @@ fn real_tokenizer_case_duplicate_recovery_and_reference_data_reach_managed_nativ
     storage_zero(&c);
 }
 #[test]
-fn merged_copy_capacity_failure_retains_old_native_text_and_sticky_cleanup() {
-    // Exact managed cap4 admits old1 and incoming1, but the merged2 would
-    // raise retained backing to4. One-short3 rejects that final transfer.
+fn merged_append_cap_refusal_retains_old_native_text_and_sticky_cleanup() {
+    // The text holds one unit. Appending one more reaches two, so a managed cap of one refuses
+    // the append and names the unit it would add.
     let caps = limits()
         .into_builder()
-        .managed_utf16_units(3)
+        .managed_utf16_units(1)
         .finish()
         .unwrap();
     let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
@@ -321,9 +323,9 @@ fn merged_copy_capacity_failure_retains_old_native_text_and_sticky_cleanup() {
         session.insert_text(&mut c, &root, None, &mut b, None),
         Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::ManagedUtf16Units,
-            limit: 3,
-            current: 2,
-            requested_delta: 2,
+            limit: 1,
+            current: 1,
+            requested_delta: 1,
         }))
     ));
     assert_eq!(native_text(&session, &a._node), [0x61]);
@@ -331,13 +333,14 @@ fn merged_copy_capacity_failure_retains_old_native_text_and_sticky_cleanup() {
         c.usage()
             .resource(HtmlParseResource::ManagedUtf16Units)
             .current,
-        2
+        1
     );
+    // The token's string is released with the refusal.
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::BufferedUtf16Units)
             .current,
-        2
+        0
     );
     let stop = c.stop();
     let high = c

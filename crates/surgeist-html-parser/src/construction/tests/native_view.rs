@@ -4,17 +4,17 @@
 
 use super::*;
 use surgeist_html::{
-    bounded::construction::{HtmlConstructionNode, HtmlStoredString},
+    bounded::construction::HtmlConstructionNode,
     construction::{
         ConstructionNodeKind, HtmlDocumentMode, HtmlFragmentOwner, HtmlNodeId,
         HtmlShadowRootProperties,
     },
-    values::{Attribute, DocumentString, QualifiedName},
+    values::{Attribute, QualifiedName},
 };
 
 #[derive(Clone, Copy)]
 pub(crate) struct NativeString<'a> {
-    value: &'a DocumentString,
+    value: &'a [u16],
     owner: &'a ControlIdentity,
     len: usize,
 }
@@ -109,7 +109,7 @@ impl<'a> NativeView<'a> {
         Ok(self.storage.index(self.control, left)? == self.storage.index(self.control, right)?)
     }
     #[cfg(test)]
-    fn string(&self, value: &'a DocumentString) -> NativeString<'a> {
+    fn string(&self, value: &'a [u16]) -> NativeString<'a> {
         NativeString {
             value,
             owner: &self.storage.control,
@@ -119,9 +119,9 @@ impl<'a> NativeView<'a> {
     #[cfg(test)]
     fn name(&self, name: &'a QualifiedName) -> NativeName<'a> {
         NativeName {
-            namespace: name.namespace().uri().map(|s| self.string(s)),
-            prefix: name.prefix().map(|s| self.string(s)),
-            local: self.string(name.local_name()),
+            namespace: name.namespace().uri().map(|s| self.string(s.code_units())),
+            prefix: name.prefix().map(|s| self.string(s.code_units())),
+            local: self.string(name.local_name().code_units()),
         }
     }
     /// The kind and fixed native field headers are inspected only after their
@@ -143,31 +143,26 @@ impl<'a> NativeView<'a> {
             .construction
             .node_at(index)
             .ok_or_else(SessionError::registry_row)?;
-        let held = |field: HtmlStoredString| record.stored_string(field);
-        let missing = SessionError::registry_row;
         Ok(match record.kind() {
             ConstructionNodeKind::Document(mode) => NativeKind::Document(mode),
             ConstructionNodeKind::Fragment => NativeKind::Fragment,
             ConstructionNodeKind::Element(element) => {
                 NativeKind::Element(self.name(element.name()))
             }
-            ConstructionNodeKind::Text(_) => {
-                NativeKind::Text(self.string(held(HtmlStoredString::Text).ok_or_else(missing)?))
+            ConstructionNodeKind::Text(value) => NativeKind::Text(self.string(value.code_units())),
+            ConstructionNodeKind::Comment(value) => {
+                NativeKind::Comment(self.string(value.code_units()))
             }
-            ConstructionNodeKind::Comment(_) => NativeKind::Comment(
-                self.string(held(HtmlStoredString::Comment).ok_or_else(missing)?),
-            ),
-            ConstructionNodeKind::ProcessingInstruction(_) => NativeKind::ProcessingInstruction {
-                target: self.string(
-                    held(HtmlStoredString::ProcessingInstructionTarget).ok_or_else(missing)?,
-                ),
-                data: self
-                    .string(held(HtmlStoredString::ProcessingInstructionData).ok_or_else(missing)?),
-            },
-            ConstructionNodeKind::Doctype(_) => NativeKind::Doctype {
-                name: self.string(held(HtmlStoredString::DoctypeName).ok_or_else(missing)?),
-                public_id: held(HtmlStoredString::DoctypePublicId).map(|s| self.string(s)),
-                system_id: held(HtmlStoredString::DoctypeSystemId).map(|s| self.string(s)),
+            ConstructionNodeKind::ProcessingInstruction(value) => {
+                NativeKind::ProcessingInstruction {
+                    target: self.string(value.target().code_units()),
+                    data: self.string(value.data().code_units()),
+                }
+            }
+            ConstructionNodeKind::Doctype(value) => NativeKind::Doctype {
+                name: self.string(value.name().code_units()),
+                public_id: value.public_id().map(|s| self.string(s.code_units())),
+                system_id: value.system_id().map(|s| self.string(s.code_units())),
             },
         })
     }
@@ -187,7 +182,7 @@ impl<'a> NativeView<'a> {
             HtmlParseWorkCategory::InspectByte,
             mem::size_of::<u16>() as u64,
         )?;
-        Ok(Some(value.value.code_units()[index]))
+        Ok(value.value.get(index).copied())
     }
     #[cfg(test)]
     pub(crate) fn attribute_count(&mut self, node: &ParserNode) -> Result<usize, SessionError> {
@@ -240,7 +235,7 @@ impl<'a> NativeView<'a> {
         let attribute = &element.attributes().get(position).unwrap();
         Ok(Some(NativeAttribute {
             name: self.name(attribute.name()),
-            value: self.string(attribute.value()),
+            value: self.string(attribute.value().code_units()),
         }))
     }
     #[cfg(test)]

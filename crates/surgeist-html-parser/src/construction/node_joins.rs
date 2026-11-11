@@ -4,18 +4,15 @@ use super::*;
 
 /// Derived joins into the actual payload registry, one cell per record
 /// position. Dense record positions are append-only; a join never substitutes
-/// for the row's location or ticket. `text` and `textarea` are rewritten as
-/// their rows are merged or reset; `rows` names the first registry row of each
+/// for the row's location or ticket. `textarea` is rewritten as
+/// its row is reset; `rows` names the first registry row of each
 /// node-keyed metadata kind bound to the record, so a lookup visits one cell and
 /// one row instead of scanning the registry. A join is written only for a row
 /// that exists, and registry rows are appended but never removed or reordered
 /// while the registry is live; rows of a joined kind are never replaced, so a
 /// join always names a row of its kind (the callers still check what they get).
-/// A processing instruction's data string is the one string row joined: it is
-/// bound to its record once, and every pseudo-attribute piece looks it up.
 #[derive(Clone, Copy)]
 pub(super) struct NodeJoins {
-    pub(super) text: Option<NonZeroU32>,
     pub(super) textarea: Option<NonZeroU32>,
     pub(super) rows: JoinTable<Option<NonZeroU32>>,
     /// Registry slot plus one of the name of the record's last attribute as
@@ -48,8 +45,6 @@ pub(super) enum Join {
     /// The `StyleOrder` row listing the style elements of the tree the record
     /// roots, while it is current; see `SessionStorage::style_order_floor`.
     StyleOrder,
-    /// The string row holding a processing instruction's data.
-    ProcessingInstructionData,
     /// The pseudo-attribute map of a processing instruction.
     ProcessingInstructionAttributes,
     /// The state of an SVG `script` element.
@@ -91,22 +86,20 @@ slots!(Join, JOIN_COUNT, {
     LookupRegistry => 14,
     StyleOccurrence => 15,
     StyleOrder => 16,
-    ProcessingInstructionData => 17,
-    ProcessingInstructionAttributes => 18,
-    SvgScript => 19,
-    Details => 20,
+    ProcessingInstructionAttributes => 17,
+    SvgScript => 18,
+    Details => 19,
 });
 
 /// Cells hold a registry slot plus one in 32 bits; a slot beyond that is
 /// refused as the registry invariant (see `joined_cell`).
 const _: () = assert!(
-    mem::size_of::<NodeJoins>() == 4 * (JOIN_COUNT + 3) + mem::size_of::<tree_root::TreeRootCell>()
+    mem::size_of::<NodeJoins>() == 4 * (JOIN_COUNT + 2) + mem::size_of::<tree_root::TreeRootCell>()
 );
 
 impl Default for NodeJoins {
     fn default() -> Self {
         Self {
-            text: None,
             textarea: None,
             rows: JoinTable::filled(None),
             attribute_strings: None,
@@ -118,10 +111,6 @@ impl Default for NodeJoins {
 impl NodeJoins {
     pub(super) fn get(&self, join: Join) -> Option<usize> {
         self.rows.copy(join).and_then(cell_slot)
-    }
-    /// The registry row holding the record's merged text.
-    pub(super) fn text(&self) -> Option<usize> {
-        self.text.and_then(cell_slot)
     }
     /// The registry row holding the record's textarea state.
     pub(super) fn textarea(&self) -> Option<usize> {

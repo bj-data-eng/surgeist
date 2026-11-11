@@ -73,7 +73,6 @@ impl SessionStorage {
             standalone_ineligibility: _,
             construction,
             payloads,
-            failed_text_append,
             appended_units: _,
             style_order_floor: _,
             token_end: _,
@@ -82,15 +81,10 @@ impl SessionStorage {
             style_subtree: _,
             detached_order: _,
             meta_batches: _,
-            #[cfg(test)]
-                cancel_after_text_append_chunk: _,
         } = self;
         // Every owner is released even after a refusal; the first one is
         // returned at the end.
         let mut refused = None;
-        if let Some(failed) = failed_text_append {
-            keep_first(&mut refused, failed.release(control));
-        }
         if let Some(fragment) = fragment {
             keep_first(&mut refused, fragment.release(control, &owner));
         }

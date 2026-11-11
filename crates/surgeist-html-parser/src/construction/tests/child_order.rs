@@ -122,6 +122,13 @@ fn inserting_text_before_a_sibling_charges_the_same_work_at_every_fanout() {
             last = Some(span);
         }
         let last = last.unwrap();
+        // A first text after the last child makes the table of origins reach the end of the
+        // records, so that the insertion measured adds one slot at every fanout, with the
+        // room that every fanout measured has for it.
+        let mut warm = Some(owned_text(&mut c, &[0x79]));
+        session
+            .insert_text(&mut c, &output, None, &mut warm, None)
+            .unwrap();
         let mut text = next_text(&mut lexer, &mut c);
         let before = ORDER_MEASURED.map(|category| c.usage().work(category));
         session
@@ -130,16 +137,16 @@ fn inserting_text_before_a_sibling_charges_the_same_work_at_every_fanout() {
         let after = ORDER_MEASURED.map(|category| c.usage().work(category));
         let owner = &session.active().unwrap().construction;
         let children = owner.node_at(output.index).unwrap().child_count();
-        assert_eq!(children, fanout + 1);
+        assert_eq!(children, fanout + 2);
         session.release(&mut c).unwrap();
         std::array::from_fn::<u64, 6, _>(|i| after[i] - before[i])
     };
-    let narrow = measure(5);
+    let narrow = measure(6);
     for fanout in [37, 300] {
         assert_eq!(
             measure(fanout),
             narrow,
-            "text before the last of {fanout} children charged different work than of 5"
+            "text before the last of {fanout} children charged different work than of 6"
         );
     }
 }

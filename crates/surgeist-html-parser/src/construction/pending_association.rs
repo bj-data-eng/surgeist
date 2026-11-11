@@ -248,6 +248,31 @@ impl SessionStorage {
         drop(native);
         Ok(ValueRow(row))
     }
+    /// A copy of the text of the record at `node` in a row of its own, as
+    /// [`Self::association_string`] makes of a row's string.
+    fn association_text(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<ValueRow, SessionError> {
+        let mut buffer = Utf16Buffer::new(c)?;
+        let read = (|| {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let records = ConstructionView::Active(self.construction.storage(c)?);
+            let Some(units) = FieldRef::Text(node).units(records) else {
+                return Err(latch_registry_row(c));
+            };
+            buffer.extend_units(units, c).map_err(SessionError::from)
+        })();
+        if let Err(error) = read {
+            buffer.release(c)?;
+            return Err(error);
+        }
+        let frozen = buffer.freeze(c)?;
+        let (native, row) = self.register_group_string_owned(c, frozen, None)?;
+        drop(native);
+        Ok(ValueRow(row))
+    }
     fn association_attribute(
         &mut self,
         c: &mut ParseControl,
@@ -389,8 +414,7 @@ impl SessionStorage {
                     continue;
                 }
                 if matches!(record.kind(), ConstructionNodeKind::Text(_)) {
-                    let slot = self.field_slot(c, FieldRef::Text(child))?;
-                    let group = self.association_string(c, slot)?;
+                    let group = self.association_text(c, child)?;
                     text.try_push_geometric(c, group)?;
                 }
             }

@@ -867,16 +867,6 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
     }
 }
 
-/// A control that records no origin graph.
-fn control_without_detail() -> ParseControl {
-    ParseControl::with_accounting(
-        limits(),
-        HtmlParseCancellation::new(),
-        None,
-        crate::DetailSet::NONE,
-    )
-}
-
 /// The table keys of the name and value of each of `count` attributes of the element at
 /// `node`, in attribute order.
 fn name_and_value_keys(node: usize, count: usize) -> Vec<(usize, usize, u8)> {

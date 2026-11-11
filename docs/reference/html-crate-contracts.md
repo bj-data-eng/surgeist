@@ -292,9 +292,8 @@ the output-only `HtmlNodeKind<'a>` (`Document(mode)`, `Fragment`,
 `HtmlAttributes<'a>` reports `len`, `is_empty`, `get(index)`, `iter`,
 `find(namespace, local_name)` and `to_ordered()`, in producer order.
 `HtmlConstructionNode::kind()` returns `ConstructionNodeKind<'a>`, whose text is
-`BuildStr<'a>` (borrowed code units with `code_units`, `len` and `is_empty`);
-`HtmlConstructionNode::stored_string(HtmlStoredString)` returns the shared string of
-a non-element record for an owner that must keep or prove sharing.
+`BuildStr<'a>` (borrowed code units with `code_units`, `len` and `is_empty`); the view hands
+out no shared string of a non-element record.
 `HtmlDeclarativeShadowRoot<'a>` becomes a read-only borrowed view over those IDs
 and the target's properties; `host()` and `contents()` return the `Copy` IDs by
 value, and `properties()` copies the same value without allocation. This
@@ -438,68 +437,64 @@ A failed edit hands nothing back: the incoming `Option<Attribute>` keeps its val
 element's list, capacity and usage are as before. Stopping between the appends of a merge
 leaves the consumer to release the staged attributes it still holds.
 
-#### Controlled text append
+#### Direct text appends
 
-`HtmlConstructionTextAppend` exclusively consumes the same
-`HtmlConstructionStorage`, an existing checked Text handle and an immutable
-incoming `DocumentString`. Its admitted actions inspect the actual target,
-choose unique reuse or preservation, initialize/reserve backing, copy bounded
-prefix/tail chunks, preflight, qualify final exclusivity and prepare Ready.
-No mutable Vec/Arc or reusable uniqueness assertion escapes. Foreign/wrong-kind
-refusal returns the original operands through abort.
+`HtmlConstructionStorage::append_text(&mut self, node, units: &[u16], admission) ->
+Result<usize, HtmlConstructionTextError<A::Stop>>` appends the units to the data of the text
+record `node` and returns the length the text had, the offset of the first appended unit. It takes
+no `DocumentString` and no record: the input is the units and the node handle, so it survives any
+storage layout. `HtmlTextAdmission` is the consumer: a `Charge` for the work, `admit_append`
+(called once for every append that adds a unit), `record_growth` and `record_units`.
 
-Unique means the actual Arc has one strong owner and no Weak references. Shared
-original backing is preserved by copying its prefix once into a separate
-aggregate. A unique aggregate reuses its capacity. Each UTF-16 copy action has
-at most 128 units (256 bytes). Reserve describes required and preferred capacity;
-the default preference doubles actual capacity, while a consumer may select an
-admitted minimum between required and preferred. Actual capacity and the known
-Vec payload inside Arc are observed before a post-provider stop. Opaque Arc
-headers and allocator internals remain the existing provider limitations.
+The append qualifies the record (a text record whose block no other string holds, or the
+shared-allocation cause refuses it), charges the work of the copy in quanta of 256 bytes, then
+admits itself once. `HtmlConstructionTextGrowth` reports the text's length and capacity, the units
+added and the least capacity that holds the result; `grows()` is true when the text is full. A
+text with room reserves nothing and records no capacity. A full text reserves the capacity the
+consumer chose, which must be at least the minimum (the parser chooses the greater of the minimum
+and double the capacity, so the units copied by any number of appends are linear in the units
+appended), records that capacity before it reserves, and records the capacity reached when the
+allocator refused the spare room and the reservation fell back to the room that is needed, or
+overshot. `record_units` follows the reservation and precedes the first written unit; the units are
+then written without a further fallible step.
 
-Only the actual Preflight action lends the original storage. Read-only candidate
-backing is available before final tail qualification so its real allocation
-ticket can be bound and suspended. Final qualification repeats actual Arc
-exclusivity; no storage/backing lender remains after it succeeds. Pending tail
-writes cannot be observed through a construction result. Ready commits the new
-logical usage and native value using prepaid moves; node identity and topology
-remain unchanged.
+A refusal before the units are written leaves the text, its length and the storage's usage as
+they were. Two residues remain and nothing else: when the allocator reserves more room than was
+admitted, or refuses the admitted room and the fallback reserves the room that is needed, and the
+consumer then refuses to record the capacity the text reached, the text keeps the capacity it
+reached while the consumer holds the capacity it recorded before; and when the consumer refuses to
+record the units, the text keeps the room it reserved. No unit of the text changed.
 
-`HtmlConstructionTextAppendReady::commit(self)` returns the completion, or an
-`HtmlConstructionRefusal` handing the ready append back when its target is no longer a text node.
-Abort truncates initialized tail only when reusing the native backing, retaining
-any successful capacity growth; the record's own text always returns to its original length, and
-the backing is copied first only if another holder were ever found. A separate preservation copy returns all its
-actually initialized units for stopped-owner retention and disposal; the
-original native text was never changed. Completion returns the same storage,
-node and incoming operand, plus any distinct backing whose ownership must be
-retained or retired. Capacity snapshots observe dimensions, not accounting or
-release authority.
+The parser's admission acquires the appended units as `ManagedUtf16Units` and holds them, with
+the bytes of every non-element string, in two counters of its construction owner, released once
+with the owner. The parser appends to the text of its record in place, so a text holds the units
+of its data and nothing else: the tokens it absorbed are not stored strings, and the history of
+the text refers to their units as ranges of the text. A refusal of the append releases the
+token's string and leaves the text, the usage and the units the parser holds as they were. Three
+residues remain: the text keeps the capacity that a growth reserved and recorded before the
+refusal, and the bytes counter and the ledger hold the capacity last recorded, which is the
+text's capacity unless the second record of the growth was refused (then the text holds the
+capacity it reached and they hold the capacity that was chosen); a text that had no group has the
+group of no source origins that the merge made for it; and the evidence graph keeps the groups
+the merge made and the retirement of the replaced group, which no field names. The leaf of the
+token's group in the merged group names units the text does not hold, because the refused append
+would have written them; the history readers refuse such a leaf as the wrong token. A parse that
+refuses an append stops and publishes none of them.
 
-Parser keeps immutable lexical leaves and original/incoming/trigger relations.
-Its aggregate ticket moves to the next real registry row when backing is reused;
-the old row retains historical group identity without another materialized
-prefix. On refusal, the old native text/current ticket are restored. Actual
-failed copy backing and its original ticket remain with the stopped session
-until explicit cleanup. First-stop usage and admitted work are never refunded.
+#### Origins of record strings
 
-A controller-admitted dense append-field index joins each permanent record to
-its current Text ticket and optional textarea metadata row. Each lookup still
-qualifies the actual registry location/ticket. Creation prepares real entries;
-clone binds a distinct current field; detach preserves the record's association.
-Publication transfers the index with its owner and cleanup releases its actual
-entries/capacity. Script, textarea/reset and selectedcontent readers continue to
-observe the coherent native tree after each committed insertion.
-
-The selected copy/lookup bounds cover these mechanisms, not every HTML
-algorithm. In unique-growth episodes without clipping, prior capacities form a
-geometric series, so conservative relocation bounds and explicit prefix/incoming
-copies are linear in final text size. Controller clipping retains the original
-capacity/overlap/layout gates; it is not an unconditional doubling promise.
-Tests distinguish modeled `CopyByte` (including fixed metadata), actual index
-visits, conservative allocator relocation bounds and wall-clock time. Holding
-additional aliases, arbitrary capacity selections or unrelated releases does
-not establish the same amortized bound.
+A parse that records the origin graph keeps the origin group of each string field of a record in
+one table of the parser: one sorted run of entries for each record that has a group, found
+through a slot for each record position, so that an edit of one record reads and moves that
+record's entries alone. The fields are the name, value, namespace and prefix of an attribute, and
+the strings of the non-element records: the data of a text or comment, the target and data of a
+processing instruction, and the name, public identifier and system identifier of a doctype. A
+parse that records no graph allocates no table. The string of a non-element field is the record's
+own: no registry row holds it. A leaf of a group in such a field names the units `offset..` of the
+record's string, which is valid for as long as the record holds the string, because a text only
+grows at its end and the other strings never change; the parser issues no command that replaces
+the content of a record. The binding of the groups of a created record follows its creation, so a
+refusal of a binding leaves the record without the group; the parse stops and publishes no record.
 
 #### Construction operation payloads and failures
 
@@ -727,7 +722,7 @@ the commit never receives a state it would have to skip. Every refusal hands the
 owner back unchanged inside `HtmlConstructionRefusal`, with its command, actual
 allocations and capacities untouched; a consumed operation cannot be presented
 again because the check takes it by value. Only success issues the
-private-field ready owner. Initialization, text append and lease recovery use the same refusal
+private-field ready owner. Initialization and lease recovery use the same refusal
 rules: `HtmlConstructionRefusal<T>` carries the owner or owners, `reason`,
 `owner` and `into_parts`.
 
@@ -1093,8 +1088,7 @@ No public report constructor accepts caller-asserted raw/attempt pairs.
 
 All consuming fallible boundaries in this contract follow one of three concrete
 forms. The construction owners (initialization, tree mutation and publication,
-text append, complete attribute edits with their candidates and slots, and lease
-recovery) consume the owner and return `HtmlConstructionRefusal<Owner>`, which
+and lease recovery) consume the owner and return `HtmlConstructionRefusal<Owner>`, which
 holds the complete unconsumed owner and the cause, so a refusal loses nothing and
 a consumed owner cannot be presented again. The other owner families
 (attribute validation and interpretation) keep a guarded

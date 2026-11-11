@@ -29,8 +29,9 @@ mod construction;
 mod css_value;
 pub(crate) use css_value::CssSchemeValue;
 mod string_extension;
-mod text_append;
+mod text_accounts;
 pub(crate) use construction::ConstructionAllocation;
+pub(crate) use text_accounts::TextAccount;
 
 const WORK_COUNT: usize = 8;
 /// One value per [`HtmlParseWorkCategory`]; a lookup cannot be out of range.
@@ -402,14 +403,6 @@ pub(crate) struct ParseControl {
     /// has taken the storage back and retired the publication wrapper.
     #[cfg(test)]
     construction_recovery_fault: bool,
-    /// Refuses the next text-append ticket restoration before it changes
-    /// anything, as an impossible precondition would.
-    #[cfg(test)]
-    text_append_restore_fault: bool,
-    /// Fails the next text-append backing initialization after its pending
-    /// ticket is prepared, as an allocation refusal would.
-    #[cfg(test)]
-    text_append_backing_fault: bool,
     /// Remaining forced refusals per cleanup-walk site, and how many have
     /// been issued so far.
     #[cfg(test)]
@@ -574,10 +567,6 @@ impl ParseControl {
             construction_retire_fault: false,
             #[cfg(test)]
             construction_recovery_fault: false,
-            #[cfg(test)]
-            text_append_restore_fault: false,
-            #[cfg(test)]
-            text_append_backing_fault: false,
             #[cfg(test)]
             walk_refusals: [0; 3],
             #[cfg(test)]
@@ -833,21 +822,6 @@ impl ParseControl {
     pub(crate) fn take_construction_recovery_fault(&mut self) -> bool {
         std::mem::take(&mut self.construction_recovery_fault)
     }
-    /// Forces the next text-append ticket restoration to refuse.
-    #[cfg(test)]
-    pub(crate) fn refuse_next_text_append_restore(&mut self) {
-        self.text_append_restore_fault = true;
-    }
-    #[cfg(test)]
-    pub(crate) fn take_text_append_restore_fault(&mut self) -> bool {
-        std::mem::take(&mut self.text_append_restore_fault)
-    }
-    /// Forces the next text-append backing initialization to fail once its
-    /// pending ticket has been prepared.
-    #[cfg(test)]
-    pub(crate) fn fail_next_text_append_backing(&mut self) {
-        self.text_append_backing_fault = true;
-    }
     /// Makes the next `count` steps of a cleanup walk refuse once their work
     /// is done. The first refusal issued is reported as a wrong token, the
     /// later ones as the registry row, so the order of reporting is visible.
@@ -880,10 +854,6 @@ impl ParseControl {
     #[cfg(test)]
     pub(crate) fn take_space_token_overshoot(&mut self) -> usize {
         std::mem::take(&mut self.space_token_overshoot)
-    }
-    #[cfg(test)]
-    pub(crate) fn take_text_append_backing_fault(&mut self) -> bool {
-        std::mem::take(&mut self.text_append_backing_fault)
     }
     #[cfg(test)]
     pub(crate) fn owned_span_observation(&self) -> OwnedSpanObservation {

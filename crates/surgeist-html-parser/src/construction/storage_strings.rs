@@ -3,6 +3,13 @@
 use super::*;
 use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
 
+/// A string of a non-element field that the parse has taken over, and the group of its origins
+/// when the parse records them. The record that holds the string alone owns it.
+pub(super) struct FieldString {
+    pub(super) value: DocumentString,
+    pub(super) group: Option<OriginGroupRef>,
+}
+
 /// A constant string that one parse creates once and shares between its occurrences.
 #[derive(Clone, Copy)]
 pub(super) enum Literal {
@@ -195,40 +202,45 @@ impl SessionStorage {
         value: FrozenUtf16,
         origins: Option<OwnedVec<HtmlParseTextOrigin>>,
     ) -> Result<(DocumentString, usize), SessionError> {
-        let origins = if !control.detail().records_graph() {
+        let group = match self.origin_group(control, origins, value.text().len()) {
+            Ok(group) => group,
+            Err(error) => {
+                value.release(control)?;
+                return Err(error);
+            }
+        };
+        self.register_group_string_owned(control, value, group)
+    }
+    /// The group of the origins of a string of `units` units, when the parse records the origin
+    /// graph: the group the retained `origins` make, or a group of no source origins when there
+    /// are none. A parse that records no graph holds no group. The origins are released
+    /// whatever the result.
+    pub(super) fn origin_group(
+        &mut self,
+        control: &mut ParseControl,
+        origins: Option<OwnedVec<HtmlParseTextOrigin>>,
+        units: usize,
+    ) -> Result<Option<OriginGroupRef>, SessionError> {
+        if !control.detail().records_graph() {
             // No group names this value, and no origin was recorded for it.
             if let Some(origins) = origins {
                 origins.release(control)?;
             }
-            None
+            Ok(None)
         } else if let Some(origins) = origins {
             let evidence = match self.origin_evidence(control) {
                 Ok(evidence) => evidence,
                 Err(error) => {
                     origins.release(control)?;
-                    value.release(control)?;
                     return Err(error);
                 }
             };
-            match evidence.retain_group(control, origins, value.text().len()) {
-                Ok(group) => Some(group),
-                Err(error) => {
-                    value.release(control)?;
-                    return Err(error);
-                }
-            }
+            evidence.retain_group(control, origins, units).map(Some)
         } else if let Some(evidence) = &mut self.evidence {
-            match evidence.rule_group(control, value.text().len()) {
-                Ok(group) => Some(group),
-                Err(error) => {
-                    value.release(control)?;
-                    return Err(error);
-                }
-            }
+            evidence.rule_group(control, units).map(Some)
         } else {
-            None
-        };
-        self.register_group_string_owned(control, value, origins)
+            Ok(None)
+        }
     }
     /// The group is committed in the sole evidence owner before the actual
     /// native backing slot is reserved. A refused slot leaves no logical slot
@@ -410,15 +422,6 @@ impl SessionStorage {
             },
             None => None,
         };
-        // The preceding Text record and the registry row holding its string.
-        let preceding = match preceding {
-            Some(index) => Some((index, self.field_slot(control, FieldRef::Text(index))?)),
-            None => None,
-        };
-        let dispose_old = match preceding {
-            Some((_, slot)) => self.releasable_string(control, slot, true)?,
-            None => false,
-        };
         let prepared = if preceding.is_none() {
             let document = match self.node_document_ref(control, parent_index) {
                 Ok(document) => Some(document),
@@ -442,24 +445,12 @@ impl SessionStorage {
         let Some(text) = input.take() else {
             return Err(SessionError::Consumed);
         };
-        let (value, ticket) = self.register_text(control, text)?;
-        if let Some((index, old_slot)) = preceding {
-            self.append_registered_text(
-                control,
-                text_append::RegisteredTextAppend {
-                    parent: parent_index,
-                    index,
-                    old_slot,
-                    incoming_slot: ticket,
-                    incoming: value,
-                    dispose_old,
-                    at_end: before_index.is_none(),
-                },
-            )
-            .map(Some)
+        if let Some(index) = preceding {
+            self.merge_text(control, parent_index, index, text, before_index.is_none())
+                .map(Some)
         } else {
+            let FieldString { value, group } = self.absorb_text_field(control, text)?;
             control.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
-            payload_write::<Option<usize>>(control, 1)?;
             let node = self.allocate_prepared_owned(
                 control,
                 creation_command(NewRecord::Text(value)),
@@ -468,14 +459,95 @@ impl SessionStorage {
                 0,
                 prepared,
             )?;
-            self.bind_string(ticket, FieldRef::Text(node.index))
-                .map_err(|_| latch_registry_row(control))?;
+            self.bind_field(control, FieldRef::Text(node.index), group, 0)?;
             self.insert(control, parent, &node, before, InsertionCause::NonParser)?;
             Ok(Some(TextInsertion {
                 _node: node,
                 _offset: 0,
             }))
         }
+    }
+    /// Takes over the string of a token for a field of a record that is about to be created: the
+    /// string moves to the managed units, and the parse holds its units and bytes with the
+    /// strings of the non-element fields from then on. The group of its origins is made when
+    /// the parse records the origin graph, and [`Self::bind_field`] binds it to the field once
+    /// the record exists.
+    pub(super) fn absorb_text_field(
+        &mut self,
+        control: &mut ParseControl,
+        text: Text,
+    ) -> Result<FieldString, SessionError> {
+        let Text { value, origins } = text;
+        self.absorb_field_string(control, value, Some(origins))
+    }
+    /// As [`Self::absorb_text_field`] for a string that is not a token's, such as the empty
+    /// identifier of a doctype.
+    pub(super) fn absorb_field_string(
+        &mut self,
+        control: &mut ParseControl,
+        value: FrozenUtf16,
+        origins: Option<OwnedVec<HtmlParseTextOrigin>>,
+    ) -> Result<FieldString, SessionError> {
+        if let Err(error) = self.require(control) {
+            value.release(control)?;
+            if let Some(origins) = origins {
+                origins.release(control)?;
+            }
+            return Err(error);
+        }
+        let group = match self.origin_group(control, origins, value.text().len()) {
+            Ok(group) => group,
+            Err(error) => {
+                value.release(control)?;
+                return Err(error);
+            }
+        };
+        self.absorb_group_string(control, value, group)
+    }
+    /// As [`Self::absorb_field_string`] for a string whose group exists already, such as the
+    /// copy of a field's group that a copy of the field keeps.
+    pub(super) fn absorb_group_string(
+        &mut self,
+        control: &mut ParseControl,
+        value: FrozenUtf16,
+        group: Option<OriginGroupRef>,
+    ) -> Result<FieldString, SessionError> {
+        let (value, mut allocation) = value.into_parts();
+        if let Err(stop) = control.manage_text_string(&mut allocation, &value) {
+            drop(value);
+            control.release_document_string(allocation)?;
+            return Err(stop.into());
+        }
+        // The ticket ends here: its string is held by the record it goes to alone.
+        let account = control.absorb_text_string(allocation)?;
+        self.construction.absorb_text(control, account)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        control.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<DocumentString>() as u64,
+        )?;
+        Ok(FieldString { value, group })
+    }
+    /// Binds the group of the string of `field`, a non-element field of the record that holds
+    /// it, to the field: the leaf of the group names the units `offset..` of the field's string,
+    /// and the group becomes the field's in the table of origins. A string without a group
+    /// binds nothing. A refusal leaves the record without the group of the field: the parse is
+    /// stopped by it and publishes no record.
+    pub(super) fn bind_field(
+        &mut self,
+        control: &mut ParseControl,
+        field: FieldRef,
+        group: Option<OriginGroupRef>,
+        offset: usize,
+    ) -> Result<(), SessionError> {
+        let Some(group) = group else {
+            return Ok(());
+        };
+        self.evidence
+            .as_mut()
+            .ok_or(SessionError::WrongToken)?
+            .bind_leaf_field(control, &group, field, offset)?;
+        self.payloads.detail_origins.insert(control, field, group)
     }
     pub(super) fn releasable_string(
         &self,
@@ -571,14 +643,11 @@ impl SessionStorage {
         else {
             return Err(SessionError::registry_row());
         };
-        *current = location;
-        match location {
-            FieldRef::Text(node) => self.payloads.join_text(node, index)?,
-            // The join names the first row bound to the instruction, as a scan
-            // of the registry does.
-            FieldRef::ProcessingInstructionData(_) => self.payloads.join_row(index)?,
-            _ => {}
+        // The string of a non-element field is held by its record alone.
+        if location.is_record_string() {
+            return Err(SessionError::registry_row());
         }
+        *current = location;
         Ok(())
     }
 

@@ -388,6 +388,16 @@ pub(super) fn limits() -> HtmlParseLimits {
         .finish()
         .unwrap()
 }
+/// A control that records no origin graph.
+pub(super) fn control_without_detail() -> ParseControl {
+    ParseControl::with_accounting(
+        limits(),
+        HtmlParseCancellation::new(),
+        None,
+        crate::DetailSet::NONE,
+    )
+}
+
 pub(super) fn control() -> ParseControl {
     ParseControl::new(limits(), HtmlParseCancellation::new())
 }

@@ -307,7 +307,12 @@ fn copy_whole_generated_input_value(
             return Err(latch_registry_row(c));
         };
         let evidence = evidence.ok_or(SessionError::WrongToken)?;
-        evidence.qualify_generated_copy(c, payloads, group, value.code_units())?;
+        evidence.qualify_generated_copy(
+            c,
+            provenance::LeafStrings::rows(payloads),
+            group,
+            value.code_units(),
+        )?;
         Some(evidence.copy_group_reference(c, group)?)
     } else {
         None

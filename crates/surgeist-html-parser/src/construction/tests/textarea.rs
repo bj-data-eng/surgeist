@@ -85,15 +85,21 @@ fn textarea_raw_is_independent_exact_child_text_and_retired_backing_is_disposed(
         .to_vec();
     assert_eq!(native, [65]);
     assert_eq!(raw, [65]);
-    let native = session
+    let raw = session.textarea_raw_value(&mut c, &node).unwrap();
+    let ConstructionNodeKind::Text(native) = session
         .active()
         .unwrap()
         .construction
         .node_at(text.index)
         .expect("retained construction position")
-        .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
-        .expect("text");
-    assert!(!native.shares_storage_with(session.textarea_raw_value(&mut c, &node).unwrap()));
+        .kind()
+    else {
+        panic!("text node")
+    };
+    assert!(!std::ptr::eq(
+        native.code_units().as_ptr(),
+        raw.code_units().as_ptr()
+    ));
     let mut b = next_text(&mut tokenizer, &mut c);
     session
         .insert_text(&mut c, &node, None, &mut b, None)
@@ -223,11 +229,11 @@ fn textarea_same_parent_reference_removal_runs_old_view_before_insertion() {
 }
 
 #[test]
-fn textarea_raw_extension_has_exact_42_unit_admission_and_retained_terminal_prefix() {
-    // textarea name8 + HTML URI28; A(native1,raw1)=38. B adds lexical1,
-    // merged2 and one raw unit appended in place to the raw backing, which
-    // has no second copy to coexist with: exact peak42, then current42.
-    for cap in [41, 42] {
+fn textarea_raw_extension_has_exact_40_unit_admission_and_retained_terminal_prefix() {
+    // textarea name8 + HTML URI28; A(native1,raw1)=38. B appends one unit to the native text
+    // and one unit in place to the raw backing, which has no second copy to coexist with:
+    // exact peak40, then current40. A cap of 39 admits the text and refuses the raw value.
+    for cap in [39, 40] {
         let source = crate::HtmlSource::utf8("<textarea>AB");
         let caps = limits()
             .into_builder()
@@ -252,7 +258,7 @@ fn textarea_raw_extension_has_exact_42_unit_admission_and_retained_terminal_pref
         let result = session.insert_text(&mut c, &node, None, &mut b, None);
         assert!(b.is_none());
         assert_eq!(native_text(&session, &text), [65, 66]);
-        if cap == 42 {
+        if cap == 40 {
             assert!(result.is_ok());
             assert_eq!(
                 session
@@ -265,13 +271,13 @@ fn textarea_raw_extension_has_exact_42_unit_admission_and_retained_terminal_pref
                 c.usage()
                     .resource(HtmlParseResource::ManagedUtf16Units)
                     .current,
-                42
+                40
             );
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::ManagedUtf16Units)
                     .high_water,
-                42
+                40
             );
             assert!(matches!(
                 session.active().unwrap().payloads.values[old_raw],
@@ -511,7 +517,8 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
         .insert_text(&mut c, &node, None, &mut text, None)
         .unwrap();
     tokenizer.release(&mut c).unwrap();
-    assert_eq!(session.active().unwrap().payloads.values.len(), 16);
+    // The text has no registry row: the registry holds 15 rows.
+    assert_eq!(session.active().unwrap().payloads.values.len(), 15);
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
@@ -559,7 +566,8 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
         }
     ));
     let storage = session.active().unwrap();
-    assert_eq!(storage.payloads.values.len(), 21);
+    // The text has no registry row: the registry holds 20 rows.
+    assert_eq!(storage.payloads.values.len(), 20);
     let RetainedPayload::String { value, .. } = &storage.payloads.values[current_slot] else {
         panic!("original current raw retained")
     };

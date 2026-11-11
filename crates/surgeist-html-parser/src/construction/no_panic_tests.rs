@@ -405,12 +405,6 @@ fn field_group_lookups_past_the_registry_report_the_registry_row() {
     assert_registry_row(storage.retire_field_group(&mut c, past), &c);
     session.release(&mut c).unwrap();
     storage_zero(&c);
-
-    let (mut c, mut session, _proof, _nodes) = graph(&request);
-    let storage = session.active_mut().unwrap();
-    assert_registry_row(storage.merge_field_groups(&mut c, past, 0, 0, 0), &c);
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
 }
 
 #[test]

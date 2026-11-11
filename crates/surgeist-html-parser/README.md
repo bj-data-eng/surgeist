@@ -24,10 +24,10 @@ services CSS grammar and Color numerical actions through the original parser
 controller. It owns source validation, recovery, construction effects, work and
 allocation tickets, cancellation, first failure and stopped-owner cleanup.
 HTML owns the actual shared immutable tree storage and its generic invariants. Its
-[controlled text append](../../docs/reference/html-crate-contracts.md#controlled-text-append)
-reuses unique aggregate backing while retaining immutable history leaves; the
-parser indexes current text tickets and textarea metadata with actual admitted
-capacity and cleanup.
+[direct text append](../../docs/reference/html-crate-contracts.md#direct-text-appends)
+grows the text of a record in place; the parser holds the units and capacity bytes of
+the strings of non-element fields in two counters of its construction owner, and the
+origin groups of those fields in its table of origins.
 
 A parse keeps each attribute bank, element-name component and Text datum as the
 construction created it: equal values are separate allocations. The exception is

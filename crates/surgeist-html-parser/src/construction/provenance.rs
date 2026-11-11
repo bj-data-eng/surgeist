@@ -485,8 +485,85 @@ pub(super) struct HistoryData<'a> {
 #[derive(Clone, Copy)]
 pub(crate) enum LeafValue {
     Pending,
+    /// The string of the registry row at this slot.
     Payload(usize),
+    /// The units `offset..` of the string of a non-element field of a record. The leaf lies in
+    /// the string for as long as the record holds it: a text only grows at its end, and the
+    /// strings of the other fields never change.
+    Field {
+        string: RecordString,
+        offset: usize,
+    },
     Empty,
+}
+
+/// Where the strings of leaves are read: the registry rows that hold the strings of some
+/// fields, and the records that hold the strings of the others. A reader of values that only
+/// registry rows hold, such as the values of input elements, has no records: a leaf in a record
+/// is then the wrong token.
+#[derive(Clone, Copy)]
+pub(crate) struct LeafStrings<'a> {
+    pub(super) payloads: &'a PayloadStorage,
+    pub(super) records: Option<ConstructionView<'a>>,
+}
+impl<'a> LeafStrings<'a> {
+    /// Leaves whose strings registry rows hold.
+    pub(super) fn rows(payloads: &'a PayloadStorage) -> Self {
+        Self {
+            payloads,
+            records: None,
+        }
+    }
+    /// Leaves whose strings registry rows or the records of `records` hold.
+    pub(super) fn with_records(
+        payloads: &'a PayloadStorage,
+        records: ConstructionView<'a>,
+    ) -> Self {
+        Self {
+            payloads,
+            records: Some(records),
+        }
+    }
+    /// The units of a leaf of `units` units whose value is `value`. A leaf whose string is not
+    /// bound, or has other units than the leaf covers, is the wrong token.
+    pub(crate) fn units(
+        self,
+        c: &mut ParseControl,
+        value: LeafValue,
+        units: usize,
+    ) -> Result<&'a [u16], SessionError> {
+        match value {
+            LeafValue::Pending => Err(SessionError::WrongToken),
+            LeafValue::Empty if units == 0 => Ok(&[]),
+            LeafValue::Empty => Err(SessionError::WrongToken),
+            LeafValue::Payload(slot) => {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                let RetainedPayload::String {
+                    value, allocation, ..
+                } = self
+                    .payloads
+                    .values
+                    .get(slot)
+                    .ok_or(SessionError::WrongToken)?
+                else {
+                    return Err(SessionError::WrongToken);
+                };
+                c.require_document_string(allocation, value)?;
+                if value.len() != units {
+                    return Err(SessionError::WrongToken);
+                }
+                Ok(value.code_units())
+            }
+            LeafValue::Field { string, offset } => {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                let end = offset.checked_add(units).ok_or(SessionError::WrongToken)?;
+                self.records
+                    .and_then(|records| string.field().units(records))
+                    .and_then(|string| string.get(offset..end))
+                    .ok_or(SessionError::WrongToken)
+            }
+        }
+    }
 }
 #[derive(Clone, Copy)]
 pub(crate) enum GroupBody {
@@ -930,7 +1007,7 @@ impl ParseEvidence {
     fn group_value_equal(
         &self,
         c: &mut ParseControl,
-        payloads: &PayloadStorage,
+        strings: LeafStrings<'_>,
         value: &[u16],
         group: &OriginGroupRef,
     ) -> Result<bool, SessionError> {
@@ -942,33 +1019,14 @@ impl ParseEvidence {
                 if leaf.offset != covered {
                     return Err(SessionError::WrongToken);
                 }
-                match leaf.value {
-                    LeafValue::Pending => return Err(SessionError::WrongToken),
-                    LeafValue::Empty if leaf.units == 0 => {}
-                    LeafValue::Empty => return Err(SessionError::WrongToken),
-                    LeafValue::Payload(slot) => {
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        let RetainedPayload::String {
-                            value: text,
-                            allocation,
-                            ..
-                        } = payloads.values.get(slot).ok_or(SessionError::WrongToken)?
-                        else {
-                            return Err(SessionError::WrongToken);
-                        };
-                        c.require_document_string(allocation, text)?;
-                        if text.len() != leaf.units {
-                            return Err(SessionError::WrongToken);
-                        }
-                        for index in 0..leaf.units {
-                            c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
-                            let position = leaf.offset.checked_add(index).ok_or_else(|| {
-                                c.stop_representation(HtmlParseResource::ManagedUtf16Units)
-                            })?;
-                            if value.get(position) != text.code_units().get(index) {
-                                equal = false;
-                            }
-                        }
+                let text = strings.units(c, leaf.value, leaf.units)?;
+                for index in 0..leaf.units {
+                    c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
+                    let position = leaf.offset.checked_add(index).ok_or_else(|| {
+                        c.stop_representation(HtmlParseResource::ManagedUtf16Units)
+                    })?;
+                    if value.get(position) != text.get(index) {
+                        equal = false;
                     }
                 }
                 covered = covered
@@ -983,11 +1041,11 @@ impl ParseEvidence {
     fn validate_group_value(
         &self,
         c: &mut ParseControl,
-        payloads: &PayloadStorage,
+        strings: LeafStrings<'_>,
         value: &[u16],
         group: &OriginGroupRef,
     ) -> Result<(), SessionError> {
-        if self.group_value_equal(c, payloads, value, group)? {
+        if self.group_value_equal(c, strings, value, group)? {
             Ok(())
         } else {
             Err(SessionError::WrongToken)
@@ -1029,7 +1087,7 @@ impl ParseEvidence {
     pub(super) fn materialize_group(
         &self,
         c: &mut ParseControl,
-        payloads: &PayloadStorage,
+        strings: LeafStrings<'_>,
         group: &OriginGroupRef,
     ) -> Result<FrozenUtf16, SessionError> {
         let mut cursor = GroupLeafCursor::new(self, group, c)?;
@@ -1046,25 +1104,8 @@ impl ParseEvidence {
                 if leaf.offset != covered {
                     return Err(SessionError::WrongToken);
                 }
-                match leaf.value {
-                    LeafValue::Pending => return Err(SessionError::WrongToken),
-                    LeafValue::Empty if leaf.units == 0 => {}
-                    LeafValue::Empty => return Err(SessionError::WrongToken),
-                    LeafValue::Payload(slot) => {
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        let RetainedPayload::String {
-                            value, allocation, ..
-                        } = payloads.values.get(slot).ok_or(SessionError::WrongToken)?
-                        else {
-                            return Err(SessionError::WrongToken);
-                        };
-                        c.require_document_string(allocation, value)?;
-                        if value.len() != leaf.units {
-                            return Err(SessionError::WrongToken);
-                        }
-                        output.extend_units(value.code_units(), c)?;
-                    }
-                }
+                let units = strings.units(c, leaf.value, leaf.units)?;
+                output.extend_units(units, c)?;
                 covered = covered
                     .checked_add(leaf.units)
                     .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
@@ -1419,6 +1460,27 @@ impl ParseEvidence {
         group: &OriginGroupRef,
         slot: usize,
     ) -> Result<(), SessionError> {
+        self.bind_leaf(c, group, LeafValue::Payload(slot))
+    }
+    /// Binds the leaf `group` to the units `offset..` of the string of `field`, a field of a
+    /// record. Binding a group that is not a leaf, or a leaf that has no units, changes nothing.
+    pub(super) fn bind_leaf_field(
+        &mut self,
+        c: &mut ParseControl,
+        group: &OriginGroupRef,
+        field: FieldRef,
+        offset: usize,
+    ) -> Result<(), SessionError> {
+        // A field whose record position does not fit a leaf is not one that is bound.
+        let string = RecordString::of(field).ok_or(SessionError::WrongToken)?;
+        self.bind_leaf(c, group, LeafValue::Field { string, offset })
+    }
+    fn bind_leaf(
+        &mut self,
+        c: &mut ParseControl,
+        group: &OriginGroupRef,
+        bound: LeafValue,
+    ) -> Result<(), SessionError> {
         c.checkpoint()?;
         group.require_disposal_owner(c)?;
         self.require_group(group)?;
@@ -1434,11 +1496,13 @@ impl ParseEvidence {
                     *value = if header.units == 0 {
                         LeafValue::Empty
                     } else {
-                        LeafValue::Payload(slot)
+                        bound
                     };
                 }
                 LeafValue::Empty => {}
-                LeafValue::Payload(_) => return Err(SessionError::WrongToken),
+                LeafValue::Payload(_) | LeafValue::Field { .. } => {
+                    return Err(SessionError::WrongToken);
+                }
             }
         }
         Ok(())
@@ -1649,6 +1713,36 @@ impl ParseEvidence {
         )?;
         Ok(reference)
     }
+    /// Admits the historical relation of a group that `destination` held until now: the
+    /// group is retired once, by a cause that names the field.
+    pub(super) fn retire_group(
+        &mut self,
+        c: &mut ParseControl,
+        group: &OriginGroupRef,
+        destination: FieldRef,
+    ) -> Result<(), SessionError> {
+        group.require_disposal_owner(c)?;
+        let header = self.require_group(group)?;
+        if header.retirement.is_some() {
+            return Err(SessionError::WrongToken);
+        }
+        let index = group.index;
+        let cause = self.append_cause(
+            c,
+            ConstructionCause::Retirement {
+                group: index,
+                destination,
+                trigger: self.native.current,
+            },
+        )?;
+        payload_write::<Option<usize>>(c, 1)?;
+        self.native
+            .groups
+            .get_mut(index, c)?
+            .ok_or(SessionError::WrongToken)?
+            .retirement = Some(cause);
+        Ok(())
+    }
     pub(super) fn merge_groups(
         &mut self,
         c: &mut ParseControl,
@@ -1769,11 +1863,10 @@ impl SessionStorage {
             walk.release(c)?;
         }
         if matches!(walk.state, PiOriginState::Unstarted) {
-            let slot = self.field_slot(c, FieldRef::ProcessingInstructionData(walk.node))?;
-            let RetainedPayload::String {
-                origins: Some(original),
-                ..
-            } = self.payloads.row(c, slot)?
+            let Some(original) = self
+                .payloads
+                .detail_origins
+                .get(c, FieldRef::ProcessingInstructionData(walk.node))?
             else {
                 walk.state = PiOriginState::Unmapped;
                 return Ok(());
@@ -1887,15 +1980,7 @@ impl SessionStorage {
         value: FrozenUtf16,
         maps: OwnedVec<HtmlParseTextOrigin>,
     ) -> Result<usize, SessionError> {
-        let slot = match self.field_slot(c, FieldRef::ProcessingInstructionData(node)) {
-            Ok(slot) => slot,
-            Err(error) => {
-                value.release(c)?;
-                maps.release(c)?;
-                return Err(error);
-            }
-        };
-        let original = match self.copied_slot_group(c, slot) {
+        let original = match self.copied_field_group(c, FieldRef::ProcessingInstructionData(node)) {
             Ok(original) => original,
             Err(error) => {
                 value.release(c)?;
@@ -1954,6 +2039,7 @@ impl SessionStorage {
         evidence.native.current = Some(cause);
         Ok(previous)
     }
+    #[cfg(test)]
     pub(super) fn copied_slot_group(
         &mut self,
         c: &mut ParseControl,
@@ -1971,6 +2057,21 @@ impl SessionStorage {
                     .copy_group(c, group)
             })
             .transpose()
+    }
+    /// A copy of the group of the string of `field`, a non-element field, when it has one.
+    pub(super) fn copied_field_group(
+        &mut self,
+        c: &mut ParseControl,
+        field: FieldRef,
+    ) -> Result<Option<OriginGroupRef>, SessionError> {
+        let Some(group) = self.payloads.detail_origins.get(c, field)? else {
+            return Ok(None);
+        };
+        self.evidence
+            .as_mut()
+            .ok_or(SessionError::WrongToken)?
+            .copy_group(c, group)
+            .map(Some)
     }
     pub(super) fn reset_group(
         &mut self,
@@ -2031,116 +2132,18 @@ impl SessionStorage {
         c: &mut ParseControl,
         slot: usize,
     ) -> Result<(), SessionError> {
-        self.retire_field_group_at(c, slot, None)
-    }
-    /// The exclusive append owner suspended this aggregate's actual backing.
-    /// Its historical row still owns the same immutable group.
-    pub(super) fn retire_text_append_group(
-        &mut self,
-        c: &mut ParseControl,
-        slot: usize,
-        node: usize,
-    ) -> Result<(), SessionError> {
-        self.retire_field_group_at(c, slot, Some(FieldRef::Text(node)))
-    }
-    fn retire_field_group_at(
-        &mut self,
-        c: &mut ParseControl,
-        slot: usize,
-        suspended: Option<FieldRef>,
-    ) -> Result<(), SessionError> {
         let (group, location) = match self.payloads.row(c, slot)? {
             RetainedPayload::String { location, .. } => match self.payloads.row_group(c, slot)? {
                 Some(group) => (group, *location),
                 None => return Ok(()),
             },
-            RetainedPayload::HistoricalString { origins } => {
-                (origins, suspended.ok_or(SessionError::WrongToken)?)
-            }
+            // A string disposed of as an aggregate keeps only its group, and its field is no
+            // longer known.
+            RetainedPayload::HistoricalString { .. } => return Err(SessionError::WrongToken),
             _ => return Ok(()),
         };
-        group.require_disposal_owner(c)?;
         let evidence = self.evidence.as_mut().ok_or(SessionError::WrongToken)?;
-        let header = evidence.require_group(group)?;
-        if header.retirement.is_some() {
-            return Err(SessionError::WrongToken);
-        }
-        let index = group.index;
-        let cause = evidence.append_cause(
-            c,
-            ConstructionCause::Retirement {
-                group: index,
-                destination: location,
-                trigger: evidence.native.current,
-            },
-        )?;
-        payload_write::<Option<usize>>(c, 1)?;
-        evidence
-            .native
-            .groups
-            .get_mut(index, c)?
-            .ok_or(SessionError::WrongToken)?
-            .retirement = Some(cause);
-        Ok(())
-    }
-    pub(super) fn merge_field_groups(
-        &mut self,
-        c: &mut ParseControl,
-        old: usize,
-        incoming: usize,
-        offset: usize,
-        total: usize,
-    ) -> Result<Option<OriginGroupRef>, SessionError> {
-        if self.graph().is_none() {
-            return Ok(None);
-        }
-        let left = match self.payloads.row(c, old)? {
-            RetainedPayload::String { origins, .. } => origins.as_ref(),
-            RetainedPayload::HistoricalString { origins } => Some(origins),
-            _ => return Err(SessionError::WrongToken),
-        };
-        let RetainedPayload::String { origins: right, .. } = self.payloads.row(c, incoming)? else {
-            return Err(SessionError::WrongToken);
-        };
-        let Some(evidence) = graph_in(&mut self.evidence) else {
-            return Ok(None);
-        };
-        // An absent group is explicitly source independent. It is never
-        // attributed to the triggering token merely because a later input has
-        // lexical origins.
-        let missing_left = if left.is_none() {
-            {
-                let group = evidence.source_independent_group(c, offset)?;
-                evidence.bind_leaf_value(c, &group, old)?;
-                Some(group)
-            }
-        } else {
-            None
-        };
-        let missing_right = if right.is_none() {
-            {
-                let units = total
-                    .checked_sub(offset)
-                    .ok_or_else(|| latch_registry_row(c))?;
-                let group = evidence.source_independent_group(c, units)?;
-                evidence.bind_leaf_value(c, &group, incoming)?;
-                Some(group)
-            }
-        } else {
-            None
-        };
-        let group = evidence.merge_groups(
-            c,
-            left.or(missing_left.as_ref())
-                .ok_or(SessionError::WrongToken)?,
-            right
-                .as_ref()
-                .or(missing_right.as_ref())
-                .ok_or(SessionError::WrongToken)?,
-            offset,
-            total,
-        )?;
-        Ok(Some(group))
+        evidence.retire_group(c, group, location)
     }
     #[cfg(test)]
     pub(super) fn observed_origins(
@@ -2195,11 +2198,11 @@ impl ParseEvidence {
     pub(super) fn qualify_generated_copy(
         &self,
         c: &mut ParseControl,
-        payloads: &PayloadStorage,
+        strings: LeafStrings<'_>,
         group: &OriginGroupRef,
         value: &[u16],
     ) -> Result<(), SessionError> {
-        if !self.group_value_equal(c, payloads, value, group)? {
+        if !self.group_value_equal(c, strings, value, group)? {
             return Err(SessionError::WrongToken);
         }
         let mut cursor = GroupLeafCursor::new(self, group, c)?;
@@ -2213,10 +2216,11 @@ impl ParseEvidence {
                         return Err(SessionError::WrongToken);
                     };
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let Some(RetainedPayload::String { .. }) = payloads.values.get(slot) else {
+                    let Some(RetainedPayload::String { .. }) = strings.payloads.values.get(slot)
+                    else {
                         return Err(SessionError::WrongToken);
                     };
-                    let Some(original) = payloads.row_group(c, slot)? else {
+                    let Some(original) = strings.payloads.row_group(c, slot)? else {
                         return Err(SessionError::WrongToken);
                     };
                     let header = self.require_group(original)?;
@@ -2575,12 +2579,12 @@ impl SessionStorage {
         let result = (|| {
             origins.require_owner(c)?;
             let identical = if let Some(original) = &original {
-                evidence.group_value_equal(
-                    c,
+                let strings = LeafStrings::with_records(
                     &self.payloads,
-                    value.text().code_units(),
-                    original,
-                )? && evidence.origin_rows_equal(c, original, &origins)?
+                    ConstructionView::Active(self.construction.storage(c)?),
+                );
+                evidence.group_value_equal(c, strings, value.text().code_units(), original)?
+                    && evidence.origin_rows_equal(c, original, &origins)?
             } else {
                 false
             };
@@ -2735,7 +2739,7 @@ impl NativeAssociations<'_> {
     pub(crate) fn materialize_group(&mut self, index: usize) -> Result<FrozenUtf16, SessionError> {
         let reference = self.evidence.group_ref(index, self.control)?;
         self.evidence
-            .materialize_group(self.control, &self.storage.payloads, &reference)
+            .materialize_group(self.control, self.storage.leaf_strings(), &reference)
     }
     #[cfg(test)]
     pub(crate) fn release_materialized_group(
@@ -3030,6 +3034,10 @@ impl ParserArenaSession {
         }
         // Successful completed projection certifies every real history leaf,
         // including retired versions that are no longer a native destination.
+        let strings = LeafStrings::with_records(
+            &storage.payloads,
+            ConstructionView::Active(storage.construction.storage(c)?),
+        );
         for group in evidence.native.groups.as_slice() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
@@ -3037,28 +3045,7 @@ impl ParserArenaSession {
                 mem::size_of::<OriginGroup>() as u64,
             )?;
             if let GroupBody::Leaf { value, .. } = group.body {
-                match value {
-                    LeafValue::Pending => return Err(SessionError::WrongToken),
-                    LeafValue::Empty if group.units == 0 => {}
-                    LeafValue::Empty => return Err(SessionError::WrongToken),
-                    LeafValue::Payload(slot) => {
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        let RetainedPayload::String {
-                            value, allocation, ..
-                        } = storage
-                            .payloads
-                            .values
-                            .get(slot)
-                            .ok_or(SessionError::WrongToken)?
-                        else {
-                            return Err(SessionError::WrongToken);
-                        };
-                        c.require_document_string(allocation, value)?;
-                        if value.len() != group.units {
-                            return Err(SessionError::WrongToken);
-                        }
-                    }
-                }
+                strings.units(c, value, group.units)?;
             }
         }
         if evidence.native.projection.is_some() {
@@ -3118,7 +3105,7 @@ impl ParserArenaSession {
                 if missing.is_some() {
                     evidence.bind_leaf_value(c, group, slot)?;
                 }
-                evidence.validate_group_value(c, &storage.payloads, value.code_units(), group)?;
+                evidence.validate_group_value(c, strings, value.code_units(), group)?;
                 evidence.validate_field(c, value.code_units(), group)?;
                 evidence.project_field(
                     c,
@@ -3192,7 +3179,7 @@ impl ParserArenaSession {
                 return Err(SessionError::AliasedPayload);
             }
             if let Some(group) = origins {
-                evidence.validate_group_value(c, &storage.payloads, native.code_units(), group)?;
+                evidence.validate_group_value(c, strings, native.code_units(), group)?;
                 evidence.validate_field(c, native.code_units(), group)?;
                 evidence.project_field(
                     c,
@@ -3203,13 +3190,59 @@ impl ParserArenaSession {
             } else {
                 let group = evidence.source_independent_group(c, value.len())?;
                 evidence.bind_leaf_value(c, &group, payload_slot)?;
-                evidence.validate_group_value(c, &storage.payloads, value.code_units(), &group)?;
+                evidence.validate_group_value(c, strings, value.code_units(), &group)?;
                 evidence.project_field(
                     c,
                     NativeDestination::Field(*location),
                     value.len(),
                     &group,
                 )?;
+            }
+        }
+        // The strings of the non-element fields belong to their records, which are walked in
+        // order; their groups are in the table of origins.
+        let records = storage.construction.storage(c)?;
+        for node in 0..records.len() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let fields: &[FieldRef] = match records.node_at(node).map(|record| record.kind()) {
+                Some(ConstructionNodeKind::Text(_)) => &[FieldRef::Text(node)],
+                Some(ConstructionNodeKind::Comment(_)) => &[FieldRef::Comment(node)],
+                Some(ConstructionNodeKind::ProcessingInstruction(_)) => &[
+                    FieldRef::ProcessingInstructionTarget(node),
+                    FieldRef::ProcessingInstructionData(node),
+                ],
+                Some(ConstructionNodeKind::Doctype(_)) => &[
+                    FieldRef::DoctypeName(node),
+                    FieldRef::DoctypePublic(node),
+                    FieldRef::DoctypeSystem(node),
+                ],
+                _ => continue,
+            };
+            for &field in fields {
+                let Some(units) = field.units(ConstructionView::Active(records)) else {
+                    continue;
+                };
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+                if let Some(group) = storage.payloads.detail_origins.get(c, field)? {
+                    evidence.validate_group_value(c, strings, units, group)?;
+                    evidence.validate_field(c, units, group)?;
+                    evidence.project_field(
+                        c,
+                        NativeDestination::Field(field),
+                        units.len(),
+                        group,
+                    )?;
+                } else {
+                    let group = evidence.source_independent_group(c, units.len())?;
+                    evidence.bind_leaf_field(c, &group, field, 0)?;
+                    evidence.validate_group_value(c, strings, units, &group)?;
+                    evidence.project_field(
+                        c,
+                        NativeDestination::Field(field),
+                        units.len(),
+                        &group,
+                    )?;
+                }
             }
         }
         payload_write::<usize>(c, 1)?;
@@ -3899,7 +3932,7 @@ pub(super) fn copy_generated_input_value(
         return Err(SessionError::WrongToken);
     };
     let evidence = evidence.ok_or(SessionError::WrongToken)?;
-    evidence.qualify_generated_copy(c, payloads, group, value.code_units())?;
+    evidence.qualify_generated_copy(c, LeafStrings::rows(payloads), group, value.code_units())?;
     let mut buffer = Utf16Buffer::new(c)?;
     let mut origins = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
     let result = (|| {

@@ -794,6 +794,78 @@ fn fragment_parse_retains_actual_captured_attachment_and_fallback_after_cancel()
     assert_eq!(report.usage(), &usage);
 }
 
+/// The units of each leaf of the history of the output group of every text field of a report, in
+/// field order.
+fn text_leaves(report: &surgeist_html_parser::HtmlParseReport) -> Vec<Vec<Vec<u16>>> {
+    let history = report.history_view();
+    let rows = report.associations();
+    let mut groups = Vec::new();
+    for index in 0..rows.len() {
+        let row = rows.row(index).unwrap().unwrap();
+        if matches!(
+            row.destination(),
+            HtmlParseDestination::Field {
+                field: HtmlParseField::Text,
+                ..
+            }
+        ) && row.relation() == HtmlParseAssociationRelation::Output
+            && let Some(group) = row.group()
+        {
+            groups.push(group);
+        }
+    }
+    let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
+    let mut leaves: Vec<Vec<Vec<u16>>> = groups
+        .into_iter()
+        .map(|group| {
+            let mut cursor = history.cursor(group, &mut scratch, None).unwrap();
+            let mut leaves = Vec::new();
+            loop {
+                match cursor.advance() {
+                    HtmlParseHistoryStep::Progress => {}
+                    HtmlParseHistoryStep::Leaf(leaf) => leaves.push(leaf.units().to_vec()),
+                    HtmlParseHistoryStep::Complete => break,
+                    HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+                    HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
+                }
+            }
+            leaves
+        })
+        .collect();
+    // A field has one output row for each of its origins, all of one group.
+    leaves.dedup();
+    leaves
+}
+
+#[test]
+fn the_history_of_foster_parented_text_has_one_leaf_for_each_merged_token() {
+    // The character tokens of the table are foster parented in turn and merge into the one text
+    // before the table: one token for `a`, one for each of `b` and `c`, and one for `d`.
+    let literal = "<!doctype html><table>a<style></style>bc<style></style>d</table>";
+    let report = crate::parser::support::offline_all(HtmlSource::utf8(literal), limits())
+        .parse()
+        .unwrap();
+    let units = |text: &str| -> Vec<u16> { text.encode_utf16().collect() };
+    assert_eq!(
+        text_leaves(&report),
+        vec![vec![units("a"), units("b"), units("c"), units("d")]]
+    );
+}
+
+#[test]
+fn the_history_of_text_split_by_a_character_reference_keeps_each_leaf_exact() {
+    let literal = "<!doctype html><p>A&amp;B&lt;C</p>";
+    let report = crate::parser::support::offline_all(HtmlSource::utf8(literal), limits())
+        .parse()
+        .unwrap();
+    let flattened: Vec<u16> = text_leaves(&report)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .collect();
+    assert_eq!(flattened, "A&B<C".encode_utf16().collect::<Vec<_>>());
+}
+
 #[test]
 fn immutable_history_retains_literal_old_leaves_and_one_action_reverse() {
     let literal = "<!doctype html><p>A&amp;B</p>";

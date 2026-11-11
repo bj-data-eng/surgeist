@@ -81,7 +81,14 @@ impl ParserArenaSession {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         payload_write::<HistoryData<'_>>(c, 1)?;
         let data = evidence.history_data()?;
-        qualify(&storage.payloads, &data, c)?;
+        qualify(
+            provenance::LeafStrings::with_records(
+                &storage.payloads,
+                ConstructionView::Active(storage.construction.storage(c)?),
+            ),
+            &data,
+            c,
+        )?;
         // Admit the actual new wrapper before the existing recoverable arena
         // transfer. There is no fallible operation after successful freeze.
         payload_write::<FrozenHistory>(c, 1)?;
@@ -117,7 +124,7 @@ fn source_range(
 }
 
 fn qualify(
-    payloads: &PayloadStorage,
+    strings: provenance::LeafStrings<'_>,
     data: &HistoryData<'_>,
     c: &mut ParseControl,
 ) -> Result<(), SessionError> {
@@ -179,24 +186,7 @@ fn qualify(
                 let Some(origins) = data.origins.get(start..end) else {
                     return Err(SessionError::WrongToken);
                 };
-                match value {
-                    LeafValue::Pending => return Err(SessionError::WrongToken),
-                    LeafValue::Empty if group.units == 0 => {}
-                    LeafValue::Empty => return Err(SessionError::WrongToken),
-                    LeafValue::Payload(slot) => {
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        let Some(RetainedPayload::String {
-                            value, allocation, ..
-                        }) = payloads.values.get(slot)
-                        else {
-                            return Err(SessionError::WrongToken);
-                        };
-                        c.require_document_string(allocation, value)?;
-                        if value.len() != group.units {
-                            return Err(SessionError::WrongToken);
-                        }
-                    }
-                }
+                strings.units(c, value, group.units)?;
                 for origin in origins {
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     c.charge(
@@ -365,7 +355,14 @@ impl<'a> PreparedHistory<'a> {
         let data = evidence.history_data()?;
         // The existing active freeze and this retained frozen transfer share
         // the same source/graph/leaf qualification, not two validators.
-        qualify(&storage.payloads, &data, c)?;
+        qualify(
+            provenance::LeafStrings::with_records(
+                &storage.payloads,
+                ConstructionView::Frozen(&storage.view),
+            ),
+            &data,
+            c,
+        )?;
         payload_write::<Self>(c, 1)?;
         payload_write::<FrozenHistory>(c, 1)?;
         payload_write::<Option<FrozenArena>>(c, 1)?;
@@ -446,7 +443,8 @@ pub enum HtmlParseHistoryBody<'a> {
     },
 }
 /// Exact retained units and original atoms, with an independently accumulated
-/// logical offset. The original range/backing is borrowed, never cloned/rebased.
+/// logical offset. The units are borrowed, never cloned or rebased: a range of the string of the
+/// record that holds the field, or the retained string of a registry row.
 pub struct HtmlParseHistoryLeaf<'a> {
     units: &'a [u16],
     origins: &'a [HtmlParseTextOrigin],
@@ -506,6 +504,7 @@ impl<'a> HistoryView<'a> {
     fn leaf(
         &self,
         (start, length, value): (usize, usize, LeafValue),
+        group_units: usize,
         offset: usize,
     ) -> Result<HtmlParseHistoryLeaf<'a>, read::HtmlParseUnresolvedReference> {
         let units = match value {
@@ -517,6 +516,19 @@ impl<'a> HistoryView<'a> {
                     return Err(unresolved(read::HtmlParseUnresolvedKind::Fact));
                 };
                 value.code_units()
+            }
+            LeafValue::Field { string, offset } => {
+                let Some(units) = string
+                    .field()
+                    .units(ConstructionView::Frozen(&self.storage.view))
+                    .and_then(|string| {
+                        let end = offset.checked_add(group_units)?;
+                        string.get(offset..end)
+                    })
+                else {
+                    return Err(unresolved(read::HtmlParseUnresolvedKind::Fact));
+                };
+                units
             }
             // A pending leaf cannot freeze into a history.
             LeafValue::Pending => return Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
@@ -551,7 +563,7 @@ impl<'a> HistoryView<'a> {
                 length,
                 value,
             } => HtmlParseHistoryBody::Leaf(
-                self.leaf((start, length, value), 0)
+                self.leaf((start, length, value), group.units, 0)
                     .map_err(HtmlParseHistoryError::Unresolved)?,
             ),
             GroupBody::Alias { original } => HtmlParseHistoryBody::Alias {
@@ -678,7 +690,10 @@ impl<'a> HtmlParseHistoryCursor<'a, '_> {
                 start,
                 length,
                 value,
-            } => match self.view.leaf((start, length, value), frame.offset) {
+            } => match self
+                .view
+                .leaf((start, length, value), group.units, frame.offset)
+            {
                 Ok(leaf) => HtmlParseHistoryStep::Leaf(leaf),
                 Err(fault) => self.fail(fault.kind()),
             },
@@ -827,16 +842,11 @@ mod tests {
         }
         lexer.release(&mut c).unwrap();
         let storage = session.active().unwrap();
-        let slot = storage
-            .field_slot(&mut c, FieldRef::Text(node.unwrap().index))
-            .unwrap();
-        let RetainedPayload::String {
-            origins: Some(group),
-            ..
-        } = &storage.payloads.values[slot]
-        else {
-            panic!("canonical native text group")
-        };
+        let group = storage
+            .payloads
+            .detail_origins
+            .peek(FieldRef::Text(node.unwrap().index))
+            .expect("canonical native text group");
         // Observe the actual group through the existing controlled lender;
         // inventory assertions below independently describe the literal graph.
         let evidence = storage.evidence.as_ref().unwrap();
@@ -859,17 +869,21 @@ mod tests {
         };
         let source = crate::HtmlSource::utf8("A🙂\r\n&NotEqualTilde;");
         let (mut c, mut session, group) = projected(&source);
-        let pointers: Vec<_> = session
-            .active()
-            .unwrap()
-            .payloads
-            .values
-            .iter()
-            .filter_map(|value| match value {
-                RetainedPayload::String { value, .. } => Some(value.code_units().as_ptr()),
-                _ => None,
-            })
-            .collect();
+        // The leaves are ranges of the text's own units, which no copy holds.
+        let text_range = {
+            let storage = session.active().unwrap();
+            let ConstructionNodeKind::Text(text) = storage
+                .construction
+                .test_storage()
+                .node_at(1)
+                .unwrap()
+                .kind()
+            else {
+                panic!("native text")
+            };
+            let start = text.code_units().as_ptr() as usize;
+            start..start + 2 * text.len()
+        };
         let owner = session.freeze_history(&mut c).unwrap();
         let before = c.usage().clone();
         {
@@ -897,8 +911,8 @@ mod tests {
                     HtmlParseHistoryStep::Leaf(leaf) => {
                         actions += 1;
                         assert!(
-                            pointers.contains(&leaf.units().as_ptr()),
-                            "original backing, not copied output"
+                            text_range.contains(&(leaf.units().as_ptr() as usize)),
+                            "the text's own units, not copied output"
                         );
                         assert_eq!(leaf.unit(leaf.units().len()), None);
                         output.extend_from_slice(leaf.units());
@@ -1173,18 +1187,11 @@ mod tests {
         let (mut c, mut session, original_index) = literal(&source, HtmlParseCancellation::new());
         let storage = session.active_mut().unwrap();
         let evidence = storage.evidence.as_mut().unwrap();
+        // The records are the fragment root and the text.
         let slot = storage
             .payloads
-            .values
-            .iter()
-            .find_map(|payload| match payload {
-                RetainedPayload::String {
-                    origins: Some(reference),
-                    location: FieldRef::Text(_),
-                    ..
-                } => Some(reference),
-                _ => None,
-            })
+            .detail_origins
+            .peek(FieldRef::Text(1))
             .unwrap();
         let mut reference = evidence.copy_group_reference(&mut c, slot).unwrap();
         // Actual canonical DAG: six doublings share each prior header as both
@@ -1293,12 +1300,12 @@ mod tests {
                 .iter()
                 .filter(|cause| cause.source().is_some())
                 .count() as u64;
-            // AB: three headers + two Concat child-header reads, two leaf slot
-            // visits + two require_document_string visits, two origin reads.
+            // AB: three headers + two Concat child-header reads, two leaf string
+            // visits (a leaf in a record is one read), two origin reads.
             // Each source range has its own admitted header inspection and the
             // canonical range check's RecordVisit+ProviderCall.
             let ranges = ranged_causes + 2;
-            let visits = causes + 5 + 4 + 2 + ranges;
+            let visits = causes + 5 + 2 + 2 + ranges;
             let inspect = causes * mem::size_of::<ConstructionCause>() as u64
                 + 5 * mem::size_of::<OriginGroup>() as u64
                 + 2 * mem::size_of::<HtmlParseTextOrigin>() as u64
@@ -1311,7 +1318,7 @@ mod tests {
             )
             .unwrap();
             let before = c.usage().clone();
-            let outcome = qualify(&storage.payloads, &data, &mut c);
+            let outcome = qualify(storage.leaf_strings(), &data, &mut c);
             if short {
                 let first = c.stop().unwrap();
                 assert!(matches!(
