@@ -428,13 +428,17 @@ impl CpuAccount {
         self.core
             .mandatory_apply(RenderCpuScope::Cleanup, Change::Work(work, amount));
     }
+    pub(crate) fn work(&self, work: RenderWork, amount: usize) -> Result<()> {
+        let amount = u64::try_from(amount).map_err(|_| RenderAccountingError::Invariant)?;
+        self.core.apply(self.scope, Change::Work(work, amount))
+    }
     fn probe(&self, forward: Option<&Account>) -> Result<()> {
         self.visit(RenderWork::ResourceProbes, forward)
     }
     fn visit(&self, work: RenderWork, forward: Option<&Account>) -> Result<()> {
         match forward {
             Some(account) => account.work(work, 1),
-            None => self.core.apply(self.scope, Change::Work(work, 1)),
+            None => self.work(work, 1),
         }
     }
     fn owner(&self) -> Result<&Arc<State>> {

@@ -905,6 +905,13 @@ Snapshots provide exact root usage with profiling Off; scoped lifetime usage
 requires an enabled profile. Frame intervals retain exact scoped usage in all
 profile modes.
 
+Native shader setup records binding visits and emitted source bytes under
+`DeviceBacking`. `ShaderSourceScanBytes` counts the input bytes supplied to
+each complete replacement-pattern scan. Preparation checks match cardinality
+and disjoint byte ranges before acquiring output scratch, then emits from those
+ranges in source order. A frame-owned observer retains its binding work in
+the frame attempt.
+
 `Summary` and `Detailed` optionally collect host elapsed time using Ledger's
 platform clock or `RenderClock::Host`. Timed phases surround actual work and
 awaits, including pending preparation, submission resolution and surface
