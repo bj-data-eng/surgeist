@@ -499,8 +499,72 @@ fn published_iframe_prefix_keeps_its_script_tail_after_cancel() {
     ));
 }
 
+pub(super) fn stopped_host_resumes_original_settings_read() {
+    use surgeist_html::elements::script::{HtmlScriptKind, HtmlScriptResult};
+
+    let (mut session, top) = setup();
+    let document = top.document();
+    let body = body(&session, document);
+    let mut batch = DomBatch::new();
+    let script = make_script(&mut batch, document);
+    let script = session
+        .dom()
+        .apply(batch, &cancel())
+        .unwrap()
+        .created(&script)
+        .unwrap()
+        .unwrap();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    let queued_calls = Arc::new(AtomicUsize::new(0));
+    queue_observable_job(&mut host, &permit, queued_calls.clone());
+    let read = request(
+        apply(&mut host, DomSourceEdit::insert_before(script, body, None)),
+        DomSourceScriptStep::ReadScripting,
+    );
+    assert_eq!(read.relevant_global(), Some(top.global()));
+
+    let mut session = host.stop().into_session().unwrap();
+    assert_eq!(queued_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(Arc::strong_count(&queued_calls), 1);
+    let stopped = session.snapshot();
+    assert_eq!(stopped.stamp(), read.basis());
+    assert_eq!(stopped.node(script).unwrap().parent(), None);
+    let mut source = session.source_execution();
+    let progress = source
+        .resume(
+            &mut session.dom(),
+            read.operation(),
+            LIMITS,
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceDriveProgress::Complete(complete) = progress else {
+        panic!("the stopped owner must resolve the original Script read: {progress:?}");
+    };
+    assert_eq!(complete.operation(), read.operation());
+    assert!(session.dom().pending_source_edit().is_none());
+    let final_snapshot = session.snapshot();
+    let script = final_snapshot.node(script).unwrap();
+    assert_eq!(script.parent(), Some(body));
+    let prepared = script.as_html_script().unwrap();
+    assert!(prepared.flags().already_started());
+    assert_eq!(prepared.preparation_document(), Some(document));
+    assert_eq!(prepared.script_type(), Some(HtmlScriptKind::Classic));
+    assert_eq!(prepared.result(), HtmlScriptResult::Uninitialized);
+}
+
 pub(super) fn run() {
     let foreign = text_and_attribute_keep_the_private_segment();
     adopted_script_uses_original_settings_and_current_browsing_context(foreign);
     published_iframe_prefix_keeps_its_script_tail_after_cancel();
+    stopped_host_resumes_original_settings_read();
 }

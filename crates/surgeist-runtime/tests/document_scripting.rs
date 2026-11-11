@@ -1518,6 +1518,9 @@ fn main() {
             "hook-utf16-work" => explicit_hook_keys_require_each_authored_utf16_work_unit(),
             "script-live-read" => connected_script_parks_the_original_source_for_live_scripting(),
             "script-preparation" => script_preparation::run(),
+            "stopped-script-read" => {
+                script_preparation::stopped_host_resumes_original_settings_read()
+            }
             "native-retirement" => {
                 let expired = native_read_snapshot_and_explicit_queue();
                 real_retirement_revokes_and_abandons(&expired);

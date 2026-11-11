@@ -1127,3 +1127,80 @@ fn style_denial_before_a_disabled_script_completes_the_original_insertion() {
     assert_eq!(prepared.script_type(), Some(HtmlScriptKind::Classic));
     assert_eq!(prepared.result(), HtmlScriptResult::Uninitialized);
 }
+
+#[test]
+fn stopped_registration_does_not_accept_a_prior_script_settings_receipt() {
+    use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+    use surgeist_html::values::Namespace;
+
+    let cancel = cancel();
+    let (mut dom, source, document) = constructor();
+    let snapshot = dom.snapshot();
+    let navigable = snapshot.document(document).unwrap().navigable().unwrap();
+    let global = snapshot.hosted_navigable(navigable).unwrap().global();
+    let html = snapshot.node(document.node()).unwrap().children()[0];
+    let body = snapshot.node(html).unwrap().children()[1];
+
+    let mut batch = DomBatch::new();
+    let script = batch.create_element_ns(document, Namespace::html(), "script");
+    let text = batch.create_text(document, "globalThis.ran = true");
+    batch.insert_before(&text, &script, None);
+    let script = dom
+        .apply(batch, &cancel)
+        .unwrap()
+        .created(&script)
+        .unwrap()
+        .unwrap();
+    let facts = crate::DomDocumentScriptingFacts {
+        engine: HtmlScriptingEngine::Supported,
+        policy: HtmlScriptingPolicy {
+            user_allows: true,
+            automation_allows: true,
+        },
+    };
+    let backing = source
+        .retain_runtime_payload(
+            &mut dom,
+            crate::DomDocumentScriptRegistration::storage_bytes(),
+            &cancel,
+        )
+        .unwrap();
+    let (binding, registration) = source
+        .attach_document_script_host(&mut dom, global, document, facts, backing, &cancel)
+        .unwrap();
+    let (request, observation) = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::insert_before(script, body, None),
+                source_limits(),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Script(request)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("the original Script must park at its live read");
+        };
+        let observation = lease
+            .observe_script_settings(request, &source, &binding, facts, &cancel)
+            .unwrap();
+        assert!(observation.enabled());
+        (request, observation)
+    };
+
+    drop(registration);
+    dom.release_document_script_registration(&binding);
+    assert_eq!(dom.snapshot().stamp(), request.basis());
+    let mut lease = dom
+        .resume_source_edit(request.operation(), source_limits(), &cancel)
+        .unwrap();
+    assert_eq!(
+        lease.accept_script_settings(observation, &cancel),
+        Err(DomError::InvalidSourceOperation)
+    );
+    assert_eq!(lease.operation(), request.operation());
+    assert_eq!(lease.snapshot().stamp(), request.basis());
+    assert_eq!(lease.snapshot().node(script).unwrap().parent(), None);
+    lease.source_script_step(request, &cancel).unwrap();
+    drop(source);
+}
