@@ -1750,7 +1750,7 @@ fn fullscreen_handoff_requalifies_the_original_style_removal() {
             panic!("the original Style effect must refuse at the fullscreen fence: {other:?}")
         }
         Ok(prepared) => {
-            let job = prepared.publish();
+            let job = prepared.publish().unwrap();
             panic!(
                 "the fullscreen handoff published after invalidating the original Style receipt: {job:?}"
             );
@@ -1770,10 +1770,49 @@ fn fullscreen_handoff_requalifies_the_original_style_removal() {
     root.commit(&mut Some(batch)).unwrap();
     let restored = root.snapshot().unwrap();
 
+    let prepared = lease
+        .prepare_fullscreen_exit_handoff(&handoff, &source, &cancel)
+        .unwrap();
+    let mut batch = root
+        .batch(CssomEditGuard::from_snapshot(&restored))
+        .unwrap();
+    assert!(
+        batch
+            .set_sheet_list_membership(
+                restored.sheet_list(),
+                &[CssomSheetListTarget::Existing(&sheet)],
+            )
+            .unwrap()
+    );
+    root.commit(&mut Some(batch)).unwrap();
+    let changed = root.snapshot().unwrap();
+    assert!(matches!(
+        prepared.publish(),
+        Err(DomError::StyleReceiptMismatch)
+    ));
+    assert_eq!(lease.snapshot().stamp(), prefix.stamp());
+    assert_eq!(
+        lease.snapshot().incomplete_source_operation(),
+        Some(read.operation())
+    );
+    let mut batch = root.batch(CssomEditGuard::from_snapshot(&changed)).unwrap();
+    assert!(
+        batch
+            .set_sheet_list_membership(changed.sheet_list(), &[])
+            .unwrap()
+    );
+    root.commit(&mut Some(batch)).unwrap();
+    let restored = root.snapshot().unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(again)) if again == handoff
+    ));
+
     let job = lease
         .prepare_fullscreen_exit_handoff(&handoff, &source, &cancel)
         .unwrap()
-        .publish();
+        .publish()
+        .unwrap();
     assert_eq!(job.id(), handoff.invocation());
     assert_eq!(root.snapshot().unwrap().revision(), restored.revision());
     assert_eq!(lease.snapshot().node(fullscreen).unwrap().parent(), None);

@@ -72,8 +72,9 @@ impl DomFullscreenExitJob {
         self.host
     }
 }
-/// No-callback fence loan. All tree, continuation, result and overlap admission
-/// has finished; the Runtime owner must already hold its real reserved row.
+/// No-callback fence loan. Tree, continuation and result admission is complete.
+/// The Runtime owner must already hold its reserved row. A retained Style
+/// receipt is checked under its producer lock immediately before publication.
 pub struct DomFullscreenExitHandoffCommit<'a, 'dom> {
     lease: &'a mut DomSourceLease<'dom>,
     segment: Option<SegmentPublication>,
@@ -82,10 +83,21 @@ pub struct DomFullscreenExitHandoffCommit<'a, 'dom> {
     control: Option<source::PreparedFullscreenControl>,
     custody_units: usize,
     checkpoint: Option<checkpoint::Checkpoint>,
+    style_receipt: Option<FullscreenStyleReceipt>,
+    cancel: &'a AtomicBool,
 }
 impl DomFullscreenExitHandoffCommit<'_, '_> {
-    pub fn publish(self) -> DomFullscreenExitJob {
-        self.publish_inner().0
+    /// Publish the original handoff. A producer refusal leaves the handoff
+    /// pending so the same request can be prepared again.
+    pub fn publish(mut self) -> Result<DomFullscreenExitJob, DomError> {
+        let receipt = self.style_receipt.take();
+        let locked = receipt
+            .as_ref()
+            .map(|receipt| receipt.lock_current(self.lease, self.cancel))
+            .transpose()?;
+        let (job, _) = self.publish_inner();
+        drop(locked);
+        Ok(job)
     }
 
     fn publish_inner(mut self) -> (DomFullscreenExitJob, crate::DomChanges) {
@@ -121,6 +133,27 @@ impl DomFullscreenExitHandoffCommit<'_, '_> {
         self.lease.dom.source_operation = Some(operation);
         self.checkpoint.take();
         (job, changes)
+    }
+}
+struct FullscreenStyleReceipt {
+    root: DomStyleCssomRoot,
+    qualified: surgeist_cssom::CssomRevision,
+}
+impl FullscreenStyleReceipt {
+    fn lock_current<'a>(
+        &'a self,
+        lease: &DomSourceLease<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<std::sync::MutexGuard<'a, surgeist_cssom::CssomStore>, DomError> {
+        let guard = self
+            .root
+            .lock()
+            .map_err(DomStyleCssomRootError::into_dom_error)?;
+        let snapshot = guard.snapshot();
+        if snapshot.revision() != &self.qualified {
+            lease.qualify_fullscreen_style_receipt(&snapshot, cancel)?;
+        }
+        Ok(guard)
     }
 }
 impl Drop for DomFullscreenExitHandoffCommit<'_, '_> {
@@ -211,7 +244,7 @@ impl<'dom> DomSourceLease<'dom> {
         &'a mut self,
         request: &DomSourceFullscreenExitHandoffRequest,
         source: &crate::DomHostedSource,
-        cancel: &AtomicBool,
+        cancel: &'a AtomicBool,
     ) -> Result<DomFullscreenExitHandoffCommit<'a, 'dom>, DomError> {
         let publication = self.prepare_fullscreen_handoff(request, source, cancel)?;
         if let Some(recording) = publication
@@ -261,7 +294,7 @@ impl<'dom> DomSourceLease<'dom> {
             .inline_recording
             .as_ref()
             .is_some_and(|r| r.has_inputs());
-        let inline = if has_inputs {
+        let inline_batch = if has_inputs {
             let operation = publication
                 .lease
                 .dom
@@ -299,20 +332,28 @@ impl<'dom> DomSourceLease<'dom> {
                     cancel,
                 )
             }));
-            let prepared = match prepared {
+            match prepared {
                 Ok(prepared) => prepared?,
                 Err(payload) => {
                     drop(publication);
                     std::panic::resume_unwind(payload)
                 }
-            };
-            prepared
-                .map(|batch| publication.lease.dom.commit_inline_batch(batch))
-                .transpose()?
+            }
         } else {
             None
         };
+        // The resolver has finished. Keep the exact stylesheet owner locked
+        // through the independent inline producer commit and the DOM fence.
+        let receipt = publication.style_receipt.take();
+        let locked = receipt
+            .as_ref()
+            .map(|receipt| receipt.lock_current(publication.lease, publication.cancel))
+            .transpose()?;
+        let inline = inline_batch
+            .map(|batch| publication.lease.dom.commit_inline_batch(batch))
+            .transpose()?;
         let (job, dom) = publication.publish_inner();
+        drop(locked);
         Ok((
             job,
             inline.map(|inline| crate::DomInlineStyleSourcePublication { dom, inline }),
@@ -323,7 +364,7 @@ impl<'dom> DomSourceLease<'dom> {
         &'a mut self,
         request: &DomSourceFullscreenExitHandoffRequest,
         source: &crate::DomHostedSource,
-        cancel: &AtomicBool,
+        cancel: &'a AtomicBool,
     ) -> Result<DomFullscreenExitHandoffCommit<'a, 'dom>, DomError> {
         self.dom
             .validate_hosted_source(source)
@@ -343,13 +384,19 @@ impl<'dom> DomSourceLease<'dom> {
             .take()
             .expect("qualified original Source");
         let qualified = op.fullscreen_handoff_request(self.dom, cancel);
+        self.dom.source_operation = Some(op);
         if qualified.as_ref() != Ok(request)
             || request.invocation.slot != self.dom.fullscreen_exits.len()
             || request.host.source() != source.id()
         {
-            self.dom.source_operation = Some(op);
             return Err(qualified.err().unwrap_or(DomError::InvalidSourceOperation));
         }
+        let style_receipt = self.prepare_fullscreen_style_receipt(cancel)?;
+        let mut op = self
+            .dom
+            .source_operation
+            .take()
+            .ok_or(DomError::InvalidSourceOperation)?;
         let checkpoint = match op
             .input_bytes()
             .and_then(|bytes| op.draft.source_checkpoint(bytes, 0, cancel))
@@ -456,6 +503,8 @@ impl<'dom> DomSourceLease<'dom> {
                     control: Some(control),
                     custody_units,
                     checkpoint: Some(checkpoint),
+                    style_receipt,
+                    cancel,
                 })
             }
             Err(error) => {
@@ -470,6 +519,53 @@ impl<'dom> DomSourceLease<'dom> {
                 Err(error)
             }
         }
+    }
+
+    fn prepare_fullscreen_style_receipt(
+        &self,
+        cancel: &AtomicBool,
+    ) -> Result<Option<FullscreenStyleReceipt>, DomError> {
+        let operation = self
+            .dom
+            .source_operation
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        if !matches!(operation.receipt, Some(Receipt::Cssom { .. })) {
+            return Ok(None);
+        }
+        let request = operation.request.as_ref().ok_or(DomError::StyleProtocol)?;
+        let root = self.cssom_root(request)?;
+        let qualified = {
+            let guard = root
+                .lock()
+                .map_err(DomStyleCssomRootError::into_dom_error)?;
+            let snapshot = guard.snapshot();
+            self.qualify_fullscreen_style_receipt(&snapshot, cancel)?;
+            snapshot.revision().clone()
+        };
+        Ok(Some(FullscreenStyleReceipt { root, qualified }))
+    }
+
+    fn qualify_fullscreen_style_receipt(
+        &self,
+        snapshot: &CssomSnapshot,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let operation = self
+            .dom
+            .source_operation
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let Some(receipt @ Receipt::Cssom { applied: true, .. }) = &operation.receipt else {
+            return Err(DomError::StyleReceiptMismatch);
+        };
+        operation.qualify_retained_cssom_receipt(
+            receipt,
+            operation.request.as_ref().ok_or(DomError::StyleProtocol)?,
+            operation.owner_binding.as_ref(),
+            snapshot,
+            || operation.draft.source_step(cancel),
+        )
     }
 }
 impl Dom {

@@ -282,8 +282,8 @@ impl HostedRuntime {
         self.service_fullscreen_handoff(lease, request, cancel, |lease, source| {
             let permission = lease
                 .prepare_fullscreen_exit_handoff(request, source, cancel)
-                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?
-                .publish();
+                .and_then(|prepared| prepared.publish())
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
             Ok((permission, ()))
         })
     }

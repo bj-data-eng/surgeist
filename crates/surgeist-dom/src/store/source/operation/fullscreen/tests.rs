@@ -156,7 +156,8 @@ fn actual_handoff_and_outer_tail_rollback_share_the_original_cumulative_work_cap
     let _job = lease
         .prepare_fullscreen_exit_handoff(&request, &source, &cancel)
         .unwrap()
-        .publish();
+        .publish()
+        .unwrap();
     let prefix = lease.snapshot();
     assert_eq!(prefix.node(subject).unwrap().parent(), None);
     assert!(
@@ -277,7 +278,8 @@ fn dropped_prepared_handoff_restores_its_prefix_and_reuses_only_the_same_exposed
     let mut job = retry
         .prepare_fullscreen_exit_handoff(&again, &source, &cancel)
         .unwrap()
-        .publish();
+        .publish()
+        .unwrap();
     let DomSourceProgress::Complete(done) = retry.advance(&cancel).unwrap() else {
         panic!("synchronous return");
     };
@@ -364,7 +366,8 @@ fn work_custody_lookup_does_not_visit_unrelated_retained_invocations() {
         let job = lease
             .prepare_fullscreen_exit_handoff(&request, &source, &cancel)
             .unwrap()
-            .publish();
+            .publish()
+            .unwrap();
         let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
             panic!("original synchronous tail completes");
         };
