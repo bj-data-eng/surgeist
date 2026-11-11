@@ -1,0 +1,22 @@
+<test name="grid_overflow_scrollbars_overridden_by_available_space__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="grid" direction="rtl" position="absolute" font-family="ahem" font-size="10px" line-height="10px" width="2px" height="4px">
+      <div source-tag="div" display="grid" direction="rtl" overflow-x="scroll" overflow-y="scroll" scrollbar-width="15" font-family="ahem" font-size="10px" line-height="10px">
+        <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px"/>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="2" height="4">
+      <node x="0" y="0" width="2" height="4" scroll_width="0" scroll_height="0">
+        <node x="2" y="0" width="0" height="0"/>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="2" height="4" scroll-width="2" scroll-height="4" client-width="2" client-height="4"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="2" height="4" scroll-width="0" scroll-height="0" client-width="0" client-height="0"/>
+    <world-rounded-layout node-path="0.0.0" x="2" y="0" width="0" height="0" scroll-width="0" scroll-height="0" client-width="0" client-height="0"/>
+  </diagnostics>
+</test>

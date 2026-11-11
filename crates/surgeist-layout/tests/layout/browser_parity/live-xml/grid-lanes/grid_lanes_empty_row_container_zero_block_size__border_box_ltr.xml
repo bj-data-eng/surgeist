@@ -1,0 +1,12 @@
+<test name="grid_lanes_empty_row_container_zero_block_size__border_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid-lanes" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="grid-lanes" direction="ltr" position="absolute" font-family="ahem" font-size="10px" line-height="10px"/>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="0" height="0"/>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="0" height="0" scroll-width="0" scroll-height="0" client-width="0" client-height="0"/>
+  </diagnostics>
+</test>

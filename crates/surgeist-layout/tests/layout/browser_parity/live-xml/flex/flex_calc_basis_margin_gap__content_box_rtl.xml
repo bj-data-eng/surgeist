@@ -1,0 +1,20 @@
+<test name="flex_calc_basis_margin_gap__content_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" box-sizing="content-box" direction="rtl" position="absolute" font-family="ahem" font-size="10px" line-height="10px" width="240px" row-gap="calc(5% + 2px)" column-gap="calc(5% + 2px)">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" flex-basis="calc(25% + 12px)" height="10px" margin-left="calc(10% - 6px)"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="calc(30% + 4px)" height="10px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="240" height="10">
+      <node x="168" y="0" width="72" height="10"/>
+      <node x="60" y="0" width="76" height="10"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="240" height="10" scroll-width="240" scroll-height="10" client-width="240" client-height="10"/>
+    <world-rounded-layout node-path="0.0" x="168" y="0" width="72" height="10" scroll-width="72" scroll-height="10" client-width="72" client-height="10"/>
+    <world-rounded-layout node-path="0.1" x="60" y="0" width="76" height="10" scroll-width="76" scroll-height="10" client-width="76" client-height="10"/>
+  </diagnostics>
+</test>

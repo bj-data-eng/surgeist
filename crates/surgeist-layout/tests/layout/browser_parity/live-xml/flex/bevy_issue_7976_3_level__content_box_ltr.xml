@@ -1,0 +1,22 @@
+<test name="bevy_issue_7976_3_level__content_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" box-sizing="content-box" direction="ltr" position="absolute" font-family="ahem" font-size="10px" line-height="10px" align-content="start" width="200px" height="200px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" min-width="40px" min-height="40px" margin-top="5px" margin-left="5px" margin-bottom="5px" margin-right="5px" padding-top="5px" padding-left="5px" padding-bottom="5px" padding-right="5px">
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="100%" height="100%" padding-top="5px" padding-left="5px" padding-bottom="5px" padding-right="5px"/>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="200" height="200">
+      <node x="5" y="5" width="50" height="190">
+        <node x="5" y="5" width="40" height="190"/>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="200" height="200" scroll-width="200" scroll-height="200" client-width="200" client-height="200"/>
+    <world-rounded-layout node-path="0.0" x="5" y="5" width="50" height="190" scroll-width="50" scroll-height="195" client-width="50" client-height="190"/>
+    <world-rounded-layout node-path="0.0.0" x="5" y="5" width="40" height="190" scroll-width="40" scroll-height="190" client-width="40" client-height="190"/>
+  </diagnostics>
+</test>

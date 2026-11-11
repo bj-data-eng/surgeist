@@ -1,0 +1,22 @@
+<test name="align_content_end_single_line_negative_space__content_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" box-sizing="content-box" direction="rtl" position="absolute" flex-direction="column" font-family="ahem" font-size="10px" line-height="10px" width="320px" height="320px" border-top="60px" border-left="60px" border-bottom="60px" border-right="60px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" align-content="end" justify-content="center" height="10px">
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" width="80%" height="60px"/>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="440" height="440">
+      <node x="60" y="60" width="320" height="10">
+        <node x="32" y="0" width="256" height="60"/>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="440" height="440" scroll-width="320" scroll-height="320" client-width="320" client-height="320"/>
+    <world-rounded-layout node-path="0.0" x="60" y="60" width="320" height="10" scroll-width="320" scroll-height="60" client-width="320" client-height="10"/>
+    <world-rounded-layout node-path="0.0.0" x="32" y="0" width="256" height="60" scroll-width="256" scroll-height="60" client-width="256" client-height="60"/>
+  </diagnostics>
+</test>

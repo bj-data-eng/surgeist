@@ -1,0 +1,58 @@
+<test name="rounding_fractial_input_7__content_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" box-sizing="content-box" direction="rtl" position="absolute" font-family="ahem" font-size="10px" line-height="10px" width="7px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" flex-wrap="wrap" font-family="ahem" font-size="10px" line-height="10px" width="25%">
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="1px" height="10px"/>
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="1px" height="10px"/>
+      </div>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" flex-wrap="wrap" font-family="ahem" font-size="10px" line-height="10px" width="25%">
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="1px" height="10px"/>
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="1px" height="10px"/>
+      </div>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" flex-wrap="wrap" font-family="ahem" font-size="10px" line-height="10px" width="25%">
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="1px" height="10px"/>
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="1px" height="10px"/>
+      </div>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" flex-wrap="wrap" font-family="ahem" font-size="10px" line-height="10px" width="25%">
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="1px" height="10px"/>
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="1px" height="10px"/>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="7" height="20">
+      <node x="5" y="0" width="2" height="20">
+        <node x="1" y="0" width="1" height="10"/>
+        <node x="1" y="10" width="1" height="10"/>
+      </node>
+      <node x="4" y="0" width="1" height="20">
+        <node x="1" y="0" width="1" height="10"/>
+        <node x="1" y="10" width="1" height="10"/>
+      </node>
+      <node x="2" y="0" width="2" height="20">
+        <node x="1" y="0" width="1" height="10"/>
+        <node x="1" y="10" width="1" height="10"/>
+      </node>
+      <node x="0" y="0" width="2" height="20">
+        <node x="1" y="0" width="1" height="10"/>
+        <node x="1" y="10" width="1" height="10"/>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="7" height="20" scroll-width="7" scroll-height="20" client-width="7" client-height="20"/>
+    <world-rounded-layout node-path="0.0" x="5" y="0" width="2" height="20" scroll-width="2" scroll-height="20" client-width="2" client-height="20"/>
+    <world-rounded-layout node-path="0.0.0" x="1" y="0" width="1" height="10" scroll-width="1" scroll-height="10" client-width="1" client-height="10"/>
+    <world-rounded-layout node-path="0.0.1" x="1" y="10" width="1" height="10" scroll-width="1" scroll-height="10" client-width="1" client-height="10"/>
+    <world-rounded-layout node-path="0.1" x="4" y="0" width="1" height="20" scroll-width="2" scroll-height="20" client-width="2" client-height="20"/>
+    <world-rounded-layout node-path="0.1.0" x="1" y="0" width="1" height="10" scroll-width="1" scroll-height="10" client-width="1" client-height="10"/>
+    <world-rounded-layout node-path="0.1.1" x="1" y="10" width="1" height="10" scroll-width="1" scroll-height="10" client-width="1" client-height="10"/>
+    <world-rounded-layout node-path="0.2" x="2" y="0" width="2" height="20" scroll-width="2" scroll-height="20" client-width="2" client-height="20"/>
+    <world-rounded-layout node-path="0.2.0" x="1" y="0" width="1" height="10" scroll-width="1" scroll-height="10" client-width="1" client-height="10"/>
+    <world-rounded-layout node-path="0.2.1" x="1" y="10" width="1" height="10" scroll-width="1" scroll-height="10" client-width="1" client-height="10"/>
+    <world-rounded-layout node-path="0.3" x="0" y="0" width="2" height="20" scroll-width="2" scroll-height="20" client-width="2" client-height="20"/>
+    <world-rounded-layout node-path="0.3.0" x="1" y="0" width="1" height="10" scroll-width="1" scroll-height="10" client-width="1" client-height="10"/>
+    <world-rounded-layout node-path="0.3.1" x="1" y="10" width="1" height="10" scroll-width="1" scroll-height="10" client-width="1" client-height="10"/>
+  </diagnostics>
+</test>

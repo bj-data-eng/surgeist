@@ -1,0 +1,19 @@
+<test name="measure_height_overrides_measure__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" direction="rtl" position="absolute" font-family="ahem" font-size="10px" line-height="10px">
+      <text source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" height="5px">
+        H
+      </text>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="10" height="5">
+      <node x="0" y="0" width="10" height="5"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="10" height="5" scroll-width="10" scroll-height="10" client-width="10" client-height="5"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="10" height="5" scroll-width="10" scroll-height="10" client-width="10" client-height="5"/>
+  </diagnostics>
+</test>

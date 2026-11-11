@@ -1,0 +1,29 @@
+<test name="align_content_spacearound__content_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" box-sizing="content-box" direction="ltr" position="absolute" flex-wrap="wrap" font-family="ahem" font-size="10px" line-height="10px" align-content="space-around" width="140px" height="120px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="10px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="10px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="10px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="10px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="10px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="140" height="120">
+      <node x="0" y="15" width="50" height="10"/>
+      <node x="50" y="15" width="50" height="10"/>
+      <node x="0" y="55" width="50" height="10"/>
+      <node x="50" y="55" width="50" height="10"/>
+      <node x="0" y="95" width="50" height="10"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="140" height="120" scroll-width="140" scroll-height="120" client-width="140" client-height="120"/>
+    <world-rounded-layout node-path="0.0" x="0" y="15" width="50" height="10" scroll-width="50" scroll-height="10" client-width="50" client-height="10"/>
+    <world-rounded-layout node-path="0.1" x="50" y="15" width="50" height="10" scroll-width="50" scroll-height="10" client-width="50" client-height="10"/>
+    <world-rounded-layout node-path="0.2" x="0" y="55" width="50" height="10" scroll-width="50" scroll-height="10" client-width="50" client-height="10"/>
+    <world-rounded-layout node-path="0.3" x="50" y="55" width="50" height="10" scroll-width="50" scroll-height="10" client-width="50" client-height="10"/>
+    <world-rounded-layout node-path="0.4" x="0" y="95" width="50" height="10" scroll-width="50" scroll-height="10" client-width="50" client-height="10"/>
+  </diagnostics>
+</test>

@@ -1,0 +1,17 @@
+<test name="block_absolute_margin_auto_left_and_right_with_inset__content_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="block" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="block" box-sizing="content-box" direction="ltr" position="absolute" font-family="ahem" font-size="10px" line-height="10px" width="200px" height="200px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" position="absolute" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="50px" margin-left="auto" margin-right="auto" left="10px" right="20px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="200" height="200">
+      <node x="70" y="0" width="50" height="50"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="200" height="200" scroll-width="200" scroll-height="200" client-width="200" client-height="200"/>
+    <world-rounded-layout node-path="0.0" x="70" y="0" width="50" height="50" scroll-width="50" scroll-height="50" client-width="50" client-height="50"/>
+  </diagnostics>
+</test>

@@ -1,0 +1,17 @@
+<test name="fri05_scroll_target_geometry__content_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="block" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="block" box-sizing="content-box" direction="ltr" position="absolute" overflow-x="auto" overflow-y="auto" scrollbar-width="15" scroll-padding-top="1px" scroll-padding-right="2px" scroll-padding-bottom="3px" scroll-padding-left="4px" font-family="ahem" font-size="10px" line-height="10px" width="100px" height="100px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" scroll-margin-top="-5px" scroll-margin-right="6px" scroll-margin-bottom="7px" scroll-margin-left="-8px" scroll-snap-align="start center" scroll-snap-stop="always" font-family="ahem" font-size="10px" line-height="10px" width="150px" height="150px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="100" height="100" scroll_width="65" scroll_height="65">
+      <node x="0" y="0" width="150" height="150"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="100" height="100" scroll-width="150" scroll-height="150" client-width="85" client-height="85"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="150" height="150" scroll-width="150" scroll-height="150" client-width="150" client-height="150"/>
+  </diagnostics>
+</test>

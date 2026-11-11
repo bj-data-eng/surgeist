@@ -1,0 +1,64 @@
+<test name="grid_lanes_max_content_container_sizing__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="block" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="block" direction="rtl" position="absolute" font-family="monospace" font-size="15px" line-height="15px">
+      <div source-tag="div" display="grid-lanes" direction="rtl" font-family="monospace" font-size="15px" line-height="15px" width="min-content" margin-bottom="10px" padding-top="10px" padding-left="10px" padding-bottom="10px" padding-right="10px" grid-template-rows="auto auto auto">
+        <text source-tag="div" display="flex" direction="rtl" font-family="monospace" font-size="15px" line-height="15px" width="min-content">
+          Number 1
+        </text>
+        <text source-tag="div" display="flex" direction="rtl" font-family="monospace" font-size="15px" line-height="15px" width="min-content">
+          Number 2
+        </text>
+        <text source-tag="div" display="flex" direction="rtl" font-family="monospace" font-size="15px" line-height="15px" width="min-content">
+          Number 3
+        </text>
+        <text source-tag="div" display="flex" direction="rtl" font-family="monospace" font-size="15px" line-height="15px" width="min-content" grid-row-start="span 2">
+          Number 4
+        </text>
+      </div>
+      <div source-tag="div" display="grid-lanes" direction="rtl" font-family="monospace" font-size="15px" line-height="15px" width="max-content" padding-top="10px" padding-left="10px" padding-bottom="10px" padding-right="10px" grid-template-rows="auto auto auto">
+        <text source-tag="div" display="flex" direction="rtl" font-family="monospace" font-size="15px" line-height="15px" width="max-content">
+          Number 1
+        </text>
+        <text source-tag="div" display="flex" direction="rtl" font-family="monospace" font-size="15px" line-height="15px" width="max-content">
+          Number 2
+        </text>
+        <text source-tag="div" display="flex" direction="rtl" font-family="monospace" font-size="15px" line-height="15px" width="max-content">
+          Number 3
+        </text>
+        <text source-tag="div" display="flex" direction="rtl" font-family="monospace" font-size="15px" line-height="15px" width="max-content" grid-row-start="span 2">
+          Number 4
+        </text>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="165" height="185">
+      <node x="36" y="0" width="129" height="110">
+        <node x="64" y="10" width="55" height="30"/>
+        <node x="64" y="40" width="55" height="30"/>
+        <node x="64" y="70" width="55" height="30"/>
+        <node x="10" y="10" width="54" height="60"/>
+      </node>
+      <node x="0" y="120" width="165" height="65">
+        <node x="82" y="10" width="73" height="15"/>
+        <node x="82" y="25" width="73" height="15"/>
+        <node x="82" y="40" width="73" height="15"/>
+        <node x="10" y="10" width="72" height="30"/>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="165" height="185" scroll-width="165" scroll-height="185" client-width="165" client-height="185"/>
+    <world-rounded-layout node-path="0.0" x="36" y="0" width="129" height="110" scroll-width="128" scroll-height="110" client-width="128" client-height="110"/>
+    <world-rounded-layout node-path="0.0.0" x="64" y="10" width="55" height="30" scroll-width="54" scroll-height="31" client-width="54" client-height="30"/>
+    <world-rounded-layout node-path="0.0.1" x="64" y="40" width="55" height="30" scroll-width="54" scroll-height="31" client-width="54" client-height="30"/>
+    <world-rounded-layout node-path="0.0.2" x="64" y="70" width="55" height="30" scroll-width="54" scroll-height="31" client-width="54" client-height="30"/>
+    <world-rounded-layout node-path="0.0.3" x="10" y="10" width="54" height="60" scroll-width="54" scroll-height="60" client-width="54" client-height="60"/>
+    <world-rounded-layout node-path="0.1" x="0" y="120" width="165" height="65" scroll-width="165" scroll-height="65" client-width="165" client-height="65"/>
+    <world-rounded-layout node-path="0.1.0" x="82" y="10" width="73" height="15" scroll-width="72" scroll-height="16" client-width="72" client-height="15"/>
+    <world-rounded-layout node-path="0.1.1" x="82" y="25" width="73" height="15" scroll-width="72" scroll-height="16" client-width="72" client-height="15"/>
+    <world-rounded-layout node-path="0.1.2" x="82" y="40" width="73" height="15" scroll-width="72" scroll-height="16" client-width="72" client-height="15"/>
+    <world-rounded-layout node-path="0.1.3" x="10" y="10" width="72" height="30" scroll-width="72" scroll-height="30" client-width="72" client-height="30"/>
+  </diagnostics>
+</test>

@@ -1,0 +1,26 @@
+<test name="fri06_float_bfc_avoidance__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="block" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="block" direction="rtl" position="absolute" overflow-x="auto" overflow-y="auto" scrollbar-width="15" font-family="monospace" font-size="16px" line-height="20px" width="180px">
+      <div source-tag="div" display="flex" direction="rtl" float="left" font-family="monospace" font-size="16px" line-height="20px" width="54px" height="64px"/>
+      <div source-tag="div" display="block" direction="rtl" overflow-x="auto" overflow-y="auto" scrollbar-width="15" font-family="monospace" font-size="16px" line-height="20px" height="24px"/>
+      <div source-tag="div" display="flex" direction="rtl" font-family="monospace" font-size="16px" line-height="20px" height="24px"/>
+      <div source-tag="div" display="block" direction="rtl" font-family="monospace" font-size="16px" line-height="20px" height="24px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="180" height="72" scroll_width="0" scroll_height="0">
+      <node x="0" y="0" width="54" height="64"/>
+      <node x="54" y="0" width="126" height="24" scroll_width="0" scroll_height="0"/>
+      <node x="54" y="24" width="126" height="24"/>
+      <node x="0" y="48" width="180" height="24"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="180" height="72" scroll-width="180" scroll-height="72" client-width="180" client-height="72"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="54" height="64" scroll-width="54" scroll-height="64" client-width="54" client-height="64"/>
+    <world-rounded-layout node-path="0.1" x="54" y="0" width="126" height="24" scroll-width="126" scroll-height="24" client-width="126" client-height="24"/>
+    <world-rounded-layout node-path="0.2" x="54" y="24" width="126" height="24" scroll-width="126" scroll-height="24" client-width="126" client-height="24"/>
+    <world-rounded-layout node-path="0.3" x="0" y="48" width="180" height="24" scroll-width="180" scroll-height="24" client-width="180" client-height="24"/>
+  </diagnostics>
+</test>

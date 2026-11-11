@@ -1,0 +1,30 @@
+<test name="fri08_nested_indefinite_subgrid__content_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid-lanes" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="grid-lanes" box-sizing="content-box" direction="ltr" position="absolute" font-family="ahem" font-size="10px" line-height="10px" align-content="start" justify-content="start" width="max-content" height="10px" grid-template-rows="10px" grid-template-columns="auto auto auto">
+      <div source-tag="div" display="grid-lanes" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" grid-template-rows="10px" grid-template-columns="subgrid" grid-row-start="1" grid-column-start="1" grid-column-end="span 3">
+        <div source-tag="div" display="grid-lanes" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" grid-template-rows="10px" grid-template-columns="subgrid" grid-row-start="1" grid-column-start="1" grid-column-end="span 3">
+          <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="20px" height="10px" grid-row-start="1" grid-column-start="1"/>
+          <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="40px" height="10px" grid-row-start="1" grid-column-start="3"/>
+        </div>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="60" height="10">
+      <node x="0" y="0" width="60" height="10">
+        <node x="0" y="0" width="60" height="10">
+          <node x="0" y="0" width="20" height="10"/>
+          <node x="20" y="0" width="40" height="10"/>
+        </node>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="60" height="10" scroll-width="60" scroll-height="10" client-width="60" client-height="10"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="60" height="10" scroll-width="60" scroll-height="10" client-width="60" client-height="10"/>
+    <world-rounded-layout node-path="0.0.0" x="0" y="0" width="60" height="10" scroll-width="60" scroll-height="10" client-width="60" client-height="10"/>
+    <world-rounded-layout node-path="0.0.0.0" x="0" y="0" width="20" height="10" scroll-width="20" scroll-height="10" client-width="20" client-height="10"/>
+    <world-rounded-layout node-path="0.0.0.1" x="20" y="0" width="40" height="10" scroll-width="40" scroll-height="10" client-width="40" client-height="10"/>
+  </diagnostics>
+</test>
