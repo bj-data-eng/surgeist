@@ -200,6 +200,19 @@ separately pins the complete terminal digest. An existing capture directory
 alone establishes no authority. Each named cohort
 retains its published membership and bytes.
 
+The [FRI05 computed overflow edition](../../tests/layout/browser_parity/captured/fri05-computed-overflow/qualification.json)
+covers eleven original sources in both box modes and directions. The matching
+comparison includes every recorded scroll-span pair. Its catalogue records use
+`case_identity = "source-path"` to distinguish sources with shared basenames.
+Current case names use the source path without `html/` and `.html`, followed by
+the variant. Historical XML retains the basename and variant. See the
+[canonical Ahem provenance](../../tests/layout/browser_parity/fonts/PROVENANCE.md)
+for the retained font's resource and license information.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri05-computed-overflow
+~~~
+
 The [FRI06 Subgrid edition](../../tests/layout/browser_parity/captured/fri06-subgrid-representatives/qualification.json)
 contains three original BlockFlow sources in both box modes and directions.
 The comparison checks ordinary box geometry, the six loaded-font paragraph

@@ -4406,3 +4406,250 @@ height = 162
 [[specialized_publications]]
 source = "html/subgrid/subgrid_axes_vertical_rl_parallel.html"
 profile = "original-subgrid-axes"
+
+[[records]]
+source = "html/block/fri05_overflow_auto_cross_axis.html"
+source_sha256 = "56d53577a03c7a298a95f45f967621594a3971ece4ed9e523193e1b24358a019"
+source_kind = "original"
+case_identity = "source-path"
+[records.historical_sha256]
+border_box_ltr = "c03feebabb5ce36bf509e5640f9d506810142ab257ff200f532ac0a6240d9fb0"
+content_box_ltr = "0a339ad6b3eff0eb2f731253417255dc34a39dda037636b0942910b38fdb9ac2"
+border_box_rtl = "6645c967b21655b6d00f0862709817334f7e63de14d33c7ea1e2fa7ffa524a10"
+content_box_rtl = "4355e2a1b509995e0bab257a9814d754299e75b236c30093e96eb6de7d427cd3"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/flex/fri05_overflow_auto_cross_axis.html"
+source_sha256 = "e367abea5e0e6aff26b5acb8c38865d1c720cf9eea281b908eb854a6e3db564a"
+source_kind = "original"
+case_identity = "source-path"
+[records.historical_sha256]
+border_box_ltr = "77e3e4677ea5cdb16dc3e303fbc51b37300fcda646fbbcffde12c18a9a0ea381"
+content_box_ltr = "eb62198ba2f28c4d2af8e9831a77bf0064dec7a636c20f128d18b61ef7e474e3"
+border_box_rtl = "a6b78ffe5c03828560bd1af39e3d7cbbd5f65257822cbe2596d2ecfe1e25edf1"
+content_box_rtl = "a1ee5d211c0ec5b8f89c663e95302923775b46ba171c4ae30d3f20de5ae1c276"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri05_overflow_auto_cross_axis.html"
+source_sha256 = "0f4e92fdaf96f35c8b21ccfbb4759392e2a8bf6500c8ea27c67bcd27b32f70a1"
+source_kind = "original"
+case_identity = "source-path"
+[records.historical_sha256]
+border_box_ltr = "125f3f2119d826779b644ed2cc0ba6523e4d676f63882bb7cd701feeb935c86a"
+content_box_ltr = "08172197cd55c64e7600b68631fd0611737c3c0bd40f0d7998287f6ff71b4505"
+border_box_rtl = "98a36420ab5f5446bd6c8b1102c1f30c3257e7e47af0b482bb71800fab69a351"
+content_box_rtl = "4bf7866d5660d7c13d9ec41de13634363b12f971df52c844c2fee1dd7d747bd8"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri05_hidden_auto_minimum.html"
+source_sha256 = "97d46ec31c3cc8e824b928968152e1ce2f423d2b31b3011529e7b27bfa3be7aa"
+source_kind = "original"
+case_identity = "source-path"
+[records.historical_sha256]
+border_box_ltr = "62873f4b264c993585bdc23008c9fc0431941b3110d1f1b339e4df6944453b53"
+content_box_ltr = "fab1206007d1328774365b4fcfd4ff99e49310f60561f1dc5d584617fd0e8ea5"
+border_box_rtl = "19bb9989a7c29f63fbd0d2d931fb4ae13cf5a2fee6e4f559b0e8432f3a94a5a5"
+content_box_rtl = "b5d774679db3807bdd3d2ca0a5ccbbf83f4a8939fc5bbb7e0515d5e34c50778a"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/fri05_hidden_auto_minimum.html"
+source_sha256 = "9b63d874dc105adc0ca1f1c1398fddeb5373511e6a35c418d66a7f4b01ebcc94"
+source_kind = "original"
+case_identity = "source-path"
+[records.historical_sha256]
+border_box_ltr = "f3fedcd221db84b1c27ecd019c00817076458af656972a073a4828837508b8a3"
+content_box_ltr = "1f7d4f52b377097013483ceb011f43f9c5026184be18e5a41deed54f846d8018"
+border_box_rtl = "af0d01002438d0208768e29dfd421f84e6dc5ff6197ee68bd8a1c228a5fc3b2b"
+content_box_rtl = "e5f427a54bcf684998a274d10f033c0865289a53a94178c9072de045247538b9"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid-lanes"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/block/fri05_mixed_axis_clip_margin.html"
+source_sha256 = "0a2ad576917200c1158f4ed02ce75f38801d373430e57dd335b73eeaf63a667e"
+source_kind = "original"
+case_identity = "source-path"
+[records.historical_sha256]
+border_box_ltr = "c0a0162122620e7052198c5bbafb7dfda31ff6e17224cdf78edd8da0f73056d1"
+content_box_ltr = "f4baf850028dfba2b8c03d641883de653821f8905edcddc7092e78c03066d5ff"
+border_box_rtl = "7f63241bc847b16e851ac4062124744750b861e11507972a3c502ae3792bbf29"
+content_box_rtl = "f2a745d3e828385e1d92a3adca92e8e15e2874ff5c80e734629997e2ff556ed9"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/block/fri05_scrollbar_gutter_stable_both_edges.html"
+source_sha256 = "96c3abf6705298ec50edfd77ce51847712f6cb70f655e9c8b7d7e077c9de067d"
+source_kind = "original"
+case_identity = "source-path"
+[records.historical_sha256]
+border_box_ltr = "b3ecef3992de472656bed896289288d034e6346df0f075d5a2aec1b65e4060ee"
+content_box_ltr = "79dec8f9da517a61b7758828c643eae0aa9fa8940b292ce1d20e9ebe6ed906e3"
+border_box_rtl = "1aef80c0d4627ecd159d71643a6bced00070cb92a50ad6cd47dd8536fa4e60a9"
+content_box_rtl = "4a25da35a8c33cf63a0dfb4b7a34e877ae0199e3d7ff3b332e7a3aa9862b337c"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/flex/fri05_nested_zero_axis_overflow.html"
+source_sha256 = "6caab83335d69deba2dd848a25cbcf442eed13e8dedd74d029c4f278bb11396f"
+source_kind = "original"
+case_identity = "source-path"
+[records.historical_sha256]
+border_box_ltr = "12101425fb77df6c3b77c88764cd1783601e007ce09c7f91fe149ab6120eb39e"
+content_box_ltr = "616c6911067556b38547f04357e75504c1700d7d631746a0ac6d08d97e00fc28"
+border_box_rtl = "ed771aed94f384b3f0b9bfd01c54f46e504e232c19640859b68f9512ffa6346f"
+content_box_rtl = "91c209f1d3f3b14ba00671a53ccf7436f99da5b49e1db3b398ede77dba01f1ea"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri05_nested_zero_axis_overflow.html"
+source_sha256 = "0ea39a652c54f8eaad195cd05073f463af2efb31bb6b2992ea30fbfac005eb31"
+source_kind = "original"
+case_identity = "source-path"
+[records.historical_sha256]
+border_box_ltr = "ff4f6fff6b9105e691cbb2a1ef0d14388b0b15fd9414df19f405be9c2133fa5a"
+content_box_ltr = "ce584eaf7b73f0f3d33bf280d37d7312bb470f1084341c4f04431f334b3e9754"
+border_box_rtl = "e1451330f513cef76a3399a9c334657eca62f52951ee40e83362e0fff05749a5"
+content_box_rtl = "e5fa554ddf20dff6aa0759e011ab2725b2ed5f10a64f9c28c5ca96b30e4f0904"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri05_scroll_extent_area_origin.html"
+source_sha256 = "461d1fe686fcab9378d7454b6586fadb4ab8a3912582065b768462bf87e16b1c"
+source_kind = "original"
+case_identity = "source-path"
+[records.historical_sha256]
+border_box_ltr = "b8974291bcd73117823bc4937c864c5335e124a64b7a96e29b6daee517b21c65"
+content_box_ltr = "60f51aec8fa3130a1122bd65764bb5cc32b54914adb55eab72165ea933a67bb7"
+border_box_rtl = "6a592046651305b62f613ba086da5462c7dccf9abf1a478854b798fc2649f909"
+content_box_rtl = "f469335c9edd7c41d228e161a6022e24915e9132ddae6216d4b1cd22858c7ec8"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/block/fri05_scroll_target_geometry.html"
+source_sha256 = "a3b52e7e249dcdf1ffaeac55853e248b2666d44dc60f62ce3387774f9dbd5d27"
+source_kind = "original"
+case_identity = "source-path"
+[records.historical_sha256]
+border_box_ltr = "cb93b08fac61586242c682217f57eb96d4cd2d08983d8f67351b82911da7b943"
+content_box_ltr = "5dacd73bd033f2f6c6f4128fefb84bb6ba67413f9100fa75d3adcafc81299c68"
+border_box_rtl = "8c6f507a51ea5f7cb045e292711370ebdeb213e0906bbf976123b662318a2868"
+content_box_rtl = "ae199867874e44aeffbaaa293bda1e06a652761e7e8c95c5649a10418ad73680"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[matching_publications]]
+edition = "fri05-computed-overflow"
+sources = [
+  "html/block/fri05_overflow_auto_cross_axis.html",
+  "html/flex/fri05_overflow_auto_cross_axis.html",
+  "html/grid/fri05_overflow_auto_cross_axis.html",
+  "html/grid/fri05_hidden_auto_minimum.html",
+  "html/grid-lanes/fri05_hidden_auto_minimum.html",
+  "html/block/fri05_mixed_axis_clip_margin.html",
+  "html/block/fri05_scrollbar_gutter_stable_both_edges.html",
+  "html/flex/fri05_nested_zero_axis_overflow.html",
+  "html/grid/fri05_nested_zero_axis_overflow.html",
+  "html/grid/fri05_scroll_extent_area_origin.html",
+  "html/block/fri05_scroll_target_geometry.html",
+]

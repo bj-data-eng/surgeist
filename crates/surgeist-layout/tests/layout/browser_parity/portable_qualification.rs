@@ -678,6 +678,10 @@ pub(super) fn admit_grid_lanes_axis_controls(owner: &Path) -> Result<AdmittedEdi
 
 const REGISTERED_MATCHING: &[(&str, &str)] = &[
     (
+        "fri05-computed-overflow",
+        "6970a35892688b714ffd9266784d08c4b988c95c24501daf939a37101ad85381",
+    ),
+    (
         authority::FRI06_SUBGRID_EDITION,
         "a9a95dcb6f77349cbe7180d9be1762d4166da726b11b481a67865ac8098c72f2",
     ),
@@ -1867,6 +1871,8 @@ fn admit_specialized(
                         xml,
                         historical,
                         &case.case.name,
+                        &case.case.source,
+                        &case.case.variant,
                     )
                     .map_err(|error| changed(error.to_string()))?;
                     let record = terminal

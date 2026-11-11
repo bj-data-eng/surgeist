@@ -1323,7 +1323,13 @@ fn validate_corpus(
                     &Golden::parse(&historical)?,
                 )?;
             } else if mode.box_observations() != BoxObservationRequest::PreparedAtomicPercentage {
-                qualify_historical_geometry(current, &historical, case.case.id())?;
+                qualification_catalogue::verify_historical_geometry(
+                    current,
+                    &historical,
+                    case.case.id(),
+                    case.source.as_str(),
+                    case.case.variant(),
+                )?;
             }
         }
     }
@@ -2132,10 +2138,6 @@ fn inventory_with_retained_helper(
         )?);
     }
     Ok(inventory)
-}
-
-fn qualify_historical_geometry(current: &str, historical: &str, case_id: &str) -> Result<()> {
-    qualification_catalogue::verify_historical_geometry(current, historical, case_id)
 }
 
 fn compare_observation_tree(
