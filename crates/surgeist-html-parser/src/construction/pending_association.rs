@@ -281,15 +281,14 @@ impl SessionStorage {
         let slot = self.attribute_value_slot(c, node, position)?;
         #[cfg(test)]
         {
-            let container = self.element_attribute_container(c, node)?;
             // An uncharged scan, so the cross-check does not enter the work.
             assert_eq!(
                 self.payloads.values.iter().position(|row| matches!(
                     row,
                     RetainedPayload::String {
-                        location: StringLocation::AttributeValue(owner, at),
+                        location: FieldRef::AttributeValue(owner, at),
                         ..
-                    } if *owner == container && *at == position
+                    } if *owner == node && *at == position
                 )),
                 Some(slot)
             );
@@ -390,7 +389,7 @@ impl SessionStorage {
                     continue;
                 }
                 if matches!(record.kind(), ConstructionNodeKind::Text(_)) {
-                    let slot = self.field_slot(c, StringLocation::Text(child))?;
+                    let slot = self.field_slot(c, FieldRef::Text(child))?;
                     let group = self.association_string(c, slot)?;
                     text.try_push_geometric(c, group)?;
                 }

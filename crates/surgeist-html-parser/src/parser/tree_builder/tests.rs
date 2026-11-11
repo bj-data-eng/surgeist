@@ -15164,7 +15164,7 @@ fn ordinary_details_name_group_closes_newly_inserted_open_member() {
 #[test]
 fn ordinary_comment_diagnostics_retain_bounded_event_layouts() {
     use crate::construction::{
-        StringLocation,
+        FieldRef,
         evidence::{
             HtmlParseDiagnostic, HtmlParseDiagnosticContext, HtmlParseDiagnosticKind,
             HtmlParseDiagnosticLocation, HtmlParseDiagnosticLocationRole,
@@ -15498,7 +15498,7 @@ fn ordinary_comment_diagnostics_retain_bounded_event_layouts() {
             let mut count = 0;
             for index in 0..rows.len() {
                 let (row, _) = rows.row(index).unwrap().unwrap();
-                if row.destination == NativeDestination::Field(StringLocation::Comment(node))
+                if row.destination == NativeDestination::Field(FieldRef::Comment(node))
                     && row.relation == HtmlParseAssociationRelation::Output
                 {
                     assert!(row.group.is_some());
@@ -16200,7 +16200,7 @@ fn completed_native_evidence(
     diagnostics: &[DiagnosticExpectation],
 ) {
     use crate::construction::{
-        StringLocation,
+        FieldRef,
         evidence::HtmlParseDiagnosticSeverity,
         provenance::{
             GroupBody, HtmlParseAssociationRelation, HtmlParseConstructionOperation,
@@ -16329,7 +16329,7 @@ fn completed_native_evidence(
                 NativeField::Text => rows.text_for(index, &node).unwrap(),
                 NativeField::Comment => {
                     rows.row(index).unwrap().unwrap().0.destination
-                        == NativeDestination::Field(StringLocation::Comment(comment_index.unwrap()))
+                        == NativeDestination::Field(FieldRef::Comment(comment_index.unwrap()))
                 }
                 NativeField::AttributeName(slot) => rows
                     .attribute_for(index, &node, slot, NativeAttributeField::Name)

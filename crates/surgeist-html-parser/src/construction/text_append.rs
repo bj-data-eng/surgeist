@@ -154,7 +154,7 @@ impl SessionStorage {
         }
         // A preserved original no longer names the committed text.
         if !dispose_old {
-            self.bind_string(old_slot, StringLocation::Detached)
+            self.bind_string(old_slot, FieldRef::Detached)
                 .map_err(|_| latch_registry_row(control))?;
         }
         let Some(committed) = stored_text_of(&self.construction, index) else {
@@ -190,7 +190,7 @@ impl SessionStorage {
             value,
             allocation,
             origins,
-            location: StringLocation::Text(index),
+            location: FieldRef::Text(index),
         };
         // The row owns the surviving ticket from here on.
         if let Some(old) = tickets.original.take() {
@@ -266,7 +266,7 @@ impl SessionStorage {
                                 value,
                                 allocation,
                                 origins,
-                                location: StringLocation::Text(index),
+                                location: FieldRef::Text(index),
                             };
                             None
                         }
@@ -319,7 +319,7 @@ impl SessionStorage {
         payload_write::<RetainedPayload>(control, 2)?;
         payload_write::<Option<FailedTextAppend>>(control, 1)?;
         payload_write::<Option<usize>>(control, 1)?;
-        payload_write::<StringLocation>(control, 1)?;
+        payload_write::<FieldRef>(control, 1)?;
         // At most registry-strong drop, incoming drop, discarded-original
         // drop, and the final registry clone; Weak work is ticket-owned.
         control.charge(HtmlParseWorkCategory::ProviderCall, 4)?;

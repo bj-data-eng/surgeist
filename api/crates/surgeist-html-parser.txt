@@ -420,8 +420,6 @@ pub surgeist_html_parser::HtmlParseRetiredDestination::Detached
 pub surgeist_html_parser::HtmlParseRetiredDestination::Field
 pub surgeist_html_parser::HtmlParseRetiredDestination::Field::field: surgeist_html_parser::HtmlParseField
 pub surgeist_html_parser::HtmlParseRetiredDestination::Field::node: surgeist_html::internal::construction::HtmlNode<'a>
-pub surgeist_html_parser::HtmlParseRetiredDestination::StagedField
-pub surgeist_html_parser::HtmlParseRetiredDestination::StagedField::field: surgeist_html_parser::HtmlParseField
 pub enum surgeist_html_parser::HtmlParseReverseError
 pub surgeist_html_parser::HtmlParseReverseError::Coordinates
 pub surgeist_html_parser::HtmlParseReverseError::ForeignSource

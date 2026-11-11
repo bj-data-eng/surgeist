@@ -1948,7 +1948,7 @@ fn range_copy_requires_actual_generated_group_and_rejects_a_foreign_controller()
     // empty lexical map cannot authorize an origin-free generated copy.
     let body = session.allocate_implicit_body(&mut c, None).unwrap();
     let literal = session.active().unwrap().payloads.values.iter().position(|value|
-        matches!(value, RetainedPayload::String { location: StringLocation::ElementName(id), .. } if *id == body.index)).unwrap();
+        matches!(value, RetainedPayload::String { location: FieldRef::ElementName(id), .. } if *id == body.index)).unwrap();
     let refused = {
         let storage = session.active().unwrap();
         provenance::copy_generated_input_value(

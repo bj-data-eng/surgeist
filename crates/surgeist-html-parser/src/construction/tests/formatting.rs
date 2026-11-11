@@ -374,11 +374,13 @@ fn formatting_replay_copies_exact_utf16_attributes_and_original_origins_into_dis
             [65, 0xd83d, 0xde00, 10, 0xd800]
         );
         assert_eq!(attributes[1].name().local_name().code_units(), [97]);
-        let origins = storage.payloads.values.iter().find_map(|payload| match payload {
-            RetainedPayload::String { origins:Some(origins),location:StringLocation::AttributeValue(container,0),.. }
-                if matches!(&storage.payloads.values[*container],RetainedPayload::Attributes(Some(AttributeStorage::Frozen {element:Some(index),..})) if *index==node.index) => Some(storage.observed_origins(origins, &mut c).unwrap()),
-            _ => None,
-        }).expect("actual attribute origins");
+        let group = storage
+            .payloads
+            .detail_origins
+            .get(&mut c, FieldRef::AttributeValue(node.index, 0))
+            .unwrap()
+            .expect("actual attribute origins");
+        let origins = storage.observed_origins(group, &mut c).unwrap();
         let observed = origins
             .iter()
             .map(|o| (o.start, o.end, o.source.clone(), o.kind))

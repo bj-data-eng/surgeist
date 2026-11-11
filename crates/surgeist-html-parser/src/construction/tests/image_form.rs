@@ -416,8 +416,8 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
     let mut c = ParseControl::new(
         limits()
             .into_builder()
-            .auxiliary_entries(22)
-            .active_formatting_entries(22)
+            .auxiliary_entries(20)
+            .active_formatting_entries(20)
             .finish()
             .unwrap(),
         HtmlParseCancellation::new(),
@@ -438,14 +438,14 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
     // Attaching it would require an unrelated temporary child-order entry;
     // the image's actual intended parent is the attached HTML container.
     let _body = session.allocate_implicit_body(&mut c, None).unwrap();
-    // Root/html/body own three actual record tickets, six field payload slots, four document facts, and four nonce slots.
+    // Root/html/body own three actual record tickets, four field payload slots, four document facts, and four nonce slots.
     // Three append-index entries and two independent creation rows accompany those records.
     // No auxiliary entry remains for the image's required metadata slot.
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current,
-        22
+        20
     );
     let name_backing = tag.name.value.text().block().address();
     let original_origins: Vec<_> = tag
@@ -533,8 +533,8 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
         result.err(),
         Some(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::AuxiliaryEntries,
-            limit: 22,
-            current: 22,
+            limit: 20,
+            current: 20,
             requested_delta: 3,
         }))
     );
@@ -862,7 +862,7 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
         let mut tokenizer =
             LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
-        // Root plus html/body: 3 records/tickets, 6 fields, 4 document facts and 4 nonce slots.
+        // Root plus html/body: 3 records/tickets, 4 fields, 4 document facts and 4 nonce slots.
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
@@ -884,7 +884,7 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
         if cap == needed {
             let image = result.unwrap();
             assert_form_owner(&session, &mut c, &image, None, false);
-            // Prior name/namespace/attributes + record ticket + form/creation
+            // Prior name/namespace + record ticket + form/creation
             // metadata + two nonce slots, plus one standalone Image row.
             assert_eq!(
                 c.usage()
@@ -943,13 +943,13 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
                     ..
                 })) if limit == cap
             ));
-            // Metadata, name, namespace and attributes are initialized;
+            // Metadata, name and namespace are initialized;
             // the next actual record-ticket entry is the rejected slot.
             assert_eq!(
                 session.active().unwrap().construction.test_storage().len(),
                 3
             );
-            assert_eq!(session.active().unwrap().payloads.values.len(), 24);
+            assert_eq!(session.active().unwrap().payloads.values.len(), 21);
             assert!(
                 session
                     .active()

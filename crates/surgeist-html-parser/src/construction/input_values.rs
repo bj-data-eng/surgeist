@@ -303,11 +303,7 @@ fn copy_whole_generated_input_value(
         return Err(SessionError::OriginSplitUnavailable);
     }
     let original = if c.detail().records_graph() {
-        let Some(RetainedPayload::String {
-            origins: Some(group),
-            ..
-        }) = payloads.values.get(source)
-        else {
+        let Some(group) = payloads.row_group(c, source)? else {
             return Err(latch_registry_row(c));
         };
         let evidence = evidence.ok_or(SessionError::WrongToken)?;
@@ -357,15 +353,13 @@ fn copy_input_value_core(
 ) -> Result<(FieldCopy, Option<usize>), SessionError> {
     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(RetainedPayload::String {
-        value,
-        origins,
-        allocation,
-        ..
+        value, allocation, ..
     }) = payloads.values.get(slot)
     else {
         return Err(SessionError::InputMetadataUnavailable);
     };
     control.require_document_string(allocation, value)?;
+    let origins = payloads.row_group(control, slot)?;
     let mut buffer = Utf16Buffer::new(control)?;
     let mut copied = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
     let result = (|| {
@@ -523,7 +517,6 @@ fn copy_input_value_core(
         );
     }
     let original = match origins
-        .as_ref()
         .map(|group| {
             evidence
                 .ok_or(SessionError::WrongToken)?

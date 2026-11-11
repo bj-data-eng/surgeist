@@ -625,7 +625,6 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let container = self.element_attribute_container(c, node)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let ConstructionNodeKind::Element(element) = &self
             .construction
@@ -671,20 +670,14 @@ impl SessionStorage {
                 self.replace_registered_attribute(
                     c,
                     node,
-                    [container, position],
+                    position,
                     incoming,
                     [name_slot, value_slot],
                 )?;
                 self.install_nonce_attribute(c, node, position, Some(value_slot))
             } else {
                 // The actual merge owner invokes the same installation hook.
-                self.append_registered_attribute(
-                    c,
-                    node,
-                    container,
-                    incoming,
-                    [name_slot, value_slot],
-                )
+                self.append_registered_attribute(c, node, incoming, [name_slot, value_slot])
             }
         } else {
             self.remove_managed_field(c, node, "nonce")?;

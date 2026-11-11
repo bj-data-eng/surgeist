@@ -17,54 +17,35 @@ use super::name_index::{
 /// Slots a clearing action overwrites. Each action stays within one admission quantum.
 pub(crate) const CLEAR_CHUNK: usize = 256;
 
-/// Set in an entry that names a planned candidate, not a stored attribute.
-const CANDIDATE: usize = 1 << (usize::BITS - 1);
-/// The bits of an entry that hold the position of the attribute or candidate it names.
-const POSITION_BITS: u32 = usize::BITS / 2 - 1;
+/// The bits of an entry that hold the position of the attribute it names.
+const POSITION_BITS: u32 = usize::BITS / 2;
 const POSITION_MASK: usize = (1 << POSITION_BITS) - 1;
 /// The bits of an entry that hold the part of the name's hash that tells names apart without
-/// reading them. Between the position and the candidate marker.
-const TAG_MASK: usize = (1 << (usize::BITS - 1 - POSITION_BITS)) - 1;
+/// reading them. Above the position.
+const TAG_MASK: usize = (1 << (usize::BITS - POSITION_BITS)) - 1;
 /// The width of a tag, which fits `u32` on every target that has 64 bit positions and keeps the
 /// phases of a cursor small.
-const _: () = assert!(usize::BITS - 1 - POSITION_BITS <= 32);
-
-/// What an entry names.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Occupant {
-    /// The stored attribute at this position.
-    Attribute(usize),
-    /// The planned candidate with this index.
-    Candidate(usize),
-}
+const _: () = assert!(usize::BITS - POSITION_BITS <= 32);
 
 /// The part of `hash` an entry keeps. A probe compares names only where it matches.
 pub(crate) fn tag(hash: u64) -> u32 {
     (((hash >> 32) as usize) & TAG_MASK) as u32
 }
 
-/// The entry for `occupant`, whose name hashes to a value with the given [`tag`]. `None` when the
-/// position does not fit, which the caller treats as an index it cannot use.
-pub(crate) fn entry(tag: u32, occupant: Occupant) -> Option<usize> {
-    let (position, marker) = match occupant {
-        Occupant::Attribute(position) => (position, 0),
-        Occupant::Candidate(position) => (position, CANDIDATE),
-    };
+/// The entry for the attribute at `position`, whose name hashes to a value with the given
+/// [`tag`]. `None` when the position does not fit, which the caller treats as an index it cannot
+/// use.
+pub(crate) fn entry(tag: u32, position: usize) -> Option<usize> {
     // The all-ones position is left out so that no entry equals `usize::MAX`, which the shared
     // index cannot record.
-    (position < POSITION_MASK)
-        .then_some(marker | (tag as usize & TAG_MASK) << POSITION_BITS | position)
+    (position < POSITION_MASK).then_some((tag as usize & TAG_MASK) << POSITION_BITS | position)
 }
 
-/// What a recorded entry names, and its tag.
-pub(crate) fn occupant(entry: usize) -> (Occupant, u32) {
+/// The position an entry names, and its tag.
+pub(crate) fn occupant(entry: usize) -> (usize, u32) {
     let position = entry & POSITION_MASK;
     let tag = ((entry >> POSITION_BITS) & TAG_MASK) as u32;
-    if entry & CANDIDATE != 0 {
-        (Occupant::Candidate(position), tag)
-    } else {
-        (Occupant::Attribute(position), tag)
-    }
+    (position, tag)
 }
 
 /// What the table currently describes.
@@ -73,15 +54,16 @@ pub(crate) enum Binding {
     /// Nothing: the next use must rebuild the table.
     Unbound,
     /// The first `len` attributes of the element at ordinal `target` of the storage with serial
-    /// `storage`, as they were at attribute revision `revision` of that storage.
+    /// `storage`, as they were at attribute revision `revision` of that storage, followed by
+    /// `planned` entries for the attributes a merge plan means to append next, at positions
+    /// `len` and above.
     Slots {
         storage: u64,
         target: usize,
         revision: u64,
         len: usize,
+        planned: usize,
     },
-    /// The attributes of the element at ordinal `target` and the candidates planned so far.
-    Merge { target: usize },
 }
 
 /// A refusal of the shared index. The table is unchanged and the cursor that met it latches an
@@ -372,24 +354,16 @@ mod tests {
     }
 
     #[test]
-    fn entries_keep_their_occupant_and_tag_and_never_equal_the_largest_value() {
+    fn entries_keep_their_position_and_tag_and_never_equal_the_largest_value() {
         for hash in [0_u64, 1, u64::MAX, 0xdead_beef_cafe_f00d] {
-            for occupant_in in [
-                Occupant::Attribute(0),
-                Occupant::Attribute(77),
-                Occupant::Candidate(0),
-                Occupant::Candidate(POSITION_MASK - 1),
-            ] {
-                let made = entry(tag(hash), occupant_in).expect("fits");
+            for position in [0, 77, POSITION_MASK - 1] {
+                let made = entry(tag(hash), position).expect("fits");
                 assert_ne!(made, usize::MAX);
-                assert_eq!(occupant(made), (occupant_in, tag(hash)));
+                assert_eq!(occupant(made), (position, tag(hash)));
             }
         }
-        assert_eq!(
-            entry(tag(u64::MAX), Occupant::Attribute(POSITION_MASK)),
-            None
-        );
-        assert_eq!(entry(0, Occupant::Candidate(usize::MAX)), None);
+        assert_eq!(entry(tag(u64::MAX), POSITION_MASK), None);
+        assert_eq!(entry(0, usize::MAX), None);
     }
 
     #[test]

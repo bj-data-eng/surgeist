@@ -1,8 +1,6 @@
 //! Exact expanded-name validation without a controller or scratch allocation.
 
-use super::attribute_name_index::{
-    CLEAR_CHUNK, HtmlAttributeNameIndex, Occupant, entry, occupant, tag,
-};
+use super::attribute_name_index::{CLEAR_CHUNK, HtmlAttributeNameIndex, entry, occupant, tag};
 use super::finish::HtmlFinishFailure;
 use super::name_index::{HtmlNameIndex, HtmlNameIndexProbe, HtmlNameIndexSlot, HtmlNameIndexStep};
 use super::{Attribute, DocumentString, OrderedAttributes};
@@ -154,11 +152,13 @@ impl HtmlAttributeValidationLayout {
         Ok(())
     }
     /// Number of attribute/string header visits.
+    #[cfg(test)]
     pub(crate) fn record_visits(self) -> u64 {
         self.record_visits
     }
 
     /// Bytes inspected in exact UTF-16 unit comparisons and in hashing.
+    #[cfg(test)]
     pub(crate) fn inspected_bytes(self) -> u64 {
         self.inspected_bytes
     }
@@ -476,7 +476,7 @@ impl HtmlAttributeValidationAction<'_> {
                 };
                 match index.advance(probe) {
                     Ok(Some(HtmlNameIndexStep::Vacant(vacancy))) => {
-                        let placed = entry(tag, Occupant::Attribute(validation.duplicate))
+                        let placed = entry(tag, validation.duplicate)
                             .is_some_and(|entry| index.insert(vacancy, entry).is_ok());
                         if !placed {
                             return validation.fail(HtmlAttributeValidationError::IndexUnavailable);
@@ -488,7 +488,7 @@ impl HtmlAttributeValidationAction<'_> {
                     // Another name's tag: not this name, so not read; the next action advances.
                     Ok(Some(HtmlNameIndexStep::Occupied(held))) => match occupant(held) {
                         (_, held_tag) if held_tag != tag => Ok(()),
-                        (Occupant::Attribute(first), _) if first < validation.duplicate => {
+                        (first, _) if first < validation.duplicate => {
                             validation.first = first;
                             validation.phase = Phase::Pair;
                             validation.stage = Some(Stage::Compare { tag });

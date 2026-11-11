@@ -395,8 +395,8 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
         let mut c = ParseControl::new(
             limits()
                 .into_builder()
-                .auxiliary_entries(22)
-                .active_formatting_entries(22)
+                .auxiliary_entries(20)
+                .active_formatting_entries(20)
                 .finish()
                 .unwrap(),
             HtmlParseCancellation::new(),
@@ -437,7 +437,7 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
             stop,
             HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::AuxiliaryEntries,
-                current: 22,
+                current: 20,
                 requested_delta: 3,
                 ..
             }
@@ -450,7 +450,7 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
             session.active().unwrap().construction.test_storage().len(),
             3
         );
-        assert_eq!(session.active().unwrap().payloads.values.len(), 16);
+        assert_eq!(session.active().unwrap().payloads.values.len(), 14);
         assert!(session.active().unwrap().effects.form.is_none());
         assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
         release_token_kind(&mut input.map(TokenKind::Tag), &mut c).unwrap();
@@ -811,39 +811,27 @@ fn listed_id_slot_fixture(
     let TokenKind::Tag(tag) = lexical_kind(&mut lexer, c) else {
         panic!("body")
     };
-    let prepared = session
+    let mut prepared = session
         .active_mut()
         .unwrap()
         .prepare_named_attribute_merge(c, &body, &mut Some(tag), AttributeMergeName::Body)
         .unwrap()
         .unwrap();
     lexer.release(c).unwrap();
+    let candidate = prepared.kept.as_slice()[0].name.clone().unwrap();
     session
         .active_mut()
         .unwrap()
-        .edit_attributes(
-            c,
-            prepared.target,
-            prepared.container,
-            prepared.stage,
-            1,
-            true,
-        )
+        .append_staged_attribute(c, prepared.target, &mut prepared.stage, Some(&candidate))
         .unwrap();
-    // This is the actual fixed append producer, not an invented phase. It
-    // retains both the installed slot and incoming redirect until drain.
+    // This is the actual append of the first kept attribute, not an invented phase. It
+    // retains the installed attribute and the staged one until drain.
     let storage = session.active().unwrap();
     assert_eq!(
         storage.effects.form.unwrap().stage,
         FormEffectStage::IdChange
     );
-    let RetainedPayload::Attributes(Some(AttributeStorage::Transferring { moved, values, .. })) =
-        &storage.payloads.values[prepared.stage]
-    else {
-        panic!("transfer")
-    };
-    assert_eq!(*moved, 1);
-    assert_eq!(values.len(), 1);
+    assert_eq!(prepared.stage.staged(), 1);
     let ConstructionNodeKind::Element(element) = &storage
         .construction
         .node_at(body.index)
@@ -891,10 +879,8 @@ fn listed_id_append_blocks_observation_before_rebind_and_keeps_cleanup_redirect(
         panic!("body")
     };
     assert_eq!(element.attributes().len(), 1);
-    assert!(matches!(
-        &storage.payloads.values[prepared.stage],
-        RetainedPayload::Attributes(Some(AttributeStorage::Transferring { moved: 1, .. }))
-    ));
+    assert_eq!(prepared.stage.staged(), 1);
+    prepared.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
     assert_eq!(c.stop(), Some(stop));
@@ -903,7 +889,7 @@ fn listed_id_append_blocks_observation_before_rebind_and_keeps_cleanup_redirect(
 #[test]
 fn listed_id_global_drain_exact_and_one_short_keeps_real_slot_owners_and_metadata_prefix() {
     let mut measured = control();
-    let (mut session, _, _, _) = listed_id_slot_fixture(&mut measured);
+    let (mut session, _, _, prepared) = listed_id_slot_fixture(&mut measured);
     let start = measured
         .usage()
         .resource(HtmlParseResource::WorkCredits)
@@ -918,6 +904,7 @@ fn listed_id_global_drain_exact_and_one_short_keeps_real_slot_owners_and_metadat
         .resource(HtmlParseResource::WorkCredits)
         .current
         - start;
+    prepared.release(&mut measured).unwrap();
     session.release(&mut measured).unwrap();
     storage_zero(&measured);
     for short in [false, true] {
@@ -947,10 +934,7 @@ fn listed_id_global_drain_exact_and_one_short_keeps_real_slot_owners_and_metadat
         assert_eq!(state.owner, None);
         assert_eq!(state.evidence, HtmlParseFormEvidence::Reset);
         assert!(!state.parser_inserted);
-        assert!(matches!(
-            &storage.payloads.values[prepared.stage],
-            RetainedPayload::Attributes(Some(AttributeStorage::Transferring { moved: 1, .. }))
-        ));
+        assert_eq!(prepared.stage.staged(), 1);
         let ConstructionNodeKind::Element(element) = &storage
             .construction
             .node_at(body.index)
@@ -979,6 +963,7 @@ fn listed_id_global_drain_exact_and_one_short_keeps_real_slot_owners_and_metadat
         let stop = c.stop().unwrap();
         let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
         let high = c.usage().actual_capacity_high_water;
+        prepared.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(c.stop(), Some(stop));
@@ -1005,10 +990,7 @@ fn listed_id_cancel_after_real_slot_append_retains_owner_and_reclaims_all_partia
         Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert!(session.active().unwrap().effects.form.is_some());
-    assert!(matches!(
-        &session.active().unwrap().payloads.values[prepared.stage],
-        RetainedPayload::Attributes(Some(AttributeStorage::Transferring { moved: 1, .. }))
-    ));
+    assert_eq!(prepared.stage.staged(), 1);
     let ConstructionNodeKind::Element(element) = &session
         .active()
         .unwrap()
@@ -1024,6 +1006,7 @@ fn listed_id_cancel_after_real_slot_append_retains_owner_and_reclaims_all_partia
         session.freeze(&mut c).err(),
         Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
+    prepared.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
     assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));

@@ -86,7 +86,16 @@ fn implied_head_and_both_root_attribute_paths_keep_order_exact_backing_and_origi
                 .iter()
                 .all(|a| a.name().namespace().uri().is_none())
         );
-        assert!(storage.payloads.values.iter().any(|v| matches!(v, RetainedPayload::String { origins: Some(origins), location: StringLocation::AttributeValue(_, 2), .. } if storage.observed_origins(origins, &mut c).unwrap()[0].source == expected_origin)));
+        let group = storage
+            .payloads
+            .detail_origins
+            .get(&mut c, FieldRef::AttributeValue(root.index, 2))
+            .unwrap()
+            .expect("the origin group of the merged value");
+        assert_eq!(
+            storage.observed_origins(group, &mut c).unwrap()[0].source,
+            expected_origin
+        );
         assert_eq!(storage.construction.test_storage().usage().attributes(), 4);
         t.release(&mut c).unwrap();
         let mut frozen = session.freeze(&mut c).unwrap();
@@ -111,98 +120,15 @@ fn implied_head_and_both_root_attribute_paths_keep_order_exact_backing_and_origi
     }
 }
 
-fn observed_root_merge(new_attributes: bool) -> crate::parser::control::OwnedSpanObservation {
-    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
-    // A real lexer produces every field and original source association.
-    // Sixteen short attributes fit the existing finite fixture capacities.
-    let attributes = (0..16).map(|i| format!(" a{i:02}=v")).collect::<String>();
-    let input = if new_attributes {
-        format!("<html><html{attributes}>")
-    } else {
-        format!("<html{attributes}><html{attributes}>")
-    };
-    let source = crate::HtmlSource::utf8(input);
-    let mut c = control();
-    c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
-    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-    let TokenKind::Tag(first) = lexical_kind(&mut tokenizer, &mut c) else {
-        panic!("actual first tag")
-    };
-    let root = session.allocate_html_tag(&mut c, &mut Some(first)).unwrap();
-    let TokenKind::Tag(second) = lexical_kind(&mut tokenizer, &mut c) else {
-        panic!("actual second tag")
-    };
-    let mut second = Some(second);
-    c.clear_owned_span_observation();
-    session
-        .add_attributes_if_missing(&mut c, &root, &mut second)
-        .unwrap();
-    let observed = c.owned_span_observation();
-    assert!(second.is_none());
-    assert_eq!(c.stop(), None);
-    let ConstructionNodeKind::Element(element) = &session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(root.index)
-        .expect("retained construction position")
-        .kind()
-    else {
-        panic!("actual root")
-    };
-    assert_eq!(element.attributes().len(), 16);
-    for (i, attribute) in element.attributes().iter().enumerate() {
-        assert_eq!(
-            attribute.name().local_name().to_utf8().unwrap(),
-            format!("a{i:02}")
-        );
-        assert_eq!(attribute.value().to_utf8().unwrap(), "v");
-    }
-    assert_eq!(attribute_holders(element.attributes()), 2);
-    assert_eq!(
-        Arc::weak_count(element.attributes().to_ordered().shared_attributes()),
-        1
-    );
-    tokenizer.release(&mut c).unwrap();
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-    observed
-}
-
-#[test]
-fn wide_real_attribute_merge_respects_declared_poll_span() {
-    let observed = observed_root_merge(true);
-    assert!(observed.polls > 0);
-    assert_eq!(observed.append_slots, 16);
-    assert!(
-        observed.largest_append_copy_bytes <= 256,
-        "actual owned attribute copy exceeds the selected 256-credit poll span: {observed:?}"
-    );
-    assert!(
-        observed.largest_registry_credits_between_polls <= 256,
-        "actual owned registry iterations exceed the selected 256-credit poll span: {observed:?}"
-    );
-}
-
-#[test]
-fn duplicate_only_root_merge_respects_declared_poll_span() {
-    let observed = observed_root_merge(false);
-    assert!(observed.polls > 0);
-    assert_eq!(observed.append_slots, 0);
-    assert!(
-        observed.largest_registry_credits_between_polls <= 256,
-        "actual owned registry iterations exceed the selected 256-credit poll span: {observed:?}"
-    );
-}
-
-fn prepare_real_merge<'source>(
+/// Parses `first` and then merges the attributes of `second` into its root, returning the
+/// session, the root and the lexer for the test to inspect and release.
+fn merge_fixture<'source>(
     source: &'source crate::HtmlSource,
     c: &mut ParseControl,
 ) -> (
     ParserArenaSession,
     ParserNode,
-    PreparedAttributeMerge,
+    Option<crate::parser::tokenizer::token::Tag>,
     crate::parser::tokenizer::tests::LexerFixture<'source>,
 ) {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
@@ -216,36 +142,13 @@ fn prepare_real_merge<'source>(
     let TokenKind::Tag(second) = lexical_kind(&mut tokenizer, c) else {
         panic!("actual second tag")
     };
-    let mut input = Some(second);
-    let prepared = session
-        .active_mut()
-        .unwrap()
-        .prepare_attribute_merge(c, &root, &mut input)
-        .unwrap()
-        .unwrap();
-    assert!(input.is_none());
-    (session, root, prepared, tokenizer)
+    (session, root, Some(second), tokenizer)
 }
 
-fn assert_partial_merge_storage(
-    session: &ParserArenaSession,
-    c: &mut ParseControl,
-    root: &ParserNode,
-    prepared: &PreparedAttributeMerge,
-    moved: usize,
-) {
-    let storage = session.active().unwrap();
-    let RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
-        values,
-        moved: actual,
-        ..
-    })) = &storage.payloads.values[prepared.stage]
-    else {
-        panic!("actual retained transfer phase")
-    };
-    assert_eq!(*actual, moved);
-    assert_eq!(values.len(), 2 - moved);
-    let ConstructionNodeKind::Element(element) = &storage
+fn root_attributes(session: &ParserArenaSession, root: &ParserNode) -> Vec<(String, String)> {
+    let ConstructionNodeKind::Element(element) = &session
+        .active()
+        .unwrap()
         .construction
         .node_at(root.index)
         .expect("retained construction position")
@@ -253,90 +156,108 @@ fn assert_partial_merge_storage(
     else {
         panic!("actual root")
     };
-    let expected = [("id", "old"), ("a", "one"), ("b", "two")];
-    assert_eq!(element.attributes().len(), 1 + moved);
-    for (attribute, (name, value)) in element.attributes().iter().zip(expected) {
-        assert_eq!(attribute.name().local_name().to_utf8().unwrap(), name);
-        assert_eq!(attribute.value().to_utf8().unwrap(), value);
-    }
-    assert_eq!(attribute_holders(element.attributes()), 2);
-    assert_eq!(
-        Arc::weak_count(element.attributes().to_ordered().shared_attributes()),
-        1
-    );
-    assert_eq!(
-        c.usage()
-            .resource(HtmlParseResource::ManagedAttributes)
-            .current,
-        3
-    );
-}
-
-fn dispose_stopped_merge(
-    mut session: ParserArenaSession,
-    tokenizer: crate::parser::tokenizer::tests::LexerFixture<'_>,
-    c: &mut ParseControl,
-) {
-    let stop = c.stop().expect("real terminal boundary");
-    let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
-    let capacity_peak = c.usage().actual_capacity_high_water;
-    let nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
-    let attribute_peak = c
-        .usage()
-        .resource(HtmlParseResource::ManagedAttributes)
-        .high_water;
-    assert!(matches!(session.freeze(c), Err(SessionError::Stop(actual)) if actual == stop));
-    tokenizer.release(c).unwrap();
-    session.release(c).unwrap();
-    storage_zero(c);
-    assert_eq!(c.stop(), Some(stop));
-    assert_eq!(
-        c.usage().resource(HtmlParseResource::WorkCredits).current,
-        work
-    );
-    assert_eq!(c.usage().actual_capacity_high_water, capacity_peak);
-    assert_eq!(
-        c.usage().resource(HtmlParseResource::ManagedNodes).current,
-        nodes
-    );
-    assert_eq!(
-        c.usage()
-            .resource(HtmlParseResource::ManagedAttributes)
-            .high_water,
-        attribute_peak
-    );
+    element
+        .attributes()
+        .iter()
+        .map(|a| {
+            (
+                a.name().local_name().to_utf8().unwrap(),
+                a.value().to_utf8().unwrap(),
+            )
+        })
+        .collect()
 }
 
 #[test]
-fn every_bounded_slot_work_cut_preserves_literal_prefix_backings_and_cleanup() {
+fn a_wide_root_merge_appends_one_list_in_source_order_with_no_spare_room() {
+    // Sixteen is a power of two and seventeen is not, so a list that doubled while it grew would
+    // end with room to spare in the second case.
+    for count in [16_usize, 17] {
+        let attributes = (0..count)
+            .map(|i| format!(" a{i:02}=v"))
+            .collect::<String>();
+        let source = crate::HtmlSource::utf8(format!("<html><html{attributes}>"));
+        let mut c = control();
+        let (mut session, root, mut second, tokenizer) = merge_fixture(&source, &mut c);
+        session
+            .add_attributes_if_missing(&mut c, &root, &mut second)
+            .unwrap();
+        assert!(second.is_none());
+        assert_eq!(c.stop(), None);
+        let held = root_attributes(&session, &root);
+        assert_eq!(held.len(), count);
+        for (i, (name, value)) in held.iter().enumerate() {
+            assert_eq!(name, &format!("a{i:02}"));
+            assert_eq!(value, "v");
+        }
+        let ConstructionNodeKind::Element(element) = &session
+            .active()
+            .unwrap()
+            .construction
+            .node_at(root.index)
+            .unwrap()
+            .kind()
+        else {
+            panic!("actual root")
+        };
+        assert_eq!(attribute_holders(element.attributes()), 1);
+        assert_eq!(
+            Arc::weak_count(element.attributes().to_ordered().shared_attributes()),
+            0
+        );
+        // The list was empty, so one reservation of exactly the kept attributes held them all.
+        assert_eq!(
+            element
+                .attributes()
+                .to_ordered()
+                .shared_attributes()
+                .capacity(),
+            count
+        );
+        tokenizer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+}
+
+#[test]
+fn a_root_merge_of_only_repeated_names_changes_nothing_and_holds_nothing() {
+    let source = crate::HtmlSource::utf8("<html a=1 b=2><html a=3 b=4>");
+    let mut c = control();
+    let (mut session, root, mut second, tokenizer) = merge_fixture(&source, &mut c);
+    session
+        .add_attributes_if_missing(&mut c, &root, &mut second)
+        .unwrap();
+    assert!(second.is_none());
+    assert_eq!(
+        root_attributes(&session, &root),
+        [("a".into(), "1".into()), ("b".into(), "2".into())]
+    );
+    tokenizer.release(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn every_work_cut_of_a_merge_leaves_a_prefix_in_source_order_and_cleans_up() {
     let source = crate::HtmlSource::utf8("<html id=old><html a=one b=two>");
     let mut c = control();
-    let (mut session, _, prepared, tokenizer) = prepare_real_merge(&source, &mut c);
+    let (mut session, root, mut input, tokenizer) = merge_fixture(&source, &mut c);
     let setup = c.usage().resource(HtmlParseResource::WorkCredits).current;
     session
-        .active_mut()
-        .unwrap()
-        .edit_attributes(
-            &mut c,
-            prepared.target,
-            prepared.container,
-            prepared.stage,
-            1,
-            true,
-        )
+        .add_attributes_if_missing(&mut c, &root, &mut input)
         .unwrap();
     let envelope = c.usage().resource(HtmlParseResource::WorkCredits).current - setup;
-    eprintln!("controlled named first-slot coverage envelope: {envelope}");
     assert!(
-        envelope <= 4096,
+        envelope <= 65536,
         "finite test campaign bound, not a correctness oracle"
     );
     tokenizer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    let mut prefixes = [false; 2];
-    // Include the next slot's first refused action after the first commit.
-    for cut in 0..=envelope + 1 {
+    let expected = [("id", "old"), ("a", "one"), ("b", "two")];
+    let mut lengths = std::collections::BTreeSet::new();
+    for cut in 0..envelope {
         let mut c = ParseControl::new(
             limits()
                 .into_builder()
@@ -345,244 +266,306 @@ fn every_bounded_slot_work_cut_preserves_literal_prefix_backings_and_cleanup() {
                 .unwrap(),
             HtmlParseCancellation::new(),
         );
-        let (mut session, root, prepared, tokenizer) = prepare_real_merge(&source, &mut c);
-        let first = session.active_mut().unwrap().edit_attributes(
-            &mut c,
-            prepared.target,
-            prepared.container,
-            prepared.stage,
-            1,
-            true,
-        );
-        let refused = if first.is_ok() {
-            session.active_mut().unwrap().edit_attributes(
-                &mut c,
-                prepared.target,
-                prepared.container,
-                prepared.stage,
-                1,
-                true,
-            )
-        } else {
-            first
-        };
+        let (mut session, root, mut input, tokenizer) = merge_fixture(&source, &mut c);
+        let result = session.add_attributes_if_missing(&mut c, &root, &mut input);
         assert!(matches!(
-            refused,
+            result,
             Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 ..
             }))
         ));
-        let RetainedPayload::Attributes(Some(AttributeStorage::Transferring { moved, .. })) =
-            &session.active().unwrap().payloads.values[prepared.stage]
-        else {
-            panic!("real transfer progress")
-        };
-        let moved = *moved;
-        assert!(moved <= 1);
-        prefixes[moved] = true;
-        // Expected source values are literal, independently paired with all
-        // actual original registry backings and the retained redirect.
-        assert_partial_merge_storage(&session, &mut c, &root, &prepared, moved);
-        dispose_stopped_merge(session, tokenizer, &mut c);
+        // Whatever was appended is a prefix, in source order, of the expected list.
+        let held = root_attributes(&session, &root);
+        assert!((1..=3).contains(&held.len()));
+        for (actual, (name, value)) in held.iter().zip(expected) {
+            assert_eq!((actual.0.as_str(), actual.1.as_str()), (name, value));
+        }
+        lengths.insert(held.len());
+        let stop = c.stop();
+        if let Some(tag) = input {
+            let mut kind = Some(TokenKind::Tag(tag));
+            if release_token_kind(&mut kind, &mut c).is_err() {
+                release_token_kind(&mut kind, &mut c).unwrap();
+            }
+        }
+        tokenizer.release(&mut c).unwrap();
+        if session.release(&mut c).is_err() {
+            session.release(&mut c).unwrap();
+        }
+        storage_zero(&c);
+        assert_eq!(c.stop(), stop);
     }
-    assert_eq!(prefixes, [true, true]);
+    assert!(lengths.contains(&1), "a cut before the first append");
+    assert!(lengths.contains(&2), "a cut between the two appends");
+}
+
+/// `count` attributes named `{prefix}00` to `{prefix}{count-1}`, as a tag carries them.
+fn wide_attributes(prefix: &str, count: usize) -> String {
+    (0..count).map(|i| format!(" {prefix}{i:02}={i}")).collect()
+}
+
+/// Limits roomy enough for two tags of forty attributes each.
+fn wide_limits() -> crate::HtmlParseLimitsBuilder {
+    limits()
+        .into_builder()
+        .source_map_entries(20_000)
+        .auxiliary_entries(20_000)
+        .active_formatting_entries(20_000)
+}
+
+fn wide_names(prefix: &str, count: usize) -> Vec<String> {
+    (0..count).map(|i| format!("{prefix}{i:02}")).collect()
 }
 
 #[test]
-fn exact_and_one_short_rebind_work_preserve_redirect_and_terminal_cleanup() {
-    let source = crate::HtmlSource::utf8("<html id=old><html a=one b=two>");
-    let mut c = control();
-    let (mut session, _, prepared, tokenizer) = prepare_real_merge(&source, &mut c);
+fn sampled_work_cuts_of_a_merge_through_the_live_name_index_leave_a_prefix_and_clean_up() {
+    // Forty attributes on the root and forty more merged into it, so that the table of names the
+    // storage edits long lists through is in use for the plan and every append.
+    let source = crate::HtmlSource::utf8(format!(
+        "<html{}><html{}>",
+        wide_attributes("a", 40),
+        wide_attributes("b", 40)
+    ));
+    let mut c = ParseControl::new(
+        wide_limits().finish().unwrap(),
+        HtmlParseCancellation::new(),
+    );
+    let (mut session, root, mut input, tokenizer) = merge_fixture(&source, &mut c);
     let setup = c.usage().resource(HtmlParseResource::WorkCredits).current;
-    for _ in 0..2 {
+    session
+        .add_attributes_if_missing(&mut c, &root, &mut input)
+        .unwrap();
+    let envelope = c.usage().resource(HtmlParseResource::WorkCredits).current - setup;
+    let expected: Vec<String> = wide_names("a", 40)
+        .into_iter()
+        .chain(wide_names("b", 40))
+        .collect();
+    assert_eq!(
+        root_attributes(&session, &root)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect::<Vec<_>>(),
+        expected
+    );
+    tokenizer.release(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+    let stride = (envelope / 400).max(1);
+    let mut lengths = std::collections::BTreeSet::new();
+    for cut in (0..envelope).step_by(usize::try_from(stride).unwrap()) {
+        let mut c = ParseControl::new(
+            wide_limits().work_credits(setup + cut).finish().unwrap(),
+            HtmlParseCancellation::new(),
+        );
+        let (mut session, root, mut input, tokenizer) = merge_fixture(&source, &mut c);
+        let result = session.add_attributes_if_missing(&mut c, &root, &mut input);
+        assert!(matches!(
+            result,
+            Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            }))
+        ));
+        let held: Vec<String> = root_attributes(&session, &root)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        assert!(
+            (40..=80).contains(&held.len()) && held[..] == expected[..held.len()],
+            "a cut at {cut} leaves a prefix in source order: {held:?}"
+        );
+        lengths.insert(held.len());
+        let stop = c.stop();
+        if let Some(tag) = input {
+            let mut kind = Some(TokenKind::Tag(tag));
+            if release_token_kind(&mut kind, &mut c).is_err() {
+                release_token_kind(&mut kind, &mut c).unwrap();
+            }
+        }
+        tokenizer.release(&mut c).unwrap();
+        if session.release(&mut c).is_err() {
+            session.release(&mut c).unwrap();
+        }
+        storage_zero(&c);
+        assert_eq!(c.stop(), stop);
+    }
+    assert!(
+        lengths.len() > 2,
+        "the sampled cuts fall before, between and after the appends"
+    );
+}
+
+#[test]
+fn a_removal_between_merges_of_a_wide_root_keeps_the_next_merge_exact_at_every_sampled_cut() {
+    let source = crate::HtmlSource::utf8(format!(
+        "<html{}><html{}><html a07=again c00=x>",
+        wide_attributes("a", 40),
+        wide_attributes("b", 4)
+    ));
+    // The second merge goes in uncut, the attribute `a07` is removed, and the third merge adds
+    // it back after the others. The removal and the third merge run under each sampled cut.
+    let run = |c: &mut ParseControl| {
+        let (mut session, root, mut second, mut tokenizer) = merge_fixture(&source, c);
+        session
+            .add_attributes_if_missing(c, &root, &mut second)
+            .unwrap();
+        let TokenKind::Tag(third) = lexical_kind(&mut tokenizer, c) else {
+            panic!("third tag")
+        };
+        let before_removal = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        let mut third = Some(third);
+        let outcome = (|| {
+            session
+                .active_mut()
+                .unwrap()
+                .remove_managed_field(c, root.index, "a07")?;
+            session.add_attributes_if_missing(c, &root, &mut third)
+        })();
+        (session, root, tokenizer, third, before_removal, outcome)
+    };
+    let mut baseline = ParseControl::new(
+        wide_limits().finish().unwrap(),
+        HtmlParseCancellation::new(),
+    );
+    let (mut session, root, tokenizer, third, setup, outcome) = run(&mut baseline);
+    outcome.unwrap();
+    assert!(third.is_none());
+    let envelope = baseline
+        .usage()
+        .resource(HtmlParseResource::WorkCredits)
+        .current
+        - setup;
+    let expected: Vec<String> = wide_names("a", 40)
+        .into_iter()
+        .filter(|name| name != "a07")
+        .chain(wide_names("b", 4))
+        .chain(["a07".to_owned(), "c00".to_owned()])
+        .collect();
+    let names = |session: &ParserArenaSession, root: &ParserNode| {
+        root_attributes(session, root)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(names(&session, &root), expected);
+    tokenizer.release(&mut baseline).unwrap();
+    session.release(&mut baseline).unwrap();
+    storage_zero(&baseline);
+    let stride = (envelope / 300).max(1);
+    for cut in (0..envelope).step_by(usize::try_from(stride).unwrap()) {
+        let mut c = ParseControl::new(
+            wide_limits().work_credits(setup + cut).finish().unwrap(),
+            HtmlParseCancellation::new(),
+        );
+        let (mut session, root, tokenizer, third, _, outcome) = run(&mut c);
+        assert!(
+            outcome.is_err(),
+            "a cut at {cut} stops the removal or the merge"
+        );
+        let held = names(&session, &root);
+        let unique: std::collections::BTreeSet<_> = held.iter().collect();
+        assert_eq!(
+            unique.len(),
+            held.len(),
+            "a cut at {cut} repeated a name: {held:?}"
+        );
+        assert!(held.len() >= 43, "a cut at {cut} lost attributes: {held:?}");
+        if let Some(tag) = third {
+            let mut kind = Some(TokenKind::Tag(tag));
+            if release_token_kind(&mut kind, &mut c).is_err() {
+                release_token_kind(&mut kind, &mut c).unwrap();
+            }
+        }
+        tokenizer.release(&mut c).unwrap();
+        if session.release(&mut c).is_err() {
+            session.release(&mut c).unwrap();
+        }
+        storage_zero(&c);
+    }
+}
+
+#[test]
+fn cancellation_before_a_prepared_merge_installs_leaves_the_list_and_cleans_up() {
+    let source = crate::HtmlSource::utf8("<html id=old><html a=one b=two>");
+    let cancellation = HtmlParseCancellation::new();
+    let mut c = ParseControl::new(limits(), cancellation.clone());
+    let (mut session, root, mut input, tokenizer) = merge_fixture(&source, &mut c);
+    let prepared = session
+        .active_mut()
+        .unwrap()
+        .prepare_attribute_merge(&mut c, &root, &mut input)
+        .unwrap()
+        .unwrap();
+    assert!(input.is_none());
+    cancellation.cancel();
+    let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
+    assert_eq!(
         session
             .active_mut()
             .unwrap()
-            .edit_attributes(
-                &mut c,
-                prepared.target,
-                prepared.container,
-                prepared.stage,
-                1,
-                true,
-            )
-            .unwrap();
-    }
-    // A measured completed prefix only reaches the unchanged rebind action;
-    // the rebind's expected byte/write cost below remains literal.
-    let prefix = c.usage().resource(HtmlParseResource::WorkCredits).current - setup;
-    assert!(prefix <= 8192);
+            .finish_attribute_merge(&mut c, prepared),
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
+    );
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::WorkCredits).current,
+        work
+    );
+    assert_eq!(
+        root_attributes(&session, &root),
+        [("id".into(), "old".into())]
+    );
+    assert_eq!(
+        session.freeze(&mut c).err(),
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
+    );
     tokenizer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
-    let rebind_credits = (1 + 2 * mem::size_of::<StringLocation>() + 1) as u64;
-    for short in [false, true] {
-        let mut c = ParseControl::new(
-            limits()
-                .into_builder()
-                .work_credits(setup + prefix + rebind_credits - u64::from(short))
-                .finish()
-                .unwrap(),
-            HtmlParseCancellation::new(),
-        );
-        let (mut session, root, prepared, tokenizer) = prepare_real_merge(&source, &mut c);
-        for _ in 0..2 {
-            session
-                .active_mut()
-                .unwrap()
-                .edit_attributes(
-                    &mut c,
-                    prepared.target,
-                    prepared.container,
-                    prepared.stage,
-                    1,
-                    true,
-                )
-                .unwrap();
-        }
-        let index = prepared.stage + 1; // real first registered incoming name
-        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
-        let result = session.active_mut().unwrap().rebind_attribute_location(
-            &mut c,
-            index,
-            prepared.stage,
-            prepared.container,
-            prepared.start,
-        );
-        if short {
-            assert!(matches!(
-                result,
-                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
-                    resource: HtmlParseResource::WorkCredits,
-                    ..
-                }))
-            ));
-        } else {
-            result.unwrap();
-            assert_eq!(
-                c.usage().resource(HtmlParseResource::WorkCredits).current - before,
-                rebind_credits
-            );
-            assert!(
-                session
-                    .active_mut()
-                    .unwrap()
-                    .rebind_attribute_location(
-                        &mut c,
-                        index + 1,
-                        prepared.stage,
-                        prepared.container,
-                        prepared.start
-                    )
-                    .is_err()
-            );
-        }
-        let RetainedPayload::String {
-            location,
-            origins: Some(origins),
-            ..
-        } = &session.active().unwrap().payloads.values[index]
-        else {
-            panic!("actual original name")
-        };
-        assert!(
-            matches!(location, StringLocation::AttributeName(owner, offset)
-            if *owner == if short { prepared.stage } else { prepared.container }
-                && *offset == if short { 1 } else { 2 })
-        );
-        let evidence = session.active().unwrap().evidence.as_ref().unwrap();
-        let provenance::GroupBody::Leaf { start, length, .. } =
-            evidence.require_group(origins).unwrap().body
-        else {
-            panic!("original retained leaf");
-        };
-        assert_eq!(length, 1);
-        // Fixed admitted evidence is inspected by the test harness, without
-        // attempting a new successful read through the stopped controller.
-        assert_eq!(
-            evidence
-                .fixed_original_origin(start)
-                .unwrap()
-                .source
-                .start(),
-            25
-        );
-        assert_eq!(
-            evidence.fixed_original_origin(start).unwrap().source.end(),
-            26
-        );
-        assert_partial_merge_storage(&session, &mut c, &root, &prepared, 2);
-        dispose_stopped_merge(session, tokenizer, &mut c);
-    }
+    storage_zero(&c);
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 
 #[test]
-fn cancellation_between_real_slot_and_rebind_operations_retains_exact_owner_state() {
-    let source = crate::HtmlSource::utf8("<html id=old><html a=one b=two>");
-    for during_rebind in [false, true] {
-        let cancellation = HtmlParseCancellation::new();
-        let mut c = ParseControl::new(limits(), cancellation.clone());
-        let (mut session, root, prepared, tokenizer) = prepare_real_merge(&source, &mut c);
-        let moved = if during_rebind { 2 } else { 1 };
-        for _ in 0..moved {
-            session
-                .active_mut()
-                .unwrap()
-                .edit_attributes(
-                    &mut c,
-                    prepared.target,
-                    prepared.container,
-                    prepared.stage,
-                    1,
-                    true,
-                )
-                .unwrap();
-        }
-        if during_rebind {
-            session
-                .active_mut()
-                .unwrap()
-                .rebind_attribute_location(
-                    &mut c,
-                    prepared.stage + 1,
-                    prepared.stage,
-                    prepared.container,
-                    prepared.start,
-                )
-                .unwrap();
-        }
-        let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
-        cancellation.cancel();
-        let result = if during_rebind {
-            session.active_mut().unwrap().rebind_attribute_location(
-                &mut c,
-                prepared.stage + 2,
-                prepared.stage,
-                prepared.container,
-                prepared.start,
-            )
-        } else {
-            session.active_mut().unwrap().edit_attributes(
-                &mut c,
-                prepared.target,
-                prepared.container,
-                prepared.stage,
-                1,
-                true,
-            )
-        };
-        assert_eq!(result, Err(SessionError::Stop(HtmlParseStop::Cancelled)));
-        assert_eq!(
-            c.usage().resource(HtmlParseResource::WorkCredits).current,
-            work
-        );
-        assert_partial_merge_storage(&session, &mut c, &root, &prepared, moved);
-        dispose_stopped_merge(session, tokenizer, &mut c);
+fn a_merge_into_a_list_another_owner_holds_is_refused_and_leaves_the_list() {
+    let source = crate::HtmlSource::utf8("<html id=x><html a=y>");
+    let mut c = control();
+    let (mut session, root, mut incoming, tokenizer) = merge_fixture(&source, &mut c);
+    let holder = match &session
+        .active()
+        .unwrap()
+        .construction
+        .node_at(root.index)
+        .expect("retained construction position")
+        .kind()
+    {
+        ConstructionNodeKind::Element(e) => e.attributes().to_ordered(),
+        _ => panic!("root"),
+    };
+    let aliased = HtmlParseStop::InternalInvariant(
+        crate::parser::control::HtmlParseInvariant::SharedAllocationAliased,
+    );
+    assert_eq!(
+        session.add_attributes_if_missing(&mut c, &root, &mut incoming),
+        Err(SessionError::Stop(aliased))
+    );
+    assert_eq!(c.stop(), Some(aliased));
+    assert_eq!(holder.len(), 1, "the holder sees the list as it was");
+    drop(holder);
+    assert_eq!(
+        root_attributes(&session, &root),
+        [("id".into(), "x".into())]
+    );
+    tokenizer.release(&mut c).unwrap();
+    if let Some(tag) = incoming {
+        let mut kind = Some(TokenKind::Tag(tag));
+        let _ = release_token_kind(&mut kind, &mut c);
     }
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
 }
 
 #[test]
-fn merge_rejects_weak_holder_and_foreign_origin_before_consuming_input() {
+fn merge_rejects_a_foreign_origin_before_consuming_input() {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<html id=x><html a=y>");
     let mut c = control();
@@ -597,27 +580,8 @@ fn merge_rejects_weak_holder_and_foreign_origin_before_consuming_input() {
         panic!("tag")
     };
     let mut incoming = Some(second);
-    let weak = match &session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(root.index)
-        .expect("retained construction position")
-        .kind()
-    {
-        ConstructionNodeKind::Element(e) => {
-            Arc::downgrade(e.attributes().to_ordered().shared_attributes())
-        }
-        _ => panic!("root"),
-    };
-    assert_eq!(
-        session.add_attributes_if_missing(&mut c, &root, &mut incoming),
-        Err(SessionError::AliasedPayload)
-    );
-    assert!(incoming.is_some());
-    drop(weak);
-    // Correct execution tickets alone cannot qualify an origin from another
-    // immutable source. The actual original slot remains owned by caller.
+    // An origin from another immutable source is refused before the input is taken.
+    // The actual original slot remains owned by caller.
     let foreign_source = crate::HtmlSource::utf8("other");
     let original = mem::replace(
         &mut incoming
@@ -642,23 +606,6 @@ fn merge_rejects_weak_holder_and_foreign_origin_before_consuming_input() {
     let mut kind = incoming.take().map(TokenKind::Tag);
     release_token_kind(&mut kind, &mut c).unwrap();
     t.release(&mut c).unwrap();
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
-#[test]
-fn imported_attribute_backing_is_explicitly_unavailable_and_retained() {
-    let mut c = control();
-    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-    let root = session.allocate_element(&mut c, html("html")).unwrap();
-    let mut incoming = Some(owned_tag(&mut c, "html", &[("x", &[121])]));
-    assert_eq!(
-        session.add_attributes_if_missing(&mut c, &root, &mut incoming),
-        Err(SessionError::AttributeStorageUnavailable)
-    );
-    assert!(incoming.is_some());
-    let mut kind = incoming.map(TokenKind::Tag);
-    release_token_kind(&mut kind, &mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
@@ -864,10 +811,10 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
                 assert_eq!(attribute.value.value.text().to_utf8().unwrap(), value);
             }
         }
-        assert_eq!(attribute_holders(element.attributes()), 2);
+        assert_eq!(attribute_holders(element.attributes()), 1);
         assert_eq!(
             Arc::weak_count(element.attributes().to_ordered().shared_attributes()),
-            1
+            0
         );
         match result {
             Err(error) => assert!(matches!(
@@ -918,4 +865,177 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
     for cap in setup..complete {
         run(Some(cap));
     }
+}
+
+/// A control that records no origin graph.
+fn control_without_detail() -> ParseControl {
+    ParseControl::with_accounting(
+        limits(),
+        HtmlParseCancellation::new(),
+        None,
+        crate::DetailSet::NONE,
+    )
+}
+
+/// The table keys of the name and value of each of `count` attributes of the element at
+/// `node`, in attribute order.
+fn name_and_value_keys(node: usize, count: usize) -> Vec<(usize, usize, u8)> {
+    (0..count)
+        .flat_map(|position| [(node, position, 0), (node, position, 1)])
+        .collect()
+}
+
+#[test]
+fn the_origin_table_names_the_name_and_value_of_each_attribute_in_attribute_order() {
+    let source = crate::HtmlSource::utf8("<html id=old><html a=1 b=2 c=3>");
+    let mut c = control();
+    let (mut session, root, mut second, tokenizer) = merge_fixture(&source, &mut c);
+    // The element was created with one attribute, whose two strings have origins.
+    assert_eq!(
+        session.active().unwrap().payloads.detail_origins.keys(),
+        name_and_value_keys(root.index, 1)
+    );
+    session
+        .add_attributes_if_missing(&mut c, &root, &mut second)
+        .unwrap();
+    // The merge added three attributes, so the table holds the two strings of four.
+    assert_eq!(
+        session.active().unwrap().payloads.detail_origins.keys(),
+        name_and_value_keys(root.index, 4)
+    );
+    tokenizer.release(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn removing_an_attribute_moves_the_origins_of_the_attributes_after_it_down_one_place() {
+    let source = crate::HtmlSource::utf8("<html id=old><html a=1 b=2 c=3>");
+    let mut c = control();
+    let (mut session, root, mut second, tokenizer) = merge_fixture(&source, &mut c);
+    session
+        .add_attributes_if_missing(&mut c, &root, &mut second)
+        .unwrap();
+    let origins_of = |session: &mut ParserArenaSession, c: &mut ParseControl, position: usize| {
+        let storage = session.active().unwrap();
+        let group = storage
+            .payloads
+            .detail_origins
+            .get(c, FieldRef::AttributeValue(root.index, position))
+            .unwrap()
+            .expect("the origin group of the value");
+        storage
+            .observed_origins(group, c)
+            .unwrap()
+            .iter()
+            .map(|o| (o.start, o.end, o.source.clone(), o.kind))
+            .collect::<Vec<_>>()
+    };
+    let last_value_origins = origins_of(&mut session, &mut c, 3);
+    session
+        .active_mut()
+        .unwrap()
+        .remove_managed_field(&mut c, root.index, "b")
+        .unwrap();
+    assert_eq!(
+        root_attributes(&session, &root),
+        [
+            ("id".into(), "old".into()),
+            ("a".into(), "1".into()),
+            ("c".into(), "3".into())
+        ]
+    );
+    assert_eq!(
+        session.active().unwrap().payloads.detail_origins.keys(),
+        name_and_value_keys(root.index, 3)
+    );
+    // The value of `c` was the fourth attribute's and is the third's now, with its origins.
+    assert_eq!(origins_of(&mut session, &mut c, 2), last_value_origins);
+    tokenizer.release(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_parse_that_records_no_graph_holds_no_origin_table_and_the_same_attributes() {
+    let source = crate::HtmlSource::utf8("<html id=old><html a=1 b=2 c=3>");
+    let mut with_detail = control();
+    let (mut detailed, detailed_root, mut second, tokenizer) =
+        merge_fixture(&source, &mut with_detail);
+    detailed
+        .add_attributes_if_missing(&mut with_detail, &detailed_root, &mut second)
+        .unwrap();
+    let expected = root_attributes(&detailed, &detailed_root);
+    assert_eq!(detailed.active().unwrap().payloads.detail_origins.len(), 8);
+    tokenizer.release(&mut with_detail).unwrap();
+    detailed.release(&mut with_detail).unwrap();
+    storage_zero(&with_detail);
+
+    let mut without = control_without_detail();
+    let (mut plain, plain_root, mut second, tokenizer) = merge_fixture(&source, &mut without);
+    plain
+        .add_attributes_if_missing(&mut without, &plain_root, &mut second)
+        .unwrap();
+    assert_eq!(root_attributes(&plain, &plain_root), expected);
+    assert!(
+        plain
+            .active()
+            .unwrap()
+            .payloads
+            .detail_origins
+            .is_unallocated()
+    );
+    plain
+        .active_mut()
+        .unwrap()
+        .remove_managed_field(&mut without, plain_root.index, "b")
+        .unwrap();
+    assert!(
+        plain
+            .active()
+            .unwrap()
+            .payloads
+            .detail_origins
+            .is_unallocated()
+    );
+    tokenizer.release(&mut without).unwrap();
+    plain.release(&mut without).unwrap();
+    storage_zero(&without);
+}
+
+#[test]
+fn the_origin_table_adds_one_auxiliary_entry_per_origin_bearing_field() {
+    let source = crate::HtmlSource::utf8("<html id=old><html a=1 b=2 c=3>");
+    let aux = |c: &ParseControl| {
+        c.usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current
+    };
+    let mut plain = control_without_detail();
+    let (mut without, root, mut second, tokenizer) = merge_fixture(&source, &mut plain);
+    without
+        .add_attributes_if_missing(&mut plain, &root, &mut second)
+        .unwrap();
+    let without_detail = aux(&plain);
+    tokenizer.release(&mut plain).unwrap();
+    without.release(&mut plain).unwrap();
+
+    let mut c = control();
+    let (mut session, root, mut second, tokenizer) = merge_fixture(&source, &mut c);
+    session
+        .add_attributes_if_missing(&mut c, &root, &mut second)
+        .unwrap();
+    let table = &session.active().unwrap().payloads.detail_origins;
+    // The name and the value of each of the four attributes have a group.
+    assert_eq!(table.len(), 8);
+    assert_eq!(aux(&c), without_detail + 8);
+    // The retained bytes are a slot for each node position up to the root's, one run for the
+    // root and its eight entries, each at most doubled by the spare room of its vector.
+    let slot = std::mem::size_of::<usize>();
+    let run = std::mem::size_of::<super::super::detail_origins::Run>();
+    let entry = std::mem::size_of::<super::super::detail_origins::DetailOrigin>();
+    assert!(table.capacity_bytes() <= 2 * ((root.index + 1) * slot + run + 8 * entry));
+    tokenizer.release(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
 }

@@ -28,7 +28,6 @@ pub(super) struct NodeJoins {
 /// Node-keyed registry row kinds with a join in [`NodeJoins`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Join {
-    Attributes,
     NodeDocument,
     Document,
     Template,
@@ -75,28 +74,27 @@ const JOIN_COUNT: usize = Join::Details as usize + 1;
 type JoinTable<T> = Table<Join, T, JOIN_COUNT>;
 
 slots!(Join, JOIN_COUNT, {
-    Attributes => 0,
-    NodeDocument => 1,
-    Document => 2,
-    Template => 3,
-    FormAssociation => 4,
-    Script => 5,
-    Image => 6,
-    Hyperlink => 7,
-    Style => 8,
-    Dialog => 9,
-    Nonce => 10,
-    Input => 11,
-    SelectFamily => 12,
-    Base => 13,
-    BaseDocument => 14,
-    LookupRegistry => 15,
-    StyleOccurrence => 16,
-    StyleOrder => 17,
-    ProcessingInstructionData => 18,
-    ProcessingInstructionAttributes => 19,
-    SvgScript => 20,
-    Details => 21,
+    NodeDocument => 0,
+    Document => 1,
+    Template => 2,
+    FormAssociation => 3,
+    Script => 4,
+    Image => 5,
+    Hyperlink => 6,
+    Style => 7,
+    Dialog => 8,
+    Nonce => 9,
+    Input => 10,
+    SelectFamily => 11,
+    Base => 12,
+    BaseDocument => 13,
+    LookupRegistry => 14,
+    StyleOccurrence => 15,
+    StyleOrder => 16,
+    ProcessingInstructionData => 17,
+    ProcessingInstructionAttributes => 18,
+    SvgScript => 19,
+    Details => 20,
 });
 
 /// Cells hold a registry slot plus one in 32 bits; a slot beyond that is

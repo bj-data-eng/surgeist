@@ -1,10 +1,7 @@
 use super::tests::{control, limits, native_text, owned_text, storage_zero};
 use super::*;
 use crate::HtmlParseCancellation;
-use surgeist_html::{
-    bounded::construction::HtmlConstructionAttributeEditMode,
-    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
-};
+use surgeist_html::values::DocumentString;
 
 fn aggregate(c: &mut ParseControl) -> (ParserArenaSession, ParserNode, ParserNode) {
     let mut session = ParserArenaSession::new(c, RootKind::Fragment).unwrap();
@@ -29,7 +26,7 @@ fn exact_current_ticket(session: &ParserArenaSession, c: &mut ParseControl, node
     let RetainedPayload::String {
         value,
         allocation,
-        location: StringLocation::Text(owner),
+        location: FieldRef::Text(owner),
         ..
     } = &storage.payloads.values[slot]
     else {
@@ -364,7 +361,7 @@ fn increasing_whole_unicode_entity_feeds_have_linear_append_copy_and_lookup_work
                                     old_address = address;
                                     let before = c.usage().work(HtmlParseWorkCategory::RecordVisit);
                                     storage
-                                        .field_slot(&mut c, StringLocation::Text(node.index))
+                                        .field_slot(&mut c, FieldRef::Text(node.index))
                                         .unwrap();
                                     lookup_visits +=
                                         c.usage().work(HtmlParseWorkCategory::RecordVisit) - before;
@@ -562,7 +559,7 @@ fn characterization_a_reserve_below_the_initialized_length_is_a_capacity_mismatc
         value,
         allocation,
         origins: None,
-        location: StringLocation::Text(node.index),
+        location: FieldRef::Text(node.index),
     };
     session.release(&mut c).unwrap();
     storage_zero(&c);
@@ -576,10 +573,6 @@ fn characterization_a_reserve_below_the_initialized_length_is_a_capacity_mismatc
 // drains every resource afterwards.
 fn capacity_mismatch() -> HtmlParseStop {
     HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::CapacityMismatch)
-}
-
-fn registry_row() -> HtmlParseStop {
-    HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow)
 }
 
 #[test]
@@ -646,46 +639,6 @@ fn a_stopped_append_releases_its_buffer_when_the_terminal_owner_is_already_taken
     };
     assert_eq!(result.err(), Some(SessionError::Stop(limit)));
     assert_eq!(c.stop(), Some(limit));
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
-#[test]
-fn appending_while_an_attribute_edit_holds_the_storage_reports_the_registry_row() {
-    let mut c = control();
-    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-    let root = session.root(&mut c).unwrap();
-    let element = session
-        .allocate_element(
-            &mut c,
-            PreexistingElement::new(
-                QualifiedName::new(Namespace::none(), None, "x"),
-                OrderedAttributes::default(),
-            ),
-        )
-        .unwrap();
-    session.insert(&mut c, &root, &element, None, None).unwrap();
-    let mut first = Some(owned_text(&mut c, &[65]));
-    session
-        .insert_text(&mut c, &element, None, &mut first, None)
-        .unwrap();
-    // An attribute edit holds the storage, so the append cannot take it.
-    let storage = session.active_mut().unwrap();
-    storage
-        .construction
-        .begin_attributes(
-            &mut c,
-            element.index,
-            HtmlConstructionAttributeEditMode::Slots,
-        )
-        .unwrap();
-    let mut next = Some(owned_text(&mut c, &[66]));
-    let result = session.insert_text(&mut c, &element, None, &mut next, None);
-    assert_eq!(result.err(), Some(SessionError::Stop(registry_row())));
-    assert_eq!(c.stop(), Some(registry_row()));
-    // Nothing was taken from the registry before the refusal.
-    let storage = session.active_mut().unwrap();
-    storage.construction.abort_attributes(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }

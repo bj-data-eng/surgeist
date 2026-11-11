@@ -46,7 +46,7 @@ pub enum HtmlStoredString {
     DoctypeSystemId,
 }
 
-pub(crate) mod attribute_edit;
+pub(crate) mod attribute_list;
 
 pub(crate) mod operations;
 use operations::{
@@ -60,7 +60,6 @@ pub(crate) mod text_append;
 /// field does, and put the owner back when its consuming step refuses it.
 #[cfg(test)]
 mod slots {
-    use super::attribute_edit::*;
     use super::operations::HtmlConstructionReadyOperation;
     use super::text_append::*;
     use super::*;
@@ -94,21 +93,6 @@ mod slots {
     ) -> Result<HtmlConstructionTextAppendReady, HtmlConstructionError> {
         step(slot, HtmlConstructionTextAppend::try_ready)
     }
-    pub(super) fn attribute_slot<'e>(
-        slot: &mut Option<HtmlConstructionAttributeSlot<'e>>,
-    ) -> Result<HtmlConstructionReadyAttributeSlot<'e>, HtmlConstructionError> {
-        step(slot, HtmlConstructionAttributeSlot::try_ready)
-    }
-    pub(super) fn candidate(
-        slot: &mut Option<HtmlConstructionAttributeCandidate<'_, '_>>,
-    ) -> Result<bool, HtmlConstructionError> {
-        step(slot, HtmlConstructionAttributeCandidate::try_finish)
-    }
-    pub(super) fn edit(
-        slot: &mut Option<HtmlConstructionAttributeEdit>,
-    ) -> Result<HtmlConstructionAttributeCompletion, HtmlConstructionError> {
-        step(slot, HtmlConstructionAttributeEdit::try_finish)
-    }
     pub(super) fn recover(
         result: &mut Option<HtmlConstructionResult>,
         lease: &mut Option<HtmlConstructionLease>,
@@ -141,9 +125,6 @@ pub enum HtmlConstructionAllocationRole {
     /// One record's child-order deque. `HtmlConstructionAllocationSnapshot::child_position` gives
     /// that record's ordinal.
     Children,
-    /// The temporary decision vector that an attribute edit builds for one target element before
-    /// it commits.
-    AttributePlan,
     /// The shared arena allocation that publication creates. The report taken before it is
     /// created shows no initialized payload bytes. The snapshot after publication, and the
     /// lease's, reports the size of the arena itself.
@@ -155,7 +136,6 @@ enum AllocationRole {
     Identity,
     Records,
     Children(usize),
-    AttributePlan(usize),
     ArenaWrapper,
 }
 
@@ -205,7 +185,6 @@ impl HtmlConstructionAllocationSnapshot {
             AllocationRole::Identity => HtmlConstructionAllocationRole::Identity,
             AllocationRole::Records => HtmlConstructionAllocationRole::Records,
             AllocationRole::Children(_) => HtmlConstructionAllocationRole::Children,
-            AllocationRole::AttributePlan(_) => HtmlConstructionAllocationRole::AttributePlan,
             AllocationRole::ArenaWrapper => HtmlConstructionAllocationRole::ArenaWrapper,
         }
     }

@@ -57,13 +57,12 @@ fn installing_an_input_attribute_on_a_record_that_is_not_an_element_reports_the_
     let input = named(&nodes, "input", 0).index;
     let storage = session.active_mut().unwrap();
     let slot = input_slot(storage, input);
-    let container = storage.element_attribute_container(&mut c, input).unwrap();
     let result = storage.initial_input_attribute(
         &mut c,
         0,
         slot,
         association_slot(storage, input),
-        (container, 0),
+        0,
         InputAttributeInitialization::Installed,
     );
     assert_registry_row(result, &c);
@@ -90,13 +89,11 @@ fn changing_an_input_type_on_a_record_that_is_not_an_element_reports_the_registr
     let input = named(&nodes, "input", 0).index;
     let storage = session.active_mut().unwrap();
     let slot = input_slot(storage, input);
-    let container = storage.element_attribute_container(&mut c, input).unwrap();
     let state = storage.read_input_state(&mut c, slot).unwrap();
     let result = storage.change_input_type(
         &mut c,
         0,
         slot,
-        container,
         state,
         surgeist_html::attributes::HtmlInputType::Hidden,
     );
@@ -113,53 +110,15 @@ fn an_input_attribute_hook_past_the_attribute_list_reports_the_registry_row() {
     let storage = session.active_mut().unwrap();
     let slot = input_slot(storage, input);
     let association = association_slot(storage, input);
-    let container = storage.element_attribute_container(&mut c, input).unwrap();
     let result = storage.initial_input_attribute(
         &mut c,
         input,
         slot,
         association,
-        (container, usize::MAX / 2),
+        usize::MAX / 2,
         InputAttributeInitialization::Installed,
     );
     assert_registry_row(result, &c);
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
-#[test]
-fn a_transfer_from_a_stage_that_was_already_reversed_hands_the_stage_back() {
-    let request = request("<body><div id=a>");
-    let (mut c, mut session, _proof, nodes) = graph(&request);
-    let div = named(&nodes, "div", 0).index;
-    let storage = session.active_mut().unwrap();
-    let container = storage.element_attribute_container(&mut c, div).unwrap();
-    let prepared = storage.prepare_payload_slot(&mut c).unwrap();
-    let (values, allocation) = c.new_vector().unwrap();
-    let stage = storage
-        .payloads
-        .push_row(
-            prepared,
-            RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                values,
-                allocation,
-                original_len: 0,
-                reversed_pairs: 1,
-            })),
-        )
-        .unwrap();
-    // The stage is not the unchanged reverse stage a transfer consumes.
-    assert_registry_row(
-        storage.begin_attribute_transfer(&mut c, stage, container, 0),
-        &c,
-    );
-    // The stage was handed back, so the owner's release reclaims it.
-    assert!(matches!(
-        storage.payloads.values.get(stage),
-        Some(RetainedPayload::Attributes(Some(
-            AttributeStorage::Building { .. }
-        )))
-    ));
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
@@ -181,17 +140,19 @@ fn disposing_a_row_that_is_not_a_string_keeps_the_row() {
     let (mut c, mut session, _proof, nodes) = graph(&request);
     let div = named(&nodes, "div", 0).index;
     let storage = session.active_mut().unwrap();
-    let container = storage.element_attribute_container(&mut c, div).unwrap();
+    let row = storage
+        .payloads
+        .joined(&mut c, div, Join::NodeDocument)
+        .unwrap()
+        .expect("the element's document row");
     assert_eq!(
-        storage.dispose_aggregate_string(&mut c, container),
+        storage.dispose_aggregate_string(&mut c, row),
         Err(SessionError::WrongToken)
     );
-    // The refused row is still the attribute container, not a retired husk.
+    // The refused row is still the document row, not a retired husk.
     assert!(matches!(
-        storage.payloads.values.get(container),
-        Some(RetainedPayload::Attributes(Some(
-            AttributeStorage::Frozen { .. }
-        )))
+        storage.payloads.values.get(row),
+        Some(RetainedPayload::NodeDocument { .. })
     ));
     session.release(&mut c).unwrap();
     storage_zero(&c);
@@ -448,20 +409,6 @@ fn field_group_lookups_past_the_registry_report_the_registry_row() {
     let (mut c, mut session, _proof, _nodes) = graph(&request);
     let storage = session.active_mut().unwrap();
     assert_registry_row(storage.merge_field_groups(&mut c, past, 0, 0, 0), &c);
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
-#[test]
-fn an_id_edit_over_a_row_that_is_not_a_staged_attribute_list_reports_the_registry_row() {
-    let request = input_request();
-    let (mut c, mut session, _proof, nodes) = graph(&request);
-    let input = named(&nodes, "input", 0).index;
-    let storage = session.active_mut().unwrap();
-    // The stage names the input's own metadata row, which holds no attributes.
-    let stage = input_slot(storage, input);
-    let result = storage.prepare_id_attribute_effects(&mut c, input, stage);
-    assert_registry_row(result, &c);
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }

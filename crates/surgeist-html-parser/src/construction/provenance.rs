@@ -3,7 +3,6 @@
 use super::*;
 use crate::keyed::{Table, slots};
 #[cfg(test)]
-use surgeist_html::values::Attribute;
 use surgeist_html::values::DocumentString;
 #[path = "lexical.rs"]
 mod lexical;
@@ -299,7 +298,7 @@ pub(crate) enum ConstructionCause {
     },
     Retirement {
         group: usize,
-        destination: StringLocation,
+        destination: FieldRef,
         trigger: Option<usize>,
     },
     Replay {
@@ -376,7 +375,7 @@ impl ConstructionCause {
             _ => None,
         }
     }
-    pub(crate) fn retired_destination(&self) -> Option<StringLocation> {
+    pub(crate) fn retired_destination(&self) -> Option<FieldRef> {
         match self {
             Self::Retirement { destination, .. } => Some(*destination),
             _ => None,
@@ -794,7 +793,7 @@ impl GroupOriginCursor {
 }
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum NativeDestination {
-    Field(StringLocation),
+    Field(FieldRef),
     Node(usize),
     Raw {
         node: usize,
@@ -1397,10 +1396,6 @@ impl ParseEvidence {
         )
     }
     #[cfg(test)]
-    pub(super) fn fixed_original_origin(&self, index: usize) -> Option<&HtmlParseTextOrigin> {
-        self.native.origins.as_slice().get(index)
-    }
-    #[cfg(test)]
     pub(super) fn observed_origins(
         &self,
         group: &OriginGroupRef,
@@ -1774,7 +1769,7 @@ impl SessionStorage {
             walk.release(c)?;
         }
         if matches!(walk.state, PiOriginState::Unstarted) {
-            let slot = self.field_slot(c, StringLocation::ProcessingInstructionData(walk.node))?;
+            let slot = self.field_slot(c, FieldRef::ProcessingInstructionData(walk.node))?;
             let RetainedPayload::String {
                 origins: Some(original),
                 ..
@@ -1892,7 +1887,7 @@ impl SessionStorage {
         value: FrozenUtf16,
         maps: OwnedVec<HtmlParseTextOrigin>,
     ) -> Result<usize, SessionError> {
-        let slot = match self.field_slot(c, StringLocation::ProcessingInstructionData(node)) {
+        let slot = match self.field_slot(c, FieldRef::ProcessingInstructionData(node)) {
             Ok(slot) => slot,
             Err(error) => {
                 value.release(c)?;
@@ -1964,11 +1959,11 @@ impl SessionStorage {
         c: &mut ParseControl,
         slot: usize,
     ) -> Result<Option<OriginGroupRef>, SessionError> {
-        let RetainedPayload::String { origins, .. } = self.payloads.row(c, slot)? else {
+        let RetainedPayload::String { .. } = self.payloads.row(c, slot)? else {
             return Err(SessionError::WrongToken);
         };
-        origins
-            .as_ref()
+        self.payloads
+            .row_group(c, slot)?
             .map(|group| {
                 self.evidence
                     .as_mut()
@@ -1984,9 +1979,10 @@ impl SessionStorage {
         incoming: Option<OriginGroupRef>,
         units: usize,
     ) -> Result<Option<OriginGroupRef>, SessionError> {
-        let RetainedPayload::String { origins: old, .. } = self.payloads.row(c, old_slot)? else {
+        let RetainedPayload::String { .. } = self.payloads.row(c, old_slot)? else {
             return Err(SessionError::WrongToken);
         };
+        let old = self.payloads.row_group(c, old_slot)?;
         let Some(evidence) = graph_in(&mut self.evidence) else {
             return Ok(None);
         };
@@ -2000,7 +1996,6 @@ impl SessionStorage {
             return Err(SessionError::WrongToken);
         }
         let original = old
-            .as_ref()
             .map(|old| evidence.require_group(old).map(|_| old.index))
             .transpose()?;
         let cause = evidence.append_cause(
@@ -2046,20 +2041,19 @@ impl SessionStorage {
         slot: usize,
         node: usize,
     ) -> Result<(), SessionError> {
-        self.retire_field_group_at(c, slot, Some(StringLocation::Text(node)))
+        self.retire_field_group_at(c, slot, Some(FieldRef::Text(node)))
     }
     fn retire_field_group_at(
         &mut self,
         c: &mut ParseControl,
         slot: usize,
-        suspended: Option<StringLocation>,
+        suspended: Option<FieldRef>,
     ) -> Result<(), SessionError> {
         let (group, location) = match self.payloads.row(c, slot)? {
-            RetainedPayload::String {
-                origins: Some(group),
-                location,
-                ..
-            } => (group, *location),
+            RetainedPayload::String { location, .. } => match self.payloads.row_group(c, slot)? {
+                Some(group) => (group, *location),
+                None => return Ok(()),
+            },
             RetainedPayload::HistoricalString { origins } => {
                 (origins, suspended.ok_or(SessionError::WrongToken)?)
             }
@@ -2219,11 +2213,10 @@ impl ParseEvidence {
                         return Err(SessionError::WrongToken);
                     };
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let Some(RetainedPayload::String {
-                        origins: Some(original),
-                        ..
-                    }) = payloads.values.get(slot)
-                    else {
+                    let Some(RetainedPayload::String { .. }) = payloads.values.get(slot) else {
+                        return Err(SessionError::WrongToken);
+                    };
+                    let Some(original) = payloads.row_group(c, slot)? else {
                         return Err(SessionError::WrongToken);
                     };
                     let header = self.require_group(original)?;
@@ -2407,15 +2400,15 @@ impl SessionStorage {
             // The computation that carries the edge is dropped unrecorded.
             return Ok(RangeEdge::UNRECORDED);
         }
-        let RetainedPayload::String {
-            origins: Some(group),
-            ..
-        } = self
+        let RetainedPayload::String { .. } = self
             .payloads
             .values
             .get(slot)
             .ok_or(SessionError::WrongToken)?
         else {
+            return Err(SessionError::WrongToken);
+        };
+        let Some(group) = self.payloads.row_group(c, slot)? else {
             return Err(SessionError::WrongToken);
         };
         self.evidence
@@ -2782,17 +2775,16 @@ impl NativeAssociations<'_> {
             return Ok(false);
         };
         Ok(
-            matches!(row.destination, NativeDestination::Field(StringLocation::Text(owner)) if owner == node),
+            matches!(row.destination, NativeDestination::Field(FieldRef::Text(owner)) if owner == node),
         )
     }
     #[cfg(test)]
-    /// Match an actual retained attribute-container field to its native owner.
-    /// Container indices are payload identities, never native node positions.
+    /// Match an attribute field to its native owner and position.
     pub(crate) fn attribute_for(
         &mut self,
         index: usize,
         node: &ParserNode,
-        slot: usize,
+        position: usize,
         field: NativeAttributeField,
     ) -> Result<bool, SessionError> {
         let node = self.storage.index(self.control, node)?;
@@ -2803,39 +2795,31 @@ impl NativeAssociations<'_> {
         let Some((row, _)) = self.row(index)? else {
             return Ok(false);
         };
-        let (container, actual_slot) = match (row.destination, field) {
+        let (owner, actual_position) = match (row.destination, field) {
             (
-                NativeDestination::Field(StringLocation::AttributeName(container, slot)),
+                NativeDestination::Field(FieldRef::AttributeName(owner, position)),
                 NativeAttributeField::Name,
             )
             | (
-                NativeDestination::Field(StringLocation::AttributeValue(container, slot)),
+                NativeDestination::Field(FieldRef::AttributeValue(owner, position)),
                 NativeAttributeField::Value,
-            ) => (container, slot),
+            ) => (owner, position),
             _ => return Ok(false),
         };
-        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        self.control.charge(
-            HtmlParseWorkCategory::InspectByte,
-            mem::size_of::<RetainedPayload>() as u64,
-        )?;
-        let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-            element: Some(owner),
-            values,
-            ..
-        }))) = self.storage.payloads.values.get(container)
-        else {
-            return Ok(false);
-        };
-        if *owner != node || actual_slot != slot {
+        if owner != node || actual_position != position {
             return Ok(false);
         }
         self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        self.control.charge(
-            HtmlParseWorkCategory::InspectByte,
-            mem::size_of::<Attribute>() as u64,
-        )?;
-        Ok(values.as_slice().get(actual_slot).is_some())
+        let surgeist_html::construction::ConstructionNodeKind::Element(element) = self
+            .storage
+            .construction
+            .node_at(owner)
+            .map(|record| record.kind())
+            .ok_or(SessionError::WrongToken)?
+        else {
+            return Ok(false);
+        };
+        Ok(element.attributes().get(actual_position).is_some())
     }
     #[cfg(test)]
     pub(crate) fn cause_reference(
@@ -3112,7 +3096,7 @@ impl ParserArenaSession {
                     value,
                     allocation,
                     origins,
-                    location: StringLocation::Detached,
+                    location: FieldRef::Detached,
                 } = storage
                     .payloads
                     .values
@@ -3187,8 +3171,8 @@ impl ParserArenaSession {
             let RetainedPayload::String {
                 value,
                 allocation,
-                origins,
                 location,
+                ..
             } = payload
             else {
                 continue;
@@ -3197,12 +3181,12 @@ impl ParserArenaSession {
             let Some(native) = location.value(
                 ConstructionView::Active(storage.construction.storage(c)?),
                 &storage.payloads.values,
-                payload_slot,
                 c,
             )?
             else {
                 continue;
             };
+            let origins = storage.payloads.row_group(c, payload_slot)?;
             c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             if !native.shares_storage_with(value) {
                 return Err(SessionError::AliasedPayload);
@@ -3908,11 +3892,10 @@ pub(super) fn copy_generated_input_value(
             }
         };
     }
-    let RetainedPayload::String {
-        origins: Some(group),
-        ..
-    } = payloads.row(c, slot)?
-    else {
+    let RetainedPayload::String { .. } = payloads.row(c, slot)? else {
+        return Err(SessionError::WrongToken);
+    };
+    let Some(group) = payloads.row_group(c, slot)? else {
         return Err(SessionError::WrongToken);
     };
     let evidence = evidence.ok_or(SessionError::WrongToken)?;

@@ -1613,7 +1613,7 @@ pub(super) mod tests {
 
     #[test]
     fn copied_captured_namespace_does_not_replace_actual_lexical_node_trigger() {
-        use crate::construction::StringLocation;
+        use crate::construction::FieldRef;
         use crate::construction::provenance::{
             HtmlParseCapturedCauseRole, HtmlParseConstructionOperation, NativeDestination,
         };
@@ -1657,7 +1657,7 @@ pub(super) mod tests {
                 }
                 if matches!(
                     row.destination,
-                    NativeDestination::Field(StringLocation::Namespace(_))
+                    NativeDestination::Field(FieldRef::Namespace(_))
                 ) && cause.captured().as_ref().is_some_and(|captured| {
                     captured.role == HtmlParseCapturedCauseRole::ContextNamespace
                 }) {

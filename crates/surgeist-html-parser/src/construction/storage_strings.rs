@@ -269,7 +269,7 @@ impl SessionStorage {
                     value,
                     allocation,
                     origins,
-                    location: StringLocation::Detached,
+                    location: FieldRef::Detached,
                 },
             )
             .map_err(|_| latch_registry_row(control))?;
@@ -412,10 +412,7 @@ impl SessionStorage {
         };
         // The preceding Text record and the registry row holding its string.
         let preceding = match preceding {
-            Some(index) => Some((
-                index,
-                self.field_slot(control, StringLocation::Text(index))?,
-            )),
+            Some(index) => Some((index, self.field_slot(control, FieldRef::Text(index))?)),
             None => None,
         };
         let dispose_old = match preceding {
@@ -471,7 +468,7 @@ impl SessionStorage {
                 0,
                 prepared,
             )?;
-            self.bind_string(ticket, StringLocation::Text(node.index))
+            self.bind_string(ticket, FieldRef::Text(node.index))
                 .map_err(|_| latch_registry_row(control))?;
             self.insert(control, parent, &node, before, InsertionCause::NonParser)?;
             Ok(Some(TextInsertion {
@@ -566,7 +563,7 @@ impl SessionStorage {
     pub(super) fn bind_string(
         &mut self,
         index: usize,
-        location: StringLocation,
+        location: FieldRef,
     ) -> Result<(), SessionError> {
         let Some(RetainedPayload::String {
             location: current, ..
@@ -576,12 +573,81 @@ impl SessionStorage {
         };
         *current = location;
         match location {
-            StringLocation::Text(node) => self.payloads.join_text(node, index)?,
+            FieldRef::Text(node) => self.payloads.join_text(node, index)?,
             // The join names the first row bound to the instruction, as a scan
             // of the registry does.
-            StringLocation::ProcessingInstructionData(_) => self.payloads.join_row(index)?,
+            FieldRef::ProcessingInstructionData(_) => self.payloads.join_row(index)?,
             _ => {}
         }
+        Ok(())
+    }
+
+    /// Moves the origin groups of the strings that rows from `first_row` on hold for attribute
+    /// fields into the table of attribute origins. The rows are walked backward: attribute
+    /// strings are registered last attribute first, so the groups enter the table in field
+    /// order.
+    pub(super) fn flush_attribute_origins(
+        &mut self,
+        control: &mut ParseControl,
+        first_row: usize,
+    ) -> Result<(), SessionError> {
+        if !control.detail().records_graph() {
+            return Ok(());
+        }
+        let mut slot = self.payloads.values.len();
+        while slot > first_row {
+            slot = slot
+                .checked_sub(1)
+                .ok_or_else(|| latch_registry_row(control))?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let Some(RetainedPayload::String {
+                origins, location, ..
+            }) = self.payloads.values.get_mut(slot)
+            else {
+                continue;
+            };
+            let field = *location;
+            if field.attribute().is_none() {
+                continue;
+            }
+            let Some(group) = origins.take() else {
+                continue;
+            };
+            self.payloads.detail_origins.insert(control, field, group)?;
+        }
+        Ok(())
+    }
+
+    /// Detaches the string row at `slot` from the attribute field it holds the string of. The
+    /// field's origin group goes back to the row, which keeps it as the history of a string no
+    /// attribute holds.
+    pub(super) fn detach_attribute_string(
+        &mut self,
+        control: &mut ParseControl,
+        slot: usize,
+    ) -> Result<(), SessionError> {
+        let Some(RetainedPayload::String {
+            origins, location, ..
+        }) = self.payloads.values.get(slot)
+        else {
+            return Err(latch_registry_row(control));
+        };
+        let field = *location;
+        let group = if field.attribute().is_some() && origins.is_none() {
+            self.payloads.detail_origins.take(control, field)?
+        } else {
+            None
+        };
+        let Some(RetainedPayload::String {
+            origins, location, ..
+        }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(latch_registry_row(control));
+        };
+        if group.is_some() {
+            *origins = group;
+        }
+        *location = FieldRef::Detached;
         Ok(())
     }
 }

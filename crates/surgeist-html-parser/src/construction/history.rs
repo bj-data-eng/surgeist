@@ -828,7 +828,7 @@ mod tests {
         lexer.release(&mut c).unwrap();
         let storage = session.active().unwrap();
         let slot = storage
-            .field_slot(&mut c, StringLocation::Text(node.unwrap().index))
+            .field_slot(&mut c, FieldRef::Text(node.unwrap().index))
             .unwrap();
         let RetainedPayload::String {
             origins: Some(group),
@@ -1180,7 +1180,7 @@ mod tests {
             .find_map(|payload| match payload {
                 RetainedPayload::String {
                     origins: Some(reference),
-                    location: StringLocation::Text(_),
+                    location: FieldRef::Text(_),
                     ..
                 } => Some(reference),
                 _ => None,
@@ -1843,7 +1843,7 @@ mod tests {
             assert!(matches!(
                 &view.storage.payloads.values[slot],
                 RetainedPayload::String {
-                    location: StringLocation::Detached,
+                    location: FieldRef::Detached,
                     ..
                 }
             ));

@@ -1,10 +1,10 @@
-//! Attribute merging, transfer and editing of installed element attributes.
+//! Attribute merging and installation: the parse stages the attributes it builds and HTML's
+//! storage appends them to elements one at a time.
 
 use super::*;
 use surgeist_html::{
-    bounded::construction::HtmlConstructionAttributeEditMode,
     construction::ConstructionNodeKind,
-    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
+    values::{Attribute, DocumentString, Namespace, QualifiedName},
 };
 
 #[derive(Clone, Copy)]
@@ -22,15 +22,133 @@ impl AttributeMergeName {
     }
 }
 
+/// Attributes the parse has built and means to install in an element. They are installed from
+/// the last to the first, so a list staged in reverse source order is installed in source order.
+/// The staging list is the parse's own vector, accounted through its ticket, and is released
+/// with [`Self::release`].
+pub(super) struct StagedAttributes {
+    values: Vec<Attribute>,
+    allocation: VectorCapacity<Attribute>,
+}
+
+impl StagedAttributes {
+    pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
+        let (values, allocation) = control.new_vector()?;
+        Ok(Self { values, allocation })
+    }
+
+    /// Stages `attribute`. The caller has registered its strings and acquired its logical slot.
+    /// `final_len` is the number of attributes the staging list is known to reach.
+    pub(super) fn push(
+        &mut self,
+        control: &mut ParseControl,
+        attribute: Attribute,
+        final_len: usize,
+    ) -> Result<(), SessionError> {
+        control.reserve_vector_geometric_toward(
+            &mut self.values,
+            &mut self.allocation,
+            1,
+            final_len,
+        )?;
+        control.charge(
+            HtmlParseWorkCategory::CopyByte,
+            (const { mem::size_of::<Attribute>() + 2 * mem::size_of::<FieldRef>() }) as u64,
+        )?;
+        control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
+        self.values.push(attribute);
+        Ok(())
+    }
+
+    /// How many attributes are staged.
+    #[cfg(test)]
+    pub(super) fn staged(&self) -> usize {
+        self.values.len()
+    }
+
+    /// Stages `attribute` as [`Self::push`] does, charging only the copy of the attribute: its
+    /// strings are not bound to fields until its element exists.
+    pub(super) fn push_plain(
+        &mut self,
+        control: &mut ParseControl,
+        attribute: Attribute,
+        final_len: usize,
+    ) -> Result<(), SessionError> {
+        control.reserve_vector_geometric_toward(
+            &mut self.values,
+            &mut self.allocation,
+            1,
+            final_len,
+        )?;
+        control.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<Attribute>() as u64,
+        )?;
+        control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
+        self.values.push(attribute);
+        Ok(())
+    }
+
+    /// Reverses the staged order, as the pairs swapped one at a time: each swap is charged
+    /// before it is made.
+    pub(super) fn reverse(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
+        let len = self.values.len();
+        for left in 0..len / 2 {
+            let right = len
+                .checked_sub(1)
+                .and_then(|last| last.checked_sub(left))
+                .ok_or_else(|| latch_registry_row(control))?;
+            control.admit_atomic_layout(const { mem::size_of::<Attribute>() * 2 })?;
+            control.charge(
+                HtmlParseWorkCategory::CopyByte,
+                (const { mem::size_of::<Attribute>() * 2 }) as u64,
+            )?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
+            self.values.swap(left, right);
+        }
+        Ok(())
+    }
+
+    /// Hands the staged list to the owner of its record as a vector with its ticket.
+    pub(super) fn into_parts(self) -> (Vec<Attribute>, VectorCapacity<Attribute>) {
+        (self.values, self.allocation)
+    }
+
+    pub(super) fn release(self, control: &mut ParseControl) -> Result<(), SessionError> {
+        release_vector(control, self.values, self.allocation)
+    }
+}
+
+/// A candidate of a merge that the element keeps: its place among the candidates and its name
+/// as the plan saw it.
+pub(super) struct KeptCandidate {
+    pub(super) index: usize,
+    /// The name, which shares the block of the token's name. It is lent back to the token while
+    /// the token's strings are registered, because a string whose block has another holder
+    /// cannot be released if its registration is refused.
+    pub(super) name: Option<DocumentString>,
+}
+
 pub(super) struct PreparedAttributeMerge {
     pub(super) target: usize,
-    pub(super) container: usize,
-    pub(super) stage: usize,
+    pub(super) stage: StagedAttributes,
+    /// The kept candidates in source order, with the names the plan decided on.
+    pub(super) kept: OwnedVec<KeptCandidate>,
+    /// The registry slot of the first row that staging registered.
+    first_row: usize,
+    /// The length of the element's attribute list before the merge.
     pub(super) start: usize,
     pub(super) count: usize,
-    /// Rows registered before the stage row and bound to it; the stagers that
-    /// register their strings afterwards leave this empty.
-    pub(super) earlier: [Option<usize>; 4],
+}
+
+impl PreparedAttributeMerge {
+    pub(super) fn release(self, control: &mut ParseControl) -> Result<(), SessionError> {
+        let mut refused = None;
+        keep_first(&mut refused, self.stage.release(control));
+        keep_first(&mut refused, self.kept.release(control));
+        refused.map_or(Ok(()), Err)
+    }
 }
 
 impl SessionStorage {
@@ -82,11 +200,6 @@ impl SessionStorage {
         {
             return Err(SessionError::WrongToken);
         }
-        let container = self.element_attribute_container(control, target)?;
-        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        if Arc::weak_count(element.attributes().to_ordered().shared_attributes()) != 1 {
-            return Err(SessionError::AliasedPayload);
-        }
         let tag = input.as_mut().ok_or(SessionError::Consumed)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if tag.kind != TagKind::Start {
@@ -109,44 +222,33 @@ impl SessionStorage {
             check_text_source(control, &a.value)?;
             control.require_source_range(&a.source)?;
         }
-        let entries = element
-            .attributes()
-            .len()
-            .saturating_add(tag.attributes.len());
+        let start = element.attributes().len();
+        let entries = start.saturating_add(tag.attributes.len());
         if entries >= construction_owner::NAME_INDEX_MIN_ENTRIES {
-            self.construction.provide_name_index(control, entries)?;
+            // The table also serves the effects of the attributes the merge installs, and stays
+            // for the next merge into this element.
+            self.construction.provide_name_index(
+                control,
+                entries.saturating_add(construction_owner::NAME_INDEX_SPARE_ENTRIES),
+            )?;
         }
-        self.begin_attribute_edit(
+        let mut kept = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+        let planned = self.construction.plan_attribute_merge(
             control,
             target,
-            HtmlConstructionAttributeEditMode::NamedMerge {
-                candidate_count: tag.attributes.len(),
-            },
-        )?;
-        let planned = (|| {
-            for index in 0..tag.attributes.len() {
-                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                self.construction.plan_attribute_candidate(
-                    control,
-                    index,
-                    tag.attributes.as_slice(),
-                )?;
-            }
-            self.construction
-                .attribute_edit(control)?
-                .selected_count()
-                .map_err(|error| construction_owner::construction_error(control, error))
-        })();
+            tag.attributes.as_slice(),
+            &mut kept,
+        );
         let count = match planned {
             Ok(count) => count,
             Err(error) => {
-                self.construction.abort_attributes(control)?;
+                kept.release(control)?;
                 return Err(error);
             }
         };
         // Final borrowed-input admission leaves the complete Tag caller-owned.
         if let Err(error) = payload_write::<Option<Tag>>(control, 1) {
-            self.construction.abort_attributes(control)?;
+            kept.release(control)?;
             return Err(error);
         }
         let Some(Tag {
@@ -155,200 +257,213 @@ impl SessionStorage {
             ..
         }) = input.take()
         else {
-            // Nothing was taken: only the edit begun above needs ending.
-            self.construction.abort_attributes(control)?;
+            // Nothing was taken: only the plan begun above needs ending.
+            kept.release(control)?;
             return Err(SessionError::Consumed);
         };
-        let result = (|| {
+        let staged = (|| {
             name.release(control)?;
-            let (values, allocation) = control.new_vector()?;
-            let prepared = match self.prepare_payload_slot(control) {
-                Ok(prepared) => prepared,
+            let mut stage = StagedAttributes::new(control)?;
+            let first_row = self.payloads.values.len();
+            let result = self.stage_merged_attributes(
+                control,
+                target,
+                start,
+                count,
+                &mut attributes,
+                &mut stage,
+                &mut kept,
+            );
+            match result {
+                Ok(()) => Ok((stage, first_row)),
                 Err(error) => {
-                    release_vector(control, values, allocation)?;
+                    stage.release(control)?;
+                    Err(error)
+                }
+            }
+        })();
+        let (stage, first_row) = match staged {
+            Ok((stage, first_row)) => {
+                // The token's strings are held by the plan until its names are released, and by
+                // nothing else once they are registered, so they go with the rest of the token.
+                if let Err(error) = release_token_attributes(attributes, control) {
+                    let staging = stage.release(control);
+                    let planned = kept.release(control);
+                    staging?;
+                    planned?;
+                    return Err(error);
+                }
+                (stage, first_row)
+            }
+            Err(error) => {
+                // The names the plan kept hold the token strings' blocks, which their release
+                // requires to be unheld: the plan goes first.
+                let planned = kept.release(control);
+                let cleanup = release_token_attributes(attributes, control);
+                planned?;
+                cleanup?;
+                return Err(error);
+            }
+        };
+        if count == 0 {
+            stage.release(control)?;
+            kept.release(control)?;
+            return Ok(None);
+        }
+        let prepared = PreparedAttributeMerge {
+            target,
+            stage,
+            kept,
+            first_row,
+            start,
+            count,
+        };
+        if let Err(error) = payload_write::<PreparedAttributeMerge>(control, 1) {
+            prepared.release(control)?;
+            return Err(error);
+        }
+        Ok(Some(prepared))
+    }
+
+    /// Registers and stages the kept candidates, last first, so that the staging list pops in
+    /// source order. A candidate the plan dropped is released, its lexical origins noted.
+    #[allow(clippy::too_many_arguments)]
+    fn stage_merged_attributes(
+        &mut self,
+        control: &mut ParseControl,
+        target: usize,
+        start: usize,
+        count: usize,
+        attributes: &mut OwnedVec<crate::parser::tokenizer::token::Attribute>,
+        stage: &mut StagedAttributes,
+        kept: &mut OwnedVec<KeptCandidate>,
+    ) -> Result<(), SessionError> {
+        let mut rank = count;
+        while !attributes.as_slice().is_empty() {
+            let index = attributes
+                .len()
+                .checked_sub(1)
+                .ok_or_else(|| latch_registry_row(control))?;
+            let keep = rank
+                .checked_sub(1)
+                .and_then(|last| kept.as_slice().get(last))
+                .is_some_and(|candidate| candidate.index == index);
+            // A kept candidate also visits its entry twice, to lend its name and to take it back.
+            // Both visits are charged before the attribute is taken: once the name is lent, a
+            // refusal could leave the plan holding the block of a string that must be released.
+            control.charge(HtmlParseWorkCategory::RecordVisit, if keep { 3 } else { 1 })?;
+            let Some(attribute) = attributes.try_pop(control)? else {
+                return Err(latch_registry_row(control));
+            };
+            if !keep {
+                let retained = (|| {
+                    if let Some(evidence) = self.evidence.as_mut() {
+                        evidence.lexical_attribute_ignored(control, attribute.lexical.as_ref())?;
+                    }
+                    Ok::<_, SessionError>(())
+                })();
+                // Both strings are released whatever the first release reports.
+                let name = attribute.name.release(control);
+                let value = attribute.value.release(control);
+                retained?;
+                name?;
+                value?;
+                continue;
+            }
+            rank = rank
+                .checked_sub(1)
+                .ok_or_else(|| latch_registry_row(control))?;
+            let position = start
+                .checked_add(rank)
+                .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedAttributes))?;
+            // The token's name is the only holder of its block while it is registered.
+            kept.as_mut_slice_prepaid(control)?
+                .get_mut(rank)
+                .ok_or_else(|| latch_registry_row(control))?
+                .name = None;
+            let (local, name_ticket) = match self.register_text(control, attribute.name) {
+                Ok(value) => value,
+                Err(error) => {
+                    attribute.value.release(control)?;
                     return Err(error);
                 }
             };
-            let stage = self
-                .payloads
-                .push_row(
-                    prepared,
-                    RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                        values,
-                        allocation,
-                        original_len: count,
-                        reversed_pairs: 0,
-                    })),
-                )
-                .map_err(|_| latch_registry_row(control))?;
-            let mut remaining = count;
-            while !attributes.as_slice().is_empty() {
-                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                let decision_index = attributes
-                    .len()
-                    .checked_sub(1)
-                    .ok_or_else(|| latch_registry_row(control))?;
-                let keep = self
-                    .construction
-                    .attribute_edit(control)?
-                    .decision(decision_index)
-                    .map_err(|error| construction_owner::construction_error(control, error))?;
-                let Some(attribute) = attributes.try_pop(control)? else {
-                    return Err(latch_registry_row(control));
-                };
-                if !keep {
-                    let retained = (|| {
-                        if let Some(evidence) = self.evidence.as_mut() {
-                            evidence
-                                .lexical_attribute_ignored(control, attribute.lexical.as_ref())?;
-                        }
-                        Ok::<_, SessionError>(())
-                    })();
-                    if let Err(error) = retained {
-                        attribute.name.release(control)?;
-                        attribute.value.release(control)?;
-                        return Err(error);
-                    }
-                    attribute.name.release(control)?;
-                    attribute.value.release(control)?;
-                    continue;
-                }
-                let (local, name_ticket) = match self.register_text(control, attribute.name) {
-                    Ok(value) => value,
-                    Err(error) => {
-                        attribute.value.release(control)?;
-                        return Err(error);
-                    }
-                };
-                let (value, value_ticket) = self.register_text(control, attribute.value)?;
-                let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                    values,
-                    allocation,
-                    ..
-                }))) = self.payloads.values.get_mut(stage)
-                else {
-                    return Err(latch_registry_row(control));
-                };
-                control.reserve_vector_geometric_toward(values, allocation, 1, count)?;
-                control.charge(
-                    HtmlParseWorkCategory::CopyByte,
-                    (const { mem::size_of::<Attribute>() + 2 * mem::size_of::<StringLocation>() })
-                        as u64,
-                )?;
-                control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
-                control.acquire(HtmlParseResource::ManagedAttributes, 1)?;
-                values.push(Attribute::new(
-                    QualifiedName::new(Namespace::none(), None, local),
-                    value,
-                ));
-                remaining = remaining
-                    .checked_sub(1)
-                    .ok_or_else(|| latch_registry_row(control))?;
-                self.bind_string(name_ticket, StringLocation::AttributeName(stage, remaining))
-                    .map_err(|_| latch_registry_row(control))?;
-                self.bind_string(
-                    value_ticket,
-                    StringLocation::AttributeValue(stage, remaining),
-                )
-                .map_err(|_| latch_registry_row(control))?;
+            if let Some(candidate) = kept.as_mut_slice_prepaid(control)?.get_mut(rank) {
+                candidate.name = Some(local.clone());
             }
-            if count == 0 {
-                self.construction.finish_attributes(control)?;
-                self.construction.retire_name_index(control)?;
-                return Ok(None);
-            }
-            // The actual stage remains reversed: last-pop yields source order
-            // without a variable shift or a second attribute representation.
-            self.edit_attributes(control, target, container, stage, count, false)?;
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let old_len = element_record(&self.construction, control, target)?
-                .attributes()
-                .len();
-            self.begin_attribute_transfer(control, stage, container, old_len)?;
-            payload_write::<PreparedAttributeMerge>(control, 1)?;
-            Ok(Some(PreparedAttributeMerge {
-                target,
-                container,
-                stage,
-                start: old_len,
+            let (value, value_ticket) = self.register_text(control, attribute.value)?;
+            self.construction.acquire_attribute(control)?;
+            stage.push(
+                control,
+                Attribute::new(QualifiedName::new(Namespace::none(), None, local), value),
                 count,
-                earlier: [None; 4],
-            }))
-        })();
-        let cleanup = release_token_attributes(attributes, control);
-        result.and_then(|prepared| cleanup.map(|()| prepared))
+            )?;
+            self.bind_string(name_ticket, FieldRef::AttributeName(target, position))
+                .map_err(|_| latch_registry_row(control))?;
+            self.bind_string(value_ticket, FieldRef::AttributeValue(target, position))
+                .map_err(|_| latch_registry_row(control))?;
+        }
+        Ok(())
     }
+
     pub(super) fn finish_attribute_merge(
         &mut self,
         control: &mut ParseControl,
-        prepared: PreparedAttributeMerge,
+        mut prepared: PreparedAttributeMerge,
     ) -> Result<(), SessionError> {
-        control.require_identity(&self.control)?;
-        let PreparedAttributeMerge {
-            target,
-            container,
-            stage,
-            start,
-            count,
-            earlier,
-        } = prepared;
-        for _ in 0..count {
-            self.edit_attributes(control, target, container, stage, 1, true)?;
+        let installed = control
+            .require_identity(&self.control)
+            .map_err(SessionError::from)
+            .and_then(|()| self.install_merged_attributes(control, &mut prepared));
+        let target = prepared.target;
+        let (start, count) = (prepared.start, prepared.count);
+        let released = prepared.release(control);
+        installed?;
+        released?;
+        self.attributes_installed(control, target, start, count)
+    }
+
+    /// Appends the staged attributes in source order. The index of each decision is the one the
+    /// plan made, so the storage finds the plan's entries for them in its table of names.
+    fn install_merged_attributes(
+        &mut self,
+        control: &mut ParseControl,
+        prepared: &mut PreparedAttributeMerge,
+    ) -> Result<(), SessionError> {
+        self.payloads.forget_attribute_strings(prepared.target);
+        // The list reserves room for every kept candidate once, so that no append of the merge
+        // grows it and one wide merge leaves it with no spare room.
+        self.construction
+            .reserve_attributes(control, prepared.target, prepared.count)?;
+        for rank in 0..prepared.count {
+            let candidate = prepared
+                .kept
+                .as_slice()
+                .get(rank)
+                .and_then(|candidate| candidate.name.clone())
+                .ok_or_else(|| latch_registry_row(control))?;
+            self.append_staged_attribute(
+                control,
+                prepared.target,
+                &mut prepared.stage,
+                Some(&candidate),
+            )?;
             if self.effects.form.is_some() {
                 self.drain_form_effects(control)?;
             }
         }
-        // The strings staged for this merge are the registry rows from the stage on
-        // and the few rows registered before it that the stager names.
-        #[cfg(test)]
-        for (index, row) in self.payloads.values[..stage].iter().enumerate() {
-            if let RetainedPayload::String { location, .. } = row {
-                assert!(
-                    !matches!(
-                        location,
-                        StringLocation::AttributeName(owner, _)
-                            | StringLocation::AttributeValue(owner, _)
-                            | StringLocation::AttributeNamespace(owner, _)
-                            | StringLocation::AttributePrefix(owner, _)
-                            if *owner == stage
-                    ) || earlier.contains(&Some(index)),
-                    "row {index} before stage {stage} names the stage unlisted"
-                );
-            }
-        }
-        for index in earlier
-            .into_iter()
-            .flatten()
-            .chain(stage..self.payloads.values.len())
-        {
-            self.rebind_attribute_location(control, index, stage, container, start)?;
-        }
-        // Clearing the redirect is safe only after every original location was
-        // rebound. A stop above retains the exact transfer phase.
-        payload_write::<Option<AttributeStorage>>(control, 2)?;
-        payload_write::<usize>(control, 2)?;
-        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(stage) else {
-            return Err(latch_registry_row(control));
-        };
-        let taken = storage.take();
-        let Some(AttributeStorage::Transferring {
-            values, allocation, ..
-        }) = taken
-        else {
-            *storage = taken;
-            return Err(latch_registry_row(control));
-        };
-        *storage = Some(AttributeStorage::Building {
-            values,
-            allocation,
-            original_len: 0,
-            reversed_pairs: 0,
-        });
-        if self.construction.has_attribute_edit() {
-            self.construction.finish_attributes(control)?;
-        }
-        // Planning is over: the table of names, if the merge borrowed one, is no longer needed.
-        self.construction.retire_name_index(control)?;
+        self.flush_attribute_origins(control, prepared.first_row)
+    }
+
+    /// The effects of attributes that were appended to an element: the hooks of the families
+    /// that read them, and the base element's change.
+    pub(super) fn attributes_installed(
+        &mut self,
+        control: &mut ParseControl,
+        target: usize,
+        start: usize,
+        count: usize,
+    ) -> Result<(), SessionError> {
         let end = start
             .checked_add(count)
             .ok_or_else(|| latch_registry_row(control))?;
@@ -381,124 +496,64 @@ impl SessionStorage {
         Ok(())
     }
 
-    pub(super) fn begin_attribute_transfer(
+    /// Appends the last staged attribute to the element at `target`, with the effects of an `id`
+    /// among the form controls. A refusal leaves the attribute staged. Returns the position it
+    /// took.
+    pub(super) fn append_staged_attribute(
         &mut self,
         control: &mut ParseControl,
-        stage: usize,
-        destination: usize,
-        start: usize,
-    ) -> Result<(), SessionError> {
-        payload_write::<Option<AttributeStorage>>(control, 2)?;
-        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(stage) else {
+        target: usize,
+        stage: &mut StagedAttributes,
+        planned: Option<&DocumentString>,
+    ) -> Result<usize, SessionError> {
+        let Some(attribute) = stage.values.pop() else {
             return Err(latch_registry_row(control));
         };
-        let taken = storage.take();
-        let Some(AttributeStorage::Building {
-            values,
-            allocation,
-            original_len,
-            reversed_pairs,
-        }) = taken
-        else {
-            *storage = taken;
-            return Err(latch_registry_row(control));
-        };
-        // Last-pop consumes the unchanged reverse stage; a stage that was
-        // already reversed is handed back to the row untouched.
-        if reversed_pairs != 0 {
-            *storage = Some(AttributeStorage::Building {
-                values,
-                allocation,
-                original_len,
-                reversed_pairs,
-            });
-            return Err(latch_registry_row(control));
+        let mut incoming = Some(attribute);
+        let appended = self.append_attribute_with_effects(control, target, &mut incoming, planned);
+        if let Some(attribute) = incoming {
+            // The slot that held the attribute is still there, so this allocates nothing.
+            stage.values.push(attribute);
         }
-        *storage = Some(AttributeStorage::Transferring {
-            values,
-            allocation,
-            destination,
-            start,
-            original_len,
-            moved: 0,
-        });
-        Ok(())
+        appended
     }
 
-    pub(super) fn rebind_attribute_location(
+    /// Appends the attribute in `incoming` to the element at `target`. An `id` that a form
+    /// control may resolve a `form` attribute through leaves the effects its change needs, which
+    /// the caller drains. A refusal leaves `incoming` with the caller.
+    pub(super) fn append_attribute_with_effects(
         &mut self,
         control: &mut ParseControl,
-        index: usize,
-        stage: usize,
-        destination: usize,
-        start: usize,
-    ) -> Result<(), SessionError> {
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        #[cfg(test)]
-        control.observe_registry_iteration();
-        if let Some(RetainedPayload::String { location, .. }) = self.payloads.values.get_mut(index)
-        {
-            control.charge(
-                HtmlParseWorkCategory::CopyByte,
-                (const { 2 * mem::size_of::<StringLocation>() }) as u64,
-            )?;
-            control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
-            #[cfg(test)]
-            control.observe_registry_location_write(mem::size_of::<StringLocation>());
-            *location = match *location {
-                StringLocation::AttributeName(owner, index) if owner == stage => {
-                    StringLocation::AttributeName(
-                        destination,
-                        start.checked_add(index).ok_or_else(|| {
-                            control.stop_representation(HtmlParseResource::ManagedAttributes)
-                        })?,
-                    )
-                }
-                StringLocation::AttributeValue(owner, index) if owner == stage => {
-                    StringLocation::AttributeValue(
-                        destination,
-                        start.checked_add(index).ok_or_else(|| {
-                            control.stop_representation(HtmlParseResource::ManagedAttributes)
-                        })?,
-                    )
-                }
-                StringLocation::AttributeNamespace(owner, index) if owner == stage => {
-                    StringLocation::AttributeNamespace(
-                        destination,
-                        start.checked_add(index).ok_or_else(|| {
-                            control.stop_representation(HtmlParseResource::ManagedAttributes)
-                        })?,
-                    )
-                }
-                StringLocation::AttributePrefix(owner, index) if owner == stage => {
-                    StringLocation::AttributePrefix(
-                        destination,
-                        start.checked_add(index).ok_or_else(|| {
-                            control.stop_representation(HtmlParseResource::ManagedAttributes)
-                        })?,
-                    )
-                }
-                other => other,
-            };
+        target: usize,
+        incoming: &mut Option<Attribute>,
+        planned: Option<&DocumentString>,
+    ) -> Result<usize, SessionError> {
+        let Some(attribute) = incoming.as_ref() else {
+            return Err(latch_registry_row(control));
+        };
+        let form_effects = self.prepare_id_attribute_effects(control, target, attribute)?;
+        if form_effects.is_some() {
+            payload_write::<Option<FormEffects>>(control, 1)?;
         }
-        Ok(())
+        let position = self
+            .construction
+            .append_attribute(control, target, incoming, planned)?;
+        if form_effects.is_some() {
+            self.effects.form = form_effects;
+        }
+        Ok(position)
     }
 
+    /// The effects of an `id` attribute that `attribute`, about to be appended to the element at
+    /// `target`, makes among the listed form controls that have a `form` attribute.
     pub(super) fn prepare_id_attribute_effects(
         &self,
         control: &mut ParseControl,
         target: usize,
-        stage: usize,
+        attribute: &Attribute,
     ) -> Result<Option<FormEffects>, SessionError> {
         control.require_identity(&self.control)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-        let Some(RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
-            values, ..
-        }))) = self.payloads.values.get(stage)
-        else {
-            return Err(latch_registry_row(control));
-        };
-        let attribute = values.last().ok_or_else(|| latch_registry_row(control))?;
         if attribute.name().namespace().uri().is_some()
             || !exact_ascii(control, Some(attribute.name().local_name()), "id")?
         {
@@ -533,192 +588,5 @@ impl SessionStorage {
             }
         }
         Ok(None)
-    }
-
-    /// Every attribute edit begins here, so the creation-time registry hint for
-    /// the record's attribute strings is dropped before the first change.
-    pub(super) fn begin_attribute_edit(
-        &mut self,
-        control: &mut ParseControl,
-        target: usize,
-        mode: HtmlConstructionAttributeEditMode,
-    ) -> Result<(), SessionError> {
-        self.payloads.forget_attribute_strings(target);
-        self.construction.begin_attributes(control, target, mode)
-    }
-    /// Removes/restores only the registry's known strong owner. Both restoration
-    /// paths are admitted before removal; no new wrapper allocation is needed.
-    pub(super) fn edit_attributes(
-        &mut self,
-        control: &mut ParseControl,
-        target: usize,
-        container: usize,
-        stage: usize,
-        count: usize,
-        append: bool,
-    ) -> Result<(), SessionError> {
-        self.payloads.forget_attribute_strings(target);
-        let form_effects = if append {
-            self.prepare_id_attribute_effects(control, target, stage)?
-        } else {
-            None
-        };
-        if form_effects.is_some() {
-            payload_write::<Option<FormEffects>>(control, 1)?;
-        }
-        control.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
-        control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
-        payload_write::<Option<AttributeStorage>>(control, 2)?;
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            mem::size_of::<OrderedAttributes>() as u64,
-        )?;
-        if append {
-            // No fallible operation may intervene between the actual slot move
-            // and this fixed progress write; cleanup resolves it immediately.
-            payload_write::<usize>(control, 1)?;
-        }
-        // Everything that can refuse is checked before ownership leaves the
-        // container; the target stays an element while its attributes change.
-        if !matches!(
-            self.construction
-                .storage(control)?
-                .node_at(target)
-                .map(|node| node.kind()),
-            Some(ConstructionNodeKind::Element(_))
-        ) || stage > self.payloads.values.len()
-        {
-            return Err(latch_registry_row(control));
-        }
-        let (earlier, later) = self.payloads.values.split_at_mut(stage);
-        let Some(RetainedPayload::Attributes(storage)) = earlier.get_mut(container) else {
-            return Err(latch_registry_row(control));
-        };
-        let taken = storage.take();
-        let Some(AttributeStorage::Frozen {
-            values,
-            mut allocation,
-            mut shared,
-            element,
-        }) = taken
-        else {
-            *storage = taken;
-            return Err(latch_registry_row(control));
-        };
-        drop(values);
-        let was_named = self.construction.has_attribute_edit();
-        let started = if was_named {
-            Ok(())
-        } else {
-            self.construction.begin_attributes(
-                control,
-                target,
-                HtmlConstructionAttributeEditMode::Slots,
-            )
-        };
-        let result = (|| {
-            started?;
-            let group = self.construction.attribute_edit(control)?;
-            let slot = if append {
-                let Some(RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
-                    values,
-                    allocation: incoming_allocation,
-                    ..
-                }))) = later.first_mut()
-                else {
-                    return Err(latch_registry_row(control));
-                };
-                control.require_incoming_attribute_vector(values, incoming_allocation)?;
-                group.append(values)
-            } else {
-                group.reserve(count)
-            }
-            .map_err(|error| construction_owner::construction_error(control, error))?;
-            let ready = prepare_attribute_slot(control, slot, &mut shared, &mut allocation)?;
-            #[cfg(test)]
-            if append {
-                control.observe_construction_attribute_append();
-            }
-            ready.commit().map_err(|refusal| {
-                construction_owner::construction_error(control, refusal.into_parts().1)
-            })?;
-            Ok::<_, SessionError>(())
-        })();
-        // Restore the sole ticket before creating the registry's known alias.
-        let Some(ConstructionNodeKind::Element(record)) = self
-            .construction
-            .storage(control)?
-            .node_at(target)
-            .map(|node| node.kind())
-        else {
-            return Err(latch_registry_row(control));
-        };
-        let values = record.attributes().to_ordered();
-        control.restore_attribute_weak(values.shared_attributes(), &mut shared);
-        *storage = Some(AttributeStorage::Frozen {
-            values,
-            allocation,
-            shared,
-            element,
-        });
-        let mut result = result;
-        if append && result.is_ok() {
-            match later.first_mut() {
-                Some(RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
-                    moved,
-                    ..
-                }))) => match moved.checked_add(1) {
-                    Some(next) => {
-                        *moved = next;
-                        if form_effects.is_some() {
-                            self.effects.form = form_effects;
-                        }
-                    }
-                    None => result = Err(latch_registry_row(control)),
-                },
-                _ => result = Err(latch_registry_row(control)),
-            }
-        }
-        if result.is_err() {
-            self.construction.abort_attributes(control)?;
-        } else if !was_named {
-            self.construction.finish_attributes(control)?;
-        }
-        result
-    }
-    pub(super) fn reverse_attributes(
-        &mut self,
-        control: &mut ParseControl,
-        container: usize,
-    ) -> Result<(), SessionError> {
-        let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building { values, .. }))) =
-            self.payloads.values.get(container)
-        else {
-            return Err(latch_registry_row(control));
-        };
-        let len = values.len();
-        for left in 0..len / 2 {
-            let right = mirrored_position(len, left).ok_or_else(|| latch_registry_row(control))?;
-            control.admit_atomic_layout(const { mem::size_of::<Attribute>() * 2 })?;
-            control.charge(
-                HtmlParseWorkCategory::CopyByte,
-                (const { mem::size_of::<Attribute>() * 2 }) as u64,
-            )?;
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
-            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                values,
-                reversed_pairs,
-                ..
-            }))) = self.payloads.values.get_mut(container)
-            else {
-                return Err(latch_registry_row(control));
-            };
-            values.swap(left, right);
-            *reversed_pairs = reversed_pairs
-                .checked_add(1)
-                .ok_or_else(|| latch_registry_row(control))?;
-        }
-        Ok(())
     }
 }

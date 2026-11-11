@@ -4,9 +4,9 @@ use crate::parser::control::ConstructionAllocation;
 use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::bounded::construction::{
     HtmlConstructionAbort, HtmlConstructionAction, HtmlConstructionActionDescription,
-    HtmlConstructionAllocationRole, HtmlConstructionAttributeEdit, HtmlConstructionCommand,
-    HtmlConstructionCommit, HtmlConstructionGrowth, HtmlConstructionLease, HtmlConstructionNode,
-    HtmlConstructionOperation, HtmlConstructionReadyOperation, HtmlConstructionRecovery,
+    HtmlConstructionAllocationRole, HtmlConstructionCommand, HtmlConstructionCommit,
+    HtmlConstructionGrowth, HtmlConstructionLease, HtmlConstructionNode, HtmlConstructionOperation,
+    HtmlConstructionReadyOperation, HtmlConstructionRecovery,
     HtmlConstructionRetirementDescription, HtmlConstructionStorage,
 };
 use surgeist_html::bounded::values::{HtmlAttributeNameIndex, HtmlNameIndexSlot};
@@ -14,35 +14,30 @@ use surgeist_html::construction::{
     HtmlBuilderNode, HtmlConstructionCause, HtmlConstructionError, HtmlConstructionResult,
     HtmlConstructionUsage,
 };
-mod attributes;
+mod attribute_lists;
 #[cfg(test)]
 mod dispositions;
 #[cfg(test)]
 mod tests;
-pub(super) use attributes::{
-    NAME_INDEX_MIN_ENTRIES, NAME_INDEX_SPARE_ENTRIES, prepare_attribute_slot,
-};
+pub(super) use attribute_lists::{NAME_INDEX_MIN_ENTRIES, NAME_INDEX_SPARE_ENTRIES};
 
 pub(super) struct ConstructionOwner {
     control: ControlIdentity,
     pub(super) owner: Option<HtmlConstructionStorage>,
-    attribute_edit: Option<HtmlConstructionAttributeEdit>,
-    attribute_plan: Option<ConstructionAllocation>,
-    /// The table of attribute names that edits of a long attribute list borrow, and the ticket
-    /// of its slots. The table is lent to an edit while one runs, so the ticket stays here.
+    /// The table of attribute names that edits of a long attribute list look names up in, and
+    /// the ticket of its slots. It stays as long as the lists it describes may be edited again.
     name_index: Option<HtmlAttributeNameIndex>,
     name_index_slots: Option<VectorCapacity<HtmlNameIndexSlot>>,
+    /// The bytes the parse holds for every attribute list of the storage: the capacity each
+    /// list reserved and the shared wrapper each record holds its list in.
+    attribute_bytes: u64,
+    /// The logical attribute slots the parse holds for the attributes of the storage.
+    attribute_entries: u64,
     identity: Option<ConstructionAllocation>,
     records: Option<ConstructionAllocation>,
     children: Vec<Option<ConstructionAllocation>>,
     children_allocation: VectorCapacity<Option<ConstructionAllocation>>,
     wrapper: Option<ConstructionAllocation>,
-    /// Hides the attribute edit the next `begin_attributes` starts, as if its
-    /// custody slot had been emptied behind the owner's back.
-    #[cfg(test)]
-    hide_next_attribute_edit: bool,
-    #[cfg(test)]
-    hidden_attribute_edit: Option<HtmlConstructionAttributeEdit>,
 }
 
 #[derive(Clone, Copy)]
@@ -96,8 +91,8 @@ fn disposition(cause: HtmlConstructionCause) -> Disposition {
         // `layout_bytes: 0` means the layout is unknown here, not that none was
         // requested. Every bounded producer of this error reports it with its
         // real layout before it gets this far: the record and child reserves
-        // in `ConstructionOwner::perform_action_with_commit`, the name-decision
-        // and attribute-slot reserves in `attributes.rs`, and the candidate
+        // in `ConstructionOwner::perform_action_with_commit`, the attribute-list
+        // reserves in `attribute_lists.rs`, and the candidate
         // backing reserve in `text_append.rs`. This is only a failure a
         // caller without a layout still has to report.
         Cause::AllocationFailed => AllocationFailed,
@@ -299,33 +294,24 @@ impl ConstructionOwner {
         Ok(Self {
             control: control.identity(),
             owner: Some(owner),
-            attribute_edit: None,
-            attribute_plan: None,
             name_index: None,
             name_index_slots: None,
+            attribute_bytes: 0,
+            attribute_entries: 0,
             identity,
             records: None,
             children,
             children_allocation,
             wrapper: None,
-            #[cfg(test)]
-            hide_next_attribute_edit: false,
-            #[cfg(test)]
-            hidden_attribute_edit: None,
         })
     }
     pub(super) fn len(&self, control: &mut ParseControl) -> Result<usize, SessionError> {
         Ok(self.storage(control)?.len())
     }
-    /// The storage while it is at rest or lent to an attribute edit. It is
-    /// absent only while a pending operation or a publication holds it, and a
-    /// caller that reads it then has met an impossible custody state.
+    /// The storage while it is at rest. It is absent only while a pending operation or a
+    /// publication holds it, and a caller that reads it then has met an impossible custody state.
     fn resident(&self) -> Option<&HtmlConstructionStorage> {
-        self.owner.as_ref().or_else(|| {
-            self.attribute_edit
-                .as_ref()
-                .map(HtmlConstructionAttributeEdit::storage_view)
-        })
+        self.owner.as_ref()
     }
     pub(super) fn storage(
         &self,
@@ -843,8 +829,7 @@ impl ConstructionOwner {
         control: &mut ParseControl,
     ) -> Result<HtmlConstructionUsage, SessionError> {
         let mut refused = None;
-        keep_first(&mut refused, self.abort_attributes(control));
-        keep_first(&mut refused, self.retire_name_index(control));
+        keep_first(&mut refused, self.release_attribute_accounts(control));
         let Some(storage) = self.owner.take() else {
             // The storage is lent to something that was not ended, so no bank
             // can be retired here; the tickets below still go back to the
@@ -991,13 +976,5 @@ impl ConstructionOwner {
     /// The storage at rest, for tests that hold the owner in a known state.
     pub(super) fn test_storage(&self) -> &HtmlConstructionStorage {
         self.resident().expect("storage at rest")
-    }
-    /// Makes the next attribute edit begin with its custody slot emptied; the
-    /// hidden edit is returned by [`Self::restore_hidden_attribute_edit`].
-    pub(super) fn hide_next_attribute_edit(&mut self) {
-        self.hide_next_attribute_edit = true;
-    }
-    pub(super) fn restore_hidden_attribute_edit(&mut self) {
-        self.attribute_edit = self.hidden_attribute_edit.take();
     }
 }

@@ -429,7 +429,10 @@ fn documents_of_many_tables_grow_linearly() {
 
 #[test]
 fn a_table_of_many_rows_grows_linearly() {
-    assert_family("table rows", &costs([60, 120, 240, 480], table_rows));
+    // The capacity of the retained rows doubles, so the retained bytes of a document step by
+    // two at the sizes where its rows pass a power of two. The sizes keep the steps of the
+    // doublings at the same place in each.
+    assert_family("table rows", &costs([80, 160, 320, 640], table_rows));
 }
 
 #[test]

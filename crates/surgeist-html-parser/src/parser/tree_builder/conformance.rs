@@ -3518,7 +3518,7 @@ mod reference_recovery {
     #[test]
     fn completed_reference_map_row_exact_and_one_short_work_keep_original_owner_and_first_stop() {
         use crate::construction::{
-            SessionError, StringLocation,
+            FieldRef, SessionError,
             provenance::{NativeAssociations, NativeDestination},
         };
         use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory};
@@ -3538,10 +3538,8 @@ mod reference_recovery {
                     (0..rows.len())
                         .find(|&i| {
                             let row = rows.row(i).unwrap().unwrap().0;
-                            matches!(
-                                row.destination,
-                                NativeDestination::Field(StringLocation::Text(_))
-                            ) && row.kind == Some(HtmlParseOriginKind::CharacterReference)
+                            matches!(row.destination, NativeDestination::Field(FieldRef::Text(_)))
+                                && row.kind == Some(HtmlParseOriginKind::CharacterReference)
                                 && row.start == 1
                                 && row.end == 2
                         })
@@ -3623,7 +3621,7 @@ mod reference_recovery {
 mod whole_source_comparisons {
     use super::*;
     use crate::construction::{
-        StringLocation,
+        FieldRef,
         evidence::{
             HtmlParseDiagnostic, HtmlParseDiagnosticContext, HtmlParseDiagnosticKind,
             HtmlParseDiagnosticLocation, HtmlParseDiagnosticLocationRole,
@@ -4142,10 +4140,7 @@ mod whole_source_comparisons {
                 check_range(source, range, (range.start(), range.end()));
             }
             if row.relation == HtmlParseAssociationRelation::Output
-                && matches!(
-                    row.destination,
-                    NativeDestination::Field(StringLocation::Text(_))
-                )
+                && matches!(row.destination, NativeDestination::Field(FieldRef::Text(_)))
             {
                 assert!(row.group.is_some());
                 let range = row
@@ -4154,9 +4149,7 @@ mod whole_source_comparisons {
                     .expect("all selected text is source-bearing");
                 origins.push(Origin {
                     node: match row.destination {
-                        NativeDestination::Field(StringLocation::Text(owner)) => {
-                            position(false, owner)
-                        }
+                        NativeDestination::Field(FieldRef::Text(owner)) => position(false, owner),
                         _ => unreachable!(),
                     },
                     output: (row.start, row.end),
@@ -4166,16 +4159,16 @@ mod whole_source_comparisons {
             }
             if row.relation == HtmlParseAssociationRelation::Output {
                 let field = match row.destination {
-                    NativeDestination::Field(StringLocation::AttributeName(owner, slot)) => {
+                    NativeDestination::Field(FieldRef::AttributeName(owner, slot)) => {
                         Some((position(true, owner), slot, 1, &mut attributes))
                     }
-                    NativeDestination::Field(StringLocation::AttributeValue(owner, slot)) => {
+                    NativeDestination::Field(FieldRef::AttributeValue(owner, slot)) => {
                         Some((position(true, owner), slot, 2, &mut attributes))
                     }
-                    NativeDestination::Field(StringLocation::ProcessingInstructionTarget(
-                        owner,
-                    )) => Some((position(false, owner), 0, 1, &mut pi)),
-                    NativeDestination::Field(StringLocation::ProcessingInstructionData(owner)) => {
+                    NativeDestination::Field(FieldRef::ProcessingInstructionTarget(owner)) => {
+                        Some((position(false, owner), 0, 1, &mut pi))
+                    }
+                    NativeDestination::Field(FieldRef::ProcessingInstructionData(owner)) => {
                         Some((position(false, owner), 0, 2, &mut pi))
                     }
                     _ => None,
@@ -4414,14 +4407,14 @@ mod whole_source_comparisons {
                     NativeDestination::Node(owner) if rows.node_for(i, &node).unwrap() => {
                         Some((false, owner))
                     }
-                    NativeDestination::Field(StringLocation::AttributeName(container, slot))
+                    NativeDestination::Field(FieldRef::AttributeName(container, slot))
                         if rows
                             .attribute_for(i, &node, slot, NativeAttributeField::Name)
                             .unwrap() =>
                     {
                         Some((true, container))
                     }
-                    NativeDestination::Field(StringLocation::AttributeValue(container, slot))
+                    NativeDestination::Field(FieldRef::AttributeValue(container, slot))
                         if rows
                             .attribute_for(i, &node, slot, NativeAttributeField::Value)
                             .unwrap() =>
@@ -4897,10 +4890,10 @@ mod whole_source_comparisons {
             let mut rows = completed.native_associations().unwrap();
             for i in 0..rows.len() {
                 let (slot, field) = match rows.row(i).unwrap().unwrap().0.destination {
-                    NativeDestination::Field(StringLocation::AttributeName(_, slot)) => {
+                    NativeDestination::Field(FieldRef::AttributeName(_, slot)) => {
                         (slot, NativeAttributeField::Name)
                     }
-                    NativeDestination::Field(StringLocation::AttributeValue(_, slot)) => {
+                    NativeDestination::Field(FieldRef::AttributeValue(_, slot)) => {
                         (slot, NativeAttributeField::Value)
                     }
                     _ => continue,
@@ -5152,7 +5145,7 @@ mod whole_source_comparisons {
                         (literal.raw.len(), literal.raw.len()),
                     );
                 }
-                let NativeDestination::Field(StringLocation::Text(node)) = row.destination else {
+                let NativeDestination::Field(FieldRef::Text(node)) = row.destination else {
                     continue;
                 };
                 // Actual Node-row resolution performed by the same-owner
@@ -6020,7 +6013,7 @@ mod comment_diagnostic_corpus {
         source: &HtmlSource,
     ) {
         use crate::construction::{
-            StringLocation,
+            FieldRef,
             provenance::{HtmlParseAssociationRelation, NativeDestination},
         };
         use crate::parser::tokenizer::token::HtmlParseOriginKind;
@@ -6040,7 +6033,7 @@ mod comment_diagnostic_corpus {
                 }
             }
         }
-        let destination = NativeDestination::Field(StringLocation::Comment(comment_index.unwrap()));
+        let destination = NativeDestination::Field(FieldRef::Comment(comment_index.unwrap()));
         let expected = [
             (0, 1, 19, 20, HtmlParseOriginKind::Literal),
             (1, 2, 20, 21, HtmlParseOriginKind::Literal),

@@ -399,7 +399,7 @@ impl SessionStorage {
             }
         };
         let value_slot = self.register_pi_field(c, node, value, value_maps)?;
-        payload_write::<[StringLocation; 2]>(c, 2)?;
+        payload_write::<[FieldRef; 2]>(c, 2)?;
         let name = self.raw_value(c, name_slot)?;
         let value = self.raw_value(c, value_slot)?;
         let RetainedPayload::PiAttributes { values, .. } = self.payloads.row_mut(c, map)? else {
@@ -418,23 +418,23 @@ impl SessionStorage {
             drop(pair);
             return Err(stop.into());
         }
-        self.bind_string(name_slot, StringLocation::PiName(map, index))
+        self.bind_string(name_slot, FieldRef::PiName(map, index))
             .map_err(|_| latch_registry_row(c))?;
-        self.bind_string(value_slot, StringLocation::PiValue(map, index))
+        self.bind_string(value_slot, FieldRef::PiValue(map, index))
             .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
 
     fn pop_pi_pair(&mut self, c: &mut ParseControl, map: usize) -> Result<(), SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        payload_write::<[StringLocation; 2]>(c, 2)?;
+        payload_write::<[FieldRef; 2]>(c, 2)?;
         let RetainedPayload::PiAttributes { values, .. } = self.payloads.row_mut(c, map)? else {
             return Err(SessionError::WrongToken);
         };
         let pair = values.try_pop(c)?.ok_or(SessionError::WrongToken)?;
-        self.bind_string(pair.name_slot, StringLocation::Detached)
+        self.bind_string(pair.name_slot, FieldRef::Detached)
             .map_err(|_| latch_registry_row(c))?;
-        self.bind_string(pair.value_slot, StringLocation::Detached)
+        self.bind_string(pair.value_slot, FieldRef::Detached)
             .map_err(|_| latch_registry_row(c))?;
         let PseudoAttribute {
             name,

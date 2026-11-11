@@ -55,8 +55,6 @@ impl SessionStorage {
             evidence,
             fragment,
             #[cfg(test)]
-                cancel_after_details_shift: _,
-            #[cfg(test)]
                 cancel_after_radio_peer: _,
             #[cfg(test)]
                 cancel_after_removal: _,

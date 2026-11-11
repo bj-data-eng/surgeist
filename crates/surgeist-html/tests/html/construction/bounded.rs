@@ -9,8 +9,7 @@ use std::sync::Arc;
 use surgeist_html::{
     accounting::HtmlWork,
     bounded::construction::{
-        HtmlConstructionActionDescription, HtmlConstructionAllocationRole,
-        HtmlConstructionAttributeEdit, HtmlConstructionAttributeEditMode, HtmlConstructionCommand,
+        HtmlConstructionActionDescription, HtmlConstructionAllocationRole, HtmlConstructionCommand,
         HtmlConstructionCommit, HtmlConstructionContent, HtmlConstructionGrowth,
         HtmlConstructionLeaf, HtmlConstructionLease, HtmlConstructionNode,
         HtmlConstructionReadyOperation, HtmlConstructionRefusal,

@@ -2,11 +2,10 @@ use super::*;
 use crate::parser::control::{HtmlParseInvariant, HtmlParseStop};
 use surgeist_html::{
     bounded::construction::{
-        HtmlConstructionActionDescription, HtmlConstructionAttributeEditMode,
-        HtmlConstructionCommand, HtmlConstructionLeaf,
+        HtmlConstructionActionDescription, HtmlConstructionCommand, HtmlConstructionLeaf,
     },
     construction::{HtmlBuilderNode, HtmlConstructionResource},
-    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 #[test]
 fn aborted_child_bank_ticket_cannot_retire_later_recreated_record_bank() {
@@ -399,97 +398,6 @@ fn aborting_a_pending_operation_whose_owner_was_taken_reports_the_registry_row()
 }
 
 #[test]
-fn beginning_an_attribute_edit_without_the_storage_reports_the_registry_row() {
-    let (mut control, mut owner) = fresh();
-    let storage = owner.owner.take().unwrap();
-    let result = owner.begin_attributes(&mut control, 0, HtmlConstructionAttributeEditMode::Slots);
-    assert_registry_row(result, &control);
-    owner.owner = Some(storage);
-    drained(owner, &mut control);
-}
-
-#[test]
-fn beginning_a_second_attribute_edit_reports_the_registry_row_and_keeps_the_first() {
-    let (mut control, mut owner) = with_element();
-    owner
-        .begin_attributes(&mut control, 0, HtmlConstructionAttributeEditMode::Slots)
-        .unwrap();
-    let result = owner.begin_attributes(&mut control, 0, HtmlConstructionAttributeEditMode::Slots);
-    assert_registry_row(result, &control);
-    assert!(owner.has_attribute_edit());
-    owner.abort_attributes(&mut control).unwrap();
-    drained(owner, &mut control);
-}
-
-#[test]
-fn planning_a_candidate_without_an_attribute_edit_reports_the_registry_row() {
-    let (mut control, mut owner) = fresh();
-    let result = owner.plan_attribute_candidate(&mut control, 0, &[]);
-    assert_registry_row(result, &control);
-    drained(owner, &mut control);
-}
-
-#[test]
-fn losing_the_attribute_edit_during_a_replacement_reports_the_registry_row() {
-    use crate::construction::effects::tests::{graph, named, request};
-    let request = request("<body><div id=a>");
-    let (mut c, mut session, _proof, nodes) = graph(&request);
-    let div = named(&nodes, "div", 0).index;
-    let storage = session.active_mut().unwrap();
-    let container = storage.element_attribute_container(&mut c, div).unwrap();
-    storage.construction.hide_next_attribute_edit();
-    let result = storage.replace_attribute_storage(&mut c, div, container, 0, &mut None, &[]);
-    assert_registry_row(result, &c);
-    // The edit was never lost for good: giving it back lets the owner end it.
-    storage.construction.restore_hidden_attribute_edit();
-    storage.construction.abort_attributes(&mut c).unwrap();
-    session.release(&mut c).unwrap();
-    crate::construction::tests::storage_zero(&c);
-}
-
-#[test]
-fn losing_the_attribute_edit_during_a_removal_reports_the_registry_row() {
-    use crate::construction::effects::tests::{graph, named, request};
-    use crate::construction::mutation::ManagedFamily;
-    let request = request("<body><dialog open id=e>");
-    let (mut c, mut session, _proof, nodes) = graph(&request);
-    let dialog = named(&nodes, "dialog", 0);
-    session
-        .active_mut()
-        .unwrap()
-        .construction
-        .hide_next_attribute_edit();
-    let result = session.remove_managed_attribute(&mut c, &dialog, "open", ManagedFamily::Dialog);
-    assert_registry_row(result, &c);
-    let storage = session.active_mut().unwrap();
-    storage.construction.restore_hidden_attribute_edit();
-    storage.construction.abort_attributes(&mut c).unwrap();
-    // The element's shared attributes lived in the lost edit's storage, so the
-    // row that held them cannot be put back; its release reports the emptied
-    // row instead of dropping it silently, and the first stop is unchanged.
-    assert_eq!(session.release(&mut c), Err(SessionError::Consumed));
-    assert_eq!(c.stop(), Some(registry_row()));
-}
-
-#[test]
-fn ending_an_attribute_edit_without_its_plan_ticket_reports_the_registry_row() {
-    let (mut control, mut owner) = with_element();
-    owner
-        .begin_attributes(
-            &mut control,
-            0,
-            HtmlConstructionAttributeEditMode::NamedMerge { candidate_count: 1 },
-        )
-        .unwrap();
-    // The plan bank is real and empty; only its ticket goes missing.
-    let ticket = owner.attribute_plan.take().unwrap();
-    assert_eq!(ticket.snapshot().payload_bytes(), 0);
-    assert_registry_row(owner.abort_attributes(&mut control), &control);
-    drop(ticket);
-    drained(owner, &mut control);
-}
-
-#[test]
 fn recovering_a_frozen_arena_without_its_wrapper_ticket_reports_the_registry_row() {
     use crate::construction::effects::tests::{graph, request};
     let request = request("<body><div id=a>");
@@ -547,35 +455,6 @@ fn a_refused_bank_credit_still_retires_every_other_bank_and_reports_the_first_re
 }
 
 #[test]
-fn a_refused_witness_retirement_still_retires_the_rest_of_the_edit_and_reports_the_first_refusal() {
-    use crate::construction::tests::{control, lexical_kind, storage_zero};
-    use crate::parser::tokenizer::{
-        states::HtmlTokenizerState, tests::LexerFixture, token::TokenKind,
-    };
-    let source = crate::HtmlSource::utf8("<html id=x><html a=y b=z>");
-    let mut c = control();
-    c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
-    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-    let TokenKind::Tag(first) = lexical_kind(&mut lexer, &mut c) else {
-        panic!("tag")
-    };
-    let root = session.allocate_html_tag(&mut c, &mut Some(first)).unwrap();
-    let TokenKind::Tag(second) = lexical_kind(&mut lexer, &mut c) else {
-        panic!("tag")
-    };
-    let mut incoming = Some(second);
-    // Two new names give the edit two witnesses to retire.
-    c.refuse_walk_steps(WalkSite::AttributeWitness, 2);
-    let result = session.add_attributes_if_missing(&mut c, &root, &mut incoming);
-    assert_eq!(result, Err(SessionError::WrongToken));
-    assert_eq!(c.stop(), Some(registry_row()));
-    lexer.release(&mut c).unwrap();
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
-#[test]
 fn a_refused_frozen_owner_still_releases_every_other_owner_and_reports_the_first_refusal() {
     use crate::construction::effects::tests::{graph, request};
     let request = request("<body><div id=a>");
@@ -589,38 +468,117 @@ fn a_refused_frozen_owner_still_releases_every_other_owner_and_reports_the_first
 }
 
 #[test]
-fn putting_an_attribute_edit_back_into_an_occupied_slot_reports_the_registry_row() {
+fn an_attribute_edit_without_the_storage_reports_the_registry_row() {
+    for edit in 0..5 {
+        let (mut control, mut owner) = with_element();
+        let storage = owner.owner.take().unwrap();
+        let mut kept = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        let result = match edit {
+            0 => owner.reserve_attributes(&mut control, 0, 1),
+            1 => owner
+                .append_attribute(&mut control, 0, &mut None, None)
+                .map(drop),
+            2 => owner
+                .replace_attribute(&mut control, 0, 0, &mut None)
+                .map(drop),
+            3 => owner.remove_attribute(&mut control, 0, 0).map(drop),
+            _ => owner
+                .plan_attribute_merge(&mut control, 0, &[], &mut kept)
+                .map(drop),
+        };
+        assert_registry_row(result, &control);
+        kept.release(&mut control).unwrap();
+        owner.owner = Some(storage);
+        drained(owner, &mut control);
+    }
+}
+
+#[test]
+fn an_edit_of_an_absent_record_is_a_foreign_node() {
     let (mut control, mut owner) = with_element();
-    owner
-        .begin_attributes(&mut control, 0, HtmlConstructionAttributeEditMode::Slots)
-        .unwrap();
-    let lent = owner.take_attribute_edit(&mut control).unwrap();
-    // A second edit occupies the slot while the first is lent out. Beginning
-    // one through the owner is refused, so another owner supplies it.
-    let mut other = ConstructionOwner::new(&mut control).unwrap();
-    other
-        .apply(
-            &mut control,
-            HtmlConstructionCommand::CreateElement {
-                name: QualifiedName::new(Namespace::none(), None, "y"),
-                attributes: OrderedAttributes::default(),
-                link_flags: None,
-            },
-            &[(HtmlParseResource::ManagedNodes, 1)],
-        )
-        .unwrap();
-    other
-        .begin_attributes(&mut control, 0, HtmlConstructionAttributeEditMode::Slots)
-        .unwrap();
-    let occupant = other.take_attribute_edit(&mut control).unwrap();
-    owner.attribute_edit = Some(occupant);
-    assert_registry_row(owner.put_attribute_edit(&mut control, lent), &control);
-    // The occupant was not displaced; giving it back lets both owners finish.
-    let occupant = owner.attribute_edit.take().unwrap();
-    other.attribute_edit = Some(occupant);
-    other.abort_attributes(&mut control).unwrap();
-    other.retire(&mut control).unwrap();
-    drained(owner, &mut control);
+    let result = owner.reserve_attributes(&mut control, 7, 1);
+    assert_eq!(result, Err(SessionError::ForeignNode));
+    assert_eq!(control.stop(), None);
+    owner.retire(&mut control).unwrap();
+    assert_eq!(control.usage().actual_capacity_bytes, 0);
+}
+
+fn attribute(name: &str, value: &str) -> Attribute {
+    Attribute::new(QualifiedName::new(Namespace::none(), None, name), value)
+}
+
+fn held(owner: &ConstructionOwner, control: &mut ParseControl) -> Vec<String> {
+    match owner.node_at(0).unwrap().kind() {
+        surgeist_html::construction::ConstructionNodeKind::Element(element) => element
+            .attributes()
+            .iter()
+            .map(|held| held.name().local_name().to_utf8().unwrap())
+            .collect(),
+        _ => {
+            let _ = control;
+            panic!("an element")
+        }
+    }
+}
+
+#[test]
+fn an_append_that_the_capacity_limit_refuses_leaves_the_list_and_every_figure_as_it_was() {
+    let (mut control, mut owner) = with_element();
+    let before = control.usage().clone();
+    let held_bytes = before
+        .resource(HtmlParseResource::ManagedCapacityBytes)
+        .current();
+    control.test_limit(HtmlParseResource::ManagedCapacityBytes, held_bytes);
+    let mut incoming = Some(attribute("a", "v"));
+    let result = owner.append_attribute(&mut control, 0, &mut incoming, None);
+    assert!(matches!(
+        result,
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
+            resource: HtmlParseResource::ManagedCapacityBytes,
+            ..
+        }))
+    ));
+    assert!(incoming.is_some(), "the attribute stays with the caller");
+    assert!(held(&owner, &mut control).is_empty());
+    assert_eq!(
+        control
+            .usage()
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .current(),
+        held_bytes,
+        "no capacity was charged for the refused growth"
+    );
+    assert_eq!(owner.attribute_bytes, 0);
+    owner.retire(&mut control).unwrap();
+    assert_eq!(control.usage().actual_capacity_bytes, 0);
+}
+
+#[test]
+fn appended_attributes_grow_the_list_geometrically_and_are_released_with_the_owner() {
+    let (mut control, mut owner) = with_element();
+    for name in ["a", "b", "c", "d", "e"] {
+        owner
+            .append_attribute(&mut control, 0, &mut Some(attribute(name, "v")), None)
+            .unwrap();
+    }
+    assert_eq!(held(&owner, &mut control), ["a", "b", "c", "d", "e"]);
+    let capacity = match owner.node_at(0).unwrap().kind() {
+        surgeist_html::construction::ConstructionNodeKind::Element(element) => element
+            .attributes()
+            .to_ordered()
+            .shared_attributes()
+            .capacity(),
+        _ => unreachable!(),
+    };
+    // One slot, then doubling: 1, 2, 4, 8 for five attributes.
+    assert_eq!(capacity, 8);
+    assert_eq!(
+        owner.attribute_bytes,
+        (capacity * mem::size_of::<Attribute>()) as u64,
+        "the owner holds exactly the capacity its lists reserved"
+    );
+    owner.retire(&mut control).unwrap();
+    assert_eq!(control.usage().actual_capacity_bytes, 0);
 }
 
 /// The cause values of HTML's construction owner's error, one per variant. A cause added to

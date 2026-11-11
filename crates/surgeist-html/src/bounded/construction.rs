@@ -1,15 +1,8 @@
 //! The sole mutable owner of shared HTML construction records, and its controlled operations.
 
-pub use crate::internal::construction::bounded::attribute_edit::{
-    HtmlConstructionAttributeAction, HtmlConstructionAttributeCandidate,
-    HtmlConstructionAttributeCandidateAction, HtmlConstructionAttributeCandidateObservation,
-    HtmlConstructionAttributeCapacity, HtmlConstructionAttributeCompletion,
-    HtmlConstructionAttributeDescription, HtmlConstructionAttributeEdit,
-    HtmlConstructionAttributeEditMode, HtmlConstructionAttributeObservation,
-    HtmlConstructionAttributePlanRetirement, HtmlConstructionAttributeRetirementAction,
-    HtmlConstructionAttributeRetirementDescription, HtmlConstructionAttributeSlot,
-    HtmlConstructionAttributeSlotAction, HtmlConstructionAttributeSlotObservation,
-    HtmlConstructionAttributeWork, HtmlConstructionReadyAttributeSlot,
+pub use crate::internal::construction::bounded::attribute_list::{
+    HtmlAttributeAdmission, HtmlAttributeMerge, HtmlConstructionAttributeCapacity,
+    HtmlConstructionAttributeError, HtmlConstructionAttributeGrowth,
 };
 pub use crate::internal::construction::bounded::operations::{
     HtmlConstructionAbort, HtmlConstructionAction, HtmlConstructionActionDescription,

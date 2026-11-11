@@ -887,7 +887,7 @@ fn completed_native_field_projection_retains_atomic_merged_origins_and_later_tri
             assert_eq!(retired.original(), Some(original));
             assert!(matches!(
                 retired.retired_destination(),
-                Some(crate::construction::StringLocation::Text(_))
+                Some(crate::construction::FieldRef::Text(_))
             ));
             assert!(retired.source().is_none());
             assert_eq!(retired.trigger(), Some(trigger));
@@ -1393,7 +1393,7 @@ fn completed_selectedcontent_clone_retains_original_native_identity_and_scheduli
 #[test]
 fn completed_template_foreign_and_rewritten_fields_keep_exact_native_bindings() {
     use crate::construction::{
-        StringLocation,
+        FieldRef,
         provenance::{HtmlParseConstructionOperation, NativeDestination},
     };
     use crate::parser::tokenizer::token::HtmlParseOriginKind;
@@ -1447,7 +1447,7 @@ fn completed_template_foreign_and_rewritten_fields_keep_exact_native_bindings() 
     for index in 0..rows.len() {
         let (row, cause) = rows.row(index).unwrap().unwrap();
         match row.destination {
-            NativeDestination::Field(StringLocation::ElementName(node)) => {
+            NativeDestination::Field(FieldRef::ElementName(node)) => {
                 for (position, id) in identities.iter().enumerate() {
                     if Some(node) == *id {
                         if position == 0 {
@@ -1461,9 +1461,7 @@ fn completed_template_foreign_and_rewritten_fields_keep_exact_native_bindings() 
                     }
                 }
             }
-            NativeDestination::Field(StringLocation::Namespace(node))
-                if Some(node) == identities[0] =>
-            {
+            NativeDestination::Field(FieldRef::Namespace(node)) if Some(node) == identities[0] => {
                 assert!(row.source.is_none());
                 assert_eq!((row.start, row.end), (0, 26));
                 source_less_svg_namespace = true;
@@ -1589,7 +1587,7 @@ fn completed_fostered_table_text_keeps_original_processing_and_later_flush_trigg
 #[test]
 fn completed_pi_pseudo_attribute_derivation_keeps_literal_and_xml_reference_groups() {
     use crate::construction::{
-        StringLocation,
+        FieldRef,
         provenance::{HtmlParseConstructionOperation, NativeDestination},
     };
     use crate::parser::tokenizer::token::HtmlParseOriginKind;
@@ -1621,7 +1619,7 @@ fn completed_pi_pseudo_attribute_derivation_keeps_literal_and_xml_reference_grou
     for index in 0..rows.len() {
         let (row, cause) = rows.row(index).unwrap().unwrap();
         match row.destination {
-            NativeDestination::Field(StringLocation::PiName(_, 0)) => {
+            NativeDestination::Field(FieldRef::PiName(_, 0)) => {
                 assert_eq!(
                     cause.operation(),
                     HtmlParseConstructionOperation::Replacement
@@ -1629,7 +1627,7 @@ fn completed_pi_pseudo_attribute_derivation_keeps_literal_and_xml_reference_grou
                 assert!(cause.original().is_some());
                 names += 1;
             }
-            NativeDestination::Field(StringLocation::PiValue(_, 0)) => {
+            NativeDestination::Field(FieldRef::PiValue(_, 0)) => {
                 assert_eq!(
                     cause.operation(),
                     HtmlParseConstructionOperation::Replacement

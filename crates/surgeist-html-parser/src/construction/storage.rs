@@ -4,8 +4,6 @@ use super::*;
 pub(super) struct SessionStorage {
     pub(super) csp_slot: Option<usize>,
     #[cfg(test)]
-    pub(super) cancel_after_details_shift: Option<crate::HtmlParseCancellation>,
-    #[cfg(test)]
     pub(super) cancel_after_radio_peer: Option<crate::HtmlParseCancellation>,
     #[cfg(test)]
     pub(super) cancel_after_text_append_chunk: Option<crate::HtmlParseCancellation>,
@@ -72,6 +70,7 @@ pub(super) struct SessionStorage {
 
 impl SessionStorage {
     pub(super) fn new(control: &mut ParseControl, root: RootKind) -> Result<Self, SessionError> {
+        let detail_origins = DetailOrigins::new();
         let effects = ConstructionEffects::new(control)?;
         let construction = ConstructionOwner::new(control)?;
         let (values, allocation) = match control.new_vector() {
@@ -137,8 +136,6 @@ impl SessionStorage {
         let mut session = Self {
             csp_slot: None,
             #[cfg(test)]
-            cancel_after_details_shift: None,
-            #[cfg(test)]
             cancel_after_radio_peer: None,
             #[cfg(test)]
             cancel_after_text_append_chunk: None,
@@ -186,6 +183,7 @@ impl SessionStorage {
                 repeated_unique_rows: 0,
                 tree_stamp: NonZeroU32::new(1),
                 topology_changes: Some(0),
+                detail_origins,
             },
         };
         let kind = match root {

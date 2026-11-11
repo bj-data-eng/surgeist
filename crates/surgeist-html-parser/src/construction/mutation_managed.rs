@@ -170,7 +170,6 @@ impl SessionStorage {
                     .ok_or(SessionError::InputMetadataUnavailable)?;
                 let (association, _) = find_form_association_state(&self.payloads, c, node)?
                     .ok_or(SessionError::FormAssociationMetadataUnavailable)?;
-                let container = self.element_attribute_container(c, node)?;
                 let ConstructionNodeKind::Element(element) = &self
                     .construction
                     .node_at(node)
@@ -195,14 +194,13 @@ impl SessionStorage {
                         node,
                         slot,
                         association,
-                        (container, position),
+                        position,
                         InputAttributeInitialization::Installed,
                     ),
                     None => self.change_input_type(
                         c,
                         node,
                         slot,
-                        container,
                         state,
                         surgeist_html::attributes::HtmlInputType::Text,
                     ),
@@ -244,22 +242,20 @@ impl SessionStorage {
     }
 
     /// The rows a scan of the registry finds for the attribute at `position`
-    /// of `container`, indexed as name, value, namespace and prefix.
+    /// of `node`, indexed as name, value, namespace and prefix.
     pub(super) fn scanned_attribute_rows(
         &self,
-        container: usize,
+        node: usize,
         position: usize,
     ) -> [Option<usize>; 4] {
         let mut rows = [None; 4];
         for (slot, payload) in self.payloads.values.iter().enumerate() {
             if let RetainedPayload::String { location, .. } = payload {
                 let which = match *location {
-                    StringLocation::AttributeName(o, p) if o == container && p == position => 0,
-                    StringLocation::AttributeValue(o, p) if o == container && p == position => 1,
-                    StringLocation::AttributeNamespace(o, p) if o == container && p == position => {
-                        2
-                    }
-                    StringLocation::AttributePrefix(o, p) if o == container && p == position => 3,
+                    FieldRef::AttributeName(o, p) if o == node && p == position => 0,
+                    FieldRef::AttributeValue(o, p) if o == node && p == position => 1,
+                    FieldRef::AttributeNamespace(o, p) if o == node && p == position => 2,
+                    FieldRef::AttributePrefix(o, p) if o == node && p == position => 3,
                     _ => continue,
                 };
                 rows[which] = Some(slot);
@@ -270,7 +266,7 @@ impl SessionStorage {
     /// Checks that a verified layout names exactly the rows a registry scan finds.
     pub(super) fn assert_verified_layout(
         &self,
-        container: usize,
+        node: usize,
         index: usize,
         count: usize,
         last_name: usize,
@@ -278,11 +274,11 @@ impl SessionStorage {
         let mut expected: Vec<usize> = Vec::new();
         for (slot, payload) in self.payloads.values.iter().enumerate() {
             if let RetainedPayload::String { location, .. } = payload
-                && let StringLocation::AttributeName(owner, position)
-                | StringLocation::AttributeValue(owner, position)
-                | StringLocation::AttributeNamespace(owner, position)
-                | StringLocation::AttributePrefix(owner, position) = *location
-                && owner == container
+                && let FieldRef::AttributeName(owner, position)
+                | FieldRef::AttributeValue(owner, position)
+                | FieldRef::AttributeNamespace(owner, position)
+                | FieldRef::AttributePrefix(owner, position) = *location
+                && owner == node
                 && position >= index
             {
                 expected.push(slot);
@@ -384,7 +380,6 @@ impl ParserArenaSession {
                 return Err(SessionError::WrongToken);
             }
         }
-        let container = storage.element_attribute_container(c, node)?;
         let mut position = None;
         let ConstructionNodeKind::Element(element) = &storage
             .construction
@@ -432,18 +427,12 @@ impl ParserArenaSession {
                 storage.replace_registered_attribute(
                     c,
                     node,
-                    [container, position],
+                    position,
                     incoming,
                     [name_slot, value_slot],
                 )?;
             } else {
-                storage.append_registered_attribute(
-                    c,
-                    node,
-                    container,
-                    incoming,
-                    [name_slot, value_slot],
-                )?;
+                storage.append_registered_attribute(c, node, incoming, [name_slot, value_slot])?;
             }
             storage.managed_change(c, node, effect)?;
             storage.drain_construction_effects(c)?;

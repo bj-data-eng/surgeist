@@ -42,10 +42,11 @@ use surgeist_html::bounded::script::HtmlScriptPreparationResult as DisabledScrip
 use surgeist_html::{construction::HtmlBuilderNode, values::DocumentString};
 
 mod activity;
-mod attribute_writer;
 mod construction_owner;
 mod dialog;
-use construction_owner::{ConstructionOwner, ConstructionView, prepare_attribute_slot};
+use construction_owner::{ConstructionOwner, ConstructionView};
+mod detail_origins;
+use detail_origins::DetailOrigins;
 
 pub(crate) mod associated;
 mod base;
@@ -183,12 +184,13 @@ use session_error::{
     charge_fault, count_set, end_session_on, latch_creation_fault, latch_effect_fault,
     latch_owner_refusal, latch_registry_row, next_cursor, session_fault_invariant, successor,
 };
-use string_storage::{AttributeStorage, ReleasedStorage, mirrored_position};
-pub(crate) use string_storage::{StringLocation, TextInsertion};
+use string_storage::ReleasedStorage;
+pub(crate) use string_storage::{FieldRef, TextInsertion};
 mod form_effects;
 mod storage;
 mod storage_allocation;
 mod storage_attributes;
+use storage_attributes::StagedAttributes;
 mod storage_input;
 mod storage_insertion;
 mod storage_release;
@@ -200,7 +202,9 @@ use storage_textarea::TextareaRefresh;
 mod storage_tree;
 use form_effects::{FormEffectPass, FormEffectStage, FormEffects};
 use storage::SessionStorage;
-use storage_attributes::{AttributeMergeName, PreparedAttributeMerge};
+use storage_attributes::AttributeMergeName;
+#[cfg(test)]
+use storage_attributes::PreparedAttributeMerge;
 use storage_input::InputAttributeInitialization;
 use storage_insertion::InsertionCause;
 mod frozen_arena;
