@@ -627,6 +627,8 @@ const REGISTERED_RELATIVE_INSET_TERMINAL_SHA256: &str =
 const REGISTERED_ORIGINAL_FLEX_PARENT_TERMINAL_SHA256: &str =
     "3136e2f0c9c4ea5c32cdb33f6b95883ccf5751c0f5aa1cd6aac5ee6ee36a7d19";
 
+const REGISTERED_ORIGINAL_BLOCK_AXES_TERMINAL_SHA256: &str =
+    "8008320aeadedcd97a5b07e41ca5298ae5ffa08fc25e297449cedecba02cabab";
 const REGISTERED_ORIGINAL_PERCENTAGE_FLEX_PARENT_TERMINAL_SHA256: &str =
     "06f3610d3477506e8d7bb1e67eb79700b4c471d52a4422774583ac0a287029f3";
 
@@ -744,6 +746,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             Registration {
                 edition: Edition::Specialized(SpecializedProfile::OriginalPercentageFlexParent),
                 terminal_sha256: REGISTERED_ORIGINAL_PERCENTAGE_FLEX_PARENT_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Specialized(SpecializedProfile::OriginalBlockAxes),
+                terminal_sha256: REGISTERED_ORIGINAL_BLOCK_AXES_TERMINAL_SHA256,
             },
         )?,
         admit(
@@ -1758,6 +1767,7 @@ fn admit_specialized(
         SpecializedProfile::PreparedRange
         | SpecializedProfile::OriginalFlexParent
         | SpecializedProfile::OriginalPercentageFlexParent
+        | SpecializedProfile::OriginalBlockAxes
         | SpecializedProfile::OriginalSubgridBody
         | SpecializedProfile::PreparedAtomicPercentage
         | SpecializedProfile::HorizontalBrFontBand
@@ -1816,6 +1826,45 @@ fn admit_specialized(
                     original_flex_parent::verify_historical(&current, &historical)
                         .map_err(|error| changed(error.to_string()))?;
                     (Ok(current), AdmittedComparison::OriginalFlexParent)
+                }
+                SpecializedProfile::OriginalBlockAxes => {
+                    let historical = std::str::from_utf8(&historical)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    qualification_catalogue::verify_historical_geometry(
+                        xml,
+                        historical,
+                        &case.case.name,
+                    )
+                    .map_err(|error| changed(error.to_string()))?;
+                    let record = terminal
+                        .records
+                        .iter()
+                        .find(|record| record.source == case.case.source)
+                        .ok_or_else(|| changed("missing original Block axis record"))?;
+                    let expected: qualification_catalogue::ExpectedDisposition =
+                        serde_json::from_value(record.value["expected"].clone())
+                            .map_err(|error| malformed(error.to_string()))?;
+                    let qualification_catalogue::ExpectedDisposition::Generated { metadata } =
+                        expected
+                    else {
+                        return Err(changed(
+                            "original Block axis record requires generated geometry",
+                        ));
+                    };
+                    qualification_catalogue::verify_absolute_metadata(
+                        xml,
+                        &metadata,
+                        &case.case.name,
+                        &variant,
+                    )
+                    .map_err(|error| changed(error.to_string()))?;
+                    (
+                        support::Golden::parse(xml),
+                        AdmittedComparison::MatchingGeometry {
+                            category: authority::MatchingCategory::Geometry,
+                            source: case.case.source.clone(),
+                        },
+                    )
                 }
                 SpecializedProfile::OriginalSubgridBody => {
                     let current = support::Golden::parse(xml)

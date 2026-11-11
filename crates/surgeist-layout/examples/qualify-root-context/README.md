@@ -323,6 +323,22 @@ second replays the retained edition without a browser. The publisher
 `--publish-original-percentage-flex-parent-qualification` requires an absent
 edition directory and a verified original source import.
 
+## Original Block axes qualification
+
+The [Block axis edition](../../tests/layout/browser_parity/captured/original-block-axes-qualification/)
+captures the five original writing modes in both directions and box-sizing
+variants. The source establishes the absolute root's containing frame and
+static offsets. The comparison checks the complete root-local rectangle trees
+against the historical observations and Native layout.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-original-block-axes-qualification
+~~~
+
+The check replays the retained edition without a browser. The publisher
+`--publish-original-block-axes-qualification` requires an absent edition
+directory, a verified original source import, and the pinned browser.
+
 ## Original subgrid body qualification
 
 This edition authenticates the original subgrid gap fixture and its inline

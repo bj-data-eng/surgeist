@@ -17,10 +17,10 @@ mod flex_content_text;
 #[path = "measurement/measured_leaf.rs"]
 mod measured_leaf;
 use crate::horizontal_br_font_band_profile;
-use crate::original_flex_parent_profile;
 use crate::original_subgrid_body_profile;
 use crate::prepared_atomic_percentage_profile;
 use crate::{empty_line_br_font_band_profile, vertical_br_font_band_profile};
+use crate::{original_block_axes_profile, original_flex_parent_profile};
 pub(super) use flex_content_text::FlexContentText;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,6 +33,7 @@ pub(super) enum BoxObservationRequest {
     FlexComposition,
     OriginalFlexParent,
     OriginalPercentageFlexParent,
+    OriginalBlockAxes,
     OriginalSubgridBody,
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
@@ -72,6 +73,9 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::OriginalPercentageFlexParent.input_bytes() => {
                 Ok(Self::OriginalPercentageFlexParent)
             }
+            Some(bytes) if Some(bytes) == Self::OriginalBlockAxes.input_bytes() => {
+                Ok(Self::OriginalBlockAxes)
+            }
             Some(bytes) if Some(bytes) == Self::OriginalSubgridBody.input_bytes() => {
                 Ok(Self::OriginalSubgridBody)
             }
@@ -105,6 +109,10 @@ impl BoxObservationRequest {
             Self::OriginalPercentageFlexParent => Some((
                 original_flex_parent_profile::percentage::SCRIPT_PATH,
                 original_flex_parent_profile::percentage::SCRIPT,
+            )),
+            Self::OriginalBlockAxes => Some((
+                original_block_axes_profile::SCRIPT_PATH,
+                original_block_axes_profile::SCRIPT,
             )),
             Self::OriginalSubgridBody => Some((
                 original_subgrid_body_profile::SCRIPT_PATH,
@@ -151,6 +159,7 @@ impl BoxObservationRequest {
             Self::OriginalPercentageFlexParent => {
                 Some(original_flex_parent_profile::percentage::REQUEST)
             }
+            Self::OriginalBlockAxes => Some(original_block_axes_profile::REQUEST),
             Self::OriginalSubgridBody => Some(original_subgrid_body_profile::REQUEST),
             Self::PreparedAtomicPercentage => Some(prepared_atomic_percentage_profile::REQUEST),
             Self::HorizontalBrFontBand => Some(horizontal_br_font_band_profile::REQUEST),
@@ -709,18 +718,20 @@ pub(super) fn decode(
         .viewport
         .as_ref()
         .and_then(WireViewport::hypothetical_block_offset);
-    let requires_block_offset = request == BoxObservationRequest::VerticalBrFontBand
-        || (request == BoxObservationRequest::EmptyLineBrFontBand
-            && wire
-                .style
-                .as_ref()
-                .and_then(|style| style.writing_mode.as_deref())
-                == Some("vertical-rl"));
+    let requires_block_offset = matches!(
+        request,
+        BoxObservationRequest::VerticalBrFontBand | BoxObservationRequest::OriginalBlockAxes
+    ) || (request == BoxObservationRequest::EmptyLineBrFontBand
+        && wire
+            .style
+            .as_ref()
+            .and_then(|style| style.writing_mode.as_deref())
+            == Some("vertical-rl"));
     let valid_block_offset = block_offset == requires_block_offset.then_some(0.0);
     context.compatible(
         valid_block_offset,
         "viewport.rootContext.hypotheticalBlockOffset",
-        "the vertical first-block source profile requires its explicit zero static block offset",
+        "explicit zero static block offset must match a qualified first-block profile",
     )?;
     if request == BoxObservationRequest::HorizontalBrFontBand {
         wire.validate_horizontal_br_font_band(&context, root_local_positioned)?;
@@ -805,6 +816,7 @@ pub(super) fn decode(
         | BoxObservationRequest::FlexComposition
         | BoxObservationRequest::OriginalFlexParent
         | BoxObservationRequest::OriginalPercentageFlexParent
+        | BoxObservationRequest::OriginalBlockAxes
         | BoxObservationRequest::OriginalSubgridBody
         | BoxObservationRequest::PreparedAtomicPercentage
         | BoxObservationRequest::HorizontalBrFontBand
@@ -845,6 +857,19 @@ pub(super) fn decode(
         None
     };
     let root = wire.validate(&context, "horizontal-tb", use_rounding, true)?;
+    if request == BoxObservationRequest::OriginalBlockAxes {
+        context.compatible(
+            root_local_positioned
+                && use_rounding
+                && ["containing-direction", "hypothetical-direction"]
+                    .into_iter()
+                    .all(|key| has_attribute(&viewport, key, "ltr"))
+                && has_attribute(&viewport, "hypothetical-inline-offset", "0px"),
+            "viewport",
+            "original Block axes require their first-block root-local frame",
+        )?;
+        validate_original_block_axes(&root, &context)?;
+    }
     if root_local_positioned {
         let Observation::Geometry {
             unrounded,
@@ -875,6 +900,54 @@ pub(super) fn decode(
         prepared_range_frame,
         flex_composition_image,
     }))
+}
+
+fn has_attribute(attrs: &Attributes, name: &str, value: &str) -> bool {
+    attrs
+        .iter()
+        .any(|(key, actual)| *key == name && actual == value)
+}
+
+fn validate_original_block_axes(
+    root: &Node,
+    context: &Context<'_>,
+) -> Result<(), MeasurementError> {
+    let [first, second] = root.children.as_slice() else {
+        return Err(context.error(
+            "children",
+            MeasurementErrorKind::ContradictoryFields,
+            "original Block axes require two source children",
+        ));
+    };
+    for (index, (node, width, height)) in [
+        (root, "100px", "100px"),
+        (first, "30px", "20px"),
+        (second, "20px", "30px"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let place = if index == 0 {
+            Context {
+                node_path: context.node_path.clone(),
+                ..*context
+            }
+        } else {
+            context.child(index - 1)
+        };
+        place.compatible(
+            matches!(node.kind, NodeKind::Box)
+                && node.text.is_none()
+                && (index == 0 || node.children.is_empty())
+                && has_attribute(&node.attrs, "source-tag", "div")
+                && has_attribute(&node.attrs, "display", "block")
+                && has_attribute(&node.attrs, "width", width)
+                && has_attribute(&node.attrs, "height", height),
+            "style",
+            "original Block axes require fixed source boxes without text",
+        )?;
+    }
+    Ok(())
 }
 
 pub(super) fn number(value: f64) -> String {
