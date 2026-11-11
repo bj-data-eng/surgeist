@@ -3202,15 +3202,15 @@ fn runs_all_checked_in_browser_parity_xml() {
         "Live corpus accounting complete: {} sources, {} producer-unsupported variants",
         live.sources, live.unsupported,
     );
-    if live.nonmatches == 0 {
+    if live.differences == 0 && live.refusals == 0 && live.unobservable == 0 {
         eprintln!(
             "Live Native parity passed: {} matching captures",
             live.matches
         );
     } else {
         eprintln!(
-            "Live Native parity failed: {} matching captures, {} nonmatching captures",
-            live.matches, live.nonmatches,
+            "Live Native parity failed: {} matches, {} numeric nonmatches, {} admission refusals, {} unobservable captures",
+            live.matches, live.differences, live.refusals, live.unobservable,
         );
     }
     if let Some(raw) = report.raw.failure() {

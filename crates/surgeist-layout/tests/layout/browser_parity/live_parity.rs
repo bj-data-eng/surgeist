@@ -217,7 +217,9 @@ pub(super) struct LiveCorpusCounts {
     pub(super) sources: usize,
     pub(super) unsupported: usize,
     pub(super) matches: usize,
-    pub(super) nonmatches: usize,
+    pub(super) differences: usize,
+    pub(super) refusals: usize,
+    pub(super) unobservable: usize,
 }
 
 impl LiveCorpusRun {
@@ -271,6 +273,17 @@ impl LiveCorpusRun {
                 .into_iter()
                 .map(|path| format!("unreported live output {path}")),
         );
+        for (path, expected) in [
+            (HISTORICAL_REPORT, &receipt.historical_report_sha256),
+            (LIVE_REPORT, &receipt.live_report_sha256),
+            (LIVE_OWNERSHIP, &receipt.live_ownership_sha256),
+        ] {
+            if !expected.is_empty()
+                && let Err(error) = read_pinned(root, path, expected)
+            {
+                errors.push(error);
+            }
+        }
         Ok(Self { receipt, errors })
     }
 
@@ -337,12 +350,22 @@ impl LiveCorpusRun {
     }
 
     pub(super) fn counts(&self) -> LiveCorpusCounts {
-        LiveCorpusCounts {
+        let mut counts = LiveCorpusCounts {
             sources: self.receipt.classifications.sources,
             unsupported: self.receipt.classifications.live.unsupported,
             matches: self.receipt.native_matches,
-            nonmatches: self.receipt.native_nonmatches.len(),
+            differences: 0,
+            refusals: 0,
+            unobservable: 0,
+        };
+        for row in &self.receipt.native_nonmatches {
+            match row.outcome {
+                NativeOutcome::Differences { .. } => counts.differences += 1,
+                NativeOutcome::Refused { .. } => counts.refusals += 1,
+                NativeOutcome::Unobservable { .. } => counts.unobservable += 1,
+            }
         }
+        counts
     }
 
     pub(super) fn raw_failures(&self) -> Vec<String> {
