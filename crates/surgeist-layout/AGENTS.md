@@ -43,8 +43,9 @@ a browser or source cache. Follow the [corpus guide](tests/layout/browser_parity
 for refreshes; never hand-edit generated XML/reports. `Justfile` and `scripts/`
 retain composed recipes, including recipes that clear filters and overrides.
 The [audit tool](tools/surgeist-layout-audits/README.md) retains a separate nightly
-workspace and is opt-in. Full checked-in XML parity runs in ordinary tests and
-requires no browser or fixture regeneration.
+workspace and is opt-in. Ordinary parity tests traverse the full checked-in
+inventory and require complete historical accounting and current qualification.
+The strict raw verdict uses the same traversal. Both use existing XML.
 The two deep-nesting tests in `src/sizing.rs` each construct 100,000 nodes; isolate
 them from an initial bounded test run under the root resource policy.
 
@@ -56,7 +57,7 @@ cargo fmt -p surgeist-layout -- --check
 ```
 
 ```sh
-env -u SURGEIST_PARITY_FILTER cargo test -j 1 --offline --locked -p surgeist-layout --test layout runs_all_checked_in_browser_parity_xml
+env -u SURGEIST_PARITY_FILTER SURGEIST_PARITY_RAW_EXACT=1 cargo test -j 1 --offline --locked -p surgeist-layout --test layout layout::browser_parity::runs_all_checked_in_browser_parity_xml -- --exact
 ```
 
 ```sh

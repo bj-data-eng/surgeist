@@ -1520,6 +1520,11 @@ XML bytes remain layout-owned and comment-free; semantic parsing and comparison
 remain in layout tests. See the [browser parity guide](../tests/layout/browser_parity/README.md)
 for commands, cache behavior, and current provenance requirements.
 
+Ordinary `cargo test -p surgeist-layout` traverses every historical XML and
+registered current capture. It requires complete historical accounting and
+fresh current qualification. The named strict raw verdict uses the same
+inventory and fails on every raw mismatch or authority refusal.
+
 ## Local commands
 
 Run these recipes from the crate directory with `just` already available. The
@@ -1535,7 +1540,7 @@ Setting `CARGO_NET_OFFLINE=true` keeps Cargo dependency resolution offline.
 | `just verify` | Default formatting, check, test, and Clippy sequence |
 | `just generator-check` / `just generator-test` / `just generator-clippy` | Corresponding all-targets checks with `layout-golden-generate` |
 | `just verify-generator` | Generator-feature check, tests, and Clippy sequence |
-| `just parity-all` | Execute the ignored full checked-in XML parity test, clearing the parity filter |
+| `just parity-all` | Traverse the full checked-in corpus and enforce the strict raw verdict |
 | `just corpus-check` | Browser-free `check-corpus` with corpus and browser overrides cleared |
 | `just taffy-check` | Validate the existing pinned source cache and imported Taffy corpus |
 

@@ -13,9 +13,9 @@ use super::support::{
     prepared_range_qualification as prepared_range,
 };
 use support::capture_authority::{
-    self as authority, CaptureMetadata, CapturedArtifact, CaseSelection, IdentityInputs,
-    PathDigest, Qualification, SpecializedProfile, VerifiedIdentity, identity_from_verified_inputs,
-    semantic_record_digest, sha256,
+    self as authority, CaptureMetadata, CapturedArtifact, CaseDescriptor, CaseSelection,
+    IdentityInputs, PathDigest, Qualification, SpecializedProfile, VerifiedIdentity,
+    identity_from_verified_inputs, semantic_record_digest, sha256,
 };
 use support::exact_differences::{
     CaptureAuthority, ExactDifferenceSpec, PublishedEdition, QualificationError,
@@ -81,7 +81,7 @@ fn malformed(reason: impl Into<String>) -> QualificationError {
     }
 }
 
-fn regular_file(root: &Path, relative: &str) -> Result<PathBuf> {
+pub(super) fn regular_file(root: &Path, relative: &str) -> Result<PathBuf> {
     if relative.is_empty() || relative.contains(['\\', '\0']) {
         return Err(malformed("invalid artifact-relative path"));
     }
@@ -307,8 +307,40 @@ fn selected_records<Case>(
         .collect()
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum HistoricalLinkKind {
+    SameSource,
+    SourceEquivalent,
+}
+
+pub(super) struct HistoricalLink {
+    pub(super) source: String,
+    pub(super) source_sha256: String,
+    pub(super) variant: String,
+    pub(super) predecessor: PathDigest,
+    pub(super) kind: HistoricalLinkKind,
+}
+
+impl HistoricalLink {
+    fn same_source(
+        case: &CaseDescriptor,
+        artifact: &CapturedArtifact,
+        predecessor: &PathDigest,
+    ) -> Self {
+        Self {
+            source: case.source.clone(),
+            source_sha256: artifact.source_sha256.clone(),
+            variant: case.variant.clone(),
+            predecessor: predecessor.clone(),
+            kind: HistoricalLinkKind::SameSource,
+        }
+    }
+}
+
 struct AdmittedCase {
     output: String,
+    historical: Option<HistoricalLink>,
     comparison: AdmittedComparison,
     golden: support::Golden,
 }
@@ -560,6 +592,16 @@ impl AdmittedRegistry {
             edition
                 .outputs()
                 .map(move |output| format!("{root}/{output}"))
+        })
+    }
+
+    pub(super) fn historical_links(&self) -> impl Iterator<Item = (&str, &HistoricalLink)> {
+        self.editions.iter().flat_map(|edition| {
+            let name = edition.freshness.artifact_root.rsplit('/').next().unwrap();
+            edition
+                .cases
+                .iter()
+                .filter_map(move |case| case.historical.as_ref().map(|link| (name, link)))
         })
     }
 
@@ -885,11 +927,21 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
         }
     }
     verify_live(owner, &selected_records)?;
-    Ok(AdmittedRegistry {
+    let registry = AdmittedRegistry {
         editions,
         owner: owner.to_owned(),
         selected_records,
-    })
+    };
+    let mut predecessors = BTreeSet::new();
+    for (edition, link) in registry.historical_links() {
+        if !predecessors.insert((&link.predecessor.path, &link.predecessor.sha256)) {
+            return Err(changed(format!(
+                "multiple current successors for {} {} from {} ({:?}, {edition})",
+                link.source, link.variant, link.source_sha256, link.kind,
+            )));
+        }
+    }
+    Ok(registry)
 }
 
 pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<AdmittedEdition> {
@@ -1193,6 +1245,10 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         )?;
         cases.push(AdmittedCase {
             output: case.case.output.path.clone(),
+            historical: case
+                .historical
+                .as_ref()
+                .map(|history| HistoricalLink::same_source(&case.case, artifact, history)),
             comparison: AdmittedComparison::Exact {
                 edition,
                 spec: Box::new(spec),
@@ -1227,14 +1283,23 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     })
 }
 
+struct OriginalDiagnosticCase {
+    golden: support::Golden,
+    historical: PathDigest,
+}
+
 pub(super) struct AuthenticatedOriginalDiagnostics {
-    cases: BTreeMap<(String, String), support::Golden>,
+    cases: BTreeMap<(String, String), OriginalDiagnosticCase>,
     sources: BTreeMap<String, Vec<u8>>,
     freshness: Freshness,
 }
 
 impl AuthenticatedOriginalDiagnostics {
     pub(super) fn golden(&self, source: &str, variant: &str) -> Result<&support::Golden> {
+        self.case(source, variant).map(|case| &case.golden)
+    }
+
+    fn case(&self, source: &str, variant: &str) -> Result<&OriginalDiagnosticCase> {
         self.cases
             .get(&(source.to_owned(), variant.to_owned()))
             .ok_or_else(|| changed("missing authenticated original diagnostic case"))
@@ -1370,7 +1435,13 @@ pub(super) fn admit_original_diagnostics(
                 case.name
             )));
         }
-        cases.insert((case.source.clone(), case.variant.clone()), golden);
+        cases.insert(
+            (case.source.clone(), case.variant.clone()),
+            OriginalDiagnosticCase {
+                golden,
+                historical: diagnostic.historical.clone(),
+            },
+        );
     }
     if cases.len() != artifacts.len() {
         return Err(changed("complete original diagnostic replay census"));
@@ -1808,7 +1879,7 @@ fn admit_matching(
                 "matching edition contains raw geometry differences: {raw:?}"
             )));
         }
-        if let Some(pair) = record.source_equivalent_matching() {
+        let historical_link = if let Some(pair) = record.source_equivalent_matching() {
             let diagnostics = diagnostics
                 .as_ref()
                 .ok_or_else(|| changed("missing authenticated original diagnostics"))?;
@@ -1819,18 +1890,32 @@ fn admit_matching(
                     sha256: record.source_sha256.as_str().to_owned(),
                 },
             )?;
+            let original_source = diagnostics.source(&pair.original)?;
+            let original = diagnostics.case(&pair.original, &descriptor.variant)?;
             support::grid_lanes_native_pair::verify_declared_pair(
                 pair,
                 &descriptor.variant,
-                diagnostics.source(&pair.original)?,
+                original_source,
                 &control_source,
-                diagnostics.golden(&pair.original, &descriptor.variant)?,
+                &original.golden,
                 &golden,
             )
             .map_err(|error| changed(format!("{}: {error}", descriptor.name)))?;
-        }
+            Some(HistoricalLink {
+                source: pair.original.clone(),
+                source_sha256: sha256(original_source),
+                variant: descriptor.variant.clone(),
+                predecessor: original.historical.clone(),
+                kind: HistoricalLinkKind::SourceEquivalent,
+            })
+        } else {
+            case.provenance()
+                .historical()
+                .map(|history| HistoricalLink::same_source(descriptor, artifact, history))
+        };
         cases.push(AdmittedCase {
             output: descriptor.output.path.clone(),
+            historical: historical_link,
             comparison: AdmittedComparison::MatchingGeometry {
                 category: case.category(),
                 source: descriptor.source.clone(),
@@ -2067,6 +2152,11 @@ fn admit_specialized(
             }
             Ok(AdmittedCase {
                 output: case.case.output.path.clone(),
+                historical: Some(HistoricalLink::same_source(
+                    &case.case,
+                    artifact,
+                    &case.historical,
+                )),
                 comparison,
                 golden,
             })

@@ -19,7 +19,8 @@ task="$1"
 case "${task}" in
     parity-all)
         unset SURGEIST_PARITY_FILTER
-        exec cargo test --locked -p surgeist-layout --test layout runs_all_checked_in_browser_parity_xml
+        export SURGEIST_PARITY_RAW_EXACT=1
+        exec cargo test --locked -j 1 -p surgeist-layout --test layout layout::browser_parity::runs_all_checked_in_browser_parity_xml -- --exact
         ;;
     corpus-check)
         unset SURGEIST_LAYOUT_BROWSER_PARITY_ROOT
