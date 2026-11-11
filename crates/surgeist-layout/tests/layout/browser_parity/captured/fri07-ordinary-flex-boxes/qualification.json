@@ -1,0 +1,560 @@
+{
+  "schema_version": 3,
+  "edition": "fri07-ordinary-flex-boxes",
+  "declaration": {
+    "path": "corpus.toml",
+    "sha256": "de37f7246e2bb7b1f7cac0ad1421edd1b554457df57f0ec478c8b088efe4c5ed"
+  },
+  "records": [
+    {
+      "source": "html/flex/fri07_cross_auto_margin_overflow.html",
+      "sha256": "814f0417b0c32b2596928b8bd09362b39c2af6106734624b56f8c8f17414cdd8",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "flex",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f",
+          "border_box_rtl": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b",
+          "content_box_ltr": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44",
+          "content_box_rtl": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90"
+        },
+        "matching_publication": "fri07-ordinary-flex-boxes",
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/flex/fri07_cross_auto_margin_overflow.html",
+        "source_kind": "original",
+        "source_sha256": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57"
+      }
+    },
+    {
+      "source": "html/flex/fri07_absolute_auto_margin_insets.html",
+      "sha256": "e686fae05c15f374f263abf209c2b46a7580f546f98eee30247959464d4bbec9",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "atomic_paragraphs": null,
+            "context": "block-flow",
+            "grid_reference_owners": null,
+            "parent_direction": "ltr",
+            "root_direction": "variant",
+            "root_display": "flex",
+            "root_position": "relative",
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1",
+          "border_box_rtl": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0",
+          "content_box_ltr": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a",
+          "content_box_rtl": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1"
+        },
+        "matching_publication": "fri07-ordinary-flex-boxes",
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/flex/fri07_absolute_auto_margin_insets.html",
+        "source_kind": "original",
+        "source_sha256": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603"
+      }
+    }
+  ],
+  "browser_settings": {"source":"chrome-for-testing","version":"149.0.7827.115","version_output":"Google Chrome for Testing 149.0.7827.115","cache_root":"tmp/surgeist-browser","provenance_format":"chrome-for-testing/{version} ({repository_relative_executable})","launch":{"batch_size":50,"navigation_timeout_ms":10000,"dom_poll_interval_ms":25,"arguments":["headless=new","mute-audio","disable-background-networking","disable-background-timer-throttling","disable-backgrounding-occluded-windows","disable-breakpad","disable-client-side-phishing-detection","disable-component-extensions-with-background-pages","disable-component-update","disable-default-apps","disable-dev-shm-usage","disable-domain-reliability","disable-features=TranslateUI,MediaRouter,OptimizationHints,AutofillServerCommunication","disable-hang-monitor","disable-ipc-flooding-protection","disable-popup-blocking","disable-prompt-on-repost","disable-renderer-backgrounding","disable-sync","enable-automation","enable-blink-features=IdleDetection,CSSGridLanesLayout","enable-features=NetworkService,NetworkServiceInProcess","force-color-profile=srgb","lang=en_US","metrics-recording-only","no-default-browser-check","no-first-run","use-mock-keychain"]}},
+  "report": {
+    "path": "xml/generation-reports/all.json",
+    "sha256": "8751e7d27e4628f59fd089cc7c3246004a6f6aad669eba73a51e47be818a12a0"
+  },
+  "ownership": {
+    "path": "xml/generation-ownership.json",
+    "sha256": "5596aac2b4baffd1b622772f541ddd8a3c0b6df48384eb5c582bfe3fbf422fe8"
+  },
+  "cases": [
+    {
+      "case": {
+        "name": "fri07_absolute_auto_margin_insets__border_box_ltr",
+        "source": "html/flex/fri07_absolute_auto_margin_insets.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml",
+          "sha256": "e9208a60d6015855139610abeee487b68fb31a2f02368abd9cce0c6060acb495"
+        },
+        "record_sha256": "e686fae05c15f374f263abf209c2b46a7580f546f98eee30247959464d4bbec9"
+      },
+      "historical": {
+        "path": "historical/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml",
+        "sha256": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/flex/fri07_absolute_auto_margin_insets.html",
+        "source_sha256": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+        "variant": "border_box_ltr",
+        "historical_sha256": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1",
+        "capture_sha256": "e9208a60d6015855139610abeee487b68fb31a2f02368abd9cce0c6060acb495",
+        "record_sha256": "e686fae05c15f374f263abf209c2b46a7580f546f98eee30247959464d4bbec9",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "c8813f68c000ef7f9bf6f9f625e2f2d5777f59b330b9ccfd908f24a795673885",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90",
+          "html/flex/fri07_absolute_auto_margin_insets.html": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+          "html/flex/fri07_cross_auto_margin_overflow.html": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+          "origin/selected-originals.json": "87a4eccdff690d6fd43a065ded136e26b979f82f07b942c6e9b9ee5566415e9a",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "fri07_absolute_auto_margin_insets__border_box_rtl",
+        "source": "html/flex/fri07_absolute_auto_margin_insets.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml",
+          "sha256": "ea105f85950f747a567edd493211145098cdd3831156cb5741dddba4dc98fa5a"
+        },
+        "record_sha256": "e686fae05c15f374f263abf209c2b46a7580f546f98eee30247959464d4bbec9"
+      },
+      "historical": {
+        "path": "historical/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml",
+        "sha256": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/flex/fri07_absolute_auto_margin_insets.html",
+        "source_sha256": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+        "variant": "border_box_rtl",
+        "historical_sha256": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0",
+        "capture_sha256": "ea105f85950f747a567edd493211145098cdd3831156cb5741dddba4dc98fa5a",
+        "record_sha256": "e686fae05c15f374f263abf209c2b46a7580f546f98eee30247959464d4bbec9",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "6fdfab596dda02a0d5a6fd5490ae6fce81d98ae536b942a1e0f8757f6df6ca4d",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90",
+          "html/flex/fri07_absolute_auto_margin_insets.html": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+          "html/flex/fri07_cross_auto_margin_overflow.html": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+          "origin/selected-originals.json": "87a4eccdff690d6fd43a065ded136e26b979f82f07b942c6e9b9ee5566415e9a",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "fri07_absolute_auto_margin_insets__content_box_ltr",
+        "source": "html/flex/fri07_absolute_auto_margin_insets.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml",
+          "sha256": "d8c8dffa9ad6165ac6703a270ba56643a67de0a5a5506de2cfb42c4eb6166b0a"
+        },
+        "record_sha256": "e686fae05c15f374f263abf209c2b46a7580f546f98eee30247959464d4bbec9"
+      },
+      "historical": {
+        "path": "historical/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml",
+        "sha256": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/flex/fri07_absolute_auto_margin_insets.html",
+        "source_sha256": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+        "variant": "content_box_ltr",
+        "historical_sha256": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a",
+        "capture_sha256": "d8c8dffa9ad6165ac6703a270ba56643a67de0a5a5506de2cfb42c4eb6166b0a",
+        "record_sha256": "e686fae05c15f374f263abf209c2b46a7580f546f98eee30247959464d4bbec9",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "c742e5d5da1c472e3f74c2745ae683deae499f0ccdb41feb29545c9e3422eb0f",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90",
+          "html/flex/fri07_absolute_auto_margin_insets.html": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+          "html/flex/fri07_cross_auto_margin_overflow.html": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+          "origin/selected-originals.json": "87a4eccdff690d6fd43a065ded136e26b979f82f07b942c6e9b9ee5566415e9a",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "fri07_absolute_auto_margin_insets__content_box_rtl",
+        "source": "html/flex/fri07_absolute_auto_margin_insets.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml",
+          "sha256": "7f3b68f143f3b317b451e90ded86d460ca76f3e1542198a0b032bd6a0920ae84"
+        },
+        "record_sha256": "e686fae05c15f374f263abf209c2b46a7580f546f98eee30247959464d4bbec9"
+      },
+      "historical": {
+        "path": "historical/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml",
+        "sha256": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/flex/fri07_absolute_auto_margin_insets.html",
+        "source_sha256": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+        "variant": "content_box_rtl",
+        "historical_sha256": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1",
+        "capture_sha256": "7f3b68f143f3b317b451e90ded86d460ca76f3e1542198a0b032bd6a0920ae84",
+        "record_sha256": "e686fae05c15f374f263abf209c2b46a7580f546f98eee30247959464d4bbec9",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "00e80356f76fc782812b4bc4efc85fb3b6e65a1b72d4fcb228e47a10919aa7a3",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90",
+          "html/flex/fri07_absolute_auto_margin_insets.html": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+          "html/flex/fri07_cross_auto_margin_overflow.html": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+          "origin/selected-originals.json": "87a4eccdff690d6fd43a065ded136e26b979f82f07b942c6e9b9ee5566415e9a",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "fri07_cross_auto_margin_overflow__border_box_ltr",
+        "source": "html/flex/fri07_cross_auto_margin_overflow.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml",
+          "sha256": "1ef84985e512ff8734cdf7a275bf96f6cc04b006fe2aa5cafb6216d48849a7ca"
+        },
+        "record_sha256": "814f0417b0c32b2596928b8bd09362b39c2af6106734624b56f8c8f17414cdd8"
+      },
+      "historical": {
+        "path": "historical/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml",
+        "sha256": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/flex/fri07_cross_auto_margin_overflow.html",
+        "source_sha256": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+        "variant": "border_box_ltr",
+        "historical_sha256": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f",
+        "capture_sha256": "1ef84985e512ff8734cdf7a275bf96f6cc04b006fe2aa5cafb6216d48849a7ca",
+        "record_sha256": "814f0417b0c32b2596928b8bd09362b39c2af6106734624b56f8c8f17414cdd8",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "541771eb07024c3d2ee9918cf79a3fb53ed3f3c5b25b58b7dd00083c01a1de9e",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90",
+          "html/flex/fri07_absolute_auto_margin_insets.html": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+          "html/flex/fri07_cross_auto_margin_overflow.html": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+          "origin/selected-originals.json": "87a4eccdff690d6fd43a065ded136e26b979f82f07b942c6e9b9ee5566415e9a",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "fri07_cross_auto_margin_overflow__border_box_rtl",
+        "source": "html/flex/fri07_cross_auto_margin_overflow.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml",
+          "sha256": "d4f1c963af50d1f7028b88020e84843a722a79c77e77959d9da0fbdf771b8859"
+        },
+        "record_sha256": "814f0417b0c32b2596928b8bd09362b39c2af6106734624b56f8c8f17414cdd8"
+      },
+      "historical": {
+        "path": "historical/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml",
+        "sha256": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/flex/fri07_cross_auto_margin_overflow.html",
+        "source_sha256": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+        "variant": "border_box_rtl",
+        "historical_sha256": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b",
+        "capture_sha256": "d4f1c963af50d1f7028b88020e84843a722a79c77e77959d9da0fbdf771b8859",
+        "record_sha256": "814f0417b0c32b2596928b8bd09362b39c2af6106734624b56f8c8f17414cdd8",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "62fd504df160b8ac9a785c19520a4e1f5c5e06424828f8ffeaf960442c41dff1",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90",
+          "html/flex/fri07_absolute_auto_margin_insets.html": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+          "html/flex/fri07_cross_auto_margin_overflow.html": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+          "origin/selected-originals.json": "87a4eccdff690d6fd43a065ded136e26b979f82f07b942c6e9b9ee5566415e9a",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "fri07_cross_auto_margin_overflow__content_box_ltr",
+        "source": "html/flex/fri07_cross_auto_margin_overflow.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml",
+          "sha256": "c3bba49974e5ac29887d50a2e699da15151af98a127109e3c3f1082b4dee11fd"
+        },
+        "record_sha256": "814f0417b0c32b2596928b8bd09362b39c2af6106734624b56f8c8f17414cdd8"
+      },
+      "historical": {
+        "path": "historical/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml",
+        "sha256": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/flex/fri07_cross_auto_margin_overflow.html",
+        "source_sha256": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+        "variant": "content_box_ltr",
+        "historical_sha256": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44",
+        "capture_sha256": "c3bba49974e5ac29887d50a2e699da15151af98a127109e3c3f1082b4dee11fd",
+        "record_sha256": "814f0417b0c32b2596928b8bd09362b39c2af6106734624b56f8c8f17414cdd8",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "0975ad00583f924a3bd6b4a751d5d8a7fdd54e644bbe1e31554c31aa5a06ad00",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90",
+          "html/flex/fri07_absolute_auto_margin_insets.html": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+          "html/flex/fri07_cross_auto_margin_overflow.html": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+          "origin/selected-originals.json": "87a4eccdff690d6fd43a065ded136e26b979f82f07b942c6e9b9ee5566415e9a",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "fri07_cross_auto_margin_overflow__content_box_rtl",
+        "source": "html/flex/fri07_cross_auto_margin_overflow.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml",
+          "sha256": "49cdf5ff27bb86c2367847fb0fcf582ad724eeb7f9498ddd76d519d3baa14615"
+        },
+        "record_sha256": "814f0417b0c32b2596928b8bd09362b39c2af6106734624b56f8c8f17414cdd8"
+      },
+      "historical": {
+        "path": "historical/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml",
+        "sha256": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/flex/fri07_cross_auto_margin_overflow.html",
+        "source_sha256": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+        "variant": "content_box_rtl",
+        "historical_sha256": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90",
+        "capture_sha256": "49cdf5ff27bb86c2367847fb0fcf582ad724eeb7f9498ddd76d519d3baa14615",
+        "record_sha256": "814f0417b0c32b2596928b8bd09362b39c2af6106734624b56f8c8f17414cdd8",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "a9b6b3c4f4390a7c534afcea11030bd7337e55f0345af302616541ba94cb0334",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1",
+          "historical/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a",
+          "historical/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f",
+          "historical/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44",
+          "historical/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90",
+          "html/flex/fri07_absolute_auto_margin_insets.html": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+          "html/flex/fri07_cross_auto_margin_overflow.html": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+          "origin/selected-originals.json": "87a4eccdff690d6fd43a065ded136e26b979f82f07b942c6e9b9ee5566415e9a",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    }
+  ],
+  "retained_inputs": {
+    "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "corpus.toml": "de37f7246e2bb7b1f7cac0ad1421edd1b554457df57f0ec478c8b088efe4c5ed",
+    "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "historical/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1",
+    "historical/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0",
+    "historical/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a",
+    "historical/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1",
+    "historical/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f",
+    "historical/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b",
+    "historical/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44",
+    "historical/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90",
+    "html/flex/fri07_absolute_auto_margin_insets.html": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+    "html/flex/fri07_cross_auto_margin_overflow.html": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+    "origin/selected-originals.json": "87a4eccdff690d6fd43a065ded136e26b979f82f07b942c6e9b9ee5566415e9a",
+    "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+    "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+  },
+  "current_owner_inputs": {
+    "tests/layout/browser_parity/corpus.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "tests/layout/browser_parity/fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "tests/layout/browser_parity/fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "tests/layout/browser_parity/html/flex/fri07_absolute_auto_margin_insets.html": "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603",
+    "tests/layout/browser_parity/html/flex/fri07_cross_auto_margin_overflow.html": "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57",
+    "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63",
+    "tests/layout/browser_parity/xml/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml": "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1",
+    "tests/layout/browser_parity/xml/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml": "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0",
+    "tests/layout/browser_parity/xml/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml": "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a",
+    "tests/layout/browser_parity/xml/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml": "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1",
+    "tests/layout/browser_parity/xml/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml": "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f",
+    "tests/layout/browser_parity/xml/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml": "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b",
+    "tests/layout/browser_parity/xml/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml": "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44",
+    "tests/layout/browser_parity/xml/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml": "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90"
+  },
+  "capture_validation": {
+    "producer_profile": "root-context-computed-margin-v1",
+    "producer_helper_sha256": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63",
+    "validator_profile": "root-context-computed-margin-v1",
+    "validator_helper_sha256": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+  }
+}

@@ -4689,5 +4689,13 @@ kind = "generated"
 context = "block-flow"
 parent_direction = "ltr"
 root_position = "relative"
+root_display = "flex"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
+
+[[matching_publications]]
+edition = "fri07-ordinary-flex-boxes"
+sources = [
+  "html/flex/fri07_cross_auto_margin_overflow.html",
+  "html/flex/fri07_absolute_auto_margin_insets.html",
+]

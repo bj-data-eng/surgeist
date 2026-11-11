@@ -22,7 +22,7 @@ use support::exact_differences::{
     QualifiedComparison, QualifiedVerdict, RawVerdict, complete_captured_comparison,
     flex_composition_qualification as flex, verify_wrapping_world_predecessor,
 };
-use support::{ObservedPlacement, capture_authority};
+use support::{ObservedPlacement, capture_authority, parse_root_context};
 
 #[path = "qualification_catalogue.rs"]
 mod qualification_catalogue;
@@ -684,6 +684,10 @@ const REGISTERED_MATCHING: &[(&str, &str)] = &[
     (
         authority::FRI06_SUBGRID_EDITION,
         "d2441c9dd6c15eff6e5614ca6e8540676041a1b6d7e27a5b93cd363e5be79d32",
+    ),
+    (
+        "fri07-ordinary-flex-boxes",
+        "1c732137441ce14b8c7c9e59b4ce741c39708ae2543aebcefc6ab60c50c50b78",
     ),
     (
         authority::GRID_LANES_PAIRED_EDITION,

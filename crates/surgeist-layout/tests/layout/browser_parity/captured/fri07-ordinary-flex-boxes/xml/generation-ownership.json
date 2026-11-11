@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/flex/fri07_absolute_auto_margin_insets__border_box_ltr.xml": "e9208a60d6015855139610abeee487b68fb31a2f02368abd9cce0c6060acb495",
+    "xml/flex/fri07_absolute_auto_margin_insets__border_box_rtl.xml": "ea105f85950f747a567edd493211145098cdd3831156cb5741dddba4dc98fa5a",
+    "xml/flex/fri07_absolute_auto_margin_insets__content_box_ltr.xml": "d8c8dffa9ad6165ac6703a270ba56643a67de0a5a5506de2cfb42c4eb6166b0a",
+    "xml/flex/fri07_absolute_auto_margin_insets__content_box_rtl.xml": "7f3b68f143f3b317b451e90ded86d460ca76f3e1542198a0b032bd6a0920ae84",
+    "xml/flex/fri07_cross_auto_margin_overflow__border_box_ltr.xml": "1ef84985e512ff8734cdf7a275bf96f6cc04b006fe2aa5cafb6216d48849a7ca",
+    "xml/flex/fri07_cross_auto_margin_overflow__border_box_rtl.xml": "d4f1c963af50d1f7028b88020e84843a722a79c77e77959d9da0fbdf771b8859",
+    "xml/flex/fri07_cross_auto_margin_overflow__content_box_ltr.xml": "c3bba49974e5ac29887d50a2e699da15151af98a127109e3c3f1082b4dee11fd",
+    "xml/flex/fri07_cross_auto_margin_overflow__content_box_rtl.xml": "49cdf5ff27bb86c2367847fb0fcf582ad724eeb7f9498ddd76d519d3baa14615",
+    "xml/generation-reports/all.json": "8751e7d27e4628f59fd089cc7c3246004a6f6aad669eba73a51e47be818a12a0"
+  }
+}

@@ -222,6 +222,18 @@ and BR observations, and the declared Grid references for each case.
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri06-subgrid-representatives
 ~~~
 
+The [FRI07 ordinary Flex box edition](../../tests/layout/browser_parity/captured/fri07-ordinary-flex-boxes/qualification.json)
+covers cross auto-margin overflow and absolute auto-margin insets in both box
+modes and directions. The overflow source uses an absolute Flex root in the
+initial containing block and records four scroll-span pairs. The inset source
+uses a relative Flex root in the Auto Body frame. The eight captures retain the
+authored automatic margins and insets and compare the complete historical
+rectangle trees.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri07-ordinary-flex-boxes
+~~~
+
 ## Grid Lanes original diagnostics
 
 The [Grid Lanes diagnostic receipt](../../tests/layout/browser_parity/captured/grid-lanes-axis-original-diagnostics/diagnostics.json)

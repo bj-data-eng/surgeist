@@ -1759,9 +1759,15 @@ pub(crate) fn matching_metadata_is_valid(
     metadata: &Value,
 ) -> bool {
     match category {
-        MatchingCategory::Geometry => {
-            metadata["context"] == "absolute-local" && metadata["root_size"].is_null()
-        }
+        MatchingCategory::Geometry => match metadata["context"].as_str() {
+            Some("absolute-local") => metadata["root_size"].is_null(),
+            Some("block-flow") => {
+                metadata["root_position"] == "relative"
+                    && metadata["atomic_paragraphs"].is_null()
+                    && metadata["grid_reference_owners"].is_null()
+            }
+            _ => false,
+        },
         MatchingCategory::Fri06Subgrid => {
             let Some((mode, owners)) = fri06_subgrid_profile(source) else {
                 return false;
