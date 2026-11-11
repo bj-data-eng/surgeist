@@ -61,7 +61,7 @@ fn surgeist_blend_set_sat(color: vec3<f32>, saturation: f32) -> vec3<f32> {
     let minimum = min(min(color.r, color.g), color.b);
     let maximum = max(max(color.r, color.g), color.b);
     let span = maximum - minimum;
-    let chromatic = vec3<bool>(span > 0.0);
+    let chromatic = vec3<bool>(maximum > minimum);
     let at_minimum = color == vec3<f32>(minimum);
     let at_maximum = color == vec3<f32>(maximum);
     let interior = chromatic & !at_minimum & !at_maximum;

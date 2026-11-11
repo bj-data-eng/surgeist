@@ -454,6 +454,18 @@ fn nonseparable_gpu_helpers_preserve_original_extrema_and_channel_identity() {
             },
             [0.0, 0.25, 0.5],
         ),
+        // The endpoints are normal even when their difference flushes to zero.
+        (
+            SetSat {
+                color: [
+                    f32::MIN_POSITIVE,
+                    f32::MIN_POSITIVE.next_up(),
+                    f32::MIN_POSITIVE,
+                ],
+                saturation: 0.5,
+            },
+            [0.0, 0.5, 0.0],
+        ),
     ];
     let permutations = [
         [0, 1, 2],
