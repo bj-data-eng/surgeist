@@ -2227,6 +2227,7 @@ fn main() {
             "window-event-live-operations" => native_window_event_observes_its_live_standalone_dispatch(),
             "window-event-listeners" => native_window_registers_and_removes_guest_event_listeners(),
             "window-document-projection" => window_document::window_projects_the_live_document_and_node_brands(),
+            "window-global-event-target" => window_document::window_uses_the_real_global_event_target(),
             "window-timer-scheduling" => window_timers::window_schedules_and_cancels_after_guest_entry(),
             "native_window_exposes_dom_exception" => native_window_exposes_dom_exception(),
             "dom-exception-error-data" => {
@@ -2295,6 +2296,7 @@ fn main() {
     native_window_registers_and_removes_guest_event_listeners();
     window_timers::window_schedules_and_cancels_after_guest_entry();
     window_document::window_projects_the_live_document_and_node_brands();
+    window_document::window_uses_the_real_global_event_target();
     native_window_exposes_dom_exception();
     native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();
     native_window_dom_exception_admission_and_hook_collision();

@@ -40,3 +40,38 @@ pub(super) fn window_projects_the_live_document_and_node_brands() {
         .unwrap();
     assert_eq!(String::from_utf16(&result).unwrap(), "ok");
 }
+
+pub(super) fn window_uses_the_real_global_event_target() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        const trace = [];
+        function listener(event) {
+            const path = event.composedPath();
+            trace.push(this === window && event.target === window &&
+                event.currentTarget === window && path.length === 1 && path[0] === window);
+            event.preventDefault();
+        }
+        const api = EventTarget.prototype;
+        try { Reflect.apply(api.addEventListener, window, ["probe", listener, { once: true }]); }
+        catch (error) { return "Window was refused as an EventTarget"; }
+        const original = new Event("probe", { cancelable: true });
+        if (Reflect.apply(api.dispatchEvent, window, [original]) ||
+            original.target !== window || original.currentTarget !== null ||
+            original.composedPath().length !== 0 || trace.join(",") !== "true") {
+            return "the actual native Global route must expose the original Window";
+        }
+        const later = new Event("probe", { cancelable: true });
+        if (!Reflect.apply(api.dispatchEvent, window, [later]) || trace.length !== 1) {
+            return "a Window once listener must retire";
+        }
+        return "ok";
+    })()"#;
+    let result = host
+        .in_document(&permit, |scope| {
+            let value = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&result).unwrap(), "ok");
+}
