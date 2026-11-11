@@ -433,6 +433,45 @@ fn image_repeat_plan_rejects_round_and_space_with_typed_diagnostics() {
 }
 
 #[test]
+fn image_repeat_plan_reports_all_unsupported_axis_pairs_in_order() {
+    use PrimitiveOperation::{
+        BackgroundRepeatRound as RoundError, BackgroundRepeatSpace as SpaceError,
+    };
+    use RepeatMode::{NoRepeat, Repeat, Round, Space};
+
+    for (x, y, operation) in [
+        (NoRepeat, Round, RoundError),
+        (NoRepeat, Space, SpaceError),
+        (Repeat, Round, RoundError),
+        (Repeat, Space, SpaceError),
+        (Round, NoRepeat, RoundError),
+        (Round, Repeat, RoundError),
+        (Round, Round, RoundError),
+        (Round, Space, RoundError),
+        (Space, NoRepeat, SpaceError),
+        (Space, Repeat, SpaceError),
+        (Space, Round, RoundError),
+        (Space, Space, SpaceError),
+    ] {
+        let error = ImageRepeatPlan::try_new(BackgroundRepeat::new(x, y), Capabilities::CURRENT)
+            .expect_err("unsupported repeat pair must fail");
+        assert_eq!(
+            error.code(),
+            ErrorCode::UnsupportedPrimitive,
+            "{x:?}, {y:?}"
+        );
+        assert_eq!(
+            error.unsupported_primitive(),
+            Some(UnsupportedPrimitive::new(
+                PrimitiveFamily::ImageSampling,
+                operation
+            )),
+            "{x:?}, {y:?}"
+        );
+    }
+}
+
+#[test]
 fn fixed_background_layers_can_carry_viewport_coordinate_space() {
     let layer =
         StyleImageLayer::try_new(StyleImageSource::paint(Paint::from(Color::BLACK)).unwrap())
@@ -963,6 +1002,200 @@ fn background_stack_reports_unresolved_image_layers() {
 }
 
 #[test]
+fn background_unresolved_source_follows_clip_admission() {
+    use crate::{
+        RenderAttemptStatus, RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason,
+        RenderWork,
+    };
+
+    let mut path = Path::new();
+    path.move_to(Point::new(0.0, 0.0))
+        .line_to(Point::new(10.0, 0.0))
+        .line_to(Point::new(10.0, 10.0))
+        .close();
+    let clip = BackgroundClipGeometry::try_shape(Shape::path(path)).unwrap();
+    let source = StyleImageSource::unresolved(StyleResourceRef::try_new(" hero.png ").unwrap());
+    let layer = StyleImageLayer::try_new(source)
+        .unwrap()
+        .with_repeat(BackgroundRepeat::new(RepeatMode::Space, RepeatMode::Round))
+        .with_attachment(BackgroundAttachment::Fixed);
+    let rect = Rect::new(0.0, 0.0, 20.0, 20.0);
+    let input = BackgroundNormalizationInput::try_new(
+        BackgroundStack::try_new(None, vec![BackgroundLayer::new(layer)]).unwrap(),
+        BackgroundAreas::try_new(rect, rect, rect).unwrap(),
+    )
+    .unwrap()
+    .with_layer_clip_overrides(vec![Some(clip)])
+    .unwrap();
+
+    for limit in [3, 4] {
+        let mut accounting = style_work_limit(RenderWork::PathElementVisits, limit);
+        let error = input
+            .normalize(Capabilities::CURRENT, &mut accounting)
+            .unwrap_err();
+        let report = accounting.last_attempt().unwrap();
+        if limit == 3 {
+            assert_style_refusal(
+                &error,
+                report,
+                RenderRefusal {
+                    phase: RenderPhase::Attempt,
+                    quantity: RenderQuantity::Work(RenderWork::PathElementVisits),
+                    current: 3,
+                    amount: 1,
+                    reason: RenderRefusalReason::Limit { limit: 3 },
+                },
+            );
+        } else {
+            assert_eq!(error.code(), ErrorCode::UnresolvedResource);
+            let diagnostic = error.unresolved_resource_diagnostic().unwrap();
+            assert_eq!(diagnostic.kind(), UnresolvedResourceKind::Image);
+            assert_eq!(diagnostic.identifier(), " hero.png ");
+            assert_eq!(
+                error.message(),
+                "image resource  hero.png  could not be resolved"
+            );
+            assert_eq!(
+                report.status(),
+                RenderAttemptStatus::Failed(ErrorCode::UnresolvedResource)
+            );
+            assert_eq!(report.attempt().unwrap().refusal(), None);
+        }
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::CommandVisits), 1);
+        assert_eq!(usage.work(RenderWork::PathElementVisits), limit);
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 0);
+        assert_eq!(usage.work(RenderWork::RepeatTiles), 0);
+        assert_eq!(usage.work(RenderWork::CommandsEmitted), 0);
+        assert_style_failure_releases_backing(report);
+    }
+}
+
+#[test]
+fn background_normalization_checks_placement_then_repeat_then_attachment() {
+    use crate::{
+        RenderAttemptStatus, RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason,
+        RenderWork,
+    };
+
+    let mixed_repeat = BackgroundRepeat::new(RepeatMode::Space, RepeatMode::Round);
+    let no_repeat = BackgroundRepeat::new(RepeatMode::NoRepeat, RepeatMode::NoRepeat);
+    let rect = Rect::new(0.0, 0.0, 20.0, 20.0);
+    let areas = BackgroundAreas::try_new(rect, rect, rect).unwrap();
+    let normalize = |width, repeat, accounting: &mut crate::RenderAccountingContext| {
+        let image = ResolvedImageResource::try_new(ImageId::new(7), Size::new(width, 4.0)).unwrap();
+        let layer = StyleImageLayer::try_new(StyleImageSource::resolved(image))
+            .unwrap()
+            .with_repeat(repeat)
+            .with_attachment(BackgroundAttachment::Fixed);
+        let stack = BackgroundStack::try_new(None, vec![BackgroundLayer::new(layer)]).unwrap();
+        BackgroundNormalizationInput::try_new(stack, areas)
+            .unwrap()
+            .normalize(Capabilities::CURRENT, accounting)
+            .unwrap_err()
+    };
+
+    let mut accounting = style_work_limit(RenderWork::CoordinateVisits, 1);
+    let error = normalize(4.0, mixed_repeat, &mut accounting);
+    let report = accounting.last_attempt().unwrap();
+    assert_style_refusal(
+        &error,
+        report,
+        RenderRefusal {
+            phase: RenderPhase::Attempt,
+            quantity: RenderQuantity::Work(RenderWork::CoordinateVisits),
+            current: 0,
+            amount: 2,
+            reason: RenderRefusalReason::Limit { limit: 1 },
+        },
+    );
+    let assert_prefix = |report: &crate::RenderStandaloneReport, coordinates, tiles| {
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::CommandVisits), 1);
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), coordinates);
+        assert_eq!(usage.work(RenderWork::RepeatTiles), tiles);
+        assert_eq!(usage.work(RenderWork::CommandsEmitted), 0);
+        assert_style_failure_releases_backing(report);
+    };
+    assert_prefix(report, 0, 0);
+
+    let mut accounting = crate::RenderAccountingContext::default();
+    for (width, repeat, coordinates, tiles, field) in [
+        (
+            0.0,
+            mixed_repeat,
+            0,
+            0,
+            Some("image placement intrinsic size"),
+        ),
+        (4.0, mixed_repeat, 2, 0, None),
+        (
+            4.0,
+            no_repeat,
+            6,
+            1,
+            Some("background attachment coordinate space"),
+        ),
+    ] {
+        let error = normalize(width, repeat, &mut accounting);
+        let code = if let Some(field) = field {
+            assert_eq!(
+                error.invalid_value_diagnostic().map(InvalidValue::field),
+                Some(field)
+            );
+            ErrorCode::InvalidInput
+        } else {
+            assert_eq!(
+                error.unsupported_primitive(),
+                Some(UnsupportedPrimitive::new(
+                    PrimitiveFamily::ImageSampling,
+                    PrimitiveOperation::BackgroundRepeatRound,
+                ))
+            );
+            ErrorCode::UnsupportedPrimitive
+        };
+        assert_eq!(error.code(), code);
+        let report = accounting.last_attempt().unwrap();
+        assert_eq!(report.status(), RenderAttemptStatus::Failed(code));
+        assert_eq!(report.attempt().unwrap().refusal(), None);
+        assert_prefix(report, coordinates, tiles);
+    }
+}
+
+fn style_work_limit(work: crate::RenderWork, limit: u64) -> crate::RenderAccountingContext {
+    use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+
+    let limits = RenderLimits::new().with_work_limit(work, limit).unwrap();
+    RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits))
+}
+
+fn assert_style_refusal(
+    error: &crate::Error,
+    report: &crate::RenderStandaloneReport,
+    refusal: crate::RenderRefusal,
+) {
+    use crate::{RenderAccountingError, RenderAttemptStatus};
+
+    assert_eq!(error.code(), ErrorCode::Accounting);
+    assert_eq!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::Refused(refusal))
+    );
+    assert_eq!(report.status(), RenderAttemptStatus::Refused);
+    assert_eq!(report.attempt().unwrap().refusal(), Some(refusal));
+}
+
+fn assert_style_failure_releases_backing(report: &crate::RenderStandaloneReport) {
+    use crate::{RenderResource, RenderWork};
+
+    let usage = report.attempt().unwrap().usage();
+    assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+    assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+    assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+    assert_eq!(report.cleanup_fault(), None);
+}
+
+#[test]
 fn background_normalization_rejects_clip_override_length_mismatch() {
     let layer = BackgroundLayer::new(
         StyleImageLayer::try_new(StyleImageSource::paint(Paint::from(Color::BLACK)).unwrap())
@@ -1179,6 +1412,134 @@ fn normalized_outline_command(
     match command.kind() {
         NormalizedBoxDecorationCommandKind::Outline(outline) => outline,
         NormalizedBoxDecorationCommandKind::Border(_) => panic!("expected outline command"),
+    }
+}
+
+#[test]
+fn box_decoration_reports_the_ordered_border_and_outline_prefix() {
+    use crate::{
+        RenderAttemptStatus, RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason,
+        RenderWork,
+    };
+
+    enum Expected {
+        TopOnly,
+        Unsupported(PrimitiveOperation),
+        CommandRefusal,
+        OutlineGeometry,
+    }
+    use Expected::{CommandRefusal, OutlineGeometry, TopOnly, Unsupported};
+
+    let fragment = BoxDecorationFragment::try_new(
+        box_decoration_test_areas(),
+        Radii::try_all(0.0).unwrap(),
+        BoxDecorationBreak::Slice,
+    )
+    .unwrap();
+    for (groove_width, outline_style, outline_width, expected, paint, emitted, coordinates) in [
+        (0.0, OutlineStyle::Auto, 0.0, TopOnly, 2, 1, 0),
+        (
+            2.0,
+            OutlineStyle::Auto,
+            0.0,
+            Unsupported(PrimitiveOperation::BorderGrooveStyle),
+            2,
+            1,
+            0,
+        ),
+        (2.0, OutlineStyle::Auto, 0.0, CommandRefusal, 2, 0, 0),
+        (
+            0.0,
+            OutlineStyle::Auto,
+            2.0,
+            Unsupported(PrimitiveOperation::OutlineAutoStyle),
+            2,
+            1,
+            0,
+        ),
+        (0.0, OutlineStyle::None, 2.0, TopOnly, 2, 1, 0),
+        (0.0, OutlineStyle::Solid, 2.0, OutlineGeometry, 4, 1, 4),
+    ] {
+        let border = box_decoration_edges(
+            solid_border(2.0, Color::BLACK),
+            BorderSide::try_new(BorderStyle::Groove, groove_width, Color::BLACK).unwrap(),
+            BorderSide::try_new(BorderStyle::Hidden, 2.0, Color::BLACK).unwrap(),
+            BorderSide::try_new(BorderStyle::None, 2.0, Color::BLACK).unwrap(),
+        );
+        let outline = Outline::try_new(outline_style, outline_width, Color::BLACK, -100.0).unwrap();
+        let input =
+            BoxDecorationInput::try_new(Some(border), Some(outline), vec![fragment.clone()])
+                .unwrap();
+        let mut accounting = if matches!(expected, CommandRefusal) {
+            style_work_limit(RenderWork::CommandsEmitted, 0)
+        } else {
+            crate::RenderAccountingContext::default()
+        };
+        let result = input.normalize(Capabilities::CURRENT, &mut accounting);
+        let report = accounting.last_attempt().unwrap();
+        let attempt = report.attempt().unwrap();
+        let usage = attempt.usage();
+        assert_eq!(usage.work(RenderWork::PaintVisits), paint);
+        assert_eq!(usage.work(RenderWork::CommandsEmitted), emitted);
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), coordinates);
+
+        if matches!(expected, TopOnly) {
+            let output = result.unwrap();
+            assert_eq!(output.commands().len(), 1);
+            let top = normalized_border_command(&output.commands()[0]);
+            assert_eq!(top.side(), BoxSide::Top);
+            assert_eq!(top.style(), &NormalizedBorderStyle::Solid);
+            assert_eq!(top.width(), 2.0);
+            assert_eq!(top.fragment_index(), 0);
+            assert_eq!(top.target_rect(), Rect::new(0.0, 0.0, 100.0, 40.0));
+            assert_eq!(top.break_mode(), BoxDecorationBreak::Slice);
+            assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+            continue;
+        }
+
+        let error = result.unwrap_err();
+        match expected {
+            Unsupported(operation) => {
+                assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);
+                assert_eq!(
+                    error.unsupported_primitive(),
+                    Some(UnsupportedPrimitive::new(
+                        PrimitiveFamily::BoxDecorations,
+                        operation
+                    ))
+                );
+                assert_eq!(
+                    report.status(),
+                    RenderAttemptStatus::Failed(ErrorCode::UnsupportedPrimitive)
+                );
+                assert_eq!(attempt.refusal(), None);
+            }
+            CommandRefusal => assert_style_refusal(
+                &error,
+                report,
+                RenderRefusal {
+                    phase: RenderPhase::Attempt,
+                    quantity: RenderQuantity::Work(RenderWork::CommandsEmitted),
+                    current: 0,
+                    amount: 1,
+                    reason: RenderRefusalReason::Limit { limit: 0 },
+                },
+            ),
+            OutlineGeometry => {
+                assert_eq!(error.code(), ErrorCode::InvalidInput);
+                assert_eq!(
+                    error.invalid_value_diagnostic().map(InvalidValue::field),
+                    Some("outline target rect")
+                );
+                assert_eq!(
+                    report.status(),
+                    RenderAttemptStatus::Failed(ErrorCode::InvalidInput)
+                );
+                assert_eq!(attempt.refusal(), None);
+            }
+            TopOnly => unreachable!(),
+        }
+        assert_style_failure_releases_backing(report);
     }
 }
 
