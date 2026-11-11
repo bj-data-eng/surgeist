@@ -1576,11 +1576,18 @@ fn preferred_main_max_content_basis_uses_the_bounded_authored_cross_size() {
 
 #[test]
 fn preferred_main_max_content_ratio_cross_keeps_natural_lane_packing_indefinite() {
+    for alignment in [Some(AlignItems::Start), None] {
+        assert_natural_lane_ratio_cross_is_indefinite(alignment);
+    }
+}
+
+fn assert_natural_lane_ratio_cross_is_indefinite(alignment: Option<AlignItems>) {
     let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let tree = nested_ratio_flex::<f64>(PreferredSizeOf::px(100.0), PreferredSizeOf::AUTO, 2.0);
     let mut item = tree.node_input(1).clone();
     item.justify_self = Some(AlignItems::Start);
-    item.align_self = Some(AlignItems::Start);
+    item.align_self = alignment;
+    item.min_size.height = MinSizeOf::ZERO;
     let mut leaf = tree.node_input(2).clone();
     leaf.size.height = PreferredSizeOf::percent(1.0);
     let tree = tree
@@ -1616,6 +1623,7 @@ fn preferred_main_max_content_ratio_cross_keeps_natural_lane_packing_indefinite(
             .size
             .height,
         10.0,
+        "stacking alignment {alignment:?}",
     );
 }
 
