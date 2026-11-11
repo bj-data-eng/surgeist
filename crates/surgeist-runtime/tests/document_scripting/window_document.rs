@@ -135,6 +135,80 @@ pub(super) fn native_document_retirement_releases_registered_callbacks() {
     host.stop().into_session().unwrap();
 }
 
+pub(super) fn document_dispatch_preserves_native_observer_and_refusal() {
+    let cancellation = Arc::new(cancel());
+    let observer_calls = Arc::new(AtomicUsize::new(0));
+    let (mut host, _) = prepare_event_window_with(cancellation.clone(), |dom, registry, top| {
+        let document = DomEventTarget::from(top.document().node());
+        let window = DomEventTarget::from(top.global());
+        for (kind, refuse) in [("observed", false), ("refused", true)] {
+            let expected_document = document.clone();
+            let expected_window = window.clone();
+            let calls = observer_calls.clone();
+            let cancel_dispatch = cancellation.clone();
+            registry
+                .add_listener(
+                    dom,
+                    window.clone(),
+                    &kind.encode_utf16().collect::<Vec<_>>(),
+                    DomEventCallback::new(move |_, _, _, event| {
+                        assert_eq!(event.target().as_ref(), Some(&expected_document));
+                        assert_eq!(event.current_target().as_ref(), Some(&expected_window));
+                        assert_eq!(
+                            event.composed_path().collect::<Vec<_>>(),
+                            [expected_document.clone(), expected_window.clone()]
+                        );
+                        calls.fetch_add(1, Ordering::Relaxed);
+                        if refuse {
+                            cancel_dispatch.store(true, Ordering::Relaxed);
+                        } else {
+                            event.prevent_default();
+                        }
+                        Ok(())
+                    }),
+                    DomEventListenerOptions {
+                        capture: true,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+        }
+    });
+    let permit = host.permit().unwrap();
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            let reached = false;
+            window.document.addEventListener("observed", event => {
+                reached = event.defaultPrevented;
+            });
+            return !window.document.dispatchEvent(new Event("observed", { cancelable: true }))
+                && reached;
+        })())"#,
+        1.0,
+    );
+    assert_eq!(observer_calls.load(Ordering::Relaxed), 1);
+    let first = native_failure(host.in_document(&permit, |scope| {
+        let source = "window.document.dispatchEvent(new Event('refused'))";
+        scope
+            .evaluate(&source.encode_utf16().collect::<Vec<_>>())
+            .map(drop)
+    }));
+    let cause = first.cause::<DocumentGuestEventError>().unwrap();
+    assert!(matches!(
+        cause,
+        DocumentGuestEventError::Dispatch(DomEventDispatchError::Dom(DomError::Cancelled))
+    ));
+    cancellation.store(false, Ordering::Relaxed);
+    let repeated = native_failure(host.checkpoint());
+    assert!(std::ptr::eq(
+        cause,
+        repeated.cause::<DocumentGuestEventError>().unwrap()
+    ));
+    assert_eq!(observer_calls.load(Ordering::Relaxed), 2);
+}
+
 fn count_documents(host: &DocumentScriptHost) -> usize {
     let snapshot = host.snapshot().unwrap();
     snapshot

@@ -450,8 +450,14 @@ fn native_window_relation_work_is_admitted_at_the_callback() {
 }
 
 fn prepare_event_window() -> (DocumentScriptHost, DomHostedTopLevel) {
+    prepare_event_window_with(Arc::new(cancel()), |_, _, _| {})
+}
+
+fn prepare_event_window_with(
+    cancellation: Arc<AtomicBool>,
+    configure: impl FnOnce(&mut DomEventDom<'_>, &mut DomEventDispatcher<()>, DomHostedTopLevel),
+) -> (DocumentScriptHost, DomHostedTopLevel) {
     let (mut session, top) = setup();
-    let cancellation = Arc::new(cancel());
     let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
         registrations: 16,
         pending_events: 4,
@@ -461,6 +467,7 @@ fn prepare_event_window() -> (DocumentScriptHost, DomHostedTopLevel) {
     })
     .unwrap();
     registry.bind(&mut session.dom(), &cancellation).unwrap();
+    configure(&mut session.dom(), &mut registry, top);
     let mut registry = Some(registry);
     let host = prepare(session, cancellation)
         .enable_with_guest_event_registry(
@@ -2228,6 +2235,7 @@ fn main() {
             "window-event-listeners" => native_window_registers_and_removes_guest_event_listeners(),
             "window-document-projection" => window_document::window_projects_the_live_document_and_node_brands(),
             "window-document-retirement" => window_document::native_document_retirement_releases_registered_callbacks(),
+            "window-document-native-observer" => window_document::document_dispatch_preserves_native_observer_and_refusal(),
             "window-global-event-target" => window_document::window_uses_the_real_global_event_target(),
             "window-timer-scheduling" => window_timers::window_schedules_and_cancels_after_guest_entry(),
             "native_window_exposes_dom_exception" => native_window_exposes_dom_exception(),
@@ -2298,6 +2306,7 @@ fn main() {
     window_timers::window_schedules_and_cancels_after_guest_entry();
     window_document::window_projects_the_live_document_and_node_brands();
     window_document::native_document_retirement_releases_registered_callbacks();
+    window_document::document_dispatch_preserves_native_observer_and_refusal();
     window_document::window_uses_the_real_global_event_target();
     native_window_exposes_dom_exception();
     native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();

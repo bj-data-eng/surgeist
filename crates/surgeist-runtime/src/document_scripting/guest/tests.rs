@@ -185,6 +185,25 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     assert!(bound.is_none());
     let exact_activation = host.guest_events().unwrap().budget.used.get();
     let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "window.document.custodyMarker = Symbol(); globalThis.marker = window.document.custodyMarker",
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    host.checkpoint().unwrap();
+    host.engine
+        .as_mut()
+        .unwrap()
+        .process
+        .execution()
+        .memory_pressure();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "window.document.custodyMarker === marker")
+    })
+    .unwrap();
     assert!(
         host.remove_guest_event_listener(&permit, original_registration)
             .unwrap()
