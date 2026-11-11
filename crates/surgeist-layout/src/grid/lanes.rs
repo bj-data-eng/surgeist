@@ -3647,6 +3647,7 @@ where
     let preferred_size = grid_lanes_child_sizing_preflight(child_style, containing_physical_size)
         .map_err(|error| sizing_resolution_error(child, error))?;
     let logical_preferred_size = flow_axes.logical_size(preferred_size);
+    let logical_deferred = flow_axes.logical_size(child_style.flex_preferred_axes);
     let (margin, known, parent, available) = {
         let unresolved_margin = flow_axes
             .zip_physical_edges_with_inline_extent(
@@ -3698,7 +3699,8 @@ where
                     Some(available_inline)
                 } else {
                     definite_preferred_size(logical_preferred_size.inline).or_else(|| {
-                        (justify_self == AlignItems::Stretch).then_some(available_inline)
+                        (!logical_deferred.inline && justify_self == AlignItems::Stretch)
+                            .then_some(available_inline)
                     })
                 };
                 logical_available.inline = AxisSizingRequestOf::new(
@@ -3735,8 +3737,10 @@ where
                     Some(available_block)
                 } else {
                     definite_preferred_size(logical_preferred_size.block).or_else(|| {
-                        (align_self == AlignItems::Stretch && child_style.aspect_ratio.is_none())
-                            .then_some(available_block)
+                        (!logical_deferred.block
+                            && align_self == AlignItems::Stretch
+                            && child_style.aspect_ratio.is_none())
+                        .then_some(available_block)
                     })
                 };
                 logical_available.block = AxisSizingRequestOf::new(

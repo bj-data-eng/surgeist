@@ -505,7 +505,16 @@ where
     } else {
         None
     };
-    let child_known = if use_content_sizing_for_base {
+    let preferred_basis_probe =
+        use_content_sizing_for_base && (child_owned_axes.width || child_owned_axes.height);
+    let base_cross = constants
+        .axes
+        .cross_size(size)
+        .or(stretched_cross)
+        .map(clamp_cross);
+    let child_known = if preferred_basis_probe {
+        constants.axes.with_cross_size(size, base_cross)
+    } else if use_content_sizing_for_base {
         constants.axes.with_cross_size(
             size,
             stretched_cross
@@ -515,11 +524,6 @@ where
     } else {
         size
     };
-    let base_cross = constants
-        .axes
-        .cross_size(size)
-        .or(stretched_cross)
-        .map(clamp_cross);
     let child_known_for_base = constants.axes.size_from_main_cross(None, base_cross);
     let main_request = constants.axes.main_size(available);
     let content_basis_operation = if constants
@@ -571,8 +575,6 @@ where
     } else {
         child_known
     };
-    let preferred_basis_probe =
-        use_content_sizing_for_base && (child_owned_axes.width || child_owned_axes.height);
     let child_sizing = if preferred_basis_probe {
         child_sizing.with_axes(super::child_preferred_probe_axes(
             constants.axes,
