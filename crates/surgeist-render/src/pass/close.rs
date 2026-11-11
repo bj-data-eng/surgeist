@@ -3619,6 +3619,109 @@ mod repeated_proof_accounting_tests {
         lower_capture_proof_fixture, lower_filter_proof_fixture, measure_proof_work,
     };
 
+    #[test]
+    fn graph_close_preserves_transform_refusal_as_an_accounting_error() {
+        use crate::{RenderAttemptStatus, RenderPhase, RenderQuantity};
+
+        let plan = lower_capture_proof_fixture(
+            1,
+            true,
+            &crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096),
+        );
+        for (cap, amount) in [(0, 12), (31, 1), (32, 1), (37, 1), (38, 12)] {
+            let (result, report) =
+                measure_proof_work(RenderWork::CoordinateVisits, cap, |account| {
+                    ClosedExecutableGraph::try_from_lowered(
+                        plan.clone(),
+                        &account.at(RenderPhase::FramePrepare),
+                    )
+                    .map(|closed| closed.is_ok())
+                });
+            let error = result.expect_err("coordinate refusal must escape the graph proof");
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("expected coordinate refusal: {error:?}");
+            };
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::CoordinateVisits)
+            );
+            assert_eq!((refusal.current(), refusal.amount()), (cap, amount));
+            let attempt = report.attempt().unwrap();
+            assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
+            let usage = attempt.phase_usage(RenderPhase::FramePrepare);
+            assert_eq!(usage.work(RenderWork::CoordinateVisits), cap);
+            assert_eq!(attempt.usage().live(RenderResource::ScratchCpuBytes), 0);
+        }
+        let closed = ClosedExecutableGraph::try_from_lowered(plan, &Account::for_test()).unwrap();
+        assert!(
+            closed.is_ok(),
+            "the same authored graph must close with sufficient budget"
+        );
+    }
+
+    #[test]
+    fn overflowing_capture_product_is_ineligible_after_its_first_finite_check() {
+        use crate::RenderPhase;
+
+        let plan = lower_capture_proof_fixture(
+            1,
+            true,
+            &crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096),
+        );
+        let (pass, span) = plan
+            .passes
+            .iter()
+            .find_map(|pass| {
+                let RuntimePassKind::VelloCapture(Some(RuntimeVelloCapture::Span(span))) =
+                    &pass.kind
+                else {
+                    return None;
+                };
+                (span.scope == RuntimeVelloSpanScope::LayerSource).then_some((pass, span))
+            })
+            .unwrap();
+        let RuntimeResultBinding::Resource(target) = pass.result else {
+            panic!("a span capture must produce a resource");
+        };
+        let spatial = RuntimeSpatialDescriptor {
+            device_origin: (0, 0),
+            texel_origin: Point::new(0.0, 0.0),
+            raster_scale: 2.0,
+            ..plan
+                .resources
+                .iter()
+                .find(|resource| resource.id == target)
+                .unwrap()
+                .spatial
+        };
+        let mut span = span.clone();
+        span.capture_transform = Transform::scale(f64::MAX, 1.0).unwrap();
+        let work = RuntimeVelloCapture::Span(span);
+        let (result, report) = measure_proof_work(RenderWork::CoordinateVisits, 76, |account| {
+            executable_vello_capture_facts(
+                pass.id,
+                target,
+                &work,
+                spatial,
+                &account.at(RenderPhase::FramePrepare),
+            )
+            .map(|facts| facts.is_none())
+        });
+        assert!(
+            result.unwrap(),
+            "a nonfinite capture matrix has no executable proof"
+        );
+        let attempt = report.attempt().unwrap();
+        assert!(attempt.refusal().is_none());
+        assert_eq!(
+            attempt
+                .phase_usage(RenderPhase::FramePrepare)
+                .work(RenderWork::CoordinateVisits),
+            38 + 32 + 1,
+        );
+    }
+
     fn shared<T: Clone>(values: &[T]) -> SharedValue<Vec<T>> {
         let account = Account::for_test();
         let mut backing = account.retained(values.len()).unwrap();
@@ -4952,70 +5055,96 @@ pub(super) fn executable_vello_capture_facts(
         }
         RuntimeVelloCapture::ClipCoverage(coverage) => clip_coverage_is_closed(coverage, account)?,
     };
-    Ok((|| {
-        if !valid_work
-            || spatial.device_extent.width() == 0
-            || spatial.device_extent.height() == 0
-            || !spatial.texel_origin.x().is_finite()
-            || !spatial.texel_origin.y().is_finite()
-            || !spatial.raster_scale.is_finite()
-            || spatial.raster_scale <= 0.0
-        {
-            return None;
-        }
-        let expected_device_x = spatial.texel_origin.x() * spatial.raster_scale;
-        let expected_device_y = spatial.texel_origin.y() * spatial.raster_scale;
-        let tolerance = f64::EPSILON
-            * spatial
-                .raster_scale
-                .abs()
-                .max(expected_device_x.abs())
-                .max(expected_device_y.abs())
-                .max(1.0)
-            * 8.0;
-        if (expected_device_x - f64::from(spatial.device_origin.0)).abs() > tolerance
-            || (expected_device_y - f64::from(spatial.device_origin.1)).abs() > tolerance
-        {
-            return None;
-        }
-        let grid_transform =
-            Transform::translation(-spatial.texel_origin.x(), -spatial.texel_origin.y())
-                .ok()?
-                .then(Transform::scale(spatial.raster_scale, spatial.raster_scale).ok()?)
-                .ok()?;
-        let initial_transform = match work {
-            RuntimeVelloCapture::Span(span) => match span.source_space {
-                crate::frame::CompositeSourceSpace::SurfaceGrid => {
+    if !valid_work
+        || spatial.device_extent.width() == 0
+        || spatial.device_extent.height() == 0
+        || !spatial.texel_origin.x().is_finite()
+        || !spatial.texel_origin.y().is_finite()
+        || !spatial.raster_scale.is_finite()
+        || spatial.raster_scale <= 0.0
+    {
+        return Ok(None);
+    }
+    let expected_device_x = spatial.texel_origin.x() * spatial.raster_scale;
+    let expected_device_y = spatial.texel_origin.y() * spatial.raster_scale;
+    let tolerance = f64::EPSILON
+        * spatial
+            .raster_scale
+            .abs()
+            .max(expected_device_x.abs())
+            .max(expected_device_y.abs())
+            .max(1.0)
+        * 8.0;
+    if (expected_device_x - f64::from(spatial.device_origin.0)).abs() > tolerance
+        || (expected_device_y - f64::from(spatial.device_origin.1)).abs() > tolerance
+    {
+        return Ok(None);
+    }
+    let (Ok(translation), Ok(scale)) = (
+        Transform::translation(-spatial.texel_origin.x(), -spatial.texel_origin.y()),
+        Transform::scale(spatial.raster_scale, spatial.raster_scale),
+    ) else {
+        return Ok(None);
+    };
+    let Some(grid_transform) = compose_capture_transform(translation, scale, account)? else {
+        return Ok(None);
+    };
+    let initial_transform = match work {
+        RuntimeVelloCapture::Span(span) => {
+            let source = match (span.source_space, span.scope) {
+                (crate::frame::CompositeSourceSpace::SurfaceGrid, _) => {
                     if span.parent_to_surface != Transform::identity() {
-                        return None;
+                        return Ok(None);
                     }
-                    span.capture_transform.then(grid_transform).ok()?
+                    span.capture_transform
                 }
-                crate::frame::CompositeSourceSpace::LayerLocal => match span.scope {
-                    RuntimeVelloSpanScope::CurrentParent => span
-                        .capture_transform
-                        .then(span.parent_to_surface)
-                        .ok()?
-                        .then(grid_transform)
-                        .ok()?,
-                    RuntimeVelloSpanScope::LayerSource => {
-                        span.capture_transform.then(grid_transform).ok()?
-                    }
-                },
-            },
-            RuntimeVelloCapture::ClipCoverage(_) => grid_transform,
-        };
-        Some(ExecutableVelloCaptureFacts {
-            pass,
-            target,
-            work: work.clone(),
-            initial_transform,
-            antialiasing: work.antialiasing(),
-            target_extent: spatial.device_extent,
-            texel_origin: spatial.texel_origin,
-            raster_scale: spatial.raster_scale,
-        })
-    })())
+                (
+                    crate::frame::CompositeSourceSpace::LayerLocal,
+                    RuntimeVelloSpanScope::CurrentParent,
+                ) => {
+                    let Some(source) = compose_capture_transform(
+                        span.capture_transform,
+                        span.parent_to_surface,
+                        account,
+                    )?
+                    else {
+                        return Ok(None);
+                    };
+                    source
+                }
+                (
+                    crate::frame::CompositeSourceSpace::LayerLocal,
+                    RuntimeVelloSpanScope::LayerSource,
+                ) => span.capture_transform,
+            };
+            let Some(initial) = compose_capture_transform(source, grid_transform, account)? else {
+                return Ok(None);
+            };
+            initial
+        }
+        RuntimeVelloCapture::ClipCoverage(_) => grid_transform,
+    };
+    Ok(Some(ExecutableVelloCaptureFacts {
+        pass,
+        target,
+        work: work.clone(),
+        initial_transform,
+        antialiasing: work.antialiasing(),
+        target_extent: spatial.device_extent,
+        texel_origin: spatial.texel_origin,
+        raster_scale: spatial.raster_scale,
+    }))
+}
+
+fn compose_capture_transform(
+    source: Transform,
+    next: Transform,
+    account: &Account,
+) -> Result<Option<Transform>> {
+    match source.then_in(next, account) {
+        Err(error) if error.code() == crate::ErrorCode::InvalidInput => Ok(None),
+        result => result.map(Some),
+    }
 }
 
 fn clip_coverage_is_closed(coverage: &RuntimeClipCoverage, account: &Account) -> Result<bool> {

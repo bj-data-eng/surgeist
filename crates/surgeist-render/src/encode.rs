@@ -110,15 +110,10 @@ fn clip_coverage_transform(
     initial_transform: Transform,
     account: &Account,
 ) -> Result<Transform> {
-    let compose = |source: Transform, destination: Transform| {
-        let product = affine_product(destination.into(), source.into(), account)?;
-        Transform::try_new_in(product.as_coeffs(), account)
-    };
-    let clip_transform = clip
-        .coordinate_space()
-        .map_or(Transform::IDENTITY, CoordinateSpaceTag::transform);
-    let clip_in_parent = compose(clip_transform, transform)?;
-    compose(clip_in_parent, initial_transform)
+    clip.coordinate_space()
+        .map_or(Transform::IDENTITY, CoordinateSpaceTag::transform)
+        .then_in(transform, account)?
+        .then_in(initial_transform, account)
 }
 
 fn exact_fit_clip_circle(
