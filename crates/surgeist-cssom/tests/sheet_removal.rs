@@ -1,4 +1,5 @@
 //! CSSOM #remove-a-css-style-sheet, with retained-object lifetime selected by #840.
+use std::sync::atomic::AtomicBool;
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, name: &str) -> CssomInputVersion {
@@ -112,7 +113,8 @@ fn removal_keeps_sheet_rules_media_live_handles_and_historical_captures() {
         matches!(owner.commit(edit).unwrap().publication(), CssomPublication::Unchanged { revision: current } if current == &revision)
     );
     let mut edit = batch(&owner);
-    edit.insert_sheet_rule(&removed, "d {}", 1).unwrap();
+    edit.insert_sheet_rule(&removed, "d {}", 1, &AtomicBool::new(false))
+        .unwrap();
     owner.commit(edit).unwrap();
     assert_eq!(handle.css_rules(&owner).unwrap(), list);
     assert_eq!(list.length(&owner).unwrap(), 2);
@@ -391,6 +393,7 @@ fn removal_keeps_pending_replacement_and_its_terminal_work_on_the_same_sheet() {
                 base_location: "https://example.test/".into(),
             },
             CssomSheetInit::default(),
+            &AtomicBool::new(false),
         )
         .unwrap();
     let sheet = owner

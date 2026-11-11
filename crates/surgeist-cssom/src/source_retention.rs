@@ -138,7 +138,7 @@ impl State {
         self.source_traversal_steps(limits).map(|_| ())
     }
     fn source_traversal_steps(&self, limits: &CssomLimits) -> Result<usize, CssomError> {
-        let mut sources = CssSourceRetention::new(
+        let mut sources = CssSourceRetention::with_shared_original_utf16(
             limits.max_retained_source_bytes,
             limits.max_source_traversal_steps,
             limits.max_source_traversal_depth,
@@ -191,6 +191,9 @@ impl State {
                         }
                         sources.visit(rule.authored.as_ref())?;
                         sources.visit(rule.data.as_ref())?;
+                        if let Some(origin) = &rule.insertion_origin {
+                            sources.visit(origin)?;
+                        }
                         sources.visit(&rule.selector_input)?;
                         sources.visit(rule.admission_diagnostics.as_slice())?;
                     }

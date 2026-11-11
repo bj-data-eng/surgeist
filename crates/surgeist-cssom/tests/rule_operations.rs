@@ -1,3 +1,4 @@
+use std::sync::atomic::AtomicBool;
 use surgeist_css::diagnostic::CssRecoveryAction;
 use surgeist_css::rule::keyframes::CssParsedKeyframeSelectors;
 use surgeist_css::serialization::CssSerializationLimits;
@@ -126,17 +127,17 @@ fn sheet_preliminary_checks_and_group_index_have_distinct_source_precedence() {
     let root = roots(&owner.snapshot(), &sheet)[0].clone();
     let mut edit = batch(&owner);
     source_error(
-        edit.insert_sheet_rule(&sheet, "garbage", usize::MAX),
+        edit.insert_sheet_rule(&sheet, "garbage", usize::MAX, &AtomicBool::new(false)),
         CssomException::Syntax,
     );
     let mut edit = batch(&owner);
     source_error(
-        edit.insert_sheet_rule(&sheet, "@import 'x';", usize::MAX),
+        edit.insert_sheet_rule(&sheet, "@import 'x';", usize::MAX, &AtomicBool::new(false)),
         CssomException::Syntax,
     );
     let mut edit = batch(&owner);
     source_error(
-        edit.insert_sheet_rule(&sheet, "b {}", usize::MAX),
+        edit.insert_sheet_rule(&sheet, "b {}", usize::MAX, &AtomicBool::new(false)),
         CssomException::IndexSize,
     );
     let mut edit = batch(&owner);
@@ -160,24 +161,29 @@ fn initial_layer_and_whole_list_namespace_state_are_separate() {
     let mut owner = store();
     let sheet = sheet(&mut owner, "", false);
     let mut edit = batch(&owner);
-    edit.insert_sheet_rule(&sheet, "@layer seed;", 0).unwrap();
-    edit.insert_sheet_rule(&sheet, "@import 'x';", 1).unwrap();
+    edit.insert_sheet_rule(&sheet, "@layer seed;", 0, &AtomicBool::new(false))
+        .unwrap();
+    edit.insert_sheet_rule(&sheet, "@import 'x';", 1, &AtomicBool::new(false))
+        .unwrap();
     owner.commit(edit).unwrap();
     let mut edit = batch(&owner);
     source_error(
-        edit.insert_sheet_rule(&sheet, "@namespace p 'urn:p';", 2),
+        edit.insert_sheet_rule(&sheet, "@namespace p 'urn:p';", 2, &AtomicBool::new(false)),
         CssomException::InvalidState,
     );
     let mut edit = batch(&owner);
-    let (_, ticket) = edit.insert_sheet_rule(&sheet, "@import 'y';", 1).unwrap();
+    let (_, ticket) = edit
+        .insert_sheet_rule(&sheet, "@import 'y';", 1, &AtomicBool::new(false))
+        .unwrap();
     let added = owner.commit(edit).unwrap().rule(&ticket).unwrap().clone();
     assert_eq!(roots(&owner.snapshot(), &sheet)[1], added);
     let mut edit = batch(&owner);
-    edit.insert_sheet_rule(&sheet, "b {}", 3).unwrap();
+    edit.insert_sheet_rule(&sheet, "b {}", 3, &AtomicBool::new(false))
+        .unwrap();
     owner.commit(edit).unwrap();
     let mut edit = batch(&owner);
     source_error(
-        edit.insert_sheet_rule(&sheet, "@import 'z';", 4),
+        edit.insert_sheet_rule(&sheet, "@import 'z';", 4, &AtomicBool::new(false)),
         CssomException::HierarchyRequest,
     );
 }

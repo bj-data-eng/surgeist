@@ -195,11 +195,11 @@ typed ingress.
 additional storage contract. CSS supplies checked actual backing usage and source
 traversal; CSSOM admits all source identities retained in its canonical/staged
 sheet, rule, declaration, descriptor, media and map records, including detached
-objects and edited values. Repeated references to the same snapshot count once;
-distinct parse snapshots count separately even when their text is equal. This
-does not redefine logical input/string limits. UTF16 preparation has separate CSS
-input-unit/output/work admission, and its shared original/map backing still needs
-CSSOM storage admission. Caller-owned historical snapshots do not count again
+objects and edited values. Repeated references to the same snapshot count once.
+Distinct snapshots count their normalized text, position checkpoints and UTF16
+map separately. If their original UTF16 input shares an allocation, its backing
+counts once by identity. UTF16 preparation has separate CSS input-unit, output
+and work limits. Caller-owned historical snapshots do not count again
 against the current state's logical quota; this is not process RSS accounting.
 Linked snapshots actively retained by the current context or selector-input
 contexts do count, including their transitive complete retained states. A link's
@@ -323,6 +323,11 @@ the same classified source occurrence. `add_sheet_rule` supplies the standard
 legacy defaults, builds its actual bounded input and delegates insertion, returning
 `-1`; absent index means the current end. `remove_sheet_rule` delegates deletion,
 defaulting its index to zero. These are CSS-standard aliases, not crate shims.
+Construction and sheet rule insertion borrow the caller's cancellation signal.
+CSS polls it during UTF16 preparation. Bounded UTF8 grammar runs between
+cancellation checks. An interrupted staging operation aborts its batch. The
+live object methods check again after preparing the commit and before publication.
+For a composed batch, the caller checks its signal at the composed commit fence.
 The CSSRule cssText setter is implemented as its standards-defined no-op.
 
 Rule list IDs remain the same while their current membership changes. Store

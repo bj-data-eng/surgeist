@@ -776,3 +776,29 @@ fn selected_block_declaration_constraint_applies_to_every_declaration_list() {
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
     }
 }
+
+#[test]
+fn rejected_utf16_rule_keeps_its_original_source_and_coordinates() {
+    use std::sync::Arc;
+    use surgeist_css::source::CssUtf16InputLimits;
+
+    let mut units = "/*😀\r\n".encode_utf16().collect::<Vec<_>>();
+    units.push(0xd800);
+    units.extend("*/ a {} b {}".encode_utf16());
+    let original = Arc::new(units);
+    let report = CssRuleSyntax::classify_utf16(
+        &CssParser::default(),
+        original.clone(),
+        CssUtf16InputLimits::default(),
+        || Ok::<(), std::convert::Infallible>(()),
+    )
+    .unwrap();
+    assert!(report.syntax().is_none());
+    let diagnostic = &report.diagnostics()[0];
+    let source = diagnostic.source().unwrap();
+    assert!(Arc::ptr_eq(source.original_utf16().unwrap(), &original));
+    assert_eq!(source.as_str(), "/*😀\n\u{fffd}*/ a {} b {}");
+    assert_eq!(source.original_utf16_range(2..6), Some(2..4));
+    assert_eq!(source.original_utf16_range(6..7), Some(4..6));
+    assert_eq!(source.original_utf16_range(7..10), Some(6..7));
+}

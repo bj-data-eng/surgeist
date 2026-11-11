@@ -1,11 +1,29 @@
 //! Source stylesheet construction, attributes and collection operations.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::*;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
 use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::rule::CssSheet;
-use surgeist_css::source::CssRetainedPayloadError;
+use surgeist_css::source::{CssRetainedPayloadError, CssUtf16InputError, CssUtf16InputLimits};
 use surgeist_css::{CssParseReport, CssParser, CssParserContext};
+
+pub(crate) fn check_sheet_cancellation(cancel: &AtomicBool) -> Result<(), CssomError> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err(CssomError::Cancelled);
+    }
+    Ok(())
+}
+
+pub(crate) fn sheet_utf16_error(error: CssUtf16InputError<CssomError>) -> CssomError {
+    match error.into_refusal() {
+        Ok(refusal) => CssomError::Utf16Input(refusal),
+        Err(interruption) => interruption,
+    }
+}
 
 /// Supplied current-global Document facts; no document or URL resolution occurs.
 #[derive(Clone, Debug)]
@@ -15,16 +33,35 @@ pub struct CssomConstructorDocument {
     pub base_location: String,
 }
 
+/// Authored text for stylesheet operations. Native UTF-8 and exact UTF-16
+/// each retain their own source coordinates through the same CSS grammar.
+#[derive(Clone, Debug)]
+pub enum CssomSheetText<'a> {
+    Utf8(&'a str),
+    Utf16(Arc<Vec<u16>>),
+}
+impl<'a> From<&'a str> for CssomSheetText<'a> {
+    fn from(text: &'a str) -> Self {
+        Self::Utf8(text)
+    }
+}
+
+pub(crate) fn sheet_utf16_limits(limits: &CssomLimits) -> CssUtf16InputLimits {
+    let mut input = limits.sheet_utf16_input;
+    input.max_output_bytes = input.max_output_bytes.min(limits.max_input_bytes);
+    input
+}
+
 /// Actual source constructor media input. A list is copied through its CSSOM text.
 pub enum CssomInitialMedia<'a> {
-    Text(&'a str),
+    Text(CssomSheetText<'a>),
     List {
         snapshot: &'a CssomSnapshot,
         id: &'a CssomMediaListId,
     },
 }
 pub struct CssomSheetInit<'a> {
-    pub base_url: Option<String>,
+    pub base_url: Option<Arc<Vec<u16>>>,
     pub media: CssomInitialMedia<'a>,
     pub disabled: bool,
 }
@@ -32,7 +69,7 @@ impl Default for CssomSheetInit<'_> {
     fn default() -> Self {
         Self {
             base_url: None,
-            media: CssomInitialMedia::Text(""),
+            media: CssomInitialMedia::Text("".into()),
             disabled: false,
         }
     }
@@ -258,24 +295,42 @@ impl CssomBatch {
         })
     }
     /// Source construction starts empty and does not assert host list membership.
+    /// Cancellation during staging aborts this batch. A caller preparing a
+    /// composed publication checks the same signal at its final commit fence.
     pub fn construct_sheet(
         &mut self,
         document: CssomConstructorDocument,
         init: CssomSheetInit<'_>,
+        cancel: &AtomicBool,
     ) -> Result<CssomSheetConstruction, CssomError> {
-        self.apply(|this| {
+        let construction = self.apply(|this| {
             if document.version.role != CssomInputRole::Document {
                 return Err(CssomError::InvalidInput(
                     "constructor document version role",
                 ));
             }
             let (media, media_diagnostics) = match init.media {
-                CssomInitialMedia::Text(source) => {
+                CssomInitialMedia::Text(CssomSheetText::Utf8(source)) => {
+                    check_sheet_cancellation(cancel)?;
                     parse_media(source, &this.limits, this.staged.context.parser_context())?
                 }
+                CssomInitialMedia::Text(CssomSheetText::Utf16(original)) => {
+                    let parser =
+                        CssParser::new(this.staged.context.parser_context(), Default::default());
+                    let report = CssMediaQueryList::parse_utf16(
+                        &parser,
+                        original,
+                        sheet_utf16_limits(&this.limits),
+                        || check_sheet_cancellation(cancel),
+                    )
+                    .map_err(sheet_utf16_error)?;
+                    check_resource_diagnostics(report.diagnostics())?;
+                    report.into_parts()
+                }
                 CssomInitialMedia::List { snapshot, id } => {
-                    let text = snapshot
-                        .media(id)?
+                    let list = snapshot.media(id)?;
+                    check_sheet_cancellation(cancel)?;
+                    let text = list
                         .serialize_cssom(this.limits.css)
                         .map_err(CssomError::Media)?;
                     parse_media(
@@ -295,7 +350,16 @@ impl CssomBatch {
                 ticket,
                 media_diagnostics,
             })
-        })
+        })?;
+        self.finish_sheet_staging(construction, cancel)
+    }
+    pub(crate) fn finish_sheet_staging<T>(
+        &mut self,
+        staged: T,
+        cancel: &AtomicBool,
+    ) -> Result<T, CssomError> {
+        check_sheet_cancellation(cancel).inspect_err(|_| self.poisoned = true)?;
+        Ok(staged)
     }
     /// Publishes the supplied selected host collection; CSSOM does not select a DOM list.
     /// Existing sheets and this batch's creations can occur in the same order.
@@ -474,6 +538,7 @@ impl CssomBatch {
         selector: Option<&str>,
         block: Option<&str>,
         index: Option<usize>,
+        cancel: &AtomicBool,
     ) -> Result<i32, CssomError> {
         // Product handle validation precedes reading the list default. Source
         // Security/NotAllowed and syntax guards belong to insert_sheet_rule.
@@ -509,7 +574,7 @@ impl CssomBatch {
             source.push('}');
             Ok((source, index))
         })?;
-        self.insert_sheet_rule(sheet, &source, index)?;
+        self.insert_sheet_rule(sheet, source.as_str(), index, cancel)?;
         Ok(-1)
     }
     /// Standards-defined `removeRule()` defaults its index to zero.

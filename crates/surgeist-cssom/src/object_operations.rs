@@ -1,5 +1,7 @@
 //! One-operation publication and explicitly staged object edits.
+use crate::sheet_operations::check_sheet_cancellation;
 use crate::*;
+use std::sync::atomic::AtomicBool;
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
 
 /// A successful CSSOM publication and its standard return value.
@@ -116,9 +118,23 @@ pub(crate) fn execute<T>(
     store: &mut CssomStore,
     operation: impl FnOnce(&mut CssomBatch) -> Result<CssomStagedOperation<T>, CssomError>,
 ) -> Result<CssomOperationOutcome<T>, CssomError> {
+    execute_with_cancellation(store, None, operation)
+}
+
+pub(crate) fn execute_with_cancellation<T>(
+    store: &mut CssomStore,
+    cancel: Option<&AtomicBool>,
+    operation: impl FnOnce(&mut CssomBatch) -> Result<CssomStagedOperation<T>, CssomError>,
+) -> Result<CssomOperationOutcome<T>, CssomError> {
     let mut batch = store.batch(CssomEditGuard::from_snapshot(&store.snapshot()))?;
     let staged = stage(&mut batch, operation)?;
-    let (publication, effects) = store.commit(batch)?.into_operation_parts();
+    let prepared = store.prepare_commit(batch)?;
+    if let Some(cancel) = cancel {
+        check_sheet_cancellation(cancel)?;
+    }
+    let (commit, retirement) = prepared.publish();
+    drop(retirement);
+    let (publication, effects) = commit.into_operation_parts();
     Ok(CssomOperationOutcome::from_parts(
         staged.value,
         publication,
@@ -145,3 +161,68 @@ macro_rules! no_op_css_text {
     };
 }
 crate::objects::for_rule_handles!(no_op_css_text);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    #[test]
+    fn sheet_cancellation_after_staging_discards_the_prepared_commit() {
+        let mut store = CssomStore::new(
+            CssomLimits {
+                max_revision: 1,
+                ..Default::default()
+            },
+            Default::default(),
+        )
+        .unwrap();
+        let cancel = AtomicBool::new(false);
+        let document = CssomConstructorDocument {
+            version: CssomInputVersion {
+                role: CssomInputRole::Document,
+                identity: "document".into(),
+                revision: 1,
+            },
+            identity: "document".into(),
+            base_location: String::new(),
+        };
+        let before = store.snapshot();
+        let mut issued = None;
+        let outcome = execute_with_cancellation(&mut store, Some(&cancel), |batch| {
+            let construction =
+                batch.construct_sheet(document.clone(), Default::default(), &cancel)?;
+            issued = Some(batch.created_sheet_id(construction.ticket())?.clone());
+            cancel.store(true, Ordering::Relaxed);
+            Ok(CssomStagedOperation::new((), Vec::new()))
+        });
+        assert!(matches!(outcome, Err(CssomError::Cancelled)));
+        assert!(matches!(
+            store.changes_since(&before),
+            CssomChanges::Unchanged
+        ));
+        let abandoned = issued.unwrap();
+        assert!(matches!(
+            store.snapshot().sheet(&abandoned),
+            Err(CssomError::MissingObject)
+        ));
+
+        cancel.store(false, Ordering::Relaxed);
+        let committed =
+            CssStyleSheet::new(&mut store, document.clone(), Default::default(), &cancel).unwrap();
+        assert_ne!(committed.value().id(), &abandoned);
+        assert!(store.snapshot().sheet(committed.value().id()).is_ok());
+
+        let before = store.snapshot();
+        let refused = execute_with_cancellation(&mut store, Some(&cancel), |batch| {
+            batch.construct_sheet(document, Default::default(), &cancel)?;
+            cancel.store(true, Ordering::Relaxed);
+            Ok(CssomStagedOperation::new((), Vec::new()))
+        });
+        assert!(matches!(refused, Err(CssomError::RevisionExhausted)));
+        assert!(matches!(
+            store.changes_since(&before),
+            CssomChanges::Unchanged
+        ));
+    }
+}

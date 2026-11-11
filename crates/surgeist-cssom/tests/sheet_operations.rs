@@ -1,4 +1,5 @@
 //! Public consumer expectations from the selected CSSOM §6.1/§6.2 sheet algorithms.
+use std::sync::atomic::AtomicBool;
 use surgeist_css::component::CssValueOrigin;
 use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::rule::CssRule;
@@ -33,7 +34,11 @@ fn batch(store: &CssomStore) -> CssomBatch {
 fn construct(store: &mut CssomStore) -> CssomSheetId {
     let mut edit = batch(store);
     let construction = edit
-        .construct_sheet(document(), CssomSheetInit::default())
+        .construct_sheet(
+            document(),
+            CssomSheetInit::default(),
+            &AtomicBool::new(false),
+        )
         .unwrap();
     store
         .commit(edit)
@@ -41,6 +46,21 @@ fn construct(store: &mut CssomStore) -> CssomSheetId {
         .sheet(construction.ticket())
         .unwrap()
         .clone()
+}
+fn construct_without_parse_source(owner: &mut CssomStore) -> CssStyleSheet {
+    let mut edit = batch(owner);
+    let ticket = edit
+        .create_typed_sheet(
+            CssSheet::new(),
+            CssomSheetInputs::constructed(
+                version(CssomInputRole::Document, "d", 1),
+                "d".into(),
+                None,
+            ),
+        )
+        .unwrap();
+    let id = owner.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
+    owner.css_style_sheet(&id).unwrap()
 }
 fn captured_sheet(
     store: &CssomStore,
@@ -81,16 +101,17 @@ fn constructor_defaults_fixed_location_and_explicit_ordered_host_membership() {
     let mut current = document();
     current.base_location = "https://host.example/current/base".into();
     let first = edit
-        .construct_sheet(current, CssomSheetInit::default())
+        .construct_sheet(current, CssomSheetInit::default(), &AtomicBool::new(false))
         .unwrap();
     let second = edit
         .construct_sheet(
             document(),
             CssomSheetInit {
-                base_url: Some(String::new()),
+                base_url: Some(std::sync::Arc::new(Vec::new())),
                 disabled: true,
                 ..Default::default()
             },
+            &AtomicBool::new(false),
         )
         .unwrap();
     let committed = owner.commit(edit).unwrap();
@@ -136,7 +157,7 @@ fn constructor_defaults_fixed_location_and_explicit_ordered_host_membership() {
     assert_eq!(facts.base_url, None);
     assert_eq!(
         captured.sheet(&second).unwrap().inputs().base_url,
-        Some(String::new())
+        Some(std::sync::Arc::new(Vec::new()))
     );
     assert_eq!(facts.constructor_document.as_deref(), Some("d"));
     assert!(
@@ -228,9 +249,10 @@ fn constructor_media_list_copies_serialized_recovery_to_an_independent_identity(
         .construct_sheet(
             document(),
             CssomSheetInit {
-                media: CssomInitialMedia::Text("screen and, print"),
+                media: CssomInitialMedia::Text("screen and, print".into()),
                 ..Default::default()
             },
+            &AtomicBool::new(false),
         )
         .unwrap();
     assert!(!construction.media_diagnostics().is_empty());
@@ -266,6 +288,7 @@ fn constructor_media_list_copies_serialized_recovery_to_an_independent_identity(
                 },
                 ..Default::default()
             },
+            &AtomicBool::new(false),
         )
         .unwrap();
     assert!(copied.media_diagnostics().is_empty());
@@ -777,8 +800,12 @@ fn pending_record_quota_blocks_unrelated_admission_without_stranding_cleanup() {
         .begin_replace_sheet(guard(&owner), &sheet, "")
         .unwrap();
     let mut edit = batch(&owner);
-    edit.construct_sheet(document(), CssomSheetInit::default())
-        .unwrap();
+    edit.construct_sheet(
+        document(),
+        CssomSheetInit::default(),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     assert!(matches!(
         owner.commit(edit),
         Err(CssomError::Limit {
@@ -993,7 +1020,7 @@ fn sheet_insertion_preliminary_and_constructed_import_guards_precede_shared_inde
         let before = owner.snapshot();
         let mut edit = batch(&owner);
         assert!(
-            matches!(edit.insert_sheet_rule(&sheet, text, index), Err(CssomError::Source(error)) if error == expected)
+            matches!(edit.insert_sheet_rule(&sheet, text, index, &AtomicBool::new(false)), Err(CssomError::Source(error)) if error == expected)
         );
         assert!(matches!(owner.commit(edit), Err(CssomError::BatchAborted)));
         assert_eq!(owner.snapshot().revision(), before.revision());
@@ -1010,7 +1037,7 @@ fn sheet_insertion_preliminary_and_constructed_import_guards_precede_shared_inde
         let external = owner.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
         let mut edit = batch(&owner);
         assert!(
-            matches!(edit.insert_sheet_rule(&external, "a {} b {}", usize::MAX), Err(CssomError::Source(error)) if error == expected)
+            matches!(edit.insert_sheet_rule(&external, "a {} b {}", usize::MAX, &AtomicBool::new(false)), Err(CssomError::Source(error)) if error == expected)
         );
         assert!(matches!(owner.commit(edit), Err(CssomError::BatchAborted)));
     }
@@ -1028,7 +1055,9 @@ fn shared_insertion_retains_the_actual_occurrence_and_recovered_declaration_neig
         .clone();
     let source = String::from("a {color:red; invalid: ; width:2px;}");
     let mut edit = batch(&owner);
-    let (index, ticket) = edit.insert_sheet_rule(&sheet, &source, 0).unwrap();
+    let (index, ticket) = edit
+        .insert_sheet_rule(&sheet, source.as_str(), 0, &AtomicBool::new(false))
+        .unwrap();
     assert_eq!(index, 0);
     let committed = owner.commit(edit).unwrap();
     let rule = committed.rule(&ticket).unwrap().clone();
@@ -1084,17 +1113,33 @@ fn legacy_add_rule_defaults_end_index_exact_input_and_minus_one_result() {
     let mut owner = store(CssomLimits::default());
     let sheet = construct(&mut owner);
     let mut edit = batch(&owner);
-    assert_eq!(edit.add_sheet_rule(&sheet, None, None, None).unwrap(), -1);
-    owner.commit(edit).unwrap();
-    let mut edit = batch(&owner);
     assert_eq!(
-        edit.add_sheet_rule(&sheet, Some("a"), Some("color:red;"), None)
+        edit.add_sheet_rule(&sheet, None, None, None, &AtomicBool::new(false))
             .unwrap(),
         -1
     );
+    owner.commit(edit).unwrap();
+    let mut edit = batch(&owner);
     assert_eq!(
-        edit.add_sheet_rule(&sheet, Some("b"), Some(""), Some(0))
-            .unwrap(),
+        edit.add_sheet_rule(
+            &sheet,
+            Some("a"),
+            Some("color:red;"),
+            None,
+            &AtomicBool::new(false)
+        )
+        .unwrap(),
+        -1
+    );
+    assert_eq!(
+        edit.add_sheet_rule(
+            &sheet,
+            Some("b"),
+            Some(""),
+            Some(0),
+            &AtomicBool::new(false)
+        )
+        .unwrap(),
         -1
     );
     owner.commit(edit).unwrap();
@@ -1131,7 +1176,13 @@ fn legacy_add_rule_defaults_end_index_exact_input_and_minus_one_result() {
     assert_eq!(rules(&owner, &sheet), ids[1..]);
     let mut edit = batch(&owner);
     assert!(matches!(
-        edit.add_sheet_rule(&sheet, Some("@import 'x'; a"), Some(""), Some(usize::MAX)),
+        edit.add_sheet_rule(
+            &sheet,
+            Some("@import 'x'; a"),
+            Some(""),
+            Some(usize::MAX),
+            &AtomicBool::new(false)
+        ),
         Err(CssomError::Source(CssomException::Syntax))
     ));
     assert!(matches!(owner.commit(edit), Err(CssomError::BatchAborted)));
@@ -1143,7 +1194,7 @@ fn legacy_add_rule_defaults_end_index_exact_input_and_minus_one_result() {
     let before = limited.snapshot();
     let mut edit = batch(&limited);
     assert!(matches!(
-        edit.add_sheet_rule(&sheet, Some(""), Some(""), None),
+        edit.add_sheet_rule(&sheet, Some(""), Some(""), None, &AtomicBool::new(false)),
         Err(CssomError::Limit {
             resource: "legacy rule input bytes",
             maximum: 3
@@ -1162,9 +1213,11 @@ fn whole_list_namespace_guards_follow_hierarchy_and_keep_membership_atomic() {
     let sheet = construct(&mut owner);
     let mut edit = batch(&owner);
     let (_, namespace) = edit
-        .insert_sheet_rule(&sheet, "@namespace p 'urn:p';", 0)
+        .insert_sheet_rule(&sheet, "@namespace p 'urn:p';", 0, &AtomicBool::new(false))
         .unwrap();
-    let (_, body) = edit.insert_sheet_rule(&sheet, "p|a {}", 1).unwrap();
+    let (_, body) = edit
+        .insert_sheet_rule(&sheet, "p|a {}", 1, &AtomicBool::new(false))
+        .unwrap();
     let committed = owner.commit(edit).unwrap();
     let namespace = committed.rule(&namespace).unwrap().clone();
     let body = committed.rule(&body).unwrap().clone();
@@ -1175,7 +1228,7 @@ fn whole_list_namespace_guards_follow_hierarchy_and_keep_membership_atomic() {
     ] {
         let mut edit = batch(&owner);
         assert!(
-            matches!(edit.insert_sheet_rule(&sheet, "@namespace q 'urn:q';", index), Err(CssomError::Source(error)) if error == expected)
+            matches!(edit.insert_sheet_rule(&sheet, "@namespace q 'urn:q';", index, &AtomicBool::new(false)), Err(CssomError::Source(error)) if error == expected)
         );
         assert!(matches!(owner.commit(edit), Err(CssomError::BatchAborted)));
     }
@@ -1187,4 +1240,626 @@ fn whole_list_namespace_guards_follow_hierarchy_and_keep_membership_atomic() {
     assert!(matches!(owner.commit(edit), Err(CssomError::BatchAborted)));
     assert_eq!(rules(&owner, &sheet), [namespace, body]);
     assert_eq!(owner.snapshot().revision(), before.revision());
+}
+
+#[test]
+fn exact_base_url_backing_is_shared_by_sheets_and_pending_replacement() {
+    use std::sync::Arc;
+
+    fn make_base() -> Arc<Vec<u16>> {
+        let mut units = Vec::with_capacity(32);
+        units.extend([0xd800, 0, 0xdc00]);
+        Arc::new(units)
+    }
+
+    let base = make_base();
+    let base_bytes = base.capacity() * size_of::<u16>();
+    let document = document();
+    let fixed =
+        document.version.identity.len() + document.identity.len() + document.base_location.len();
+    let construct = |owner: &mut CssomStore, base| {
+        CssStyleSheet::new(
+            owner,
+            document.clone(),
+            CssStyleSheetInit {
+                base_url: Some(base),
+                ..Default::default()
+            },
+            &AtomicBool::new(false),
+        )
+    };
+
+    let exact = 2 * fixed + base_bytes;
+    let mut owner = store(CssomLimits {
+        max_string_bytes: exact,
+        ..Default::default()
+    });
+    let first = construct(&mut owner, base.clone()).unwrap().into_parts().0;
+    let second = construct(&mut owner, base.clone()).unwrap().into_parts().0;
+    let snapshot = owner.snapshot();
+    for sheet in [first.id(), second.id()] {
+        let inputs = snapshot.sheet(sheet).unwrap().inputs();
+        assert!(Arc::ptr_eq(inputs.base_url.as_ref().unwrap(), &base));
+        assert_eq!(
+            inputs.base_url.as_deref().unwrap().as_slice(),
+            &[0xd800, 0, 0xdc00]
+        );
+        assert_eq!(inputs.location.as_deref(), Some(""));
+    }
+
+    let mut short = store(CssomLimits {
+        max_string_bytes: exact - 1,
+        ..Default::default()
+    });
+    let _ = construct(&mut short, base.clone()).unwrap();
+    let before = short.snapshot();
+    assert!(matches!(
+        construct(&mut short, base.clone()),
+        Err(CssomError::Limit { resource: "host and live string bytes", maximum }) if maximum == exact - 1
+    ));
+    assert_eq!(short.snapshot().revision(), before.revision());
+
+    let mut distinct = store(CssomLimits {
+        max_string_bytes: exact,
+        ..Default::default()
+    });
+    let _ = construct(&mut distinct, base.clone()).unwrap();
+    assert!(matches!(
+        construct(&mut distinct, make_base()),
+        Err(CssomError::Limit {
+            resource: "host and live string bytes",
+            ..
+        })
+    ));
+
+    for maximum in [exact + fixed, exact + fixed - 1] {
+        let mut owner = store(CssomLimits {
+            max_string_bytes: maximum,
+            ..Default::default()
+        });
+        let first = construct(&mut owner, base.clone()).unwrap().into_parts().0;
+        let _ = construct(&mut owner, base.clone()).unwrap();
+        let before = owner.snapshot();
+        let job = owner.begin_replace_sheet(guard(&owner), first.id(), "");
+        if maximum == exact + fixed {
+            let completion = owner
+                .finish_replace_sheet(guard(&owner), job.unwrap().parse())
+                .unwrap();
+            assert!(matches!(
+                completion.outcome(),
+                CssomReplaceOutcome::Replaced
+            ));
+            assert!(Arc::ptr_eq(
+                owner
+                    .snapshot()
+                    .sheet(first.id())
+                    .unwrap()
+                    .inputs()
+                    .base_url
+                    .as_ref()
+                    .unwrap(),
+                &base,
+            ));
+        } else {
+            assert!(matches!(
+                job,
+                Err(CssomError::Limit {
+                    resource: "host and live string bytes",
+                    ..
+                })
+            ));
+            assert_eq!(owner.snapshot().revision(), before.revision());
+        }
+        assert!(
+            owner
+                .pending_sheet_replacement(first.id())
+                .unwrap()
+                .is_none()
+        );
+    }
+}
+
+#[test]
+fn sheet_constructor_keeps_exact_media_input_and_copies_a_list_through_cssom_text() {
+    use std::sync::Arc;
+
+    let mut units = "screen and\r\n, print /*😀"
+        .encode_utf16()
+        .collect::<Vec<_>>();
+    units.extend([0, 0xd800]);
+    units.extend("*/".encode_utf16());
+    let original = Arc::new(units);
+    let mut owner = store(CssomLimits::default());
+    let outcome = CssStyleSheet::new(
+        &mut owner,
+        document(),
+        CssStyleSheetInit {
+            media: CssStyleSheetMedia::Text(CssomSheetText::Utf16(original.clone())),
+            ..Default::default()
+        },
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    let live = outcome.value().media(&owner).unwrap();
+    let snapshot = owner.snapshot();
+    let source = snapshot
+        .media(live.id())
+        .unwrap()
+        .parse_source()
+        .unwrap()
+        .source();
+    assert!(Arc::ptr_eq(source.original_utf16().unwrap(), &original));
+    assert_eq!(
+        source.as_str(),
+        "screen and\n, print /*😀\u{fffd}\u{fffd}*/"
+    );
+    assert_eq!(source.original_utf16_range(10..11), Some(10..12));
+    let scalar = source.as_str().find('😀').unwrap();
+    let units = original.iter().position(|unit| *unit == 0xd83d).unwrap();
+    assert_eq!(
+        source.original_utf16_range(scalar..scalar + 4),
+        Some(units..units + 2)
+    );
+    assert_eq!(
+        source.original_utf16_range(scalar + 4..scalar + 7),
+        Some(units + 2..units + 3)
+    );
+    assert_eq!(
+        source.original_utf16_range(scalar + 7..scalar + 10),
+        Some(units + 3..units + 4)
+    );
+    assert!(!outcome.diagnostics().is_empty());
+    assert!(outcome.diagnostics().iter().all(|diagnostic| {
+        diagnostic
+            .source()
+            .is_some_and(|actual| actual.same_snapshot(source))
+    }));
+    let original = live.capture(&snapshot).unwrap();
+    assert_eq!(
+        original
+            .media_text(CssSerializationLimits::default())
+            .unwrap(),
+        "not all, print"
+    );
+
+    let copied = CssStyleSheet::new(
+        &mut owner,
+        document(),
+        CssStyleSheetInit {
+            media: CssStyleSheetMedia::List(&original),
+            ..Default::default()
+        },
+        &AtomicBool::new(false),
+    )
+    .unwrap()
+    .into_parts()
+    .0
+    .media(&owner)
+    .unwrap();
+    assert_ne!(live.id(), copied.id());
+    let after = owner.snapshot();
+    let copied_source = after
+        .media(copied.id())
+        .unwrap()
+        .parse_source()
+        .unwrap()
+        .source();
+    assert_eq!(copied_source.as_str(), "not all, print");
+    assert!(copied_source.original_utf16().is_none());
+    assert!(!copied_source.same_snapshot(source));
+    let _ = live.set_media_text(&mut owner, "speech").unwrap();
+    assert_eq!(
+        copied
+            .media_text(&owner, CssSerializationLimits::default())
+            .unwrap(),
+        "not all, print"
+    );
+}
+
+#[test]
+fn sheet_insert_rule_retains_utf16_rule_and_diagnostic_sources_and_guard_order() {
+    use std::sync::Arc;
+    use surgeist_css::source::CssUtf16Resource;
+
+    let mut original = "/*😀\r\n*/ a { color: red; invalid: ; width: 2px; --raw: \""
+        .encode_utf16()
+        .collect::<Vec<_>>();
+    original.extend([0, 0xdc00]);
+    original.extend("\"; }".encode_utf16());
+    let original = Arc::new(original);
+    let mut limits = CssomLimits::default();
+    limits.sheet_utf16_input.max_input_units = original.len();
+
+    let mut owner = store(limits.clone());
+    let sheet = CssStyleSheet::new(
+        &mut owner,
+        document(),
+        Default::default(),
+        &AtomicBool::new(false),
+    )
+    .unwrap()
+    .into_parts()
+    .0;
+    let before = owner.snapshot();
+    let outcome = sheet
+        .insert_rule(
+            &mut owner,
+            CssomSheetText::Utf16(original.clone()),
+            None,
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    assert_eq!(*outcome.value(), 0);
+    let after = owner.snapshot();
+    assert!(before.sheet_rules(sheet.id()).unwrap().is_empty());
+    let native = after
+        .rule(&after.sheet_rules(sheet.id()).unwrap()[0])
+        .unwrap();
+    let insertion = native.insertion_origin().unwrap();
+    let insertion_source = insertion.source();
+    assert!(Arc::ptr_eq(
+        insertion_source.original_utf16().unwrap(),
+        &original
+    ));
+    assert_eq!(
+        insertion.span().start().byte_offset().value(),
+        insertion_source.as_str().find("a {").unwrap(),
+    );
+    let block = native.data().block().unwrap();
+    let CssomBlockData::Properties {
+        selected: CssomProjection::Available(selected),
+        ..
+    } = after.block(block).unwrap().data()
+    else {
+        panic!("native stylesheet declaration projection");
+    };
+    let source = selected.entries()[0]
+        .source()
+        .parsed_value()
+        .unwrap()
+        .source();
+    assert!(source.same_snapshot(insertion_source));
+    assert_eq!(
+        source.as_str(),
+        "/*😀\n*/ a { color: red; invalid: ; width: 2px; --raw: \"\u{fffd}\u{fffd}\"; }"
+    );
+    assert_eq!(source.original_utf16_range(2..6), Some(2..4));
+    assert_eq!(source.original_utf16_range(6..7), Some(4..6));
+    assert!(!outcome.diagnostics().is_empty());
+    assert!(outcome.diagnostics().iter().all(|diagnostic| {
+        diagnostic
+            .source()
+            .is_some_and(|actual| actual.same_snapshot(source))
+    }));
+    let declaration_start = source.as_str().find("invalid").unwrap();
+    let authored_start = original
+        .iter()
+        .position(|unit| *unit == u16::from(b'i'))
+        .unwrap();
+    assert_eq!(
+        source.original_utf16_range(declaration_start..declaration_start + "invalid".len()),
+        Some(authored_start..authored_start + "invalid".len()),
+    );
+
+    for (raw, exception) in [
+        ("!", CssomException::Syntax),
+        ("@import 'blocked.css';", CssomException::Syntax),
+        ("a {}", CssomException::IndexSize),
+    ] {
+        let raw = CssomSheetText::Utf16(Arc::new(raw.encode_utf16().collect()));
+        assert!(matches!(
+            sheet.insert_rule(&mut owner, raw, Some(usize::MAX), &AtomicBool::new(false)),
+            Err(CssomError::Source(actual)) if actual == exception
+        ));
+        assert_eq!(owner.snapshot().revision(), after.revision());
+    }
+
+    limits.sheet_utf16_input.max_input_units -= 1;
+    let mut short = store(limits);
+    let sheet = construct(&mut short);
+    let before = short.snapshot();
+    let mut edit = batch(&short);
+    assert!(matches!(
+        edit.insert_sheet_rule(&sheet, CssomSheetText::Utf16(original.clone()), 0, &AtomicBool::new(false)),
+        Err(CssomError::Utf16Input(error)) if error.exhausted_limit() == Some(CssUtf16Resource::InputUnits)
+    ));
+    assert!(matches!(short.commit(edit), Err(CssomError::BatchAborted)));
+    assert_eq!(short.snapshot().revision(), before.revision());
+
+    for (origin_clean, locked, expected) in [
+        (false, true, CssomException::Security),
+        (true, true, CssomException::NotAllowed),
+    ] {
+        let mut edit = batch(&short);
+        let mut inputs =
+            CssomSheetInputs::external(version(CssomInputRole::Document, "guard", 1), origin_clean);
+        inputs.disallow_modification = locked;
+        let ticket = edit.create_typed_sheet(CssSheet::new(), inputs).unwrap();
+        let id = short.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
+        let sheet = short.css_style_sheet(&id).unwrap();
+        let before = short.snapshot();
+        for cancel in [AtomicBool::new(false), AtomicBool::new(true)] {
+            assert!(matches!(
+                sheet.insert_rule(&mut short, CssomSheetText::Utf16(original.clone()), Some(usize::MAX), &cancel),
+                Err(CssomError::Source(actual)) if actual == expected
+            ));
+        }
+        assert_eq!(short.snapshot().revision(), before.revision());
+    }
+}
+
+#[test]
+fn utf16_rule_reaches_the_exact_canonical_source_backing_limit() {
+    use std::sync::Arc;
+    use surgeist_css::rule::CssRuleSyntax;
+    use surgeist_css::source::CssUtf16InputLimits;
+
+    let mut units = Vec::with_capacity(64);
+    units.extend("a {} /*".encode_utf16());
+    units.push(0xd800);
+    units.extend("*/".encode_utf16());
+    let original = Arc::new(units);
+    let parse = CssRuleSyntax::classify_utf16(
+        &CssParser::default(),
+        original.clone(),
+        CssUtf16InputLimits::default(),
+        || Ok::<(), std::convert::Infallible>(()),
+    )
+    .unwrap();
+    let source = parse.syntax().as_ref().unwrap().origin().source();
+    let exact = source.storage_usage().retained_bytes();
+    assert!(exact > original.capacity() * size_of::<u16>());
+
+    for maximum in [exact, exact - 1] {
+        let mut owner = store(CssomLimits {
+            max_retained_source_bytes: maximum,
+            ..Default::default()
+        });
+        // A native typed sheet starts without a parse source or a parsed
+        // MediaList, so the inserted occurrence is its entire source backing.
+        let sheet = construct_without_parse_source(&mut owner);
+        let id = sheet.id();
+        let before = owner.snapshot();
+        let result = sheet.insert_rule(
+            &mut owner,
+            CssomSheetText::Utf16(original.clone()),
+            None,
+            &AtomicBool::new(false),
+        );
+        if maximum == exact {
+            assert_eq!(*result.unwrap().value(), 0);
+            assert_eq!(owner.snapshot().sheet_rules(id).unwrap().len(), 1);
+        } else {
+            assert!(
+                matches!(
+                    result,
+                    Err(CssomError::Limit { resource: "retained parse source bytes", maximum: actual }) if actual == maximum
+                ),
+                "{result:?}"
+            );
+            assert_eq!(owner.snapshot().revision(), before.revision());
+            assert!(owner.snapshot().sheet_rules(id).unwrap().is_empty());
+        }
+    }
+}
+
+fn assert_source_free_utf8_sheet_rule(rule: &str) {
+    let mut owner = store(CssomLimits {
+        max_retained_source_bytes: 0,
+        ..Default::default()
+    });
+    let sheet = construct_without_parse_source(&mut owner);
+    let result = sheet.insert_rule(&mut owner, rule, None, &AtomicBool::new(false));
+    assert_eq!(
+        *result
+            .unwrap_or_else(|error| panic!("{rule}: {error}"))
+            .value(),
+        0
+    );
+    let snapshot = owner.snapshot();
+    let [rule] = snapshot.sheet_rules(sheet.id()).unwrap() else {
+        panic!("exactly one inserted rule");
+    };
+    assert!(snapshot.rule(rule).unwrap().insertion_origin().is_none());
+}
+
+#[test]
+fn retained_source_quota_allows_source_free_utf8_layer_at_zero() {
+    assert_source_free_utf8_sheet_rule("@layer foo;");
+}
+
+#[test]
+fn retained_source_quota_allows_source_free_utf8_namespace_at_zero() {
+    assert_source_free_utf8_sheet_rule("@namespace p 'urn:p';");
+}
+
+#[test]
+fn retained_source_quota_debits_shared_original_utf16_backing_once() {
+    use std::sync::Arc;
+    use surgeist_css::rule::CssRuleSyntax;
+    use surgeist_css::source::CssUtf16InputLimits;
+
+    let mut units = Vec::with_capacity(64);
+    units.extend("a {} /*".encode_utf16());
+    units.push(0xd800);
+    units.extend("*/".encode_utf16());
+    let mut distinct = Vec::with_capacity(units.capacity());
+    distinct.extend_from_slice(&units);
+    assert_eq!(distinct.capacity(), units.capacity());
+    let original = Arc::new(units);
+    let distinct = Arc::new(distinct);
+    let parse = CssRuleSyntax::classify_utf16(
+        &CssParser::default(),
+        original.clone(),
+        CssUtf16InputLimits::default(),
+        || Ok::<(), std::convert::Infallible>(()),
+    )
+    .unwrap();
+    let occurrence = parse
+        .syntax()
+        .as_ref()
+        .unwrap()
+        .origin()
+        .source()
+        .storage_usage()
+        .retained_bytes();
+    let original_bytes = original.capacity() * size_of::<u16>();
+    assert!(occurrence > original_bytes);
+    let exact = original_bytes + 2 * (occurrence - original_bytes);
+
+    for (maximum, second, should_fit) in [
+        (exact - 1, &original, false),
+        (exact, &distinct, false),
+        (exact, &original, true),
+    ] {
+        let mut owner = store(CssomLimits {
+            max_retained_source_bytes: maximum,
+            ..Default::default()
+        });
+        let sheet = construct_without_parse_source(&mut owner);
+        let first = sheet
+            .insert_rule(
+                &mut owner,
+                CssomSheetText::Utf16(original.clone()),
+                None,
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        assert_eq!(*first.value(), 0);
+        let before = owner.snapshot();
+        let result = sheet.insert_rule(
+            &mut owner,
+            CssomSheetText::Utf16(second.clone()),
+            Some(1),
+            &AtomicBool::new(false),
+        );
+        let after = owner.snapshot();
+        let rules = after.sheet_rules(sheet.id()).unwrap();
+        if should_fit {
+            assert_eq!(*result.unwrap().value(), 1);
+            let [first, second] = rules else {
+                panic!("two independently parsed rule occurrences");
+            };
+            let first = after
+                .rule(first)
+                .unwrap()
+                .insertion_origin()
+                .unwrap()
+                .source();
+            let second = after
+                .rule(second)
+                .unwrap()
+                .insertion_origin()
+                .unwrap()
+                .source();
+            assert!(!first.same_snapshot(second));
+            assert!(Arc::ptr_eq(first.original_utf16().unwrap(), &original));
+            assert!(Arc::ptr_eq(second.original_utf16().unwrap(), &original));
+        } else {
+            assert!(
+                matches!(
+                    result,
+                    Err(CssomError::Limit { resource: "retained parse source bytes", maximum: actual }) if actual == maximum
+                ),
+                "{result:?}"
+            );
+            assert_eq!(after.revision(), before.revision());
+            assert_eq!(rules.len(), 1);
+        }
+    }
+}
+
+#[test]
+fn sheet_construction_cancels_exact_media_and_preserves_input_refusals() {
+    use std::sync::Arc;
+    use surgeist_css::source::CssUtf16Resource;
+
+    let original = Arc::new("screen".encode_utf16().collect::<Vec<_>>());
+    let init = || CssStyleSheetInit {
+        media: CssStyleSheetMedia::Text(CssomSheetText::Utf16(original.clone())),
+        ..Default::default()
+    };
+    let cancel = AtomicBool::new(true);
+    let proceed = AtomicBool::new(false);
+    let mut limits = CssomLimits::default();
+    limits.sheet_utf16_input.max_input_units = original.len();
+    let mut owner = store(limits.clone());
+    let before = owner.snapshot();
+    let mut invalid = document();
+    invalid.version.role = CssomInputRole::Owner;
+    assert!(matches!(
+        CssStyleSheet::new(&mut owner, invalid, init(), &cancel),
+        Err(CssomError::InvalidInput(
+            "constructor document version role"
+        ))
+    ));
+    assert!(matches!(
+        CssStyleSheet::new(&mut owner, document(), init(), &cancel),
+        Err(CssomError::Cancelled)
+    ));
+    assert!(matches!(
+        owner.changes_since(&before),
+        CssomChanges::Unchanged
+    ));
+    let created = CssStyleSheet::new(&mut owner, document(), init(), &proceed).unwrap();
+    let media = created.value().media(&owner).unwrap();
+    assert_eq!(
+        media
+            .media_text(&owner, CssSerializationLimits::default())
+            .unwrap(),
+        "screen"
+    );
+
+    limits.sheet_utf16_input.max_input_units -= 1;
+    let mut short = store(limits);
+    let before = short.snapshot();
+    assert!(matches!(
+        CssStyleSheet::new(&mut short, document(), init(), &proceed),
+        Err(CssomError::Utf16Input(error)) if error.exhausted_limit() == Some(CssUtf16Resource::InputUnits)
+    ));
+    assert!(matches!(
+        short.changes_since(&before),
+        CssomChanges::Unchanged
+    ));
+}
+
+#[test]
+fn sheet_insertion_and_add_rule_cancel_after_native_handle_guards() {
+    use std::sync::Arc;
+
+    let cancel = AtomicBool::new(true);
+    let mut foreign = store(CssomLimits::default());
+    let foreign_sheet = construct_without_parse_source(&mut foreign);
+    let mut owner = store(CssomLimits::default());
+    let sheet = construct_without_parse_source(&mut owner);
+    let original = Arc::new("a {}".encode_utf16().collect::<Vec<_>>());
+    let rule = || CssomSheetText::Utf16(original.clone());
+    let before = owner.snapshot();
+    assert!(matches!(
+        foreign_sheet.insert_rule(&mut owner, rule(), None, &cancel),
+        Err(CssomError::ForeignOwner)
+    ));
+    assert!(matches!(
+        sheet.insert_rule(&mut owner, rule(), None, &cancel),
+        Err(CssomError::Cancelled)
+    ));
+    assert!(matches!(
+        sheet.add_rule(&mut owner, Some("a"), Some(""), None, &cancel),
+        Err(CssomError::Cancelled)
+    ));
+    let mut edit = batch(&owner);
+    assert!(matches!(
+        edit.insert_sheet_rule(sheet.id(), rule(), 0, &cancel),
+        Err(CssomError::Cancelled)
+    ));
+    assert!(matches!(owner.commit(edit), Err(CssomError::BatchAborted)));
+    assert!(matches!(
+        owner.changes_since(&before),
+        CssomChanges::Unchanged
+    ));
+    assert!(owner.snapshot().sheet_rules(sheet.id()).unwrap().is_empty());
+    let inserted = sheet
+        .insert_rule(&mut owner, rule(), None, &AtomicBool::new(false))
+        .unwrap();
+    assert_eq!(*inserted.value(), 0);
 }

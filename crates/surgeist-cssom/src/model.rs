@@ -44,7 +44,9 @@ use surgeist_css::serialization::{
     CssRuleSerializationError, CssSerializationError, CssSerializationLimits,
 };
 use surgeist_css::source::same_provenance;
-use surgeist_css::source::{CssParseSource, CssParsedOrigin};
+use surgeist_css::source::{
+    CssParseSource, CssParsedOrigin, CssUtf16InputError, CssUtf16InputLimits,
+};
 
 /// Real product quotas, including retained detached objects. These bound admitted
 /// work/state, not allocator overhead or process RSS. Source backing uses actual
@@ -56,6 +58,8 @@ pub struct CssomLimits {
     pub max_entries: usize,
     pub max_string_bytes: usize,
     pub max_input_bytes: usize,
+    /// CSS-owned preparation policy for one exact UTF-16 sheet input.
+    pub sheet_utf16_input: CssUtf16InputLimits,
     /// Actual shared parse-source backing retained by this canonical state.
     pub max_retained_source_bytes: usize,
     /// Actual source payload visits, identity comparisons and retained-state walk actions.
@@ -80,6 +84,7 @@ impl Default for CssomLimits {
             max_entries: 1_000_000,
             max_string_bytes: 16 * 1024 * 1024,
             max_input_bytes: 16 * 1024 * 1024,
+            sheet_utf16_input: CssUtf16InputLimits::default(),
             max_retained_source_bytes: 64 * 1024 * 1024,
             max_source_traversal_steps: 16 * 1024 * 1024,
             max_source_traversal_depth: 2048,
@@ -240,7 +245,8 @@ impl CssomContext {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssomSheetInputs {
     pub version: CssomInputVersion,
-    pub base_url: Option<String>,
+    /// Exact authored nullable stylesheet base URL, independent of location.
+    pub base_url: Option<Arc<Vec<u16>>>,
     pub location: Option<String>,
     pub constructor_document: Option<String>,
     pub owner: Option<String>,
@@ -259,7 +265,7 @@ impl CssomSheetInputs {
     pub fn constructed(
         version: CssomInputVersion,
         document: String,
-        base_url: Option<String>,
+        base_url: Option<Arc<Vec<u16>>>,
     ) -> Self {
         Self {
             version,
@@ -455,6 +461,7 @@ pub struct CssomRule {
     pub(crate) parent: CssomParent,
     pub(crate) data: Arc<CssomRuleData>,
     pub(crate) authored: Arc<CssomAuthoredRule>,
+    pub(crate) insertion_origin: Option<CssParsedOrigin>,
     pub(crate) selector_input: Option<CssParsedOrigin>,
     pub(crate) selector_inputs: Option<Arc<CssomContext>>,
     pub(crate) selector_namespaces: Option<Arc<CssNamespaceContext>>,
@@ -468,6 +475,10 @@ impl CssomRule {
     /// sheet ingress retains its complete ordered report on the owning sheet.
     pub fn admission_diagnostics(&self) -> &[CssRecoveryDiagnostic] {
         &self.admission_diagnostics
+    }
+    /// Original selected rule and complete source for an exact UTF16 sheet insertion.
+    pub fn insertion_origin(&self) -> Option<&CssParsedOrigin> {
+        self.insertion_origin.as_ref()
     }
     /// Latest complete selector input, independent of the original rule occurrence.
     pub fn selector_input(&self) -> Option<&CssParsedOrigin> {
@@ -953,6 +964,8 @@ pub enum CssomError {
     StaleRevision,
     StaleContext,
     StaleReplacement,
+    /// The caller cancelled stylesheet construction or rule insertion.
+    Cancelled,
     BatchAborted,
     ForeignTicket,
     IdentityExhausted,
@@ -965,6 +978,7 @@ pub enum CssomError {
     Declaration(CssDeclarationBlockError),
     Page(CssPageProjectionError),
     ParseResource(Box<CssRecoveryDiagnostic>),
+    Utf16Input(CssUtf16InputError<std::convert::Infallible>),
     Component(CssComponentValueError),
     Media(CssSerializationError),
     AuthoredFeatureConversion,
@@ -993,6 +1007,7 @@ impl std::error::Error for CssomError {
             Self::Format(e) => Some(e),
             Self::Serialization(e) => Some(e),
             Self::Media(e) => Some(e),
+            Self::Utf16Input(e) => Some(e),
             Self::QueryMatch(e) => Some(e),
             Self::Keyframe(e) => Some(e),
             Self::KeyframeComparison(e) => Some(e),
@@ -1022,6 +1037,7 @@ cssom_error_from! {
     CssDeclarationBlockError => Declaration,
     CssPageProjectionError => Page,
     CssComponentValueError => Component,
+    CssUtf16InputError<std::convert::Infallible> => Utf16Input,
     CssRuleSerializationError => Format,
     CssKeyframeRuleViewError => Keyframe,
     CssKeyframeSelectorComparisonError => KeyframeComparison,

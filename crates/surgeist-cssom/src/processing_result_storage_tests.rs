@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::atomic::AtomicBool;
 
 fn version(revision: u64) -> CssomInputVersion {
     CssomInputVersion {
@@ -37,9 +38,10 @@ fn construction_receipt_observes_real_final_vec_spare_capacity_and_excludes_self
                 base_location: String::new(),
             },
             CssomSheetInit {
-                media: CssomInitialMedia::Text("screen and"),
+                media: CssomInitialMedia::Text("screen and".into()),
                 ..Default::default()
             },
+            &AtomicBool::new(false),
         )
         .unwrap();
     assert!(!constructed.media_diagnostics().is_empty());

@@ -1,3 +1,4 @@
+use std::sync::atomic::AtomicBool;
 use surgeist_css::declaration::{
     CssDeclarationList, CssImportance, CssSpecifiedDeclarationEntry,
     CssSpecifiedDeclarationValueRef,
@@ -545,6 +546,7 @@ fn pending_replacement_reserves_cleanup_against_owner_declaration_publication() 
                 base_location: String::new(),
             },
             CssomSheetInit::default(),
+            &AtomicBool::new(false),
         )
         .unwrap();
     let sheet = store

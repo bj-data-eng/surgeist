@@ -3,6 +3,7 @@ use super::super::meta::cancel;
 use super::super::*;
 use super::consumption::envelope;
 use super::style_sheet::{bind, create, pending, ready};
+use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::elements::style::HtmlStyleTrigger;
 use surgeist_html_parser::{
@@ -114,8 +115,13 @@ fn authentic_queue_survives_current_authored_import_removal_output_drop_and_sess
     let owner = cap(&session);
     let before = owner.snapshot().unwrap();
     let mut edit = owner.batch(CssomEditGuard::from_snapshot(&before)).unwrap();
-    edit.insert_sheet_rule(sheet.id(), "@import 'later.css';", 0)
-        .unwrap();
+    edit.insert_sheet_rule(
+        sheet.id(),
+        "@import 'later.css';",
+        0,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     drop(owner.commit(&mut Some(edit)).unwrap());
     let task = queue(&mut session, &q);
     {

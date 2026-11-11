@@ -3,6 +3,7 @@ use super::super::meta::cancel;
 use super::super::*;
 use super::consumption::envelope;
 use super::style_sheet::{bind, create, pending, ready};
+use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 
 fn qualification(
@@ -100,8 +101,13 @@ fn actual_first_parse_receipt_survives_output_drop_and_later_authored_import_and
     let mut edit = owner
         .batch(CssomEditGuard::from_snapshot(&snapshot))
         .unwrap();
-    edit.insert_sheet_rule(sheet.id(), "@import 'later.css';", 0)
-        .unwrap();
+    edit.insert_sheet_rule(
+        sheet.id(),
+        "@import 'later.css';",
+        0,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     drop(owner.commit(&mut Some(edit)).unwrap());
     let imported = owner.snapshot().unwrap();
     assert_ne!(imported.revision(), sheet.revision());

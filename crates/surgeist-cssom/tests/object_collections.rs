@@ -1,4 +1,5 @@
 //! Independently derived standard object results from the retained CSSOM edition.
+use std::sync::atomic::AtomicBool;
 use surgeist_css::component::CssValueOrigin;
 use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_css::{CssParserContext, CssParserMode};
@@ -29,10 +30,15 @@ fn batch(store: &CssomStore) -> CssomBatch {
         .unwrap()
 }
 fn construct(store: &mut CssomStore) -> CssStyleSheet {
-    CssStyleSheet::new(store, document(), CssStyleSheetInit::default())
-        .unwrap()
-        .into_parts()
-        .0
+    CssStyleSheet::new(
+        store,
+        document(),
+        CssStyleSheetInit::default(),
+        &AtomicBool::new(false),
+    )
+    .unwrap()
+    .into_parts()
+    .0
 }
 fn external(store: &mut CssomStore, text: &str, clean: bool, locked: bool) -> CssStyleSheet {
     let mut edit = batch(store);
@@ -57,7 +63,13 @@ fn assert_exception<T>(result: Result<T, CssomError>, expected: CssomException) 
 fn constructor_defaults_and_inherited_attributes_are_single_publication() {
     let mut owner = store();
     let before = owner.snapshot();
-    let outcome = CssStyleSheet::new(&mut owner, document(), CssStyleSheetInit::default()).unwrap();
+    let outcome = CssStyleSheet::new(
+        &mut owner,
+        document(),
+        CssStyleSheetInit::default(),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     let sheet = outcome.value();
     assert!(outcome.diagnostics().is_empty() && outcome.owner_effects().is_empty());
     assert_eq!(
@@ -126,9 +138,10 @@ fn captured_media_is_copied_through_cssom_text_with_new_origin_and_identity() {
         &mut source,
         document(),
         CssStyleSheetInit {
-            media: CssStyleSheetMedia::Text("screen and, print"),
+            media: CssStyleSheetMedia::Text("screen and, print".into()),
             ..Default::default()
         },
+        &AtomicBool::new(false),
     )
     .unwrap();
     assert!(!outcome.diagnostics().is_empty());
@@ -153,10 +166,11 @@ fn captured_media_is_copied_through_cssom_text_with_new_origin_and_identity() {
         &mut owner,
         document(),
         CssStyleSheetInit {
-            base_url: Some(String::new()),
+            base_url: Some(std::sync::Arc::new(Vec::new())),
             media: CssStyleSheetMedia::List(&original),
             disabled: true,
         },
+        &AtomicBool::new(false),
     )
     .unwrap();
     assert!(outcome.diagnostics().is_empty());
@@ -178,7 +192,7 @@ fn captured_media_is_copied_through_cssom_text_with_new_origin_and_identity() {
             .unwrap()
             .inputs()
             .base_url,
-        Some(String::new())
+        Some(std::sync::Arc::new(Vec::new()))
     );
     assert!(outcome.value().disabled(&owner).unwrap());
 }
@@ -228,14 +242,20 @@ fn rule_list_same_object_and_old_capture_survive_edits_and_detachment() {
     let mut owner = store();
     let sheet = construct(&mut owner);
     assert_eq!(
-        *sheet.insert_rule(&mut owner, "a {}", None).unwrap().value(),
+        *sheet
+            .insert_rule(&mut owner, "a {}", None, &AtomicBool::new(false))
+            .unwrap()
+            .value(),
         0
     );
     let list = sheet.css_rules(&owner).unwrap();
     let old = list.capture(&owner.snapshot()).unwrap();
     let first = list.item(&owner, 0).unwrap().unwrap();
     assert_eq!(
-        *sheet.insert_rule(&mut owner, "b {}", None).unwrap().value(),
+        *sheet
+            .insert_rule(&mut owner, "b {}", None, &AtomicBool::new(false))
+            .unwrap()
+            .value(),
         0
     );
     assert_eq!(sheet.css_rules(&owner).unwrap(), list);
@@ -278,14 +298,20 @@ fn legacy_defaults_returns_and_optional_indices_use_native_algorithms() {
     let sheet = construct(&mut owner);
     assert_eq!(
         *sheet
-            .add_rule(&mut owner, None, None, None)
+            .add_rule(&mut owner, None, None, None, &AtomicBool::new(false))
             .unwrap()
             .value(),
         -1
     );
     assert_eq!(
         *sheet
-            .add_rule(&mut owner, Some("last"), Some("color: red"), None)
+            .add_rule(
+                &mut owner,
+                Some("last"),
+                Some("color: red"),
+                None,
+                &AtomicBool::new(false)
+            )
             .unwrap()
             .value(),
         -1
@@ -331,7 +357,7 @@ fn per_operation_guards_precede_invalid_syntax_and_untruncated_indices() {
     assert_exception(opaque.css_rules(&owner), CssomException::Security);
     assert_exception(opaque.rules(&owner), CssomException::Security);
     assert_exception(
-        opaque.insert_rule(&mut owner, "!", Some(usize::MAX)),
+        opaque.insert_rule(&mut owner, "!", Some(usize::MAX), &AtomicBool::new(false)),
         CssomException::Security,
     );
     assert_exception(
@@ -340,20 +366,30 @@ fn per_operation_guards_precede_invalid_syntax_and_untruncated_indices() {
     );
     let locked = external(&mut owner, "", true, true);
     assert_exception(
-        locked.insert_rule(&mut owner, "!", Some(usize::MAX)),
+        locked.insert_rule(&mut owner, "!", Some(usize::MAX), &AtomicBool::new(false)),
         CssomException::NotAllowed,
     );
     let sheet = construct(&mut owner);
     assert_exception(
-        sheet.insert_rule(&mut owner, "!", Some(usize::MAX)),
+        sheet.insert_rule(&mut owner, "!", Some(usize::MAX), &AtomicBool::new(false)),
         CssomException::Syntax,
     );
     assert_exception(
-        sheet.insert_rule(&mut owner, "@import 'x';", Some(usize::MAX)),
+        sheet.insert_rule(
+            &mut owner,
+            "@import 'x';",
+            Some(usize::MAX),
+            &AtomicBool::new(false),
+        ),
         CssomException::Syntax,
     );
     assert_exception(
-        sheet.insert_rule(&mut owner, "a {}", Some(usize::MAX)),
+        sheet.insert_rule(
+            &mut owner,
+            "a {}",
+            Some(usize::MAX),
+            &AtomicBool::new(false),
+        ),
         CssomException::IndexSize,
     );
     assert_exception(
@@ -440,9 +476,10 @@ fn failed_output_constructor_and_media_mutation_preserve_publication() {
         &mut owner,
         document(),
         CssStyleSheetInit {
-            media: CssStyleSheetMedia::Text("screen, print"),
+            media: CssStyleSheetMedia::Text("screen, print".into()),
             ..Default::default()
         },
+        &AtomicBool::new(false),
     );
     assert!(matches!(invalid, Err(CssomError::Limit { .. })));
     assert_eq!(owner.snapshot().revision(), before.revision());
@@ -463,7 +500,12 @@ fn failed_output_constructor_and_media_mutation_preserve_publication() {
     let mut bad_document = document();
     bad_document.version.role = CssomInputRole::Owner;
     assert!(matches!(
-        CssStyleSheet::new(&mut owner, bad_document, CssStyleSheetInit::default()),
+        CssStyleSheet::new(
+            &mut owner,
+            bad_document,
+            CssStyleSheetInit::default(),
+            &AtomicBool::new(false)
+        ),
         Err(CssomError::InvalidInput(_))
     ));
     assert_eq!(owner.snapshot().revision(), before.revision());
@@ -491,7 +533,7 @@ fn replacement_detached_work_preserves_old_capture_and_exact_two_publications() 
     assert_eq!(owner.snapshot().revision().value(), previous + 1);
     assert_eq!(list.length(&owner).unwrap(), 1);
     assert_exception(
-        sheet.insert_rule(&mut owner, "blocked {}", None),
+        sheet.insert_rule(&mut owner, "blocked {}", None, &AtomicBool::new(false)),
         CssomException::NotAllowed,
     );
     let work = std::thread::spawn(move || request.parse()).join().unwrap();
@@ -553,7 +595,9 @@ fn stale_replacement_returns_failed_disposition_and_cleanup_publication() {
             .unwrap()
             .is_none()
     );
-    let _ = sheet.insert_rule(&mut owner, "unlocked {}", None).unwrap();
+    let _ = sheet
+        .insert_rule(&mut owner, "unlocked {}", None, &AtomicBool::new(false))
+        .unwrap();
 }
 
 #[test]
@@ -699,25 +743,40 @@ fn namespace_and_hierarchy_failures_keep_typed_list_membership_atomic() {
     let list = sheet.css_rules(&owner).unwrap();
     let revision = owner.snapshot().revision().clone();
     assert_exception(
-        sheet.insert_rule(&mut owner, "@namespace p 'urn:p';", Some(2)),
+        sheet.insert_rule(
+            &mut owner,
+            "@namespace p 'urn:p';",
+            Some(2),
+            &AtomicBool::new(false),
+        ),
         CssomException::InvalidState,
     );
     assert_eq!(list.length(&owner).unwrap(), 2);
     assert_eq!(owner.snapshot().revision(), &revision);
     assert_eq!(
         *sheet
-            .insert_rule(&mut owner, "b {}", Some(2))
+            .insert_rule(&mut owner, "b {}", Some(2), &AtomicBool::new(false))
             .unwrap()
             .value(),
         2
     );
     let revision = owner.snapshot().revision().clone();
     assert_exception(
-        sheet.insert_rule(&mut owner, "@import 'late';", Some(3)),
+        sheet.insert_rule(
+            &mut owner,
+            "@import 'late';",
+            Some(3),
+            &AtomicBool::new(false),
+        ),
         CssomException::HierarchyRequest,
     );
     assert_exception(
-        sheet.insert_rule(&mut owner, "@namespace p 'urn:p';", Some(3)),
+        sheet.insert_rule(
+            &mut owner,
+            "@namespace p 'urn:p';",
+            Some(3),
+            &AtomicBool::new(false),
+        ),
         CssomException::HierarchyRequest,
     );
     assert_eq!(list.length(&owner).unwrap(), 3);
@@ -795,7 +854,9 @@ fn sheet_list_items_expose_css_stylesheet_interface_and_retained_rule_chain() {
     // CSSOM StyleSheetList.item returns CSSStyleSheet?, including in a capture.
     let mut owner = store();
     let sheet = construct(&mut owner);
-    let _ = sheet.insert_rule(&mut owner, "old {}", None).unwrap();
+    let _ = sheet
+        .insert_rule(&mut owner, "old {}", None, &AtomicBool::new(false))
+        .unwrap();
     let list = owner
         .style_sheet_list(owner.snapshot().sheet_list())
         .unwrap();
