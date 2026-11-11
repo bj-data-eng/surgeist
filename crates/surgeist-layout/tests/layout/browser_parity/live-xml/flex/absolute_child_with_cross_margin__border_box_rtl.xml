@@ -1,0 +1,25 @@
+<test name="absolute_child_with_cross_margin__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" direction="rtl" position="absolute" font-family="ahem" font-size="10px" line-height="10px" justify-content="space-between" min-width="311px" min-height="0px" max-width="311px" max-height="36893500000000000000px">
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" align-content="stretch" width="28px" height="27px"/>
+      <text source-tag="div" display="flex" direction="rtl" position="absolute" font-family="ahem" font-size="10px" line-height="10px" align-content="stretch" width="100%" height="15px" margin-top="4px">
+        
+      </text>
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" align-content="stretch" width="25px" height="27px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="311" height="27">
+      <node x="283" y="0" width="28" height="27"/>
+      <node x="0" y="4" width="311" height="15"/>
+      <node x="0" y="0" width="25" height="27"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="311" height="27" scroll-width="311" scroll-height="27" client-width="311" client-height="27"/>
+    <world-rounded-layout node-path="0.0" x="283" y="0" width="28" height="27" scroll-width="28" scroll-height="27" client-width="28" client-height="27"/>
+    <world-rounded-layout node-path="0.1" x="0" y="4" width="311" height="15" scroll-width="311" scroll-height="15" client-width="311" client-height="15"/>
+    <world-rounded-layout node-path="0.2" x="0" y="0" width="25" height="27" scroll-width="25" scroll-height="27" client-width="25" client-height="27"/>
+  </diagnostics>
+</test>

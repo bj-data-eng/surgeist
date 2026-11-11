@@ -1,0 +1,150 @@
+<test name="subgrid_baseline_vertical_nested_parent_row2_last__content_box_ltr" measurement-version="4" observation-frame="root-border" use-rounding="true">
+  <viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[&quot;/&quot;,&quot;/0&quot;,&quot;/0/0&quot;]}" grid-alignment-reference="{&quot;profile&quot;:1,&quot;display&quot;:&quot;grid&quot;,&quot;writingMode&quot;:&quot;vertical-rl&quot;,&quot;direction&quot;:&quot;ltr&quot;,&quot;textOrientation&quot;:&quot;mixed&quot;,&quot;dominantBaseline&quot;:&quot;auto&quot;,&quot;alignmentBaseline&quot;:&quot;auto&quot;,&quot;font&quot;:{&quot;sha256&quot;:&quot;e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c&quot;,&quot;family&quot;:&quot;ahem&quot;,&quot;size&quot;:10.0,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;loaded&quot;:true},&quot;reference&quot;:&quot;central&quot;}" source-tag="div" layout-ready-inline-root="true" display="grid" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="10px" width="600px" grid-template-rows="150px 150px 150px" grid-template-columns="100px 100px 100px 100px">
+      <div grid-alignment-reference="{&quot;profile&quot;:1,&quot;display&quot;:&quot;grid&quot;,&quot;writingMode&quot;:&quot;vertical-rl&quot;,&quot;direction&quot;:&quot;ltr&quot;,&quot;textOrientation&quot;:&quot;mixed&quot;,&quot;dominantBaseline&quot;:&quot;auto&quot;,&quot;alignmentBaseline&quot;:&quot;auto&quot;,&quot;font&quot;:{&quot;sha256&quot;:&quot;e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c&quot;,&quot;family&quot;:&quot;ahem&quot;,&quot;size&quot;:10.0,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;loaded&quot;:true},&quot;reference&quot;:&quot;central&quot;}" source-tag="div" display="grid" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="10px" row-gap="10px" column-gap="10px" margin-left="10px" margin-right="5px" padding-left="20px" padding-right="10px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px" grid-template-rows="subgrid" grid-template-columns="subgrid" grid-row-start="1" grid-row-end="span 3" grid-column-start="1" grid-column-end="span 2">
+        <div grid-alignment-reference="{&quot;profile&quot;:1,&quot;display&quot;:&quot;grid&quot;,&quot;writingMode&quot;:&quot;vertical-rl&quot;,&quot;direction&quot;:&quot;ltr&quot;,&quot;textOrientation&quot;:&quot;mixed&quot;,&quot;dominantBaseline&quot;:&quot;auto&quot;,&quot;alignmentBaseline&quot;:&quot;auto&quot;,&quot;font&quot;:{&quot;sha256&quot;:&quot;e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c&quot;,&quot;family&quot;:&quot;ahem&quot;,&quot;size&quot;:10.0,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;loaded&quot;:true},&quot;reference&quot;:&quot;central&quot;}" source-tag="div" display="grid" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="10px" row-gap="20px" column-gap="20px" margin-left="7px" margin-right="3px" padding-left="10px" padding-right="5px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px" grid-template-rows="subgrid" grid-template-columns="subgrid" grid-row-start="1" grid-row-end="span 2" grid-column-start="1" grid-column-end="span 2">
+          <div atomic-paragraph-metrics="{&quot;profile&quot;:1,&quot;font&quot;:{&quot;sha256&quot;:&quot;e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c&quot;,&quot;family&quot;:&quot;ahem&quot;,&quot;size&quot;:10.0,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;loaded&quot;:true},&quot;writingMode&quot;:&quot;vertical-rl&quot;,&quot;direction&quot;:&quot;ltr&quot;,&quot;textOrientation&quot;:&quot;mixed&quot;,&quot;dominantBaseline&quot;:&quot;auto&quot;,&quot;alignmentBaseline&quot;:&quot;auto&quot;,&quot;verticalAlign&quot;:&quot;baseline&quot;,&quot;lineFit&quot;:&quot;leading&quot;,&quot;reference&quot;:&quot;central&quot;,&quot;before&quot;:0.0,&quot;after&quot;:0.0,&quot;lineHeight&quot;:0.0,&quot;order&quot;:[{&quot;kind&quot;:&quot;atomic&quot;,&quot;child&quot;:0,&quot;source&quot;:1,&quot;bidiLevel&quot;:0},{&quot;kind&quot;:&quot;break&quot;,&quot;child&quot;:1,&quot;source&quot;:2,&quot;reference&quot;:&quot;central&quot;,&quot;before&quot;:0.0,&quot;after&quot;:0.0},{&quot;kind&quot;:&quot;atomic&quot;,&quot;child&quot;:2,&quot;source&quot;:3,&quot;bidiLevel&quot;:0}]}" source-tag="div" display="block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" align-self="baseline" height="40px" margin-left="5px" margin-right="3px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px">
+            <div source-tag="span" display="inline-block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" width="20px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+            <div source-tag="br" line-control="forced-break" display="inline" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" inline-baseline="0px" inline-line-height="0px"/>
+            <div source-tag="span" display="inline-block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" width="20px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+            <atomic-placeholder child-index="0" bidi-level="0" following-break="prohibited"/>
+            <atomic-placeholder child-index="2" bidi-level="0" following-break="prohibited"/>
+          </div>
+          <div atomic-paragraph-metrics="{&quot;profile&quot;:1,&quot;font&quot;:{&quot;sha256&quot;:&quot;e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c&quot;,&quot;family&quot;:&quot;ahem&quot;,&quot;size&quot;:10.0,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;loaded&quot;:true},&quot;writingMode&quot;:&quot;vertical-rl&quot;,&quot;direction&quot;:&quot;ltr&quot;,&quot;textOrientation&quot;:&quot;mixed&quot;,&quot;dominantBaseline&quot;:&quot;auto&quot;,&quot;alignmentBaseline&quot;:&quot;auto&quot;,&quot;verticalAlign&quot;:&quot;baseline&quot;,&quot;lineFit&quot;:&quot;leading&quot;,&quot;reference&quot;:&quot;central&quot;,&quot;before&quot;:0.0,&quot;after&quot;:0.0,&quot;lineHeight&quot;:0.0,&quot;order&quot;:[{&quot;kind&quot;:&quot;atomic&quot;,&quot;child&quot;:0,&quot;source&quot;:1,&quot;bidiLevel&quot;:0},{&quot;kind&quot;:&quot;break&quot;,&quot;child&quot;:1,&quot;source&quot;:2,&quot;reference&quot;:&quot;central&quot;,&quot;before&quot;:0.0,&quot;after&quot;:0.0},{&quot;kind&quot;:&quot;atomic&quot;,&quot;child&quot;:2,&quot;source&quot;:3,&quot;bidiLevel&quot;:0}]}" source-tag="div" display="block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" align-self="last baseline" height="40px" margin-left="5px" margin-right="3px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px">
+            <div source-tag="span" display="inline-block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" width="20px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+            <div source-tag="br" line-control="forced-break" display="inline" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" inline-baseline="0px" inline-line-height="0px"/>
+            <div source-tag="span" display="inline-block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" width="20px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+            <atomic-placeholder child-index="0" bidi-level="0" following-break="prohibited"/>
+            <atomic-placeholder child-index="2" bidi-level="0" following-break="prohibited"/>
+          </div>
+          <div atomic-paragraph-metrics="{&quot;profile&quot;:1,&quot;font&quot;:{&quot;sha256&quot;:&quot;e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c&quot;,&quot;family&quot;:&quot;ahem&quot;,&quot;size&quot;:10.0,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;loaded&quot;:true},&quot;writingMode&quot;:&quot;vertical-rl&quot;,&quot;direction&quot;:&quot;ltr&quot;,&quot;textOrientation&quot;:&quot;mixed&quot;,&quot;dominantBaseline&quot;:&quot;auto&quot;,&quot;alignmentBaseline&quot;:&quot;auto&quot;,&quot;verticalAlign&quot;:&quot;baseline&quot;,&quot;lineFit&quot;:&quot;leading&quot;,&quot;reference&quot;:&quot;central&quot;,&quot;before&quot;:0.0,&quot;after&quot;:0.0,&quot;lineHeight&quot;:0.0,&quot;order&quot;:[{&quot;kind&quot;:&quot;atomic&quot;,&quot;child&quot;:0,&quot;source&quot;:1,&quot;bidiLevel&quot;:0},{&quot;kind&quot;:&quot;break&quot;,&quot;child&quot;:1,&quot;source&quot;:2,&quot;reference&quot;:&quot;central&quot;,&quot;before&quot;:0.0,&quot;after&quot;:0.0},{&quot;kind&quot;:&quot;atomic&quot;,&quot;child&quot;:2,&quot;source&quot;:3,&quot;bidiLevel&quot;:0}]}" source-tag="div" display="block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" align-self="baseline" height="40px" margin-left="5px" margin-right="3px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px">
+            <div source-tag="span" display="inline-block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" width="20px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+            <div source-tag="br" line-control="forced-break" display="inline" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" inline-baseline="0px" inline-line-height="0px"/>
+            <div source-tag="span" display="inline-block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" width="20px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+            <atomic-placeholder child-index="0" bidi-level="0" following-break="prohibited"/>
+            <atomic-placeholder child-index="2" bidi-level="0" following-break="prohibited"/>
+          </div>
+          <div atomic-paragraph-metrics="{&quot;profile&quot;:1,&quot;font&quot;:{&quot;sha256&quot;:&quot;e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c&quot;,&quot;family&quot;:&quot;ahem&quot;,&quot;size&quot;:10.0,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;loaded&quot;:true},&quot;writingMode&quot;:&quot;vertical-rl&quot;,&quot;direction&quot;:&quot;ltr&quot;,&quot;textOrientation&quot;:&quot;mixed&quot;,&quot;dominantBaseline&quot;:&quot;auto&quot;,&quot;alignmentBaseline&quot;:&quot;auto&quot;,&quot;verticalAlign&quot;:&quot;baseline&quot;,&quot;lineFit&quot;:&quot;leading&quot;,&quot;reference&quot;:&quot;central&quot;,&quot;before&quot;:0.0,&quot;after&quot;:0.0,&quot;lineHeight&quot;:0.0,&quot;order&quot;:[{&quot;kind&quot;:&quot;atomic&quot;,&quot;child&quot;:0,&quot;source&quot;:1,&quot;bidiLevel&quot;:0},{&quot;kind&quot;:&quot;break&quot;,&quot;child&quot;:1,&quot;source&quot;:2,&quot;reference&quot;:&quot;central&quot;,&quot;before&quot;:0.0,&quot;after&quot;:0.0},{&quot;kind&quot;:&quot;atomic&quot;,&quot;child&quot;:2,&quot;source&quot;:3,&quot;bidiLevel&quot;:0}]}" source-tag="div" display="block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" align-self="last baseline" height="40px" margin-left="5px" margin-right="3px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px">
+            <div source-tag="span" display="inline-block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" width="20px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+            <div source-tag="br" line-control="forced-break" display="inline" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" inline-baseline="0px" inline-line-height="0px"/>
+            <div source-tag="span" display="inline-block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" width="20px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+            <atomic-placeholder child-index="0" bidi-level="0" following-break="prohibited"/>
+            <atomic-placeholder child-index="2" bidi-level="0" following-break="prohibited"/>
+          </div>
+        </div>
+        <div atomic-paragraph-metrics="{&quot;profile&quot;:1,&quot;font&quot;:{&quot;sha256&quot;:&quot;e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c&quot;,&quot;family&quot;:&quot;ahem&quot;,&quot;size&quot;:10.0,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;loaded&quot;:true},&quot;writingMode&quot;:&quot;vertical-rl&quot;,&quot;direction&quot;:&quot;ltr&quot;,&quot;textOrientation&quot;:&quot;mixed&quot;,&quot;dominantBaseline&quot;:&quot;auto&quot;,&quot;alignmentBaseline&quot;:&quot;auto&quot;,&quot;verticalAlign&quot;:&quot;baseline&quot;,&quot;lineFit&quot;:&quot;leading&quot;,&quot;reference&quot;:&quot;central&quot;,&quot;before&quot;:0.0,&quot;after&quot;:0.0,&quot;lineHeight&quot;:0.0,&quot;order&quot;:[{&quot;kind&quot;:&quot;atomic&quot;,&quot;child&quot;:0,&quot;source&quot;:1,&quot;bidiLevel&quot;:0},{&quot;kind&quot;:&quot;break&quot;,&quot;child&quot;:1,&quot;source&quot;:2,&quot;reference&quot;:&quot;central&quot;,&quot;before&quot;:0.0,&quot;after&quot;:0.0},{&quot;kind&quot;:&quot;atomic&quot;,&quot;child&quot;:2,&quot;source&quot;:3,&quot;bidiLevel&quot;:0}]}" source-tag="div" display="block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" align-self="baseline" height="40px" margin-left="5px" margin-right="3px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px">
+          <div source-tag="span" display="inline-block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" width="20px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+          <div source-tag="br" line-control="forced-break" display="inline" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" inline-baseline="0px" inline-line-height="0px"/>
+          <div source-tag="span" display="inline-block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" width="20px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+          <atomic-placeholder child-index="0" bidi-level="0" following-break="prohibited"/>
+          <atomic-placeholder child-index="2" bidi-level="0" following-break="prohibited"/>
+        </div>
+        <div atomic-paragraph-metrics="{&quot;profile&quot;:1,&quot;font&quot;:{&quot;sha256&quot;:&quot;e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c&quot;,&quot;family&quot;:&quot;ahem&quot;,&quot;size&quot;:10.0,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;loaded&quot;:true},&quot;writingMode&quot;:&quot;vertical-rl&quot;,&quot;direction&quot;:&quot;ltr&quot;,&quot;textOrientation&quot;:&quot;mixed&quot;,&quot;dominantBaseline&quot;:&quot;auto&quot;,&quot;alignmentBaseline&quot;:&quot;auto&quot;,&quot;verticalAlign&quot;:&quot;baseline&quot;,&quot;lineFit&quot;:&quot;leading&quot;,&quot;reference&quot;:&quot;central&quot;,&quot;before&quot;:0.0,&quot;after&quot;:0.0,&quot;lineHeight&quot;:0.0,&quot;order&quot;:[{&quot;kind&quot;:&quot;atomic&quot;,&quot;child&quot;:0,&quot;source&quot;:1,&quot;bidiLevel&quot;:0},{&quot;kind&quot;:&quot;break&quot;,&quot;child&quot;:1,&quot;source&quot;:2,&quot;reference&quot;:&quot;central&quot;,&quot;before&quot;:0.0,&quot;after&quot;:0.0},{&quot;kind&quot;:&quot;atomic&quot;,&quot;child&quot;:2,&quot;source&quot;:3,&quot;bidiLevel&quot;:0}]}" source-tag="div" display="block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" align-self="last baseline" height="40px" margin-left="5px" margin-right="3px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px">
+          <div source-tag="span" display="inline-block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" width="20px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+          <div source-tag="br" line-control="forced-break" display="inline" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" inline-baseline="0px" inline-line-height="0px"/>
+          <div source-tag="span" display="inline-block" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" width="20px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+          <atomic-placeholder child-index="0" bidi-level="0" following-break="prohibited"/>
+          <atomic-placeholder child-index="2" bidi-level="0" following-break="prohibited"/>
+        </div>
+      </div>
+      <div source-tag="div" display="flex" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" align-self="baseline" width="30px" height="30px" margin-left="5px" margin-right="3px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+      <div source-tag="div" display="flex" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" align-self="last baseline" width="30px" height="30px" margin-left="5px" margin-right="3px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+      <div source-tag="div" display="flex" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" align-self="baseline" width="30px" height="30px" margin-left="5px" margin-right="3px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+      <div source-tag="div" display="flex" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" align-self="last baseline" width="30px" height="30px" margin-left="5px" margin-right="3px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+      <div source-tag="div" display="flex" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" align-self="baseline" width="30px" height="30px" margin-left="5px" margin-right="3px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+      <div source-tag="div" display="flex" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="0px" align-self="last baseline" width="30px" height="30px" margin-left="5px" margin-right="3px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="600" height="400">
+      <node x="160" y="0" width="435" height="200">
+        <node x="152" y="5" width="265" height="190">
+          <node x="202" y="5" width="50" height="40">
+            <node x="25" y="5" width="20" height="20"/>
+            <node>
+              <browser-control source_index="1" terminal_visual_slot="1" previous_line="same" next_line="later"/>
+            </node>
+            <node x="5" y="5" width="20" height="20"/>
+          </node>
+          <node x="153" y="105" width="50" height="40">
+            <node x="25" y="5" width="20" height="20"/>
+            <node>
+              <browser-control source_index="1" terminal_visual_slot="1" previous_line="same" next_line="later"/>
+            </node>
+            <node x="5" y="5" width="20" height="20"/>
+          </node>
+          <node x="75" y="5" width="50" height="40">
+            <node x="25" y="5" width="20" height="20"/>
+            <node>
+              <browser-control source_index="1" terminal_visual_slot="1" previous_line="same" next_line="later"/>
+            </node>
+            <node x="5" y="5" width="20" height="20"/>
+          </node>
+          <node x="20" y="105" width="50" height="40">
+            <node x="25" y="5" width="20" height="20"/>
+            <node>
+              <browser-control source_index="1" terminal_visual_slot="1" previous_line="same" next_line="later"/>
+            </node>
+            <node x="5" y="5" width="20" height="20"/>
+          </node>
+        </node>
+        <node x="82" y="5" width="50" height="40">
+          <node x="25" y="5" width="20" height="20"/>
+          <node>
+            <browser-control source_index="1" terminal_visual_slot="1" previous_line="same" next_line="later"/>
+          </node>
+          <node x="5" y="5" width="20" height="20"/>
+        </node>
+        <node x="30" y="105" width="50" height="40">
+          <node x="25" y="5" width="20" height="20"/>
+          <node>
+            <browser-control source_index="1" terminal_visual_slot="1" previous_line="same" next_line="later"/>
+          </node>
+          <node x="5" y="5" width="20" height="20"/>
+        </node>
+      </node>
+      <node x="534" y="200" width="30" height="30"/>
+      <node x="465" y="300" width="30" height="30"/>
+      <node x="407" y="200" width="30" height="30"/>
+      <node x="332" y="300" width="30" height="30"/>
+      <node x="262" y="200" width="30" height="30"/>
+      <node x="190" y="300" width="30" height="30"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="600" height="400" scroll-width="600" scroll-height="400" client-width="600" client-height="400"/>
+    <world-rounded-layout node-path="0.0" x="160" y="0" width="435" height="200" scroll-width="425" scroll-height="190" client-width="425" client-height="190"/>
+    <world-rounded-layout node-path="0.0.0" x="152" y="5" width="265" height="190" scroll-width="255" scroll-height="180" client-width="255" client-height="180"/>
+    <world-rounded-layout node-path="0.0.0.0" x="202" y="5" width="50" height="40" scroll-width="40" scroll-height="30" client-width="40" client-height="30"/>
+    <world-rounded-layout node-path="0.0.0.0.0" x="25" y="5" width="20" height="20" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.0.0.0.1" x="30" y="25" width="10" height="0" scroll-width="0" scroll-height="0" client-width="0" client-height="0"/>
+    <world-rounded-layout node-path="0.0.0.0.2" x="5" y="5" width="20" height="20" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.0.0.1" x="153" y="105" width="50" height="40" scroll-width="40" scroll-height="30" client-width="40" client-height="30"/>
+    <world-rounded-layout node-path="0.0.0.1.0" x="25" y="5" width="20" height="20" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.0.0.1.1" x="30" y="25" width="10" height="0" scroll-width="0" scroll-height="0" client-width="0" client-height="0"/>
+    <world-rounded-layout node-path="0.0.0.1.2" x="5" y="5" width="20" height="20" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.0.0.2" x="75" y="5" width="50" height="40" scroll-width="40" scroll-height="30" client-width="40" client-height="30"/>
+    <world-rounded-layout node-path="0.0.0.2.0" x="25" y="5" width="20" height="20" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.0.0.2.1" x="30" y="25" width="10" height="0" scroll-width="0" scroll-height="0" client-width="0" client-height="0"/>
+    <world-rounded-layout node-path="0.0.0.2.2" x="5" y="5" width="20" height="20" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.0.0.3" x="20" y="105" width="50" height="40" scroll-width="40" scroll-height="30" client-width="40" client-height="30"/>
+    <world-rounded-layout node-path="0.0.0.3.0" x="25" y="5" width="20" height="20" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.0.0.3.1" x="30" y="25" width="10" height="0" scroll-width="0" scroll-height="0" client-width="0" client-height="0"/>
+    <world-rounded-layout node-path="0.0.0.3.2" x="5" y="5" width="20" height="20" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.0.1" x="82" y="5" width="50" height="40" scroll-width="40" scroll-height="30" client-width="40" client-height="30"/>
+    <world-rounded-layout node-path="0.0.1.0" x="25" y="5" width="20" height="20" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.0.1.1" x="30" y="25" width="10" height="0" scroll-width="0" scroll-height="0" client-width="0" client-height="0"/>
+    <world-rounded-layout node-path="0.0.1.2" x="5" y="5" width="20" height="20" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.0.2" x="30" y="105" width="50" height="40" scroll-width="40" scroll-height="30" client-width="40" client-height="30"/>
+    <world-rounded-layout node-path="0.0.2.0" x="25" y="5" width="20" height="20" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.0.2.1" x="30" y="25" width="10" height="0" scroll-width="0" scroll-height="0" client-width="0" client-height="0"/>
+    <world-rounded-layout node-path="0.0.2.2" x="5" y="5" width="20" height="20" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.1" x="534" y="200" width="30" height="30" scroll-width="20" scroll-height="20" client-width="20" client-height="20"/>
+    <world-rounded-layout node-path="0.2" x="465" y="300" width="30" height="30" scroll-width="20" scroll-height="20" client-width="20" client-height="20"/>
+    <world-rounded-layout node-path="0.3" x="407" y="200" width="30" height="30" scroll-width="20" scroll-height="20" client-width="20" client-height="20"/>
+    <world-rounded-layout node-path="0.4" x="332" y="300" width="30" height="30" scroll-width="20" scroll-height="20" client-width="20" client-height="20"/>
+    <world-rounded-layout node-path="0.5" x="262" y="200" width="30" height="30" scroll-width="20" scroll-height="20" client-width="20" client-height="20"/>
+    <world-rounded-layout node-path="0.6" x="190" y="300" width="30" height="30" scroll-width="20" scroll-height="20" client-width="20" client-height="20"/>
+  </diagnostics>
+</test>

@@ -1,0 +1,28 @@
+<test name="rounding_inner_node_controversy_vertical__content_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" box-sizing="content-box" direction="ltr" position="absolute" flex-direction="column" font-family="ahem" font-size="10px" line-height="10px" height="320px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" flex-grow="1" width="10px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" flex-direction="column" font-family="ahem" font-size="10px" line-height="10px" flex-grow="1" width="10px">
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" flex-grow="1" width="10px"/>
+      </div>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" flex-grow="1" width="10px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="10" height="320">
+      <node x="0" y="0" width="10" height="107"/>
+      <node x="0" y="107" width="10" height="106">
+        <node x="0" y="0" width="10" height="106"/>
+      </node>
+      <node x="0" y="213" width="10" height="107"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="10" height="320" scroll-width="10" scroll-height="320" client-width="10" client-height="320"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="10" height="107" scroll-width="10" scroll-height="107" client-width="10" client-height="107"/>
+    <world-rounded-layout node-path="0.1" x="0" y="107" width="10" height="106" scroll-width="10" scroll-height="107" client-width="10" client-height="107"/>
+    <world-rounded-layout node-path="0.1.0" x="0" y="0" width="10" height="106" scroll-width="10" scroll-height="107" client-width="10" client-height="107"/>
+    <world-rounded-layout node-path="0.2" x="0" y="213" width="10" height="107" scroll-width="10" scroll-height="107" client-width="10" client-height="107"/>
+  </diagnostics>
+</test>

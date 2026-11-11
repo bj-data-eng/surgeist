@@ -1,0 +1,25 @@
+<test name="fri06_float_auto_height__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="block" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="block" direction="rtl" position="absolute" overflow-x="auto" overflow-y="auto" scrollbar-width="15" font-family="ahem" font-size="10px" line-height="10px" width="160px">
+      <div source-tag="div" display="flex" direction="rtl" float="left" font-family="ahem" font-size="10px" line-height="10px" width="40px" height="28px"/>
+      <div source-tag="div" display="block" direction="rtl" float="right" overflow-x="auto" overflow-y="auto" scrollbar-width="15" font-family="ahem" font-size="10px" line-height="10px" width="52px">
+        <div source-tag="div" display="flex" direction="rtl" float="left" font-family="ahem" font-size="10px" line-height="10px" width="24px" height="16px"/>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="160" height="28" scroll_width="0" scroll_height="0">
+      <node x="0" y="0" width="40" height="28"/>
+      <node x="108" y="0" width="52" height="16" scroll_width="0" scroll_height="0">
+        <node x="0" y="0" width="24" height="16"/>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="160" height="28" scroll-width="160" scroll-height="28" client-width="160" client-height="28"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="40" height="28" scroll-width="40" scroll-height="28" client-width="40" client-height="28"/>
+    <world-rounded-layout node-path="0.1" x="108" y="0" width="52" height="16" scroll-width="52" scroll-height="16" client-width="52" client-height="16"/>
+    <world-rounded-layout node-path="0.1.0" x="0" y="0" width="24" height="16" scroll-width="24" scroll-height="16" client-width="24" client-height="16"/>
+  </diagnostics>
+</test>

@@ -1,0 +1,34 @@
+<test name="flex_grow_0_min_size__border_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" direction="ltr" position="absolute" font-family="ahem" font-size="10px" line-height="10px" width="400px" height="100px" border-top="1px" border-left="1px" border-bottom="1px" border-right="1px">
+      <text source-tag="div" display="flex" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" flex-basis="0%">
+        one
+      </text>
+      <text source-tag="div" display="flex" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" flex-basis="0%">
+        two
+      </text>
+      <text source-tag="div" display="flex" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" flex-basis="0%">
+        three
+      </text>
+      <text source-tag="div" display="flex" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" flex-basis="0%">
+        four
+      </text>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="400" height="100">
+      <node x="1" y="1" width="30" height="98"/>
+      <node x="31" y="1" width="30" height="98"/>
+      <node x="61" y="1" width="50" height="98"/>
+      <node x="111" y="1" width="40" height="98"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="400" height="100" scroll-width="398" scroll-height="98" client-width="398" client-height="98"/>
+    <world-rounded-layout node-path="0.0" x="1" y="1" width="30" height="98" scroll-width="30" scroll-height="98" client-width="30" client-height="98"/>
+    <world-rounded-layout node-path="0.1" x="31" y="1" width="30" height="98" scroll-width="30" scroll-height="98" client-width="30" client-height="98"/>
+    <world-rounded-layout node-path="0.2" x="61" y="1" width="50" height="98" scroll-width="50" scroll-height="98" client-width="50" client-height="98"/>
+    <world-rounded-layout node-path="0.3" x="111" y="1" width="40" height="98" scroll-width="40" scroll-height="98" client-width="40" client-height="98"/>
+  </diagnostics>
+</test>

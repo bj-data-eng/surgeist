@@ -1,0 +1,29 @@
+<test name="taffy_issue_937_column_gap_margin_auto_5_items__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" direction="rtl" position="absolute" flex-direction="column" font-family="ahem" font-size="10px" line-height="10px" width="200px" height="200px" row-gap="10px" column-gap="10px">
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="50px" margin-bottom="auto"/>
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="50px"/>
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="50px"/>
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="50px"/>
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="50px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="200" height="200">
+      <node x="150" y="0" width="50" height="32"/>
+      <node x="150" y="42" width="50" height="32"/>
+      <node x="150" y="84" width="50" height="32"/>
+      <node x="150" y="126" width="50" height="32"/>
+      <node x="150" y="168" width="50" height="32"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="200" height="200" scroll-width="200" scroll-height="200" client-width="200" client-height="200"/>
+    <world-rounded-layout node-path="0.0" x="150" y="0" width="50" height="32" scroll-width="50" scroll-height="32" client-width="50" client-height="32"/>
+    <world-rounded-layout node-path="0.1" x="150" y="42" width="50" height="32" scroll-width="50" scroll-height="32" client-width="50" client-height="32"/>
+    <world-rounded-layout node-path="0.2" x="150" y="84" width="50" height="32" scroll-width="50" scroll-height="32" client-width="50" client-height="32"/>
+    <world-rounded-layout node-path="0.3" x="150" y="126" width="50" height="32" scroll-width="50" scroll-height="32" client-width="50" client-height="32"/>
+    <world-rounded-layout node-path="0.4" x="150" y="168" width="50" height="32" scroll-width="50" scroll-height="32" client-width="50" client-height="32"/>
+  </diagnostics>
+</test>

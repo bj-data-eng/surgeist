@@ -1,0 +1,17 @@
+<test name="grid_percent_items_width_and_margin__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="grid" direction="rtl" position="absolute" font-family="ahem" font-size="10px" line-height="10px" width="200px" padding-top="3px" padding-left="3px" padding-bottom="3px" padding-right="3px">
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="45%" margin-top="5%" margin-left="5%" margin-bottom="5%" margin-right="5%" padding-top="3px" padding-left="3px" padding-bottom="3px" padding-right="3px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="200" height="31">
+      <node x="100" y="13" width="87" height="6"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="200" height="31" scroll-width="200" scroll-height="31" client-width="200" client-height="31"/>
+    <world-rounded-layout node-path="0.0" x="100" y="13" width="87" height="6" scroll-width="87" scroll-height="6" client-width="87" client-height="6"/>
+  </diagnostics>
+</test>

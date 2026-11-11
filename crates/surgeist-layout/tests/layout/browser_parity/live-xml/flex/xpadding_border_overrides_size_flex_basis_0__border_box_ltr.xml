@@ -1,0 +1,20 @@
+<test name="xpadding_border_overrides_size_flex_basis_0__border_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" direction="ltr" position="absolute" font-family="ahem" font-size="10px" line-height="10px">
+      <div source-tag="div" display="flex" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" flex-basis="0px" width="12px" height="12px" padding-top="2px" padding-left="8px" padding-bottom="6px" padding-right="4px" border-top="1px" border-left="7px" border-bottom="5px" border-right="3px"/>
+      <div source-tag="div" display="flex" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" flex-basis="0px" width="12px" height="12px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="22" height="14">
+      <node x="0" y="0" width="22" height="14"/>
+      <node x="22" y="0" width="0" height="12"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="22" height="14" scroll-width="22" scroll-height="14" client-width="22" client-height="14"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="22" height="14" scroll-width="12" scroll-height="8" client-width="12" client-height="8"/>
+    <world-rounded-layout node-path="0.1" x="22" y="0" width="0" height="12" scroll-width="0" scroll-height="12" client-width="0" client-height="12"/>
+  </diagnostics>
+</test>

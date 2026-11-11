@@ -1,0 +1,25 @@
+<test name="grid_align_items_baseline_child_padding__content_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="grid" box-sizing="content-box" direction="ltr" position="absolute" font-family="ahem" font-size="10px" line-height="10px" align-items="baseline" width="100px" height="100px" padding-top="5px" padding-left="5px" padding-bottom="5px" padding-right="5px">
+      <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="50px"/>
+      <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="20px" padding-top="5px" padding-left="5px" padding-bottom="5px" padding-right="5px">
+        <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="50px" height="10px"/>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="110" height="110">
+      <node x="5" y="5" width="50" height="50"/>
+      <node x="5" y="65" width="60" height="30">
+        <node x="5" y="5" width="50" height="10"/>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="110" height="110" scroll-width="110" scroll-height="110" client-width="110" client-height="110"/>
+    <world-rounded-layout node-path="0.0" x="5" y="5" width="50" height="50" scroll-width="50" scroll-height="50" client-width="50" client-height="50"/>
+    <world-rounded-layout node-path="0.1" x="5" y="65" width="60" height="30" scroll-width="60" scroll-height="30" client-width="60" client-height="30"/>
+    <world-rounded-layout node-path="0.1.0" x="5" y="5" width="50" height="10" scroll-width="50" scroll-height="10" client-width="50" client-height="10"/>
+  </diagnostics>
+</test>

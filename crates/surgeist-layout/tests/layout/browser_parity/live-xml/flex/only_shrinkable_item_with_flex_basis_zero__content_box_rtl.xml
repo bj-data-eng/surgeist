@@ -1,0 +1,23 @@
+<test name="only_shrinkable_item_with_flex_basis_zero__content_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="785px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="785px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" box-sizing="content-box" direction="rtl" position="absolute" flex-direction="column" font-family="ahem" font-size="10px" line-height="10px" width="480px" max-height="764px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-basis="0px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" flex-basis="93px" margin-bottom="6px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" flex-basis="764px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="480" height="764">
+      <node x="0" y="0" width="480" height="0"/>
+      <node x="0" y="0" width="480" height="93"/>
+      <node x="0" y="99" width="480" height="764"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="480" height="764" scroll-width="480" scroll-height="863" client-width="480" client-height="764"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="480" height="0" scroll-width="480" scroll-height="0" client-width="480" client-height="0"/>
+    <world-rounded-layout node-path="0.1" x="0" y="0" width="480" height="93" scroll-width="480" scroll-height="93" client-width="480" client-height="93"/>
+    <world-rounded-layout node-path="0.2" x="0" y="99" width="480" height="764" scroll-width="480" scroll-height="764" client-width="480" client-height="764"/>
+  </diagnostics>
+</test>

@@ -1,0 +1,32 @@
+<test name="grid_percent_tracks_definite_underflow__content_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="grid" box-sizing="content-box" direction="rtl" position="absolute" font-family="ahem" font-size="10px" line-height="10px" width="120px" height="60px" grid-template-rows="30% 60%" grid-template-columns="10% 20% 30%">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="ahem" font-size="10px" line-height="10px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="120" height="60">
+      <node x="108" y="0" width="12" height="18"/>
+      <node x="84" y="0" width="24" height="18"/>
+      <node x="48" y="0" width="36" height="18"/>
+      <node x="108" y="18" width="12" height="36"/>
+      <node x="84" y="18" width="24" height="36"/>
+      <node x="48" y="18" width="36" height="36"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="120" height="60" scroll-width="120" scroll-height="60" client-width="120" client-height="60"/>
+    <world-rounded-layout node-path="0.0" x="108" y="0" width="12" height="18" scroll-width="12" scroll-height="18" client-width="12" client-height="18"/>
+    <world-rounded-layout node-path="0.1" x="84" y="0" width="24" height="18" scroll-width="24" scroll-height="18" client-width="24" client-height="18"/>
+    <world-rounded-layout node-path="0.2" x="48" y="0" width="36" height="18" scroll-width="36" scroll-height="18" client-width="36" client-height="18"/>
+    <world-rounded-layout node-path="0.3" x="108" y="18" width="12" height="36" scroll-width="12" scroll-height="36" client-width="12" client-height="36"/>
+    <world-rounded-layout node-path="0.4" x="84" y="18" width="24" height="36" scroll-width="24" scroll-height="36" client-width="24" client-height="36"/>
+    <world-rounded-layout node-path="0.5" x="48" y="18" width="36" height="36" scroll-width="36" scroll-height="36" client-width="36" client-height="36"/>
+  </diagnostics>
+</test>

@@ -1,0 +1,29 @@
+<test name="fri07_collapsed_strut_wrapping__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" direction="rtl" position="absolute" flex-wrap="wrap" font-family="ahem" font-size="10px" line-height="10px" width="130px" row-gap="8px" column-gap="10px">
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" width="50px" height="20px"/>
+      <div source-tag="div" display="flex" direction="rtl" flex-item-collapse="collapsed" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" width="80px" height="35px" margin-left="auto" margin-right="5px"/>
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" width="50px" height="30px"/>
+      <div source-tag="div" display="flex" direction="rtl" flex-item-collapse="collapsed" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" width="100px" height="25px" margin-right="7px"/>
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" width="50px" height="15px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="130" height="157">
+      <node x="80" y="0" width="50" height="20"/>
+      <node x="45" y="28" width="80" height="35"/>
+      <node x="80" y="71" width="50" height="30"/>
+      <node x="23" y="109" width="100" height="25"/>
+      <node x="80" y="142" width="50" height="15"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="130" height="157" scroll-width="130" scroll-height="157" client-width="130" client-height="157"/>
+    <world-rounded-layout node-path="0.0" x="80" y="0" width="50" height="20" scroll-width="50" scroll-height="20" client-width="50" client-height="20"/>
+    <world-rounded-layout node-path="0.1" x="45" y="28" width="80" height="35" scroll-width="80" scroll-height="35" client-width="80" client-height="35"/>
+    <world-rounded-layout node-path="0.2" x="80" y="71" width="50" height="30" scroll-width="50" scroll-height="30" client-width="50" client-height="30"/>
+    <world-rounded-layout node-path="0.3" x="23" y="109" width="100" height="25" scroll-width="100" scroll-height="25" client-width="100" client-height="25"/>
+    <world-rounded-layout node-path="0.4" x="80" y="142" width="50" height="15" scroll-width="50" scroll-height="15" client-width="50" client-height="15"/>
+  </diagnostics>
+</test>

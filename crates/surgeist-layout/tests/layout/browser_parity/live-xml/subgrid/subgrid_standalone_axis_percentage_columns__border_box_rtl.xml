@@ -1,0 +1,35 @@
+<test name="subgrid_standalone_axis_percentage_columns__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="grid" direction="rtl" position="absolute" font-family="ahem" font-size="10px" line-height="10px" grid-template-rows="100px">
+      <div source-tag="div" display="grid" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="min-content" grid-template-rows="subgrid" grid-template-columns="20% 30%">
+        <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px">
+          <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="100px"/>
+        </div>
+        <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px">
+          <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="100px"/>
+        </div>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="200" height="100">
+      <node x="100" y="0" width="100" height="100">
+        <node x="60" y="0" width="40" height="100">
+          <node x="0" y="0" width="40" height="100"/>
+        </node>
+        <node x="0" y="0" width="60" height="100">
+          <node x="0" y="0" width="60" height="100"/>
+        </node>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="200" height="100" scroll-width="200" scroll-height="100" client-width="200" client-height="100"/>
+    <world-rounded-layout node-path="0.0" x="100" y="0" width="100" height="100" scroll-width="100" scroll-height="100" client-width="100" client-height="100"/>
+    <world-rounded-layout node-path="0.0.0" x="60" y="0" width="40" height="100" scroll-width="40" scroll-height="100" client-width="40" client-height="100"/>
+    <world-rounded-layout node-path="0.0.0.0" x="0" y="0" width="40" height="100" scroll-width="40" scroll-height="100" client-width="40" client-height="100"/>
+    <world-rounded-layout node-path="0.0.1" x="0" y="0" width="60" height="100" scroll-width="60" scroll-height="100" client-width="60" client-height="100"/>
+    <world-rounded-layout node-path="0.0.1.0" x="0" y="0" width="60" height="100" scroll-width="60" scroll-height="100" client-width="60" client-height="100"/>
+  </diagnostics>
+</test>

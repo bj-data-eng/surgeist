@@ -1,0 +1,36 @@
+<test name="align_items_center_with_max_height_with_padding_border__content_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" box-sizing="content-box" direction="ltr" position="absolute" flex-direction="column" font-family="ahem" font-size="10px" line-height="10px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" align-items="center" align-content="flex-start" width="100px" max-height="100px" padding-top="10px" padding-left="10px" padding-bottom="10px" padding-right="10px" border-top="10px" border-left="10px" border-bottom="10px" border-right="10px">
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="10px" height="10px"/>
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="10px" height="150px"/>
+      </div>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" flex-wrap="wrap" font-family="ahem" font-size="10px" line-height="10px" align-items="center" align-content="flex-start" width="100px" max-height="100px" padding-top="10px" padding-left="10px" padding-bottom="10px" padding-right="10px" border-top="10px" border-left="10px" border-bottom="10px" border-right="10px">
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="10px" height="10px"/>
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" width="10px" height="150px"/>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="140" height="280">
+      <node x="0" y="0" width="140" height="140">
+        <node x="20" y="65" width="10" height="10"/>
+        <node x="30" y="-5" width="10" height="150"/>
+      </node>
+      <node x="0" y="140" width="140" height="140">
+        <node x="20" y="90" width="10" height="10"/>
+        <node x="30" y="20" width="10" height="150"/>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="140" height="280" scroll-width="140" scroll-height="310" client-width="140" client-height="280"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="140" height="140" scroll-width="120" scroll-height="135" client-width="120" client-height="120"/>
+    <world-rounded-layout node-path="0.0.0" x="20" y="65" width="10" height="10" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.0.1" x="30" y="-5" width="10" height="150" scroll-width="10" scroll-height="150" client-width="10" client-height="150"/>
+    <world-rounded-layout node-path="0.1" x="0" y="140" width="140" height="140" scroll-width="120" scroll-height="160" client-width="120" client-height="120"/>
+    <world-rounded-layout node-path="0.1.0" x="20" y="90" width="10" height="10" scroll-width="10" scroll-height="10" client-width="10" client-height="10"/>
+    <world-rounded-layout node-path="0.1.1" x="30" y="20" width="10" height="150" scroll-width="10" scroll-height="150" client-width="10" client-height="150"/>
+  </diagnostics>
+</test>

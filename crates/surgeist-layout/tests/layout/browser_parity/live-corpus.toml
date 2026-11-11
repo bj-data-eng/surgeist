@@ -1,0 +1,8 @@
+schema_version = 1
+
+[counts]
+generated = 4644
+unsupported = 1160
+expected_fail = 3
+quarantined = 0
+failed_to_generate = 0

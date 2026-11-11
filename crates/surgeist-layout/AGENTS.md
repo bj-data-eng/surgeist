@@ -24,7 +24,7 @@ constrained test bridge, not another CSS front door.
 | Host traversal, measurement, cache, and batch-application contracts | [src/tree.rs](src/tree.rs), [src/measurement.rs](src/measurement.rs), [src/cache.rs](src/cache.rs), [src/output.rs](src/output.rs), and [src/engine/](src/engine/) |
 | Focused verification | Tracked test modules under [src/](src/), [src/test_support/](src/test_support/), and the [tests/layout.rs](tests/layout.rs) integration target |
 | Task recipes and composed checks | [Justfile](Justfile), [scripts/run-cargo-task.sh](scripts/run-cargo-task.sh), [scripts/run-verification.sh](scripts/run-verification.sh), and [scripts/run-browser-parity-task.sh](scripts/run-browser-parity-task.sh) |
-| Browser source pins, launch settings, fixture inventory, and declared accounting | [tests/layout/browser_parity/corpus.toml](tests/layout/browser_parity/corpus.toml) |
+| Browser source pins, launch settings, fixture inventory, and live accounting | [source manifest](tests/layout/browser_parity/corpus.toml), [live declaration](tests/layout/browser_parity/live-corpus.toml) |
 | Fixture procedures and private measurement protocol | [tests/layout/browser_parity/README.md](tests/layout/browser_parity/README.md) and [tests/layout/browser_parity/measurement-protocol.md](tests/layout/browser_parity/measurement-protocol.md) |
 | Generator target and supported commands | [Cargo.toml](Cargo.toml), [tests/bin/surgeist-layout-generate.rs](tests/bin/surgeist-layout-generate.rs), and [tests/bin/surgeist-layout-generate/cli.rs](tests/bin/surgeist-layout-generate/cli.rs) |
 | Optional audit catalog and its separate tooling | [tools/surgeist-layout-audits/README.md](tools/surgeist-layout-audits/README.md), [tools/surgeist-layout-audits/Cargo.toml](tools/surgeist-layout-audits/Cargo.toml), and [tools/surgeist-layout-audits/rust-toolchain.toml](tools/surgeist-layout-audits/rust-toolchain.toml) |
@@ -43,9 +43,9 @@ a browser or source cache. Follow the [corpus guide](tests/layout/browser_parity
 for refreshes; never hand-edit generated XML/reports. `Justfile` and `scripts/`
 retain composed recipes, including recipes that clear filters and overrides.
 The [audit tool](tools/surgeist-layout-audits/README.md) retains a separate nightly
-workspace and is opt-in. Ordinary parity tests traverse the full checked-in
-inventory and require complete historical accounting and current qualification.
-The strict raw verdict uses the same traversal. Both use existing XML.
+workspace and is opt-in. Ordinary parity tests require complete historical and
+live accounting and current registered qualification. The strict raw verdict
+uses the same inventory and reports every failure. Both use existing XML.
 The two deep-nesting tests in `src/sizing.rs` each construct 100,000 nodes; isolate
 them from an initial bounded test run under the root resource policy.
 

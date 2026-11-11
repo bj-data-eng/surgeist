@@ -7,7 +7,8 @@ use super::{
 const PROFILE: &str = "horizontal-zero-edge-divs";
 const MAX_SIZE: u32 = i32::MAX as u32;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ElementScrollSizeMismatch {
     path: String,
     field: ElementScrollSizeField,

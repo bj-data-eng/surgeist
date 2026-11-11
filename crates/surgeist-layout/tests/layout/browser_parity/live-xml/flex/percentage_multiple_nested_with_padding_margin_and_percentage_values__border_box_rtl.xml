@@ -1,0 +1,30 @@
+<test name="percentage_multiple_nested_with_padding_margin_and_percentage_values__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="false">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" direction="rtl" position="absolute" flex-direction="column" font-family="ahem" font-size="10px" line-height="10px" width="200px" height="200px">
+      <div source-tag="div" display="flex" direction="rtl" flex-direction="column" font-family="ahem" font-size="10px" line-height="10px" flex-grow="1" flex-basis="10%" min-width="60%" margin-top="5px" margin-left="5px" margin-bottom="5px" margin-right="5px" padding-top="3px" padding-left="3px" padding-bottom="3px" padding-right="3px">
+        <div source-tag="div" display="flex" direction="rtl" flex-direction="column" font-family="ahem" font-size="10px" line-height="10px" width="50%" margin-top="5px" margin-left="5px" margin-bottom="5px" margin-right="5px" padding-top="3%" padding-left="3%" padding-bottom="3%" padding-right="3%">
+          <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="45%" margin-top="5%" margin-left="5%" margin-bottom="5%" margin-right="5%" padding-top="3px" padding-left="3px" padding-bottom="3px" padding-right="3px"/>
+        </div>
+      </div>
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-grow="4" flex-basis="15%" min-width="20%"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="200" height="200">
+      <node x="5" y="5" width="190" height="48">
+        <node x="90" y="8" width="92" height="25.125">
+          <node x="46.015625" y="9.5625" width="36.421875" height="6"/>
+        </node>
+      </node>
+      <node x="0" y="58" width="200" height="142"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="200" height="200" scroll-width="200" scroll-height="200" client-width="200" client-height="200"/>
+    <world-rounded-layout node-path="0.0" x="5" y="5" width="190" height="48" scroll-width="190" scroll-height="48" client-width="190" client-height="48"/>
+    <world-rounded-layout node-path="0.0.0" x="90" y="8" width="92" height="25" scroll-width="92" scroll-height="25" client-width="92" client-height="25"/>
+    <world-rounded-layout node-path="0.0.0.0" x="46" y="10" width="36" height="6" scroll-width="36" scroll-height="6" client-width="36" client-height="6"/>
+    <world-rounded-layout node-path="0.1" x="0" y="58" width="200" height="142" scroll-width="200" scroll-height="142" client-width="200" client-height="142"/>
+  </diagnostics>
+</test>

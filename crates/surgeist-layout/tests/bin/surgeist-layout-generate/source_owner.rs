@@ -14,6 +14,8 @@ use crate::adapter::fixture_cases;
 use crate::browser_profile::BrowserManifest;
 
 const SOURCE_ATTESTATION: &str = "html/.surgeist-source.json";
+pub(super) const LIVE_DECLARATION: &str = "live-corpus.toml";
+const LIVE_OUTPUT_ROOT: &str = "live-xml";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -149,6 +151,7 @@ impl Manifest {
             );
         }
         self.browser.validate()?;
+        self.historical_counts()?;
         let mut ids = BTreeSet::new();
         let mut sources = BTreeSet::new();
         for case in &self.cases {
@@ -252,7 +255,7 @@ impl Manifest {
                     .into_iter()
                     .map(|(variant, _)| {
                         let id = format!("{stem}__{variant}");
-                        let output = Path::new("xml")
+                        let output = Path::new(LIVE_OUTPUT_ROOT)
                             .join(path.parent().unwrap_or_else(|| Path::new("")))
                             .join(format!("{id}.xml"));
                         CaseSpec::new(id, variant.to_string(), relative(output.to_string_lossy())?)
@@ -293,7 +296,7 @@ impl Manifest {
             browser_location,
             relative("corpus.toml")?,
             "surgeist-layout-generate".to_string(),
-            relative("xml")?,
+            relative(LIVE_OUTPUT_ROOT)?,
             reports,
             self.browser.settings()?,
             fixtures,
@@ -302,17 +305,17 @@ impl Manifest {
                 relative("scripts/gentest/test_base_style.css")?,
                 relative("fonts/Ahem.ttf")?,
                 relative("fonts/PROVENANCE.md")?,
+                relative(LIVE_DECLARATION)?,
             ],
             vec![relative(SOURCE_ATTESTATION)?],
         )
         .map_err(message)?
-        .with_expected_counts(self.expected_counts()?)
         .with_exact_input_roots(vec![relative("scripts/gentest")?, relative("fonts")?])
         .map_err(message)?;
         Ok(corpus)
     }
 
-    fn expected_counts(&self) -> Result<browser::BrowserReportSummary> {
+    fn historical_counts(&self) -> Result<browser::BrowserReportSummary> {
         let expected = &self.generation_reports.full;
         browser::BrowserReportSummary::new(
             expected.generated,
@@ -330,7 +333,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn declared_fixture_variants_keep_names_and_corpus_relative_outputs() {
+    fn live_corpus_keeps_fixture_variants_in_its_output_root() {
         let mut manifest: Manifest = surgeist_generator::parse_manifest(
             include_str!("../../layout/browser_parity/corpus.toml"),
             "corpus.toml",
@@ -344,6 +347,7 @@ mod tests {
                 vec![RelativePath::new("grid/example.html").unwrap()],
             )
             .unwrap();
+        assert_eq!(corpus.output_root().as_str(), "live-xml");
         let fixture = &corpus.fixtures()[0];
         assert_eq!(fixture.source().as_str(), "html/grid/example.html");
         let cases = fixture
@@ -357,22 +361,22 @@ mod tests {
                 (
                     "example__border_box_ltr",
                     "border_box_ltr",
-                    "xml/grid/example__border_box_ltr.xml"
+                    "live-xml/grid/example__border_box_ltr.xml"
                 ),
                 (
                     "example__content_box_ltr",
                     "content_box_ltr",
-                    "xml/grid/example__content_box_ltr.xml"
+                    "live-xml/grid/example__content_box_ltr.xml"
                 ),
                 (
                     "example__border_box_rtl",
                     "border_box_rtl",
-                    "xml/grid/example__border_box_rtl.xml"
+                    "live-xml/grid/example__border_box_rtl.xml"
                 ),
                 (
                     "example__content_box_rtl",
                     "content_box_rtl",
-                    "xml/grid/example__content_box_rtl.xml"
+                    "live-xml/grid/example__content_box_rtl.xml"
                 ),
             ]
         );

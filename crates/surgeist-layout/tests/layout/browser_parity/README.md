@@ -1,17 +1,20 @@
 # Surgeist Layout Browser Parity
 
-This harness runs Surgeist layout against browser-derived parity fixtures. The
-corpus is rooted at `tests/layout/browser_parity`:
+This harness runs Surgeist layout against browser-derived parity fixtures under
+`tests/layout/browser_parity`.
 
-- `html/`: current constrained HTML corpus. This includes the pinned Taffy
-  green baseline plus Surgeist-authored fixtures.
-- `xml/`: generated browser expectations consumed by the Rust parity runner.
-- `corpus.toml`: source provenance, import contracts, and expected-failure or
-  quarantine accounting.
-- `scripts/gentest/`: shared browser measurement helper and base CSS.
+- `html/` contains the pinned Taffy baseline and Surgeist-authored sources.
+- `xml/` retains the historical XML, report, and ownership ledger.
+- `live-xml/` contains the current producer's XML, report, and ownership ledger.
+- `captured/` contains the registered qualification editions.
+- `corpus.toml` declares source provenance and import contracts. The
+  [live declaration](live-corpus.toml) supplies the current report counts.
+- `scripts/gentest/` contains the capture helper and base CSS.
 
-XML files are generated artifacts. Do not edit browser geometry in XML by hand;
-update the source fixture, importer, manifest, or generator instead.
+The owning producer writes XML from constrained HTML and the capture contract.
+The live declaration uses the historical source and variant inventory. A change
+to shared source inputs requires preserving their historical bytes and updating
+the live reconciliation.
 
 The sizing bridge is a finite fixture adapter, not app-facing CSS parsing. It
 accepts finite px and percentage values plus the existing unitless fixture
@@ -22,9 +25,10 @@ for a maximum track breadth, never a minimum track breadth or a box/flex
 property. Integration layers outside this layout-ready harness own authored CSS
 parsing and lowering.
 
-Prepared Text parity retains the original-source profile introduced in
-[measurement protocol version 2](measurement-protocol.md)
-and the exact [pinned font](fonts/PROVENANCE.md). Source capture and browser Range
+The prepared Text profile uses the exact [pinned Ahem TTF](fonts/PROVENANCE.md)
+at face index zero. The original fixed-width Flex parent profile uses the
+[Ahem WOFF2](../../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2)
+embedded in the pinned base CSS and validates the loaded face. Source capture and browser Range
 observations are separate channels. Historical measured-width text tuples are
 schema-only; the native production reader rejects them. The complete
 [124-variant accounting](prepared-text-accounting.json) records their actual
@@ -72,11 +76,11 @@ supplies the historical report's `scripts/gentest/test_helper.js` input. Its
 other inputs resolve at the paths recorded in the report. The ordinary suite
 checks all historical input digests and linked resource bindings.
 
-Ordinary tests traverse every historical XML and every registered current
-capture. The default verdict requires complete historical accounting and
-fresh current qualification. Retired observations retain their raw failures
-and contribute zero qualified coverage. The test output reports historical
-dispositions, qualified current captures, and raw failures separately.
+Ordinary tests traverse the historical XML, registered current captures, and
+live XML. The default verdict requires complete historical and live accounting
+and fresh registered qualification. The live Native census reports matching
+captures, numeric differences, and admission refusals. Retired historical
+observations and unqualified live results contribute zero registered coverage.
 
 Run the strict raw verdict with the existing XML.
 
@@ -84,8 +88,61 @@ Run the strict raw verdict with the existing XML.
 env -u SURGEIST_PARITY_FILTER SURGEIST_PARITY_RAW_EXACT=1 cargo test --offline --locked -j 1 -p surgeist-layout --test layout layout::browser_parity::runs_all_checked_in_browser_parity_xml -- --exact
 ```
 
-The strict verdict fails on every raw mismatch and authority refusal.
-Both verdicts use the same traversal and require no browser or regeneration.
+The strict verdict fails on every raw mismatch and authority refusal across
+all three inventories. Both verdicts use existing XML without launching a browser.
+
+## Live corpus accounting
+
+The [live generation report](live-xml/generation-reports/all.json) and
+[historical report](xml/generation-reports/all.json) reconcile by source path and
+variant. The live producer accounts for 1,451 sources, with 4,644 generated
+captures, 1,160 unsupported variants, and three expected-fail declarations.
+Its 4,384 absolute-root-local captures authenticate the containing frame and
+positioning from the source and browser viewport. The 260 block-flow-auto
+captures authenticate the relative root and Body inline extent with Auto block
+size. The expectation trees agree with their historical observations. The live
+XML also records current input authority and diagnostics.
+
+The [capture helper](scripts/gentest/test_helper.js) records the first failed
+predicate for each refusal. Of the 1,160 unsupported variants, 1,024 previously
+produced XML. Another 120 were already unsupported for measured-width text and
+now reach an earlier resource or observation-channel check.
+
+| First failed capture predicate | Newly unsupported | Changed reason | Source condition |
+| --- | ---: | ---: | --- |
+| AuthoredRootEdges | 304 | 0 | Root edges exceed the supported absolute or relative profile. |
+| SourceFrameOrStyle | 264 | 0 | The source contains an authored style element. |
+| RootLocalObservationChannel | 16 | 116 | A source marker requests a channel outside the generic capture. |
+| PositionedRootProfile | 124 | 0 | The absolute root uses a nonhorizontal writing mode. |
+| RootLocalOrthogonalPhysicalSize | 92 | 0 | An orthogonal descendant lacks the required literal physical dimensions. |
+| RootLocalBoxlessObservation | 56 | 0 | A descendant with display none supplies no local box. |
+| RootLocalBoxProfile | 52 | 0 | A BR or i descendant falls outside the generic local-box profile. |
+| SourceDocument | 48 | 0 | The document has two test roots. |
+| SourceResources | 28 | 4 | A font preload or absent base stylesheet link changes the resource inventory. |
+| SourceParent | 16 | 0 | The root is nested inside a Flex wrapper. |
+| UnqualifiedInitialBlockOrigin | 12 | 0 | A relative Block with visible overflow lacks the required noncollapsing boundary. |
+| RootDisplay | 4 | 0 | The root has display none. |
+| AuthoredBodyOrHtmlStyle | 4 | 0 | The Body has an authored 20px margin. |
+| SourceBodySiblings | 4 | 0 | Stray text follows the root. |
+
+The [Native census](live-native-observations.json) binds the two reports and
+the live ownership ledger. It records 4,522 matches, 118 numeric nonmatches
+across 530 fields, and four analytic-baseline Text refusals. The
+[issue mapping](live-native-owners.json)
+assigns the nonmatches by source. The ordinary suite recomputes the census and
+rejects missing or altered evidence and changed results. A matching census
+records reproducible outcomes while live Native parity still reports failure.
+
+After live generation and browser-free integrity verification, record a fresh
+Native census to a new file for review.
+
+```sh
+mkdir -p tmp
+env -u SURGEIST_PARITY_FILTER -u SURGEIST_PARITY_RAW_EXACT \
+  SURGEIST_PARITY_WRITE_LIVE_RECEIPT="$PWD/tmp/live-native-observations.json" \
+  cargo test --offline --locked -j 1 -p surgeist-layout --test layout \
+  layout::browser_parity::records_live_native_observations -- --ignored --exact
+```
 
 The [original Block axis edition](../../../examples/qualify-root-context/README.md#original-block-axes-qualification)
 covers all 20 direction and box-sizing variants across five writing modes.
@@ -195,9 +252,9 @@ independently.
 
 The default full-inventory test always traverses the complete corpus.
 For a filtered raw diagnostic, set `SURGEIST_PARITY_RAW_EXACT=1` and
-`SURGEIST_PARITY_FILTER` to a fixture substring. The registered-current
-qualification test also accepts the filter and reports partial coverage.
-These comparisons use existing XML.
+`SURGEIST_PARITY_FILTER` to a fixture path substring. The filter selects
+matching historical, registered, and live captures. The registered-current
+qualification test reports partial coverage when filtered.
 
 The publication owner creates and validates each immutable edition.
 
@@ -279,12 +336,12 @@ The exact corpus and browser-owner roots are checked separately. A full run
 validates declared accounting before atomically publishing XML and reports.
 Filtered generation leaves full reports and unrelated artifacts unchanged.
 A full run with per-fixture failures publishes diagnostic accounting and retains
-outputs that were not regenerated. The private `xml/generation-ownership.json`
+outputs that were not regenerated. The private `live-xml/generation-ownership.json`
 ledger permits a subsequent full run to repair filtered or diagnostic state; it
 does not replace full-report provenance. Machine-local coordination and recovery
 state lives in the ignored `.surgeist-generator/` directory beneath the corpus.
 
-`xml/generation-reports/all.json` uses the shared browser engine's schema 4 and
+`live-xml/generation-reports/all.json` uses the shared browser engine's schema 4 and
 is the generated-artifact provenance authority. It binds engine/host identity,
 browser executable and launch settings, source/helper inputs, import attestation,
 linked resources, XML hashes, and generated/unsupported/expected-failure/

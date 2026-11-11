@@ -1,0 +1,17 @@
+<test name="absolute_aspect_ratio_width_overrides_inset__content_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" box-sizing="content-box" direction="rtl" position="absolute" font-family="ahem" font-size="10px" line-height="10px" width="400px" height="300px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" position="absolute" font-family="ahem" font-size="10px" line-height="10px" width="40%" aspect-ratio="3" top="5%" left="10%" right="10%"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="400" height="300">
+      <node x="200" y="15" width="160" height="53"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="400" height="300" scroll-width="400" scroll-height="300" client-width="400" client-height="300"/>
+    <world-rounded-layout node-path="0.0" x="200" y="15" width="160" height="53" scroll-width="160" scroll-height="53" client-width="160" client-height="53"/>
+  </diagnostics>
+</test>
