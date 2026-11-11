@@ -305,6 +305,24 @@ replays the [fixed edition](../../tests/layout/browser_parity/captured/original-
 The publisher `--publish-original-flex-parent-qualification` requires an
 absent edition directory and the verified original source import.
 
+## Original percentage Flex parent qualification
+
+The [percentage edition](../../tests/layout/browser_parity/captured/original-percentage-flex-parent-qualification/)
+captures the absolute Flex parent and the three Grid subtree boxes in
+`chrome_issue_325928327.html`. The four direction and box-sizing variants
+retain the historical Grid-local geometry. Each browser rectangle agrees
+before and after rounding, and Native replay compares both phases.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --fixture html/grid/chrome_issue_325928327.html
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-original-percentage-flex-parent-qualification
+~~~
+
+The first command captures the four variants with the pinned browser. The
+second replays the retained edition without a browser. The publisher
+`--publish-original-percentage-flex-parent-qualification` requires an absent
+edition directory and a verified original source import.
+
 ## Original subgrid body qualification
 
 This edition authenticates the original subgrid gap fixture and its inline

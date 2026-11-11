@@ -11,7 +11,9 @@ use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::fixture_variants::fixture_cases;
-use crate::original_flex_parent_profile as original_flex_parent;
+use crate::original_flex_parent_profile::{
+    self as original_flex_parent, percentage as percentage_flex_parent,
+};
 use crate::prepared_atomic_percentage_profile as atomic_percentage;
 
 pub(crate) const EDITION: &str = "canonical-box-differences";
@@ -288,6 +290,10 @@ pub(crate) fn current_owner_bindings(
                     original_flex_parent::REQUEST,
                 ),
                 (
+                    "original_percentage_flex_parent_request.json",
+                    percentage_flex_parent::REQUEST,
+                ),
+                (
                     "original_subgrid_body_request.json",
                     original_subgrid_body::REQUEST,
                 ),
@@ -313,6 +319,9 @@ pub(crate) fn current_owner_bindings(
             "tests/bin/surgeist-layout-generate/measurement/flex_content_text.js".to_owned()
         } else if name == original_flex_parent::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/original_flex_parent.js".to_owned()
+        } else if name == percentage_flex_parent::SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/original_percentage_flex_parent.js"
+                .to_owned()
         } else if name == original_subgrid_body::PROOF_SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/original_subgrid_body.js".to_owned()
         } else if name == atomic_percentage::SCRIPT_PATH {
@@ -637,6 +646,13 @@ pub(crate) fn capture_binding_from_verified_inputs(
             "original Flex parent proof requires its observation request",
         ));
     }
+    if observation_request != SpecializedProfile::OriginalPercentageFlexParent.observation_request()
+        && full_inputs.contains_key(percentage_flex_parent::SCRIPT_PATH)
+    {
+        return Err(changed(
+            "original percentage Flex parent proof requires its observation request",
+        ));
+    }
     if observation_request != SpecializedProfile::OriginalSubgridBody.observation_request()
         && full_inputs.contains_key(original_subgrid_body::PROOF_SCRIPT_PATH)
     {
@@ -743,10 +759,36 @@ pub(crate) fn capture_binding_from_verified_inputs(
             }
             ("canonical-flex-content-text", flex_content_text::PROFILE)
         }
-        ("original-flex-parent", Some(request_sha256)) => {
-            let proof_sha256 = sha256(original_flex_parent::SCRIPT.as_bytes());
-            if original_flex_parent::source_digest(&case.source) != Some(&artifact.source_sha256)
-                || request_sha256 != sha256(original_flex_parent::REQUEST)
+        ("original-flex-parent" | "original-percentage-flex-parent", Some(request_sha256)) => {
+            let (source_digest, request, script_path, script, profile, font_demand) =
+                if observation_request == "original-percentage-flex-parent" {
+                    if full_inputs.contains_key("fonts/Ahem.ttf") {
+                        return Err(changed(
+                            "original percentage Flex parent has no font demand",
+                        ));
+                    }
+                    (
+                        (case.source == percentage_flex_parent::SOURCE)
+                            .then_some(percentage_flex_parent::SOURCE_SHA256),
+                        percentage_flex_parent::REQUEST,
+                        percentage_flex_parent::SCRIPT_PATH,
+                        percentage_flex_parent::SCRIPT,
+                        "canonical-original-percentage-flex-parent",
+                        "none",
+                    )
+                } else {
+                    (
+                        original_flex_parent::source_digest(&case.source),
+                        original_flex_parent::REQUEST,
+                        original_flex_parent::SCRIPT_PATH,
+                        original_flex_parent::SCRIPT,
+                        "canonical-original-flex-parent",
+                        "ahem-10px-zwsp",
+                    )
+                };
+            let proof_sha256 = sha256(script.as_bytes());
+            if source_digest != Some(&artifact.source_sha256)
+                || request_sha256 != sha256(request)
                 || !artifact.linked_resources.is_empty()
                 || !full_inputs
                     .get(ROOT_HELPER_INPUT)
@@ -758,7 +800,7 @@ pub(crate) fn capture_binding_from_verified_inputs(
             for (path, expected) in [
                 (case.source.as_str(), artifact.source_sha256.as_str()),
                 (OBSERVATION_REQUEST, request_sha256),
-                (original_flex_parent::SCRIPT_PATH, proof_sha256.as_str()),
+                (script_path, proof_sha256.as_str()),
                 (
                     "scripts/gentest/test_base_style.css",
                     pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
@@ -770,7 +812,7 @@ pub(crate) fn capture_binding_from_verified_inputs(
                     return Err(changed(format!("original Flex parent input: {path}")));
                 }
             }
-            ("canonical-original-flex-parent", "ahem-10px-zwsp")
+            (profile, font_demand)
         }
         ("original-subgrid-body", Some(request_sha256)) => {
             let proof_sha256 = sha256(original_subgrid_body::PROOF_SCRIPT);
@@ -1106,6 +1148,9 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
     digest(policy)?;
     let required = match input.observation_request {
         "original-flex-parent" => Some(sha256(original_flex_parent::SCRIPT.as_bytes())),
+        "original-percentage-flex-parent" => {
+            Some(sha256(percentage_flex_parent::SCRIPT.as_bytes()))
+        }
         "original-subgrid-body" => Some(sha256(original_subgrid_body::PROOF_SCRIPT)),
         "prepared-atomic-percentage" => Some(sha256(atomic_percentage::SCRIPT.as_bytes())),
         "horizontal-br-font-band" => Some(sha256(super::br_font_band::SCRIPT.as_bytes())),
@@ -1256,6 +1301,7 @@ pub(crate) enum SpecializedProfile {
     PreparedRange,
     FlexComposition,
     OriginalFlexParent,
+    OriginalPercentageFlexParent,
     OriginalSubgridBody,
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
@@ -1282,6 +1328,9 @@ impl SpecializedProfile {
             Self::OriginalFlexParent => {
                 "tests/layout/browser_parity/captured/original-flex-parent-qualification"
             }
+            Self::OriginalPercentageFlexParent => {
+                "tests/layout/browser_parity/captured/original-percentage-flex-parent-qualification"
+            }
             Self::OriginalSubgridBody => {
                 "tests/layout/browser_parity/captured/original-subgrid-body-qualification"
             }
@@ -1305,6 +1354,7 @@ impl SpecializedProfile {
             Self::PreparedRange => "prepared-ranges",
             Self::FlexComposition => "flex-composition",
             Self::OriginalFlexParent => "original-flex-parent",
+            Self::OriginalPercentageFlexParent => "original-percentage-flex-parent",
             Self::OriginalSubgridBody => "original-subgrid-body",
             Self::PreparedAtomicPercentage => "prepared-atomic-percentage",
             Self::HorizontalBrFontBand => "horizontal-br-font-band",
@@ -1318,6 +1368,7 @@ impl SpecializedProfile {
             Self::PreparedRange => &[prepared_range_qualification::SOURCE],
             Self::FlexComposition => &[flex_composition::SOURCE],
             Self::OriginalFlexParent => original_flex_parent::SOURCES,
+            Self::OriginalPercentageFlexParent => &[percentage_flex_parent::SOURCE],
             Self::OriginalSubgridBody => &[original_subgrid_body::SOURCE],
             Self::PreparedAtomicPercentage => &[atomic_percentage::SOURCE],
             Self::HorizontalBrFontBand => &[super::br_font_band::SOURCE],
@@ -1331,6 +1382,7 @@ impl SpecializedProfile {
             Self::PreparedRange,
             Self::FlexComposition,
             Self::OriginalFlexParent,
+            Self::OriginalPercentageFlexParent,
             Self::OriginalSubgridBody,
             Self::PreparedAtomicPercentage,
             Self::HorizontalBrFontBand,
@@ -1347,6 +1399,15 @@ pub(crate) fn original_flex_parent_evidence() -> SpecializedEvidence {
         proof_script: PathDigest {
             path: original_flex_parent::SCRIPT_PATH.to_owned(),
             sha256: sha256(original_flex_parent::SCRIPT.as_bytes()),
+        },
+    }
+}
+
+pub(crate) fn original_percentage_flex_parent_evidence() -> SpecializedEvidence {
+    SpecializedEvidence::OriginalPercentageFlexParent {
+        proof_script: PathDigest {
+            path: percentage_flex_parent::SCRIPT_PATH.to_owned(),
+            sha256: sha256(percentage_flex_parent::SCRIPT.as_bytes()),
         },
     }
 }
@@ -1375,6 +1436,9 @@ pub(crate) enum SpecializedEvidence {
     OriginalFlexParent {
         proof_script: PathDigest,
     },
+    OriginalPercentageFlexParent {
+        proof_script: PathDigest,
+    },
     OriginalSubgridBody {
         proof_script: PathDigest,
     },
@@ -1398,6 +1462,9 @@ impl SpecializedEvidence {
             Self::PreparedRange { .. } => SpecializedProfile::PreparedRange,
             Self::FlexComposition { .. } => SpecializedProfile::FlexComposition,
             Self::OriginalFlexParent { .. } => SpecializedProfile::OriginalFlexParent,
+            Self::OriginalPercentageFlexParent { .. } => {
+                SpecializedProfile::OriginalPercentageFlexParent
+            }
             Self::OriginalSubgridBody { .. } => SpecializedProfile::OriginalSubgridBody,
             Self::PreparedAtomicPercentage { .. } => SpecializedProfile::PreparedAtomicPercentage,
             Self::HorizontalBrFontBand { .. } => SpecializedProfile::HorizontalBrFontBand,
@@ -1410,6 +1477,7 @@ impl SpecializedEvidence {
         match self {
             Self::PreparedRange { policy } => policy.sha256.clone(),
             Self::OriginalFlexParent { proof_script }
+            | Self::OriginalPercentageFlexParent { proof_script }
             | Self::OriginalSubgridBody { proof_script }
             | Self::PreparedAtomicPercentage { proof_script }
             | Self::HorizontalBrFontBand { proof_script }
@@ -1429,6 +1497,7 @@ impl SpecializedEvidence {
         match self {
             Self::PreparedRange { policy } => vec![policy],
             Self::OriginalFlexParent { proof_script }
+            | Self::OriginalPercentageFlexParent { proof_script }
             | Self::OriginalSubgridBody { proof_script }
             | Self::PreparedAtomicPercentage { proof_script }
             | Self::HorizontalBrFontBand { proof_script }
@@ -2254,6 +2323,9 @@ impl Qualification {
             }
             SpecializedEvidence::OriginalFlexParent { .. } => {
                 original_flex_parent_evidence() == case.evidence
+            }
+            SpecializedEvidence::OriginalPercentageFlexParent { .. } => {
+                original_percentage_flex_parent_evidence() == case.evidence
             }
             SpecializedEvidence::OriginalSubgridBody { .. } => {
                 original_subgrid_body::evidence() == case.evidence

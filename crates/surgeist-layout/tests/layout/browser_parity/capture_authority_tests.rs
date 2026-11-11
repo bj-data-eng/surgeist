@@ -156,6 +156,76 @@ fn original_flex_parent_identity_refuses_rebound_inputs_and_wrong_profile() {
 }
 
 #[test]
+fn original_percentage_flex_parent_identity_refuses_foreign_proofs_and_fonts() {
+    use original_flex_parent::percentage as profile;
+
+    let mut fixture = Fixture::new(&"a".repeat(64));
+    let request = sha256(profile::REQUEST);
+    let proof = sha256(profile::SCRIPT.as_bytes());
+    fixture.case.source = profile::SOURCE.into();
+    fixture.artifact.source = profile::SOURCE.into();
+    fixture.artifact.source_sha256 = profile::SOURCE_SHA256.into();
+    fixture.policy = proof.clone();
+    let inputs = [
+        (profile::SOURCE, profile::SOURCE_SHA256),
+        (OBSERVATION_REQUEST, request.as_str()),
+        (profile::SCRIPT_PATH, proof.as_str()),
+        (
+            ROOT_HELPER_INPUT,
+            crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256,
+        ),
+        (
+            "scripts/gentest/test_base_style.css",
+            pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
+        ),
+    ];
+    fixture
+        .inputs
+        .extend(inputs.map(|(path, digest)| (path.into(), digest.into())));
+    fixture.metadata.inputs = fixture.inputs.clone();
+    let observation = "original-percentage-flex-parent";
+    let verified = fixture
+        .with_observation(observation, Some(&request))
+        .unwrap();
+    assert_eq!(verified.projection().font_demand, "none");
+    assert!(fixture.with_observation("geometry", None).is_err());
+    assert!(
+        fixture
+            .with_observation("original-flex-parent", Some(&request))
+            .is_err()
+    );
+
+    for (path, digest) in inputs {
+        let removed = fixture.inputs.remove(path).unwrap();
+        fixture.metadata.inputs = fixture.inputs.clone();
+        assert!(
+            fixture
+                .with_observation(observation, Some(&request))
+                .is_err(),
+            "the capture requires {path}"
+        );
+        assert_eq!(removed, digest);
+        fixture.inputs.insert(path.into(), removed);
+    }
+    for (path, digest) in [
+        ("fonts/Ahem.ttf", pinned_font::SHA256.to_owned()),
+        (
+            original_flex_parent::SCRIPT_PATH,
+            sha256(original_flex_parent::SCRIPT.as_bytes()),
+        ),
+    ] {
+        fixture.inputs.insert(path.into(), digest);
+        fixture.metadata.inputs = fixture.inputs.clone();
+        assert!(
+            fixture
+                .with_observation(observation, Some(&request))
+                .is_err()
+        );
+        fixture.inputs.remove(path);
+    }
+}
+
+#[test]
 fn measured_identity_requires_the_exact_request_capture_script_and_stylesheet() {
     let request = sha256(b"{\"schema_version\":1,\"element_scroll_sizes\":\"horizontal-zero-edge-divs\",\"measured_leaf\":\"ahem-10px-zwsp\"}\n");
     let script = sha256(include_bytes!(

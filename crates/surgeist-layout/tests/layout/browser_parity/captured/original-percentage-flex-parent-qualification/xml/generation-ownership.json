@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/generation-reports/all.json": "1701bc7b84237ef76285299166309cccf0cafd97e95707502032eb7fb5442af8",
+    "xml/grid/chrome_issue_325928327__border_box_ltr.xml": "405148c4cde3dccf0b6b5885980aedf67f1e04ad077dd9c10117ed9c48da9ba5",
+    "xml/grid/chrome_issue_325928327__border_box_rtl.xml": "071f2269e7daebec95621b6dfceaaef80c650460924bfa84c4b7f7449b0f8a37",
+    "xml/grid/chrome_issue_325928327__content_box_ltr.xml": "7eab3297288a0b2f2d018a69455c3f8c2fdf12f8db716019a91e82fe6e024b47",
+    "xml/grid/chrome_issue_325928327__content_box_rtl.xml": "7d2fa889ea0d7406ce28f01a87a866bb30d46654c919059ebf21e8e9713cee09"
+  }
+}

@@ -805,6 +805,18 @@ fn fri_03_original_fixed_width_flex_parents_match_native() {
 }
 
 #[test]
+fn fri_03_original_percentage_flex_parent_matches_native() {
+    use crate::original_flex_parent_profile::percentage::SOURCE;
+
+    let stem = Path::new(SOURCE).file_stem().unwrap().to_str().unwrap();
+    let historical =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml/grid");
+    let originals = crate::fixture_variants::fixture_cases()
+        .map(|(variant, _)| historical.join(format!("{stem}__{variant}.xml")));
+    assert_registered_originals_match(&originals);
+}
+
+#[test]
 fn runs_fri_03_box_participation_against_surgeist_layout() {
     let paths = fri_03_fixture_paths(browser_parity_fixture_paths())
         .unwrap_or_else(|error| panic!("FRI-03 fixture matrix is incomplete: {error}"));

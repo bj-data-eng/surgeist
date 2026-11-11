@@ -232,6 +232,16 @@ impl LayoutAdapter {
                 "original Flex parent capture requires its exact source".into(),
             ));
         }
+        if request == BoxObservationRequest::OriginalPercentageFlexParent
+            && (input.fixture().source().as_str()
+                != original_flex_parent_profile::percentage::SOURCE
+                || surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
+                    != original_flex_parent_profile::percentage::SOURCE_SHA256)
+        {
+            return Err(AdapterError::Preparation(
+                "original percentage Flex parent capture requires its exact source".into(),
+            ));
+        }
         if request == BoxObservationRequest::OriginalSubgridBody
             && (input.fixture().source().as_str() != original_subgrid_body_profile::SOURCE
                 || surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
@@ -310,7 +320,9 @@ impl LayoutAdapter {
             .map_err(|error| AdapterError::Preparation(error.to_string()))?;
         let font_bytes = if matches!(
             request,
-            BoxObservationRequest::EmptyLineBrFontBand | BoxObservationRequest::OriginalFlexParent
+            BoxObservationRequest::EmptyLineBrFontBand
+                | BoxObservationRequest::OriginalFlexParent
+                | BoxObservationRequest::OriginalPercentageFlexParent
         ) {
             &[]
         } else {
@@ -344,6 +356,10 @@ impl LayoutAdapter {
                     ));
                 }
                 let arguments = serde_json::to_string(&(source, input.base_url(), style, font))
+                    .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+                format!("globalThis.captureOriginalFlexParent(...{arguments})")
+            } else if request == BoxObservationRequest::OriginalPercentageFlexParent {
+                let arguments = serde_json::to_string(&(source, input.base_url(), style))
                     .map_err(|error| AdapterError::Preparation(error.to_string()))?;
                 format!("globalThis.captureOriginalFlexParent(...{arguments})")
             } else if request == BoxObservationRequest::OriginalSubgridBody {
@@ -564,14 +580,20 @@ fn helper_setup_expression(
             "root-context source profile does not qualify the captured base stylesheet".into(),
         ));
     }
-    if request == BoxObservationRequest::OriginalFlexParent {
+    let flex_parent_script = match request {
+        BoxObservationRequest::OriginalFlexParent => Some(original_flex_parent_profile::SCRIPT),
+        BoxObservationRequest::OriginalPercentageFlexParent => {
+            Some(original_flex_parent_profile::percentage::SCRIPT)
+        }
+        _ => None,
+    };
+    if let Some(script) = flex_parent_script {
         let digest = surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes());
         if !original_flex_parent_profile::accepts_helper(digest.as_str()) {
             return Err(AdapterError::Preparation(
                 "original Flex parent capture helper changed".into(),
             ));
         }
-        let script = original_flex_parent_profile::SCRIPT;
         let helper = serde_json::to_string(&format!(
             "{helper}\n globalThis.captureOriginalFlexParent = ({script});"
         ))

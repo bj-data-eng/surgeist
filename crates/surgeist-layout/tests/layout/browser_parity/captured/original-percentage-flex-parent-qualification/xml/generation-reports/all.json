@@ -1,0 +1,83 @@
+{
+  "metadata": {
+    "schema_version": 4,
+    "generator": "surgeist-layout-root-context-qualification",
+    "engine_version": "0.2.0",
+    "host_executable_sha256": "7481014978cbf2774c3b71630fbdace253467439cc4db675afe52c237da9e9a9",
+    "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+    "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+    "contract_sha256": "b5729651e5cb1272792b5abc5c9034a2e9cd94b6386291da6052d4c82e0d43f7",
+    "inputs": {
+      "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+      "corpus.toml": "8f8d77269286f7f6966b7f9058f51a69e9c07c08385c44f12b592c6a32cda4b0",
+      "historical/grid/chrome_issue_325928327__border_box_ltr.xml": "04999a87630d68c415ad80623955241cea11a793197ebae0c7cf791e8f6e9e11",
+      "historical/grid/chrome_issue_325928327__border_box_rtl.xml": "f64a3869699348eb7b8aaf8e9d68df678897bb87cdf624d37ae6bafe8511de79",
+      "historical/grid/chrome_issue_325928327__content_box_ltr.xml": "c108bcf36de104e4efd97bca6549aeaa8b4e9ebdc859a291ab9ad8c5147c4dc6",
+      "historical/grid/chrome_issue_325928327__content_box_rtl.xml": "aba4e5ab281b52233c7ad376d1855ab38eeeeab23605c1ea6396af829e6439cf",
+      "html/grid/chrome_issue_325928327.html": "9704f1bec23b43e4904f554ab046625d9cec9fe6317301eaa6f0fb15430a5845",
+      "observation-request.json": "a6c071e3dfbdf8bf1c06386faf46b1290402704c89675d7fd6ed051b05639439",
+      "origin/selected-originals.json": "172fd5b95afeb46d27bbf9d8f94eacfb353c953ccc098377b1b7bfd366b13a71",
+      "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+      "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+      "scripts/gentest/original_percentage_flex_parent.js": "15cfd0ed8c3bc49d81c6db235158e69a8ee13ae7a01fd8e332a955f2d65b79bf",
+      "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+      "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+    },
+    "source_imports": []
+  },
+  "filter": null,
+  "summary": {
+    "generated": 4,
+    "unsupported": 0,
+    "expected_fail": 0,
+    "quarantined": 0,
+    "failed_to_generate": 0
+  },
+  "generated": [
+    {
+      "name": "chrome_issue_325928327__border_box_ltr",
+      "source": "html/grid/chrome_issue_325928327.html",
+      "output": "xml/grid/chrome_issue_325928327__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "source_sha256": "9704f1bec23b43e4904f554ab046625d9cec9fe6317301eaa6f0fb15430a5845",
+      "linked_resources": {},
+      "job_sha256": "dff5d55d3a5a3012e3aef7b9f033321956cc296ef500a3625561096a99c0c95e",
+      "output_sha256": "405148c4cde3dccf0b6b5885980aedf67f1e04ad077dd9c10117ed9c48da9ba5"
+    },
+    {
+      "name": "chrome_issue_325928327__border_box_rtl",
+      "source": "html/grid/chrome_issue_325928327.html",
+      "output": "xml/grid/chrome_issue_325928327__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "source_sha256": "9704f1bec23b43e4904f554ab046625d9cec9fe6317301eaa6f0fb15430a5845",
+      "linked_resources": {},
+      "job_sha256": "dff5d55d3a5a3012e3aef7b9f033321956cc296ef500a3625561096a99c0c95e",
+      "output_sha256": "071f2269e7daebec95621b6dfceaaef80c650460924bfa84c4b7f7449b0f8a37"
+    },
+    {
+      "name": "chrome_issue_325928327__content_box_ltr",
+      "source": "html/grid/chrome_issue_325928327.html",
+      "output": "xml/grid/chrome_issue_325928327__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "source_sha256": "9704f1bec23b43e4904f554ab046625d9cec9fe6317301eaa6f0fb15430a5845",
+      "linked_resources": {},
+      "job_sha256": "dff5d55d3a5a3012e3aef7b9f033321956cc296ef500a3625561096a99c0c95e",
+      "output_sha256": "7eab3297288a0b2f2d018a69455c3f8c2fdf12f8db716019a91e82fe6e024b47"
+    },
+    {
+      "name": "chrome_issue_325928327__content_box_rtl",
+      "source": "html/grid/chrome_issue_325928327.html",
+      "output": "xml/grid/chrome_issue_325928327__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "source_sha256": "9704f1bec23b43e4904f554ab046625d9cec9fe6317301eaa6f0fb15430a5845",
+      "linked_resources": {},
+      "job_sha256": "dff5d55d3a5a3012e3aef7b9f033321956cc296ef500a3625561096a99c0c95e",
+      "output_sha256": "7d2fa889ea0d7406ce28f01a87a866bb30d46654c919059ebf21e8e9713cee09"
+    }
+  ],
+  "unsupported": [],
+  "expected_fail": [],
+  "quarantined": [],
+  "failed_to_generate": []
+}

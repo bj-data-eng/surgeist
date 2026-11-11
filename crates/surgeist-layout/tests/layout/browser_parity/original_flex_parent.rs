@@ -5,7 +5,7 @@ use super::exact_differences::{
 };
 use super::root_context::QualifiedRootContext;
 use super::{
-    Error, Expectation, Golden, Node, NumericComparisonSink, RootContext, Scalar,
+    Error, Expectation, Golden, Node, NumericComparisonSink, RootContext, Scalar, TestTree,
     compare_captured_with_batch, layout, parse_number,
 };
 
@@ -43,20 +43,29 @@ pub(crate) fn verify_historical(current: &Golden, historical: &Golden) -> Result
             "original Flex parent must observe one Grid child",
         ));
     };
-    let (parent_x, parent_y, parent_width, _) = rectangle(&current.expectations)?;
-    let (x, y, grid_width, _) = rectangle(observed)?;
-    let authored_width = current
-        .root
-        .style
-        .get("width")
-        .and_then(|value| value.strip_suffix("px"))
-        .ok_or_else(|| Error::new("missing authored Flex parent width"))?;
-    if parse_number(authored_width)? != parent_width
+    let (parent_x, parent_y, parent_width, parent_height) = rectangle(&current.expectations)?;
+    let (x, y, grid_width, grid_height) = rectangle(observed)?;
+    let percentage_parent = is_percentage_parent(&historical.name);
+    let preferred_size_matches = if percentage_parent {
+        current.root.style.get("width") == Some("max-content")
+            && parent_width == grid_width
+            && parent_height == grid_height
+            && original_percentage_grid_shape(grid)
+            && original_percentage_grid_shape(&historical.root)
+    } else {
+        let authored_width = current
+            .root
+            .style
+            .get("width")
+            .and_then(|value| value.strip_suffix("px"))
+            .ok_or_else(|| Error::new("missing authored Flex parent width"))?;
+        parse_number(authored_width)? == parent_width && grid.children.len() == 2
+    };
+    if !preferred_size_matches
         || current.root.style.get("height") != Some("max-content")
         || current.root.style.get("direction") != grid.style.get("direction")
         || current.root.style.get("box-sizing") != grid.style.get("box-sizing")
         || grid.style.get("display") != Some("grid")
-        || grid.children.len() != 2
     {
         return Err(Error::new("original Flex parent or Grid sizing changed"));
     }
@@ -83,7 +92,29 @@ pub(crate) fn verify_historical(current: &Golden, historical: &Golden) -> Result
         &historical.root,
         &historical.expectations,
         true,
+        !percentage_parent,
     )
+}
+
+fn is_percentage_parent(case: &str) -> bool {
+    case.split_once("__")
+        .is_some_and(|(stem, _)| stem == "chrome_issue_325928327")
+}
+
+fn original_percentage_grid_shape(grid: &Node) -> bool {
+    let [item] = grid.children.as_slice() else {
+        return false;
+    };
+    let [ratio_box] = item.children.as_slice() else {
+        return false;
+    };
+    grid.style.get("width") == Some("100%")
+        && grid.style.get("height") == Some("40px")
+        && grid.style.get("justify-items") == Some("center")
+        && item.style.get("height") == Some("100%")
+        && ratio_box.style.get("height") == Some("100%")
+        && ratio_box.style.get("aspect-ratio") == Some("1")
+        && ratio_box.children.is_empty()
 }
 
 fn rectangle(node: &Expectation) -> Result<(Scalar, Scalar, Scalar, Scalar), Error> {
@@ -110,6 +141,7 @@ fn compare_subtree(
     historical: &Node,
     expected: &Expectation,
     root: bool,
+    has_text_leaves: bool,
 ) -> Result<(), Error> {
     if current.kind != historical.kind
         || current.text != historical.text
@@ -123,12 +155,18 @@ fn compare_subtree(
     {
         return Err(Error::new("original Grid source subtree changed"));
     }
-    if current.style.get("font-family") != Some("ahem")
-        || current.style.get("font-size") != Some("10px")
-        || current.style.get("line-height") != Some("10px")
-        || (!root && (!current.children.is_empty() || current.text.is_none()))
-    {
-        return Err(Error::new("original Grid text or font mapping changed"));
+    if has_text_leaves {
+        if current.style.get("font-family") != Some("ahem")
+            || current.style.get("font-size") != Some("10px")
+            || current.style.get("line-height") != Some("10px")
+            || (!root && (!current.children.is_empty() || current.text.is_none()))
+        {
+            return Err(Error::new("original Grid text or font mapping changed"));
+        }
+    } else if current.text.is_some() {
+        return Err(Error::new(
+            "original percentage Grid unexpectedly contains text",
+        ));
     }
     let (x, y, width, height) = rectangle(observed)?;
     let origin = if root { (0.0, 0.0) } else { (x, y) };
@@ -143,13 +181,59 @@ fn compare_subtree(
         .zip(&observed.children)
         .zip(historical.children.iter().zip(&expected.children))
     {
-        compare_subtree(current, observed, historical, expected, false)?;
+        compare_subtree(
+            current,
+            observed,
+            historical,
+            expected,
+            false,
+            has_text_leaves,
+        )?;
     }
     Ok(())
 }
 
-/// Report complete rounded box differences and the independently captured
-/// unrounded Grid offset within the actual Flex parent.
+// The percentage capture admits only boxes whose browser rectangles are
+// identical before and after rounding. Use those rectangles for both comparisons.
+fn compare_unrounded_subtree(
+    tree: &TestTree,
+    node: usize,
+    expected: &Expectation,
+    path: &str,
+    fields: &mut Vec<String>,
+) -> Result<(), Error> {
+    let actual = &tree.nodes[node];
+    if actual.children.len() != expected.children.len() {
+        return Err(Error::new(format!("{path}: incomplete Native source tree")));
+    }
+    let (x, y, width, height) = rectangle(expected)?;
+    let unrounded = actual.unrounded;
+    let location = if node == 0 {
+        layout::Point::new(0.0, 0.0)
+    } else {
+        unrounded.location
+    };
+    for (field, browser, native) in [
+        ("x", x, location.x),
+        ("y", y, location.y),
+        ("width", width, unrounded.size.width),
+        ("height", height, unrounded.size.height),
+    ] {
+        if browser != native {
+            fields.push(format!(
+                "{path}: unrounded {field}, browser {browser}, Native {native}"
+            ));
+        }
+    }
+    for (index, (&child, observation)) in actual.children.iter().zip(&expected.children).enumerate()
+    {
+        compare_unrounded_subtree(tree, child, observation, &format!("{path}/{index}"), fields)?;
+    }
+    Ok(())
+}
+
+/// Report complete rounded box differences and the source profile's unrounded
+/// observations within the actual Flex parent.
 pub(crate) fn compare(
     golden: &Golden,
 ) -> Result<(Vec<String>, Result<QualifiedComparison, String>), QualificationError> {
@@ -169,6 +253,15 @@ pub(crate) fn compare(
             .any(|node| !node.unrounded_present || !node.final_layout_present)
         {
             return Err(Error::new("incomplete Native original Flex parent layout"));
+        }
+        if is_percentage_parent(&golden.name) {
+            return compare_unrounded_subtree(
+                tree,
+                0,
+                &golden.expectations,
+                &golden.name,
+                &mut fields,
+            );
         }
         let [grid] = tree.nodes[0].children.as_slice() else {
             return Err(Error::new("Native Flex parent must have one Grid child"));
@@ -235,6 +328,64 @@ mod tests {
         current.expectations.width = Some(80.0);
         current.expectations.children[0].x = Some(0.0);
         assert!(verify_historical(&current, &historical).is_err());
+    }
+
+    #[test]
+    fn original_percentage_parent_preserves_historical_grid_geometry() {
+        let historical = Golden::parse(include_str!(
+            "xml/grid/chrome_issue_325928327__border_box_ltr.xml"
+        ))
+        .unwrap();
+        // Authored test oracle for the original 800×600 frame and 40px boxes.
+        let current = Golden::parse(
+            r#"<test name="chrome_issue_325928327__border_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" direction="ltr" position="absolute" align-items="start" justify-content="start" width="max-content" height="max-content">
+      <div source-tag="div" display="grid" direction="ltr" justify-items="center" width="100%" height="40px">
+        <div source-tag="div" display="flex" direction="ltr" height="100%">
+          <div source-tag="div" display="flex" direction="ltr" height="100%" aspect-ratio="1"/>
+        </div>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="40" height="40">
+      <node x="0" y="0" width="40" height="40">
+        <node x="0" y="0" width="40" height="40">
+          <node x="0" y="0" width="40" height="40"/>
+        </node>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="40" height="40" scroll-width="40" scroll-height="40" client-width="40" client-height="40"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="40" height="40" scroll-width="40" scroll-height="40" client-width="40" client-height="40"/>
+    <world-rounded-layout node-path="0.0.0" x="0" y="0" width="40" height="40" scroll-width="40" scroll-height="40" client-width="40" client-height="40"/>
+    <world-rounded-layout node-path="0.0.0.0" x="0" y="0" width="40" height="40" scroll-width="40" scroll-height="40" client-width="40" client-height="40"/>
+  </diagnostics>
+</test>"#,
+        )
+        .unwrap();
+        let (raw, verdict) = compare(&current).unwrap();
+        assert!(raw.is_empty() && verdict.is_ok(), "{raw:?}");
+        verify_historical(&current, &historical).unwrap();
+
+        let mut fractional = current;
+        let ratio_box = &mut fractional.root.children[0].children[0].children[0];
+        ratio_box.style.attrs.insert("width".into(), "40px".into());
+        ratio_box
+            .style
+            .attrs
+            .insert("height".into(), "39.75px".into());
+        let (raw, verdict) = compare(&fractional).unwrap();
+        assert!(verdict.is_err());
+        assert_eq!(
+            raw,
+            [
+                "chrome_issue_325928327__border_box_ltr/0/0/0: unrounded height, browser 40, Native 39.75"
+            ],
+        );
     }
 
     #[test]

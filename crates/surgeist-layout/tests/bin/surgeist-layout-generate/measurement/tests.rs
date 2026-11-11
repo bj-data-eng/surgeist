@@ -58,6 +58,78 @@ fn prepared_range_frame_requires_the_exact_request_and_root_authority() {
 }
 
 #[test]
+fn original_percentage_flex_parent_requires_matching_browser_geometry_phases() {
+    const REQUEST: &[u8] =
+        b"{\"schema_version\":1,\"original_flex_parent\":\"percentage-grid-v1\"}\n";
+    let box_node = |style, children| {
+        json!({
+            "layoutInput": "box",
+            "tagName": "div",
+            "style": style,
+            "unroundedLayout": {"x": 0, "y": 0, "width": 40, "height": 40},
+            "smartRoundedLayout": {"x": 0, "y": 0, "width": 40, "height": 40},
+            "worldRoundedLayout": {"x": 0, "y": 0, "width": 40, "height": 40},
+            "children": children,
+        })
+    };
+    let ratio_box = box_node(
+        json!({"display": "flex", "size": {"height": {"unit": "percent", "value": 100}}, "aspectRatio": 1}),
+        vec![],
+    );
+    let item = box_node(
+        json!({"display": "flex", "size": {"height": {"unit": "percent", "value": 100}}}),
+        vec![ratio_box],
+    );
+    let grid = box_node(
+        json!({"display": "grid", "size": {"width": {"unit": "percent", "value": 100}, "height": {"unit": "px", "value": 40}}, "justifyItems": "center"}),
+        vec![item],
+    );
+    let mut parent = box_node(
+        json!({"display": "flex", "position": "absolute", "size": {"width": {"unit": "max-content"}, "height": {"unit": "max-content"}}}),
+        vec![grid],
+    );
+    parent["gridAlignmentProfile"] = json!({"profile": 1, "owners": []});
+    parent["useRounding"] = json!(true);
+    parent["viewport"] = json!({"rootContext": {
+        "kind": "absolute-root-local",
+        "containingWidth": 800, "containingHeight": 600, "containingDirection": "ltr",
+        "hypotheticalDirection": "ltr", "hypotheticalDisplay": "flex",
+        "hypotheticalAnchor": "inline-start", "hypotheticalInlineOffset": 0,
+        "fallback": {
+            "initialContainingBlock": {"width": 800, "height": 600},
+            "nearestScrollport": "none",
+            "containingLimits": {"width": "unbounded", "height": "unbounded"}
+        }
+    }});
+    assert!(matches!(
+        decode_fixture(&parent).unwrap(),
+        DecodedMeasurement::Supported(_)
+    ));
+    let request = BoxObservationRequest::from_input_bytes(Some(REQUEST)).unwrap();
+    assert_ne!(request, BoxObservationRequest::OriginalFlexParent);
+    assert_eq!(request.input_bytes(), Some(REQUEST));
+    assert!(BoxObservationRequest::from_input_bytes(Some(&REQUEST[..REQUEST.len() - 1])).is_err());
+
+    let decode_requested = |value: &serde_json::Value| {
+        decode(
+            &value.to_string(),
+            "chrome_issue_325928327__border_box_ltr",
+            "border-box-ltr",
+            request,
+        )
+    };
+    assert!(matches!(
+        decode_requested(&parent).unwrap(),
+        DecodedMeasurement::Supported(_)
+    ));
+
+    parent["children"][0]["children"][0]["children"][0]["unroundedLayout"]["height"] = json!(39.75);
+    let error = decode_requested(&parent).unwrap_err();
+    assert_eq!(error.node_path, "root.children[0].children[0].children[0]");
+    assert_eq!(error.field_path, "unroundedLayout");
+}
+
+#[test]
 fn prepared_range_rows_preserve_zero_width_and_reject_foreign_occurrences() {
     let mut value = json!({
         "layoutInput": "prepared-text",

@@ -3135,3 +3135,27 @@ profile = "original-flex-parent"
 [[specialized_publications]]
 source = "html/grid/grid_available_space_smaller_than_min_content.html"
 profile = "original-flex-parent"
+
+[[records]]
+source = "html/grid/chrome_issue_325928327.html"
+source_sha256 = "9704f1bec23b43e4904f554ab046625d9cec9fe6317301eaa6f0fb15430a5845"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "04999a87630d68c415ad80623955241cea11a793197ebae0c7cf791e8f6e9e11"
+content_box_ltr = "c108bcf36de104e4efd97bca6549aeaa8b4e9ebdc859a291ab9ad8c5147c4dc6"
+border_box_rtl = "f64a3869699348eb7b8aaf8e9d68df678897bb87cdf624d37ae6bafe8511de79"
+content_box_rtl = "aba4e5ab281b52233c7ad376d1855ab38eeeeab23605c1ea6396af829e6439cf"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[specialized_publications]]
+source = "html/grid/chrome_issue_325928327.html"
+profile = "original-percentage-flex-parent"

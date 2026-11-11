@@ -627,6 +627,9 @@ const REGISTERED_RELATIVE_INSET_TERMINAL_SHA256: &str =
 const REGISTERED_ORIGINAL_FLEX_PARENT_TERMINAL_SHA256: &str =
     "3136e2f0c9c4ea5c32cdb33f6b95883ccf5751c0f5aa1cd6aac5ee6ee36a7d19";
 
+const REGISTERED_ORIGINAL_PERCENTAGE_FLEX_PARENT_TERMINAL_SHA256: &str =
+    "06f3610d3477506e8d7bb1e67eb79700b4c471d52a4422774583ac0a287029f3";
+
 const REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256: &str =
     "cb95757f57de7ba86900c34d66d3a90c7a71a65a7570f1a74af5ce2eb14ccbc7";
 const REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256: &str =
@@ -734,6 +737,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             Registration {
                 edition: Edition::Specialized(SpecializedProfile::OriginalFlexParent),
                 terminal_sha256: REGISTERED_ORIGINAL_FLEX_PARENT_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Specialized(SpecializedProfile::OriginalPercentageFlexParent),
+                terminal_sha256: REGISTERED_ORIGINAL_PERCENTAGE_FLEX_PARENT_TERMINAL_SHA256,
             },
         )?,
         admit(
@@ -1747,6 +1757,7 @@ fn admit_specialized(
     let flex_inputs = match profile {
         SpecializedProfile::PreparedRange
         | SpecializedProfile::OriginalFlexParent
+        | SpecializedProfile::OriginalPercentageFlexParent
         | SpecializedProfile::OriginalSubgridBody
         | SpecializedProfile::PreparedAtomicPercentage
         | SpecializedProfile::HorizontalBrFontBand
@@ -1794,7 +1805,8 @@ fn admit_specialized(
                     support::Golden::parse(xml),
                     AdmittedComparison::PreparedRange { variant },
                 ),
-                SpecializedProfile::OriginalFlexParent => {
+                SpecializedProfile::OriginalFlexParent
+                | SpecializedProfile::OriginalPercentageFlexParent => {
                     let current = support::Golden::parse(xml)
                         .map_err(|error| malformed(error.to_string()))?;
                     let historical = std::str::from_utf8(&historical)
