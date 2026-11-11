@@ -18,6 +18,8 @@ use surgeist_html::scripting::HtmlScriptingPolicy;
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlCapturedNodeKind, HtmlScriptingStatus};
 use surgeist_runtime::{document_scripting::*, *};
 
+#[path = "document_scripting/document_fragment.rs"]
+mod document_fragment;
 #[path = "document_scripting/script_preparation.rs"]
 mod script_preparation;
 #[path = "document_scripting/source_events.rs"]
@@ -2234,6 +2236,7 @@ fn main() {
             "window-event-live-operations" => native_window_event_observes_its_live_standalone_dispatch(),
             "window-event-listeners" => native_window_registers_and_removes_guest_event_listeners(),
             "window-document-projection" => window_document::window_projects_the_live_document_and_node_brands(),
+            "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
             "window-document-retirement" => window_document::native_document_retirement_releases_registered_callbacks(),
             "window-document-native-observer" => window_document::document_dispatch_preserves_native_observer_and_refusal(),
             "window-global-event-target" => window_document::window_uses_the_real_global_event_target(),
@@ -2305,6 +2308,7 @@ fn main() {
     native_window_registers_and_removes_guest_event_listeners();
     window_timers::window_schedules_and_cancels_after_guest_entry();
     window_document::window_projects_the_live_document_and_node_brands();
+    document_fragment::creates_fragments_through_the_canonical_document();
     window_document::native_document_retirement_releases_registered_callbacks();
     window_document::document_dispatch_preserves_native_observer_and_refusal();
     window_document::window_uses_the_real_global_event_target();
