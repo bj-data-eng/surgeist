@@ -187,6 +187,24 @@ pub(in crate::document_scripting) fn attached_registered_function_uses_the_exact
         Ok(())
     })
     .unwrap();
+    let events = host.guest_events().unwrap();
+    let escaped = exception.exception.value().clone();
+    drop(report);
+    host.in_document(&permit, |scope| {
+        let expected = scope.import(&thrown)?;
+        let escaped = scope.import(&escaped)?;
+        assert!(scope.strict_equals(&expected, &escaped)?);
+        Ok(())
+    })
+    .unwrap();
+    let before_root_reap = events.used.get();
+    drop(escaped);
+    assert_eq!(events.used.get(), before_root_reap);
+    host.in_document(&permit, |_| Ok(())).unwrap();
+    assert_eq!(
+        before_root_reap - events.used.get(),
+        events.exception_root_bytes + size_of::<GuestBacking>()
+    );
     assert!(!host.remove_guest_event_listener(&permit, first_id).unwrap());
     assert!(
         host.remove_guest_event_listener(&permit, second_id)
