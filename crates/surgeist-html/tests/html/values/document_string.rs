@@ -250,3 +250,26 @@ fn debug_names_the_code_units() {
         "DocumentString { code_units: [97] }"
     );
 }
+
+#[test]
+fn a_range_over_a_whole_block_is_still_a_borrower_of_it() {
+    let block = TextBlock::from_utf16(units("abcd"));
+    let full = block.string(0..4).unwrap();
+    assert!(!full.is_whole_block());
+    assert_eq!(full.range(), 0..4);
+    assert!(block.whole().is_whole_block());
+}
+
+#[test]
+fn a_range_counts_its_own_length_and_a_whole_block_string_its_capacity() {
+    let mut vector = Vec::with_capacity(31);
+    vector.extend(units("abcdef"));
+    let capacity = vector.capacity();
+    let owner = DocumentString::from_utf16(vector);
+    assert_eq!(owner.retained_units(), capacity);
+    let block = owner.block();
+    for range in [0..6, 1..3, 4..4, 6..6] {
+        let borrower = block.string(range.clone()).unwrap();
+        assert_eq!(borrower.retained_units(), range.len());
+    }
+}

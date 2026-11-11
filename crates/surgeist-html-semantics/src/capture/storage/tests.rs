@@ -416,3 +416,44 @@ fn checked_arithmetic_refuses_without_constructing_impossible_allocations() {
         Err(HtmlCaptureStorageError::RepresentationExhausted)
     );
 }
+
+fn borrowers() -> (surgeist_html::values::TextBlock, [DocumentString; 2]) {
+    let mut units = Vec::with_capacity(512);
+    units.extend([97_u16, 98, 99, 100, 101, 102, 103, 104]);
+    let block = surgeist_html::values::TextBlock::from_utf16(units);
+    let first = block.string(0..4).unwrap();
+    let second = block.string(4..8).unwrap();
+    (block, [first, second])
+}
+
+fn exact(units: &[u16]) -> DocumentString {
+    let mut backing = Vec::new();
+    backing.try_reserve_exact(units.len()).unwrap();
+    backing.extend_from_slice(units);
+    assert_eq!(backing.capacity(), units.len());
+    DocumentString::from_utf16(backing)
+}
+
+#[test]
+fn borrowers_of_one_block_are_priced_by_length_and_the_block_once() {
+    let build = |first: DocumentString, second: DocumentString| {
+        let mut builder = builder();
+        let document = document(&mut builder);
+        builder.add_text(&document, first).unwrap();
+        builder.add_comment(&document, second).unwrap();
+        builder.finish().unwrap()
+    };
+    let owners = build(exact(&[97, 98, 99, 100]), exact(&[101, 102, 103, 104]));
+    let (block, [first, second]) = borrowers();
+    let borrowed = build(first, second);
+    let block_bytes = size_of::<Vec<u16>>() + block.capacity() * size_of::<u16>();
+    let (owned, shared) = (observe(&owners), observe(&borrowed));
+    assert_eq!(
+        shared.utf16_extent(),
+        owned.utf16_extent() + block.capacity()
+    );
+    assert_eq!(
+        shared.retained_bytes(),
+        owned.retained_bytes() + block_bytes
+    );
+}

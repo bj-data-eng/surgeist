@@ -638,3 +638,6 @@ impl DomStyleRuntime {
         state.commit_sheet_set_change(&dom.snapshot(), prepared, cancel)
     }
 }
+
+#[cfg(test)]
+mod tests;

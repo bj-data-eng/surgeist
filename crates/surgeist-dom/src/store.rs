@@ -17,6 +17,8 @@ use surgeist_html::values::DocumentString;
 mod attributes;
 mod autofocus;
 pub(crate) mod bank;
+#[cfg(test)]
+mod block_custody_tests;
 mod base;
 pub(crate) mod canonical;
 mod changes;
