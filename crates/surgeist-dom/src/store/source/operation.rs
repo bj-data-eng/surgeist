@@ -81,7 +81,6 @@ pub(in crate::store) struct Operation {
     inline_source: Option<inline::SourceInline>,
     meta_policy: Option<meta::Policy>,
     pending_meta: Option<meta::Pending>,
-    meta_receipt: Option<meta::SavedReceipt>,
     draft: dialog::OperationDraft,
     commands: OperationRoot,
     index: usize,
@@ -370,7 +369,6 @@ impl Dom {
             inline_source: None,
             meta_policy: None,
             pending_meta: None,
-            meta_receipt: None,
             commands,
             index: 0,
             started: false,
@@ -735,21 +733,14 @@ impl Operation {
                 )
                 .ok_or(DomError::RepresentationExhausted)?;
         }
-        if let Some(binding) = self.owner_binding.as_ref().or_else(|| {
-            self.meta_receipt
-                .as_ref()
-                .and_then(|saved| saved.binding.as_ref())
-        }) {
+        if let Some(binding) = &self.owner_binding {
             bytes = bytes
                 .checked_add(binding.retained_bytes()?)
                 .ok_or(DomError::RepresentationExhausted)?;
         }
         if let Some(Receipt::Inline {
             bytes: retained, ..
-        }) = self
-            .receipt
-            .as_ref()
-            .or_else(|| self.meta_receipt.as_ref().map(|saved| &saved.receipt))
+        }) = &self.receipt
         {
             bytes = bytes
                 .checked_add(*retained)
@@ -760,16 +751,7 @@ impl Operation {
                 .checked_add(s.retained_bytes()?)
                 .ok_or(DomError::RepresentationExhausted)?;
         }
-        if let Some(order) = self
-            .request
-            .as_ref()
-            .or_else(|| {
-                self.meta_receipt
-                    .as_ref()
-                    .and_then(|saved| saved.request.as_ref())
-            })
-            .and_then(|r| r.sheet_order.as_ref())
-        {
+        if let Some(order) = self.request.as_ref().and_then(|r| r.sheet_order.as_ref()) {
             bytes = bytes
                 .checked_add(size_of::<Vec<DomStyleSheetPlacement>>())
                 .and_then(|n| {
@@ -781,17 +763,9 @@ impl Operation {
                 })
                 .ok_or(DomError::RepresentationExhausted)?;
         }
-        if let Some(request) = self
-            .meta_receipt
-            .as_ref()
-            .and_then(|saved| saved.request.as_ref())
-            && !self
-                .context
-                .as_ref()
-                .is_some_and(|(_, source)| Arc::ptr_eq(source, &request.source))
-        {
+        if let Some(source) = self.retained_style_request_source() {
             bytes = bytes
-                .checked_add(request.source.retained_bytes()?)
+                .checked_add(source.retained_bytes()?)
                 .ok_or(DomError::RepresentationExhausted)?;
         }
         if let Some(value) = &self.request_close_result {
@@ -802,6 +776,19 @@ impl Operation {
                 .ok_or(DomError::RepresentationExhausted)?;
         }
         Ok(bytes)
+    }
+    fn retained_style_request_source(&self) -> Option<&DomStyleSource> {
+        let request = self.request.as_ref()?;
+        // Command advancement may release the cache before the publication
+        // fence. The still-private acknowledgment owns its original request.
+        if self
+            .context
+            .as_ref()
+            .is_some_and(|(_, source)| Arc::ptr_eq(source, &request.source))
+        {
+            return None;
+        }
+        Some(&request.source)
     }
     fn refresh_admission(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
         if self.observation().is_some() {
@@ -814,6 +801,11 @@ impl Operation {
             .checked_add(self.custody_units)
             .ok_or(DomError::RepresentationExhausted)?;
         if let Some((_, source)) = &self.context {
+            units = units
+                .checked_add(source.retained_units()?)
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        if let Some(source) = self.retained_style_request_source() {
             units = units
                 .checked_add(source.retained_units()?)
                 .ok_or(DomError::RepresentationExhausted)?;
@@ -877,19 +869,6 @@ impl Operation {
         self.draft.source_step(cancel)?;
         let command = &self.commands[self.index];
         self.draft.apply(command, limits, cancel)
-    }
-    fn settle_completed_receipt(&mut self, execution: &Execution<'_>) {
-        if execution.native.is_some() {
-            self.save_meta_receipt();
-        }
-        if !matches!(
-            self.receipt,
-            Some(Receipt::Watcher { .. } | Receipt::Focus { .. } | Receipt::CloseWatcher { .. })
-        ) {
-            self.receipt = None;
-            self.request = None;
-            self.owner_binding = None;
-        }
     }
     fn frame(&self) -> Result<Frame, DomError> {
         match self.draft.effects.last().map(|f| &f.effect) {
@@ -1746,6 +1725,14 @@ impl SegmentPublication {
         if let Some(source) = source {
             op.context = Some((source.ordinal, source));
         }
+        // Only the committed segment can retire a Style acknowledgment.
+        if matches!(
+            op.receipt,
+            Some(Receipt::Inline { applied: true, .. } | Receipt::Cssom { applied: true, .. })
+        ) {
+            op.receipt = None;
+            op.owner_binding = None;
+        }
         op.request = request;
         if let Some(child) = child {
             op.draft.source_invocation = child.request.occurrence;
@@ -1760,7 +1747,6 @@ impl SegmentPublication {
         }
         op.phases += u64::from(changed);
         op.published = true;
-        op.meta_receipt = None;
         drop(op.draft.meta_recording.take());
         op.draft.meta_scope = None;
         PublishedSegment {
@@ -2564,7 +2550,6 @@ impl DomSourceLease<'_> {
                         // error. Its real cleanup starts from this retained
                         // cursor, even if work/admission refuses before a phase
                         // can publish. The original command is never replayed.
-                        op.settle_completed_receipt(execution);
                         op.started = true;
                         drop(checkpoint);
                         continue;
@@ -2617,7 +2602,6 @@ impl DomSourceLease<'_> {
                         headroom.remaining_phases = headroom::FINAL_PUBLICATION;
                     }
 
-                    op.settle_completed_receipt(execution);
                     if op.index < op.commands.len() && (!op.cancelled || op.started) {
                         let next_index = op.index + 1;
                         if next_index < op.commands.len() && completed_method {
@@ -3523,7 +3507,6 @@ impl Dom {
                 inline_source: None,
                 meta_policy: None,
                 pending_meta: None,
-                meta_receipt: None,
                 commands: OperationRoot::NativeInstallation,
                 index: 0,
                 started: false,
@@ -5965,20 +5948,48 @@ pub(in crate::store) mod accounting_tests {
         assert_eq!(op.index, 1);
         assert!(!op.started);
         assert!(!op.command_admitted);
-        assert!(op.request.is_none());
         assert!(op.context.is_none());
+        let request = op.request.as_ref().unwrap();
+        assert!(Arc::ptr_eq(&request.source, &create.source));
+        assert!(op.owner_binding.as_ref().unwrap().matches(request));
+        assert!(matches!(
+            &op.receipt,
+            Some(Receipt::Cssom { revision, applied: true, .. }) if revision == &cssom_revision
+        ));
         assert_eq!(op.draft.source_invocation, u64::MAX);
         assert_eq!(
             raised.snapshot().node(first).unwrap().parent(),
             Some(parent)
         );
+        let prefix = raised.snapshot();
+        let style = prefix.node(first).unwrap().as_style().unwrap();
+        assert!(style.state().sheet.is_none());
+        assert!(matches!(
+            style.sheet(),
+            Err(DomError::IncompleteSourceOperation)
+        ));
         assert_eq!(raised.snapshot().node(second).unwrap().parent(), None);
         assert_eq!(root.snapshot().unwrap().revision(), &cssom_revision);
+        assert_eq!(raised.status().phase(), crate::DomSourcePhase::Staging);
+        assert_eq!(
+            raised.advance(&cancel).unwrap_err(),
+            DomError::RepresentationExhausted
+        );
         raised.request_cancel();
         assert!(matches!(
             raised.advance(&cancel).unwrap(),
             DomSourceProgress::Complete(_)
         ));
+        let closed = raised.snapshot();
+        let association = closed
+            .node(first)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .unwrap();
+        assert_eq!(association.revision(), &cssom_revision);
         assert_eq!(root.snapshot().unwrap().revision(), &cssom_revision);
         assert_eq!(root.snapshot().unwrap().sheets().len(), 1);
     }

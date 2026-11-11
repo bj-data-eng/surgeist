@@ -35,7 +35,7 @@ impl Operation {
     ) -> bool {
         // A settled handoff keeps its job and closing credit in the fullscreen
         // bank. Unprepared Inline and Meta inputs belong to the rejected Draft.
-        // A prepared Meta phase or saved producer receipt still belongs to Source.
+        // A prepared Meta phase still belongs to Source.
         self.published
             && dom.state.incomplete_source == Some(self.id)
             && matches!(self.commands, OperationRoot::Edit(_))
@@ -47,7 +47,6 @@ impl Operation {
             && self.hosted_global.is_none()
             && self.request_close.is_none()
             && self.pending_meta.is_none()
-            && self.meta_receipt.is_none()
             && self.draft.method.is_none()
             && self.draft.compound_failure().is_none()
             && self.svg_failure_style().is_ok_and(|style| {
