@@ -468,12 +468,7 @@ fn image_repeat_preserves_the_authored_phase_across_an_overflowing_span() {
         (
             Rect::new(-0.625 * unit, 0.0, 1.875 * unit, 1.0),
             positive_anchor,
-            [
-                -1.25 * unit,
-                (-0.5 * unit).next_up(),
-                positive_anchor,
-                unit,
-            ],
+            [-1.25 * unit, (-0.5 * unit).next_up(), positive_anchor, unit],
         ),
     ] {
         // Both first starts round away the anchor adjustment. The anchor
