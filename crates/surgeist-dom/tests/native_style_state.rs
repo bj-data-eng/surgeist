@@ -704,7 +704,9 @@ fn actual_creation_receipt(
         inputs.title = Arc::new("wrong title".encode_utf16().collect());
     }
     match wrong {
-        Some(WrongCreationInput::Base) => inputs.base_url = Some("wrong base".into()),
+        Some(WrongCreationInput::Base) => {
+            inputs.base_url = Some(Arc::new("wrong base".encode_utf16().collect()));
+        }
         Some(WrongCreationInput::Location) => inputs.location = Some("wrong location".into()),
         Some(WrongCreationInput::ConstructorDocument) => {
             inputs.constructor_document = Some("wrong document".into())
