@@ -445,6 +445,126 @@ fn native_window_relation_work_is_admitted_at_the_callback() {
     assert_eq!(probe(accepted + 5, WRITE), Probe::CallbackRefused);
 }
 
+fn native_window_constructs_event_with_exact_type_flags_and_clock() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    let native_timestamp = |host: &mut DocumentScriptHost| {
+        host.with_native(|dom, mut hosted, _| {
+            hosted
+                .create_event(dom, top.global(), &[], DomEventInit::default(), &cancel())
+                .unwrap()
+                .time_stamp()
+                .unwrap()
+        })
+        .unwrap()
+    };
+    let before = native_timestamp(&mut host);
+    let script = r#"(() => {
+        try {
+            const event = new Event("A\ud800\0Z\udc00", {
+                bubbles: true, cancelable: true, composed: true,
+            });
+            const empty = new Event("");
+            if (event.type !== "A\ud800\0Z\udc00" || empty.type !== ""
+                || new Event(undefined).type !== "undefined") {
+                return "Event must retain the exact DOMString";
+            }
+            if (!event.bubbles || !event.cancelable || !event.composed || event.isTrusted
+                || empty.bubbles || empty.cancelable || empty.composed) {
+                return "Event must expose its authored and default flags";
+            }
+            if (Object.getPrototypeOf(event) !== Event.prototype
+                || Event.prototype.constructor !== Event
+                || Object.getPrototypeOf(Event.prototype) !== Object.prototype
+                || Event.length !== 1) {
+                return "Event must use its declared interface prototype";
+            }
+            class ExtendedEvent extends Event {}
+            const extended = new ExtendedEvent("extended");
+            if (Object.getPrototypeOf(extended) !== ExtendedEvent.prototype
+                || extended.type !== "extended") {
+                return "Event must use the selected subclass prototype";
+            }
+            for (const call of [() => Event("x"), () => new Event()]) {
+                try {
+                    call();
+                    return "Event must require both construction and a type argument";
+                } catch (error) {
+                    if (!(error instanceof TypeError)) throw error;
+                }
+            }
+            const timestamp = event.timeStamp;
+            return Number.isFinite(timestamp) ? timestamp : "Event timeStamp must be finite";
+        } catch (error) {
+            return `${error.name}: ${error.message}`;
+        }
+    })()"#;
+    let timestamp = host
+        .in_document(&permit, |scope| {
+            let result = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            if scope.kind(&result)? != ValueKind::Number {
+                let failure = String::from_utf16(&scope.to_utf16(&result)?).unwrap();
+                panic!("attached Window Event construction failed: {failure}");
+            }
+            scope.unrestricted_double(&result)
+        })
+        .unwrap();
+    let after = native_timestamp(&mut host);
+    assert!(
+        before <= timestamp && timestamp <= after,
+        "Event timeStamp {timestamp} ms must lie within native observations {before}..={after} ms"
+    );
+}
+
+fn native_window_constructs_distinct_event_targets_with_the_interface_prototype() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        try {
+            const target = new EventTarget();
+            if (target === new EventTarget()
+                || Object.getPrototypeOf(target) !== EventTarget.prototype
+                || EventTarget.prototype.constructor !== EventTarget
+                || Object.getPrototypeOf(EventTarget.prototype) !== Object.prototype
+                || EventTarget.length !== 0) {
+                return "EventTarget must create a distinct instance of its interface";
+            }
+            class ExtendedEventTarget extends EventTarget {}
+            const extended = new ExtendedEventTarget();
+            if (Object.getPrototypeOf(extended) !== ExtendedEventTarget.prototype
+                || Object.getPrototypeOf(ExtendedEventTarget.prototype) !== EventTarget.prototype) {
+                return "EventTarget must use the selected subclass prototype";
+            }
+            try {
+                EventTarget();
+                return "EventTarget must require construction";
+            } catch (error) {
+                if (!(error instanceof TypeError)) throw error;
+            }
+            return "ok";
+        } catch (error) {
+            return `${error.name}: ${error.message}`;
+        }
+    })()"#;
+    let result = host
+        .in_document(&permit, |scope| {
+            let result = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&result)
+        })
+        .unwrap();
+    assert_eq!(
+        String::from_utf16(&result).unwrap(),
+        "ok",
+        "attached Window EventTarget construction failed"
+    );
+}
+
 fn native_window_exposes_dom_exception() {
     let (session, top) = setup();
     let mut host = prepare(session, Arc::new(cancel()))
@@ -1807,6 +1927,10 @@ fn main() {
                 native_window_relation_refusal_retains_the_first_typed_cause();
                 native_window_relation_work_is_admitted_at_the_callback();
             }
+            "window-event-constructor" => native_window_constructs_event_with_exact_type_flags_and_clock(),
+            "window-event-target-constructor" => {
+                native_window_constructs_distinct_event_targets_with_the_interface_prototype()
+            }
             "native_window_exposes_dom_exception" => native_window_exposes_dom_exception(),
             "dom-exception-error-data" => {
                 native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion()
@@ -1868,6 +1992,8 @@ fn main() {
     native_window_relation_custody_and_collision();
     native_window_relation_refusal_retains_the_first_typed_cause();
     native_window_relation_work_is_admitted_at_the_callback();
+    native_window_constructs_event_with_exact_type_flags_and_clock();
+    native_window_constructs_distinct_event_targets_with_the_interface_prototype();
     native_window_exposes_dom_exception();
     native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();
     native_window_dom_exception_admission_and_hook_collision();
