@@ -4,6 +4,8 @@ use std::path::{Component, Path, PathBuf};
 
 #[path = "browser_parity/historical_disposition.rs"]
 mod historical_disposition;
+#[path = "browser_parity/live_parity.rs"]
+mod live_parity;
 #[path = "browser_parity/portable_qualification.rs"]
 mod portable_qualification;
 #[path = "browser_parity/support.rs"]
@@ -3155,6 +3157,15 @@ fn runs_registered_current_browser_parity_qualification() {
 
 #[test]
 fn runs_all_checked_in_browser_parity_xml() {
+    if let Some(output) = std::env::var_os("SURGEIST_PARITY_WRITE_LIVE_RECEIPT") {
+        assert!(std::env::var_os("SURGEIST_PARITY_RAW_EXACT").is_none());
+        assert!(std::env::var_os("SURGEIST_PARITY_FILTER").is_none());
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
+        live_parity::LiveCorpusRun::collect(&root)
+            .and_then(|run| run.write_receipt(Path::new(&output)))
+            .unwrap_or_else(|error| panic!("{error}"));
+        return;
+    }
     let fixtures = support::fixture_files("xml").expect("fixtures should load");
     if let Some(mode) = std::env::var_os("SURGEIST_PARITY_RAW_EXACT") {
         assert_eq!(mode, "1", "SURGEIST_PARITY_RAW_EXACT must be 1 when set");
@@ -3186,12 +3197,29 @@ fn runs_all_checked_in_browser_parity_xml() {
         "Current qualification passed: {} registered captures",
         qualified.current_cases
     );
+    let live = qualified.live.expect("completed live corpus accounting");
+    eprintln!(
+        "Live corpus accounting complete: {} sources, {} producer-unsupported variants",
+        live.sources, live.unsupported,
+    );
+    if live.nonmatches == 0 {
+        eprintln!(
+            "Live Native parity passed: {} matching captures",
+            live.matches
+        );
+    } else {
+        eprintln!(
+            "Live Native parity failed: {} matching captures, {} nonmatching captures",
+            live.matches, live.nonmatches,
+        );
+    }
     if let Some(raw) = report.raw.failure() {
         eprintln!(
-            "Raw-exact failed: {} historical cases, {} current cases, {} current difference fields",
+            "Raw-exact failed: {} historical cases, {} registered current cases, {} current difference fields, {} live cases",
             report.raw.historical.len(),
             report.raw.current.len(),
             report.raw.current_difference_fields,
+            report.raw.live.len(),
         );
         eprintln!("{raw}");
     } else {
@@ -3241,6 +3269,7 @@ fn raw_corpus_reports_a_missing_xml_and_still_executes_later_originals() {
 struct RawBrowserParity {
     historical: Vec<String>,
     current: Vec<String>,
+    live: Vec<String>,
     by_suite: BTreeMap<String, usize>,
     by_kind: BTreeMap<String, usize>,
     current_difference_fields: usize,
@@ -3248,19 +3277,30 @@ struct RawBrowserParity {
 
 impl RawBrowserParity {
     fn failure(&self) -> Option<String> {
-        if self.historical.is_empty() && self.current.is_empty() {
+        if self.historical.is_empty() && self.current.is_empty() && self.live.is_empty() {
             return None;
         }
-        Some(format!(
+        let mut failure = format!(
             "{} browser parity fixtures failed:\n\nHistorical failures ({}):\n\nBy suite:\n{}\n\nBy kind:\n{}\n\nHistorical failure details:\n{}\n\nCurrent raw failures ({}):\n{}",
-            self.historical.len() + self.current.len(),
+            self.historical.len() + self.current.len() + self.live.len(),
             self.historical.len(),
             count_lines(&self.by_suite),
             count_lines(&self.by_kind),
             self.historical.join("\n"),
             self.current.len(),
             self.current.join("\n")
-        ))
+        );
+        if !self.live.is_empty() {
+            use std::fmt::Write;
+            write!(
+                failure,
+                "\n\nLive Native failures ({}):\n{}",
+                self.live.len(),
+                self.live.join("\n"),
+            )
+            .expect("writing to String is infallible");
+        }
+        Some(failure)
     }
 }
 
@@ -3268,6 +3308,7 @@ impl RawBrowserParity {
 struct QualifiedBrowserParity {
     historical: Option<historical_disposition::HistoricalCounts>,
     current_cases: usize,
+    live: Option<live_parity::LiveCorpusCounts>,
     failures: Vec<String>,
 }
 
@@ -3308,6 +3349,9 @@ impl QualifiedBrowserParity {
         }
         if self.current_cases == 0 {
             return Err("current qualification is incomplete".into());
+        }
+        if self.live.is_none() {
+            return Err("live corpus accounting is incomplete".into());
         }
         Ok(())
     }
@@ -3502,6 +3546,27 @@ fn collect_browser_parity(
             }
             if let Some(error) = run.freshness_error {
                 raw.current.push(error);
+            }
+        }
+    }
+    if filter.is_none() {
+        match live_parity::LiveCorpusRun::collect(&root) {
+            Ok(live) => {
+                raw.live.extend(live.raw_failures());
+                if let Some(qualified) = &mut qualified {
+                    match live.check_accounting(&root) {
+                        Ok(()) => qualified.live = Some(live.counts()),
+                        Err(error) => qualified.failures.push(error),
+                    }
+                } else if let Err(error) = live.check_report_identity(&root) {
+                    raw.live.push(error);
+                }
+            }
+            Err(error) => {
+                if let Some(qualified) = &mut qualified {
+                    qualified.failures.push(error.clone());
+                }
+                raw.live.push(error);
             }
         }
     }

@@ -926,7 +926,8 @@ pub struct BrowserBrFontBand {
     pub height: Scalar,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum BrowserNeighborLine {
     Absent,
     Unobserved,
@@ -935,12 +936,14 @@ pub enum BrowserNeighborLine {
     Later,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum BrowserControlComparisonField {
     NextLine,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct EndpointUnobservableField {
     paths: Vec<String>,
     field: BrowserControlComparisonField,
@@ -1018,7 +1021,8 @@ impl NumericComparisonField {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ElementScrollSizeField {
     ClientWidth,
     ClientHeight,
@@ -1037,14 +1041,16 @@ impl ElementScrollSizeField {
 }
 
 /// One complete comparison difference, retaining its numeric domain.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "domain", content = "difference", rename_all = "kebab-case")]
 pub enum NumericMismatch {
     Layout(LayoutNumericMismatch),
     ElementScrollSize(ElementScrollSizeMismatch),
 }
 
 /// An immutable finite layout-number difference using ordinary parity tolerance.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct LayoutNumericMismatch {
     path: String,
     field: NumericComparisonField,
