@@ -80,6 +80,27 @@ pub(crate) mod fault {
     thread_local! {
         static REFUSE_FROM: Cell<Option<usize>> = const { Cell::new(None) };
         static REQUESTS: Cell<usize> = const { Cell::new(0) };
+        static REFUSE_CHILDREN: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Makes the allocator refuse every reservation of a child order, the room needed as well as
+    /// spare room, until the guard drops, even if the test panics.
+    pub(crate) struct ChildrenRefused;
+    impl Drop for ChildrenRefused {
+        fn drop(&mut self) {
+            REFUSE_CHILDREN.with(|cell| cell.set(false));
+        }
+    }
+
+    /// Refuses every reservation of a child order from now on.
+    pub(crate) fn refuse_children() -> ChildrenRefused {
+        REFUSE_CHILDREN.with(|cell| cell.set(true));
+        ChildrenRefused
+    }
+
+    /// Whether child-order reservations are refused.
+    pub(crate) fn refuses_children() -> bool {
+        REFUSE_CHILDREN.with(Cell::get)
     }
 
     /// Disarms the counter when dropped, even if the test panics.

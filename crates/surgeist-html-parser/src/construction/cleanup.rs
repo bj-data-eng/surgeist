@@ -58,16 +58,14 @@ pub(super) fn release_parts(
     parts: ReleasedStorage,
 ) -> Result<(), SessionError> {
     let ReleasedStorage {
-        construction,
+        usage,
         holds,
         payloads,
     } = parts;
     // Releasing what the parse holds for the storage refuses without ending the walk; the logical
     // counts the storage holds are read first so they are released either way.
     let mut refused = None;
-    let usage = construction.usage();
     let edges = usage.edges() as u64;
-    drop(construction);
     keep_first(&mut refused, holds.release(control, owner));
     for (resource, units) in [
         (HtmlParseResource::ManagedEdges, edges),

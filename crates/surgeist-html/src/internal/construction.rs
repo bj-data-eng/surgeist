@@ -9,8 +9,8 @@ pub use views::{
 };
 
 use crate::internal::accounting::{
-    HtmlAccountingFault, HtmlCapScope, HtmlHostScope, HtmlLedgerOutcome, HtmlResource, HtmlWork,
-    aggregate_tariffs, classify, wide,
+    HtmlAccountingFault, HtmlCapScope, HtmlChargedError, HtmlHostScope, HtmlLedgerOutcome,
+    HtmlResource, HtmlWork, aggregate_tariffs, classify, wide,
 };
 #[cfg(test)]
 use crate::internal::values::Namespace;
@@ -18,7 +18,6 @@ use crate::{
     internal::values::DocumentString, internal::values::OrderedAttributes,
     internal::values::QualifiedName,
 };
-use bounded::operations::HtmlConstructionLeaf;
 use std::{collections::VecDeque, error::Error, fmt, num::NonZeroU32, sync::Arc};
 use surgeist_ledger::{
     Change, Charge, Error as LedgerError, Operation, Scope, SharedOperation, Usage,
@@ -190,10 +189,6 @@ pub enum HtmlConstructionCause {
         /// The index of the second of the two attributes.
         duplicate: usize,
     },
-    /// An attribute candidate name does not match the planned name.
-    AttributeNameMismatch,
-    /// Attribute candidates were not presented in order.
-    AttributeOrderMismatch,
     /// The shadow association does not satisfy the shadow host rules.
     InvalidShadowAssociation,
     /// The replacement template contents are the existing contents.
@@ -202,15 +197,15 @@ pub enum HtmlConstructionCause {
     ParentChildConflict,
     /// The published output root is not a detached document or fragment.
     InvalidOutputRoot,
-    /// The construction operation still has pending actions.
-    OperationNotReady,
-    /// The retired storage does not belong to this result.
-    ForeignAllocation,
-    /// The observed capacity does not match the pending reservation.
+    /// An operand the operation requires is absent: the attribute or name it was to take, or an
+    /// attribute index past the list.
+    OperandMissing,
+    /// The capacity of a bank is below what the operation stores: the consumer chose less than
+    /// the minimum, or the bank has no room where the operation writes.
     CapacityMismatch,
     /// A name index lent to an attribute edit could not serve a step.
     IndexUnavailable,
-    /// The result storage is shared and cannot be recovered.
+    /// An attribute list or a string that the operation edits in place is held by another owner.
     SharedAllocationAliased,
     /// The builder's own arithmetic released more than it admitted. A release that the ledger
     /// refuses is [`Self::Accounting`].
@@ -293,12 +288,6 @@ impl fmt::Display for HtmlConstructionError {
             Cause::InvalidTemplateAssociation => {
                 f.write_str("template contents association does not satisfy the template rules")
             }
-            Cause::AttributeNameMismatch => {
-                f.write_str("attribute candidate name does not match the planned name")
-            }
-            Cause::AttributeOrderMismatch => {
-                f.write_str("attribute candidates were not presented in order")
-            }
             Cause::InvalidShadowAssociation => {
                 f.write_str("shadow association does not satisfy the shadow host rules")
             }
@@ -315,20 +304,15 @@ impl fmt::Display for HtmlConstructionError {
                 f,
                 "the ledger scope that enforces the limits failed: {fault}"
             ),
-            Cause::OperationNotReady => {
-                f.write_str("construction operation still has pending actions")
-            }
-            Cause::ForeignAllocation => {
-                f.write_str("retired storage does not belong to this result")
-            }
+            Cause::OperandMissing => f.write_str("an operand the operation requires is absent"),
             Cause::CapacityMismatch => {
-                f.write_str("observed capacity does not match the pending reservation")
+                f.write_str("bank capacity is below what the operation stores")
             }
             Cause::IndexUnavailable => {
                 f.write_str("the attribute name index lent to the edit could not serve a step")
             }
             Cause::SharedAllocationAliased => {
-                f.write_str("result storage is shared and cannot be recovered")
+                f.write_str("an attribute list or string edited in place is held by another owner")
             }
             Cause::ReleaseUnderflow => f.write_str("released usage exceeds the admitted usage"),
             Cause::RepresentationExhausted => {
@@ -369,9 +353,6 @@ impl fmt::Display for HtmlConstructionResource {
         })
     }
 }
-
-#[derive(Debug)]
-struct Identity;
 
 /// A record position within one construction storage, at most `u32::MAX - 1`.
 ///
@@ -809,7 +790,6 @@ struct Record {
     /// The ordinary children in order. A deque, so that taking or placing an entry near either
     /// end shifts no more entries than lie between it and the nearer end.
     children: VecDeque<NodeIx>,
-    children_generation: u64,
     /// Depth of this record within its own tree, counting association edges;
     /// the root of every tree, attached or detached, is at zero. Every
     /// admitted change keeps it exact.
@@ -843,7 +823,6 @@ impl Record {
             document_focused_area_designation,
             parent,
             children: VecDeque::new(),
-            children_generation: 0,
             depth,
             population: 0,
             walk_cursor: 0,
@@ -858,14 +837,8 @@ impl Record {
 }
 #[derive(Debug)]
 struct Arena {
-    identity: Arc<Identity>,
     records: Vec<Record>,
     usage: HtmlConstructionUsage,
-    records_generation: u64,
-    wrapper_generation: u64,
-    // Shared never-reused namespace for child-bank incarnations and temporary
-    // banks, including every successful reallocation or child-bank replacement.
-    temporary_generation: u64,
     // The tree serial of this storage's node ids and builder handles. It names this storage among
     // all storages, so a lookup tells an id or handle of another storage from its own, and so that a
     // table of attribute names can tell the attributes it describes from those of another storage.
@@ -876,47 +849,11 @@ struct Arena {
     attribute_revision: u64,
 }
 impl Arena {
-    /// An arena with no records and the given identity, holding serial 0, which no storage is
-    /// issued and so no id or handle matches. A move out of an arena that sits behind a `&mut`
-    /// leaves this behind; it allocates nothing and is dropped by the same step.
-    fn vacated(identity: &Arc<Identity>) -> Self {
-        Self {
-            identity: Arc::clone(identity),
-            records: Vec::new(),
-            usage: HtmlConstructionUsage::default(),
-            records_generation: 0,
-            wrapper_generation: 0,
-            temporary_generation: 0,
-            serial: 0,
-            attribute_revision: 0,
-        }
-    }
     /// How many records have exactly this depth.
     fn population(&self, depth: usize) -> usize {
         self.records
             .get(depth)
             .map_or(0, |bucket| bucket.population)
-    }
-    /// Counts one more record at `depth`. The bucket lives in the record at
-    /// that index, which exists whenever a record sits at `depth`.
-    fn populate(&mut self, depth: usize) {
-        if let Some(bucket) = self.records.get_mut(depth) {
-            bucket.population = bucket.population.saturating_add(1);
-        }
-    }
-    fn unpopulate(&mut self, depth: usize) {
-        if let Some(bucket) = self.records.get_mut(depth) {
-            bucket.population = bucket.population.saturating_sub(1);
-        }
-    }
-    /// Gives the record a new depth and moves it between histogram buckets.
-    fn place(&mut self, index: NodeIx, depth: usize) {
-        let Some(record) = self.records.get_mut(index.position()) else {
-            return;
-        };
-        let old = std::mem::replace(&mut record.depth, depth);
-        self.unpopulate(old);
-        self.populate(depth);
     }
     fn id(&self, index: NodeIx) -> HtmlNodeId {
         HtmlNodeId {
@@ -928,17 +865,6 @@ impl Arena {
     fn record_at(&self, position: usize) -> Option<bounded::HtmlConstructionNode<'_>> {
         let index = NodeIx::new(position).filter(|index| index.position() < self.records.len())?;
         Some(bounded::HtmlConstructionNode { arena: self, index })
-    }
-    /// The first record, when there is one.
-    fn first_record(&self) -> Option<NodeIx> {
-        (!self.records.is_empty()).then_some(NodeIx::FIRST)
-    }
-    /// The record after `index`, when there is one. An index that has no successor as a `NodeIx`
-    /// is past every record, which count never exceeds what a `NodeIx` holds.
-    fn next_record(&self, index: NodeIx) -> Option<NodeIx> {
-        index
-            .offset(1)
-            .filter(|next| next.position() < self.records.len())
     }
     /// The record index a builder handle names: `ForeignBuilder` for another storage's handle and
     /// `UnknownNode` for an index past the records.
@@ -1185,138 +1111,169 @@ enum NativeRoot {
     Fragment,
 }
 
-/// The capacity a reservation takes when it may grow with spare room: the amortized capacity of the
-/// bank, never above `ceiling`, the most entries the limits admit, and never below what the action
-/// needs. The target depends on the bank and the limits only, and the reservation takes exactly
-/// it. `None` for an action that reserves no such bank.
-///
-/// Unlike [`crate::internal::amortized::amortized_capacity`], whose result never depends on a
-/// limit, this target is capped at a limit. The native builder admits nothing beyond its node and
-/// edge limits and has no capacity-bytes limit, so a capacity above the entries those limits admit
-/// is spare room that no append can use; capping it there is the admission of the allocation.
-fn amortized_target(
-    action: &bounded::operations::HtmlConstructionAction<'_>,
-    ceiling: usize,
-) -> Option<usize> {
-    let bounded::operations::HtmlConstructionActionDescription::Reserve {
-        allocation,
-        minimum_capacity,
-        growth: bounded::operations::HtmlConstructionGrowth::Geometric,
-        ..
-    } = action.description()
-    else {
-        return None;
-    };
-    Some(
-        crate::internal::amortized::amortized_capacity(
-            allocation.initialized_len(),
-            allocation.capacity(),
-        )
-        .min(ceiling)
-        .max(minimum_capacity),
-    )
+/// What a native append creates: an element or a leaf.
+#[derive(Clone, Debug)]
+enum Creation {
+    Element {
+        name: QualifiedName,
+        attributes: OrderedAttributes,
+        link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
+    },
+    Text(DocumentString),
+    Comment(DocumentString),
+    ProcessingInstruction(HtmlProcessingInstruction),
+    Doctype(HtmlDoctype),
 }
-
-/// Prepares `command` on `storage`, drives it to its ready state and commits it. The storage comes
-/// back on every outcome, so a refused step never loses what the builder owns. It is absent only
-/// when the command published, which no native mutation does, or when an abort was refused, which
-/// a mutation's unshared storage cannot be; the first failure is reported either way.
-///
-/// With `spare_room`, a reservation that may take spare room (a child order) grows to the
-/// amortized capacity the limit `spare_room` allows; without it, to the least capacity that
-/// suffices.
-fn drive_native(
-    storage: bounded::HtmlConstructionStorage,
-    command: bounded::operations::HtmlConstructionCommand,
-    spare_room: Option<usize>,
-) -> (
-    Option<bounded::HtmlConstructionStorage>,
-    Result<Option<HtmlBuilderNode>, HtmlConstructionError>,
-) {
-    let mut operation = storage.prepare(command);
-    let driven = (|| {
-        while let Some(action) = operation.next_action()? {
-            let capacity = spare_room.and_then(|ceiling| amortized_target(&action, ceiling));
-            let performed = match capacity {
-                Some(capacity) => {
-                    #[cfg(test)]
-                    if crate::internal::amortized::fault::refuses_next_reservation() {
-                        return Err(HtmlConstructionCause::AllocationFailed.into());
-                    }
-                    action.perform_with_capacity(capacity)
+impl Creation {
+    /// Whether the created record is an HTML `template` element, which brings its contents.
+    fn is_template(&self) -> bool {
+        matches!(self, Self::Element { name, .. }
+            if crate::vocabulary::KnownHtmlElement::from_name(name)
+                == Some(crate::vocabulary::KnownHtmlElement::Template))
+    }
+    /// Attributes and UTF-16 units the creation commits, evaluated in one step so native
+    /// admission can check the usage before committing it.
+    fn usage(&self) -> Result<(usize, usize), HtmlConstructionError> {
+        let sum = |left: usize, right: usize| {
+            left.checked_add(right)
+                .ok_or(HtmlConstructionCause::RepresentationExhausted.error())
+        };
+        match self {
+            Self::Text(value) | Self::Comment(value) => Ok((0, value.len())),
+            Self::ProcessingInstruction(value) => {
+                Ok((0, sum(value.target().len(), value.data().len())?))
+            }
+            Self::Doctype(value) => Ok((
+                0,
+                sum(
+                    sum(
+                        value.name().len(),
+                        value.public_id().map_or(0, DocumentString::len),
+                    )?,
+                    value.system_id().map_or(0, DocumentString::len),
+                )?,
+            )),
+            Self::Element {
+                name, attributes, ..
+            } => {
+                let mut units = bounded::records::name_units(name)?;
+                for attribute in attributes.iter() {
+                    units = sum(units, bounded::records::attribute_units(attribute)?)?;
                 }
-                None => action.perform(),
-            };
-            performed
-                .map_err(|failure| failure.into_parts().0)?
-                .accept();
+                Ok((attributes.len(), units))
+            }
         }
-        Ok::<_, HtmlConstructionError>(())
-    })();
-    if let Err(error) = driven {
-        return (
-            operation.abort().ok().map(|abort| abort.into_parts().0),
-            Err(error),
-        );
     }
-    match ready_or_recover(operation) {
-        Err((storage, error)) => (storage, Err(error)),
-        Ok(ready) => match ready.commit() {
-            Ok(bounded::operations::HtmlConstructionCommit::Changed { storage, created }) => {
-                (Some(storage), Ok(created))
+    /// Creates the record in `storage`.
+    fn create(
+        self,
+        storage: &mut bounded::HtmlConstructionStorage,
+        admission: &mut NativeAdmission,
+    ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
+        match self {
+            Self::Element {
+                name,
+                attributes,
+                link_flags,
+            } => storage.create_element(&name, attributes, link_flags, admission),
+            Self::Text(value) => storage.create_shared_text(value, admission),
+            Self::Comment(value) => storage.create_shared_comment(value, admission),
+            Self::ProcessingInstruction(value) => {
+                storage.create_shared_processing_instruction(value, admission)
             }
-            // A publication moves the arena into its shared result. Native commands never publish;
-            // were one to, the sole owner takes the storage back through its lease.
-            Ok(bounded::operations::HtmlConstructionCommit::Published { result, lease }) => (
-                bounded::HtmlConstructionLease::try_recover(result, lease)
-                    .ok()
-                    .map(|recovery| recovery.into_parts().0),
-                Err(HtmlConstructionCause::OperationNotReady.into()),
-            ),
-            Err(refusal) => {
-                let (ready, error) = refusal.into_parts();
-                (
-                    ready.abort().ok().map(|abort| abort.into_parts().0),
-                    Err(error),
-                )
-            }
-        },
+            Self::Doctype(value) => storage.create_shared_doctype(value, admission),
+        }
+        .map_err(native)
     }
 }
 
-/// Readies a driven operation. A refusal aborts the operation the refusal hands back and returns
-/// its storage with the cause, so no storage is dropped on the error path.
-#[expect(
-    clippy::result_large_err,
-    reason = "a refusal hands the complete storage back without boxing it"
-)]
-fn ready_or_recover(
-    operation: bounded::operations::HtmlConstructionOperation,
-) -> Result<
-    bounded::operations::HtmlConstructionReadyOperation,
-    (
-        Option<bounded::HtmlConstructionStorage>,
-        HtmlConstructionError,
-    ),
-> {
-    operation.try_ready().map_err(|refusal| {
-        let (operation, error) = refusal.into_parts();
-        (
-            operation.abort().ok().map(|abort| abort.into_parts().0),
-            error,
-        )
-    })
+/// The admission of a native builder. The builder admits the limits of an append in full before it
+/// calls the storage, so every operation of the storage is admitted here without a further check,
+/// and the builder charges no work. A bank that is filled one entry at a time (the record bank and
+/// a child order) grows to its amortized capacity, never above what the limits admit, when the
+/// admission has spare room; every other bank, and every bank of an admission without it, grows to
+/// the least capacity that suffices.
+struct NativeAdmission {
+    /// The most records and the most child entries the limits admit, or `None` for exact growth.
+    spare_room: Option<(usize, usize)>,
 }
-
-/// The storage a builder holds, or the fact that an operation could not hand it back.
-#[derive(Debug)]
-enum BuilderStorage {
-    Held(bounded::HtmlConstructionStorage),
-    /// An operation took the storage and its abort was refused, so no storage remains. No native
-    /// command can cause this, since only a publication shares its arena. Every handle operation
-    /// and `finish` report the shared-allocation cause, and `usage` reports what the builder's
-    /// accounting admitted.
-    Lost,
+impl NativeAdmission {
+    fn exact() -> Self {
+        Self { spare_room: None }
+    }
+    fn with_spare_room(limits: HtmlConstructionLimits) -> Self {
+        Self {
+            spare_room: Some((limits.nodes(), limits.edges())),
+        }
+    }
+}
+impl Charge<HtmlWork, HtmlResource> for NativeAdmission {
+    type Stop = std::convert::Infallible;
+    fn charge(&mut self, _batch: &[Change<HtmlWork, HtmlResource>]) -> Result<(), Self::Stop> {
+        Ok(())
+    }
+    fn record_largest(&mut self, _resource: HtmlResource, _value: u64) -> Result<(), Self::Stop> {
+        Ok(())
+    }
+}
+impl bounded::records::HtmlRecordAdmission for NativeAdmission {
+    fn admit_change(
+        &mut self,
+        _storage: &bounded::HtmlConstructionStorage,
+        _change: bounded::records::HtmlConstructionChange,
+    ) -> Result<(), Self::Stop> {
+        Ok(())
+    }
+    /// The capacity a bank takes when it may grow with spare room: the amortized capacity of the
+    /// bank, never above the most entries the limits admit, and never below what the operation
+    /// needs. The native builder admits nothing beyond its node and edge limits and has no
+    /// capacity-bytes limit, so a capacity above the entries those limits admit is spare room that
+    /// no append can use; capping it there is the admission of the allocation.
+    fn admit_growth(
+        &mut self,
+        growth: bounded::records::HtmlConstructionBankGrowth,
+    ) -> Result<usize, Self::Stop> {
+        let ceiling = match (self.spare_room, growth.bank()) {
+            (Some((nodes, _)), bounded::records::HtmlConstructionBank::Records) => Some(nodes),
+            (Some((_, edges)), bounded::records::HtmlConstructionBank::Children { .. }) => {
+                Some(edges)
+            }
+            _ => None,
+        };
+        let minimum = growth.minimum_capacity();
+        Ok(match ceiling {
+            Some(ceiling) => crate::internal::amortized::amortized_capacity(
+                growth.before().initialized_len(),
+                growth.before().capacity(),
+            )
+            .min(ceiling)
+            .max(minimum),
+            None => minimum,
+        })
+    }
+    fn record_growth(
+        &mut self,
+        _record: bounded::records::HtmlConstructionGrowthRecord,
+    ) -> Result<(), Self::Stop> {
+        Ok(())
+    }
+    fn record_change(
+        &mut self,
+        _storage: &bounded::HtmlConstructionStorage,
+        _change: bounded::records::HtmlConstructionChange,
+    ) -> Result<(), Self::Stop> {
+        Ok(())
+    }
+}
+/// The construction error of a refusal of the storage under a [`NativeAdmission`], which never
+/// stops.
+fn native(
+    error: bounded::records::HtmlConstructionRecordError<std::convert::Infallible>,
+) -> HtmlConstructionError {
+    match error {
+        HtmlChargedError::Stopped(never) => match never {},
+        HtmlChargedError::Faulted(error) => error,
+    }
 }
 
 /// The operation a native builder charges: its own, or a host's.
@@ -1540,29 +1497,15 @@ fn ledger_error(error: LedgerError<HtmlWork, HtmlResource>) -> HtmlConstructionE
 
 #[derive(Debug)]
 struct Builder {
-    storage: BuilderStorage,
+    storage: bounded::HtmlConstructionStorage,
     /// The root issued when the builder was created, which the storage keeps for its life.
     root: HtmlBuilderNode,
     accounting: Accounting,
 }
 impl Builder {
-    fn storage(&self) -> Result<&bounded::HtmlConstructionStorage, HtmlConstructionError> {
-        match &self.storage {
-            BuilderStorage::Held(storage) => Ok(storage),
-            BuilderStorage::Lost => Err(HtmlConstructionCause::SharedAllocationAliased.into()),
-        }
-    }
     /// The usage the builder's accounting admitted.
     fn usage(&self) -> HtmlConstructionUsage {
         self.accounting.usage
-    }
-    /// Hands the storage to an operation. The builder holds none until the operation hands it
-    /// back.
-    fn take_storage(&mut self) -> Result<bounded::HtmlConstructionStorage, HtmlConstructionError> {
-        match std::mem::replace(&mut self.storage, BuilderStorage::Lost) {
-            BuilderStorage::Held(storage) => Ok(storage),
-            BuilderStorage::Lost => Err(HtmlConstructionCause::SharedAllocationAliased.into()),
-        }
     }
     fn new(
         limits: HtmlConstructionLimits,
@@ -1577,139 +1520,46 @@ impl Builder {
         root: NativeRoot,
         host: Option<&HtmlHostScope>,
     ) -> Result<Self, HtmlConstructionError> {
-        let mut initialization = bounded::HtmlConstructionStorage::begin();
-        while let Some(action) = initialization.next_action()? {
-            action.perform().accept();
-        }
-        let storage = initialization
-            .try_ready()
-            .map_err(|refusal| refusal.into_parts().1)?
-            .commit();
+        let mut admission = NativeAdmission::exact();
+        let mut storage = bounded::HtmlConstructionStorage::new(&mut admission).map_err(native)?;
         let mut accounting = Accounting::charging(limits, host)?;
         accounting.admit(1, 0, 0, 0, 0)?;
-        let command = match root {
-            NativeRoot::Document(mode) => {
-                bounded::operations::HtmlConstructionCommand::CreateDocument { mode }
-            }
-            NativeRoot::Fragment => bounded::operations::HtmlConstructionCommand::CreateFragment,
-        };
-        let (storage, outcome) = drive_native(storage, command, None);
-        let root = outcome?.ok_or(HtmlConstructionCause::OperationNotReady)?;
+        let root = match root {
+            NativeRoot::Document(mode) => storage.create_document(mode, &mut admission),
+            NativeRoot::Fragment => storage.create_fragment(&mut admission),
+        }
+        .map_err(native)?;
         Ok(Self {
-            storage: BuilderStorage::Held(
-                storage.ok_or(HtmlConstructionCause::SharedAllocationAliased)?,
-            ),
+            storage,
             root,
             accounting,
         })
     }
-    fn index(&self, node: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
-        self.storage()?.position(node)
-    }
-    /// Runs `command` on the storage, growing a child order it fills with the amortized capacity
-    /// that the edge limit allows. See [`Builder::run`].
-    fn apply(
+    /// Undoes an uncommitted append: the records it created and what it admitted. A failure of
+    /// the undo itself is a defect and takes the place of `error`, which it follows.
+    fn undo_append(
         &mut self,
-        command: bounded::operations::HtmlConstructionCommand,
-    ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
-        let edges = self.accounting.limits.edges();
-        self.run(command, Some(edges))
-    }
-    /// Runs `command` on the storage. The storage moves into the operation and comes back on every
-    /// outcome. It stays lost only if the operation could not hand it back, which no native command
-    /// can cause. `spare_room` is as for [`drive_native`].
-    fn run(
-        &mut self,
-        command: bounded::operations::HtmlConstructionCommand,
-        spare_room: Option<usize>,
-    ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
-        let storage = self.take_storage()?;
-        let (storage, outcome) = drive_native(storage, command, spare_room);
-        if let Some(storage) = storage {
-            self.storage = BuilderStorage::Held(storage);
+        charged: Charged,
+        len: usize,
+        usage: HtmlConstructionUsage,
+        error: HtmlConstructionError,
+    ) -> HtmlConstructionError {
+        if let Err(defect) = self.storage.rollback_native_append(len, usage) {
+            // The accounting still holds the append, which the defect leaves unrecoverable.
+            return defect;
         }
-        outcome
-    }
-    /// Appends `node` as the last child of `parent`. A refusal of the spare room that the child
-    /// order would take is retried with the least capacity that suffices, so the append fails only
-    /// where growing by one entry fails.
-    fn insert_last(
-        &mut self,
-        node: &HtmlBuilderNode,
-        parent: &HtmlBuilderNode,
-    ) -> Result<(), HtmlConstructionError> {
-        let insert = || bounded::operations::HtmlConstructionCommand::Insert {
-            node: *node,
-            parent: *parent,
-            before: None,
-        };
-        match self.apply(insert()) {
-            Err(error) if error.cause() == HtmlConstructionCause::AllocationFailed => {
-                self.run(insert(), None)
-            }
-            outcome => outcome,
+        match self.accounting.release(charged) {
+            Ok(()) => error,
+            Err(release) => release,
         }
-        .map(|_| ())
-    }
-    /// Makes room in the record bank for `additional` more records, with the amortized spare room
-    /// that the node limit allows (capped at the limit for the reason given at
-    /// [`amortized_target`]). A refusal of the spare room is retried with the least capacity
-    /// that suffices. A bank that already has the room is left as it is.
-    fn reserve_records(&mut self, additional: usize) -> Result<(), HtmlConstructionError> {
-        let storage = self.storage()?;
-        let (len, capacity) = (storage.len(), storage.records_capacity());
-        let required = len
-            .checked_add(additional)
-            .ok_or(HtmlConstructionCause::RepresentationExhausted)?;
-        if required <= capacity {
-            return Ok(());
-        }
-        let target = crate::internal::amortized::amortized_capacity(len, capacity)
-            .min(self.accounting.limits.nodes())
-            .max(required);
-        let reserve =
-            |capacity: usize| bounded::operations::HtmlConstructionCommand::ReserveRecords {
-                additional: capacity - len,
-            };
-        #[cfg(test)]
-        let refused =
-            target > required && crate::internal::amortized::fault::refuses_next_reservation();
-        #[cfg(not(test))]
-        let refused = false;
-        let outcome = if refused {
-            Err(HtmlConstructionCause::AllocationFailed.into())
-        } else {
-            self.run(reserve(target), None)
-        };
-        match outcome {
-            Err(error)
-                if error.cause() == HtmlConstructionCause::AllocationFailed
-                    && target > required =>
-            {
-                self.run(reserve(required), None)
-            }
-            outcome => outcome,
-        }
-        .map(|_| ())
-    }
-    /// As `apply`, for a command that creates a record.
-    fn apply_creating(
-        &mut self,
-        command: bounded::operations::HtmlConstructionCommand,
-    ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-        self.apply(command)?
-            .ok_or_else(|| HtmlConstructionCause::OperationNotReady.into())
-    }
-    fn depth(&self, index: usize) -> Result<usize, HtmlConstructionError> {
-        Ok(self.storage()?.native_depth(index))
     }
     fn append(
         &mut self,
         parent: &HtmlBuilderNode,
-        creation: bounded::operations::Creation,
+        creation: Creation,
     ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-        let parent_position = self.index(parent)?;
-        let parent_view = self.storage()?.node(parent)?;
+        let parent_position = self.storage.position(parent)?;
+        let parent_view = self.storage.node(parent)?;
         if !matches!(
             parent_view.kind(),
             ConstructionNodeKind::Document(_)
@@ -1723,7 +1573,8 @@ impl Builder {
         }
         let template = creation.is_template();
         let depth = self
-            .depth(parent_position)?
+            .storage
+            .native_depth(parent_position)?
             .checked_add(1 + usize::from(template))
             .ok_or(HtmlConstructionCause::RepresentationExhausted)?;
         let (attributes, units) = creation.usage()?;
@@ -1734,38 +1585,31 @@ impl Builder {
             units,
             depth,
         )?;
-        let previous_usage = self.storage()?.usage();
-        let previous_len = self.storage()?.len();
-        if let Err(error) = self.reserve_records(1 + usize::from(template)) {
-            self.accounting.release(charged)?;
-            return Err(error);
-        }
-        let created = match self.apply_creating(creation.into_command()) {
+        let previous_usage = self.storage.usage();
+        let previous_len = self.storage.len();
+        let mut admission = NativeAdmission::with_spare_room(self.accounting.limits);
+        let created = match creation.create(&mut self.storage, &mut admission) {
             Ok(created) => created,
             Err(error) => {
                 self.accounting.release(charged)?;
                 return Err(error);
             }
         };
-        if let Err(error) = self.insert_last(&created, parent) {
-            self.roll_back_append(previous_len, previous_usage);
-            self.accounting.release(charged)?;
-            return Err(error);
+        if let Err(error) = self
+            .storage
+            .insert(&created, parent, None, &mut admission)
+            .map_err(native)
+        {
+            return Err(self.undo_append(charged, previous_len, previous_usage, error));
         }
         Ok(created)
-    }
-    /// Undoes an uncommitted append. Storage that was lost has nothing to undo.
-    fn roll_back_append(&mut self, len: usize, usage: HtmlConstructionUsage) {
-        if let BuilderStorage::Held(storage) = &mut self.storage {
-            storage.rollback_native_append(len, usage);
-        }
     }
     fn template_contents(
         &self,
         template: &HtmlBuilderNode,
     ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
         Ok(self
-            .storage()?
+            .storage
             .node(template)?
             .template_contents()
             .map(bounded::HtmlConstructionNode::handle))
@@ -1775,8 +1619,8 @@ impl Builder {
         host: &HtmlBuilderNode,
         properties: HtmlShadowRootProperties,
     ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-        let host_position = self.index(host)?;
-        let view = self.storage()?.node(host)?;
+        let host_position = self.storage.position(host)?;
+        let view = self.storage.node(host)?;
         if !matches!(view.kind(), ConstructionNodeKind::Element(_)) {
             return Err(HtmlConstructionCause::ShadowHostMustBeElement.into());
         }
@@ -1784,32 +1628,31 @@ impl Builder {
             return Err(HtmlConstructionCause::ShadowAlreadyAttached.into());
         }
         let depth = self
-            .depth(host_position)?
+            .storage
+            .native_depth(host_position)?
             .checked_add(1)
             .ok_or(HtmlConstructionCause::RepresentationExhausted)?;
         let charged = self.accounting.admit(1, 1, 0, 0, depth)?;
-        let previous_usage = self.storage()?.usage();
-        let previous_len = self.storage()?.len();
-        if let Err(error) = self.reserve_records(1) {
-            self.accounting.release(charged)?;
-            return Err(error);
-        }
-        let contents = match self.apply_creating(
-            bounded::operations::HtmlConstructionCommand::CreateShadowContents { properties },
-        ) {
+        let previous_usage = self.storage.usage();
+        let previous_len = self.storage.len();
+        let mut admission = NativeAdmission::with_spare_room(self.accounting.limits);
+        let contents = match self
+            .storage
+            .create_shadow_contents(properties, &mut admission)
+            .map_err(native)
+        {
             Ok(contents) => contents,
             Err(error) => {
                 self.accounting.release(charged)?;
                 return Err(error);
             }
         };
-        if let Err(error) = self.apply(bounded::operations::HtmlConstructionCommand::AttachShadow {
-            host: *host,
-            contents,
-        }) {
-            self.roll_back_append(previous_len, previous_usage);
-            self.accounting.release(charged)?;
-            return Err(error);
+        if let Err(error) = self
+            .storage
+            .attach_shadow(host, &contents, &mut admission)
+            .map_err(native)
+        {
+            return Err(self.undo_append(charged, previous_len, previous_usage, error));
         }
         Ok(contents)
     }
@@ -1817,34 +1660,10 @@ impl Builder {
     /// the publication's own validation, which the append steps are meant to make impossible, so
     /// no half-published builder is worth keeping.
     fn finish(self) -> Result<bounded::HtmlConstructionResult, HtmlConstructionError> {
-        let BuilderStorage::Held(storage) = self.storage else {
-            return Err(HtmlConstructionCause::SharedAllocationAliased.into());
-        };
-        let root = storage
-            .node_at(0)
-            .ok_or(HtmlConstructionCause::UnknownNode)?
-            .handle();
-        let mut operation = storage.prepare_finish(root);
-        while let Some(action) = operation.next_action()? {
-            action
-                .perform()
-                .map_err(|failure| failure.into_parts().0)?
-                .accept();
-        }
-        match operation
-            .try_ready()
-            .map_err(|refusal| refusal.into_parts().1)?
-            .commit()
-            .map_err(|refusal| refusal.into_parts().1)?
-        {
-            bounded::operations::HtmlConstructionCommit::Published { result, lease } => {
-                drop(lease);
-                Ok(result)
-            }
-            bounded::operations::HtmlConstructionCommit::Changed { .. } => {
-                Err(HtmlConstructionCause::OperationNotReady.into())
-            }
-        }
+        let mut admission = NativeAdmission::exact();
+        self.storage
+            .publish(&self.root, &mut admission)
+            .map_err(|refusal| native(refusal.into_parts().1))
     }
 }
 
@@ -1879,7 +1698,7 @@ macro_rules! authoring_methods {
         ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
             self.builder.append(
                 parent,
-                bounded::operations::Creation::Element {
+                Creation::Element {
                     link_flags: (crate::vocabulary::KnownHtmlElement::from_name(&name)
                         == Some(crate::vocabulary::KnownHtmlElement::Link))
                     .then(crate::internal::elements::rel::HtmlLinkFlags::fresh),
@@ -1894,10 +1713,7 @@ macro_rules! authoring_methods {
             parent: &HtmlBuilderNode,
             value: impl Into<DocumentString>,
         ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-            self.builder.append(
-                parent,
-                bounded::operations::Creation::Leaf(HtmlConstructionLeaf::Text(value.into())),
-            )
+            self.builder.append(parent, Creation::Text(value.into()))
         }
         /// Appends exact comment data without imposing serialized-comment syntax.
         pub fn append_comment(
@@ -1905,10 +1721,7 @@ macro_rules! authoring_methods {
             parent: &HtmlBuilderNode,
             value: impl Into<DocumentString>,
         ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-            self.builder.append(
-                parent,
-                bounded::operations::Creation::Leaf(HtmlConstructionLeaf::Comment(value.into())),
-            )
+            self.builder.append(parent, Creation::Comment(value.into()))
         }
         /// Appends a checked native processing instruction.
         pub fn append_processing_instruction(
@@ -1916,12 +1729,8 @@ macro_rules! authoring_methods {
             parent: &HtmlBuilderNode,
             value: HtmlAuthoredProcessingInstruction,
         ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-            self.builder.append(
-                parent,
-                bounded::operations::Creation::Leaf(HtmlConstructionLeaf::ProcessingInstruction(
-                    value.into(),
-                )),
-            )
+            self.builder
+                .append(parent, Creation::ProcessingInstruction(value.into()))
         }
         /// Appends exact doctype data without deriving document mode.
         pub fn append_doctype(
@@ -1929,10 +1738,7 @@ macro_rules! authoring_methods {
             parent: &HtmlBuilderNode,
             value: HtmlDoctype,
         ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-            self.builder.append(
-                parent,
-                bounded::operations::Creation::Leaf(HtmlConstructionLeaf::Doctype(value)),
-            )
+            self.builder.append(parent, Creation::Doctype(value))
         }
         /// Retrieves an HTML template's separate contents handle.
         pub fn template_contents(
@@ -1986,14 +1792,7 @@ impl HtmlFragmentBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::bounded::operations::Creation;
     use super::*;
-
-    /// What an operation that cannot hand the storage back leaves: no native command can cause it,
-    /// because only a publication shares its arena, so the test produces the state directly.
-    fn lose_storage(builder: &mut Builder) {
-        drop(builder.take_storage().unwrap());
-    }
 
     /// How many times the record bank and the root's child order change capacity over `appends`
     /// native appends, each of which makes room for one more record, and one more child of the
@@ -2007,8 +1806,8 @@ mod tests {
         let root = builder.root;
         let mut parent = root;
         let mut previous = (
-            builder.storage().unwrap().records_capacity(),
-            builder.storage().unwrap().children_capacity(0),
+            builder.storage.records_capacity(),
+            builder.storage.children_capacity(0),
         );
         let (mut records, mut children) = (0, 0);
         for _ in 0..appends {
@@ -2019,13 +1818,13 @@ mod tests {
                     link_flags: None,
                 }
             } else {
-                Creation::Leaf(HtmlConstructionLeaf::Comment("c".into()))
+                Creation::Comment("c".into())
             };
             let appended = builder.append(&parent, kind).unwrap();
             if nested {
                 parent = appended;
             }
-            let storage = builder.storage().unwrap();
+            let storage = &builder.storage;
             let now = (storage.records_capacity(), storage.children_capacity(0));
             records += usize::from(now.0 != previous.0);
             children += usize::from(now.1 != previous.1);
@@ -2068,17 +1867,14 @@ mod tests {
         let root = builder.root;
         for _ in 0..edges {
             builder
-                .append(
-                    &root,
-                    Creation::Leaf(HtmlConstructionLeaf::Comment("c".into())),
-                )
+                .append(&root, Creation::Comment("c".into()))
                 .unwrap();
-            let storage = builder.storage().unwrap();
+            let storage = &builder.storage;
             assert!(storage.records_capacity() <= nodes);
             assert!(storage.children_capacity(0).unwrap() <= edges);
         }
-        assert_eq!(builder.storage().unwrap().records_capacity(), nodes);
-        assert_eq!(builder.storage().unwrap().children_capacity(0), Some(edges));
+        assert_eq!(builder.storage.records_capacity(), nodes);
+        assert_eq!(builder.storage.children_capacity(0), Some(edges));
     }
 
     /// An allocator refusal of the spare room never fails an append that growing by one slot
@@ -2095,91 +1891,14 @@ mod tests {
         let _refusing = crate::internal::amortized::fault::arm(1);
         for count in 1..=appends {
             builder
-                .append(
-                    &root,
-                    Creation::Leaf(HtmlConstructionLeaf::Comment("c".into())),
-                )
+                .append(&root, Creation::Comment("c".into()))
                 .unwrap();
-            let storage = builder.storage().unwrap();
+            let storage = &builder.storage;
             assert_eq!(storage.len(), count + 1);
             assert_eq!(storage.records_capacity(), count + 1);
             assert_eq!(storage.children_capacity(0), Some(count));
         }
         assert!(crate::internal::amortized::fault::requests() >= 2 * appends - 1);
-    }
-
-    #[test]
-    fn a_builder_without_storage_reports_the_loss_and_the_usage_it_last_held() {
-        let mut builder =
-            HtmlFragment::builder(HtmlConstructionLimits::new(4, 4, 0, 8, 3)).unwrap();
-        let root = builder.root();
-        let comment = builder.append_comment(&root, "c").unwrap();
-        let usage = builder.usage();
-        assert_eq!(usage.utf16_units(), 1);
-        lose_storage(&mut builder.builder);
-        assert_eq!(
-            builder.usage(),
-            usage,
-            "usage reports what the storage held, not an empty stand-in"
-        );
-        for outcome in [
-            builder.append_comment(&root, "d").map(|_| ()),
-            builder.append_comment(&comment, "e").map(|_| ()),
-            builder.template_contents(&root).map(|_| ()),
-        ] {
-            let error = outcome.expect_err("a builder without storage refuses every operation");
-            assert!(
-                matches!(
-                    error.cause(),
-                    HtmlConstructionCause::SharedAllocationAliased
-                ),
-                "{error}"
-            );
-        }
-        let error = builder
-            .finish()
-            .expect_err("a builder without storage cannot finish");
-        assert!(
-            matches!(
-                error.cause(),
-                HtmlConstructionCause::SharedAllocationAliased
-            ),
-            "{error}"
-        );
-    }
-
-    /// An operation refused at its ready transition returns the storage it was prepared on, with
-    /// the cause, instead of dropping it with the operation. The undriven operation is the refused
-    /// state: it has pending actions, so it is not ready.
-    #[test]
-    fn a_refused_ready_transition_returns_the_storage_and_the_cause() {
-        let mut builder = Builder::new(
-            HtmlConstructionLimits::new(4, 4, 0, 8, 2),
-            NativeRoot::Fragment,
-        )
-        .unwrap();
-        let usage = builder.usage();
-        let records = builder.storage().unwrap().len();
-        let storage = builder.take_storage().unwrap();
-        let operation =
-            storage.prepare(bounded::operations::HtmlConstructionCommand::CreateFragment);
-        let Err((Some(storage), error)) = ready_or_recover(operation) else {
-            panic!("an undriven operation is not ready");
-        };
-        assert!(matches!(
-            error.cause(),
-            HtmlConstructionCause::OperationNotReady
-        ));
-        assert_eq!((storage.usage(), storage.len()), (usage, records));
-        builder.storage = BuilderStorage::Held(storage);
-        // The builder keeps working with the recovered storage.
-        let root = builder.root;
-        builder
-            .append(
-                &root,
-                Creation::Leaf(HtmlConstructionLeaf::Comment("c".into())),
-            )
-            .unwrap();
     }
 
     #[test]
@@ -2210,16 +1929,12 @@ mod tests {
     #[test]
     fn unqualified_document_record_readback_is_not_a_node_kind_constant() {
         let arena = Arena {
-            identity: Arc::new(Identity),
             records: vec![Record::new(
                 NodeContent::Document(HtmlDocumentMode::NoQuirks),
                 None,
                 0,
             )],
             usage: HtmlConstructionUsage::default(),
-            records_generation: 0,
-            wrapper_generation: 0,
-            temporary_generation: 0,
             serial: 0,
             attribute_revision: 0,
         };
@@ -2289,46 +2004,38 @@ mod tests {
         let cases: Vec<(&str, Creation, usize, usize)> = vec![
             (
                 "text with an isolated surrogate pair and a null",
-                Creation::Leaf(HtmlConstructionLeaf::Text(DocumentString::from_utf16(
-                    vec![0xD83D, 0xDE00, 0],
-                ))),
+                Creation::Text(DocumentString::from_utf16(vec![0xD83D, 0xDE00, 0])),
                 0,
                 3,
             ),
             (
                 "comment",
-                Creation::Leaf(HtmlConstructionLeaf::Comment(DocumentString::from("xyz"))),
+                Creation::Comment(DocumentString::from("xyz")),
                 0,
                 3,
             ),
             (
                 "processing instruction",
-                Creation::Leaf(HtmlConstructionLeaf::ProcessingInstruction(
-                    HtmlProcessingInstruction {
-                        target: DocumentString::from("xy"),
-                        data: DocumentString::from("abc"),
-                    },
-                )),
+                Creation::ProcessingInstruction(HtmlProcessingInstruction {
+                    target: DocumentString::from("xy"),
+                    data: DocumentString::from("abc"),
+                }),
                 0,
                 5,
             ),
             (
                 "doctype with both identifiers",
-                Creation::Leaf(HtmlConstructionLeaf::Doctype(HtmlDoctype::new(
-                    "h",
-                    Some("ab".into()),
-                    Some("xyz".into()),
-                ))),
+                Creation::Doctype(HtmlDoctype::new("h", Some("ab".into()), Some("xyz".into()))),
                 0,
                 6,
             ),
             (
                 "doctype with only a present empty public identifier",
-                Creation::Leaf(HtmlConstructionLeaf::Doctype(HtmlDoctype::new(
+                Creation::Doctype(HtmlDoctype::new(
                     "html",
                     Some(DocumentString::default()),
                     None,
-                ))),
+                )),
                 0,
                 4,
             ),
@@ -2684,14 +2391,6 @@ mod cause_tests {
                 "template contents association does not satisfy the template rules",
             ),
             (
-                HtmlConstructionCause::AttributeNameMismatch,
-                "attribute candidate name does not match the planned name",
-            ),
-            (
-                HtmlConstructionCause::AttributeOrderMismatch,
-                "attribute candidates were not presented in order",
-            ),
-            (
                 HtmlConstructionCause::InvalidShadowAssociation,
                 "shadow association does not satisfy the shadow host rules",
             ),
@@ -2708,16 +2407,12 @@ mod cause_tests {
                 "published output root is not a detached document or fragment",
             ),
             (
-                HtmlConstructionCause::OperationNotReady,
-                "construction operation still has pending actions",
-            ),
-            (
-                HtmlConstructionCause::ForeignAllocation,
-                "retired storage does not belong to this result",
+                HtmlConstructionCause::OperandMissing,
+                "an operand the operation requires is absent",
             ),
             (
                 HtmlConstructionCause::CapacityMismatch,
-                "observed capacity does not match the pending reservation",
+                "bank capacity is below what the operation stores",
             ),
             (
                 HtmlConstructionCause::IndexUnavailable,
@@ -2725,7 +2420,7 @@ mod cause_tests {
             ),
             (
                 HtmlConstructionCause::SharedAllocationAliased,
-                "result storage is shared and cannot be recovered",
+                "an attribute list or string edited in place is held by another owner",
             ),
             (
                 HtmlConstructionCause::ReleaseUnderflow,

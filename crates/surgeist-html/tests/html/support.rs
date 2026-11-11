@@ -5,7 +5,12 @@
 //! fixture it depends on without copying its constructor.
 
 use std::convert::Infallible;
-use surgeist_html::accounting::{HtmlChange, HtmlResource, HtmlWork};
+use surgeist_html::accounting::{HtmlChange, HtmlChargedError, HtmlResource, HtmlWork};
+use surgeist_html::bounded::construction::{
+    HtmlConstructionBank, HtmlConstructionBankGrowth, HtmlConstructionChange,
+    HtmlConstructionGrowthRecord, HtmlConstructionRecordError, HtmlConstructionStorage,
+    HtmlRecordAdmission,
+};
 use surgeist_ledger::{Change, Charge};
 
 use surgeist_html::bounded::native::native_element_initialization_with;
@@ -237,77 +242,86 @@ pub mod cause {
         Cause::new("InvalidTemplateAssociation", |cause| {
             matches!(cause, HtmlConstructionCause::InvalidTemplateAssociation)
         });
-    pub const OPERATION_NOT_READY: Cause = Cause::new("OperationNotReady", |cause| {
-        matches!(cause, HtmlConstructionCause::OperationNotReady)
-    });
-    pub const FOREIGN_ALLOCATION: Cause = Cause::new("ForeignAllocation", |cause| {
-        matches!(cause, HtmlConstructionCause::ForeignAllocation)
-    });
-    pub const CAPACITY_MISMATCH: Cause = Cause::new("CapacityMismatch", |cause| {
-        matches!(cause, HtmlConstructionCause::CapacityMismatch)
-    });
-    pub const SHARED_ALLOCATION_ALIASED: Cause = Cause::new("SharedAllocationAliased", |cause| {
-        matches!(cause, HtmlConstructionCause::SharedAllocationAliased)
-    });
     pub const REPRESENTATION_EXHAUSTED: Cause = Cause::new("RepresentationExhausted", |cause| {
         matches!(cause, HtmlConstructionCause::RepresentationExhausted)
     });
-    pub const ALLOCATION_FAILED: Cause = Cause::new("AllocationFailed", |cause| {
-        matches!(cause, HtmlConstructionCause::AllocationFailed)
-    });
 }
 
-/// Adapters that keep a construction protocol owner in an `Option` slot, as a driver that stores
-/// it in a field does, and put the owner back when its consuming step refuses it.
-pub mod slots {
-    use surgeist_html::bounded::construction::{
-        HtmlConstructionInitialization, HtmlConstructionLease, HtmlConstructionOperation,
-        HtmlConstructionReadyInitialization, HtmlConstructionReadyOperation,
-        HtmlConstructionRecovery, HtmlConstructionRefusal,
-    };
-    use surgeist_html::construction::{HtmlConstructionError, HtmlConstructionResult};
+/// The admission of the direct record operations that grants every request and records what it
+/// was asked: the growth of each bank before it is chosen, and the records of each growth. It
+/// chooses the least capacity, or double the bank's capacity for a record or child bank when
+/// `doubling` is set.
+#[derive(Debug, Default)]
+pub struct Direct {
+    pub doubling: bool,
+    /// The capacity every bank is given, when it is at least what the operation needs.
+    pub fixed: Option<usize>,
+    pub growths: Vec<HtmlConstructionBankGrowth>,
+    pub records: Vec<HtmlConstructionGrowthRecord>,
+    pub batches: usize,
+}
 
-    fn step<T, R>(
-        slot: &mut Option<T>,
-        consume: impl FnOnce(T) -> Result<R, HtmlConstructionRefusal<T>>,
-    ) -> Result<R, HtmlConstructionError> {
-        let owner = slot.take().expect("slot holds its owner");
-        match consume(owner) {
-            Ok(value) => Ok(value),
-            Err(refusal) => {
-                let (owner, reason) = refusal.into_parts();
-                *slot = Some(owner);
-                Err(reason)
-            }
+impl Charge<HtmlWork, HtmlResource> for Direct {
+    type Stop = Infallible;
+
+    fn charge(&mut self, _: &[HtmlChange]) -> Result<(), Infallible> {
+        self.batches += 1;
+        Ok(())
+    }
+
+    fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), Infallible> {
+        Ok(())
+    }
+}
+
+impl HtmlRecordAdmission for Direct {
+    fn admit_change(
+        &mut self,
+        _: &HtmlConstructionStorage,
+        _: HtmlConstructionChange,
+    ) -> Result<(), Infallible> {
+        Ok(())
+    }
+
+    fn admit_growth(&mut self, growth: HtmlConstructionBankGrowth) -> Result<usize, Infallible> {
+        self.growths.push(growth);
+        if let Some(capacity) = self.fixed {
+            return Ok(growth.minimum_capacity().max(capacity));
         }
-    }
-    pub fn initialization(
-        slot: &mut Option<HtmlConstructionInitialization>,
-    ) -> Result<HtmlConstructionReadyInitialization, HtmlConstructionError> {
-        step(slot, HtmlConstructionInitialization::try_ready)
-    }
-    pub fn operation(
-        slot: &mut Option<HtmlConstructionOperation>,
-    ) -> Result<HtmlConstructionReadyOperation, HtmlConstructionError> {
-        step(slot, HtmlConstructionOperation::try_ready)
-    }
-    pub fn recover(
-        result: &mut Option<HtmlConstructionResult>,
-        lease: &mut Option<HtmlConstructionLease>,
-    ) -> Result<HtmlConstructionRecovery, HtmlConstructionError> {
-        let owners = (
-            result.take().expect("slot holds its result"),
-            lease.take().expect("slot holds its lease"),
-        );
-        match HtmlConstructionLease::try_recover(owners.0, owners.1) {
-            Ok(value) => Ok(value),
-            Err(refusal) => {
-                let ((returned_result, returned_lease), reason) = refusal.into_parts();
-                *result = Some(returned_result);
-                *lease = Some(returned_lease);
-                Err(reason)
+        Ok(match growth.bank() {
+            HtmlConstructionBank::Records | HtmlConstructionBank::Children { .. }
+                if self.doubling =>
+            {
+                growth
+                    .minimum_capacity()
+                    .max(2 * growth.before().capacity())
             }
-        }
+            _ => growth.minimum_capacity(),
+        })
+    }
+
+    fn record_growth(&mut self, record: HtmlConstructionGrowthRecord) -> Result<(), Infallible> {
+        self.records.push(record);
+        Ok(())
+    }
+
+    fn record_change(
+        &mut self,
+        _: &HtmlConstructionStorage,
+        _: HtmlConstructionChange,
+    ) -> Result<(), Infallible> {
+        Ok(())
+    }
+}
+
+/// The value of a direct operation that was granted, or the fault that refused it.
+pub fn granted<T>(
+    outcome: Result<T, HtmlConstructionRecordError<Infallible>>,
+) -> Result<T, HtmlConstructionError> {
+    match outcome {
+        Ok(value) => Ok(value),
+        Err(HtmlChargedError::Faulted(error)) => Err(error),
+        Err(HtmlChargedError::Stopped(never)) => match never {},
     }
 }
 
@@ -323,11 +337,6 @@ impl Recorder {
     /// Every batch charged so far, oldest first.
     pub fn batches(&self) -> &[Vec<HtmlChange>] {
         &self.batches
-    }
-
-    /// Every gauge recorded so far, oldest first.
-    pub fn gauges(&self) -> &[(HtmlResource, u64)] {
-        &self.gauges
     }
 
     /// The amount charged to one work dimension across all batches.
@@ -378,21 +387,4 @@ impl Charge<HtmlWork, HtmlResource> for Refuser {
     fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), Refused> {
         Err(Refused)
     }
-}
-
-/// The work a construction action description charges through `charge`, read from a recorder.
-pub fn charged_by(
-    charge: impl FnOnce(
-        &mut Recorder,
-    ) -> Result<
-        (),
-        surgeist_html::accounting::HtmlChargedError<
-            Infallible,
-            surgeist_html::bounded::construction::HtmlConstructionChargeFault,
-        >,
-    >,
-) -> Recorder {
-    let mut recorder = Recorder::default();
-    charge(&mut recorder).expect("the description charges the part it has");
-    recorder
 }

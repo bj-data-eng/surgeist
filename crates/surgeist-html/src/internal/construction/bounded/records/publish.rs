@@ -1,7 +1,7 @@
 //! Publication of the storage as an immutable result.
 
+use super::shape::validate_record;
 use super::*;
-use crate::internal::construction::bounded::operations::validate_record;
 
 /// A publication the storage or the consumer refused, which hands the storage back unchanged.
 #[derive(Debug)]
@@ -19,25 +19,18 @@ impl<S> HtmlConstructionPublishRefusal<S> {
 impl HtmlConstructionStorage {
     /// Publishes the tree rooted at `root`, a detached Document or fragment record, as an
     /// immutable result, after checking that every record agrees with its parent, its children and
-    /// its associations. The result and the lease that takes the storage back are returned. A
+    /// its associations. A
     /// refusal hands the storage back with its records, their order, depths and usage as they
     /// were. The validation pass may leave its scratch counts written, which are not state. The
     /// capacity of the shared arena is recorded in the last step that can refuse, so a refusal
     /// leaves no record of it with the consumer. The move into the shared arena allocates its
     /// handle and cannot refuse: stable Rust has no fallible constructor for it, so an allocator
     /// failure there aborts, as any infallible allocation does.
-    #[expect(
-        clippy::result_large_err,
-        reason = "a refusal hands the complete storage back without boxing it"
-    )]
     pub fn publish<A: HtmlRecordAdmission>(
         mut self,
         root: &HtmlBuilderNode,
         admission: &mut A,
-    ) -> Result<
-        (HtmlConstructionResult, HtmlConstructionLease),
-        HtmlConstructionPublishRefusal<A::Stop>,
-    > {
+    ) -> Result<HtmlConstructionResult, HtmlConstructionPublishRefusal<A::Stop>> {
         match self.prepare_publication(root, admission) {
             Ok((root, mode)) => Ok(self.share(root, mode)),
             Err(error) => Err(HtmlConstructionPublishRefusal {
@@ -62,11 +55,6 @@ impl HtmlConstructionStorage {
         if record.parent.is_some() {
             return Err(fault(HtmlConstructionCause::InvalidOutputRoot));
         }
-        let generation = self
-            .arena
-            .wrapper_generation
-            .checked_add(1)
-            .ok_or_else(|| fault(HtmlConstructionCause::RepresentationExhausted))?;
         let count = self.arena.records.len();
         // Every record's membership count is reset, then each record's entries in its parent's
         // child list are counted once, then every record is validated in index order and its
@@ -162,30 +150,15 @@ impl HtmlConstructionStorage {
             ok: true,
             reached: planned,
         })?;
-        self.arena.wrapper_generation = generation;
         Ok((root, mode))
     }
 
     /// Moves the arena into its shared wrapper.
-    fn share(
-        self,
-        root: NodeIx,
-        mode: Option<HtmlDocumentMode>,
-    ) -> (HtmlConstructionResult, HtmlConstructionLease) {
+    fn share(self, root: NodeIx, mode: Option<HtmlDocumentMode>) -> HtmlConstructionResult {
         let arena = Arc::new(self.arena);
-        let snapshot = HtmlConstructionAllocationSnapshot::shared::<Arena>(
-            &arena.identity,
-            AllocationRole::ArenaWrapper,
-            arena.wrapper_generation,
-        );
-        let lease = HtmlConstructionLease {
-            arena: Arc::downgrade(&arena),
-            snapshot,
-        };
-        let result = match mode {
+        match mode {
             Some(mode) => HtmlConstructionResult::Document(HtmlDocument { arena, root, mode }),
             None => HtmlConstructionResult::Fragment(HtmlFragment { arena, root }),
-        };
-        (result, lease)
+        }
     }
 }

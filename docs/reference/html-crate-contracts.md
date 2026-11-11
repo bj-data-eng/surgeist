@@ -159,11 +159,10 @@ HTML's private `Identity`, `Record`, `Arena` and directly constructs
 `HtmlDocument`/`HtmlFragment`. Moving only this method or making those fields
 public would leave HTML's immutable-result invariant unenforced.
 
-HTML therefore owns `bounded::construction::HtmlConstructionStorage` and
-`bounded::construction::HtmlConstructionOperation`. They wrap the existing record vector,
-identity and generic usage, with private fields. Both native builders and the
+HTML therefore owns `bounded::construction::HtmlConstructionStorage`. It wraps the existing
+record vector and generic usage, with private fields. Both native builders and the
 parser's session use this same storage implementation; parser-only payloads,
-source evidence, allocation tickets and effects stay in parser. No second final
+source evidence, held figures and effects stay in parser. No second final
 arena is built by walking or copying the parser tree.
 
 Storage issues the existing opaque `HtmlBuilderNode` handles qualified by its storage
@@ -172,11 +171,10 @@ than duplicating the index/serial invariant. A handle is a `Copy` pair of the
 storage's process-wide serial and a 32-bit record index; it holds no reference to
 the storage, and a handle of another storage is a serial mismatch.
 It provides read-only `node`, `kind`, `parent`, `children`, `template_contents`,
-`shadow_root` and `usage` views. Its operation enum provides exactly these
-generic transitions: append/insert a node, detach/reparent an ordinary node,
-replace content, replace validated attributes, edit an element's attributes
-through the complete controlled group below, attach template contents, attach
-a shadow fragment, and select the output document/fragment root.
+`shadow_root` and `usage` views. Its direct methods provide exactly these
+generic transitions: create a record, append/insert a node, detach/reparent an ordinary node,
+edit an element's attributes or a text through the complete controlled groups below, attach
+template contents, attach a shadow fragment, and publish a document/fragment root.
 Parser-specific select, form, radio, input, nonce, script and template-patching
 decisions remain parser operations that compose these generic transitions.
 For the parser's dense retained-record joins, add checked
@@ -198,12 +196,10 @@ handle access. The published result's `HtmlNode::fragment_owner()` returns
 `Option<HtmlFragmentOwner>` by value. Following one read edge copies a 16-byte id
 and clones nothing; parser admission covers its actual described observation.
 
-Each operation consumes one exclusive storage owner. A prepared
-action exposes its actual next inspection, copy, initialized write, reservation
-and fixed-transfer layout; the caller admits it before `perform`. Performing it
-cannot be replayed or applied to another storage. An action requiring allocation
-uses `try_reserve` and reports requested and actual capacities. The native
-builder drives the same operations with `HtmlConstructionLimits`; the parser
+Each method takes the storage exclusively and its consumer's admission. A method that needs a
+bank to grow asks the consumer to admit the growth before it reserves, through `try_reserve`, and
+reports the capacities requested and reached. The native
+builder drives the same methods with `HtmlConstructionLimits`; the parser
 drives them with its existing `ParseControl` and resources. HTML has no parser
 controller, cancellation handle or second execution ledger.
 
@@ -227,7 +223,7 @@ parser algorithm state belongs in its session, not in a published invalid HTML
 record. HTML never applies parser placement, recovery or language conformance
 rules to native authoring.
 
-The native builders' `finish(self)` drives this publication and returns
+The native builders' `finish(self)` publishes the storage and returns
 `Result<HtmlDocument | HtmlFragment, HtmlConstructionError>`; a refusal ends the session. The
 builder keeps its storage through every refused step of an append.
 
@@ -237,26 +233,21 @@ times. The target never exceeds the node limit for records or the edge limit for
 never falls below what the append needs. Unlike the amortized capacity of the bounded consumers,
 which never depends on a limit, the cap is the admission: the native builder has no
 capacity-bytes limit and admits nothing beyond its node and edge limits, so spare room above them
-could never be used. The record bank grows through a `ReserveRecords` command and the child order
-through `perform_with_capacity`. An allocator refusal of the spare room retries the least capacity
+could never be used. The builder's admission chooses that capacity for the record bank and the
+child order. An allocator refusal of the spare room retries the least capacity
 that suffices, so an append fails only where growing by one slot fails.
 
-`HtmlConstructionStorage::prepare_finish(self, root: HtmlBuilderNode) ->
-HtmlConstructionOperation` is the `Publish` command's consuming convenience
-entry point. It starts a publication operation and cannot fail, because it
-inspects nothing. It checks that the selected root is the proper document/fragment
+`HtmlConstructionStorage::publish` consumes the storage and the root's handle. It checks that the
+selected root is the proper document/fragment
 kind, that all retained owning links are reciprocal and in range, that
-association roots have the right owner, that each non-owning contents reference
-targets a live result-local shadow-contents fragment, and that no pending generic operation
-exists. Its bounded actions use the original controller. The ready operation
-retains the original storage until every required check and arena-sharing
-allocation is admitted. The consuming `try_ready` transition below produces the
-distinct ready owner. Its `commit` consumes that owner and returns
-the published `HtmlConstructionResult::{Document(HtmlDocument), Fragment(HtmlFragment)}`
-and recovery lease with no later fallible work. Invalid structure yields
-`HtmlConstructionError` and the
-same owned storage. A stopped operation exposes no successful document or
-fragment.
+association roots have the right owner, and that each non-owning contents reference
+targets a live result-local shadow-contents fragment. Its checks are charged to the caller's
+admission before they run. It returns
+the published `HtmlConstructionResult::{Document(HtmlDocument), Fragment(HtmlFragment)}` with no
+later fallible work, except the abort of an allocator failure that the move into the shared arena
+documents below. Invalid structure yields `HtmlConstructionError` and the
+same owned storage, in `HtmlConstructionPublishRefusal`. A stopped publication exposes no successful
+document or fragment. A published result does not hand its storage back.
 
 Result identity is the storage's process-wide serial, issued once with storage
 creation, and survives publication,
@@ -396,7 +387,7 @@ The index describes the first `len` attributes of one element of one storage as 
 revision, followed by `planned` entries for attributes a merge plan has not appended yet. The
 storage keeps a serial of its own and a revision that every committed change to an attribute list
 advances (an append, replacement or removal, with an index or without, and the
-`ReplaceAttributes` operation, and the rollback of appended records). An edit that finds the
+rollback of appended records). An edit that finds the
 serial, element, revision, length or planned count different rebuilds the index before it looks a
 name up, so an edit that held no index, or held it for another element or storage, cannot leave a
 stale index trusted. The revision is advanced where an element's attribute list is taken for
@@ -501,7 +492,7 @@ value, because an element's attribute list is still stored as the list its owner
 | `check_child_transfer` | Checks, without changing anything, that the children of one record can move into another. |
 | `attach_shadow`, `attach_template_shadow`, `set_template_shadow_contents` | Associate shadow contents with a host or a template. |
 | `set_document_mode`, `set_link_flags` | Set the mode of a Document and the link flags of an HTML `link` element. |
-| `publish` | Validates every record and publishes the tree as an immutable result with the lease that takes the storage back. |
+| `publish` | Validates every record and publishes the tree as an immutable result; a refusal hands the storage back. |
 
 Every method qualifies its operands, charges its consumer for its work before the work runs, and
 changes the storage last. The consumer implements `HtmlRecordAdmission`: a `Charge` for the work and
@@ -555,7 +546,7 @@ holds one `AuxiliaryEntries` entry, its node-join cell. An insertion's depth, st
 and edge checks run in `admit_change` in this order: the depth observation (the library records it
 before the call), one record visit, the standalone-document revocation, and the edge check, against the lent
 storage. Publication consumes the storage and a refusal hands it back; the parser's frozen arena
-recovers it through the lease at release.
+reads the usage the published records hold from the result when it is released.
 
 #### Origins of record strings
 
@@ -572,375 +563,130 @@ grows at its end and the other strings never change; the parser issues no comman
 the content of a record. The binding of the groups of a created record follows its creation, so a
 refusal of a binding leaves the record without the group; the parse stops and publishes no record.
 
-#### Construction operation payloads and failures
+#### Structure rules of the record operations
 
-The public operation signature is
-`HtmlConstructionStorage::prepare(self, HtmlConstructionCommand) ->
-HtmlConstructionOperation`. Preparation inspects and allocates nothing, so it
-cannot fail; the operation's first action qualifies the operands, and a refusal
-surfaces from the action, after which `HtmlConstructionOperation::abort`
-returns the unchanged storage and the unconsumed command without allocation.
-Operations consume storage rather than borrowing a vector or returning mutable
-record references.
-`HtmlConstructionStorage::begin() -> HtmlConstructionInitialization` creates an
-allocation-free initialization owner. It uses the same action/observation
-sequence to create the zero-payload shared identity.
-`HtmlConstructionInitialization::try_ready(self) ->
-Result<HtmlConstructionReadyInitialization,
-HtmlConstructionRefusal<HtmlConstructionInitialization>>` consumes
-the initialization owner only after all initialization actions and its
-post-provider observation are complete. It issues the storage's process-wide
-serial; when no serial is left it refuses with `RepresentationExhausted` and
-hands the initialization back unchanged. The ready owner's infallible
-`commit(self) -> HtmlConstructionStorage` returns empty storage. Pending or
-failed initialization cannot call that method. Native document/fragment builders then create their
-explicit root through the commands below. Failed or cancelled initialization
-retains its owner. `HtmlConstructionInitialization::abort(self) ->
-Option<HtmlConstructionRetired>` drops any actually created, unescaped identity
-owner and returns its zero-payload receipt; a not-yet-created identity returns
-`None`. A ready initialization always holds an identity, so
-`HtmlConstructionReadyInitialization::abort(self)` returns the receipt itself.
-Abort cannot manufacture usable construction storage.
+An insertion validates storage-qualified handles, the parent kind, the movable node and the
+membership of the reference child before its structural shortcut. Inserting a node before itself
+changes nothing and admits nothing. A node that is already last, or already immediately before the
+current successor, is an ordinary insertion: it edits the parent's actual child order like any
+other placement and runs the depth and edge checks. A detachment of a node that has no parent
+changes nothing. Native and controlled callers use the same methods; parser form and nonce hooks
+remain parser-owned. This follows the [unchanged-order determination in
+#1174](https://github.com/bj-data-eng/surgeist/issues/1174).
 
-`HtmlConstructionCommand` is a closed, non-exhaustive enum with the following
-payloads. Every handle belongs to the storage; all payload fields below are
-command operands, never mutable arena fields.
+Insert, move and detach edit the parents' child orders in place after every refusable step, so a
+refused change leaves every order, parent link and logical fact as it was. A place is found by
+walking the order from both ends in turn, starting at the last entry, one entry per visit: the
+moving node's place in its old parent, then the reference sibling's place in the new parent (a
+change with no reference needs no walk). A walk costs about twice the entries between the target
+and the nearer end. Each child order is a deque, so the change shifts only the entries between the
+place it closes or opens and the nearer end: for a removal at position `p` of `n` entries the
+lesser of `p` and `n - 1 - p`, and for an insertion at `p` among `n` entries the lesser of `p` and
+`n - p`. When a node moves within one parent, `n` for the insertion counts the entries left after
+its removal. The change writes the parent link, the removed and inserted entries and every shifted
+entry, besides the depth work. A change near either end of an order therefore does work that does
+not depend on the parent's child count, and appending, which shifts nothing and needs no walk,
+does too.
 
-| Variant | Payload and result |
-| --- | --- |
-| `Create` | `leaf: HtmlConstructionLeaf` (`Text`, `Comment`, `ProcessingInstruction` or `Doctype`); creates a detached leaf record and returns its `HtmlBuilderNode`. Elements, Documents and fragments have their own commands, so a leaf cannot name them. |
-| `CreateDocument` | `mode: HtmlDocumentMode`; creates a detached document root and returns its handle. |
-| `CreateFragment` | No payload; creates an unassociated fragment root and returns its handle. |
-| `CreateShadowContents` | `properties: HtmlShadowRootProperties`; creates a fragment explicitly marked as shadow contents, retaining its actual properties once, and returns its handle. This role is owner-controlled, not a caller-supplied validation flag. |
-| `Insert` | `node`, `parent`, `before: Option<HtmlBuilderNode>`; inserts or reparents an ordinary record; `None` means append. A validated `before == node` request is a structural no-op. Other same-position requests perform ordinary insertion processing; unchanged logical order does not guarantee unchanged storage or successful admission. Parser-owned hooks are independent of the structural shortcut. |
-| `Detach` | `node`; removes an ordinary edge, retaining the record and its descendants in storage. Detaching an already-detached ordinary record is a no-op. |
-| `ReplaceContent` | `node`, `content: HtmlConstructionContent`; replaces only text/comment/PI/doctype payloads or an element's qualified name. The closed content enum preserves node kind; roots, topology and associations cannot be replaced by this operation. An element's new name must keep its template-ness, an HTML `template` expanded name exactly when the record has template contents, or the operation is refused with `InvalidTemplateAssociation` (the `ReplaceContent` arm of `command_phase` in `operations.rs`, from the pinned HTML rule that only a `template` element has template contents). Link history survives only while the new name is an HTML `link` expanded name and is otherwise cleared (the `ReplaceContent` arm of `HtmlConstructionReadyOperation::commit`, from the `CreateElement` rule that flags need an HTML link name). |
-| `ReplaceAttributes` | `element`, `attributes: HtmlValidatedAttributes`; replaces one checked ordered collection without bypassing duplicate validation. |
-| `AttachShadow` | `host`, `contents`; associates an unowned shadow-contents fragment with an element, using that fragment's retained properties. A shadow root stays attached to its host: neither the DOM nor the HTML parser removes one, and no command does (DOM [shadow tree](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md) line 249, a shadow root is always attached through its host, and [shadow root](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md) line 2731, its host is never null; parser template start tag steps 7.11.2 to 7.11.6, lines 4026 to 4042 of the [retained syntax reference](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md), which only attach). |
-| `AttachTemplateShadow` | `template`, `host`, `contents`; atomically releases the template's old owning association, installs local host shadow ownership of the new shadow contents, and installs the template's non-owning reference, without a transient extra owned edge. |
-| `SetTemplateShadowContents` | `template`, `contents`; validates an HTML template with ordinary owned contents and a live unowned shadow-contents fragment, atomically releases that owning template association and installs a typed non-owning contents reference. |
-| `SetDocumentMode` | `document`, `mode: HtmlDocumentMode`; parser prologue selection changes only the actual document mode. |
-| `SetLinkFlags` | `element`, `flags: HtmlLinkFlags`; installs the local rule's actual link flags only on an HTML link element. Source-qualified history remains parser metadata. |
-| `Publish` | `root`; selects a document or fragment view and freezes the complete retained storage. |
+Only a push into a full order allocates. A move within one parent needs no growth, because the node
+leaves the order before it returns, and a detachment never grows an order. A change whose planned
+place no longer holds the entry planning found is refused with `ParentChildConflict`, and one
+whose push would reallocate with `CapacityMismatch`, before the writes, so a parent link and its
+list cannot diverge.
 
-Insert validates storage-qualified handles, parent kind, movable node and
-reference-child membership before its structural shortcut. An already-last
-append or insertion immediately before the current successor is ordinary
-insertion: it edits the parent's actual child order like any other placement,
-so unchanged logical order does not skip depth and edge preflight or the
-commit's described writes. Native and controlled callers use that same
-operation; parser form/nonce hooks remain parser-owned.
-This follows the [unchanged-order determination in #1174](https://github.com/bj-data-eng/surgeist/issues/1174).
-It does not change Detach or other explicitly specified no-op cases.
+A publication checks that every ordinary child appears exactly once in its parent's child list,
+with work linear in the records and child entries, not in each parent's fanout. Three passes reset a
+private one-byte count in every record, add one count for each list entry naming its list's owner
+as parent, and then validate the records in index order, where each record with a parent must have
+a count of exactly one (`ParentChildConflict` otherwise). The count lives in the record layout, so
+it needs no allocation, and a stale count is reset before it is read.
 
-Insert, move and Detach edit the parents' actual `Children` banks in place at
-the atomic commit, and nothing is written to a child order before it. A refused
-or aborted operation therefore leaves every order, parent link and logical fact
-unchanged, and no pending child-order bank exists. Planning finds each place by
-walking the order from both ends in turn, starting at the last entry, one entry
-per `Inspect` action: the moving node's place in its old parent, then the
-reference sibling's place in the new parent (`before: None` needs no walk). A
-walk costs about twice the entries between the target and the nearer end of the
-order. Each `Children` bank is a deque, so the commit shifts only the entries
-between the place it closes or opens and the nearer end: for a removal at
-position `p` of `n` entries the lesser of `p` and `n - 1 - p`, and for an
-insertion at `p` among `n` entries the lesser of `p` and `n - p`. When a node
-moves within one parent, `n` for the insertion counts the entries left after
-its removal. Its `Commit`
-description counts the parent link, the removed and inserted entries and every
-shifted entry as `record_writes` of one word each in `copied_bytes`, besides
-the depth work.
-A change near either end of an order therefore describes work independent of
-the parent's child count, whatever siblings lie between it and the far end, and
-appending, which shifts nothing and needs no walk, does too. Moving every child
-from the front of one parent to the end of another costs a constant for each
-child, so work linear in their number.
+`create_element` makes the contents fragment of an HTML `template` and returns the element;
+`HtmlConstructionNode::template_contents` gives the contents handle. Cloning a template clones its
+element through `create_element` and fills that new contents fragment. `attach_template_shadow`
+atomically releases the template's owning association, installs local host shadow ownership of the
+shadow contents, and installs the template's non-owning reference, without a transient extra
+owned edge. `set_template_shadow_contents` validates an HTML template with ordinary owned contents
+and an unowned shadow-contents fragment, and atomically releases the owning association and
+installs the non-owning reference. Both require the template initially to have its ordinary owned
+contents with a reciprocal `Template` owner and the target to be a distinct, unowned
+shadow-contents fragment; `attach_shadow` and `attach_template_shadow` additionally require an
+element host with no shadow association. An initial `ShadowReference`, a conflicting host
+association or an already-owned target is refused before any change, including a submission that
+repeats a committed one. A shadow root stays attached to its host: neither the DOM nor the HTML
+parser removes one, and no method does (DOM [shadow
+tree](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md) line 249, a shadow
+root is always attached through its host, and [shadow
+root](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md) line 2731, its host
+is never null; parser template start tag steps 7.11.2 to 7.11.6, lines 4026 to 4042 of the
+[retained syntax reference](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md),
+which only attach). The storage has no method that moves an owned contents association back or
+replaces the content or attributes of a record; the attribute and text groups above edit those.
 
-Only a push into a full order allocates. When the new parent's `Children` bank
-has no spare capacity, a `PrepareAllocationReport` and a `Reserve` action on it
-(`growth: Geometric`) follow depth and edge preflight; otherwise neither is
-described. A move within one parent needs no growth, because the node leaves the
-order before it returns, and Detach never grows an order. A refused or
-interrupted reserve leaves the order unchanged, and the grown bank, with a fresh
-allocation incarnation, is retained on abort like the record bank. The `Commit`
-action refuses with `ParentChildConflict` any edit whose planned place no longer
-holds the entry planning found, and with `CapacityMismatch` a push that would
-reallocate or name a missing node or parent; the ready commit then applies
-nothing, so a parent link and its list cannot diverge.
+A template's contents reference to shadow contents is not an owned edge. Publication checks the two
+relation kinds separately. Structural traversal, cycle, depth and descendant accounting follow
+ordinary children and owning associations once; a contents reference incurs its actual record,
+read and write cost without another owned edge or a duplicate subtree charge. The parser stacks and
+effects use the same referenced fragment and remain parser-owned. No native declarative-shadow
+convenience or DOM implementation is implied. The declarative-shadow exception follows pinned
+HTML877d in-head template step 7.11.6 ([retained syntax
+reference](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md)) and the
+accepted clarification in [#1174](https://github.com/bj-data-eng/surgeist/issues/1174). The record
+keeps a private distinction between owned template contents and a shadow reference; there is no
+second mutable target or tree. For a local host, the referenced fragment's sole owner remains
+`ShadowHost`. For a captured host, its explicit shadow role permits a locally unowned result
+fragment; the actual capture identity, attachment effect and qualification remain parser evidence.
+HTML never imports capture IDs to certify that external attachment. The old ordinary contents
+record remains retained and unowned after the atomic reference transition, preserving its result
+identity and source associations. The local `attach_template_shadow` releases one template-owned
+edge and installs one host-owned edge (net zero); the captured-host
+`set_template_shadow_contents` releases the template edge (net minus one). Independently committing
+attach and release steps with a transient extra-edge allowance, or a new refusal point, are not
+composed.
 
-Publish checks that every ordinary child appears exactly once in its parent's
-child list with work linear in the records and child entries, not in each
-parent's fanout. Three passes of `Inspect` actions, each describing two record
-visits per step, reset a private one-byte count in every record, add one count
-for each list entry naming its list's owner as parent, and then validate the
-records in index order, where each record with a parent must have a count of
-exactly one (`ParentChildConflict` otherwise). The count lives in the already
-admitted record layout, so it needs no allocation, and a stale count is reset
-before it is read. Failures keep the order of the earlier per-record scan.
+An element is created from its owned name, validated ordered attributes and optional producer link
+history as one input. The creation validates supplied flags against the admitted HTML link
+classification before any change, so an invalid flag leaves the storage as it was; the caller's
+`OrderedAttributes` are consumed. `None` preserves unknown history. A leaf creation takes completed
+checked units and creates no element, so it has no flag input. Parser initial and clone producers
+keep their original source qualification before this call, and no later link-flag step or duplicate
+name scan is introduced. Raw `HtmlProcessingInstruction` units remain exact-value storage; native
+authoring still requires its separately checked `HtmlAuthoredProcessingInstruction`. Those are
+different phase contracts, not permission for native syntax checks to reject recovered parser data.
 
-Template association creation is owned by `CreateElement`; lookup returns its issued
-contents handle. Cloning a template clones its element through `CreateElement` and
-fills that new contents fragment. Moving a whole contents association uses
-`ReassignTemplateContents { template, contents }`, which atomically detaches the
-old owning association or removes the old non-owning reference, then associates
-an unowned ordinary fragment. A shadow-role fragment or a fragment already owned
-by another template or shadow host is rejected. Replacing `Owned` leaves its
-previous fragment retained and unowned (net zero owned edges); replacing
-`ShadowReference` preserves that target's existing shadow owner and role and adds
-one template-owned edge. An identical current owned target is a no-op; an
-identical shadow-reference target is rejected as `InvalidTemplateAssociation`.
-These operations cover parser adoption,
-foster-parenting, clone and patch paths without treating association roots as
-ordinary children.
+`HtmlConstructionError::cause` returns the exhaustive enum `HtmlConstructionCause`, so a consumer
+that classifies every cause fails to compile when a cause is added. Its variants are
+`ForeignBuilder`, `ParentCannotHaveChildren`, `TemplateContentsRequired`,
+`ShadowHostMustBeElement`, `ShadowAlreadyAttached`, `UnknownNode`, `WrongNodeKind`, `RootMove`,
+`AssociationMove`, `WrongSibling`, `Cycle`, `AssociationAlreadyOwned`,
+`InvalidTemplateAssociation`, `DuplicateAttribute { first, duplicate }`,
+`InvalidShadowAssociation`, `InvalidContentsReference`, `ParentChildConflict`,
+`InvalidOutputRoot`, `OperandMissing`, `CapacityMismatch`, `IndexUnavailable`,
+`SharedAllocationAliased`, `ReleaseUnderflow`, `LimitExceeded { resource, limit, attempted }`,
+`RepresentationExhausted`, `AllocationFailed` and `Accounting(fault)`. `OperandMissing` is an
+operand a method requires and does not have: an attribute or a name it was to take, or an
+attribute index past the list. `CapacityMismatch` is a bank whose capacity is below what a method
+stores: the consumer chose less than the minimum, or the bank has no room where the method writes.
+`SharedAllocationAliased` is an attribute list or a string that a method edits in place and
+another owner holds. `accounting_fault` returns the payload of the `Accounting` cause. The parser
+maps each structural refusal to its corresponding `SessionError`; admission and cancellation
+continue to originate in `ParseControl` and are never disguised as a structural error.
 
-The declarative-shadow exception follows pinned HTML877d in-head template
-step 7.11.6 ([retained syntax reference](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md))
-and the accepted clarification in [#1174](https://github.com/bj-data-eng/surgeist/issues/1174).
-Keep a private distinction between owned template contents and a shadow reference
-in the existing record; do not create a second mutable target or tree. For a
-local host, the referenced fragment's sole owner remains `ShadowHost`. For a
-captured host, its explicit shadow role permits a locally unowned result fragment;
-the actual capture identity, attachment effect and qualification remain parser
-evidence. HTML never imports capture IDs to certify that external attachment.
-The old ordinary contents record remains retained and unowned after the atomic
-reference transition, preserving its result identity and source associations.
-The local `AttachTemplateShadow` transition releases one template-owned edge and
-installs one host-owned edge atomically (net zero); the captured-host
-`SetTemplateShadowContents` transition releases the template edge (net minus
-one). Do not compose independently committing attach/release operations that
-introduce a transient extra-edge allowance or a new refusal point. Fixed write,
-depth and allocation descriptions reflect the actual coherent transition.
-Both declarative transitions require the template initially to have its ordinary
-owned contents with reciprocal `Template` owner. Their new target must be a
-distinct, unowned shadow-contents fragment. The local command additionally
-requires an element host with no existing shadow association. An initial
-`ShadowReference`, conflicting host association or already-owned target is
-rejected before mutation; this includes resubmitting a previously committed
-declarative command. Refusal leaves the same storage/command available for
-recovery. Pending action retry is separate from submitting a new command after
-commit. No idempotent second ownership transfer or silent host detachment occurs.
+The parser admits its current resource, peak, atomic-layout and reserve, copy and provider work
+before each reservation; it cannot substitute an assumed `Record` layout. A reservation calls
+`try_reserve` on the actual bank, and a refusal by the allocator reports `AllocationFailed` with the
+capacity the bank still has. The parser's `ParseControl` records the capacity it holds for each
+bank, the actual capacity and the high-water values before its cancellation or actual-capacity
+limit check, and a stop leaves the grown bank with the storage. No ordinary record write follows
+such a stop. HTML stores no resource totals or parser controller identity.
 
-`ReassignTemplateContents` installs only an owning ordinary contents association;
-it does not turn a shadow reference into ownership of its target. Publication
-checks the two relation kinds separately. Structural traversal, cycle/depth and
-descendant accounting follow ordinary children and owning associations once;
-a contents reference incurs its actual record/read/write cost without another
-owned edge or duplicate subtree charge. Native ordinary template authoring and
-fallback retain reciprocal contents ownership. Parser stacks and effects use the
-same referenced fragment and remain parser-owned. No new native declarative-shadow
-convenience or DOM implementation is implied.
-
-`CreateElement { name, attributes, link_flags }`
-accepts the actual owned name, validated ordered attributes and optional producer
-history as one creation input. It validates supplied flags against its existing
-admitted HTML link classification, then forms the private element only at the
-same Ready record commit. Invalid supplied flags retain the exact command and
-inputs. `None` preserves unknown history. `Create { leaf }` consumes
-completed checked payloads and creates no element, so it has no flag input. Parser initial and
-clone producers keep their original source qualification before this operation;
-no later SetLinkFlags phase or duplicate name scan is introduced. Raw
-`HtmlProcessingInstruction` payload construction remains exact-value storage;
-native authoring still requires its existing separately checked
-`HtmlAuthoredProcessingInstruction`. Those are different phase contracts, not
-permission for native syntax checks to reject recovered parser data.
-
-`HtmlConstructionError::cause` returns the exhaustive enum
-`HtmlConstructionCause`, so a consumer that classifies every cause fails to
-compile when a cause is added. Its variants are `ForeignBuilder`,
-`ParentCannotHaveChildren`, `TemplateContentsRequired`,
-`ShadowHostMustBeElement`, `ShadowAlreadyAttached`, `UnknownNode`,
-`WrongNodeKind`, `RootMove`, `AssociationMove`, `WrongSibling`, `Cycle`,
-`AssociationAlreadyOwned`, `InvalidTemplateAssociation`,
-`DuplicateAttribute { first, duplicate }`, `AttributeNameMismatch`,
-`AttributeOrderMismatch`, `InvalidShadowAssociation`,
-`InvalidContentsReference`, `ParentChildConflict`, `InvalidOutputRoot`,
-`OperationNotReady`, `ForeignAllocation`, `CapacityMismatch`,
-`IndexUnavailable`, `SharedAllocationAliased`, `ReleaseUnderflow`,
-`LimitExceeded { resource, limit, attempted }`, `RepresentationExhausted`,
-`AllocationFailed` and `Accounting(fault)`. `accounting_fault` returns the
-payload of the `Accounting` cause. The parser
-maps each structural refusal to its corresponding `SessionError`; admission/cancellation
-continues to originate in `ParseControl` and is never disguised as a structural
-error. `ReplaceContent` cannot silently change a parent-capable node into a leaf.
-
-`HtmlConstructionOperation::next_action(&mut self) ->
-Result<Option<HtmlConstructionAction<'_>>, HtmlConstructionError>` returns an
-action borrowing that operation exclusively, `None` only after all actions are
-complete, or the latched error while leaving ownership untouched. The action has
-`description()` and
-`perform(self) -> Result<HtmlConstructionObservation<'_>, HtmlConstructionActionFailure>`.
-An action failure contains its typed construction reason and the actual
-post-provider allocation snapshot, when a provider was attempted; storage and
-the uncommitted command remain in the operation.
-An observation continues the action's exclusive borrow and exposes the actual
-post-action snapshot. `accept(self)` advances the private phase only after the
-consumer has recorded actual capacity and completed its post-action checkpoint.
-Dropping it without acceptance leaves the operation awaiting observation;
-`try_ready` then returns `OperationNotReady`, and the operation can only be
-recovered/aborted. Thus a provider call cannot silently advance straight to a
-publication-ready owner. Initialization uses the same observation guard. A
-consumer whose external controller stops records the observation, drops the
-guard and aborts the retained owner; it never acknowledges that action as ready.
-Descriptions are closed variants for inspection, comparison, reserve, fixed
-sharing and commit; they state record visits, inspected/copied/initialized bytes,
-logical node/edge/attribute/unit deltas and the exact allocation descriptors
-below. `next_action` does not perform the described read or mutation.
-`HtmlConstructionOperation::try_ready(self) ->
-Result<HtmlConstructionReadyOperation,
-HtmlConstructionRefusal<HtmlConstructionOperation>>` checks that
-every validation, provider action and allocation observation has completed, and
-that the complete fixed final-write description has been issued and admitted
-through its action. It performs no additional useful work, allocation,
-reserve or clone. Pending returns `OperationNotReady`; a failed operation
-returns its latched construction reason. An operation whose planned order edits no longer find
-their places in the storage (`CapacityMismatch` or `ParentChildConflict`) is refused the same way, so
-the commit never receives a state it would have to skip. Every refusal hands the original
-owner back unchanged inside `HtmlConstructionRefusal`, with its command, actual
-allocations and capacities untouched; a consumed operation cannot be presented
-again because the check takes it by value. Only success issues the
-private-field ready owner. Initialization and lease recovery use the same refusal
-rules: `HtmlConstructionRefusal<T>` carries the owner or owners, `reason`,
-`owner` and `into_parts`.
-
-Only `HtmlConstructionReadyOperation` exposes
-`commit(self) -> HtmlConstructionCommit`; the commit enum is
-`Changed { storage, created: Option<HtmlBuilderNode> }` or
-`Published { result: HtmlConstructionResult, lease: HtmlConstructionLease }`.
-Both pending and ready owners expose `abort(self) -> HtmlConstructionAbort`,
-which returns storage, command and an optional
-wrapper-retirement receipt, restoring the previous logical state while
-preserving all actual grown capacities. Every
-fallible check/reservation and write admission precedes the final coherent
-commit. Commit applies only the already-described fixed writes and owning moves;
-it cannot inspect an unvalidated edge or run an allocation/provider operation.
-Abort never needs a useful-work scan or a new allocation. A ready owner
-has no public constructor, `Default`, unchecked conversion, deserializer or
-field mutation; a pending/failed operation cannot construct one. Parser calls
-the guarded ready transition only after its corresponding admission and
-post-provider cancellation checks have succeeded. On an external `HtmlParseStop`
-it aborts the retained owner instead. HTML does not encode or override that
-independent controller's first-stop policy.
-
-#### Allocation descriptors and stopped-owner recovery
-
-The parser must not name HTML's private `Record`, `Arena` or `Identity` in a
-ticket type. Replace only those private-payload tickets with parser-private
-`HtmlConstructionTicket`; ordinary public-payload `OwnedVec` and string tickets
-retain their existing implementation. This is a specialized adaptation of
-`ParseControl`, not a new shared allocation framework.
-
-HTML issues `HtmlConstructionAllocationId` with private fields identifying one
-storage identity, role and generation. Roles are `Identity`, `Records`,
-`Children` and `ArenaWrapper`. Equality is identity
-equality; IDs have no public numeric or
-pointer conversion, constructor or arithmetic. Reallocation advances the
-generation with checked arithmetic.
-
-Installed attribute vectors and their shared wrappers retain the parser's
-existing `VectorCapacity<Attribute>` and `SharedAllocation<Vec<Attribute>>`
-tickets over the actual public payload. `HtmlConstructionAttributeCapacity`
-reports their actual initialized length, capacity and public element layout, and
-`HtmlAttributeAdmission` receives the growth of a list before it is reserved and the
-capacity reached afterwards. They need no second opaque attribute-vector/wrapper ticket
-or another ledger.
-
-Allocation reports never issue construction node handles. A pending creation
-can allocate its child bank before committing a record; aborting it leaves that
-record position available for a later creation. Issuing a handle from the bank's
-position would let it escape before commit and then identify the later node.
-`Children` therefore classifies only the allocation role. Its read-only
-`child_position()` is an owner-local accounting join; it cannot mint an
-identity or authorize a mutation or retirement.
-Checked committed-node views remain the authority for issuing node handles.
-Each newly created bank also receives a fresh checked allocation incarnation,
-including when it reuses a position left by an aborted operation. A retained
-report from the retired bank cannot identify the replacement or authorize its
-retirement. Reallocation preserves this distinction.
-`HtmlConstructionAllocationId::same_owner_role` compares the issuing storage and
-bank role while deliberately ignoring generation. It supports observing a
-provider's updated report only after the old exact ID has been qualified against
-its live ticket. It does not certify the same allocation incarnation or permit
-stale retirement; those require exact issued-ID qualification.
-
-`HtmlConstructionAllocationSnapshot` has read-only accessors for `id`, `role`,
-`initialized_len`, `capacity`, `element_size`, `element_alignment`,
-`payload_bytes` and `wrapper_payload_bytes`. For a vector, payload bytes equal
-capacity times its actual private element size; the wrapper descriptor separately
-reports the actual `Vec<T>` layout. For the arena shared wrapper, payload bytes
-are exactly `size_of::<Arena>()`; identity has zero known payload bytes. Counts
-and products are checked before a provider call. Arc headers and allocator
-metadata remain excluded, matching the existing provider limitation.
-
-A reserve description contains the pre-action snapshot, required initialized
-length, requested minimum capacity and selected exact/geometric growth policy.
-`Exact` means `perform` reserves exactly that minimum. `Geometric` means the
-minimum is only the least capacity that suffices: the consumer admits its own
-amortizing capacity, which cannot be smaller, and requests it with
-`HtmlConstructionAction::perform_with_capacity`; a smaller capacity, or use on
-any other action, latches `CapacityMismatch` before a provider call, and
-`perform` still reserves the minimum.
-The parser computes and admits its current resource/peak/atomic-layout and
-reserve/copy/provider work in the same precedence as `reserve_vector`; it cannot
-substitute an assumed `Record` layout. `perform` calls `try_reserve` on the actual
-hidden vector, then returns its actual post-action snapshot even if subsequent
-observation causes a stop. Allocation refusal returns the unchanged snapshot
-with `AllocationFailed`. Parser's
-`ParseControl::observe_construction_allocation` updates the specialized ticket,
-actual capacity and high-water values before its post-provider cancellation or
-actual-capacity limit check. It latches the first stop and retains the grown
-owner on any refusal. No ordinary record write follows such a stop.
-
-`HtmlConstructionTicket` stores the issuing `ControlIdentity`, last observed
-opaque allocation ID/generation, actual capacity and known byte layout. It is
-not cloneable. `ParseControl::admit_construction_action` and
-`observe_construction_allocation` compare the issued snapshots with that ticket;
-foreign controls, wrong roles, stale generations, mismatched capacities and
-underflows produce the existing invariant stop. Ticket-vector capacity remains
-an ordinary parser `VectorCapacity<HtmlConstructionTicket>` and is charged using
-its real public-to-parser layout. HTML stores no resource totals or parser
-controller identity.
-
-`Publish` performs the real `Arc<Arena>` construction only after the wrapper's
-known payload layout is admitted. The operation retains the sole strong arena
-owner until the post-share checkpoint succeeds. If that checkpoint stops,
-`abort` unwraps that unescaped Arc, reports retirement of exactly its admitted
-wrapper bytes, and restores the same records, capacities and identity. This is
-the existing `share_owned` post-allocation recovery behavior, not a new
-fallible-Arc-allocation promise. Only successful commit returns the result and
-`HtmlConstructionLease`. The lease is non-cloneable and holds HTML's actual weak
-arena reference and issued wrapper descriptor; parser tickets no longer need
-`SharedAllocation<Arena>` or `SharedAllocation<Identity>`.
-
-`HtmlConstructionLease::try_recover(result: HtmlConstructionResult, lease: Self)
--> Result<HtmlConstructionRecovery,
-HtmlConstructionRefusal<(HtmlConstructionResult, HtmlConstructionLease)>>` checks
-exact arena/lease identity first. A result clone, associated fragment view or
-other strong arena alias returns `SharedAllocationAliased`, handing back both the
-result and the lease with all tickets intact.
-After aliases disappear the same cleanup can be retried, including after a
-sticky parser stop. Successful recovery returns the exact unwrapped storage
-together with its non-forgeable wrapper-retirement receipt. Identity handles may
-outlive cleanup: its zero-sized payload follows the existing zero-refund rule.
-
-Storage's `retire(self) -> HtmlConstructionRetirement` exposes deterministic
-cleanup actions, not mutable records. Reverse node order retires child-vector
-buffers, then drops record payload references and the record vector, then the
-zero-payload identity owner. Each action supplies its exact live snapshot for
-ticket/underflow preflight; `perform` frees that allocation and returns a
-non-forgeable `HtmlConstructionRetired` receipt. Only that receipt permits the
-parser to refund corresponding capacity. Cleanup does not poll for useful work,
-allocate, infer a capacity or silently discard a refused owner. A preflight
-refusal leaves the retirement cursor at the same allocation for retry. Parser
-then releases its independent payload/effect/evidence ticket banks in their
-existing order. Strings and attributes are dropped from records before their
-retained parser payload tickets are reclaimed.
-
-These snapshots/actions replace private `VectorCapacity<Record>` accesses in
-session reserve/release, private `SharedAllocation<Arena>` in freeze/recovery and
-private identity sharing. Read-only storage/result node access replaces
-`arena.records` reaches in metadata/history and alias preflight. Private dense
-joins remain local; exposed result identities come from the checked storage or
-result view, never from constructing an ID from an ordinal.
+A publication allocates the shared arena only after its layout is admitted. The move into the
+shared arena allocates its handle and cannot refuse. The result holds the only strong owner of the
+arena the parse made; the parser's frozen arena reads the usage from the result and releases what
+the parse holds for it. Read-only storage and result node access replace `arena.records` reaches in
+the parser's metadata, history and alias preflight. Private dense joins remain local; exposed result
+identities come from the checked storage or result view, never from constructing an ID from an
+ordinal.
 
 ### Captures, fragment context and lazy facts
 
@@ -1163,18 +909,16 @@ transition.
 No public report constructor accepts caller-asserted raw/attempt pairs.
 
 All consuming fallible boundaries in this contract follow one of three concrete
-forms. The construction owners (initialization, tree mutation and publication,
-and lease recovery) consume the owner and return `HtmlConstructionRefusal<Owner>`, which
-holds the complete unconsumed owner and the cause, so a refusal loses nothing and
-a consumed owner cannot be presented again. The other owner families
+forms. The construction storage's publication consumes the storage and returns
+`HtmlConstructionPublishRefusal`, which holds the complete unconsumed storage and the cause, so
+a refusal loses nothing and a consumed storage cannot be presented again. The other owner families
 (attribute validation and interpretation) keep a guarded
 `&mut Option<Owner>` transition that leaves `Some` unchanged on refusal. The
 remaining boundaries return an error value containing the complete unconsumed
-owner/input. Borrowing action failure leaves ownership in its enclosing
-operation. There is no infallible consuming `commit` or `finish` on a
+owner/input. There is no infallible consuming `commit` or `finish` on a
 pending/failed owner, and no ready-proof constructor outside the owner. This
-applies to initialization, attribute validation, complete attribute edits and
-slot commits, tree mutation/publication, interpretation, lease recovery and
+applies to attribute validation, complete attribute edits and
+slot commits, publication, interpretation and
 semantic import/finalization; it does not add a generic public typestate
 framework.
 
@@ -1802,7 +1546,7 @@ and otherwise that it names a rule or vocabulary.
 
 | Family | Shape | Evolution |
 | --- | --- | --- |
-| `HtmlConstructionRefusal`, `HtmlConstructionActionFailure` | Carrier struct with the reason and the recovered owners | Fields private |
+| `HtmlConstructionPublishRefusal` | Carrier struct with the reason and the recovered storage | Fields private |
 | the rel, media, microdata-token and time-element interpretation errors, `HtmlCspProtocolError`, and the cursor and reply errors such as `HtmlFocusingError`, `HtmlDialogCursorError`, `HtmlSelectCursorError`, `HtmlSlotAssignCursorError`, `HtmlFormOwnerResetCursorError`, `HtmlCloseWatcherRequestError` | Struct with a private cause, `is_*` predicates and fact accessors | New causes are non-breaking |
 | `HtmlConstructionError` with its cause enum `HtmlConstructionCause`, which the parser maps variant by variant | Struct whose `cause()` returns an exhaustive enum with the payload of the cause, and `accounting_fault` | Exhaustive: a new cause fails to compile in the parser |
 | Resource accounting that a consumer matches exhaustively: `HtmlIntegerUnitStepError` and `HtmlNumericMaterializationError` (semantics `time_element.rs`, `natural_dimensions.rs`, `image_dimensions.rs`, `semantics.rs`), `HtmlFloatingPointAllocationError` (semantics `range.rs`), `HtmlIntegerRecoveryError` (semantics `semantics.rs`, `meta_pragma.rs`), `HtmlAutocompleteMaterializationError` (semantics `autocomplete.rs`), `HtmlPiPseudoAttributeError` (parser `pi.rs`, semantics `template.rs`) | Enum of the charged resource or integrity failure | Exhaustive: a driver must charge every resource |

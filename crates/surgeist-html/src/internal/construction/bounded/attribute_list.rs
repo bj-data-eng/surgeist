@@ -10,7 +10,7 @@
 //! policy: it charges work through [`Charge`], chooses the capacity a growing list reserves, and
 //! records the capacity.
 
-use super::operations::attribute_units;
+use super::records::attribute_units;
 use super::*;
 use crate::internal::accounting::{HtmlChargedError, HtmlResource, HtmlWork, wide};
 use crate::internal::values::attribute_name_index::{
@@ -278,7 +278,7 @@ impl HtmlConstructionStorage {
             Some(NodeContent::Element(element)) => {
                 Ok(element.attributes.shared_attributes().as_slice())
             }
-            _ => Err(HtmlConstructionCause::OperationNotReady.into()),
+            _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
         }
     }
 
@@ -294,7 +294,7 @@ impl HtmlConstructionStorage {
                     capacity: backing.capacity(),
                 })
             }
-            _ => Err(HtmlConstructionCause::OperationNotReady.into()),
+            _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
         }
     }
 
@@ -310,7 +310,7 @@ impl HtmlConstructionStorage {
                 }
                 Ok(())
             }
-            _ => Err(HtmlConstructionCause::OperationNotReady.into()),
+            _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
         }
     }
 
@@ -328,7 +328,7 @@ impl HtmlConstructionStorage {
                     .construction_backing_mut(&mut arena.attribute_revision),
             )
             .ok_or_else(|| HtmlConstructionCause::SharedAllocationAliased.into()),
-            _ => Err(HtmlConstructionCause::OperationNotReady.into()),
+            _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
         }
     }
 
@@ -627,7 +627,7 @@ impl HtmlConstructionStorage {
         let target = self.attribute_target(node).map_err(faulted)?;
         let attribute = incoming
             .as_ref()
-            .ok_or_else(|| fault(HtmlConstructionCause::OperationNotReady))?;
+            .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
         let before = self.attribute_dimensions(target).map_err(faulted)?;
         let len = before.initialized_len;
         let usage = self.arena.usage;
@@ -694,7 +694,7 @@ impl HtmlConstructionStorage {
             self.grow_attributes(target, grown, admission)?;
         }
         let Some(attribute) = incoming.take() else {
-            return Err(fault(HtmlConstructionCause::OperationNotReady));
+            return Err(fault(HtmlConstructionCause::OperandMissing));
         };
         self.attributes_for_change(target)
             .map_err(faulted)?
@@ -745,10 +745,10 @@ impl HtmlConstructionStorage {
         let list = self.attribute_slice(target).map_err(faulted)?;
         let old = list
             .get(index)
-            .ok_or_else(|| fault(HtmlConstructionCause::OperationNotReady))?;
+            .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
         let new = incoming
             .as_ref()
-            .ok_or_else(|| fault(HtmlConstructionCause::OperationNotReady))?;
+            .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
         let usage = self.arena.usage;
         let utf16_units = plus(
             minus(usage.utf16_units, attribute_units(old).map_err(faulted)?).map_err(faulted)?,
@@ -769,13 +769,13 @@ impl HtmlConstructionStorage {
         }
         .charge(admission)?;
         let Some(attribute) = incoming.take() else {
-            return Err(fault(HtmlConstructionCause::OperationNotReady));
+            return Err(fault(HtmlConstructionCause::OperandMissing));
         };
         let slot = self
             .attributes_for_change(target)
             .map_err(faulted)?
             .get_mut(index)
-            .ok_or_else(|| fault(HtmlConstructionCause::OperationNotReady))?;
+            .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
         let old = std::mem::replace(slot, attribute);
         self.arena.usage.utf16_units = utf16_units;
         Ok(old)
@@ -794,7 +794,7 @@ impl HtmlConstructionStorage {
         let list = self.attribute_slice(target).map_err(faulted)?;
         let old = list
             .get(index)
-            .ok_or_else(|| fault(HtmlConstructionCause::OperationNotReady))?;
+            .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
         let usage = self.arena.usage;
         let attributes = minus(usage.attributes, 1).map_err(faulted)?;
         let utf16_units =
@@ -823,7 +823,7 @@ impl HtmlConstructionStorage {
         .charge(admission)?;
         let removed = self.attributes_for_change(target).map_err(faulted)?;
         if index >= removed.len() {
-            return Err(fault(HtmlConstructionCause::OperationNotReady));
+            return Err(fault(HtmlConstructionCause::OperandMissing));
         }
         let old = removed.remove(index);
         self.arena.usage.attributes = attributes;
@@ -862,7 +862,7 @@ impl HtmlConstructionStorage {
             for candidate in 0..count {
                 let name = merge
                     .name(candidate)
-                    .ok_or_else(|| fault(HtmlConstructionCause::OperationNotReady))?;
+                    .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
                 let mut duplicate = false;
                 for held in list {
                     if names_equal(merge, expanded(held.name()), (None, &name))? {
@@ -877,7 +877,7 @@ impl HtmlConstructionStorage {
                     let earlier = merge
                         .kept(rank)
                         .and_then(|earlier| merge.name(earlier))
-                        .ok_or_else(|| fault(HtmlConstructionCause::OperationNotReady))?;
+                        .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
                     duplicate = names_equal(merge, (None, &earlier), (None, &name))?;
                 }
                 if !duplicate {
@@ -890,7 +890,7 @@ impl HtmlConstructionStorage {
         for candidate in 0..count {
             let name = merge
                 .name(candidate)
-                .ok_or_else(|| fault(HtmlConstructionCause::OperationNotReady))?;
+                .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
             hash_length_work().charge(merge)?;
             hash_work(name.len()).charge(merge)?;
             let hash = index.hash_local(name.code_units());
@@ -946,7 +946,6 @@ fn fault_duplicate<S>(first: usize, duplicate: usize) -> HtmlConstructionAttribu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::internal::construction::bounded::operations::HtmlConstructionCommit;
     use crate::internal::values::{Namespace, OrderedAttributes};
     use std::collections::HashSet;
 
@@ -1059,32 +1058,19 @@ mod tests {
             .collect()
     }
     fn make_storage(attributes: Vec<Attribute>) -> (HtmlConstructionStorage, HtmlBuilderNode) {
-        let mut initialization = Some(HtmlConstructionStorage::begin());
-        while let Some(action) = initialization.as_mut().unwrap().next_action().unwrap() {
-            action.perform().accept();
-        }
-        let storage = slots::initialization(&mut initialization).unwrap().commit();
-        add_element(storage, "root", attributes)
+        add_element(super::super::free::storage(), "root", attributes)
     }
     fn add_element(
-        storage: HtmlConstructionStorage,
+        mut storage: HtmlConstructionStorage,
         name: &str,
         attributes: Vec<Attribute>,
     ) -> (HtmlConstructionStorage, HtmlBuilderNode) {
-        let mut operation = Some(storage.prepare(HtmlConstructionCommand::CreateElement {
-            name: QualifiedName::new(Namespace::none(), None, name),
-            attributes: OrderedAttributes::new(attributes).unwrap(),
-            link_flags: None,
-        }));
-        while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
-            action.perform().unwrap().accept();
-        }
-        let HtmlConstructionCommit::Changed { storage, created } =
-            slots::operation(&mut operation).unwrap().commit().unwrap()
-        else {
-            panic!("create")
-        };
-        (storage, created.unwrap())
+        let created = super::super::free::element(
+            &mut storage,
+            QualifiedName::new(Namespace::none(), None, name),
+            OrderedAttributes::new(attributes).unwrap(),
+        );
+        (storage, created)
     }
     fn names_of(storage: &HtmlConstructionStorage, position: usize) -> Vec<String> {
         storage
@@ -1389,11 +1375,11 @@ mod tests {
         let error = storage
             .replace_attribute(&node, 2, &mut incoming, &mut Meter::default())
             .unwrap_err();
-        assert_eq!(cause(error), HtmlConstructionCause::OperationNotReady);
+        assert_eq!(cause(error), HtmlConstructionCause::OperandMissing);
         let error = storage
             .replace_attribute(&node, 0, &mut None, &mut Meter::default())
             .unwrap_err();
-        assert_eq!(cause(error), HtmlConstructionCause::OperationNotReady);
+        assert_eq!(cause(error), HtmlConstructionCause::OperandMissing);
         assert_eq!(snapshot(&storage), before);
     }
 
@@ -1439,7 +1425,7 @@ mod tests {
         let error = storage
             .remove_attribute(&node, 3, &mut Meter::default())
             .unwrap_err();
-        assert_eq!(cause(error), HtmlConstructionCause::OperationNotReady);
+        assert_eq!(cause(error), HtmlConstructionCause::OperandMissing);
     }
 
     #[test]

@@ -7,8 +7,8 @@ use surgeist_html::{
     accounting::{HtmlChange, HtmlChargedError, HtmlResource, HtmlWork},
     bounded::construction::{
         HtmlConstructionBank, HtmlConstructionBankGrowth, HtmlConstructionChange,
-        HtmlConstructionGrowthRecord, HtmlConstructionLease, HtmlConstructionRecordError,
-        HtmlConstructionStorage, HtmlRecordAdmission,
+        HtmlConstructionGrowthRecord, HtmlConstructionRecordError, HtmlConstructionStorage,
+        HtmlRecordAdmission,
     },
     construction::{HtmlConstructionResult, HtmlDocumentMode, HtmlShadowRootProperties},
     values::{OrderedAttributes, QualifiedName},
@@ -437,21 +437,15 @@ impl Charge<HtmlWork, HtmlResource> for SessionCharge<'_> {
     }
 }
 
-/// What the parse holds for the published arena: publishes the records and returns the result and
-/// the lease that takes the storage back. A refusal hands the storage back with the session
-/// error.
-#[expect(
-    clippy::result_large_err,
-    reason = "a refusal hands the complete storage back without boxing it"
-)]
+/// Publishes the records and returns the result. A refusal hands the storage back with the session
+/// error, so the session keeps its records and releases them as it would after any refused step.
 pub(super) fn publish_records(
     control: &mut ParseControl,
     identity: &ControlIdentity,
     holds: &mut StorageHolds,
     storage: HtmlConstructionStorage,
     root: &HtmlBuilderNode,
-) -> Result<(HtmlConstructionResult, HtmlConstructionLease), (HtmlConstructionStorage, SessionError)>
-{
+) -> Result<HtmlConstructionResult, (HtmlConstructionStorage, SessionError)> {
     let mut admission = RecordAdmission::new(control, identity, holds, &[]);
     match storage.publish(root, &mut admission) {
         Ok(published) => Ok(published),

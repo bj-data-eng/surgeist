@@ -10,11 +10,8 @@
 //! A fresh childless node, or a template with only its empty contents, joins below its parent at
 //! one known depth and walks nothing.
 
+use super::shape::{next_edge, owning_parent, structural_parent, walk_budget};
 use super::*;
-use crate::internal::construction::bounded::operations::depth::{
-    next_edge, owning_parent, walk_budget,
-};
-use crate::internal::construction::bounded::operations::structural_parent;
 
 /// Where a moved subtree goes.
 #[derive(Clone, Copy, Debug)]
@@ -107,25 +104,28 @@ impl DepthPlan {
         }
     }
 
-    /// Places the planned records at their planned depths. Nothing here can refuse.
-    pub(super) fn apply(&self, arena: &mut Arena) {
+    /// Places the planned records at their planned depths. Planning read every record placed
+    /// here, so the unknown-node and conflict defects are the only failures, and they are
+    /// returned.
+    pub(super) fn apply(&self, arena: &mut Arena) -> Result<(), HtmlConstructionError> {
         match &self.plan {
             Plan::Fast { node, depth, .. } => {
-                arena.place(*node, *depth);
+                arena.place(*node, *depth)?;
                 if let Some(TemplateContents::Owned(contents)) = arena
                     .records
                     .get(node.position())
                     .and_then(|record| record.template_contents)
                 {
-                    arena.place(contents, depth.saturating_add(1));
+                    arena.place(contents, plus(*depth, 1)?)?;
                 }
             }
             Plan::Shifts { shifts, skip } => {
                 for shift in shifts.iter().flatten().filter(|shift| shift.walked()) {
-                    arena.relocate_subtree(shift.root, shift.to, *skip);
+                    arena.relocate_subtree(shift.root, shift.to, *skip)?;
                 }
             }
         }
+        Ok(())
     }
 }
 

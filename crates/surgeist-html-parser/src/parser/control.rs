@@ -397,10 +397,6 @@ pub(crate) struct ParseControl {
     /// has retired everything the owner holds.
     #[cfg(test)]
     construction_retire_fault: bool,
-    /// Makes the next construction-owner recovery report a refusal after it
-    /// has taken the storage back and retired the publication wrapper.
-    #[cfg(test)]
-    construction_recovery_fault: bool,
     /// Remaining forced refusals per cleanup-walk site, and how many have
     /// been issued so far.
     #[cfg(test)]
@@ -563,8 +559,6 @@ impl ParseControl {
             shared_release_fault: false,
             #[cfg(test)]
             construction_retire_fault: false,
-            #[cfg(test)]
-            construction_recovery_fault: false,
             #[cfg(test)]
             walk_refusals: [0; 3],
             #[cfg(test)]
@@ -809,16 +803,6 @@ impl ParseControl {
     #[cfg(test)]
     pub(crate) fn take_construction_retire_fault(&mut self) -> bool {
         std::mem::take(&mut self.construction_retire_fault)
-    }
-    /// Forces the next construction-owner recovery to report a refusal once
-    /// the storage is back and the wrapper is retired.
-    #[cfg(test)]
-    pub(crate) fn refuse_next_construction_recovery(&mut self) {
-        self.construction_recovery_fault = true;
-    }
-    #[cfg(test)]
-    pub(crate) fn take_construction_recovery_fault(&mut self) -> bool {
-        std::mem::take(&mut self.construction_recovery_fault)
     }
     /// Makes the next `count` steps of a cleanup walk refuse once their work
     /// is done. The first refusal issued is reported as a wrong token, the

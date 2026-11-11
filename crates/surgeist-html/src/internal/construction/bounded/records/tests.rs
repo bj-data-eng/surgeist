@@ -185,7 +185,10 @@ fn children(storage: &HtmlConstructionStorage, node: &HtmlBuilderNode) -> Vec<us
 }
 /// The logical state of the storage: what a refused operation must leave as it was.
 fn snapshot(storage: &HtmlConstructionStorage) -> Vec<String> {
-    let arena = &storage.arena;
+    arena_snapshot(&storage.arena)
+}
+/// The logical state of an arena.
+fn arena_snapshot(arena: &Arena) -> Vec<String> {
     let mut rows = vec![format!("{:?}", arena.usage)];
     for (index, record) in arena.records.iter().enumerate() {
         rows.push(format!(
@@ -704,7 +707,7 @@ fn a_publication_validates_the_tree_and_hands_the_storage_back_when_refused() {
     }
     let before = snapshot(&storage);
     let mut meter = Meter::default();
-    let Ok((result, lease)) = storage.publish(&root, &mut meter) else {
+    let Ok(result) = storage.publish(&root, &mut meter) else {
         panic!("publication refused");
     };
     assert_eq!(result.len(), 3);
@@ -712,11 +715,8 @@ fn a_publication_validates_the_tree_and_hands_the_storage_back_when_refused() {
     assert_eq!(meter.growths.len(), 1);
     assert_eq!(meter.growths[0].bank(), HtmlConstructionBank::Wrapper);
     assert!(meter.changes.is_empty());
-    let Ok(recovery) = HtmlConstructionLease::try_recover(result, lease) else {
-        panic!("the sole owner recovers the storage");
-    };
-    let (recovered, _) = recovery.into_parts();
-    assert_eq!(snapshot(&recovered), before);
+    // The result holds the records exactly as the storage did.
+    assert_eq!(arena_snapshot(result.arena()), before);
 }
 
 /// Runs `operation` with a consumer that refuses at each admission point in turn, and checks that
@@ -960,20 +960,14 @@ fn every_operation_refused_at_each_admission_point_leaves_the_storage_as_it_was(
             storage.attach_template_shadow(template, parent, shadow, meter)
         },
     );
-    // The publication hands the storage back to be recovered.
+    // A refused publication hands the storage back as it was.
     sweep(tree, |storage, [root, ..], meter| {
         let taken = std::mem::replace(
             storage,
             ok(HtmlConstructionStorage::new(&mut Meter::default())),
         );
         match taken.publish(root, meter) {
-            Ok((result, lease)) => {
-                let Ok(recovery) = HtmlConstructionLease::try_recover(result, lease) else {
-                    panic!("the sole owner recovers the storage");
-                };
-                *storage = recovery.into_parts().0;
-                Ok(())
-            }
+            Ok(_) => Ok(()),
             Err(refusal) => {
                 let (back, error) = refusal.into_parts();
                 *storage = back;
@@ -1202,7 +1196,7 @@ fn histogram_is_exact(arena: &Arena) -> bool {
 /// Checks every cached depth, the usage depth and the histogram against depths recounted from
 /// each record's own parent or owner.
 fn assert_exact(arena: &Arena, context: &str) {
-    use crate::internal::construction::bounded::operations::depth::owning_parent;
+    use super::shape::owning_parent;
     let recount = |start: NodeIx| {
         let (mut index, mut depth) = (start, 0usize);
         while let Some(parent) = arena.records.get(index.position()).and_then(owning_parent) {
@@ -1408,4 +1402,242 @@ fn appending_a_fresh_node_visits_the_same_records_at_every_fanout_and_depth() {
     // The visits are the operands, the shallow check and the placement, and no more.
     assert_eq!(base_wide[VISIT], 2 + 2 + 3);
     assert_eq!(base_deep, base_wide);
+}
+
+/// The records written by inserting a fresh element before the child at `place` of `fanout`
+/// children, or last when `place == fanout`, with room in the child order.
+fn insert_writes(fanout: usize, place: usize) -> u64 {
+    let mut storage = storage();
+    let root = ok(storage.create_fragment(&mut Meter::default()));
+    ok(storage.reserve_records(fanout + 2, &mut Meter::default()));
+    let mut children = Vec::new();
+    for _ in 0..fanout {
+        let child = element(&mut storage, "x");
+        insert(&mut storage, &child, &root);
+        children.push(child);
+    }
+    assert!(
+        storage.node(&root).unwrap().children().len() < 64,
+        "the child order has room for one more entry"
+    );
+    let fresh = element(&mut storage, "fresh");
+    let mut meter = Meter::default();
+    ok(storage.insert(&fresh, &root, children.get(place), &mut meter));
+    assert!(meter.growths.is_empty(), "the insertion grew a bank");
+    meter.work[WRITE]
+}
+
+#[test]
+fn inserting_at_a_place_writes_the_entries_shifted_towards_the_nearer_end() {
+    // A deque opens a place by moving the entries between it and the nearer end, so inserting
+    // before the child at place `p` of `n` entries moves the lesser of `p` and `n - p` of them,
+    // one write each, and every other write of the insertion is the same at every place.
+    let fanout = 60;
+    let base = insert_writes(fanout, 0);
+    for place in [1, 7, 29, 30, 31, 53, 59, 60] {
+        let moved = place.min(fanout - place) as u64;
+        assert_eq!(
+            insert_writes(fanout, place),
+            base + moved,
+            "inserting before the child at place {place} of {fanout}"
+        );
+    }
+}
+
+/// A fragment `root` with the ordinary children `a` (position 1) and `b` (position 2).
+fn membership_tree() -> (HtmlConstructionStorage, HtmlBuilderNode) {
+    let mut storage = storage();
+    let root = ok(storage.create_fragment(&mut Meter::default()));
+    for local in ["a", "b"] {
+        let child = element(&mut storage, local);
+        insert(&mut storage, &child, &root);
+    }
+    (storage, root)
+}
+
+/// The cause with which publishing `root` is refused, with the storage the refusal hands back.
+fn publish_refusal(
+    storage: HtmlConstructionStorage,
+    root: &HtmlBuilderNode,
+) -> (HtmlConstructionStorage, HtmlConstructionCause) {
+    let Err(refusal) = storage.publish(root, &mut Meter::default()) else {
+        panic!("the publication was not refused");
+    };
+    let (storage, error) = refusal.into_parts();
+    match error {
+        HtmlChargedError::Faulted(error) => (storage, error.cause()),
+        HtmlChargedError::Stopped(Refused) => panic!("the meter refused nothing"),
+    }
+}
+
+#[test]
+fn a_publication_accepts_each_child_listed_exactly_once_whatever_stale_counts_say() {
+    let (mut storage, root) = membership_tree();
+    // A count left by an earlier publication is never trusted.
+    for record in &mut storage.arena.records {
+        record.publish_found = 2;
+    }
+    let result = ok(storage
+        .publish(&root, &mut Meter::default())
+        .map_err(|refusal| refusal.into_parts().1));
+    assert_eq!(result.len(), 3);
+}
+
+#[test]
+fn a_publication_refuses_a_child_listed_twice_and_a_later_one_never_trusts_its_counts() {
+    let (mut storage, root) = membership_tree();
+    let listed = storage.arena.records[0].children.clone();
+    storage.arena.records[0].children =
+        VecDeque::from([NodeIx::at(1), NodeIx::at(1), NodeIx::at(2)]);
+    let (mut storage, cause) = publish_refusal(storage, &root);
+    assert_eq!(cause, HtmlConstructionCause::ParentChildConflict);
+    // The refusal left its counts written; mending the list lets the next publication succeed.
+    storage.arena.records[0].children = listed;
+    let published = storage.publish(&root, &mut Meter::default());
+    assert!(published.is_ok());
+}
+
+#[test]
+fn a_publication_refuses_a_child_missing_from_its_parents_list_despite_a_stale_count() {
+    let (mut storage, root) = membership_tree();
+    storage.arena.records[0].children = VecDeque::from([NodeIx::at(1)]);
+    storage.arena.records[2].publish_found = 1;
+    let (_, cause) = publish_refusal(storage, &root);
+    assert_eq!(cause, HtmlConstructionCause::ParentChildConflict);
+}
+
+#[test]
+fn a_publication_refuses_a_child_listed_only_by_another_parent() {
+    // `b` names the root as its parent but only `a` lists it.
+    let (mut storage, root) = membership_tree();
+    storage.arena.records[0].children = VecDeque::from([NodeIx::at(1)]);
+    storage.arena.records[1].children = VecDeque::from([NodeIx::at(2)]);
+    let (_, cause) = publish_refusal(storage, &root);
+    assert_eq!(cause, HtmlConstructionCause::ParentChildConflict);
+}
+
+/// The planned writes of an order edit that no longer find what planning found are refused before
+/// the writes, with the records as they were.
+#[test]
+fn an_order_edit_that_no_longer_finds_its_planned_places_is_refused_before_any_write() {
+    use super::order::Edit;
+    let (mut storage, _root) = membership_tree();
+    let (a, b) = (NodeIx::at(1), NodeIx::at(2));
+    // `b` leaves the root's order for its end: the place it is planned to leave must hold it.
+    let planned = Edit {
+        old_parent: Some(NodeIx::FIRST),
+        old_position: 1,
+        insertion_position: 1,
+    };
+    // The root's order has room for the entry it gets back.
+    storage.arena.records[0].children.reserve(4);
+    assert_eq!(
+        storage.verify_order(b, Some(NodeIx::FIRST), &planned),
+        Ok(())
+    );
+    let before = snapshot(&storage);
+    for (edit, cause) in [
+        (
+            Edit {
+                old_position: 0,
+                ..planned
+            },
+            HtmlConstructionCause::ParentChildConflict,
+        ),
+        (
+            Edit {
+                insertion_position: 2,
+                ..planned
+            },
+            HtmlConstructionCause::ParentChildConflict,
+        ),
+    ] {
+        assert_eq!(
+            storage.verify_order(b, Some(NodeIx::FIRST), &edit),
+            Err(cause.error())
+        );
+    }
+    // A parent past every record is the unknown-node defect, and a full order is a capacity
+    // mismatch.
+    assert_eq!(
+        storage.verify_order(
+            a,
+            Some(NodeIx::at(u32::MAX as usize - 1)),
+            &Edit {
+                old_parent: None,
+                ..Edit::default()
+            }
+        ),
+        Err(HtmlConstructionCause::UnknownNode.error())
+    );
+    let children = &mut storage.arena.records[0].children;
+    while children.len() < children.capacity() {
+        children.push_back(NodeIx::FIRST);
+    }
+    let full = snapshot(&storage);
+    assert_eq!(
+        storage.verify_order(
+            a,
+            Some(NodeIx::FIRST),
+            &Edit {
+                old_parent: None,
+                insertion_position: 0,
+                ..Edit::default()
+            }
+        ),
+        Err(HtmlConstructionCause::CapacityMismatch.error())
+    );
+    assert_eq!(snapshot(&storage), full);
+    assert_ne!(full, before, "the order was filled to make it full");
+}
+
+#[test]
+fn rolling_back_a_native_append_removes_its_records_from_the_histogram() {
+    let mut storage = storage();
+    ok(storage.create_fragment(&mut Meter::default()));
+    let (len, usage) = (storage.len(), storage.usage());
+    assert!(histogram_is_exact(&storage.arena));
+    // A template creates two records, at depths 0 and 1.
+    element(&mut storage, "template");
+    assert_eq!(storage.len(), len + 2);
+    assert!(histogram_is_exact(&storage.arena));
+    storage.rollback_native_append(len, usage).unwrap();
+    assert_eq!(storage.len(), len);
+    assert_eq!(storage.usage(), usage);
+    assert!(histogram_is_exact(&storage.arena));
+    assert_eq!(storage.arena.population(0), 1);
+}
+
+#[test]
+fn a_shared_string_is_held_as_it_is_without_a_bank_or_a_copy() {
+    let text = DocumentString::from_utf16(utf16("shared text"));
+    let mut storage = storage();
+    let mut shared = Meter::default();
+    let node = ok(storage.create_shared_text(text.clone(), &mut shared));
+    let mut copied = Meter::default();
+    ok(storage.create_text(text.code_units(), &mut copied));
+    // The record holds the caller's string itself.
+    let Some(crate::internal::construction::ConstructionNodeKind::Text(held)) =
+        storage.node(&node).ok().map(|node| node.kind())
+    else {
+        panic!("a text record");
+    };
+    assert_eq!(held.code_units(), text.code_units());
+    let NodeContent::Text(stored) = &storage.arena.records[0].kind else {
+        panic!("a text record");
+    };
+    assert!(stored.shares_storage_with(&text));
+    assert_eq!(storage.usage().utf16_units(), 2 * text.len());
+    // Only the copy asks for a bank for its units and copies them, in runs of at most 256 bytes.
+    let banks = |meter: &Meter| {
+        meter
+            .growths
+            .iter()
+            .filter(|growth| growth.bank() == HtmlConstructionBank::Text)
+            .count()
+    };
+    assert_eq!((banks(&shared), banks(&copied)), (0, 1));
+    let units_bytes = (text.len() * size_of::<u16>()) as u64;
+    assert_eq!(copied.work[COPY] - shared.work[COPY], units_bytes);
+    assert_eq!(copied.work[PROVIDER] - shared.work[PROVIDER], 1);
 }

@@ -47,10 +47,12 @@ mod association;
 mod depth;
 mod order;
 mod publish;
+mod shape;
 #[cfg(test)]
 mod tests;
 
 pub use publish::HtmlConstructionPublishRefusal;
+pub(in crate::internal::construction) use shape::{attribute_units, name_units};
 
 /// The units one charge covers when a creation copies a run of units, so that a consumer that
 /// polls at its charges polls within every quantum of the work.
@@ -292,12 +294,8 @@ impl HtmlConstructionStorage {
         let serial = issue_storage_serial(&NEXT_STORAGE_SERIAL).map_err(fault)?;
         Ok(Self {
             arena: Arena {
-                identity: Arc::new(Identity),
                 records: Vec::new(),
                 usage: HtmlConstructionUsage::default(),
-                records_generation: 0,
-                wrapper_generation: 0,
-                temporary_generation: 0,
                 serial,
                 attribute_revision: 0,
             },
@@ -383,8 +381,29 @@ impl HtmlConstructionStorage {
             .map_err(stopped)?;
         let needed = minus(growth.minimum_capacity, len).map_err(faulted)?;
         let spare = minus(chosen, len).map_err(faulted)?;
-        let mut outcome = reserve(self, spare);
-        if !outcome.ok && chosen > growth.minimum_capacity {
+        // A test arms a deterministic refusal of the allocator for the spare room: every growth
+        // is counted as one request, and only one that asks for more than it needs is refused.
+        #[cfg(test)]
+        let spare_refused = crate::internal::amortized::fault::refuses_next_reservation()
+            && chosen > growth.minimum_capacity;
+        #[cfg(not(test))]
+        let spare_refused = false;
+        // A test can also refuse every reservation of a child order, the retry included.
+        #[cfg(test)]
+        let children_refused = matches!(growth.bank, HtmlConstructionBank::Children { .. })
+            && crate::internal::amortized::fault::refuses_children();
+        #[cfg(not(test))]
+        let children_refused = false;
+        let refused = spare_refused || children_refused;
+        let mut outcome = if refused {
+            Reserved {
+                ok: false,
+                reached: growth.before,
+            }
+        } else {
+            reserve(self, spare)
+        };
+        if !outcome.ok && chosen > growth.minimum_capacity && !children_refused {
             // The retry is a second request to the allocator.
             Work {
                 provider_calls: 1,
@@ -554,8 +573,32 @@ impl HtmlConstructionStorage {
     }
 }
 
-/// The values of a record a creation makes, before it is stored.
-enum Created<'a> {
+/// Where the units of a leaf string come from: a slice the storage copies into a string of its
+/// own, or a string the caller made that the record holds as it is.
+pub(in crate::internal::construction) enum Units<'a> {
+    Copied(&'a [u16]),
+    Shared(DocumentString),
+}
+impl Units<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Copied(units) => units.len(),
+            Self::Shared(string) => string.len(),
+        }
+    }
+}
+
+/// A leaf string after its capacity was admitted: the units still to copy with the growth of the
+/// bank they go to and the capacity chosen for it, or the string that needs no copy.
+enum Admitted<'a> {
+    Copied(&'a [u16], HtmlConstructionBankGrowth, usize),
+    Shared(DocumentString),
+}
+
+/// The values of a record a creation makes, before it is stored. A leaf holds its strings as `S`,
+/// so that each stage of the creation (the units given, the capacity admitted for each, the string
+/// built) is a mapping of the same shape, and no stage looks a string up by position.
+enum Created<'a, S> {
     Document(HtmlDocumentMode),
     Fragment,
     ShadowContents(HtmlShadowRootProperties),
@@ -565,31 +608,62 @@ enum Created<'a> {
         link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
         template: bool,
     },
-    Text(&'a [u16]),
-    Comment(&'a [u16]),
-    ProcessingInstruction(&'a [u16], &'a [u16]),
-    Doctype(&'a [u16], Option<&'a [u16]>, Option<&'a [u16]>),
+    Text(S),
+    Comment(S),
+    ProcessingInstruction(S, S),
+    Doctype(S, Option<S>, Option<S>),
 }
 
-impl<'a> Created<'a> {
+impl<'a, S> Created<'a, S> {
     /// The strings of a leaf, in the order its record holds them.
-    fn strings(&self) -> [Option<&'a [u16]>; 3] {
-        match *self {
-            Self::Text(units) | Self::Comment(units) => [Some(units), None, None],
+    fn strings(&self) -> [Option<&S>; 3] {
+        match self {
+            Self::Text(string) | Self::Comment(string) => [Some(string), None, None],
             Self::ProcessingInstruction(target, data) => [Some(target), Some(data), None],
-            Self::Doctype(name, public, system) => [Some(name), public, system],
+            Self::Doctype(name, public, system) => [Some(name), public.as_ref(), system.as_ref()],
             _ => [None; 3],
         }
     }
     fn template(&self) -> bool {
         matches!(self, Self::Element { template: true, .. })
     }
+    /// The same creation with each string mapped, in the order the record holds them. The first
+    /// refusal ends the mapping.
+    fn try_map<T, E>(self, mut map: impl FnMut(S) -> Result<T, E>) -> Result<Created<'a, T>, E> {
+        Ok(match self {
+            Self::Document(mode) => Created::Document(mode),
+            Self::Fragment => Created::Fragment,
+            Self::ShadowContents(properties) => Created::ShadowContents(properties),
+            Self::Element {
+                name,
+                attributes,
+                link_flags,
+                template,
+            } => Created::Element {
+                name,
+                attributes,
+                link_flags,
+                template,
+            },
+            Self::Text(string) => Created::Text(map(string)?),
+            Self::Comment(string) => Created::Comment(map(string)?),
+            Self::ProcessingInstruction(target, data) => {
+                let target = map(target)?;
+                Created::ProcessingInstruction(target, map(data)?)
+            }
+            Self::Doctype(name, public, system) => {
+                let name = map(name)?;
+                let public = public.map(&mut map).transpose()?;
+                Created::Doctype(name, public, system.map(&mut map).transpose()?)
+            }
+        })
+    }
 }
 
 impl HtmlConstructionStorage {
     fn create<A: HtmlRecordAdmission>(
         &mut self,
-        created: Created<'_>,
+        created: Created<'_, Units<'_>>,
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
         let before = self.arena.usage;
@@ -626,13 +700,10 @@ impl HtmlConstructionStorage {
             Created::Element {
                 name, attributes, ..
             } => {
-                let mut units = operations::name_units(name).map_err(faulted)?;
+                let mut units = name_units(name).map_err(faulted)?;
                 for attribute in attributes.iter() {
-                    units = plus(
-                        units,
-                        operations::attribute_units(attribute).map_err(faulted)?,
-                    )
-                    .map_err(faulted)?;
+                    units = plus(units, attribute_units(attribute).map_err(faulted)?)
+                        .map_err(faulted)?;
                 }
                 units
             }
@@ -658,7 +729,12 @@ impl HtmlConstructionStorage {
         after.depth = after.depth.max(usize::from(template));
         let change = HtmlConstructionChange { before, after };
         let records_growth = self.records_growth(required);
-        let string_count = strings.iter().flatten().count();
+        // Only a string that is copied is a bank the creation grows.
+        let string_count = strings
+            .iter()
+            .flatten()
+            .filter(|string| matches!(string, Units::Copied(_)))
+            .count();
         let growths = plus(usize::from(records_growth.is_some()), string_count).map_err(faulted)?;
         admission
             .record_largest(
@@ -684,7 +760,10 @@ impl HtmlConstructionStorage {
         }
         .charge(admission)?;
         for string in strings.iter().flatten() {
-            for chunk in string.chunks(CHUNK_UNITS) {
+            let Units::Copied(units) = string else {
+                continue;
+            };
+            for chunk in units.chunks(CHUNK_UNITS) {
                 Work {
                     copied_bytes: size_of_val(chunk),
                     record_writes: 1,
@@ -697,34 +776,42 @@ impl HtmlConstructionStorage {
         let records_chosen = records_growth
             .map(|growth| Self::admit_bank(growth, admission))
             .transpose()?;
-        let mut text_chosen = [None; 3];
-        for (slot, string) in text_chosen.iter_mut().zip(strings) {
-            if let Some(string) = string {
+        let admitted = created.try_map(|units| match units {
+            Units::Shared(string) => {
+                Ok::<_, HtmlConstructionRecordError<A::Stop>>(Admitted::Shared(string))
+            }
+            Units::Copied(units) => {
                 let growth = HtmlConstructionBankGrowth {
                     bank: HtmlConstructionBank::Text,
                     before: HtmlConstructionBankCapacity::default(),
-                    minimum_capacity: string.len(),
+                    minimum_capacity: units.len(),
                     element_size: size_of::<u16>(),
                     wrapper_bytes: size_of::<Vec<u16>>(),
                 };
-                *slot = Some((growth, Self::admit_bank(growth, admission)?));
+                Ok(Admitted::Copied(
+                    units,
+                    growth,
+                    Self::admit_bank(growth, admission)?,
+                ))
             }
-        }
+        })?;
         if let (Some(growth), Some(chosen)) = (records_growth, records_chosen) {
             self.grow(growth, chosen, admission, |storage, additional| {
                 storage.reserve_record_bank(additional)
             })?;
         }
         // Each string is built where it is reserved, so every allocation of a leaf, its units and
-        // the shared handle that holds them, comes before the last step that can refuse.
-        let mut built: [Option<DocumentString>; 3] = [None, None, None];
-        for ((slot, made), string) in text_chosen.iter().zip(built.iter_mut()).zip(strings) {
-            let (Some((growth, chosen)), Some(units)) = (*slot, string) else {
-                continue;
+        // the shared handle that holds them, comes before the last step that can refuse. The
+        // reservation goes through `grow` like any other, on a vector the storage does not hold
+        // yet.
+        let built = admitted.try_map(|admitted| {
+            let (units, growth, chosen) = match admitted {
+                Admitted::Shared(string) => {
+                    return Ok::<_, HtmlConstructionRecordError<A::Stop>>(string);
+                }
+                Admitted::Copied(units, growth, chosen) => (units, growth, chosen),
             };
             let mut reserved = Vec::new();
-            // The reservation goes through `grow` like any other, on a vector the storage does not
-            // hold yet.
             self.grow(growth, chosen, admission, |_, additional| {
                 reserved = Vec::new();
                 let ok = reserved.try_reserve_exact(additional).is_ok();
@@ -737,15 +824,9 @@ impl HtmlConstructionStorage {
                 }
             })?;
             reserved.extend_from_slice(units);
-            *made = Some(DocumentString::from_utf16(reserved));
-        }
-        let take = |built: &mut [Option<DocumentString>; 3], index: usize| {
-            built
-                .get_mut(index)
-                .and_then(Option::take)
-                .ok_or(HtmlConstructionCause::OperationNotReady.error())
-        };
-        let (content, properties, document) = match created {
+            Ok(DocumentString::from_utf16(reserved))
+        })?;
+        let (content, properties, document) = match built {
             Created::Document(mode) => (NodeContent::Document(mode), None, true),
             Created::Fragment => (NodeContent::Fragment, None, false),
             Created::ShadowContents(properties) => (NodeContent::Fragment, Some(properties), false),
@@ -763,36 +844,15 @@ impl HtmlConstructionStorage {
                 None,
                 false,
             ),
-            Created::Text(_) => (
-                NodeContent::Text(take(&mut built, 0).map_err(faulted)?),
+            Created::Text(text) => (NodeContent::Text(text), None, false),
+            Created::Comment(comment) => (NodeContent::Comment(comment), None, false),
+            Created::ProcessingInstruction(target, data) => (
+                NodeContent::ProcessingInstruction(HtmlProcessingInstruction::new(target, data)),
                 None,
                 false,
             ),
-            Created::Comment(_) => (
-                NodeContent::Comment(take(&mut built, 0).map_err(faulted)?),
-                None,
-                false,
-            ),
-            Created::ProcessingInstruction(..) => (
-                NodeContent::ProcessingInstruction(HtmlProcessingInstruction::new(
-                    take(&mut built, 0).map_err(faulted)?,
-                    take(&mut built, 1).map_err(faulted)?,
-                )),
-                None,
-                false,
-            ),
-            Created::Doctype(..) => (
-                NodeContent::Doctype(HtmlDoctype::new(
-                    take(&mut built, 0).map_err(faulted)?,
-                    strings[1]
-                        .map(|_| take(&mut built, 1))
-                        .transpose()
-                        .map_err(faulted)?,
-                    strings[2]
-                        .map(|_| take(&mut built, 2))
-                        .transpose()
-                        .map_err(faulted)?,
-                )),
+            Created::Doctype(name, public, system) => (
+                NodeContent::Doctype(HtmlDoctype::new(name, public, system)),
                 None,
                 false,
             ),
@@ -814,16 +874,16 @@ impl HtmlConstructionStorage {
         });
         admission.record_change(self, change).map_err(stopped)?;
         // The records exist and the bank has room for them: the pushes below allocate nothing.
-        let arena = &mut self.arena;
-        arena.records.push(record);
-        arena.populate(0);
+        let serial = self.arena.serial;
+        self.arena.records.push(record);
+        self.arena.populate(0).map_err(faulted)?;
         if let Some(fragment) = contents_record {
-            arena.records.push(fragment);
-            arena.populate(1);
+            self.arena.records.push(fragment);
+            self.arena.populate(1).map_err(faulted)?;
         }
-        arena.usage = after;
+        self.arena.usage = after;
         Ok(HtmlBuilderNode {
-            tree: arena.serial,
+            tree: serial,
             index: first,
         })
     }
@@ -894,7 +954,7 @@ impl HtmlConstructionStorage {
         units: &[u16],
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
-        self.create(Created::Text(units), admission)
+        self.create(Created::Text(Units::Copied(units)), admission)
     }
 
     /// Creates a detached comment record holding a copy of `units`.
@@ -903,7 +963,7 @@ impl HtmlConstructionStorage {
         units: &[u16],
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
-        self.create(Created::Comment(units), admission)
+        self.create(Created::Comment(Units::Copied(units)), admission)
     }
 
     /// Creates a detached processing-instruction record holding copies of `target` and `data`,
@@ -914,7 +974,10 @@ impl HtmlConstructionStorage {
         data: &[u16],
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
-        self.create(Created::ProcessingInstruction(target, data), admission)
+        self.create(
+            Created::ProcessingInstruction(Units::Copied(target), Units::Copied(data)),
+            admission,
+        )
     }
 
     /// Creates a detached doctype record holding copies of `name` and of the identifiers that are
@@ -926,6 +989,65 @@ impl HtmlConstructionStorage {
         system_id: Option<&[u16]>,
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
-        self.create(Created::Doctype(name, public_id, system_id), admission)
+        self.create(
+            Created::Doctype(
+                Units::Copied(name),
+                public_id.map(Units::Copied),
+                system_id.map(Units::Copied),
+            ),
+            admission,
+        )
+    }
+
+    /// Creates a detached text record that holds `text` as it is, without copying its units.
+    pub(in crate::internal::construction) fn create_shared_text<A: HtmlRecordAdmission>(
+        &mut self,
+        text: DocumentString,
+        admission: &mut A,
+    ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
+        self.create(Created::Text(Units::Shared(text)), admission)
+    }
+
+    /// Creates a detached comment record that holds `comment` as it is.
+    pub(in crate::internal::construction) fn create_shared_comment<A: HtmlRecordAdmission>(
+        &mut self,
+        comment: DocumentString,
+        admission: &mut A,
+    ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
+        self.create(Created::Comment(Units::Shared(comment)), admission)
+    }
+
+    /// Creates a detached processing-instruction record that holds the strings of `instruction`
+    /// as they are.
+    pub(in crate::internal::construction) fn create_shared_processing_instruction<
+        A: HtmlRecordAdmission,
+    >(
+        &mut self,
+        instruction: HtmlProcessingInstruction,
+        admission: &mut A,
+    ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
+        self.create(
+            Created::ProcessingInstruction(
+                Units::Shared(instruction.target().clone()),
+                Units::Shared(instruction.data().clone()),
+            ),
+            admission,
+        )
+    }
+
+    /// Creates a detached doctype record that holds the strings of `doctype` as they are.
+    pub(in crate::internal::construction) fn create_shared_doctype<A: HtmlRecordAdmission>(
+        &mut self,
+        doctype: HtmlDoctype,
+        admission: &mut A,
+    ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
+        self.create(
+            Created::Doctype(
+                Units::Shared(doctype.name().clone()),
+                doctype.public_id().cloned().map(Units::Shared),
+                doctype.system_id().cloned().map(Units::Shared),
+            ),
+            admission,
+        )
     }
 }

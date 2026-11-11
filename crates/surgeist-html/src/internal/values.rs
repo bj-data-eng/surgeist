@@ -204,13 +204,6 @@ impl OrderedAttributes {
         &mut self.attributes
     }
 
-    /// Replaces the whole list of an element of a construction storage, advancing the storage's
-    /// attribute `revision` as [`construction_backing_mut`](Self::construction_backing_mut) does.
-    pub(crate) fn replace_in_construction(&mut self, attributes: Self, revision: &mut u64) {
-        *revision = revision.wrapping_add(1);
-        *self = attributes;
-    }
-
     /// Reserves exactly `additional` slots in a uniquely held backing and reports the capacity it
     /// has afterwards, or `None` when the backing is shared. Capacity is not content, so the
     /// revision does not advance.

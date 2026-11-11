@@ -1,6 +1,5 @@
-//! Constructor facts survive the actual original controlled owner and recovery.
+//! Constructor facts survive the actual original controlled owner and its publication.
 use super::*;
-use crate::html::support::{cause, has_cause};
 use surgeist_html::construction::{
     HtmlConstructionLimits, HtmlDocument, HtmlFocusedAreaDesignation, HtmlFragment,
 };
@@ -41,11 +40,11 @@ fn native_constructor_and_non_document_readbacks_have_distinct_meanings() {
 }
 
 #[test]
-fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_reseal() {
+fn controlled_constructor_fact_survives_mode_edit_detachment_and_publication() {
     let owner = storage();
     let (owner, document) = create(
         owner,
-        HtmlConstructionCommand::CreateDocument {
+        Make::Document {
             mode: HtmlDocumentMode::NoQuirks,
         },
     );
@@ -61,41 +60,22 @@ fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_res
     let (owner, child) = create(owner, element("div"));
     let (owner, _) = change(
         owner,
-        HtmlConstructionCommand::Insert {
+        Op::Insert {
             node: child,
             parent: document,
             before: None,
         },
     );
-    let (value, lease) = publish(owner, document);
-    let alias = value.clone();
-    let mut value = Some(value);
-    let mut lease = Some(lease);
-    assert!(has_cause(
-        slots::recover(&mut value, &mut lease).err().as_ref(),
-        cause::SHARED_ALLOCATION_ALIASED
-    ));
-    assert_eq!(
-        alias.node(&id).unwrap().document_focused_area_designation(),
-        Some(HtmlFocusedAreaDesignation::KnownNull)
-    );
-    drop(alias);
-    let (owner, retired_wrapper) = slots::recover(&mut value, &mut lease).unwrap().into_parts();
-    drop(retired_wrapper);
-    let document = owner.node_by_result_id(&id).unwrap().handle();
     let (owner, _) = change(
         owner,
-        HtmlConstructionCommand::SetDocumentMode {
+        Op::SetDocumentMode {
             document,
             mode: HtmlDocumentMode::LimitedQuirks,
         },
     );
-    let (owner, _) = change(owner, HtmlConstructionCommand::Detach { node: child });
-    let (owner, _) = change(
-        owner,
-        HtmlConstructionCommand::ReserveRecords { additional: 32 },
-    );
-    let (value, lease) = publish(owner, document);
+    let (owner, _) = change(owner, Op::Detach { node: child });
+    let (owner, _) = change(owner, Op::ReserveRecords { additional: 32 });
+    let value = publish(owner, document);
     let original = value.node(&id).unwrap();
     assert_eq!(original.id(), id);
     assert_eq!(
@@ -107,42 +87,4 @@ fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_res
         original.document_focused_area_designation(),
         Some(HtmlFocusedAreaDesignation::KnownNull)
     );
-    drop((value, lease));
-}
-
-#[test]
-fn aborted_constructor_does_not_change_existing_owner_and_retirement_still_completes() {
-    let (owner, document) = create(
-        storage(),
-        HtmlConstructionCommand::CreateDocument {
-            mode: HtmlDocumentMode::Quirks,
-        },
-    );
-    let before = owner.usage();
-    let abandoned = ready(
-        owner,
-        HtmlConstructionCommand::CreateDocument {
-            mode: HtmlDocumentMode::NoQuirks,
-        },
-    );
-    let (owner, _, _) = abandoned.abort().unwrap().into_parts();
-    assert_eq!(owner.usage(), before);
-    assert_eq!(
-        owner
-            .node(&document)
-            .unwrap()
-            .as_node()
-            .document_focused_area_designation(),
-        Some(HtmlFocusedAreaDesignation::KnownNull)
-    );
-    let mut retirement = owner.retire();
-    let mut payloads = 0;
-    while let Some(action) = retirement.next_action().unwrap() {
-        payloads += usize::from(matches!(
-            action.description(),
-            HtmlConstructionRetirementDescription::Payload { .. }
-        ));
-        action.perform();
-    }
-    assert_eq!(payloads, 1, "only the committed actual Document exists");
 }

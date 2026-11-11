@@ -50,12 +50,7 @@ impl HtmlTextAdmission for Consumer {
 }
 
 fn text_node(units: &[u16]) -> (HtmlConstructionStorage, HtmlBuilderNode) {
-    create(
-        storage(),
-        HtmlConstructionCommand::Create {
-            leaf: HtmlConstructionLeaf::Text(DocumentString::from_utf16(units.to_vec())),
-        },
-    )
+    create(storage(), Make::Text(units.to_vec()))
 }
 fn units(storage: &HtmlConstructionStorage, node: &HtmlBuilderNode) -> Vec<u16> {
     match storage.node(node).unwrap().kind() {
@@ -86,12 +81,7 @@ fn appended_units_follow_the_text_in_order_and_count_toward_the_usage() {
 
 #[test]
 fn a_node_that_is_not_text_is_refused_and_the_storage_is_unchanged() {
-    let (mut owner, comment) = create(
-        storage(),
-        HtmlConstructionCommand::Create {
-            leaf: HtmlConstructionLeaf::Comment("ab".into()),
-        },
-    );
+    let (mut owner, comment) = create(storage(), Make::Comment(vec![0x61, 0x62]));
     let usage: HtmlConstructionUsage = owner.usage();
     let error = owner
         .append_text(&comment, &[0x63], &mut Consumer::default())

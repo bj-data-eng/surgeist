@@ -249,7 +249,7 @@ pub(crate) struct TextInsertion {
 }
 
 pub(super) struct ReleasedStorage {
-    pub(super) construction: surgeist_html::bounded::construction::HtmlConstructionStorage,
+    pub(super) usage: surgeist_html::construction::HtmlConstructionUsage,
     pub(super) holds: StorageHolds,
     pub(super) payloads: PayloadStorage,
 }

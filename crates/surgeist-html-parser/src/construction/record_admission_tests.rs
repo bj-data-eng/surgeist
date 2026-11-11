@@ -344,17 +344,6 @@ fn a_refused_retirement_still_releases_everything_the_session_holds() {
     crate::construction::tests::storage_zero(&c);
 }
 
-#[test]
-fn a_refused_recovery_still_releases_everything_the_frozen_arena_holds() {
-    use crate::construction::effects::tests::{graph, request};
-    let request = request("<body><div id=a>");
-    let (mut c, mut session, _proof, _nodes) = graph(&request);
-    let mut frozen = session.freeze(&mut c).unwrap();
-    c.refuse_next_construction_recovery();
-    assert_registry_row(frozen.release(&mut c), &c);
-    crate::construction::tests::storage_zero(&c);
-}
-
 // Characterization: a cleanup walk that meets a refusal keeps going, so every other owner is still
 // released or credited, and it reports the first refusal. A test hook makes the credit of the
 // banks refuse after its work, reported as a wrong token.
