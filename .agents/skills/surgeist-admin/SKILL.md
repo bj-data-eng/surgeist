@@ -95,11 +95,11 @@ Create a pull request only when it is ready to be merged: its outcome is
 complete, implemented, independently reviewed with the findings fixed on the
 branch, and verified against current `origin/main`. Complete implementation,
 required independent reviews, and local verification before creation. Keep
-implementation testing and independent engineering reviews local; GitHub's
-required hygiene and CodeQL checks supplement that evidence. Only checks that
-require an existing pull request may remain pending. This rule also applies to
-draft pull requests. With auto-merge enabled, assume the pull
-request can merge as soon as required platform checks pass; do not rely on time
+implementation testing and independent engineering reviews local. GitHub's
+required hygiene checks supplement that evidence. Only checks that require an
+existing pull request may remain pending. This rule also applies to draft pull
+requests. With auto-merge enabled, assume the pull request can merge as soon as
+required platform checks pass; do not rely on time
 after creation to finish work, fix findings, or decide whether it should land.
 Do not open one per commit or step. If an issue is too large for one reviewable
 pull request, split it into parts that are each a complete, independently
@@ -138,11 +138,11 @@ After a rebase, re-run the verification the rebase invalidates.
 
 The default-branch ruleset requires a pull request, allows merge commits only,
 and requires the branch to be up to date with `main` with its required status
-checks passing: "Branch follows branch/<topic>", "One closing keyword per
-issue", "No tool names in text, commits or files", "Analyze (actions)", and
-"CodeQL". CodeQL currently scans Actions workflows. The ruleset rejects direct
-pushes to `main`. Creating a ready pull request starts the required checks. Enable
-auto-merge for that pull request with the merge-commit method only after
+checks passing. The required checks are "Branch follows branch/<topic>",
+"One closing keyword per issue", and "No tool names in text, commits or files".
+The ruleset rejects direct pushes to `main`. Creating a ready pull request
+starts the required checks. Enable auto-merge for that pull request with the
+merge-commit method only after
 confirming its current branch head is ready to land, with all required local
 verification and independent reviews complete. Repository-level availability
 alone does not enable auto-merge for each pull request.
