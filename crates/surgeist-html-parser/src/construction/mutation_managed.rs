@@ -2,7 +2,7 @@
 //! Production attribute edits live in the parent; nothing here is compiled
 //! outside tests.
 use super::*;
-use surgeist_html::values::{DocumentString, Namespace, QualifiedName};
+use surgeist_html::values::{DocumentString, Namespace};
 
 #[derive(Clone, Copy)]
 pub(in crate::construction) enum ManagedFamily {
@@ -409,7 +409,7 @@ impl ParserArenaSession {
         payload_write::<Option<crate::parser::tokenizer::token::Attribute>>(c, 1)?;
         let attr = input.take().expect("qualified original owner");
         let result = (|| {
-            let (name, name_slot) = match storage.register_text(c, attr.name) {
+            let (name, name_slot) = match storage.register_attribute_name(c, attr.name) {
                 Ok(value) => value,
                 Err(error) => {
                     attr.value.release(c)?;
@@ -418,7 +418,7 @@ impl ParserArenaSession {
             };
             let (value, value_slot) = storage.register_text(c, attr.value)?;
             payload_write::<Attribute>(c, 1)?;
-            let incoming = Attribute::new(QualifiedName::new(Namespace::none(), None, name), value);
+            let incoming = Attribute::new(name, value);
             if let Some(position) = position {
                 storage.replace_registered_attribute(
                     c,

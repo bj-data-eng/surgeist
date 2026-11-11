@@ -42,6 +42,11 @@ impl<'a> HtmlElementView<'a> {
     pub fn name(self) -> &'a QualifiedName {
         self.content.name()
     }
+    /// The key of the element's name, which the tests compare with the vocabulary.
+    #[cfg(test)]
+    pub(crate) fn key(self) -> crate::internal::values::element_key::ElementKey {
+        self.content.key()
+    }
     /// The element's attributes in producer order.
     pub fn attributes(self) -> HtmlAttributes<'a> {
         HtmlAttributes {

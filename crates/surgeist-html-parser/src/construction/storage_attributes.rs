@@ -4,7 +4,7 @@
 use super::*;
 use surgeist_html::{
     construction::ConstructionNodeKind,
-    values::{Attribute, DocumentString, Namespace, QualifiedName},
+    values::{Attribute, DocumentString},
 };
 
 #[derive(Clone, Copy)]
@@ -375,7 +375,7 @@ impl SessionStorage {
                 .get_mut(rank)
                 .ok_or_else(|| latch_registry_row(control))?
                 .name = None;
-            let (local, name_ticket) = match self.register_text(control, attribute.name) {
+            let (local, name_ticket) = match self.register_attribute_name(control, attribute.name) {
                 Ok(value) => value,
                 Err(error) => {
                     attribute.value.release(control)?;
@@ -383,15 +383,11 @@ impl SessionStorage {
                 }
             };
             if let Some(candidate) = kept.as_mut_slice_prepaid(control)?.get_mut(rank) {
-                candidate.name = Some(local.clone());
+                candidate.name = Some(local.local_name().clone());
             }
             let (value, value_ticket) = self.register_text(control, attribute.value)?;
             self.holds.acquire_attribute(control)?;
-            stage.push(
-                control,
-                Attribute::new(QualifiedName::new(Namespace::none(), None, local), value),
-                count,
-            )?;
+            stage.push(control, Attribute::new(local, value), count)?;
             self.bind_string(name_ticket, FieldRef::AttributeName(target, position))
                 .map_err(|_| latch_registry_row(control))?;
             self.bind_string(value_ticket, FieldRef::AttributeValue(target, position))

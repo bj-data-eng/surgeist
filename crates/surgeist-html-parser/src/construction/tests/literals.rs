@@ -312,3 +312,30 @@ fn a_copy_of_a_literal_with_an_origin_group_is_refused_one_source_map_entry_shor
         })
     ));
 }
+
+/// An occurrence ticket admits units alone, so its block has other holders and the retirement
+/// check skips the holder count. The ticket that charged the block keeps the check: its block is
+/// held by the occurrence too, and the refusal stands.
+#[test]
+fn only_an_occurrence_ticket_skips_the_holder_check_of_a_retired_row() {
+    let mut c = control();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let storage = session.active_mut().unwrap();
+    let (first, charged) = storage
+        .register_literal(&mut c, Literal::HtmlNamespace)
+        .unwrap();
+    let (second, occurrence) = storage
+        .register_literal(&mut c, Literal::HtmlNamespace)
+        .unwrap();
+    drop((first, second));
+    assert_eq!(
+        storage.releasable_string(&mut c, charged, false),
+        Err(SessionError::AliasedPayload)
+    );
+    assert_eq!(
+        storage.releasable_string(&mut c, occurrence, false),
+        Ok(true)
+    );
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}

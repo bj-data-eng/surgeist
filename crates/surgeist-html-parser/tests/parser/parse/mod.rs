@@ -3,6 +3,7 @@
 mod construction_limits;
 mod diagnostic_cap;
 mod frameset_noscript;
+mod interned_names;
 mod limit_monotonicity;
 mod linear_work;
 mod literal_strings;

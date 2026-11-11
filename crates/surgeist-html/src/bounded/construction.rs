@@ -7,7 +7,7 @@ pub use crate::internal::construction::bounded::attribute_list::{
 pub use crate::internal::construction::bounded::records::{
     HtmlConstructionBank, HtmlConstructionBankCapacity, HtmlConstructionBankGrowth,
     HtmlConstructionChange, HtmlConstructionGrowthRecord, HtmlConstructionPublishRefusal,
-    HtmlConstructionRecordError, HtmlRecordAdmission,
+    HtmlConstructionRecordError, HtmlRecordAdmission, NameId,
 };
 pub use crate::internal::construction::bounded::text_data::{
     HtmlConstructionTextCapacity, HtmlConstructionTextError, HtmlConstructionTextGrowth,

@@ -1,9 +1,11 @@
 //! Allocation of nodes, payload rows and prepared slots in the active session storage.
 
 use super::*;
+#[cfg(test)]
+use surgeist_html::values::QualifiedName;
 use surgeist_html::{
     construction::ConstructionNodeKind,
-    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
+    values::{Attribute, Namespace, OrderedAttributes},
 };
 
 /// The name and attributes of an element that exists before the parse, as a test hands them to the
@@ -137,8 +139,18 @@ impl SessionStorage {
         // Preserve the original node/edge/logical preflight before preparing
         // any new nonce backing; successful elements still bind the slot
         // before their native record can be published.
+        let named;
         let element_name = match &kind {
+            #[cfg(test)]
             NewRecord::Element(name, ..) => Some(name),
+            NewRecord::NamedElement(id, ..) => {
+                named = self
+                    .construction
+                    .name(id)
+                    .map_err(|_| latch_registry_row(control))?
+                    .clone();
+                Some(&named)
+            }
             _ => None,
         };
         let nonce_slot = self.prepare_nonce(control, element_name)?;
@@ -461,24 +473,21 @@ impl SessionStorage {
                 let mut remaining = count;
                 let mut last_name_slot = None;
                 while let Some(attribute) = attributes.try_pop(control)? {
-                    let (local, local_ticket) = match self.register_text(control, attribute.name) {
-                        Ok(value) => value,
-                        Err(error) => {
-                            attribute.value.release(control)?;
-                            return Err(error);
-                        }
-                    };
+                    let (local, local_ticket) =
+                        match self.register_attribute_name(control, attribute.name) {
+                            Ok(value) => value,
+                            Err(error) => {
+                                attribute.value.release(control)?;
+                                return Err(error);
+                            }
+                        };
                     last_name_slot.get_or_insert(local_ticket);
                     let (value, value_ticket) = self.register_text(control, attribute.value)?;
                     self.holds.acquire_attribute(control)?;
                     remaining = remaining
                         .checked_sub(1)
                         .ok_or_else(|| latch_registry_row(control))?;
-                    stage.push(
-                        control,
-                        Attribute::new(QualifiedName::new(Namespace::none(), None, local), value),
-                        count,
-                    )?;
+                    stage.push(control, Attribute::new(local, value), count)?;
                     self.bind_string(local_ticket, FieldRef::AttributeName(node.index, remaining))
                         .map_err(|_| latch_registry_row(control))?;
                     self.bind_string(
@@ -647,13 +656,19 @@ impl SessionStorage {
     ) -> Result<ParserNode, SessionError> {
         let result = (|| {
             let (name, name_ticket) = self.register_string(control, name, origins)?;
+            let name_units = name.len();
+            drop(name);
             // The selected HTML namespace is a defining literal, copied through
             // the same admitted exact buffer as token-created units.
             let (namespace, namespace_ticket) =
                 self.register_literal(control, Literal::HtmlNamespace)?;
+            let (name_id, name) = self.intern_row_name(
+                control,
+                name_ticket,
+                &Namespace::from_uri(namespace.clone()),
+            )?;
             control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-            let mut units = name
-                .len()
+            let mut units = name_units
                 .checked_add(namespace.len())
                 .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             let mut stage = StagedAttributes::new(control)?;
@@ -666,7 +681,7 @@ impl SessionStorage {
             let mut last_name_slot = None;
             let staged = (|| {
                 while let Some(attribute) = attributes.try_pop(control)? {
-                    let attribute_name = self.register_text(control, attribute.name);
+                    let attribute_name = self.register_attribute_name(control, attribute.name);
                     let (local, local_ticket) = match attribute_name {
                         Ok(value) => value,
                         Err(error) => {
@@ -678,17 +693,13 @@ impl SessionStorage {
                     let (value, value_ticket) = self.register_text(control, attribute.value)?;
                     control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                     units = units
-                        .checked_add(local.len())
+                        .checked_add(local.local_name().len())
                         .and_then(|sum| sum.checked_add(value.len()))
                         .ok_or_else(|| {
                             control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                         })?;
                     self.holds.acquire_attribute(control)?;
-                    stage.push_plain(
-                        control,
-                        Attribute::new(QualifiedName::new(Namespace::none(), None, local), value),
-                        original_len,
-                    )?;
+                    stage.push_plain(control, Attribute::new(local, value), original_len)?;
                     let position = attributes.len();
                     self.bind_string(local_ticket, FieldRef::AttributeName(node_index, position))
                         .map_err(|_| latch_registry_row(control))?;
@@ -748,11 +759,7 @@ impl SessionStorage {
             control.charge(HtmlParseWorkCategory::RecordWrite, 6)?;
             let node = self.allocate_prepared_owned(
                 control,
-                NewRecord::Element(
-                    QualifiedName::new(Namespace::from_uri(namespace), None, name),
-                    attributes,
-                    link_flags,
-                ),
+                NewRecord::NamedElement(name_id, attributes, link_flags),
                 template,
                 0,
                 0,

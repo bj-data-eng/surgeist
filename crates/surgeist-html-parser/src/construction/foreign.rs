@@ -1052,9 +1052,11 @@ impl SessionStorage {
             } else {
                 self.copy_context_namespace(control)?
             };
+            let name_units = name.len();
+            drop(name);
+            let (name_id, _) = self.intern_row_name(control, name_ticket, &namespace)?;
             control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-            let mut units = name
-                .len()
+            let mut units = name_units
                 .checked_add(namespace.uri().map_or(0, DocumentString::len))
                 .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             let mut stage = StagedAttributes::new(control)?;
@@ -1173,7 +1175,7 @@ impl SessionStorage {
             }
             let node = self.allocate_prepared_owned(
                 control,
-                NewRecord::Element(QualifiedName::new(namespace, None, name), attributes, None),
+                NewRecord::NamedElement(name_id, attributes, None),
                 template,
                 0,
                 0,

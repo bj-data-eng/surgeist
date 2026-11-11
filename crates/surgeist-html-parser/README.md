@@ -216,6 +216,18 @@ than 32 attributes, which compares names pair by pair, is not. One hash key serv
 whole process, so within it the same list charges the same work every time; across processes the
 probes it admits, and so its work, can differ by a small share.
 
+Each start tag name and attribute name is looked up in a table of the names of the storage, and
+a new name is placed in it. The lookup or placement is charged a fixed allowance of eight probe
+steps before it runs, whatever the hash key, and one visit before each step beyond the allowance,
+so the work of a name varies between processes only when its probe examines more than eight
+slots, counting the empty slot that ends a miss, or when two distinct names have an equal 64-bit
+hash, which are compared with that comparison charged. The table holds at most half its slots and
+probes linearly, which makes that rare: a probe examines 1.5 slots on average for a name it holds
+and 2.5 for one it does not, at the greatest load. The attribute name index of a list of 32 or more
+attributes, above, and the index of the pseudo-attributes of a processing instruction (`pi.rs`,
+charged per probe under a hash key drawn for each instruction) are the other sources of work that
+varies between processes.
+
 A parse charges its work and resources under the HTML accounting schema (`HtmlWork` and
 `HtmlResource` of `surgeist_html::accounting`) with the admission rules of `surgeist-ledger`.
 A request that sets nothing keeps its figures in counters of its own and calls no ledger

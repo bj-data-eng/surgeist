@@ -1,6 +1,7 @@
 //! Bounded native authoring and immutable, result-local construction output.
 
 pub(crate) mod bounded;
+pub(crate) mod names;
 mod views;
 
 pub use views::{
@@ -18,6 +19,7 @@ use crate::{
     internal::values::DocumentString, internal::values::OrderedAttributes,
     internal::values::QualifiedName,
 };
+use names::{NameEntry, NameTable};
 use std::{collections::VecDeque, error::Error, fmt, num::NonZeroU32, sync::Arc};
 use surgeist_ledger::{
     Change, Charge, Error as LedgerError, Operation, Scope, SharedOperation, Usage,
@@ -611,12 +613,15 @@ impl Error for HtmlProcessingInstructionError {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ElementContent {
     link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
-    name: QualifiedName,
+    name: Arc<NameEntry>,
     attributes: OrderedAttributes,
 }
 impl ElementContent {
     fn name(&self) -> &QualifiedName {
-        &self.name
+        self.name.name()
+    }
+    fn key(&self) -> crate::internal::values::element_key::ElementKey {
+        self.name.key()
     }
     fn attributes(&self) -> &OrderedAttributes {
         &self.attributes
@@ -838,6 +843,8 @@ impl Record {
 #[derive(Debug)]
 struct Arena {
     records: Vec<Record>,
+    /// The names of the elements and attributes of the records.
+    names: NameTable,
     usage: HtmlConstructionUsage,
     // The tree serial of this storage's node ids and builder handles. It names this storage among
     // all storages, so a lookup tells an id or handle of another storage from its own, and so that a
@@ -1934,6 +1941,7 @@ mod tests {
                 None,
                 0,
             )],
+            names: NameTable::new(),
             usage: HtmlConstructionUsage::default(),
             serial: 0,
             attribute_revision: 0,
