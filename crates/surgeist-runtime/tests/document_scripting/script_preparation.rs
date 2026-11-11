@@ -1264,6 +1264,105 @@ fn check_published_iframe_svg_refusal(retry_close: bool) {
     );
 }
 
+pub(super) fn native_installation_refuses_unavailable_producers_before_publication() {
+    use surgeist_dom::{
+        DomNativeHtmlInstallError, DomNativeHtmlInstallLimits, DomNativeHtmlInstallTarget,
+        DomSourceNativeHtmlInstallLimits,
+    };
+    use surgeist_html::construction::{HtmlConstructionLimits, HtmlFragment};
+    use surgeist_html::elements::native::HtmlElementClass;
+    use surgeist_html::values::{OrderedAttributes, QualifiedName};
+    use surgeist_html::vocabulary::KnownHtmlElement;
+
+    let (session, top) = setup();
+    let document = top.document();
+    let parent = body(&session, document);
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let before = host.snapshot().unwrap();
+    for (namespace, local, requirement) in [
+        (
+            Namespace::html(),
+            "iframe",
+            HtmlElementClass::KnownHtml(KnownHtmlElement::Iframe),
+        ),
+        (Namespace::svg(), "script", HtmlElementClass::SvgScript),
+    ] {
+        let mut builder =
+            HtmlFragment::builder(HtmlConstructionLimits::new(16, 16, 16, 4096, 16)).unwrap();
+        let root = builder.root();
+        for (local, text) in [("style", "p { color: red }"), ("script", "1 + 1")] {
+            let element = builder
+                .append_element(
+                    &root,
+                    QualifiedName::new(Namespace::html(), None, local),
+                    OrderedAttributes::default(),
+                )
+                .unwrap();
+            builder.append_text(&element, text).unwrap();
+        }
+        builder
+            .append_element(
+                &root,
+                QualifiedName::new(namespace, None, local),
+                OrderedAttributes::default(),
+            )
+            .unwrap();
+        let fragment = builder.finish().unwrap();
+        let unsupported = fragment.root().children().last().unwrap();
+        let target = DomNativeHtmlInstallTarget::new(
+            before.document(document).unwrap().stamp(),
+            parent,
+            None,
+        );
+        let mut policy_calls = 0;
+        host.with_native(|dom, _, mut source| {
+            let reached = source.install_native_html(
+                dom,
+                target,
+                &fragment,
+                DomSourceNativeHtmlInstallLimits::new(
+                    DomNativeHtmlInstallLimits::new(16, 1_000_000, 16_000_000),
+                    LIMITS,
+                ),
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| {
+                        policy_calls += 1;
+                        None
+                    },
+                    url: None,
+                },
+                &cancel(),
+            );
+            assert!(
+                matches!(
+                    &reached,
+                    Err(DomSourceDriveError::Source(DomSourceRuntimeError::NativeInstallation(
+                        DomNativeHtmlInstallError::Source {
+                            subject,
+                            error: DomError::NativeInitializationRequired(actual),
+                        }
+                    ))) if subject == &unsupported && actual == &requirement
+                ),
+                "{reached:?}"
+            );
+            assert!(dom.pending_source_edit().is_none());
+            let after = dom.snapshot();
+            assert_eq!(after.stamp(), before.stamp());
+            assert_eq!(after.incomplete_source_operation(), None);
+            assert_eq!(
+                after.node(parent).unwrap().children(),
+                before.node(parent).unwrap().children(),
+            );
+        })
+        .unwrap();
+        assert_eq!(policy_calls, 0);
+    }
+}
+
 pub(super) fn run() {
     let foreign = text_and_attribute_keep_the_private_segment();
     adopted_script_uses_original_settings_and_current_browsing_context(foreign);
@@ -1274,4 +1373,5 @@ pub(super) fn run() {
     enabled_html_script_precedes_unavailable_svg_processing();
     published_iframe_prefix_closes_after_svg_refusal();
     published_iframe_prefix_retries_svg_failure_close();
+    native_installation_refuses_unavailable_producers_before_publication();
 }
