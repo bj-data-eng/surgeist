@@ -148,6 +148,90 @@ fn eval(host: &mut DocumentScriptHost, permit: &DocumentScriptPermit, script: &s
     .unwrap();
 }
 
+fn native_window_exposes_canonical_top_level_relations() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    assert_eq!(permit.document(), top.document());
+
+    let defaults = host
+        .in_document(&permit, |scope| {
+            let global = scope.global()?;
+            let guest_global = scope.evaluate(&"globalThis".encode_utf16().collect::<Vec<_>>())?;
+            assert!(scope.strict_equals(&guest_global, &global)?);
+            let script = r#"(() => {
+                const g = globalThis;
+                return [typeof g.window, typeof g.self, typeof g.parent, g.opener === null,
+                    g.window === g, g.self === g, g.parent === g].join(",");
+            })()"#;
+            let result = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&result)
+        })
+        .unwrap();
+    assert_eq!(
+        String::from_utf16(&defaults).unwrap(),
+        "object,object,object,true,true,true,true",
+        "attached Window must expose its own WindowProxy and native absent opener"
+    );
+
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const g = globalThis;
+            const describe = Object.getOwnPropertyDescriptor;
+            const names = ["window", "self", "parent", "opener"];
+            const marker = { [Symbol.toPrimitive]() { throw new Error("unexpected coercion"); } };
+            const descriptors = names.map(name => describe(g, name));
+            const rejects = (accessor, receiver) => {
+                try { accessor.call(receiver, marker); }
+                catch (error) { return error instanceof TypeError; }
+                return false;
+            };
+            for (let i = 0; i < names.length; i++) {
+                const name = names[i];
+                const desc = descriptors[i];
+                const expected = name === "opener" ? null : g;
+                if (!desc || !desc.enumerable || desc.configurable !== (name !== "window")
+                    || "value" in desc || "writable" in desc
+                    || desc.get.name !== "get " + name || desc.get.length !== 0
+                    || desc.get.call(g) !== expected || desc.get.call(null) !== expected
+                    || desc.get.call(undefined) !== expected) return false;
+                if (name === "window") {
+                    if (desc.set !== undefined) return false;
+                } else if (desc.set.name !== "set " + name || desc.set.length !== 1) return false;
+                for (const receiver of [{}, Object.create(g), new Proxy(g, {}), 1]) {
+                    if (!rejects(desc.get, receiver)
+                        || (desc.set && !rejects(desc.set, receiver))) return false;
+                }
+            }
+            if (Reflect.set(g, "window", marker) || Reflect.deleteProperty(g, "window")
+                || Reflect.defineProperty(g, "window", { value: marker }) || g.window !== g) {
+                return false;
+            }
+            const [, self, parent, opener] = descriptors;
+            if (!Reflect.set(g, "opener", null) || describe(g, "opener").get !== opener.get
+                || g.opener !== null) return false;
+            if (!Reflect.set(g, "self", marker) || !Reflect.set(g, "opener", marker)) return false;
+            parent.set.call(null, marker);
+            const replaced = (name, value) => {
+                const desc = describe(g, name);
+                return desc.value === value && desc.writable && desc.enumerable && desc.configurable
+                    && !("get" in desc) && !("set" in desc);
+            };
+            if (!replaced("self", marker) || !replaced("parent", marker)
+                || !replaced("opener", marker)) return false;
+            opener.set.call(undefined, undefined);
+            if (!replaced("opener", undefined)) return false;
+            g.globalThis = {};
+            return self.get.call(g) === g && parent.get.call(g) === g && opener.get.call(g) === null;
+        })())"#,
+        1.0,
+    );
+}
+
 fn native_window_exposes_dom_exception() {
     let (session, top) = setup();
     let mut host = prepare(session, Arc::new(cancel()))
@@ -1504,6 +1588,7 @@ fn explicit_hook_keys_require_each_authored_utf16_work_unit() {
 fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         match scenario.as_str() {
+            "native-window-relations" => native_window_exposes_canonical_top_level_relations(),
             "native_window_exposes_dom_exception" => native_window_exposes_dom_exception(),
             "dom-exception-error-data" => {
                 native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion()
@@ -1561,6 +1646,7 @@ fn main() {
         }
         return;
     }
+    native_window_exposes_canonical_top_level_relations();
     native_window_exposes_dom_exception();
     native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();
     native_window_dom_exception_admission_and_hook_collision();
