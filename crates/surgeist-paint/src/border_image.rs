@@ -2,6 +2,7 @@ use crate::{
     PaintError, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind,
     accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
 };
+use std::cmp::Ordering;
 use surgeist_layout::{Edges, LengthPercentageOf, Point, Size};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
@@ -322,6 +323,17 @@ impl GeometryWork<'_, '_, '_> {
 
 type Axis = [(f64, f64); 3];
 
+#[derive(Clone, Copy)]
+struct SourceSlice {
+    distance: f64,
+    fraction: Option<f64>,
+}
+
+struct AxisFit {
+    factor: f64,
+    fills: bool,
+}
+
 fn resolve(
     work: &mut GeometryWork<'_, '_, '_>,
     request: BorderImageRequest,
@@ -402,17 +414,19 @@ fn resolve(
     );
     let fx = fit_factor(work, width, widths.left, widths.right)?;
     let fy = fit_factor(work, height, widths.top, widths.bottom)?;
-    let factor = work.coordinate(|| fx.min(fy))?;
+    let factor = work.coordinate(|| fx.factor.min(fy.factor))?;
+    let collapse_x = work.coordinate(|| width == 0.0)?
+        || (fx.fills && work.coordinate(|| factor == fx.factor)?);
+    let collapse_y = work.coordinate(|| height == 0.0)?
+        || (fy.fills && work.coordinate(|| factor == fy.factor)?);
     let used_widths = Edges::new(
-        work.product(widths.top, factor)?,
-        work.product(widths.right, factor)?,
-        work.product(widths.bottom, factor)?,
-        work.product(widths.left, factor)?,
+        fitted_width(work, widths.top, widths.bottom, factor, height, collapse_y)?,
+        fitted_width(work, widths.right, widths.left, factor, width, collapse_x)?,
+        fitted_width(work, widths.bottom, widths.top, factor, height, collapse_y)?,
+        fitted_width(work, widths.left, widths.right, factor, width, collapse_x)?,
     );
     let source_x = source_axis(work, source.width, slices.left, slices.right)?;
     let source_y = source_axis(work, source.height, slices.top, slices.bottom)?;
-    let collapse_x = work.coordinate(|| fx < 1.0)? && work.coordinate(|| factor == fx)?;
-    let collapse_y = work.coordinate(|| fy < 1.0)? && work.coordinate(|| factor == fy)?;
     let dest_x = destination_axis(
         work,
         x0,
@@ -464,13 +478,19 @@ fn slice(
     work: &mut GeometryWork<'_, '_, '_>,
     slice: BorderImageSlice,
     extent: f64,
-) -> Result<f64, PaintError> {
+) -> Result<SourceSlice, PaintError> {
     work.coordinate(|| ())?;
     match slice {
-        BorderImageSlice::SourceUnits(value) => work.coordinate(|| value.min(extent)),
+        BorderImageSlice::SourceUnits(value) => Ok(SourceSlice {
+            distance: work.coordinate(|| value.min(extent))?,
+            fraction: None,
+        }),
         BorderImageSlice::Fraction(fraction) => {
             let fraction = work.coordinate(|| fraction.min(1.0))?;
-            work.product(fraction, extent)
+            Ok(SourceSlice {
+                distance: work.product(fraction, extent)?,
+                fraction: Some(fraction),
+            })
         }
     }
 }
@@ -516,7 +536,7 @@ fn used_width(
     width: BorderImageWidth,
     border: f64,
     area: f64,
-    slice: f64,
+    slice: SourceSlice,
     source: f64,
     natural: Option<f64>,
 ) -> Result<f64, PaintError> {
@@ -526,9 +546,12 @@ fn used_width(
             let Some(natural) = natural else {
                 return Ok(border);
             };
-            let fraction = work.coordinate(|| slice / source)?;
+            let fraction = match slice.fraction {
+                Some(fraction) => fraction,
+                None => work.coordinate(|| slice.distance / source)?,
+            };
             if work.coordinate(|| fraction == 0.0)?
-                && work.coordinate(|| slice > 0.0)?
+                && work.coordinate(|| slice.distance > 0.0)?
                 && work.coordinate(|| natural > 0.0)?
             {
                 return Err(geometry_error());
@@ -545,16 +568,46 @@ fn used_width(
     }
 }
 
+fn compare_opposing(
+    work: &mut GeometryWork<'_, '_, '_>,
+    extent: f64,
+    first: f64,
+    last: f64,
+) -> Result<Ordering, PaintError> {
+    let (larger, smaller) = if work.coordinate(|| first >= last)? {
+        (first, last)
+    } else {
+        (last, first)
+    };
+    // Near equality the larger offset is at least half the extent, so the
+    // subtraction retains the difference without rounding the opposing sum.
+    let remaining = work.coordinate(|| extent - larger)?;
+    work.coordinate(|| smaller.partial_cmp(&remaining))?
+        .ok_or_else(geometry_error)
+}
+
 fn fit_factor(
     work: &mut GeometryWork<'_, '_, '_>,
     extent: f64,
     first: f64,
     last: f64,
-) -> Result<f64, PaintError> {
-    let sum = work.coordinate(|| first + last)?;
-    if work.coordinate(|| sum <= extent)? {
-        return Ok(1.0);
+) -> Result<AxisFit, PaintError> {
+    match compare_opposing(work, extent, first, last)? {
+        Ordering::Less => {
+            return Ok(AxisFit {
+                factor: 1.0,
+                fills: false,
+            });
+        }
+        Ordering::Equal => {
+            return Ok(AxisFit {
+                factor: 1.0,
+                fills: true,
+            });
+        }
+        Ordering::Greater => {}
     }
+    let sum = work.coordinate(|| first + last)?;
     let factor = if work.coordinate(|| sum.is_finite())? {
         work.coordinate(|| extent / sum)?
     } else {
@@ -568,20 +621,82 @@ fn fit_factor(
     if work.coordinate(|| factor == 0.0)? && work.coordinate(|| extent > 0.0)? {
         return Err(geometry_error());
     }
-    Ok(factor)
+    Ok(AxisFit {
+        factor,
+        fills: true,
+    })
+}
+
+fn fitted_width(
+    work: &mut GeometryWork<'_, '_, '_>,
+    width: f64,
+    opposite: f64,
+    factor: f64,
+    extent: f64,
+    fills: bool,
+) -> Result<f64, PaintError> {
+    if fills && work.coordinate(|| opposite == 0.0)? {
+        return Ok(extent);
+    }
+    work.product(width, factor)
+}
+
+fn mixed_slices_fill(
+    work: &mut GeometryWork<'_, '_, '_>,
+    extent: f64,
+    fraction: f64,
+    units: f64,
+) -> Result<bool, PaintError> {
+    if work.coordinate(|| fraction == 1.0)? || work.coordinate(|| units == extent)? {
+        return Ok(true);
+    }
+    let excess = if work.coordinate(|| fraction >= 0.5)? {
+        // The complement is exact here. Retain the sign through the multiply
+        // and comparison instead of rounding the absolute slice first.
+        let remainder = work.coordinate(|| 1.0 - fraction)?;
+        work.coordinate(|| (-extent).mul_add(remainder, units))?
+    } else {
+        let half = work.coordinate(|| extent * 0.5)?;
+        if work.coordinate(|| units < half)? {
+            return Ok(false);
+        }
+        let rest = work.coordinate(|| units - extent)?;
+        work.coordinate(|| fraction.mul_add(extent, rest))?
+    };
+    work.coordinate(|| !excess.is_sign_negative())
 }
 
 fn source_axis(
     work: &mut GeometryWork<'_, '_, '_>,
     extent: f64,
-    first: f64,
-    last: f64,
+    first: SourceSlice,
+    last: SourceSlice,
 ) -> Result<Axis, PaintError> {
-    let cut = work.coordinate(|| extent - last)?;
-    if work.coordinate(|| last > 0.0)? && work.coordinate(|| cut == extent)? {
+    let fills = match (first.fraction, last.fraction) {
+        (Some(first), Some(last)) => compare_opposing(work, 1.0, first, last)? != Ordering::Less,
+        (Some(fraction), None) => mixed_slices_fill(work, extent, fraction, last.distance)?,
+        (None, Some(fraction)) => mixed_slices_fill(work, extent, fraction, first.distance)?,
+        (None, None) => {
+            compare_opposing(work, extent, first.distance, last.distance)? != Ordering::Less
+        }
+    };
+    let cut = work.coordinate(|| extent - last.distance)?;
+    if work.coordinate(|| last.distance > 0.0)? && work.coordinate(|| cut == extent)? {
         return Err(geometry_error());
     }
-    Ok([(0.0, first), (first, cut), (cut, extent)])
+    let middle_end = if fills {
+        first.distance
+    } else {
+        if work.coordinate(|| cut <= first.distance)? {
+            return Err(geometry_error());
+        }
+        cut
+    };
+    Ok([
+        (0.0, first.distance),
+        (first.distance, middle_end),
+        (cut, extent),
+    ])
 }
 
 fn destination_axis(
@@ -592,16 +707,23 @@ fn destination_axis(
     last: f64,
     collapse_middle: bool,
 ) -> Result<Axis, PaintError> {
-    let first_cut = work.coordinate(|| min + first)?;
-    let first_cut = work.coordinate(|| first_cut.min(max))?;
-    let last_cut = if collapse_middle {
-        first_cut
+    let (first_cut, last_cut) = if collapse_middle && work.coordinate(|| last == 0.0)? {
+        (max, max)
     } else {
-        let last_cut = work.coordinate(|| max - last)?;
-        work.coordinate(|| last_cut.max(first_cut))?
+        let first_cut = work.coordinate(|| min + first)?;
+        let last_cut = if collapse_middle {
+            first_cut
+        } else {
+            let cut = work.coordinate(|| max - last)?;
+            if work.coordinate(|| cut <= first_cut)? {
+                return Err(geometry_error());
+            }
+            cut
+        };
+        (first_cut, last_cut)
     };
-    if (work.coordinate(|| first > 0.0)? && work.coordinate(|| min == first_cut)?)
-        || (work.coordinate(|| last > 0.0)? && work.coordinate(|| last_cut == max)?)
+    if (work.coordinate(|| first > 0.0)? && work.coordinate(|| min >= first_cut)?)
+        || (work.coordinate(|| last > 0.0)? && work.coordinate(|| last_cut >= max)?)
     {
         return Err(geometry_error());
     }
@@ -733,6 +855,32 @@ mod tests {
         assert!(result.regions().iter().all(|row| row[1].source().is_none()));
         assert!(result.regions()[0][0].source().is_some());
         assert!(result.regions()[0][2].source().is_some());
+    }
+
+    #[test]
+    fn partition_preserves_a_representable_gap_below_one_extent_ulp() {
+        let gap = f64::EPSILON * 0.25;
+        let result = geometry(partition_request(-0.5, 1.0, 0.5, 0.5 - gap));
+        assert_eq!(
+            result.regions()[0][1].destination(),
+            Some(rect(0.0, 0.0, gap, 2.0))
+        );
+    }
+
+    #[test]
+    fn partition_keeps_meeting_fraction_and_source_units_empty_in_either_order() {
+        let mut input = request();
+        input.source.coordinate_size.width = 0.9;
+        let fraction = BorderImageSlice::Fraction(0.75);
+        let units = BorderImageSlice::SourceUnits(0.225);
+        for (left, right) in [(fraction, units), (units, fraction)] {
+            input.slices.left = left;
+            input.slices.right = right;
+            let result = geometry(input);
+            assert!(result.regions().iter().all(|row| row[1].source().is_none()));
+            assert!(result.regions()[0][0].source().is_some());
+            assert!(result.regions()[0][2].source().is_some());
+        }
     }
 
     #[test]

@@ -56,8 +56,10 @@ One common factor fits opposing widths to the area. The nine output regions
 are in physical top-to-bottom, left-to-right order and distinguish independent
 source and destination emptiness. An overlapping source axis removes its middle
 span while preserving the corner slices. Center source geometry is supplied
-only when fill is requested. The resulting paint area is separate from layout,
-scrolling, and pointer geometry.
+only when fill is requested. Local axis geometry determines whether the middle
+is empty before the cuts are placed. A positive partition that collapses in
+the output coordinates returns a typed numeric error. The resulting paint area
+is separate from layout, scrolling, and pointer geometry.
 
 Ledger reports admitted `BorderImageValidation`, `BorderImageCoordinate`, and
 `OutputRecord` work. Each region and the complete result count as output
