@@ -16,6 +16,14 @@ use crate::{BackendErrorCode, Error, PhysicalSize, Result};
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(super) struct ResourceId(u64);
 
+impl ResourceId {
+    const FIRST: u64 = 1;
+
+    fn slot(self) -> Option<usize> {
+        usize::try_from(self.0.checked_sub(Self::FIRST)?).ok()
+    }
+}
+
 /// A symbolic buffer reference used by the compute-dispatch recording.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(super) struct BufferHandle(ResourceId);
@@ -23,6 +31,18 @@ pub(super) struct BufferHandle(ResourceId);
 /// A symbolic image reference used by the compute-dispatch recording.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(super) struct ImageHandle(ResourceId);
+
+impl BufferHandle {
+    pub(super) fn slot(self) -> Option<usize> {
+        self.0.slot()
+    }
+}
+
+impl ImageHandle {
+    pub(super) fn slot(self) -> Option<usize> {
+        self.0.slot()
+    }
+}
 
 /// The only image format required by the Vello raster path.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -673,6 +693,15 @@ pub(super) enum ResourceReference {
     Image(ImageHandle),
 }
 
+impl ResourceReference {
+    pub(super) fn slot(self) -> Option<usize> {
+        match self {
+            Self::Buffer(handle) => handle.slot(),
+            Self::Image(handle) => handle.slot(),
+        }
+    }
+}
+
 impl From<BufferHandle> for ResourceReference {
     fn from(value: BufferHandle) -> Self {
         Self::Buffer(value)
@@ -813,7 +842,7 @@ pub(super) struct RecordingBuilder {
 impl RecordingBuilder {
     pub(super) fn new(account: &Account) -> Result<Self> {
         Ok(Self {
-            next_resource_id: 1,
+            next_resource_id: ResourceId::FIRST,
             commands: account.retained(0)?,
             resource_intents: account.retained(0)?,
             account: account.clone(),

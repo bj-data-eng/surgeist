@@ -151,14 +151,99 @@ fn native_resource_slots_retain_scoped_cpu_backing() {
         CleanVelloResourceRetention::DirectAtlasOnly,
     );
     assert_eq!(manager.observation_for_test().leased_count, 2);
-    assert!(
-        scoped_scratch() > opening,
-        "the two live native records must own FrameBacking scratch",
+    let capacity = lease.lease.pending.slots.capacity();
+    assert_eq!(
+        scoped_scratch() - opening,
+        (capacity * std::mem::size_of::<Option<ManagedResource>>()) as u64,
     );
     let aborted = lease.abort();
     assert_eq!(aborted.discarded_resource_count_for_test(), 2);
     assert_eq!(scoped_scratch(), opening);
     assert_eq!(manager.observation_for_test().active_frame_count, 0);
+}
+
+#[test]
+fn native_resource_index_refuses_invalid_slots_and_scratch_before_gpu_allocation() {
+    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let (device, _) = renderer.default_wgpu_device_queue().unwrap();
+    let account = Account::for_test();
+    let mut recording = RecordingBuilder::new(&account).unwrap();
+    recording.new_buffer(BufferRole::Scene, 4).unwrap();
+    recording.request_image_atlas(PhysicalSize::new(2, 2)).unwrap();
+    let (_, mut intents) = recording.finish();
+    let options = options(RenderProfile::Summary { timing: false });
+    let owner = RendererCpu::new(options).unwrap();
+    let manager = manager(&owner, options);
+    let scope = ActiveVelloEncodingScope::begin(device);
+
+    intents.swap(0, 1);
+    let result = VelloResourceLease::allocate(&scope, &manager, &intents, Some(&account));
+    let error = result.err().unwrap();
+    assert_eq!(error.message(), "internal Vello image identity does not match its recording slot");
+    assert_eq!(manager.observation_for_test().active_frame_count, 0);
+
+    intents.swap(0, 1);
+    let limited_options = options.with_limits(
+        crate::RenderLimits::new().with_scratch_bytes(0),
+    );
+    let limited_owner = RendererCpu::new(limited_options).unwrap();
+    let limited_manager = ResourceManager::with_generation(
+        crate::ResourceCacheBudget::DEFAULT,
+        Generation::new(limited_options).unwrap(),
+        limited_owner.at(RenderCpuScope::DeviceBacking),
+    );
+    let result = VelloResourceLease::allocate(&scope, &limited_manager, &intents, Some(&account));
+    let error = result.err().unwrap();
+    assert!(matches!(
+        error.accounting_diagnostic(),
+        Some(crate::RenderAccountingError::CpuRefused {
+            quantity: crate::RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+            ..
+        })
+    ));
+    assert_eq!(account.work_count(RenderWork::ResourceAllocationRequests).unwrap(), 0);
+    assert_eq!(limited_manager.observation_for_test().active_frame_count, 0);
+    assert_eq!(limited_owner.snapshot().unwrap().usage().live(RenderResource::ScratchCpuBytes), 0);
+    pollster::block_on(scope.finish(&account)).unwrap();
+}
+
+#[test]
+fn native_resource_slots_qualify_kind_and_release_once() {
+    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let (device, _) = renderer.default_wgpu_device_queue().unwrap();
+    let account = Account::for_test();
+    let mut recording = RecordingBuilder::new(&account).unwrap();
+    let buffer = recording.new_buffer(BufferRole::Scene, 4).unwrap();
+    let image = recording.request_image_atlas(PhysicalSize::new(2, 2)).unwrap();
+    let (_, intents) = recording.finish();
+    let options = options(RenderProfile::Off);
+    let owner = RendererCpu::new(options).unwrap();
+    let manager = manager(&owner, options);
+    let scope = ActiveVelloEncodingScope::begin(device);
+    let mut lease = VelloResourceLease::allocate(&scope, &manager, &intents, Some(&account)).unwrap();
+    let probes = account.work_count(RenderWork::ResourceProbes).unwrap();
+    assert_eq!(
+        lease.live_buffer(BufferHandle(image.0)).err().unwrap().message(),
+        "internal Vello recording uses an unknown buffer",
+    );
+    assert_eq!(
+        lease.record_release(ImageHandle(buffer.0).into()).unwrap_err().message(),
+        "internal Vello recording releases an unknown image",
+    );
+    lease.record_release(buffer.into()).unwrap();
+    assert_eq!(
+        lease.record_release(buffer.into()).unwrap_err().message(),
+        "internal Vello recording releases a buffer more than once",
+    );
+    assert_eq!(
+        lease.live_buffer(buffer).err().unwrap().message(),
+        "internal Vello recording uses a released buffer",
+    );
+    assert!(lease.live_image(image).is_ok());
+    assert_eq!(account.work_count(RenderWork::ResourceProbes).unwrap() - probes, 6);
+    let clean = pollster::block_on(scope.finish_with_lease(lease, &account))
+        .unwrap_or_else(|failure| panic!("unexpected native refusal: {}", failure.error()));
+    assert_eq!(clean.abort().discarded_resource_count_for_test(), 2);
 }
 fn closed(
     manager: &ResourceManager,
