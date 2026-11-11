@@ -561,6 +561,43 @@ fn independent_inboxes_publish_and_disarm_their_original_watches() {
 }
 
 #[test]
+fn ordinary_retirement_prepares_shared_delivery_without_repeating_prepaid_work() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, _, node) = fixture(&cancel);
+    let mut first = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let mut second = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let first_watch = dom
+        .watch_node_retirement(node, &first, 1, GENEROUS, &cancel)
+        .unwrap();
+    let second_watch = dom
+        .watch_node_retirement(node, &second, 2, GENEROUS, &cancel)
+        .unwrap();
+    let mut checks = 0;
+    assert!(
+        first_watch
+            .index
+            .prepare_match(node, || {
+                checks += 1;
+                check_cancel(&cancel)
+            })
+            .unwrap()
+    );
+    // This fixture has one radix leaf. Both slots and both deliveries
+    // already have work reserved by registration.
+    assert_eq!(checks, 1);
+
+    let mut detach = DomBatch::new();
+    detach.detach(node);
+    dom.apply(detach, &cancel).unwrap();
+    let mut destroy = DomBatch::new();
+    destroy.destroy(node);
+    dom.apply(destroy, &cancel).unwrap();
+    assert_eq!(first.take().unwrap().custody_key(), 1);
+    assert_eq!(second.take().unwrap().custody_key(), 2);
+    drop((first_watch, second_watch));
+}
+
+#[test]
 fn shared_watch_storage_and_growth_are_admitted_before_changing_custody() {
     let cancel = AtomicBool::new(false);
     let (mut dom, _, node) = fixture(&cancel);
