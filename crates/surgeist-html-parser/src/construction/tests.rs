@@ -13,6 +13,7 @@ mod formatting;
 mod image_form;
 mod input;
 mod input_types;
+mod insert_work;
 mod link_history;
 mod listed_form;
 mod literals;
