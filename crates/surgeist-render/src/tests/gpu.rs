@@ -4955,6 +4955,50 @@ fn foreground_layer_blur_composites_into_the_transformed_parent_local_grid() {
 }
 
 #[test]
+fn foreground_layer_blur_preserves_ordinary_siblings_in_a_translated_wrapper() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(17.0, 10.0), 1.0)).unwrap();
+    let wrapper = Layer::new().with_transform(Transform::translation(7.0, 0.0).unwrap());
+    let blur = Layer::new()
+        .try_filter(Filter::try_blur(1.0).unwrap())
+        .unwrap();
+    let mut scene = Scene::new();
+    scene.layer(wrapper, |scene| {
+        scene.fill(Rect::new(1.0, 4.0, 1.0, 1.0), Color::BLACK);
+        scene.layer(blur, |scene| {
+            scene.fill(Rect::new(7.0, 4.0, 1.0, 1.0), Color::BLACK);
+        });
+    });
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    assert_eq!(pixel_alpha(&output, 8, 4), 255);
+    assert_eq!(pixel_alpha(&output, 1, 4), 0);
+    assert!((39..=43).contains(&pixel_alpha(&output, 14, 4)));
+}
+
+#[test]
+fn foreground_layer_blur_uses_identity_when_device_sigma_underflows() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(12.0, 12.0), 0.5)).unwrap();
+    let blur = Layer::new()
+        .try_filter(Filter::try_blur(f64::from_bits(1)).unwrap())
+        .unwrap();
+    let mut scene = Scene::new();
+    scene.layer(blur, |scene| {
+        scene.fill(Rect::new(4.0, 4.0, 2.0, 2.0), Color::BLACK);
+    });
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+        .expect("a positive sigma rounded to zero device pixels should preserve the group");
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    assert_eq!(pixel_alpha(&output, 2, 2), 255);
+    assert_eq!(pixel_alpha(&output, 3, 2), 0);
+}
+
+#[test]
 fn foreground_layer_blur_kernel_limit_preserves_frame_and_zero_sigma_needs_no_kernel() {
     use crate::{RenderAccountingOptions, RenderLimits, RenderPhase, RenderQuantity, RenderWork};
 
