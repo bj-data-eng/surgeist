@@ -41,7 +41,7 @@ pub struct Surface {
     pub(crate) backend: SurfaceBackend,
     pub(crate) renderer_identity: RendererIdentity,
     #[cfg(test)]
-    headless_publication_count: usize,
+    pub(crate) headless_publication_count: usize,
 }
 
 impl Surface {
@@ -279,19 +279,6 @@ impl Surface {
             SurfaceBackend::Presented {
                 device_identity, ..
             } => Some(*device_identity),
-        }
-    }
-
-    pub(crate) fn commit_headless_publication(&mut self, publication: HeadlessPublication) {
-        let SurfaceBackend::Headless { resources, .. } = &mut self.backend else {
-            unreachable!("only a headless surface can commit a headless publication");
-        };
-        *resources = HeadlessResources::Ready {
-            texture: publication.texture,
-        };
-        #[cfg(test)]
-        {
-            self.headless_publication_count = self.headless_publication_count.saturating_add(1);
         }
     }
 

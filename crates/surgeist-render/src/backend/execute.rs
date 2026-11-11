@@ -491,16 +491,18 @@ impl SurfaceFrameCommit {
             working_format: Some(working_format),
         }
     }
-    pub(crate) fn finish_cpu_cleanup(&mut self) {
-        drop(self._frame_cleanup.take());
-    }
-    pub(crate) const fn working_format(&self) -> Option<WorkingFormat> {
-        self.working_format
-    }
-    pub(crate) fn commit(self, surface: &mut Surface) {
-        if let Some(publication) = self.headless_publication {
-            surface.commit_headless_publication(publication);
-        }
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        Option<HeadlessPublication>,
+        Option<FrameCleanup>,
+        Option<WorkingFormat>,
+    ) {
+        (
+            self.headless_publication,
+            self._frame_cleanup,
+            self.working_format,
+        )
     }
 }
 
