@@ -164,6 +164,14 @@ pub(crate) trait Operations {
         definition: PropertyDefinition,
     ) -> Result<(), Error>;
     fn object(&mut self, prototype: ObjectPrototype<'_>) -> Result<Root, Error>;
+    fn native_object_storage_bytes(&self) -> usize;
+    fn project_native_object(
+        &mut self,
+        prototype: ObjectPrototype<'_>,
+        payload: Rc<dyn Any>,
+    ) -> Result<Root, Error>;
+    fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn Any>>, Error>;
+    fn retain_root_backing(&mut self, root: &Root, backing: Box<dyn Any>) -> Result<(), Error>;
     fn managed_object(&mut self) -> Result<Root, Error>;
     fn open_managed_object(&mut self, holder: &Root) -> Result<Root, Error>;
     fn set_prototype(&mut self, object: &Root, prototype: ObjectPrototype<'_>)

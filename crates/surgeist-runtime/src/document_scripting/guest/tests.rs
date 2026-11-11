@@ -34,11 +34,20 @@ fn in_realm_root(scope: &mut Scope<'_>, root: &Root) -> Result<Root, Error> {
 }
 
 fn attach_registry(host: &mut DocumentScriptHost, permit: &DocumentScriptPermit) {
+    attach_registry_with_limits(host, permit, 4, 32);
+}
+
+fn attach_registry_with_limits(
+    host: &mut DocumentScriptHost,
+    permit: &DocumentScriptPermit,
+    nested_dispatches: usize,
+    pending_exception_reports: usize,
+) {
     let mut registry = Some(
         DomEventDispatcher::new(DomEventRegistryLimits {
             registrations: 8,
             pending_events: 4,
-            nested_dispatches: 4,
+            nested_dispatches,
             storage_bytes: 1_000_000,
             work: 100_000,
         })
@@ -50,6 +59,7 @@ fn attach_registry(host: &mut DocumentScriptHost, permit: &DocumentScriptPermit)
         DocumentGuestEventLimits {
             storage_bytes: 32_000,
             work: 1000,
+            pending_exception_reports,
             dispatch: DomEventDispatchLimits {
                 path_items: 1,
                 snapshot_listeners: 8,
@@ -209,6 +219,229 @@ fn assert_guest(scope: &mut Scope<'_>, expression: &str) -> Result<(), Error> {
     let yes = scope.primitive(Primitive::Boolean(true))?;
     assert!(scope.strict_equals(&observed, &yes)?, "{expression}");
     Ok(())
+}
+
+pub(in crate::document_scripting) fn nested_guest_reports_keep_observation_order_and_depth() {
+    for depth in [1, 2] {
+        let mut host = host(Arc::new(AtomicBool::new(false)));
+        let permit = host.permit().unwrap();
+        attach_registry_with_limits(&mut host, &permit, depth, 32);
+        let target = host.create_guest_event_target(&permit).unwrap();
+        let outer = host
+            .create_guest_event(&permit, &units("outer"), Default::default())
+            .unwrap();
+        let inner = host
+            .create_guest_event(&permit, &units("inner"), Default::default())
+            .unwrap();
+        let callbacks = host
+            .in_document(&permit, |scope| {
+                let global = scope.global()?;
+                for (key, value) in [
+                    ("target", target.object(scope)?),
+                    ("outer", outer.object(scope)?),
+                    ("inner", inner.object(scope)?),
+                ] {
+                    scope.set(&global, PropertyKey::String(&units(key)), &value)?;
+                }
+                scope.evaluate(&units("globalThis.first = {}; globalThis.second = {};"))?;
+                let outer_throw = scope.evaluate(&units("(() => { throw first; })"))?;
+                let nested = scope.evaluate(&units(
+                    "(() => {
+                if (!target.dispatchEvent(inner) || globalThis.event !== outer) throw 5;
+            })",
+                ))?;
+                let inner_throw = scope.evaluate(&units("(() => { throw second; })"))?;
+                Ok([
+                    scope.retain(&outer_throw),
+                    scope.retain(&nested),
+                    scope.retain(&inner_throw),
+                ])
+            })
+            .unwrap();
+        let registrations = ["outer", "outer", "inner"]
+            .map(units)
+            .into_iter()
+            .zip(&callbacks)
+            .map(|(kind, listener)| {
+                host.add_guest_event_listener(&permit, &target, &kind, listener, Default::default())
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let result = host.in_document(&permit, |scope| {
+            assert_guest(
+                scope,
+                "target.dispatchEvent(outer) && globalThis.event === undefined",
+            )
+        });
+        let first = host
+            .take_guest_listener_exception(&permit)
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.registration, registrations[0]);
+        if depth == 2 {
+            result.unwrap();
+            let second = host
+                .take_guest_listener_exception(&permit)
+                .unwrap()
+                .unwrap();
+            assert_eq!(second.registration, registrations[2]);
+            host.in_document(&permit, |scope| {
+                let global = scope.global()?;
+                for (key, report) in [("first", first), ("second", second)] {
+                    let original = scope.get(&global, PropertyKey::String(&units(key)))?;
+                    let observed = scope.import(report.exception.value())?;
+                    assert!(scope.strict_equals(&original, &observed)?);
+                }
+                Ok(())
+            })
+            .unwrap();
+        } else {
+            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+                panic!("depth one must refuse the actual inner invocation")
+            };
+            assert!(matches!(
+                failure.cause::<DocumentGuestEventError>(),
+                Some(DocumentGuestEventError::Dispatch(
+                    DomEventDispatchError::Admission(crate::DomEventResource::NestedDispatches),
+                ))
+            ));
+            assert!(inner.native().target().is_none());
+            assert!(host.engine.as_ref().unwrap().window_event.is_idle());
+        }
+        assert!(
+            host.take_guest_listener_exception(&permit)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(outer.native().current_target(), None);
+        assert_eq!(outer.native().composed_path().count(), 0);
+    }
+}
+
+pub(in crate::document_scripting) fn direct_guest_dispatch_preserves_reports_and_object_custody() {
+    let mut host = host(Arc::new(AtomicBool::new(false)));
+    let permit = host.permit().unwrap();
+    attach_registry_with_limits(&mut host, &permit, 4, 8);
+    let left = host.create_guest_event_target(&permit).unwrap();
+    let right = host.create_guest_event_target(&permit).unwrap();
+    let kind = units("reported");
+    let event = host
+        .create_guest_event(&permit, &kind, DomEventInit::default())
+        .unwrap();
+    let blocked = host
+        .create_guest_event(&permit, &kind, DomEventInit::default())
+        .unwrap();
+    let (listener, marker) = host
+        .in_document(&permit, |scope| {
+            let global = scope.global()?;
+            for (key, value) in [
+                ("left", left.object(scope)?),
+                ("right", right.object(scope)?),
+                ("expected", event.object(scope)?),
+                ("blocked", blocked.object(scope)?),
+            ] {
+                scope.set(&global, PropertyKey::String(&units(key)), &value)?;
+            }
+            scope.evaluate(&units("globalThis.marker = {}; globalThis.calls = 0;"))?;
+            let marker = scope.get(&global, PropertyKey::String(&units("marker")))?;
+            let listener = scope.evaluate(&units(
+                "(function(e) {
+            if (this !== right || e !== expected || globalThis.event !== e) throw 17;
+            calls++;
+            throw marker;
+        })",
+            ))?;
+            Ok((scope.retain(&listener), scope.retain(&marker)))
+        })
+        .unwrap();
+    let id = host
+        .add_guest_event_listener(&permit, &right, &kind, &listener, Default::default())
+        .unwrap();
+    drop((left, right, event));
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "(() => {
+            const dispatch = left.dispatchEvent;
+            let traps = 0;
+            const handler = { get() { traps++; }, getPrototypeOf() { traps++; } };
+            for (const [receiver, argument] of [
+                [new Proxy(right, handler), expected], [Object.create(right), expected],
+                [right, new Proxy(expected, handler)], [right, Object.create(expected)], [right, 1],
+            ]) {
+                try { dispatch.call(receiver, argument); return false; }
+                catch (error) { if (!(error instanceof TypeError)) return false; }
+            }
+            return traps === 0 && calls === 0 && dispatch.call(right, expected) === true &&
+                   calls === 1 && globalThis.event === undefined;
+        })()",
+        )
+    })
+    .unwrap();
+    let original = host
+        .take_guest_listener_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(original.registration, id);
+    host.in_document(&permit, |scope| {
+        let expected = scope.import(&marker)?;
+        let reported = scope.import(original.exception.value())?;
+        assert!(scope.strict_equals(&expected, &reported)?);
+        Ok(())
+    })
+    .unwrap();
+    let events = host.guest_events().unwrap();
+    let before_root_reap = events.used.get();
+    drop(original);
+    assert_eq!(events.used.get(), before_root_reap);
+    host.in_document(&permit, |_| Ok(())).unwrap();
+    assert_eq!(
+        before_root_reap - events.used.get(),
+        events.exception_root_bytes + size_of::<GuestBacking>()
+    );
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "right.dispatchEvent(expected) === true && calls === 2",
+        )
+    })
+    .unwrap();
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        host.in_document(&permit, |scope| {
+            scope.evaluate(&units(
+                "try { right.dispatchEvent(blocked); } catch (_) { throw 7; }",
+            ))?;
+            Ok(())
+        })
+    else {
+        panic!("the backlog must refuse before dispatch")
+    };
+    let cause = failure.cause::<DocumentGuestEventError>().unwrap();
+    assert!(matches!(
+        cause,
+        DocumentGuestEventError::Document(DocumentScriptError::Native(
+            DocumentScriptNativeError::StorageLimit
+        ))
+    ));
+    assert!(blocked.native().target().is_none());
+    let prior = host
+        .take_guest_listener_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(prior.registration, id);
+    assert_eq!(prior.realm, permit.realm);
+    assert!(
+        host.take_guest_listener_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    let Err(DocumentScriptError::Script(Error::HostFailure(again))) = host.checkpoint() else {
+        panic!("the original terminal cause must survive observation")
+    };
+    assert!(std::ptr::eq(
+        cause,
+        again.cause::<DocumentGuestEventError>().unwrap()
+    ));
 }
 
 pub(in crate::document_scripting) fn attached_window_event_follows_the_listener_invocation() {

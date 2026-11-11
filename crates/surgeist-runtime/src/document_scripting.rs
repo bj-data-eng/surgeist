@@ -334,6 +334,7 @@ impl PreparedDocumentScriptHost {
                 engine: Some(engine),
                 native: self.native,
                 retirement: None,
+                guest_exception_reports: None,
             }),
             Err(error) => Err(EnableDocumentScriptFailure { owner: self, error }),
         }
@@ -644,6 +645,7 @@ pub struct DocumentScriptHost {
     engine: Option<ScriptEngine>,
     native: Rc<NativeOwner>,
     retirement: Option<ScriptRetirement>,
+    guest_exception_reports: Option<Rc<guest::GuestExceptionReports>>,
 }
 
 struct NativeLoanExit<'a> {

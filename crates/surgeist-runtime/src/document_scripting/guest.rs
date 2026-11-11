@@ -1,13 +1,17 @@
 //! Registered guest callbacks for ordinary authored standalone dispatch.
 
+mod reports;
+mod wrapper;
+
 use super::*;
 use crate::dom_event::{
     DispatchHost, DomEventCallback, DomEventCallbackError, DomEventConstructionError,
-    DomEventDispatchError, DomEventDispatchLimits, DomEventDispatchOutcome,
+    DomEventDispatch, DomEventDispatchError, DomEventDispatchLimits, DomEventDispatchOutcome,
     DomEventDispatchReceipt, DomEventDispatcher, DomEventHostError, DomEventInit,
     DomEventListenerOptions, DomEventRegistrationId, DomEventTarget, DomStandaloneEventTarget,
     NativeDomEvent,
 };
+pub(super) use reports::GuestExceptionReports;
 use surgeist_bindings_js::{Exception, ObjectPrototype, RetainedCallbackObject, Root, Value};
 
 /// Guest adapter limits in addition to the original registry and Hosted limits.
@@ -17,6 +21,9 @@ pub struct DocumentGuestEventLimits {
     pub storage_bytes: usize,
     /// Cumulative guest adapter work.
     pub work: u64,
+    /// Pending ordinary exceptions from guest-initiated dispatches, including
+    /// slots reserved by currently active dispatches.
+    pub pending_exception_reports: usize,
     /// Native path, callback, failure and work limits for one advance.
     pub dispatch: DomEventDispatchLimits,
 }
@@ -164,6 +171,10 @@ pub(super) struct GuestEvents {
     work: Cell<u64>,
     next_callback: Cell<u64>,
     exception_root_bytes: usize,
+    reports: Rc<GuestExceptionReports>,
+    refusal: reports::DispatchFailure,
+    window_event: Rc<window_event::WindowEvent>,
+    target_prototype: OnceCell<RetainedCallbackObject>,
     _backing: DomHostedRuntimeRetention,
 }
 
@@ -211,13 +222,16 @@ impl GuestEvents {
         })
     }
 
-    fn project(
+    fn project<'scope, T: 'static>(
         &self,
         owner: &NativeOwner,
-        scope: &mut Scope<'_>,
+        scope: &mut Scope<'scope>,
+        prototype: ObjectPrototype<'_, 'scope>,
+        native: T,
     ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
         self.step()?;
-        let object = scope.object(ObjectPrototype::Default)?;
+        let object =
+            scope.project_native_object(prototype, native, |bytes| self.reserve(owner, bytes))?;
         let observation = scope.callback_object(&object)?;
         scope.retain_callback_object(observation, |bytes| self.reserve(owner, bytes))
     }
@@ -245,25 +259,51 @@ impl DocumentScriptHost {
             .as_ref()
             .ok_or(DocumentGuestEventError::RegistryState)?;
         let fixed = size_of::<GuestEvents>() + size_of::<Cell<usize>>();
-        if limits.storage_bytes < fixed
+        let report_bytes = GuestExceptionReports::storage_bytes(limits.pending_exception_reports)
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        let refusal_bytes = reports::DispatchFailure::storage_bytes();
+        let required = fixed
+            .checked_add(report_bytes)
+            .and_then(|bytes| bytes.checked_add(refusal_bytes))
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        if limits.storage_bytes < required
             || engine
                 .retained_bytes_with(limits.storage_bytes)
                 .is_none_or(|total| total > self.native.storage_limit)
         {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
-        let backing = {
+        let (backing, report_backing, refusal_backing) = {
             let mut session = self
                 .native
                 .session
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             input.qualify_guest_registry(&session.dom())?;
-            session
-                .hosted_execution()
-                .retain_script_payload(&mut session.dom(), fixed, &self.native.cancellation)
-                .map_err(DocumentScriptNativeError::from)?
+            let hosted = session.hosted_execution();
+            let mut dom = session.dom();
+            let mut retain = |bytes| {
+                hosted
+                    .retain_script_payload(&mut dom, bytes, &self.native.cancellation)
+                    .map_err(DocumentScriptNativeError::from)
+            };
+            (
+                retain(fixed)?,
+                retain(report_bytes)?,
+                retain(refusal_bytes)?,
+            )
         };
+        let reports = Rc::new(GuestExceptionReports::new(
+            limits.pending_exception_reports,
+            report_backing,
+        )?);
+        let authority = &self
+            .native
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?
+            .realm;
+        let refusal = reports::DispatchFailure::new(authority, refusal_backing)?;
         let registry = registry
             .take()
             .ok_or(DocumentGuestEventError::RegistryState)?;
@@ -271,14 +311,42 @@ impl DocumentScriptHost {
         engine.guest_events = Some(Rc::new(GuestEvents {
             registry: RefCell::new(registry),
             limits,
-            used: Rc::new(Cell::new(fixed)),
+            used: Rc::new(Cell::new(required)),
             work: Cell::new(0),
             next_callback: Cell::new(0),
             exception_root_bytes,
+            reports: reports.clone(),
+            refusal,
+            window_event: engine.window_event.clone(),
+            target_prototype: OnceCell::new(),
             _backing: backing,
         }));
+        self.guest_exception_reports = Some(reports);
         engine.retained_bytes += limits.storage_bytes;
         Ok(())
+    }
+
+    /// Take the earliest original listener exception from guest-initiated
+    /// dispatch. This observation can be taken after terminal script refusal.
+    pub fn take_guest_listener_exception(
+        &self,
+        permit: &DocumentScriptPermit,
+    ) -> Result<Option<DocumentGuestListenerException>, DocumentGuestEventError> {
+        let attachment = self
+            .native
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        if permit.realm != attachment.realm.identity()
+            || permit.document != attachment.target.document()
+        {
+            return Err(DocumentScriptNativeError::ForeignPermit.into());
+        }
+        let reports = self
+            .guest_exception_reports
+            .as_ref()
+            .ok_or(DocumentGuestEventError::RegistryState)?;
+        Ok(reports.take())
     }
 
     fn guest_events(&self) -> Result<Rc<GuestEvents>, DocumentGuestEventError> {
@@ -299,7 +367,6 @@ impl DocumentScriptHost {
         let owner = self.native.clone();
         self.in_document(permit, |scope| {
             Ok((|| {
-                let object = events.project(&owner, scope)?;
                 let native = {
                     let mut session = owner
                         .session
@@ -319,6 +386,13 @@ impl DocumentScriptHost {
                         )
                         .map_err(DocumentGuestEventError::Construction)?
                 };
+                let prototype = events.target_prototype(&owner, scope)?;
+                let object = events.project(
+                    &owner,
+                    scope,
+                    ObjectPrototype::Object(&prototype),
+                    native.clone(),
+                )?;
                 Ok(DocumentGuestEventTarget { native, object })
             })())
         })?
@@ -337,7 +411,6 @@ impl DocumentScriptHost {
         let owner = self.native.clone();
         self.in_document(permit, |scope| {
             Ok((|| {
-                let object = events.project(&owner, scope)?;
                 let native = {
                     let mut session = owner
                         .session
@@ -354,6 +427,8 @@ impl DocumentScriptHost {
                         )
                         .map_err(DocumentGuestEventError::Construction)?
                 };
+                let object =
+                    events.project(&owner, scope, ObjectPrototype::Default, native.clone())?;
                 Ok(DocumentGuestEvent { native, object })
             })())
         })?
@@ -469,14 +544,8 @@ impl DocumentScriptHost {
         self.check_permit(permit)?;
         let owner = self.native.clone();
         let events = self.guest_events()?;
-        let window_event = self
-            .engine
-            .as_ref()
-            .ok_or(DocumentScriptNativeError::Revoked)?
-            .window_event
-            .clone();
         self.in_document(permit, |scope| {
-            Ok(events.dispatch(&owner, &window_event, scope, target, event))
+            Ok(events.dispatch(&owner, scope, target, event))
         })?
     }
 }
@@ -488,16 +557,10 @@ impl GuestEvents {
     fn dispatch(
         &self,
         owner: &NativeOwner,
-        window_event: &window_event::WindowEvent,
         scope: &mut Scope<'_>,
         target: &DocumentGuestEventTarget,
         event: &DocumentGuestEvent,
     ) -> Result<DocumentGuestEventReport, DocumentGuestEventError> {
-        let cancel = &owner.cancellation;
-        let attachment = owner
-            .attachment
-            .get()
-            .ok_or(DocumentScriptNativeError::Revoked)?;
         let max = self.limits.dispatch.failure_records;
         let bytes = size_of::<DocumentGuestListenerException>()
             .checked_add(self.exception_root_bytes)
@@ -513,22 +576,67 @@ impl GuestEvents {
         }
         let receiver = target.object(scope)?;
         let argument = event.object(scope)?;
-        let mut invocation = {
-            let mut session = owner
-                .session
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            let mut registry = self
-                .registry
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            registry.prepare_dispatch(
-                &mut session.dom(),
-                target.native.clone(),
-                &event.native,
-                cancel,
-            )?
-        };
+        let invocation = self.prepare(owner, &target.native, &event.native)?;
+        let receipt = self.run(
+            owner,
+            scope,
+            invocation,
+            &receiver,
+            &argument,
+            |_, exception| {
+                if exceptions.len() == max {
+                    return Err(DocumentScriptNativeError::StorageLimit.into());
+                }
+                exceptions.push(exception);
+                Ok(())
+            },
+        )?;
+        Ok(DocumentGuestEventReport {
+            receipt,
+            exceptions,
+            _backing: backing,
+        })
+    }
+
+    fn prepare(
+        &self,
+        owner: &NativeOwner,
+        target: &DomStandaloneEventTarget,
+        event: &NativeDomEvent,
+    ) -> Result<DomEventDispatch, DocumentGuestEventError> {
+        let mut session = owner
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let mut registry = self
+            .registry
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        Ok(registry.prepare_dispatch(
+            &mut session.dom(),
+            target.clone(),
+            event,
+            &owner.cancellation,
+        )?)
+    }
+
+    fn run<'scope>(
+        &self,
+        owner: &NativeOwner,
+        scope: &mut Scope<'scope>,
+        mut invocation: DomEventDispatch,
+        receiver: &Value<'scope>,
+        argument: &Value<'scope>,
+        mut report: impl FnMut(
+            &mut Scope<'scope>,
+            DocumentGuestListenerException,
+        ) -> Result<(), DocumentGuestEventError>,
+    ) -> Result<DomEventDispatchReceipt, DocumentGuestEventError> {
+        let cancel = &owner.cancellation;
+        let attachment = owner
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
         loop {
             self.step()?;
             let outcome = {
@@ -550,13 +658,7 @@ impl GuestEvents {
                 )?
             };
             let mut selected = match outcome {
-                DomEventDispatchOutcome::Complete(receipt) => {
-                    return Ok(DocumentGuestEventReport {
-                        receipt,
-                        exceptions,
-                        _backing: backing,
-                    });
-                }
+                DomEventDispatchOutcome::Complete(receipt) => return Ok(receipt),
                 DomEventDispatchOutcome::HostInvocation(selected) => selected,
                 DomEventDispatchOutcome::Retained(resource) => {
                     return Err(DomEventDispatchError::Admission(resource).into());
@@ -619,10 +721,10 @@ impl GuestEvents {
                 self.step()?;
                 let object = scope.open_callback_object(&callback.object)?;
                 // A standalone path item is outside any shadow tree.
-                current_event = Some(window_event.enter(scope.retain(&argument)));
-                let arguments = std::slice::from_ref(&argument);
+                current_event = Some(self.window_event.enter(scope.retain(argument)));
+                let arguments = std::slice::from_ref(argument);
                 let called = if scope.is_callable(&object)? {
-                    scope.call(&object, &receiver, arguments)
+                    scope.call(&object, receiver, arguments)
                 } else {
                     self.step()?;
                     scope.call_object_operation(&object, &b"handleEvent".map(u16::from), arguments)
@@ -636,20 +738,20 @@ impl GuestEvents {
                     })),
                     Err(error) => Err(error.into()),
                 }
-            })();
+            })()
+            .and_then(|exception| match exception {
+                Some(exception) => {
+                    report(scope, exception)?;
+                    Ok(Err(DomEventCallbackError { code: key }))
+                }
+                None => Ok(Ok(())),
+            });
             let registry = self
                 .registry
                 .try_borrow()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             match result {
-                Ok(Some(exception)) => {
-                    if exceptions.len() == max {
-                        return Err(DocumentScriptNativeError::StorageLimit.into());
-                    }
-                    exceptions.push(exception);
-                    selected.complete(&registry, Err(DomEventCallbackError { code: key }))?;
-                }
-                Ok(None) => selected.complete(&registry, Ok(()))?,
+                Ok(result) => selected.complete(&registry, result)?,
                 Err(error) => {
                     selected.refuse(&registry, DomEventHostError { code: key })?;
                     return Err(error);
