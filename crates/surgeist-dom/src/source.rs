@@ -226,6 +226,7 @@ impl DomSourceScriptRequest {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomSourceScriptSettings {
     pub(crate) request: DomSourceScriptRequest,
+    pub(crate) registration: crate::hosted::ScriptRegistrationKey,
     pub(crate) enabled: bool,
 }
 

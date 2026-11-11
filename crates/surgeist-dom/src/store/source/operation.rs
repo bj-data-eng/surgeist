@@ -2006,25 +2006,25 @@ impl DomSourceLease<'_> {
                 request.clone(),
             )));
         }
-        if op.draft.pending_script().is_some() {
-            op.refresh_admission(cancel)?;
-            let request = op.issue_script_request(cancel)?;
-            return Ok(DomSourceProgress::Request(DomSourceRequest::Script(
-                request,
-            )));
-        }
-        if op.draft.fullscreen_exit.is_some() {
-            op.refresh_admission(cancel)?;
-            let request = op.fullscreen_handoff_request(self.dom, cancel)?;
-            op.event_exposed = true;
-            return Ok(DomSourceProgress::Request(
-                DomSourceRequest::FullscreenExitHandoff(request),
-            ));
-        }
         loop {
             // External task/runtime guards may have released storage since the
             // last receipt. Refresh before resumed methods or value formation.
             op.refresh_admission(cancel)?;
+            if op.draft.pending_script().is_some() {
+                let (request, frame) = op.issue_script_request(cancel)?;
+                if !op.try_accept_disposed_script_settings(self.dom, request, frame, cancel)? {
+                    return Ok(DomSourceProgress::Request(DomSourceRequest::Script(
+                        request,
+                    )));
+                }
+            }
+            if op.draft.fullscreen_exit.is_some() {
+                let request = op.fullscreen_handoff_request(self.dom, cancel)?;
+                op.event_exposed = true;
+                return Ok(DomSourceProgress::Request(
+                    DomSourceRequest::FullscreenExitHandoff(request),
+                ));
+            }
             if op.failure.is_some() && op.request_close.is_none() {
                 return self.finish_source_failure(op, cancel).map_err(Into::into);
             }
@@ -2148,7 +2148,7 @@ impl DomSourceLease<'_> {
                     op.started = true;
                     op.script_parked = true;
                     drop(checkpoint);
-                    let request = op.issue_script_request(cancel)?;
+                    let (request, _) = op.issue_script_request(cancel)?;
                     return Ok(DomSourceProgress::Request(DomSourceRequest::Script(
                         request,
                     )));

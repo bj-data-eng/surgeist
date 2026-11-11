@@ -1,6 +1,7 @@
 //! The original private Script effect waits for a read-only host observation.
 
 use super::*;
+use crate::hosted::ScriptRegistrationEnd;
 use crate::store::script::{Boundary, Frame};
 use crate::store::select::Effect;
 use crate::{DomDocumentScriptBinding, DomDocumentScriptingFacts, DomHostedError, DomHostedSource};
@@ -38,7 +39,7 @@ impl Operation {
     pub(super) fn issue_script_request(
         &mut self,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceScriptRequest, DomError> {
+    ) -> Result<(DomSourceScriptRequest, Frame), DomError> {
         self.draft.source_step(cancel)?;
         let frame = self
             .draft
@@ -47,7 +48,7 @@ impl Operation {
         if let Some(Boundary::Settings(Some(ordinal)) | Boundary::Executable(ordinal)) =
             frame.boundary
         {
-            return self.script_request(frame, ordinal);
+            return Ok((self.script_request(frame, ordinal)?, frame));
         }
         let ordinal = self.draft.source_invocation;
         let next = ordinal
@@ -70,9 +71,10 @@ impl Operation {
             return Err(DomError::InvalidSourceOperation);
         };
         frame.boundary = Some(Boundary::Settings(Some(ordinal)));
+        let frame = *frame;
         self.draft.source_invocation = next;
         self.identities = identities;
-        Ok(request)
+        Ok((request, frame))
     }
 }
 
@@ -96,6 +98,70 @@ impl Operation {
             return Err(DomError::InvalidSourceOperation);
         }
         Ok(frame)
+    }
+
+    pub(super) fn try_accept_disposed_script_settings(
+        &mut self,
+        dom: &Dom,
+        request: DomSourceScriptRequest,
+        frame: Frame,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        let Some(registration) = &self.draft.script_registration else {
+            return Ok(false);
+        };
+        if request.step() != DomSourceScriptStep::ReadScripting
+            || request.relevant_global() != Some(registration.global)
+            || !matches!(
+                registration.end.get(),
+                Some(ScriptRegistrationEnd::EngineDisposed)
+            )
+            || dom.snapshot().stamp() != request.basis()
+        {
+            return Ok(false);
+        }
+        // The original Draft retains the registration, including after the
+        // canonical slot has been released. Its closure still needs a current
+        // association for the original Global and issuer.
+        match dom.dispatch_script_registration_current_with(registration, || {
+            self.draft.source_step(cancel).map_err(DomHostedError::from)
+        }) {
+            Ok(true) => {
+                self.apply_script_settings(frame, HtmlScriptPreparationReply::Disabled, cancel)?
+            }
+            Err(DomHostedError::Dom(error)) => return Err(error),
+            Ok(false) | Err(_) => return Ok(false),
+        }
+        Ok(true)
+    }
+
+    fn apply_script_settings(
+        &mut self,
+        mut frame: Frame,
+        reply: HtmlScriptPreparationReply,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let Some(Boundary::Settings(Some(ordinal))) = frame.boundary else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        self.draft.source_step(cancel)?;
+        frame.boundary = match frame.cursor.reply(reply) {
+            Ok(()) => None,
+            Err(HtmlScriptPreparationError::ScriptingEnabled) => {
+                Some(Boundary::Executable(ordinal))
+            }
+            Err(_) => return Err(DomError::InvalidSourceOperation),
+        };
+        let Some(Effect::Script(pending)) = self
+            .draft
+            .effects
+            .last_mut()
+            .map(|effect| &mut effect.effect)
+        else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        *pending = frame;
+        Ok(())
     }
 }
 
@@ -154,7 +220,11 @@ impl DomSourceLease<'_> {
                 .source_step(cancel)
                 .map_err(DomHostedError::from)
         })?;
-        Ok(DomSourceScriptSettings { request, enabled })
+        Ok(DomSourceScriptSettings {
+            request,
+            registration: binding.key(),
+            enabled,
+        })
     }
 
     /// Apply this exact live settings observation once. An enabled answer
@@ -173,19 +243,20 @@ impl DomSourceLease<'_> {
             .source_operation
             .as_ref()
             .ok_or(DomError::InvalidSourceOperation)?;
-        let mut frame = operation.require_script_request(request)?;
+        let frame = operation.require_script_request(request)?;
         if operation.cancelled && !operation.published && !operation.event_exposed {
             return Err(DomError::Cancelled);
         }
-        let Some(Boundary::Settings(Some(ordinal))) = frame.boundary else {
+        if request.step() != DomSourceScriptStep::ReadScripting {
             return Err(DomError::InvalidSourceOperation);
-        };
+        }
         let global = request
             .relevant_global()
             .ok_or(DomError::InvalidSourceOperation)?;
         // The DOM stamp does not encode issuer disposal or role retirement.
         // Requalify the exact association without resampling the policy.
-        self.dom
+        let document = self
+            .dom
             .dispatch_global_document_current_with::<DomHostedError>(global, &mut || {
                 operation
                     .draft
@@ -199,34 +270,22 @@ impl DomSourceLease<'_> {
                 }
                 _ => DomError::InvalidSourceOperation,
             })?;
+        if document != observation.registration.document
+            || self.dom.active_script_registration() != Some(observation.registration)
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
         let operation = self
             .dom
             .source_operation
             .as_mut()
             .ok_or(DomError::InvalidSourceOperation)?;
-        operation.draft.source_step(cancel)?;
         let reply = if observation.enabled() {
             HtmlScriptPreparationReply::Enabled
         } else {
             HtmlScriptPreparationReply::Disabled
         };
-        frame.boundary = match frame.cursor.reply(reply) {
-            Ok(()) => None,
-            Err(HtmlScriptPreparationError::ScriptingEnabled) => {
-                Some(Boundary::Executable(ordinal))
-            }
-            Err(_) => return Err(DomError::InvalidSourceOperation),
-        };
-        let Some(Effect::Script(pending)) = operation
-            .draft
-            .effects
-            .last_mut()
-            .map(|effect| &mut effect.effect)
-        else {
-            return Err(DomError::InvalidSourceOperation);
-        };
-        *pending = frame;
-        Ok(())
+        operation.apply_script_settings(frame, reply, cancel)
     }
 
     /// Request explicit cancellation of the original Script preparation. A

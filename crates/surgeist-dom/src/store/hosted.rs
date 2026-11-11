@@ -1351,10 +1351,21 @@ impl Dom {
     where
         E: From<DomError> + From<DomHostedError>,
     {
+        self.dispatch_global_document_metadata_with(global, step)
+            .map(|(document, _, _)| document)
+    }
+
+    fn dispatch_global_document_metadata_with<E>(
+        &self,
+        global: DomHostedGlobalId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<(DocumentId, &DomDocumentMetadata, DocumentPhase), E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
         if global.source.owner != self.owner {
             return Err(DomHostedError::ForeignSource.into());
         }
-        let snapshot = self.snapshot();
         let document = self
             .state
             .hosted_globals
@@ -1362,17 +1373,42 @@ impl Dom {
             .ok_or(DomHostedError::StaleIdentity)?
             .document_with(global, step)?;
         step()?;
-        let environment = snapshot
-            .document(document)?
-            .metadata()
-            .document_environment();
-        environment
+        let DomNodeKind::Document(metadata) = self.state.node(self.owner, document.node())?.kind()
+        else {
+            return Err(DomError::WrongNodeKind.into());
+        };
+        let environment = metadata.document_environment();
+        let association = environment
             .hosted
             .as_ref()
             .filter(|association| association.global == global)
+            .ok_or(DomHostedError::StaleIdentity)?;
+        association.validate_live()?;
+        Ok((document, metadata, association.phase))
+    }
+
+    pub(super) fn dispatch_script_registration_current_with(
+        &self,
+        registration: &ScriptRegistration,
+        mut step: impl FnMut() -> Result<(), DomHostedError>,
+    ) -> Result<bool, DomHostedError> {
+        let (document, metadata, phase) =
+            self.dispatch_global_document_metadata_with(registration.global, &mut step)?;
+        let navigable = registration.navigable;
+        if document != registration.key.document
+            || metadata.script_host_generation() != Some(registration.key.generation)
+            || !matches!(phase, DocumentPhase::InitialEntry { navigable: current, .. }
+                if current == navigable)
+        {
+            return Ok(false);
+        }
+        let current = self
+            .state
+            .hosted_history
+            .as_ref()
             .ok_or(DomHostedError::StaleIdentity)?
-            .validate_live()?;
-        Ok(document)
+            .navigable_with(navigable, step)?;
+        Ok(current.global == registration.global && !current.retiring && !current.retired)
     }
     /// Fresh activity for an actual dispatcher endpoint. Only canonical closed
     /// or retired state proves false; positive state validates its real issuer.

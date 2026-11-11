@@ -56,14 +56,13 @@ original profile, and joining an owner observation requires both its structural
 basis and exact captured registration. Stop changes the engine fact without
 advancing the structural revision.
 
-The later live Script-settings producer must qualify a parked ReadScripting
-request against its original operation, request ordinal, relevant Global and
-current canonical association. Its original Draft can retain the closed
-registration after Session recovery. That positive no-engine fact can answer the
-same pending read through the original acceptance path and work account. An
-already issued enabled receipt must also authenticate the current registration
-at acceptance. A closed registration does not settle an accepted executable
-request or replace a missing, foreign or stale Global's authority.
+DOM advances a parked `ReadScripting` request against its original operation,
+request ordinal, relevant Global and current canonical association. When its
+Draft retains an engine-disposed registration after Session recovery, DOM can
+answer that same read with Disabled through the original cursor and Source work
+account. A live settings receipt requires its exact registration to remain open
+at acceptance. An executable-preparation request stays parked. A missing,
+foreign or stale Global cannot establish the no-engine answer.
 
 ## SVG Script
 
