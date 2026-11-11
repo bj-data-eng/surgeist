@@ -188,6 +188,9 @@ dimensions! {
         /// Output slice bytes admitted before each native glyph bitmap decode call.
         /// Includes calls that return a decode error.
         NativeBitmapDecodeBytes,
+        /// Active-frame index records shifted during mandatory in-place removal.
+        /// Replacement capacity moves are counted as storage relocations.
+        ActiveFrameRecordMoves,
     }
 }
 impl RenderWork {

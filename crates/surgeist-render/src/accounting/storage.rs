@@ -942,6 +942,10 @@ impl<T> AccountedVec<T> {
     pub(crate) fn pop(&mut self) -> Option<T> {
         self.values.pop()
     }
+    pub(crate) fn remove(&mut self, index: usize) -> Option<T> {
+        self.values.get(index)?;
+        Some(self.values.remove(index))
+    }
     pub(crate) fn clear(&mut self) {
         self.values.clear();
     }
