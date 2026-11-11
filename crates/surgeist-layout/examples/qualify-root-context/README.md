@@ -260,6 +260,17 @@ offsets in the horizontal and orthogonal Subgrids.
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry original-inline-subgrid-alignment
 ~~~
 
+The [positioned RTL Subgrid edition](../../tests/layout/browser_parity/captured/original-relative-rtl-subgrid-positioned/qualification.json)
+captures the actual static Body and edged Grid. Its four historical Grid trees
+retain the relative RTL Subgrid and the absolute child on columns 3–5.
+The browser proof checks that each text leaf fits one 12px line. The Native
+comparison covers the Body and every Grid box, with a wider text advance
+control for the same geometry.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry original-relative-rtl-subgrid-positioned
+~~~
+
 ## Grid Lanes original diagnostics
 
 The [Grid Lanes diagnostic receipt](../../tests/layout/browser_parity/captured/grid-lanes-axis-original-diagnostics/diagnostics.json)

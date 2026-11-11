@@ -103,6 +103,11 @@ retains the two static inline Grid sources and all eight historical rectangle
 trees. The two focused callers replay each source's registered cases, including
 the vertical-lr nested Subgrid and the aligned 20px items.
 
+The [positioned RTL Subgrid edition](captured/original-relative-rtl-subgrid-positioned/qualification.json)
+compares the four historical Grid trees beneath the actual Body. The focused
+caller checks all registered variants, including the absolute child's local
+rectangle in the relative RTL Subgrid.
+
 The [Grid Lanes original diagnostic receipt](captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
 records the complete raw numeric differences from all 36 source-qualified
 original axis captures. It is separate from matching editions. Use the
