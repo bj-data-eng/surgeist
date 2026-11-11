@@ -634,6 +634,12 @@ normative conflict. Root-backdrop and broad backdrop-policy boundaries remain
 separate. Ledger owns actual graph work, resource custody and optional timings;
 refusal preserves the previous complete pixels and successful statistics.
 
+The graph compositor and internal Vello fine programs share the color dodge,
+color burn, soft light and nonseparable blend math. Blend mode selects the
+shader operation. Color endpoints, channel order and gamut clipping select
+values inside that operation. The shader structure is verified separately
+from hardware execution timing.
+
 ## Foreground layer filters
 
 `Layer::with_filter_list` installs a validated `FilterList` in authored

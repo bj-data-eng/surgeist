@@ -6,6 +6,11 @@ mod pipeline;
 mod test_support;
 mod validate;
 
+pub(crate) const LAYER_COMPOSITE_WGSL: &str = concat!(
+    include_str!("../shaders/blend_math.wgsl"),
+    include_str!("../shaders/layer_composite.wgsl"),
+);
+
 pub(crate) use cache::{
     DevicePassCache, PassCacheCommitPreparation, ProvisionalColorFilterPassObjects,
     ProvisionalCompositePassObjects, ProvisionalCopyBackdropPassObjects,

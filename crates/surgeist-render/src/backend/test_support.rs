@@ -1427,7 +1427,7 @@ fn nonseparable_helper_probe(@builtin(global_invocation_id) id: vec3<u32>) {
             result = nonseparable_clip_color(input.color_and_parameter.rgb);
         }
         case 1u: {
-            result = nonseparable_set_sat(input.color_and_parameter.rgb, input.color_and_parameter.a);
+            result = surgeist_blend_set_sat(input.color_and_parameter.rgb, input.color_and_parameter.a);
         }
         default: {
             result = nonseparable_set_lum(input.color_and_parameter.rgb, input.color_and_parameter.a);
@@ -3421,7 +3421,7 @@ impl Backend {
             )?;
             let source = format!(
                 "{}\n{}",
-                include_str!("../shaders/layer_composite.wgsl"),
+                crate::shader::LAYER_COMPOSITE_WGSL,
                 NONSEPARABLE_HELPER_PROBE_WGSL,
             );
             let shader = custody.opaque(GpuObjectKind::ShaderModule, Some(&account), || {

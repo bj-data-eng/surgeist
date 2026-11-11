@@ -9,7 +9,7 @@ use crate::{
 };
 
 use super::{
-    ShaderMaskExtendKey,
+    LAYER_COMPOSITE_WGSL, ShaderMaskExtendKey,
     key::{
         SamplerKey, ShaderCompositePathKey, ShaderMaskSamplingKey, ShaderSamplingEdgeKey,
         ShaderSamplingFilterKey, ShaderTextureFormatKey,
@@ -24,7 +24,6 @@ use super::{
 const CANONICALIZE_CAPTURE_WGSL: &str = include_str!("../shaders/canonicalize_capture.wgsl");
 const SPAN_SOURCE_OVER_WGSL: &str = include_str!("../shaders/span_source_over.wgsl");
 const PRESENT_WGSL: &str = include_str!("../shaders/present.wgsl");
-const LAYER_COMPOSITE_WGSL: &str = include_str!("../shaders/layer_composite.wgsl");
 const COLOR_FILTER_WGSL: &str = include_str!("../shaders/color_filter.wgsl");
 pub(super) const BLUR_WGSL: &str = include_str!("../shaders/blur.wgsl");
 const DROP_SHADOW_WGSL: &str = include_str!("../shaders/drop_shadow.wgsl");
