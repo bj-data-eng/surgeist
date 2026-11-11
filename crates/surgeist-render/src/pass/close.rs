@@ -443,7 +443,7 @@ pub(super) struct ExecutableBackdropFacts {
     pub(super) foreground: Option<RuntimeResourceId>,
     filter_start: usize,
     pub(super) filter_steps: SharedValue<Vec<ExecutableFilterStepFacts>>,
-    pub(super) filtered: RuntimeResourceId,
+    filtered_result: RuntimeResourceId,
     pub(super) group_clear: RuntimePassId,
     pub(super) backdrop_composite: RuntimePassId,
     pub(super) foreground_composite: Option<RuntimePassId>,
@@ -648,6 +648,10 @@ impl ClosedExecutableGraphFacts {
 }
 
 impl ExecutableBackdropFacts {
+    pub(super) fn distinct_filtered_result(&self) -> Option<RuntimeResourceId> {
+        (self.filtered_result != self.copied).then_some(self.filtered_result)
+    }
+
     fn proves_filter_partition(
         &self,
         steps: &[ExecutableFilterStepFacts],
@@ -661,9 +665,12 @@ impl ExecutableBackdropFacts {
         };
         // The closed visitor alone records the mirror-sampling interval.
         // Every other spatial step consumes the ordinary transparent-edge path.
-        Ok(self.group_filter_steps.start == backdrop_end
-            && steps.get(self.group_filter_steps.clone()).is_some()
-            && filter_steps_match(&self.filter_steps, backdrop, account)?)
+        Ok(
+            self.distinct_filtered_result().is_none() == self.filter_steps.is_empty()
+                && self.group_filter_steps.start == backdrop_end
+                && steps.get(self.group_filter_steps.clone()).is_some()
+                && filter_steps_match(&self.filter_steps, backdrop, account)?,
+        )
     }
 
     fn proves_exact_facts_for(
@@ -676,9 +683,9 @@ impl ExecutableBackdropFacts {
         let Some(copy) = pass(self.copy) else {
             return false;
         };
-        let foreground_is_distinct = self
-            .foreground
-            .is_none_or(|foreground| foreground != self.copied && foreground != self.filtered);
+        let foreground_is_distinct = self.foreground.is_none_or(|foreground| {
+            foreground != self.copied && foreground != self.filtered_result
+        });
         let Some(group_steps) = steps.get(self.group_filter_steps.clone()) else {
             return false;
         };
@@ -710,8 +717,11 @@ impl ExecutableBackdropFacts {
                 )
             })
             && pass(self.backdrop_composite).is_some_and(|backdrop| {
-                self.foreground_composite.is_some()
-                    || backdrop.result == RuntimeResultBinding::Resource(self.completed_group)
+                (self.distinct_filtered_result().is_some()
+                    || proof_read(backdrop, 1, proof)
+                        .is_some_and(|read| read.resource == self.copied))
+                    && (self.foreground_composite.is_some()
+                        || backdrop.result == RuntimeResultBinding::Resource(self.completed_group))
             })
             && self.foreground_composite.is_none_or(|id| {
                 pass(id).is_some_and(|foreground| {
@@ -1990,7 +2000,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             canonical_resource,
             &self.resources,
             self.plan.working_format,
-            false,
+            ClosedCompositeSource::Span,
         )?;
         let RuntimeResultBinding::Resource(result) = composite.result else {
             return None;
@@ -2283,9 +2293,14 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         let filter_steps = self
             .proof
             .shared_copy(self.filter_steps.get(filter_start..)?)?;
+        let backdrop_source = if filter_steps.is_empty() {
+            ClosedCompositeSource::BackdropCopy
+        } else {
+            ClosedCompositeSource::Isolated
+        };
         let group_clear = self.pass_at(self.cursor)?;
         self.visit_transparent_clear(group_clear, Color::TRANSPARENT)?;
-        let backdrop_composite = self.visit_backdrop_source_composite(filtered)?;
+        let backdrop_composite = self.visit_backdrop_source_composite(filtered, backdrop_source)?;
         let foreground_composite = match foreground {
             Some(foreground) => Some(self.visit_backdrop_foreground(foreground)?),
             None => None,
@@ -2314,7 +2329,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 foreground: foreground.map(|context| context.current),
                 filter_start,
                 filter_steps,
-                filtered: filtered.current,
+                filtered_result: filtered.current,
                 group_clear: group_clear.id,
                 backdrop_composite,
                 foreground_composite,
@@ -2360,8 +2375,8 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         ) {
             return None;
         }
-        // The first filter proves the copy's reads and final release. A
-        // drop shadow retains it for both alpha extraction and source-over.
+        // The first filter or backdrop composite proves the copy's reads
+        // and final release. A drop shadow retains it through source-over.
         self.expected_resources.insert(copied);
         Some(copied)
     }
@@ -2415,6 +2430,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
     fn visit_backdrop_source_composite(
         &mut self,
         filtered: ExecutableCompositionContext,
+        source_kind: ClosedCompositeSource,
     ) -> Option<RuntimePassId> {
         let pass = self.next_layer_composite_with_optional_coverage()?;
         let parent = *self.contexts.last()?;
@@ -2425,7 +2441,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             source,
             &self.resources,
             self.plan.working_format,
-            true,
+            source_kind,
         )??;
         if !runtime_composite_is_backdrop_inner(&layer.composite) {
             return None;
@@ -2447,7 +2463,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             source,
             &self.resources,
             self.plan.working_format,
-            false,
+            ClosedCompositeSource::Span,
         )?
         .is_some()
         {
@@ -2470,7 +2486,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             source,
             &self.resources,
             self.plan.working_format,
-            true,
+            ClosedCompositeSource::Isolated,
             2,
         )??;
         if !runtime_composite_is_untransformed_outer(&layer.composite) {
@@ -2555,7 +2571,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             source,
             &self.resources,
             self.plan.working_format,
-            true,
+            ClosedCompositeSource::Isolated,
         )??;
         let RuntimeResultBinding::Resource(result) = pass.result else {
             return None;
@@ -3560,7 +3576,7 @@ mod layer_composite_read_tests {
                     source,
                     &resources,
                     plan.working_format,
-                    true,
+                    ClosedCompositeSource::Isolated,
                 );
                 proof.finish()?;
                 Ok(layer.flatten().map(|layer| layer.result))
@@ -4533,13 +4549,20 @@ mod repeated_proof_accounting_tests {
     }
 }
 
+#[derive(Clone, Copy)]
+enum ClosedCompositeSource {
+    Span,
+    Isolated,
+    BackdropCopy,
+}
+
 fn validate_closed_composite(
     pass: &RuntimePass,
     parent: ExecutableCompositionContext,
     source: &RuntimeResourceRequest,
     resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
     working_format: WorkingFormat,
-    requires_isolated_source: bool,
+    source_kind: ClosedCompositeSource,
 ) -> Option<Option<ExecutableLayerCompositionFacts>> {
     validate_closed_composite_with_parent_reads(
         pass,
@@ -4547,7 +4570,7 @@ fn validate_closed_composite(
         source,
         resources,
         working_format,
-        requires_isolated_source,
+        source_kind,
         1,
     )
 }
@@ -4589,7 +4612,7 @@ fn validate_closed_composite_with_parent_reads(
     source: &RuntimeResourceRequest,
     resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
     working_format: WorkingFormat,
-    requires_isolated_source: bool,
+    source_kind: ClosedCompositeSource,
     parent_expected_reads: u32,
 ) -> Option<Option<ExecutableLayerCompositionFacts>> {
     let RuntimePassKind::Composite(Some(composite)) = &pass.kind else {
@@ -4607,7 +4630,7 @@ fn validate_closed_composite_with_parent_reads(
 
     match &composite.kind {
         RuntimeCompositeKind::SpanSourceOver => {
-            if requires_isolated_source
+            if !matches!(source_kind, ClosedCompositeSource::Span)
                 || pass.reads.len() != 2
                 || !matches!(
                     source.role,
@@ -4640,7 +4663,7 @@ fn validate_closed_composite_with_parent_reads(
                 parent,
                 source,
                 resources,
-                requires_isolated_source,
+                source_kind,
                 result,
                 layer,
             )
@@ -4757,7 +4780,7 @@ fn validate_closed_layer_composite(
     parent: ExecutableCompositionContext,
     source: &RuntimeResourceRequest,
     resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
-    requires_isolated_source: bool,
+    source_kind: ClosedCompositeSource,
     result: RuntimeResourceId,
     layer: ClosedLayerCompositeView<'_>,
 ) -> Option<Option<ExecutableLayerCompositionFacts>> {
@@ -4783,7 +4806,7 @@ fn validate_closed_layer_composite(
         })
         || layer.parameters.has_clip() != (layer.clip.is_some() || !layer.outer_clips.is_empty())
         || layer.parameters.has_clip() != layer.clip_coverage.is_some()
-        || !closed_composite_source_is_valid(source, requires_isolated_source, &layer)
+        || !closed_composite_source_is_valid(source, source_kind, &layer)
     {
         return None;
     }
@@ -4814,24 +4837,27 @@ fn validate_closed_layer_composite(
 
 fn closed_composite_source_is_valid(
     source: &RuntimeResourceRequest,
-    requires_isolated_source: bool,
+    source_kind: ClosedCompositeSource,
     layer: &ClosedLayerCompositeView<'_>,
 ) -> bool {
-    (requires_isolated_source
-        && matches!(
+    match source_kind {
+        ClosedCompositeSource::Isolated => matches!(
             source.role,
             RuntimeResourceRole::CompositeResult
                 | RuntimeResourceRole::FilterIntermediate
                 | RuntimeResourceRole::IsolationWorkingImage
-        ))
-        || (!requires_isolated_source
-            && source.role == RuntimeResourceRole::FilterIntermediate
-            && *layer.transform == Transform::identity()
-            && layer.parameters.opacity() == 1.0
-            && layer.parameters.composition().is_source_over_normal()
-            && layer.clip.is_none()
-            && !layer.outer_clips.is_empty()
-            && layer.parameters.alpha_mask().is_none())
+        ),
+        ClosedCompositeSource::BackdropCopy => source.role == RuntimeResourceRole::BackdropCopy,
+        ClosedCompositeSource::Span => {
+            source.role == RuntimeResourceRole::FilterIntermediate
+                && *layer.transform == Transform::identity()
+                && layer.parameters.opacity() == 1.0
+                && layer.parameters.composition().is_source_over_normal()
+                && layer.clip.is_none()
+                && !layer.outer_clips.is_empty()
+                && layer.parameters.alpha_mask().is_none()
+        }
+    }
 }
 
 fn validate_closed_clip_coverage(
