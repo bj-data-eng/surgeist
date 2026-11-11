@@ -50,30 +50,20 @@ fn ordinary_root<K: Copy, E>(
 
 fn parent<K: Copy + Eq, E: From<DomHostedError>>(
     current: K,
+    facts: Facts<K>,
     first_root: K,
     adjusted_target: K,
     event_type: DomEventType,
     read: &mut impl FnMut(K) -> Result<Facts<K>, E>,
     global: &mut impl FnMut(K) -> Result<Option<DomHostedGlobalId>, E>,
 ) -> Result<Parent<K>, E> {
-    let facts = read(current)?;
     let assigned = facts.assigned.is_some();
     let endpoint = if let Some(slot) = facts.assigned {
         Some(Endpoint::Node(slot))
     } else if let Some(document) = facts.document {
-        // Current issuer qualification precedes even Load's Document stop.
-        // A retained historical association never supplies fresh authority.
-        let global = if document.hosted {
-            global(current)?
-        } else {
-            None
-        };
-        if document.hosted && global.is_none() {
-            return Err(DomHostedError::UnsupportedProfile.into());
-        }
         if event_type != DomEventType::Load && document.context {
             Some(Endpoint::Global(
-                global.ok_or(DomHostedError::UnsupportedProfile)?,
+                global(current)?.ok_or(DomHostedError::UnsupportedProfile)?,
             ))
         } else {
             None
@@ -175,6 +165,7 @@ impl Dom {
         read(query.adjusted_target)?;
         let next = parent(
             query.current,
+            read(query.current)?,
             query.first_root,
             query.adjusted_target,
             query.event_type,
@@ -409,13 +400,20 @@ impl Draft {
                     return Err(DomError::SvgScriptProcessingUnavailable);
                 }
             }
+            let facts = read(current).map_err(svg_error)?;
+            // An SVG no-recipient proof also needs live issuer authority on a
+            // hosted Document where the standard event path stops.
+            let global =
+                svg_document_global(facts.document, || self.event_global(current, processing))
+                    .map_err(svg_error)?;
             let next = parent(
                 current,
+                facts,
                 first_root,
                 adjusted_target,
                 event_type,
                 &mut read,
-                &mut |document| self.event_global(document, processing),
+                &mut |_| Ok(global),
             )
             .map_err(svg_error)?;
             match next.endpoint {
@@ -443,6 +441,18 @@ impl Draft {
             }
         }
     }
+}
+
+fn svg_document_global(
+    document: Option<Document>,
+    resolve: impl FnOnce() -> Result<Option<DomHostedGlobalId>, DomHostedError>,
+) -> Result<Option<DomHostedGlobalId>, DomHostedError> {
+    if document.is_some_and(|document| document.hosted) {
+        return resolve()?
+            .ok_or(DomHostedError::UnsupportedProfile)
+            .map(Some);
+    }
+    Ok(None)
 }
 
 fn svg_error(error: DomHostedError) -> DomError {
@@ -481,6 +491,7 @@ mod tests {
         nodes[3].shadow_host = Some(1);
         let next = parent(
             2,
+            nodes[2],
             0,
             2,
             DomEventType::Load,
@@ -500,6 +511,7 @@ mod tests {
         nodes[2].shadow_host = Some(1);
         let stopped = parent(
             2,
+            nodes[2],
             2,
             2,
             DomEventType::Error,
@@ -511,6 +523,7 @@ mod tests {
         assert_eq!(stopped.in_target_tree, None);
         let crossed = parent(
             2,
+            nodes[2],
             0,
             2,
             DomEventType::Error,
@@ -525,20 +538,12 @@ mod tests {
     }
 
     #[test]
-    fn hosted_document_load_qualifies_current_authority_before_stopping() {
-        let mut document = node(None);
-        document.document = Some(Document {
+    fn svg_document_proof_requires_current_authority_even_when_load_stops() {
+        let document = Some(Document {
             hosted: true,
             context: true,
         });
-        let result = parent(
-            0,
-            0,
-            0,
-            DomEventType::Load,
-            &mut |_| Ok(document),
-            &mut |_| Err::<_, DomHostedError>(DomHostedError::SourceExpired),
-        );
+        let result = svg_document_global(document, || Err(DomHostedError::SourceExpired));
         assert!(matches!(result, Err(DomHostedError::SourceExpired)));
     }
 }
