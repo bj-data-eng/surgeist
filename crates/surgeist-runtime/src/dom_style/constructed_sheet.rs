@@ -138,6 +138,7 @@ impl DomStyleRuntime {
                         return Err(DomStyleRuntimeError::Binding.into());
                     }
                     let snapshot = dom.snapshot();
+                    state.prune_retired_roots(&snapshot, cancel)?;
                     let view = snapshot
                         .document(document)
                         .map_err(DomStyleRuntimeError::from)?;
