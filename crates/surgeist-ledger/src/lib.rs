@@ -355,11 +355,35 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         limits: Limits<W, R>,
         max_scopes: usize,
     ) -> Result<Self, Error<W, R>> {
+        Self::with_scope_storage(name, limits, max_scopes, |scopes| scopes.try_reserve(1))
+    }
+
+    /// Creates an operation with the entire scope capacity reserved up front.
+    /// Opening a child within the bound needs no additional scope allocation.
+    /// Use this constructor when a host admits the fixed setup backing.
+    pub fn with_reserved_scopes(
+        name: &'static str,
+        limits: Limits<W, R>,
+        max_scopes: usize,
+    ) -> Result<Self, Error<W, R>> {
+        Self::with_scope_storage(name, limits, max_scopes, |scopes| {
+            scopes.try_reserve_exact(max_scopes)
+        })
+    }
+
+    fn with_scope_storage(
+        name: &'static str,
+        limits: Limits<W, R>,
+        max_scopes: usize,
+        reserve: impl FnOnce(
+            &mut Vec<ScopeEntry<W, R>>,
+        ) -> Result<(), std::collections::TryReserveError>,
+    ) -> Result<Self, Error<W, R>> {
         if max_scopes == 0 {
             return Err(Error::ScopeLimit { limit: 0 });
         }
         let mut scopes = Vec::new();
-        scopes.try_reserve(1).map_err(|_| Error::Allocation)?;
+        reserve(&mut scopes).map_err(|_| Error::Allocation)?;
         let identity = NEXT_OPERATION
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .map_err(|_| Error::IdentityExhausted)?;

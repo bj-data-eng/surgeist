@@ -14,6 +14,32 @@ crate::dimensions! {
     enum Resource => ResourceTable { Bytes }
 }
 
+#[test]
+fn reserved_shared_backing_covers_exact_scope_capacity() {
+    let mut operation =
+        Operation::<Work, Resource>::with_reserved_scopes("root", Limits::unlimited(), 2).unwrap();
+    assert_eq!(operation.scopes.capacity(), 2);
+    let allocated = size_of::<std::sync::Mutex<Operation<Work, Resource>>>()
+        + operation.scopes.capacity() * size_of::<ScopeEntry<Work, Resource>>();
+    assert_eq!(
+        crate::SharedOperation::<Work, Resource>::reserved_backing_bytes(2),
+        Some(allocated)
+    );
+    let root = operation.root();
+    operation
+        .child(root, "child", Limits::unlimited(), Tariffs::identity())
+        .unwrap();
+    assert_eq!(operation.scopes.capacity(), 2);
+    assert_eq!(
+        operation.child(root, "excess", Limits::unlimited(), Tariffs::identity()),
+        Err(Error::ScopeLimit { limit: 2 })
+    );
+    assert_eq!(
+        crate::SharedOperation::<Work, Resource>::reserved_backing_bytes(0),
+        None
+    );
+}
+
 fn plain(max_scopes: usize) -> Operation<Work, Resource> {
     Operation::new("root", Limits::unlimited(), max_scopes).unwrap()
 }

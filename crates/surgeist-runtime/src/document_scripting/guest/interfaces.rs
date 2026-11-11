@@ -114,7 +114,9 @@ impl PublicEventBindings {
         admission: &GuestEventAdmission,
     ) -> Result<Self, DocumentGuestEventError> {
         let fund = |bytes| admission.budget.reserve(owner, admission.limits, bytes);
-        let account_bytes = size_of::<Callbacks>() + ConversionAccount::retained_body_bytes();
+        let account_bytes = size_of::<Callbacks>()
+            .checked_add(ConversionAccount::standalone_backing_bytes()?)
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
         let backing = fund(account_bytes)?;
         let work = admission.limits.work;
         let buffer_bytes = u64::try_from(admission.limits.storage_bytes)

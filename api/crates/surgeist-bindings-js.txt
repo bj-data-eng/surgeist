@@ -227,6 +227,7 @@ pub fn surgeist_bindings_js::conversion::ConversionAccount::new(scope: &mut surg
 pub const fn surgeist_bindings_js::conversion::ConversionAccount::retained_body_bytes() -> usize
 pub fn surgeist_bindings_js::conversion::ConversionAccount::run<'scope, T>(&self, scope: &mut surgeist_bindings_js::Scope<'scope>, action: impl core::ops::function::FnOnce(&mut surgeist_bindings_js::conversion::Conversion<'_, 'scope>) -> core::result::Result<T, surgeist_bindings_js::conversion::Failure>) -> core::result::Result<T, surgeist_bindings_js::conversion::Failure>
 pub fn surgeist_bindings_js::conversion::ConversionAccount::standalone(scope: &mut surgeist_bindings_js::Scope<'_>, work: surgeist_bindings_js::conversion::WorkTable<u64>, resources: surgeist_bindings_js::conversion::ResourceTable<u64>) -> core::result::Result<Self, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::conversion::ConversionAccount::standalone_backing_bytes() -> core::result::Result<usize, surgeist_bindings_js::Error>
 pub struct surgeist_bindings_js::conversion::Converted<T>
 impl<T> surgeist_bindings_js::conversion::Converted<T>
 pub fn surgeist_bindings_js::conversion::Converted<T>::get(&self) -> &T

@@ -183,6 +183,7 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
         .enable_with_guest_event_registry(target, policy, hooks(), &mut bound, limits)
         .unwrap();
     assert!(bound.is_none());
+    let exact_activation = host.guest_events().unwrap().budget.used.get();
     let permit = host.permit().unwrap();
     assert!(
         host.remove_guest_event_listener(&permit, original_registration)
@@ -340,6 +341,48 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
         Ok(())
     })
     .unwrap();
+    drop((host, events, event, event_target, report));
+
+    for storage_bytes in [exact_activation - 1, exact_activation] {
+        let cancellation = Arc::new(AtomicBool::new(false));
+        let (mut session, target) =
+            super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+        let mut registry = DomEventDispatcher::new(registry_limits).unwrap();
+        registry.bind(&mut session.dom(), &cancellation).unwrap();
+        let mut registry = Some(registry);
+        let prepared =
+            PreparedDocumentScriptHost::prepare(session, 2_000_000, cancellation).unwrap();
+        let result = prepared.enable_with_guest_event_registry(
+            target,
+            policy,
+            hooks(),
+            &mut registry,
+            DocumentGuestEventLimits {
+                storage_bytes,
+                ..limits
+            },
+        );
+        if storage_bytes == exact_activation {
+            let host = result.unwrap();
+            assert!(registry.is_none());
+            assert_eq!(
+                host.guest_events().unwrap().budget.used.get(),
+                exact_activation
+            );
+        } else {
+            let Err(refused) = result else {
+                panic!("one byte short must leave the Window unpublished");
+            };
+            assert!(matches!(
+                refused.error,
+                DocumentGuestEventError::Document(DocumentScriptError::Native(
+                    DocumentScriptNativeError::StorageLimit,
+                ))
+            ));
+            assert!(registry.is_some());
+            assert!(refused.owner.native.attachment.get().is_none());
+        }
+    }
 }
 
 pub(in crate::document_scripting) fn refused_first_target_releases_prototype_capture() {
