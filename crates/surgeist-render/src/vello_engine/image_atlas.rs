@@ -17,10 +17,14 @@ pub(super) struct ImageExpansion {
 }
 
 impl ImageExpansion {
-    pub(super) fn try_new(image: &ImageData, source_to_device: kurbo::Affine) -> Result<Self> {
+    pub(super) fn try_new(
+        image: &ImageData,
+        source_to_device: kurbo::Affine,
+        account: &Account,
+    ) -> Result<Self> {
         Self::from_factors(
             image,
-            crate::image::pixelated_multipliers(source_to_device)?,
+            crate::image::pixelated_multipliers(source_to_device, account)?,
         )
     }
 
@@ -655,22 +659,32 @@ mod tests {
 
     #[test]
     fn nearest_positive_expansion_is_independent_per_transformed_source_axis() {
+        let account = Account::for_test();
         let expansion = ImageExpansion::try_new(
             &image(),
             kurbo::Affine::new([0.0, 2.4, -3.6, 0.0, 9.0, 7.0]),
+            &account,
         )
         .unwrap();
         assert_eq!(expansion.factors, [2, 4]);
         assert_eq!(expansion.extent, PhysicalSize::new(4, 4));
-        let downscale =
-            ImageExpansion::try_new(&image(), kurbo::Affine::scale_non_uniform(0.1, 0.4)).unwrap();
+        let downscale = ImageExpansion::try_new(
+            &image(),
+            kurbo::Affine::scale_non_uniform(0.1, 0.4),
+            &account,
+        )
+        .unwrap();
         assert_eq!(downscale.factors, [1, 1]);
     }
 
     #[test]
     fn oversized_expansion_is_rejected_without_truncation() {
-        assert!(ImageExpansion::try_new(&image(), kurbo::Affine::scale(32768.0)).is_err());
-        assert!(ImageExpansion::try_new(&image(), kurbo::Affine::scale(f64::INFINITY)).is_err());
+        let account = Account::for_test();
+        for scale in [32768.0, f64::INFINITY] {
+            assert!(
+                ImageExpansion::try_new(&image(), kurbo::Affine::scale(scale), &account).is_err()
+            );
+        }
     }
 
     #[test]

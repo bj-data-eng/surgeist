@@ -569,6 +569,10 @@ impl Account {
             )
             .map_err(|e| self.error(e))
     }
+    pub(crate) fn coordinate<T>(&self, evaluate: impl FnOnce() -> T) -> Result<T> {
+        self.work(RenderWork::CoordinateVisits, 1)?;
+        Ok(evaluate())
+    }
     pub(crate) fn storage(&self) -> StorageAccount {
         self.cpu.as_ref().map_or_else(
             || StorageAccount::Preparation(self.clone()),

@@ -172,14 +172,17 @@ impl ReferencePremultipliedRgba8Buffer {
     ) -> Result<Self> {
         let width = self.physical_size.width();
         let height = self.physical_size.height();
-        let source_to_device = kurbo::Affine::scale_non_uniform(
-            mask_bounds.width() / f64::from(mask.data.width) * f64::from(width)
-                / source_bounds.width(),
-            mask_bounds.height() / f64::from(mask.data.height) * f64::from(height)
-                / source_bounds.height(),
-        );
         let factors = if mask.rendering_hint() == Some(ImageRendering::Pixelated) {
-            crate::image::pixelated_multipliers(source_to_device)?
+            let source_to_device = kurbo::Affine::scale_non_uniform(
+                mask_bounds.width() / f64::from(mask.data.width) * f64::from(width)
+                    / source_bounds.width(),
+                mask_bounds.height() / f64::from(mask.data.height) * f64::from(height)
+                    / source_bounds.height(),
+            );
+            crate::image::pixelated_multipliers(
+                source_to_device,
+                &crate::accounting::Account::for_test(),
+            )?
         } else {
             [1, 1]
         };

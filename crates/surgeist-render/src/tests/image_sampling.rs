@@ -41,6 +41,7 @@ fn selecting_rendering_replaces_quality_without_changing_image_content() {
 
 #[test]
 fn pixelated_axes_use_independent_nearest_positive_integer_multiples() {
+    let account = crate::accounting::Account::for_test();
     for (affine, expected) in [
         (kurbo::Affine::scale_non_uniform(2.5, 1.49), [3, 1]),
         (kurbo::Affine::scale_non_uniform(0.0, 0.25), [1, 1]),
@@ -51,10 +52,10 @@ fn pixelated_axes_use_independent_nearest_positive_integer_multiples() {
         // The source-axis lengths are 5 and 2, despite their nonorthogonal basis.
         (kurbo::Affine::new([3.0, 4.0, 2.0, 0.0, 0.0, 0.0]), [5, 2]),
     ] {
-        assert_eq!(pixelated_multipliers(affine).unwrap(), expected);
+        assert_eq!(pixelated_multipliers(affine, &account).unwrap(), expected);
     }
     for scale in [f64::NAN, f64::INFINITY, f64::from(u32::MAX) + 1.0] {
-        assert!(pixelated_multipliers(kurbo::Affine::scale(scale)).is_err());
+        assert!(pixelated_multipliers(kurbo::Affine::scale(scale), &account).is_err());
     }
 }
 

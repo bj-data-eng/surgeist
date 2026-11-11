@@ -181,11 +181,8 @@ pub(super) fn prepared_pass_composite_parameters(
                 .get(&result, account)?
                 .ok_or_else(|| preparation_error("composite result spatial binding is missing"))?
                 .spatial;
-            let bytes = CompositeParameterBytes::try_from_runtime_layer(
-                parameters,
-                destination,
-                Some(account),
-            )?;
+            let bytes =
+                CompositeParameterBytes::try_from_runtime_layer(parameters, destination, account)?;
             if bytes.as_bytes().len() != 112 {
                 return Err(preparation_error(
                     "composite parameter serialization changed its exact WGSL byte length",
@@ -240,6 +237,153 @@ mod role_lookup_accounting_tests {
     use super::*;
     use crate::accounting::SharedValue;
     use crate::pass::test_support::{lower_capture_proof_fixture, measure_proof_work};
+
+    #[test]
+    fn pixelated_prepared_mask_lattice_refuses_before_serialization() {
+        for limit in [0, 75, 76] {
+            assert_prepared_mask_lattice_boundary(limit);
+        }
+    }
+
+    fn assert_prepared_mask_lattice_boundary(limit: u64) {
+        use crate::accounting::{FrameFixture, RendererCpu};
+        use crate::{
+            Antialiasing, Capabilities, Color, Format, Image, ImageRendering, Layer, Rect,
+            RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderEvent,
+            RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity,
+            RenderRefusalReason, ResolvedLayerAlphaMask, Scene, Size, Transform,
+            backend::DeviceCapabilities,
+            frame::{FrameContext, FramePlan},
+            pass::LoweredGraphPlan,
+            resource::WorkingFormat,
+        };
+
+        let setup = Account::for_test();
+        let bounds = Rect::new(0.0, 0.0, 2.0, 1.0);
+        let image = Image::from_rgba(
+            Size::new(2.0, 1.0),
+            vec![255, 255, 255, 128, 255, 255, 255, 255],
+        )
+        .unwrap()
+        .rendering(ImageRendering::Pixelated);
+        let transform = Transform::scale(2.5, 1.0)
+            .unwrap()
+            .then(Transform::translation(1.0, 1.0).unwrap())
+            .unwrap();
+        let layer = Layer::new()
+            .with_transform(transform)
+            .with_resolved_alpha_mask(ResolvedLayerAlphaMask::try_new(image, bounds).unwrap());
+        let mut scene = Scene::new();
+        scene.layer(layer, |child| {
+            child.fill(bounds, Color::BLACK);
+        });
+        let commands = scene.normalize(Capabilities::CURRENT, &setup).unwrap();
+        let context = FrameContext::try_new(
+            Size::new(7.0, 3.0),
+            1.0,
+            Antialiasing::Area,
+            Color::TRANSPARENT,
+        )
+        .unwrap();
+        let FramePlan::GpuGraph(graph) = commands.plan_for(context, &setup).unwrap() else {
+            panic!("an authored Pixelated mask requires the GPU graph");
+        };
+        let lowered = LoweredGraphPlan::try_lower_validated_graph(
+            &graph,
+            WorkingFormat::HighPrecision,
+            Format::Rgba8,
+            &DeviceCapabilities::from_test_facts(true, true, 4096),
+            &setup,
+        )
+        .unwrap();
+        let pass = lowered
+            .passes
+            .iter()
+            .find(|pass| {
+                matches!(
+                    &pass.kind,
+                    RuntimePassKind::Composite(Some(RuntimeComposite {
+                        kind: RuntimeCompositeKind::Layer { parameters, .. }, ..
+                    })) if parameters.alpha_mask().is_some()
+                )
+            })
+            .unwrap();
+        let RuntimeResultBinding::Resource(result) = pass.result else {
+            panic!("the authored layer must have a result resource");
+        };
+        let destination = lowered
+            .resources
+            .iter()
+            .find(|resource| resource.id == result)
+            .unwrap();
+        let mut resources = PassMap::temporary(&setup, 1).unwrap();
+        resources.insert_with(result, destination, &setup).unwrap();
+        let control = prepared_pass_composite_parameters(pass, &resources, &setup)
+            .unwrap()
+            .unwrap();
+        assert_eq!(&control.as_bytes()[56..64], &[3, 0, 0, 0, 1, 0, 0, 0]);
+
+        let phase = RenderPhase::GpuPrepare;
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::CoordinateVisits, limit)
+            .unwrap()
+            .with_work_limit(RenderWork::SerializedBytes, 0)
+            .unwrap();
+        let options = RenderAccountingOptions::new()
+            .with_limits(limits)
+            .with_profile(RenderProfile::Detailed {
+                timing: false,
+                event_limit: 128,
+                filter: RenderPhaseFilter::Phase(phase),
+            });
+        let cpu = RendererCpu::new(options).unwrap();
+        let (result, started, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let account = attempt.account().at(phase);
+                account.phase(phase, || {
+                    prepared_pass_composite_parameters(pass, &resources, &account)
+                })
+            })
+            .unwrap()
+            .into_parts();
+        assert!(started);
+        assert_eq!(fault, None);
+        let attempt = report.attempt().unwrap();
+        assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
+        let refusal = attempt.refusal().unwrap();
+        assert_eq!(
+            result.unwrap_err().accounting_diagnostic(),
+            Some(RenderAccountingError::Refused(refusal))
+        );
+        assert_eq!(refusal.phase(), RenderPhase::Attempt);
+        let (work, current, amount) = if limit == 76 {
+            (RenderWork::SerializedBytes, 0, 112)
+        } else {
+            (RenderWork::CoordinateVisits, limit, 1)
+        };
+        assert_eq!(
+            refusal.reason(),
+            RenderRefusalReason::Limit { limit: current }
+        );
+        assert_eq!(attempt.dropped_events(), 0);
+        assert!(attempt.events().any(|event| matches!(
+            event,
+            RenderEvent::Refused {
+                phase: RenderPhase::GpuPrepare,
+                ..
+            }
+        )));
+        let usage = attempt.phase_usage(phase);
+        assert_eq!(usage.work(RenderWork::ResourceProbes), 1);
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), limit);
+        assert_eq!(usage.work(RenderWork::SerializedBytes), 0);
+        assert_eq!(usage.work(RenderWork::UploadBytes), 0);
+        assert_eq!(
+            (refusal.quantity(), refusal.current(), refusal.amount()),
+            (RenderQuantity::Work(work), current, amount),
+            "Pixelated placement must finish before serializing the 112-byte block"
+        );
+    }
 
     #[test]
     fn spatial_role_lookup_counts_the_candidate_before_resource_probes() {

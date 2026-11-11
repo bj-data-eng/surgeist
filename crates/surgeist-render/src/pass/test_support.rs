@@ -2936,7 +2936,12 @@ pub(crate) fn composite_parameter_bytes_for_test(
         parameters
             .alpha_mask()
             .and_then(|_| {
-                CompositeParameterBytes::try_from_runtime_layer(parameters, destination, None).ok()
+                CompositeParameterBytes::try_from_runtime_layer(
+                    parameters,
+                    destination,
+                    &Account::for_test(),
+                )
+                .ok()
             })
             .map(CompositeParameterBytes::into_bytes_for_test)
     })

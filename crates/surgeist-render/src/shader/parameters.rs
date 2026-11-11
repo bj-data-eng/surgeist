@@ -581,11 +581,68 @@ struct NarrowedCompositeMask {
     sampling: ShaderMaskSamplingKey,
 }
 
+fn pixelated_mask_multipliers(
+    destination_to_local: [f64; 6],
+    mask: &CompositeMaskParameterFacts,
+    raster_scale: f64,
+    account: &Account,
+) -> Result<[u32; 2]> {
+    let a = account.coordinate(|| destination_to_local[0])?;
+    let b = account.coordinate(|| destination_to_local[1])?;
+    let c = account.coordinate(|| destination_to_local[2])?;
+    let d = account.coordinate(|| destination_to_local[3])?;
+    let ad = account.coordinate(|| a * d)?;
+    let bc = account.coordinate(|| b * c)?;
+    let determinant = account.coordinate(|| ad - bc)?;
+    let inverse_determinant = account.coordinate(|| determinant.recip())?;
+    let negative_inverse = account.coordinate(|| -inverse_determinant)?;
+    let local_to_destination = [
+        account.coordinate(|| inverse_determinant * d)?,
+        account.coordinate(|| negative_inverse * b)?,
+        account.coordinate(|| negative_inverse * c)?,
+        account.coordinate(|| inverse_determinant * a)?,
+    ];
+
+    // The factor producer only uses the linear part of each transform. Keep
+    // the Kurbo coefficient expressions, including their zero terms.
+    let raster_scale = account.coordinate(|| raster_scale)?;
+    let local_to_device = linear_product(
+        [raster_scale, 0.0, 0.0, raster_scale],
+        local_to_destination,
+        account,
+    )?;
+    let width = account.coordinate(|| f64::from(mask.dimensions[0]))?;
+    let bounds_width = account.coordinate(|| mask.bounds[2])?;
+    let sx = account.coordinate(|| bounds_width / width)?;
+    let height = account.coordinate(|| f64::from(mask.dimensions[1]))?;
+    let bounds_height = account.coordinate(|| mask.bounds[3])?;
+    let sy = account.coordinate(|| bounds_height / height)?;
+    let [a, b, c, d] = linear_product(local_to_device, [sx, 0.0, 0.0, sy], account)?;
+    crate::image::pixelated_multipliers(kurbo::Affine::new([a, b, c, d, 0.0, 0.0]), account)
+}
+
+fn linear_product(left: [f64; 4], right: [f64; 4], account: &Account) -> Result<[f64; 4]> {
+    account.work(RenderWork::CoordinateVisits, 8)?;
+    let [a, b, c, d] = left;
+    let [g, h, i, j] = right;
+    let pair = |x, y, z, w| -> Result<f64> {
+        let left = account.coordinate(|| x * y)?;
+        let right = account.coordinate(|| z * w)?;
+        account.coordinate(|| left + right)
+    };
+    Ok([
+        pair(a, g, c, h)?,
+        pair(b, g, d, h)?,
+        pair(a, i, c, j)?,
+        pair(b, i, d, j)?,
+    ])
+}
+
 impl CompositeParameterBytes {
     pub(crate) fn try_from_runtime_layer(
         parameters: &RuntimeLayerCompositeParameters,
         destination: RuntimeSpatialDescriptor,
-        observer: Option<&Account>,
+        account: &Account,
     ) -> Result<Self> {
         let mask = parameters.alpha_mask().map(|mask| {
             let bounds = mask.bounds();
@@ -610,13 +667,13 @@ impl CompositeParameterBytes {
                 mask,
                 raster_scale: destination.raster_scale(),
             },
-            observer,
+            account,
         )
     }
 
-    fn try_from_facts(facts: CompositeParameterFacts, observer: Option<&Account>) -> Result<Self> {
+    fn try_from_facts(facts: CompositeParameterFacts, account: &Account) -> Result<Self> {
         let CompositeParameterFacts {
-            affine,
+            affine: destination_to_local,
             source_space,
             opacity,
             composition,
@@ -624,8 +681,7 @@ impl CompositeParameterBytes {
             mask,
             raster_scale,
         } = facts;
-        let source_to_destination = kurbo::Affine::new(affine).inverse();
-        let [a, b, c, d, e, f] = affine;
+        let [a, b, c, d, e, f] = destination_to_local;
         let affine = [
             narrow_composite_scalar("composite affine coefficient a", a)?,
             narrow_composite_scalar("composite affine coefficient b", b)?,
@@ -667,13 +723,12 @@ impl CompositeParameterBytes {
                     ));
                 }
                 let pixelated = if mask.sampling.quality() == ShaderMaskQualityKey::Pixelated {
-                    let source_to_device = kurbo::Affine::scale(raster_scale)
-                        * source_to_destination
-                        * kurbo::Affine::scale_non_uniform(
-                            mask.bounds[2] / f64::from(width),
-                            mask.bounds[3] / f64::from(height),
-                        );
-                    Some(crate::image::pixelated_multipliers(source_to_device)?)
+                    Some(pixelated_mask_multipliers(
+                        destination_to_local,
+                        &mask,
+                        raster_scale,
+                        account,
+                    )?)
                 } else {
                     None
                 };
@@ -693,9 +748,7 @@ impl CompositeParameterBytes {
                 })
             })
             .transpose()?;
-        if let Some(observer) = observer {
-            observer.work(RenderWork::SerializedBytes, 112)?;
-        }
+        account.work(RenderWork::SerializedBytes, 112)?;
         let mut bytes = [0_u8; 112];
         for (index, value) in affine.into_iter().enumerate() {
             write_f32(&mut bytes, index * 4, value);
@@ -805,7 +858,7 @@ pub(crate) fn composite_parameter_bytes_for_gpu_vector_for_test(
             mask,
             raster_scale: 1.0,
         },
-        None,
+        &Account::for_test(),
     )
     .map(CompositeParameterBytes::into_bytes_for_test)
 }
@@ -969,7 +1022,7 @@ mod surface_grid_parameter_tests {
                     mask: None,
                     raster_scale: 1.0,
                 },
-                None,
+                &Account::for_test(),
             )
             .unwrap()
             .into_bytes_for_test();
@@ -1006,7 +1059,7 @@ mod surface_grid_parameter_tests {
                     mask: None,
                     raster_scale: 1.0,
                 },
-                None,
+                &Account::for_test(),
             )
             .unwrap()
             .into_bytes_for_test();
@@ -1041,7 +1094,7 @@ mod surface_grid_parameter_tests {
                 mask: Some(mask),
                 raster_scale: 1.0,
             },
-            None,
+            &Account::for_test(),
         )
         .unwrap()
         .into_bytes_for_test();
@@ -1389,7 +1442,7 @@ mod accounting_tests {
                         }),
                         raster_scale: 1.0,
                     },
-                    Some(account),
+                    account,
                 )
             },
         );
