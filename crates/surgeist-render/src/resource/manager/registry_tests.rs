@@ -55,6 +55,47 @@ fn lifetime_probes(manager: &ResourceManager) -> u64 {
 }
 
 #[test]
+fn resource_entry_backing_refuses_before_payload_creation() {
+    use crate::accounting::{RenderCpuScope, RendererCpu};
+
+    let options = RenderAccountingOptions::new();
+    let opening = RendererCpu::new(options)
+        .unwrap()
+        .snapshot()
+        .unwrap()
+        .usage()
+        .live(RenderResource::RetainedCpuBytes);
+    let frame_bytes =
+        std::mem::size_of::<(FrameIdentity, crate::resource::lease::FrameScratch)>() as u64;
+    let options =
+        options.with_limits(RenderLimits::new().with_retained_bytes(opening + frame_bytes));
+    let cpu = RendererCpu::new(options).unwrap();
+    let manager = ResourceManager::with_generation(
+        ResourceCacheBudget::DEFAULT,
+        Generation::new(options).unwrap(),
+        cpu.at(RenderCpuScope::DeviceBacking),
+    );
+    let mut frame = manager.begin_frame(None).unwrap();
+    let before = manager.observation_for_test();
+    let error = frame
+        .acquire(ResourceCacheKey::VelloAtlas, 4)
+        .err()
+        .expect("fresh resource admission needs funded index capacity");
+    assert!(matches!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::CpuRefused {
+            quantity: RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+            ..
+        })
+    ));
+    assert_eq!(manager.observation_for_test(), before);
+    assert_eq!(registry_facts(&manager), (0, 1, 1, 0));
+    drop(frame.finish_checked().unwrap());
+    cpu.ensure_healthy().unwrap();
+    manager.generation().ensure_healthy().unwrap();
+}
+
+#[test]
 fn active_frame_admission_refuses_unfunded_index_without_advancing_identity() {
     use crate::accounting::{RenderCpuScope, RenderResource, RendererCpu};
 
