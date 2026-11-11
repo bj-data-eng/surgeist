@@ -5,7 +5,6 @@ use crate::horizontal_br_font_band_profile;
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, FLEX_COMPOSITION_SOURCE_SHA256,
 };
-use crate::original_subgrid_body_profile;
 use crate::prepared_atomic_percentage_profile;
 use crate::xml::{escape_attr, generate_xml};
 use crate::{empty_line_br_font_band_profile, vertical_br_font_band_profile};
@@ -13,6 +12,7 @@ use crate::{
     original_block_axes_profile, original_flex_axes_profile, original_flex_parent_profile,
     original_grid_axes_profile, original_inline_subgrid_profile, original_subgrid_axes_profile,
 };
+use crate::{original_relative_rtl_subgrid_profile, original_subgrid_body_profile};
 use serde_json::Value;
 
 #[cfg(test)]
@@ -628,6 +628,12 @@ fn original_source_capture(request: BoxObservationRequest) -> Option<SourceCaptu
             script: original_grid_axes_profile::SCRIPT,
             source_digest: original_grid_axes_profile::source_digest,
             accepts_helper: original_grid_axes_profile::accepts_helper,
+        }),
+        BoxObservationRequest::OriginalRelativeRtlSubgrid => Some(SourceCapture {
+            function: "captureOriginalRelativeRtlSubgrid",
+            script: original_relative_rtl_subgrid_profile::SCRIPT,
+            source_digest: original_relative_rtl_subgrid_profile::source_digest,
+            accepts_helper: original_relative_rtl_subgrid_profile::accepts_helper,
         }),
         BoxObservationRequest::OriginalInlineSubgrid => Some(SourceCapture {
             function: "captureOriginalInlineSubgrid",

@@ -59,6 +59,8 @@ mod grid_lanes_source_delta;
 mod measured_leaf;
 #[path = "original_flex_parent.rs"]
 pub(crate) mod original_flex_parent;
+#[path = "original_relative_rtl_subgrid.rs"]
+mod original_relative_rtl_subgrid;
 #[path = "original_subgrid_body.rs"]
 pub(crate) mod original_subgrid_body;
 #[path = "prepared_atomic_percentage.rs"]

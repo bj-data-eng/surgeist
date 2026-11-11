@@ -259,6 +259,13 @@ impl QualificationMode {
             | Self::DeriveMatching(crate::original_inline_subgrid_profile::EDITION) => {
                 BoxObservationRequest::OriginalInlineSubgrid
             }
+            Self::PublishMatching(capture_authority::ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION)
+            | Self::CheckPublishedMatching(
+                capture_authority::ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION,
+            )
+            | Self::DeriveMatching(capture_authority::ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION) => {
+                BoxObservationRequest::OriginalRelativeRtlSubgrid
+            }
             Self::MeasuredLeafDiagnostics
             | Self::PublishExact(PublishedEdition::MeasuredGrid)
             | Self::CheckPublishedExact(PublishedEdition::MeasuredGrid)
@@ -277,6 +284,7 @@ fn select_records(
 ) -> Result<()> {
     declaration.records.retain(|record| {
         crate::original_inline_subgrid_profile::source_digest(record.source.as_str()).is_none()
+            && record.source.as_str() != crate::original_relative_rtl_subgrid_profile::SOURCE
     });
     let prepared_source = crate::parity_support::prepared_range_qualification::SOURCE;
     if mode == QualificationMode::PreparedRangeCapture {
@@ -1955,6 +1963,7 @@ fn inventory_with_retained_helper(
                     | BoxObservationRequest::OriginalGridAxes
                     | BoxObservationRequest::OriginalSubgridAxes
                     | BoxObservationRequest::OriginalInlineSubgrid
+                    | BoxObservationRequest::OriginalRelativeRtlSubgrid
             )
         {
             continue;

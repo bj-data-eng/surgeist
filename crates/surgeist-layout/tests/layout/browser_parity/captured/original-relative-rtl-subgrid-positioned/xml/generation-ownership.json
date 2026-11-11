@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/generation-reports/all.json": "ddff0996f5243e2965ce702f2eb6738bd4dd97f93cad3d8a043f654b7e6ce1b7",
+    "xml/subgrid/subgrid_abspos_relative_rtl_column_3_to_5__border_box_ltr.xml": "035d263f66df7c4c169c81308799473152ce9053bef2110cc62537b89a0a497e",
+    "xml/subgrid/subgrid_abspos_relative_rtl_column_3_to_5__border_box_rtl.xml": "ba149f466dbcc9dcc29c1f6774f9731121bd5f49250f4234ad05621835f6df9b",
+    "xml/subgrid/subgrid_abspos_relative_rtl_column_3_to_5__content_box_ltr.xml": "bf46aa2dca821afb01dfab1f7cc6711791eb1869027b520d97570813f0b340ae",
+    "xml/subgrid/subgrid_abspos_relative_rtl_column_3_to_5__content_box_rtl.xml": "74e881f8431713b583167cea17388154a2247c734f6b19632b099f88ce38cf07"
+  }
+}

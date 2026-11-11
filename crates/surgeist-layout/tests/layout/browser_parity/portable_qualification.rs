@@ -698,6 +698,10 @@ const REGISTERED_MATCHING: &[(&str, &str)] = &[
         "d8f83b8db359b6252b7c7f72cfa67f4865c16a83f8dcc47e4b0fe6dfc953f7cc",
     ),
     (
+        authority::ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION,
+        "197161389553cca64302c8ff9971f5530bfc7cd84326c80f3b6b39a769e23be0",
+    ),
+    (
         authority::GRID_LANES_PAIRED_EDITION,
         REGISTERED_GRID_LANES_PAIRED_TERMINAL_SHA256,
     ),

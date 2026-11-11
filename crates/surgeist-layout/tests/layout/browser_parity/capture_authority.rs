@@ -19,6 +19,7 @@ use crate::prepared_atomic_percentage_profile as atomic_percentage;
 use crate::{
     original_block_axes_profile as block_axes, original_flex_axes_profile as flex_axes,
     original_grid_axes_profile as grid_axes, original_inline_subgrid_profile as inline_subgrid,
+    original_relative_rtl_subgrid_profile as relative_rtl_subgrid,
     original_subgrid_axes_profile as subgrid_axes,
 };
 
@@ -326,6 +327,10 @@ pub(crate) fn current_owner_bindings(
                     inline_subgrid::REQUEST,
                 ),
                 (
+                    "original_relative_rtl_subgrid_request.json",
+                    relative_rtl_subgrid::REQUEST,
+                ),
+                (
                     "original_subgrid_body_request.json",
                     original_subgrid_body::REQUEST,
                 ),
@@ -362,6 +367,9 @@ pub(crate) fn current_owner_bindings(
             "tests/bin/surgeist-layout-generate/measurement/original_flex_axes.js".to_owned()
         } else if name == grid_axes::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/original_grid_axes.js".to_owned()
+        } else if name == relative_rtl_subgrid::SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/original_relative_rtl_subgrid.js"
+                .to_owned()
         } else if name == inline_subgrid::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/original_inline_subgrid.js".to_owned()
         } else if name == subgrid_axes::SCRIPT_PATH {
@@ -761,6 +769,13 @@ pub(crate) fn capture_binding_from_verified_inputs(
             "empty-line break proof requires its observation request",
         ));
     }
+    if observation_request != ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION
+        && full_inputs.contains_key(relative_rtl_subgrid::SCRIPT_PATH)
+    {
+        return Err(changed(
+            "relative RTL Subgrid proof requires its observation request",
+        ));
+    }
     if observation_request != inline_subgrid::EDITION
         && full_inputs.contains_key(inline_subgrid::SCRIPT_PATH)
     {
@@ -933,7 +948,8 @@ pub(crate) fn capture_binding_from_verified_inputs(
             | "original-flex-axes"
             | "original-grid-axes"
             | "original-subgrid-axes"
-            | inline_subgrid::EDITION,
+            | inline_subgrid::EDITION
+            | ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION,
             Some(request_sha256),
         ) => {
             let helper_digest = full_inputs.get(ROOT_HELPER_INPUT).map(String::as_str);
@@ -970,6 +986,14 @@ pub(crate) fn capture_binding_from_verified_inputs(
                         subgrid_axes::SCRIPT_PATH,
                         subgrid_axes::SCRIPT,
                         helper_digest.is_some_and(subgrid_axes::accepts_helper),
+                    ),
+                    ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION => (
+                        ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION,
+                        relative_rtl_subgrid::source_digest(&case.source),
+                        relative_rtl_subgrid::REQUEST,
+                        relative_rtl_subgrid::SCRIPT_PATH,
+                        relative_rtl_subgrid::SCRIPT,
+                        helper_digest.is_some_and(relative_rtl_subgrid::accepts_helper),
                     ),
                     inline_subgrid::EDITION => (
                         inline_subgrid::EDITION,
@@ -1833,6 +1857,18 @@ pub(crate) fn matching_metadata_is_valid(
             }
             _ => false,
         },
+        MatchingCategory::OriginalRelativeRtlSubgrid => {
+            source == relative_rtl_subgrid::SOURCE
+                && kind == SourceKind::Original
+                && metadata["context"] == "block-flow"
+                && metadata["parent_direction"] == "ltr"
+                && metadata["root_direction"] == "ltr"
+                && metadata["root_writing_mode"] == "horizontal-tb"
+                && metadata["root_position"] == "static"
+                && metadata["root_display"] == "block"
+                && metadata["atomic_paragraphs"].is_null()
+                && metadata["grid_reference_owners"].is_null()
+        }
         MatchingCategory::OriginalInlineSubgrid => {
             kind == SourceKind::Original
                 && metadata["context"] == "inline-grid"
@@ -1875,6 +1911,8 @@ pub(crate) fn matching_metadata_is_valid(
     }
 }
 
+pub(crate) const ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION: &str =
+    "original-relative-rtl-subgrid-positioned";
 pub(crate) const FRI06_SUBGRID_EDITION: &str = "fri06-subgrid-representatives";
 pub(crate) const FRI07_INTRINSIC_FLEX_EDITION: &str = "fri07-intrinsic-flex-text";
 pub(crate) const FRI06_SUBGRID_SOURCES: [&str; 3] = [
@@ -1954,6 +1992,7 @@ pub(crate) enum MatchingCategory {
     Fri06Subgrid,
     Fri07IntrinsicFlexText,
     OriginalInlineSubgrid,
+    OriginalRelativeRtlSubgrid,
 }
 
 impl MatchingCategory {
@@ -1962,6 +2001,7 @@ impl MatchingCategory {
             FRI06_SUBGRID_EDITION => Self::Fri06Subgrid,
             FRI07_INTRINSIC_FLEX_EDITION => Self::Fri07IntrinsicFlexText,
             inline_subgrid::EDITION => Self::OriginalInlineSubgrid,
+            ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION => Self::OriginalRelativeRtlSubgrid,
             _ => Self::Geometry,
         }
     }
@@ -1972,6 +2012,7 @@ impl MatchingCategory {
             Self::Fri06Subgrid => FRI06_SUBGRID_EDITION,
             Self::Fri07IntrinsicFlexText => FRI07_INTRINSIC_FLEX_EDITION,
             Self::OriginalInlineSubgrid => inline_subgrid::EDITION,
+            Self::OriginalRelativeRtlSubgrid => ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION,
         }
     }
 
@@ -1980,7 +2021,9 @@ impl MatchingCategory {
         inputs: &BTreeMap<String, String>,
     ) -> Option<&str> {
         match self {
-            Self::Fri07IntrinsicFlexText | Self::OriginalInlineSubgrid => {
+            Self::Fri07IntrinsicFlexText
+            | Self::OriginalInlineSubgrid
+            | Self::OriginalRelativeRtlSubgrid => {
                 inputs.get(OBSERVATION_REQUEST).map(String::as_str)
             }
             Self::Geometry | Self::Fri06Subgrid => None,
