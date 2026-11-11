@@ -55,6 +55,7 @@ fn cloning_deep_scenes_preserves_content_and_independent_ownership() {
             leaf.image(image, rect(0.0), ImageFit::Fill);
             let mut original = nest(leaf, DEPTH, siblings);
             let mut copy = original.clone();
+            assert!(copy == original);
             original.clear();
             assert!(lifetime.upgrade().is_some());
             let summary = copy
@@ -155,8 +156,14 @@ fn ordinary_debug_preserves_derived_structure_and_writer_errors() {
         #[derive(Debug)]
         #[allow(dead_code)]
         pub(super) enum Command {
-            Fill { shape: Shape, paint: Paint },
-            Layer { layer: Layer, children: Vec<Self> },
+            Fill {
+                shape: Shape,
+                paint: Paint,
+            },
+            Layer {
+                layer: Box<Layer>,
+                children: Vec<Self>,
+            },
         }
     }
     let mut nested = filled(Color::BLACK);
@@ -166,17 +173,17 @@ fn ordinary_debug_preserves_derived_structure_and_writer_errors() {
     let reference = expected::Scene {
         commands: vec![
             expected::Command::Layer {
-                layer: Layer::new(),
+                layer: Box::new(Layer::new()),
                 children: vec![
                     expected::Command::Layer {
-                        layer: Layer::new(),
+                        layer: Box::new(Layer::new()),
                         children: vec![
                             expected::Command::Fill {
                                 shape: rect(0.0).into(),
                                 paint: Color::BLACK.into(),
                             },
                             expected::Command::Layer {
-                                layer: Layer::new(),
+                                layer: Box::new(Layer::new()),
                                 children: Vec::new(),
                             },
                         ],
@@ -192,7 +199,7 @@ fn ordinary_debug_preserves_derived_structure_and_writer_errors() {
                 paint: Color::TRANSPARENT.into(),
             },
             expected::Command::Layer {
-                layer: Layer::new(),
+                layer: Box::new(Layer::new()),
                 children: Vec::new(),
             },
         ],

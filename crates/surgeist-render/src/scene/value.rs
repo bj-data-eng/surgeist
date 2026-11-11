@@ -190,6 +190,8 @@ impl<'a, 'f> DebugTree<'a, 'f> {
 
     fn value(&mut self, value: &impl fmt::Debug) -> fmt::Result {
         if self.pretty {
+            // Use ordinary alternate formatting through the indentation
+            // writer. Stable Formatter cannot transfer its extra flags.
             write!(self, "{value:#?}")
         } else {
             value.fmt(self.formatter)
