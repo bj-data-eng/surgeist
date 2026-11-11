@@ -108,6 +108,40 @@ pub(crate) const WINDOW_CSS_NAME: &[u16] = &[67, 83, 83];
 pub(crate) const WINDOW_CSS_ESCAPE_NAME: &[u16] = &[101, 115, 99, 97, 112, 101];
 pub(crate) const WINDOW_CSS_ESCAPE_ARITY: u32 = 1;
 
+fn default_dom_exception_constructor_0_message(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<DomString>, Failure> {
+    Ok(cx.plain(DomString::new(Vec::new())))
+}
+
+/// Selected argument `DOMException.constructor:0/message` (not overload selection).
+pub fn dom_exception_constructor_0_message() -> Argument<Type<DomString>> {
+    Argument::new(
+        "DOMException.constructor:0/message",
+        0,
+        true,
+        types::DOM_STRING,
+        Some(default_dom_exception_constructor_0_message),
+    )
+}
+
+fn default_dom_exception_constructor_0_name(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<DomString>, Failure> {
+    cx.default_dom_string(&[69, 114, 114, 111, 114])
+}
+
+/// Selected argument `DOMException.constructor:0/name` (not overload selection).
+pub fn dom_exception_constructor_0_name() -> Argument<Type<DomString>> {
+    Argument::new(
+        "DOMException.constructor:0/name",
+        1,
+        true,
+        types::DOM_STRING,
+        Some(default_dom_exception_constructor_0_name),
+    )
+}
+
 /// Selected argument `CSS.escape:0/ident` (not overload selection).
 pub fn css_escape_0_ident() -> Argument<Type<DomString>> {
     Argument::new("CSS.escape:0/ident", 0, false, types::DOM_STRING, None)

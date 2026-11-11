@@ -6,11 +6,12 @@ use std::mem::{size_of, size_of_val};
 use std::rc::{Rc, Weak};
 use std::sync::{Arc, atomic::AtomicBool};
 
-pub use surgeist_bindings_js::css::CssNamespaceLimits;
 use surgeist_bindings_js::{
     Callback, Completion, EngineKind, Error, HostFailureSlot, Primitive, Process,
     PropertyDescriptor, PropertyKey, Realm, RealmAuthority, RealmId, RecordFailure, Scope, css,
+    dom_exception,
 };
+pub use surgeist_bindings_js::{css::CssNamespaceLimits, dom_exception::DomExceptionLimits};
 use surgeist_css::{query::media::CssMediaScripting, serialization::CssSerializationError};
 use surgeist_dom::{
     DocumentId, DomDocumentScriptBinding, DomDocumentScriptRegistration, DomDocumentScriptingFacts,
@@ -151,6 +152,7 @@ struct NativeOwner {
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
     css_limits: Cell<CssNamespaceLimits>,
+    dom_exception_limits: Cell<DomExceptionLimits>,
     _backing: DomHostedRuntimeRetention,
 }
 
@@ -287,6 +289,7 @@ impl PreparedDocumentScriptHost {
                 cancellation,
                 storage_limit,
                 css_limits: Cell::new(CssNamespaceLimits::default()),
+                dom_exception_limits: Cell::new(DomExceptionLimits::default()),
                 _backing: backing,
             }),
         })
@@ -296,6 +299,13 @@ impl PreparedDocumentScriptHost {
     #[must_use]
     pub fn with_css_namespace_limits(self, limits: CssNamespaceLimits) -> Self {
         self.native.css_limits.set(limits);
+        self
+    }
+
+    /// Select the DOMException constructor conversion limits before attachment.
+    #[must_use]
+    pub fn with_dom_exception_limits(self, limits: DomExceptionLimits) -> Self {
+        self.native.dom_exception_limits.set(limits);
         self
     }
 
@@ -362,6 +372,8 @@ impl PreparedDocumentScriptHost {
         let css_bytes = css::callback_storage_bytes::<DomHostedRuntimeRetention>();
         let css_failure_bytes =
             HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes();
+        let dom_exception_bytes =
+            dom_exception::constructor_storage_bytes::<DomHostedRuntimeRetention>();
         let bytes = size_of::<NativeOwner>()
             .checked_add(hook_bytes)
             .and_then(|bytes| bytes.checked_add(failure_bytes))
@@ -369,6 +381,7 @@ impl PreparedDocumentScriptHost {
             .and_then(|bytes| bytes.checked_add(liveness_bytes))
             .and_then(|bytes| bytes.checked_add(css_bytes))
             .and_then(|bytes| bytes.checked_add(css_failure_bytes))
+            .and_then(|bytes| bytes.checked_add(dom_exception_bytes))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         if bytes > owner.storage_limit {
             return Err(DocumentScriptNativeError::StorageLimit.into());
@@ -380,6 +393,7 @@ impl PreparedDocumentScriptHost {
             liveness_backing,
             css_backing,
             css_failure_backing,
+            dom_exception_backing,
         ) = {
             let mut session = owner
                 .session
@@ -404,7 +418,18 @@ impl PreparedDocumentScriptHost {
             let css_failure = hosted
                 .retain_script_payload(&mut dom, css_failure_bytes, cancel)
                 .map_err(DocumentScriptNativeError::from)?;
-            (hook, failure, source_failure, liveness, css, css_failure)
+            let dom_exception = hosted
+                .retain_script_payload(&mut dom, dom_exception_bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?;
+            (
+                hook,
+                failure,
+                source_failure,
+                liveness,
+                css,
+                css_failure,
+                dom_exception,
+            )
         };
         let failures = FailureSlot::new(&authority, failure_backing)?;
         let source_failures = SourceFailureSlot::new(&authority, source_failure_backing)?;
@@ -445,6 +470,11 @@ impl PreparedDocumentScriptHost {
                 owner.css_limits.get(),
                 css_backing,
                 css_failure_backing,
+            )?;
+            dom_exception::install(
+                scope,
+                owner.dom_exception_limits.get(),
+                dom_exception_backing,
             )
         })?;
 

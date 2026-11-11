@@ -52,6 +52,8 @@ pub fn surgeist_bindings_js::conversion::declarations::document_html_query_comma
 pub fn surgeist_bindings_js::conversion::declarations::document_html_query_command_value_0_command_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::document_ready_state() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::DocumentReadyState>
 pub fn surgeist_bindings_js::conversion::declarations::document_visibility_state() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::DocumentVisibilityState>
+pub fn surgeist_bindings_js::conversion::declarations::dom_exception_constructor_0_message() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::dom_exception_constructor_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_document_0_namespace() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>>
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_document_type_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_document_type_0_public_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -327,6 +329,50 @@ pub struct surgeist_bindings_js::declarations::EventListenerOptions
 pub surgeist_bindings_js::declarations::EventListenerOptions::capture: bool
 pub struct surgeist_bindings_js::declarations::GetRootNodeOptions
 pub surgeist_bindings_js::declarations::GetRootNodeOptions::composed: bool
+pub mod surgeist_bindings_js::dom_exception
+#[non_exhaustive] pub enum surgeist_bindings_js::dom_exception::DomExceptionName
+pub surgeist_bindings_js::dom_exception::DomExceptionName::AbortError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::ConstraintError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::DataCloneError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::DataError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::EncodingError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::HierarchyRequestError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::InUseAttributeError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::IndexSizeError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::InvalidAccessError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::InvalidCharacterError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::InvalidModificationError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::InvalidNodeTypeError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::InvalidStateError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::NamespaceError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::NetworkError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::NoModificationAllowedError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::NotAllowedError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::NotFoundError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::NotReadableError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::NotSupportedError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::OperationError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::OptOutError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::QuotaExceededError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::ReadOnlyError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::SecurityError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::SyntaxError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::TimeoutError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::TransactionInactiveError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::TypeMismatchError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::URLMismatchError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::UnknownError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::VersionError
+pub surgeist_bindings_js::dom_exception::DomExceptionName::WrongDocumentError
+impl surgeist_bindings_js::dom_exception::DomExceptionName
+pub const fn surgeist_bindings_js::dom_exception::DomExceptionName::code_units(self) -> &'static [u16]
+pub struct surgeist_bindings_js::dom_exception::DomExceptionLimits
+impl surgeist_bindings_js::dom_exception::DomExceptionLimits
+pub const fn surgeist_bindings_js::dom_exception::DomExceptionLimits::new(argument_decisions: u64, copied_units: u64, buffer_bytes: u64) -> Self
+impl core::default::Default for surgeist_bindings_js::dom_exception::DomExceptionLimits
+pub fn surgeist_bindings_js::dom_exception::DomExceptionLimits::default() -> Self
+pub const fn surgeist_bindings_js::dom_exception::constructor_storage_bytes<Storage>() -> usize
+pub fn surgeist_bindings_js::dom_exception::install<Storage: 'static>(scope: &mut surgeist_bindings_js::Scope<'_>, limits: surgeist_bindings_js::dom_exception::DomExceptionLimits, backing: Storage) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub enum surgeist_bindings_js::Completion<'scope>
 pub surgeist_bindings_js::Completion::Return(surgeist_bindings_js::Value<'scope>)
 pub surgeist_bindings_js::Completion::Throw(surgeist_bindings_js::Value<'scope>)
@@ -344,6 +390,7 @@ pub surgeist_bindings_js::Error::ByteStringOutOfRange
 pub surgeist_bindings_js::Error::CallbackPanicked
 pub surgeist_bindings_js::Error::ConversionCleanup(surgeist_bindings_js::conversion::CleanupFailure)
 pub surgeist_bindings_js::Error::ConversionLedger(surgeist_bindings_js::conversion::LedgerError)
+pub surgeist_bindings_js::Error::DomExceptionUnavailable
 pub surgeist_bindings_js::Error::Exception(surgeist_bindings_js::Exception)
 pub surgeist_bindings_js::Error::ExpectedAccessor
 pub surgeist_bindings_js::Error::ExpectedFunction
@@ -539,6 +586,7 @@ pub fn surgeist_bindings_js::Scope<'scope>::check_active(&self) -> core::result:
 pub fn surgeist_bindings_js::Scope<'scope>::constructor(&mut self, callback: &surgeist_bindings_js::ConstructorCallback, metadata: surgeist_bindings_js::FunctionMetadata<'_>) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::define_new_property(&mut self, object: &surgeist_bindings_js::Value<'scope>, key: surgeist_bindings_js::PropertyKey<'_, 'scope>, descriptor: surgeist_bindings_js::PropertyDescriptor<'_, 'scope>) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::define_property(&mut self, object: &surgeist_bindings_js::Value<'scope>, key: surgeist_bindings_js::PropertyKey<'_, 'scope>, descriptor: surgeist_bindings_js::PropertyDescriptor<'_, 'scope>) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::dom_exception(&mut self, name: surgeist_bindings_js::dom_exception::DomExceptionName, message: &[u16]) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::dom_string(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<surgeist_bindings_js::DomString, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::double(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<f64, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::evaluate(&mut self, source: &[u16]) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>

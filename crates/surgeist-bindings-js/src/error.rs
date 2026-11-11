@@ -92,6 +92,8 @@ pub enum Error {
     PropertyRejected,
     /// Execution was terminated by the backend.
     Terminated,
+    /// The entered realm has no installed DOMException interface.
+    DomExceptionUnavailable,
     /// The backend could not complete and supplied no guest exception.
     BackendUnavailable,
     /// Internal root-registry access overlapped. The owner fails closed after
@@ -127,6 +129,7 @@ impl fmt::Display for Error {
             Self::ByteStringOutOfRange => "the string contains a code unit outside the byte range",
             Self::PropertyRejected => "the object rejected the property update",
             Self::Terminated => "JavaScript execution was terminated",
+            Self::DomExceptionUnavailable => "DOMException is unavailable in this realm",
             Self::BackendUnavailable => "the JavaScript backend is unavailable",
             Self::CallbackPanicked => "a native callback panicked",
             Self::RegistryConflict => "binding root-registry access overlapped",

@@ -165,6 +165,17 @@ Conversion consumes cumulative per-realm work and live Rust buffer limits.
 Native identifier limits bound each call, and a native refusal retains the
 original typed cause.
 
+The same attachment installs the Web IDL `DOMException` interface. Its
+instances and interface prototype use V8's native Error allocation and stack
+state. Getters read private instance data. The generated constructor converts
+both optional DOMStrings before reading NewTarget's prototype. Each installed
+realm has its own constructor, prototype and conversion limits. Its account
+charges each explicit UTF-16 copy between V8 and Rust, including outbound
+copies when a native callback creates a typed diagnostic.
+`Scope::dom_exception` creates a guest exception value for a standard
+`DomExceptionName` using the entered realm's private prototype. A native
+callback can return the value as `Completion::Throw`.
+
 ## Verification
 
 Use the exact native artifact and offline environment described in

@@ -61,6 +61,19 @@ class DescriptionTests(unittest.TestCase):
         del self.member("CSS.escape:0")["arguments"]
         self.rejected("only regular fixed-arity namespace operations are selected")
 
+    def test_dom_exception_requires_pinned_signature_and_names_table(self):
+        self.member("DOMException.constructor:0")["arguments"][1]["default"]["value"] = ""
+        self.rejected("source declaration mismatch")
+        self.setUp()
+        self.member("DOMException.DATA_CLONE_ERR")["value"] = 0
+        self.rejected("source declaration mismatch")
+        self.setUp()
+        source = next(s for s in self.data["sources"] if s["id"] == "DOMException.source")
+        del source["names_table_sha256"]
+        self.rejected("DOMException names table is missing")
+        source["names_table_sha256"] = "0" * 64
+        self.rejected("source digest mismatch: DOMException.source")
+
     def test_changed_standard_member_type_is_refused(self):
         self.member("Node.nodeName")["type"]["name"] = "USVString"
         self.rejected("source declaration mismatch")

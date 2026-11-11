@@ -77,6 +77,7 @@ mod backend;
 pub mod conversion;
 pub mod css;
 pub mod declarations;
+pub mod dom_exception;
 mod error;
 mod host;
 mod idl;
@@ -365,6 +366,7 @@ type ConstructorBody = dyn for<'scope> Fn(
 struct ConstructorBehavior {
     fallback: PrototypeResolver,
     action: Box<ConstructorBody>,
+    argument_limit: Option<u32>,
 }
 
 /// Shared declared-constructor behavior with a realm-specific prototype resolver.
@@ -389,9 +391,22 @@ impl ConstructorCallback {
         ) -> Result<ConstructorCompletion<'scope>, Error>
         + 'static,
     ) -> Self {
+        Self::with_argument_limit(None, fallback, action)
+    }
+
+    fn with_argument_limit(
+        argument_limit: Option<u32>,
+        fallback: impl for<'scope> Fn(&mut Scope<'scope>) -> Result<Value<'scope>, Error> + 'static,
+        action: impl for<'scope> Fn(
+            &mut Scope<'scope>,
+            ConstructorArguments<'scope>,
+        ) -> Result<ConstructorCompletion<'scope>, Error>
+        + 'static,
+    ) -> Self {
         Self(Rc::new(ConstructorBehavior {
             fallback: Rc::new(fallback),
             action: Box::new(action),
+            argument_limit,
         }))
     }
 }
@@ -790,6 +805,18 @@ impl<'scope> Scope<'scope> {
     pub fn type_error(&mut self, message: &[u16]) -> Result<Value<'scope>, Error> {
         let root = self.operations.type_error(message)?;
         Ok(self.value(root))
+    }
+
+    /// Creates a standard DOMException in the entered realm, using its
+    /// privately installed interface prototype and the exact UTF-16 message.
+    /// The entered realm's account admits both outbound string copies.
+    /// Returns [`Error::DomExceptionUnavailable`] if this realm has no installation.
+    pub fn dom_exception(
+        &mut self,
+        name: dom_exception::DomExceptionName,
+        message: &[u16],
+    ) -> Result<Value<'scope>, Error> {
+        dom_exception::create_native(self, name, message)
     }
 
     fn value(&self, root: Root) -> Value<'scope> {

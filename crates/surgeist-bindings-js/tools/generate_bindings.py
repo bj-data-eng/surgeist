@@ -21,12 +21,13 @@ ROOT = Path(__file__).resolve().parents[3]
 DESCRIPTION = ROOT / "crates/surgeist-bindings-js/bindings/dom-core.json"
 VALUE_OUTPUT = ROOT / "crates/surgeist-bindings-js/src/declarations.rs"
 CONVERSION_OUTPUT = ROOT / "crates/surgeist-bindings-js/src/conversion/declarations.rs"
+DOM_EXCEPTION_OUTPUT = ROOT / "crates/surgeist-bindings-js/src/dom_exception/declarations.rs"
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z_0-9]*\Z")
 PRIMITIVES = {"undefined", "boolean", "byte", "octet", "short", "unsigned short",
               "long", "unsigned long", "long long", "unsigned long long", "float",
               "unrestricted float", "double", "unrestricted double", "DOMString",
               "USVString", "ByteString", "object", "any"}
-ATTRIBUTES = {"Exposed", "SameObject", "NewObject", "CEReactions", "Unscopable",
+ATTRIBUTES = {"Exposed", "Serializable", "SameObject", "NewObject", "CEReactions", "Unscopable",
               "PutForwards", "LegacyNullToEmptyString", "LegacyUnenumerableNamedProperties",
               "LegacyUnforgeable", "LegacyOverrideBuiltIns", "LegacyLenientThis",
               "HTMLConstructor", "Reflect", "ReflectSetter", "ReflectRange"}
@@ -290,7 +291,12 @@ def document_shape(data):
         owner(e["owner"], "external owner")
         url(e["url"], "external source")
     for s in data["sources"]:
-        keys(s, ["id", "path", "anchor", "block", "sha256", "revision", "url", "entries"])
+        keys(s, ["id", "path", "anchor", "block", "sha256", "revision", "url", "entries"],
+             ["names_table_sha256"])
+        if "names_table_sha256" in s:
+            require(s["entries"] == ["DOMException"], "names table must accompany DOMException")
+            text(s["names_table_sha256"], "names table digest")
+            require(re.fullmatch(r"[0-9a-f]{64}", s["names_table_sha256"]), "invalid names table digest")
         for field in ("id", "path", "sha256", "revision"):
             text(s[field], "source " + field)
         identity(s["id"], "source ID")
@@ -453,7 +459,7 @@ def render_member(member, names):
         require(kind == "attribute" and member.get("readonly"), "SameObject/PutForwards requires a readonly attribute")
     require("NewObject" not in annotations or kind == "operation", "NewObject requires an operation")
     require("HTMLConstructor" not in annotations or kind == "constructor", "HTMLConstructor requires a constructor")
-    require(not annotations & {"Exposed", "LegacyOverrideBuiltIns", "LegacyUnenumerableNamedProperties", "LegacyNullToEmptyString"}, "extended attribute on the wrong declaration scope")
+    require(not annotations & {"Exposed", "Serializable", "LegacyOverrideBuiltIns", "LegacyUnenumerableNamedProperties", "LegacyNullToEmptyString"}, "extended attribute on the wrong declaration scope")
     prefix = attributes(member["attributes"])
     if "name" in member:
         identifier(member["name"])
@@ -492,7 +498,9 @@ def render_definition(definition, names):
     require(kind in {"interface", "mixin", "callback_interface", "dictionary", "enumeration", "typedef", "namespace"}, "unknown definition kind")
     prefix = attributes(definition["attributes"])
     require(not definition.get("partial", False) or kind in {"interface", "mixin"}, "invalid partial definition")
-    require(all(x["name"] in {"Exposed", "LegacyOverrideBuiltIns", "LegacyUnenumerableNamedProperties"} for x in definition["attributes"]), "member attribute on a definition")
+    require(all(x["name"] in {"Exposed", "Serializable", "LegacyOverrideBuiltIns", "LegacyUnenumerableNamedProperties"} for x in definition["attributes"]), "member attribute on a definition")
+    require(kind == "interface" or all(x["name"] != "Serializable" for x in definition["attributes"]),
+            "Serializable requires an interface")
     if kind == "typedef":
         keys(definition, ["id", "kind", "name", "attributes", "type"])
         return prefix + "typedef " + render_type(definition["type"], names) + " " + definition["name"] + ";"
@@ -538,7 +546,8 @@ def mapping_keys(member):
 
 
 def source_block(unit, root):
-    keys(unit, ["id", "path", "anchor", "block", "sha256", "revision", "url", "entries"])
+    keys(unit, ["id", "path", "anchor", "block", "sha256", "revision", "url", "entries"],
+         ["names_table_sha256"])
     path = (root / unit["path"]).resolve()
     require(path.is_relative_to(root.resolve()) and path.is_file(), "source path outside repository or missing")
     text = path.read_text(encoding="utf-8")
@@ -932,14 +941,17 @@ def emit_conversions(model, arguments=()):
             elif kind == "integer":
                 expression = "IntegerValue::" + {"unsigned long": "UnsignedLong"}[arg["type"]["name"]] + "(" + str(default["value"]) + ")"
             elif kind == "string":
-                require(arg["type"]["name"] == "DOMString" and default["value"] == "", "unsupported declared string default")
+                require(arg["type"]["name"] == "DOMString", "unsupported declared string default")
                 expression = "DomString::new(Vec::new())"
             elif kind == "null":
                 expression = "None"
             else:
                 raise DescriptionError("unsupported declared argument default")
+            statement = "Ok(cx.plain(" + expression + "))"
+            if kind == "string" and default["value"]:
+                statement = "cx.default_dom_string(&" + units_literal(default["value"]) + ")"
             result += ["fn default_" + function + "(", "    cx: &mut Conversion<'_, '_>,", ") -> Result<Converted<" + output + ">, Failure> {",
-                       "    Ok(cx.plain(" + expression + "))", "}", ""]
+                       "    " + statement, "}", ""]
         result += ["/// Selected argument `" + lowered["id"] + "` (not overload selection).",
                    "pub fn " + function + "() -> Argument<" + descriptor_type + "> {"]
         pieces = [json.dumps(lowered["id"]), str(lowered["index"]), str(arg["presence"] == "optional").lower(), descriptor, default_fn]
@@ -951,10 +963,105 @@ def emit_conversions(model, arguments=()):
     return "\n".join(result)
 
 
+def dom_exception_names(source, root, constants):
+    require("names_table_sha256" in source, "DOMException names table is missing")
+    table = source_block(dict(source, block=source["block"] + 1,
+                              sha256=source["names_table_sha256"]), root)
+    require(table.startswith('<table id="error-names" '), "invalid DOMException names table")
+    names = {}
+    codes = set()
+    for row in re.findall(r"<tr[^>]*>([\s\S]*?)</tr>", table):
+        if "<th>" in row:
+            continue
+        cells = re.findall(r"<td>([\s\S]*?)</td>", row)
+        require(len(cells) == 3, "DOMException names table row must have three cells")
+        name = re.fullmatch(r'"(?:<dfn [^>]+>)?<code>([A-Za-z]+)</code>(?:</dfn>)?"', cells[0])
+        require(name and name[1] not in names, "invalid or repeated DOMException name")
+        code = 0
+        if cells[2] != "—":
+            legacy = re.fullmatch(r'<dfn [^>]+><code>([A-Z_]+)</code></dfn>&nbsp;\((\d+)\)', cells[2])
+            require(legacy, "invalid DOMException legacy code")
+            code = int(legacy[2])
+            require(constants.get(legacy[1]) == code and code not in codes,
+                    "DOMException legacy code differs from the IDL constants")
+            codes.add(code)
+        names[name[1]] = code
+    require(names and codes, "DOMException names table has no named legacy codes")
+    return names
+
+
+def emit_dom_exception(declaration, names):
+    constructors = [m for m in declaration["members"] if m["kind"] == "constructor"]
+    require(len(constructors) == 1, "DOMException must have one constructor")
+    arguments = constructors[0]["arguments"]
+    require(all(a["presence"] != "variadic" for a in arguments),
+            "DOMException requires fixed argument capture")
+    result = ["// Generated by tools/generate_bindings.py; do not edit.",
+              "// Source-adapted WHATWG declarations: see the crate NOTICE.md.",
+              "//! Selected Web IDL DOMException interface and exception names.", "",
+              "const fn ascii<const N: usize>(bytes: &[u8; N]) -> [u16; N] {",
+              "    let mut units = [0; N];",
+              "    let mut source: &[u8] = bytes;",
+              "    let mut target: &mut [u16] = &mut units;",
+              "    while let ([byte, remaining @ ..], [unit, pending @ ..]) = (source, target) {",
+              "        *unit = *byte as u16;",
+              "        source = remaining;",
+              "        target = pending;",
+              "    }",
+              "    units",
+              "}", "",
+              "pub(super) const INTERFACE: &[u16] = &ascii(b" + json.dumps(declaration["name"]) + ");",
+              "pub(super) const ARITY: u32 = " +
+              str(sum(a["presence"] == "required" for a in arguments)) + ";",
+              "pub(super) const CAPTURED_ARGUMENTS: u32 = " + str(len(arguments)) + ";"]
+    for m in declaration["members"]:
+        if m["kind"] == "attribute":
+            require(m["readonly"], "DOMException requires readonly accessors")
+            for identifier, label in [(m["name"].upper(), m["name"]),
+                                      ("GET_" + m["name"].upper(), "get " + m["name"])]:
+                result.append("pub(super) const " + identifier + ": &[u16] = &ascii(b" + json.dumps(label) + ");")
+    result += ["pub(super) const CONSTANTS: &[(&[u16], u16)] = &["]
+    for m in declaration["members"]:
+        if m["kind"] == "constant":
+            result.append("    (&ascii(b" + json.dumps(m["name"]) + "), " + str(m["value"]) + "),")
+    result += ["];",
+               "", "/// Exception names from the Web IDL DOMException names table.",
+               "#[derive(Clone, Copy, Debug, Eq, PartialEq)]", "#[non_exhaustive]",
+               "pub enum DomExceptionName {"]
+    for name in names:
+        result += ["    /// The `" + name + "` exception.", "    " + name + ","]
+    result += ["}", "", "impl DomExceptionName {",
+               "    /// Returns the exact code units of the standard exception name.",
+               "    pub const fn code_units(self) -> &'static [u16] {", "        match self {"]
+    for name in names:
+        result.append("            Self::" + name + ' => &const { ascii(b"' + name + '") },')
+    result += ["        }", "    }", "}", "",
+               "const LEGACY_CODES: &[(&[u16], u16)] = &["]
+    for name, code in sorted(names.items()):
+        if code:
+            result.append("    (DomExceptionName::" + name + ".code_units(), " + str(code) + "),")
+    result += ["];", "",
+               "pub(crate) fn legacy_code(name: &[u16]) -> u16 {",
+               "    LEGACY_CODES",
+               "        .binary_search_by_key(&name, |&(candidate, _)| candidate)",
+               "        .ok()",
+               "        .and_then(|index| LEGACY_CODES.get(index))",
+               "        .map_or(0, |&(_, code)| code)",
+               "}", ""]
+    return "\n".join(result)
+
+
 def generate(data, root=ROOT):
-    validate(data, root)
+    definitions, _ = validate(data, root)
     model = lower_values(data)
-    return {VALUE_OUTPUT: emit_values(model), CONVERSION_OUTPUT: emit_conversions(model, lower_arguments(data, model))}
+    outputs = {VALUE_OUTPUT: emit_values(model),
+               CONVERSION_OUTPUT: emit_conversions(model, lower_arguments(data, model))}
+    if declaration := definitions.get("DOMException"):
+        source = next(s for s in data["sources"] if "DOMException" in s["entries"])
+        constants = {m["name"]: m["value"] for m in declaration["members"] if m["kind"] == "constant"}
+        names = dom_exception_names(source, root, constants)
+        outputs[DOM_EXCEPTION_OUTPUT] = emit_dom_exception(declaration, names)
+    return outputs
 
 
 def load(path=DESCRIPTION):

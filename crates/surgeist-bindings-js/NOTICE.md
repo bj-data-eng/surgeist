@@ -135,6 +135,8 @@ The primitive conversion implementation adapts the pinned Web IDL algorithms,
 Copyright © WHATWG (Apple, Google, Mozilla, Microsoft), under the existing
 [complete license](../../licenses/whatwg/LICENSE) and
 [adaptation notice](../../licenses/whatwg/NOTICE.md#javascript-binding-algorithms).
+The [retained DOMException declaration and names table](../../references/webidl-domexception--0620cf171d1b.md)
+supply the generated interface metadata and standard native exception names.
 The [binding source index](../../references/js-bindings-standards.md) records
 the complete applicable source clauses. These standards terms are separate from
 the external engine dependency above.

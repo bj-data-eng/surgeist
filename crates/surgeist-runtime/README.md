@@ -234,9 +234,10 @@ front joins an idle bound root to its original hosted destruction Cleanup.
 
 The optional `document-scripting` feature attaches a bindings process and realm
 to an authenticated native top-level Document. Before publishing the attachment,
-Runtime installs the `CSS` namespace on the realm's global object.
-`CSS.escape` preserves exact UTF-16 and uses the configured
-`CssNamespaceLimits`. A conflicting host hook name refuses attachment.
+Runtime installs `CSS` and `DOMException` on the realm's global object.
+`CSS.escape` preserves exact UTF-16 and uses `CssNamespaceLimits`.
+The `DOMException` constructor uses `DomExceptionLimits` for its DOMString
+conversions. A conflicting host hook name refuses attachment.
 The host-defined child-count callable reads the original Session's current DOM.
 Entry releases native loans before running guest code and leaves queued jobs for
 an explicit checked

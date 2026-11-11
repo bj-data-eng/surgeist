@@ -2,6 +2,17 @@
   "schema": 1,
   "sources": [
     {
+      "id": "DOMException.source",
+      "path": "references/webidl-domexception--0620cf171d1b.md",
+      "anchor": "idl-DOMException",
+      "block": 0,
+      "sha256": "280096405dc34d06b5636b81af367258108ee23305c19926f04d12121095c271",
+      "revision": "0620cf171d1b97138847088748e363cae4005156",
+      "url": "https://github.com/whatwg/webidl/blob/0620cf171d1b97138847088748e363cae4005156/index.bs#L15124",
+      "entries": ["DOMException"],
+      "names_table_sha256": "94f6e883785758351b0fe0d74e99b1cd3342f48b10ef0b30c9ea1c4cd920073e"
+    },
+    {
       "id": "CSS.source",
       "path": "references/cssom-1--editor-capture-20261009--d42e145ec395.md",
       "anchor": "namespacedef-css",
@@ -371,6 +382,247 @@
     }
   ],
   "declarations": [
+    {
+      "id": "DOMException",
+      "kind": "interface",
+      "name": "DOMException",
+      "attributes": [{"name": "Exposed", "value": "*"}, {"name": "Serializable"}],
+      "members": [
+        {
+          "id": "DOMException.constructor:0",
+          "kind": "constructor",
+          "attributes": [],
+          "arguments": [
+            {"name": "message", "type": {"kind": "named", "name": "DOMString"}, "presence": "optional", "default": {"kind": "string", "value": ""}},
+            {"name": "name", "type": {"kind": "named", "name": "DOMString"}, "presence": "optional", "default": {"kind": "string", "value": "Error"}}
+          ]
+        },
+        {
+          "id": "DOMException.name",
+          "kind": "attribute",
+          "name": "name",
+          "type": {"kind": "named", "name": "DOMString"},
+          "attributes": [],
+          "readonly": true
+        },
+        {
+          "id": "DOMException.message",
+          "kind": "attribute",
+          "name": "message",
+          "type": {"kind": "named", "name": "DOMString"},
+          "attributes": [],
+          "readonly": true
+        },
+        {
+          "id": "DOMException.code",
+          "kind": "attribute",
+          "name": "code",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "readonly": true
+        },
+        {
+          "id": "DOMException.INDEX_SIZE_ERR",
+          "kind": "constant",
+          "name": "INDEX_SIZE_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 1
+        },
+        {
+          "id": "DOMException.DOMSTRING_SIZE_ERR",
+          "kind": "constant",
+          "name": "DOMSTRING_SIZE_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 2
+        },
+        {
+          "id": "DOMException.HIERARCHY_REQUEST_ERR",
+          "kind": "constant",
+          "name": "HIERARCHY_REQUEST_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 3
+        },
+        {
+          "id": "DOMException.WRONG_DOCUMENT_ERR",
+          "kind": "constant",
+          "name": "WRONG_DOCUMENT_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 4
+        },
+        {
+          "id": "DOMException.INVALID_CHARACTER_ERR",
+          "kind": "constant",
+          "name": "INVALID_CHARACTER_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 5
+        },
+        {
+          "id": "DOMException.NO_DATA_ALLOWED_ERR",
+          "kind": "constant",
+          "name": "NO_DATA_ALLOWED_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 6
+        },
+        {
+          "id": "DOMException.NO_MODIFICATION_ALLOWED_ERR",
+          "kind": "constant",
+          "name": "NO_MODIFICATION_ALLOWED_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 7
+        },
+        {
+          "id": "DOMException.NOT_FOUND_ERR",
+          "kind": "constant",
+          "name": "NOT_FOUND_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 8
+        },
+        {
+          "id": "DOMException.NOT_SUPPORTED_ERR",
+          "kind": "constant",
+          "name": "NOT_SUPPORTED_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 9
+        },
+        {
+          "id": "DOMException.INUSE_ATTRIBUTE_ERR",
+          "kind": "constant",
+          "name": "INUSE_ATTRIBUTE_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 10
+        },
+        {
+          "id": "DOMException.INVALID_STATE_ERR",
+          "kind": "constant",
+          "name": "INVALID_STATE_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 11
+        },
+        {
+          "id": "DOMException.SYNTAX_ERR",
+          "kind": "constant",
+          "name": "SYNTAX_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 12
+        },
+        {
+          "id": "DOMException.INVALID_MODIFICATION_ERR",
+          "kind": "constant",
+          "name": "INVALID_MODIFICATION_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 13
+        },
+        {
+          "id": "DOMException.NAMESPACE_ERR",
+          "kind": "constant",
+          "name": "NAMESPACE_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 14
+        },
+        {
+          "id": "DOMException.INVALID_ACCESS_ERR",
+          "kind": "constant",
+          "name": "INVALID_ACCESS_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 15
+        },
+        {
+          "id": "DOMException.VALIDATION_ERR",
+          "kind": "constant",
+          "name": "VALIDATION_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 16
+        },
+        {
+          "id": "DOMException.TYPE_MISMATCH_ERR",
+          "kind": "constant",
+          "name": "TYPE_MISMATCH_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 17
+        },
+        {
+          "id": "DOMException.SECURITY_ERR",
+          "kind": "constant",
+          "name": "SECURITY_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 18
+        },
+        {
+          "id": "DOMException.NETWORK_ERR",
+          "kind": "constant",
+          "name": "NETWORK_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 19
+        },
+        {
+          "id": "DOMException.ABORT_ERR",
+          "kind": "constant",
+          "name": "ABORT_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 20
+        },
+        {
+          "id": "DOMException.URL_MISMATCH_ERR",
+          "kind": "constant",
+          "name": "URL_MISMATCH_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 21
+        },
+        {
+          "id": "DOMException.QUOTA_EXCEEDED_ERR",
+          "kind": "constant",
+          "name": "QUOTA_EXCEEDED_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 22
+        },
+        {
+          "id": "DOMException.TIMEOUT_ERR",
+          "kind": "constant",
+          "name": "TIMEOUT_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 23
+        },
+        {
+          "id": "DOMException.INVALID_NODE_TYPE_ERR",
+          "kind": "constant",
+          "name": "INVALID_NODE_TYPE_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 24
+        },
+        {
+          "id": "DOMException.DATA_CLONE_ERR",
+          "kind": "constant",
+          "name": "DATA_CLONE_ERR",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "attributes": [],
+          "value": 25
+        }
+      ]
+    },
     {
       "id": "CSS",
       "kind": "namespace",
@@ -3930,6 +4182,30 @@
     }
   ],
   "access_mappings": {
+    "DOMException.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "dom_exception.constructor",
+      "producers": [{"owner": "surgeist-bindings-js", "path": "crates/surgeist-bindings-js/src/backend/mod.rs", "symbol": "create_dom_exception"}],
+      "requirements": []
+    },
+    "DOMException.name/get": {
+      "kind": "native",
+      "adapter": "dom_exception.name",
+      "producers": [{"owner": "surgeist-bindings-js", "path": "crates/surgeist-bindings-js/src/backend/mod.rs", "symbol": "dom_exception_slot"}],
+      "requirements": []
+    },
+    "DOMException.message/get": {
+      "kind": "native",
+      "adapter": "dom_exception.message",
+      "producers": [{"owner": "surgeist-bindings-js", "path": "crates/surgeist-bindings-js/src/backend/mod.rs", "symbol": "dom_exception_slot"}],
+      "requirements": []
+    },
+    "DOMException.code/get": {
+      "kind": "native",
+      "adapter": "dom_exception.code",
+      "producers": [{"owner": "surgeist-bindings-js", "path": "crates/surgeist-bindings-js/src/backend/mod.rs", "symbol": "dom_exception_slot"}],
+      "requirements": []
+    },
     "CSS.escape:0/call": {
       "kind": "native",
       "adapter": "css.escape",

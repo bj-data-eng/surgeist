@@ -6,8 +6,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::ThreadId;
 
 use super::{
-    CoercedString, ObjectPrototype, Operations, PropertyDefinition, PropertyDescriptor, PropertyKey,
+    CoercedString, DomExceptionProfile, ObjectPrototype, Operations, PropertyDefinition,
+    PropertyDescriptor, PropertyKey,
 };
+use crate::conversion::ConversionAccount;
 use crate::owner::OwnerState;
 use crate::{
     Arguments, Callback, Completion, ConstructorArguments, ConstructorCallback,
@@ -22,6 +24,9 @@ mod tests;
 static OWNER_THREAD: OnceLock<ThreadId> = OnceLock::new();
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static NEXT_OWNER: AtomicU64 = AtomicU64::new(0);
+
+const ERROR_CONSTRUCTOR_FIELD: usize = 6;
+const DOM_EXCEPTION_PROFILE_FIELD: usize = 7;
 
 struct ActiveOwner;
 
@@ -70,6 +75,7 @@ struct Roots {
     next_callback: Cell<u32>,
     callbacks: RefCell<BTreeMap<u32, CallbackEntry>>,
     interrupt: v8::IsolateHandle,
+    dom_exception_key: v8::Global<v8::Private>,
     cleanup_interrupt: Cell<bool>,
     // User panic payloads remain owned until teardown outside native callback
     // frames. Their arbitrary destructors follow ordinary Rust drop behavior.
@@ -242,6 +248,11 @@ impl Engine {
             .map_err(|_| Error::IdentityExhausted)?;
         let mut isolate = v8::Isolate::new(Default::default());
         isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
+        let dom_exception_key = {
+            v8::scope!(let scope, &mut isolate);
+            let key = v8::Private::new(scope, None);
+            v8::Global::new(scope, key)
+        };
         let roots = Rc::new(Roots {
             owner: Rc::new(OwnerState::new(owner)),
             next: Cell::new(0),
@@ -249,6 +260,7 @@ impl Engine {
             next_callback: Cell::new(0),
             callbacks: RefCell::new(BTreeMap::new()),
             interrupt: isolate.thread_safe_handle(),
+            dom_exception_key,
             cleanup_interrupt: Cell::new(false),
             panic_payloads: Cell::new(Vec::new()),
         });
@@ -360,6 +372,7 @@ impl super::Engine for Engine {
             let global = context.global(scope);
             let object_constructor = pristine_method(scope, global, "Object")?;
             let function_constructor = pristine_method(scope, global, "Function")?;
+            let error_constructor = pristine_method(scope, global, "Error")?;
             let prototype_name =
                 v8::String::new(scope, "prototype").ok_or(Error::BackendUnavailable)?;
             let function_prototype = function_constructor
@@ -370,7 +383,7 @@ impl super::Engine for Engine {
             let bind = pristine_method(scope, function_prototype, "bind")?;
             let construct = pristine_method(scope, reflect, "construct")?;
             let template = v8::ObjectTemplate::new(scope);
-            if !template.set_internal_field_count(6) {
+            if !template.set_internal_field_count(DOM_EXCEPTION_PROFILE_FIELD + 1) {
                 return Err(Error::BackendUnavailable);
             }
             let intrinsics = template
@@ -382,13 +395,14 @@ impl super::Engine for Engine {
                 || !intrinsics.set_internal_field(3, bind.into())
                 || !intrinsics.set_internal_field(4, construct.into())
                 || !intrinsics.set_internal_field(5, object_constructor.into())
+                || !intrinsics.set_internal_field(ERROR_CONSTRUCTOR_FIELD, error_constructor.into())
             {
                 return Err(Error::BackendUnavailable);
             }
             v8::Global::new(scope, intrinsics)
         };
         // Context-owned JS edges preserve the intrinsic bundle after the last
-        // external Realm lease disappears. The Rust slot owns only a plain key.
+        // external Realm lease disappears. The realm identity slot owns only a plain key.
         let local_intrinsics = v8::Local::new(scope, &intrinsics);
         context.set_embedder_data(0, local_intrinsics.into());
         if context.set_slot(Rc::new(realm.0.key)).is_some() {
@@ -807,6 +821,10 @@ impl Operations for Entered<'_, '_, '_> {
         })
     }
 
+    fn validate_string_length(&self, units: usize) -> Result<(), Error> {
+        validate_string_length(units)
+    }
+
     fn string(&mut self, units: &[u16]) -> Result<Root, Error> {
         self.attempt(
             ExceptionPhase::Coerce,
@@ -873,6 +891,159 @@ impl Operations for Entered<'_, '_, '_> {
                 Ok(roots.local(scope, value)?.is_function())
             },
         )
+    }
+
+    fn native_error(&mut self) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, intrinsics| {
+            let error = pristine_error(scope, intrinsics)?;
+            roots.retain(scope, realm, error.into())
+        })
+    }
+
+    fn dom_exception_profile(&mut self) -> Result<Option<DomExceptionProfile>, Error> {
+        self.attempt(
+            ExceptionPhase::Prototype,
+            |scope, roots, realm, intrinsics| {
+                let profile = captured_value(scope, intrinsics, DOM_EXCEPTION_PROFILE_FIELD)?;
+                let account = scope
+                    .get_current_context()
+                    .get_slot::<Weak<ConversionAccount>>();
+                if profile.is_undefined() && account.is_none() {
+                    return Ok(None);
+                }
+                let profile = v8::Local::<v8::Array>::try_from(profile)
+                    .map_err(|_| roots.fail(Error::BackendUnavailable))?;
+                let account = account
+                    .and_then(|account| account.upgrade())
+                    .ok_or_else(|| roots.fail(Error::BackendUnavailable))?;
+                let prototype = profile
+                    .get_index(scope, 0)
+                    .filter(|prototype| prototype.is_native_error())
+                    .ok_or_else(|| roots.fail(Error::BackendUnavailable))?;
+                let prototype = roots.retain(scope, realm, prototype)?;
+                Ok(Some(DomExceptionProfile { prototype, account }))
+            },
+        )
+    }
+
+    fn publish_dom_exception(
+        &mut self,
+        key: &[u16],
+        constructor: &Root,
+        prototype: &Root,
+        account: &Rc<ConversionAccount>,
+    ) -> Result<(), Error> {
+        self.validate_root(constructor)?;
+        self.validate_root(prototype)?;
+        self.attempt(
+            ExceptionPhase::DefineProperty,
+            |scope, roots, _, intrinsics| {
+                let context = scope.get_current_context();
+                let previous = captured_value(scope, intrinsics, DOM_EXCEPTION_PROFILE_FIELD)?;
+                if !previous.is_undefined() {
+                    return Err(Error::PropertyRejected);
+                }
+                if context.get_slot::<Weak<ConversionAccount>>().is_some() {
+                    return Err(roots.fail(Error::BackendUnavailable));
+                }
+                let constructor = roots.local(scope, constructor)?;
+                let prototype = roots.local(scope, prototype)?;
+                let key = string(scope, key)?;
+                let global = context.global(scope);
+                require_absent_property(scope, roots, global, key.into())?;
+                let mut descriptor =
+                    v8::PropertyDescriptor::new_from_value_writable(constructor, true);
+                descriptor.set_enumerable(false);
+                descriptor.set_configurable(true);
+
+                // Keep the native constructor's funded account alive even if guest
+                // code replaces the public binding and prototype.constructor. The
+                // Context slot holds only a weak Rust edge. Arbitrary backing drops
+                // stay in the existing callback registry's owned retirement path.
+                let profile = v8::Array::new_with_elements(scope, &[prototype, constructor]);
+                if !intrinsics.set_internal_field(DOM_EXCEPTION_PROFILE_FIELD, profile.into()) {
+                    return Err(roots.fail(Error::BackendUnavailable));
+                }
+                if context.set_slot(Rc::new(Rc::downgrade(account))).is_some() {
+                    return Err(roots.fail(Error::BackendUnavailable));
+                }
+                // The backend creates this context's native global without guest
+                // interceptors. An own definition doesn't traverse its prototype.
+                // The profile is complete before the global can become visible.
+                let result = define_own_property(scope, global, key.into(), &descriptor);
+                if result.is_err() {
+                    context.remove_slot::<Weak<ConversionAccount>>();
+                    if !intrinsics.set_internal_field(DOM_EXCEPTION_PROFILE_FIELD, previous.into())
+                    {
+                        return Err(roots.fail(Error::BackendUnavailable));
+                    }
+                }
+                result
+            },
+        )
+    }
+
+    fn create_dom_exception(
+        &mut self,
+        prototype: &Root,
+        name: &Root,
+        message: &Root,
+        code: u16,
+    ) -> Result<Root, Error> {
+        self.validate_root(prototype)?;
+        let error = self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, intrinsics| {
+            let name = roots.local(scope, name)?;
+            let message = roots.local(scope, message)?;
+            if !name.is_string() || !message.is_string() {
+                return Err(Error::BackendUnavailable);
+            }
+            let code = v8::Integer::new_from_unsigned(scope, u32::from(code));
+            let error = pristine_error(scope, intrinsics)?;
+            let slots = v8::Array::new_with_elements(scope, &[name, message, code.into()]);
+            let key = v8::Local::new(scope, &roots.dom_exception_key);
+            if error.set_private(scope, key, slots.into()) != Some(true) {
+                return Err(Error::BackendUnavailable);
+            }
+            roots.retain(scope, realm, error.into())
+        })?;
+        // The receiver is a fresh ordinary JSError. Only its proposed
+        // prototype can be a Proxy; SetPrototypeOf does not call its traps.
+        self.set_prototype(&error, ObjectPrototype::Object(prototype))?;
+        Ok(error)
+    }
+
+    fn dom_exception_slot(
+        &mut self,
+        receiver: &Root,
+        slot: crate::dom_exception::Slot,
+    ) -> Result<Option<Root>, Error> {
+        self.validate_root(receiver)?;
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+            let receiver = roots.local(scope, receiver)?;
+            // The SDK's native error predicate rejects proxies, including
+            // proxies of a genuine DOMException, before inspecting private data.
+            if !receiver.is_native_error() {
+                return Ok(None);
+            }
+            let receiver = v8::Local::<v8::Object>::try_from(receiver)
+                .map_err(|_| Error::BackendUnavailable)?;
+            let key = v8::Local::new(scope, &roots.dom_exception_key);
+            if !receiver
+                .has_private(scope, key)
+                .ok_or(Error::BackendUnavailable)?
+            {
+                return Ok(None);
+            }
+            let slots = receiver
+                .get_private(scope, key)
+                .ok_or(Error::BackendUnavailable)?;
+            let slots =
+                v8::Local::<v8::Array>::try_from(slots).map_err(|_| Error::BackendUnavailable)?;
+            let value = slots
+                .get_index(scope, slot as u32)
+                .ok_or(Error::BackendUnavailable)?;
+            roots.retain(scope, realm, value).map(Some)
+        })
     }
 
     fn global(&mut self) -> Result<Root, Error> {
@@ -977,22 +1148,9 @@ impl Operations for Entered<'_, '_, '_> {
                 descriptor.set_enumerable(enumerable);
                 descriptor.set_configurable(configurable);
                 if matches!(definition, PropertyDefinition::RequireAbsent) {
-                    match object.has_own_property(scope, key) {
-                        Some(false) => (),
-                        Some(true) => return Err(Error::PropertyRejected),
-                        None => return Err(Error::BackendUnavailable),
-                    }
-                    // The own-property probe may have invoked a proxy trap.
-                    roots.available()?;
-                    if scope.is_execution_terminating() {
-                        return Err(Error::Terminated);
-                    }
+                    require_absent_property(scope, roots, object, key)?;
                 }
-                match object.define_property(scope, key, &descriptor) {
-                    Some(true) => Ok(()),
-                    Some(false) => Err(Error::PropertyRejected),
-                    None => Err(Error::BackendUnavailable),
-                }
+                define_own_property(scope, object, key, &descriptor)
             },
         )
     }
@@ -1399,7 +1557,12 @@ fn invoke_callback<'s>(
             }
             let list = v8::Local::<v8::Array>::try_from(arguments.get(1))
                 .map_err(|_| Error::BackendUnavailable)?;
-            let count = usize::try_from(list.length()).map_err(|_| Error::TooManyArguments)?;
+            let length = list.length();
+            let selected = callback
+                .0
+                .argument_limit
+                .map_or(length, |limit| length.min(limit));
+            let count = usize::try_from(selected).map_err(|_| Error::TooManyArguments)?;
             if count > i32::MAX as usize {
                 return Err(Error::TooManyArguments);
             }
@@ -1407,7 +1570,7 @@ fn invoke_callback<'s>(
             values
                 .try_reserve_exact(count)
                 .map_err(|_| Error::Allocation)?;
-            for index in 0..list.length() {
+            for index in 0..selected {
                 let value = list
                     .get_index(entered.scope, index)
                     .ok_or(Error::BackendUnavailable)?;
@@ -1650,16 +1813,74 @@ fn pristine_method<'s>(
     v8::Local::<v8::Function>::try_from(method).map_err(|_| Error::BackendUnavailable)
 }
 
-fn captured_method<'s>(
+// The immutable constructor prototype belongs to the selected realm.
+// Stock Error construction with zero arguments creates the native error and
+// stack state without defining an own message or invoking guest coercion.
+fn pristine_error<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    intrinsics: v8::Local<'s, v8::Object>,
+) -> Result<v8::Local<'s, v8::Object>, Error> {
+    let constructor = captured_method(scope, intrinsics, ERROR_CONSTRUCTOR_FIELD)?;
+    let error = constructor
+        .new_instance(scope, &[])
+        .ok_or(Error::BackendUnavailable)?;
+    if error.is_native_error() {
+        Ok(error)
+    } else {
+        Err(Error::BackendUnavailable)
+    }
+}
+
+fn captured_value<'s>(
     scope: &v8::PinScope<'s, '_>,
-    intrinsics: v8::Local<v8::Object>,
+    intrinsics: v8::Local<'s, v8::Object>,
     index: usize,
-) -> Result<v8::Local<'s, v8::Function>, Error> {
-    let method = intrinsics
+) -> Result<v8::Local<'s, v8::Value>, Error> {
+    let value = intrinsics
         .get_internal_field(scope, index)
         .ok_or(Error::BackendUnavailable)?;
-    let method = v8::Local::<v8::Value>::try_from(method).map_err(|_| Error::BackendUnavailable)?;
+    v8::Local::<v8::Value>::try_from(value).map_err(|_| Error::BackendUnavailable)
+}
+
+fn captured_method<'s>(
+    scope: &v8::PinScope<'s, '_>,
+    intrinsics: v8::Local<'s, v8::Object>,
+    index: usize,
+) -> Result<v8::Local<'s, v8::Function>, Error> {
+    let method = captured_value(scope, intrinsics, index)?;
     v8::Local::<v8::Function>::try_from(method).map_err(|_| Error::BackendUnavailable)
+}
+
+fn require_absent_property(
+    scope: &v8::PinScope,
+    roots: &Roots,
+    object: v8::Local<v8::Object>,
+    key: v8::Local<v8::Name>,
+) -> Result<(), Error> {
+    match object.has_own_property(scope, key) {
+        Some(false) => (),
+        Some(true) => return Err(Error::PropertyRejected),
+        None => return Err(Error::BackendUnavailable),
+    }
+    // A generic own-property probe may have invoked a proxy trap.
+    roots.available()?;
+    if scope.is_execution_terminating() {
+        return Err(Error::Terminated);
+    }
+    Ok(())
+}
+
+fn define_own_property(
+    scope: &v8::PinScope,
+    object: v8::Local<v8::Object>,
+    key: v8::Local<v8::Name>,
+    descriptor: &v8::PropertyDescriptor,
+) -> Result<(), Error> {
+    match object.define_property(scope, key, descriptor) {
+        Some(true) => Ok(()),
+        Some(false) => Err(Error::PropertyRejected),
+        None => Err(Error::BackendUnavailable),
+    }
 }
 
 fn property_key<'s>(
@@ -1715,13 +1936,19 @@ fn prototype_value<'s>(
     }
 }
 
+fn validate_string_length(units: usize) -> Result<(), Error> {
+    if units > v8::String::MAX_LENGTH {
+        Err(Error::StringTooLong)
+    } else {
+        Ok(())
+    }
+}
+
 fn string<'s>(
     scope: &v8::PinScope<'s, '_>,
     units: &[u16],
 ) -> Result<v8::Local<'s, v8::String>, Error> {
-    if units.len() > v8::String::MAX_LENGTH {
-        return Err(Error::StringTooLong);
-    }
+    validate_string_length(units.len())?;
     v8::String::new_from_two_byte(scope, units, v8::NewStringType::Normal)
         .ok_or(Error::BackendUnavailable)
 }
