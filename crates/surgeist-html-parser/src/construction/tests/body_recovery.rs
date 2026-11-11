@@ -221,7 +221,7 @@ fn end_br_work_stops_retain_preflight_input_or_finish_all_disposal_without_start
     }
 }
 #[test]
-fn body_merge_qualifies_both_actual_local_names_and_preserves_import_refusal() {
+fn body_merge_qualifies_both_actual_local_names() {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<body a=x>");
     let mut c = control();
@@ -261,36 +261,10 @@ fn body_merge_qualifies_both_actual_local_names_and_preserves_import_refusal() {
             .as_ptr(),
         original
     );
-    let imported = session
-        .allocate_element(&mut c, super::tests::html("body"))
-        .unwrap();
-    assert_eq!(
-        session.active().unwrap().standalone_ineligibility,
-        Some(HtmlParseUnsupportedState::Provenance)
-    );
-    assert_eq!(
-        session.add_body_attributes_if_missing(&mut c, &imported, &mut input),
-        Err(SessionError::AttributeStorageUnavailable)
-    );
-    assert_eq!(
-        input
-            .as_ref()
-            .unwrap()
-            .name
-            .value
-            .text()
-            .code_units()
-            .as_ptr(),
-        original
-    );
     session.allocate_implicit_p(&mut c, None).unwrap();
     session
         .add_body_attributes_if_missing(&mut c, &body, &mut input)
         .unwrap();
-    assert_eq!(
-        session.active().unwrap().standalone_ineligibility,
-        Some(HtmlParseUnsupportedState::Provenance)
-    );
     assert!(input.is_none());
     tokenizer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
@@ -420,13 +394,13 @@ fn body_partition_wide_alternation_classifies_each_actual_unit_once() {
 #[test]
 fn body_partition_actual_origin_and_run_slots_require_their_coexisting_caps() {
     let source = crate::HtmlSource::utf8("<a v='A B C D'>");
-    // Root child-storage plus six slots each for real html/body/p owners
+    // Root child-storage plus five slots each for real html/body/p owners
     // coexist with seven output runs. These caps also admit the actual
     // lexer's seventeen-node attribute trie and its returned token record.
     // Retaining the lexer across the operation adds 22 real lexical rows:
     // two occurrence/cause pairs and 18 syntax/name/value parts. Seven
     // input origins coexist with seven partition origins (22+7+7=36).
-    for (maps, auxiliary, succeeds) in [(35, 30, false), (36, 29, false), (36, 30, true)] {
+    for (maps, auxiliary, succeeds) in [(35, 27, false), (36, 26, false), (36, 27, true)] {
         let mut c = ParseControl::new(
             limits()
                 .into_builder()
@@ -457,7 +431,7 @@ fn body_partition_actual_origin_and_run_slots_require_their_coexisting_caps() {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            23
+            20
         );
         let capacity = c.usage().actual_capacity_bytes;
         let result = partition_body_text(&mut c, &mut input);
@@ -473,7 +447,7 @@ fn body_partition_actual_origin_and_run_slots_require_their_coexisting_caps() {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .high_water,
-                30
+                27
             );
             runs.release(&mut c).unwrap();
         } else {
@@ -492,7 +466,7 @@ fn body_partition_actual_origin_and_run_slots_require_their_coexisting_caps() {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                23
+                20
             );
             release_token_kind(&mut input.take().map(TokenKind::Text), &mut c).unwrap();
         }

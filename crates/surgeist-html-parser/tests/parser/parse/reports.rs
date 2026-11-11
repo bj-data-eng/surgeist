@@ -941,10 +941,12 @@ fn attribute_and_pi_map_destinations_resolve_real_container_owners_and_retired_v
             _ => {}
         }
         let cause = row.cause();
-        if let Some(HtmlParseRetiredDestination::StagedField {
+        if let Some(HtmlParseRetiredDestination::Field {
+            node,
             field: HtmlParseField::AttributeValue(0),
         }) = cause.retired_destination().unwrap()
         {
+            assert_eq!(node.id(), ids[0]);
             let group = cause.original_group().unwrap().unwrap();
             let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
             let mut cursor = history.cursor(group, &mut scratch, None).unwrap();

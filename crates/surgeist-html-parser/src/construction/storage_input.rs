@@ -6,7 +6,7 @@ use surgeist_html::{
         HtmlFormOwnerResetDecision, HtmlFormOwnerResetTrigger, form_owner_reset_trigger,
     },
     construction::ConstructionNodeKind,
-    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
+    values::{Attribute, Namespace, QualifiedName},
 };
 
 /// Creation/mutation initializes from installed attributes. A Color clone
@@ -223,10 +223,9 @@ impl SessionStorage {
         node: usize,
         slot: usize,
         association: usize,
-        attribute: (usize, usize),
+        position: usize,
         initialization: InputAttributeInitialization,
     ) -> Result<(), SessionError> {
-        let (container, position) = attribute;
         control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         let named = element_attribute(&self.construction, control, node, position)?;
         let name = named.name().local_name();
@@ -268,7 +267,7 @@ impl SessionStorage {
         if type_attr {
             let attribute = element_attribute(&self.construction, control, node, position)?;
             let next_kind = input_type_state(control, attribute.value())?;
-            self.change_input_type(control, node, slot, container, state, next_kind)?;
+            self.change_input_type(control, node, slot, state, next_kind)?;
         }
         if src_attr {
             self.image_source_changed(control, node, slot)?;
@@ -336,7 +335,6 @@ impl SessionStorage {
         control: &mut ParseControl,
         node: usize,
         slot: usize,
-        container: usize,
         state: InputState,
         next_kind: surgeist_html::attributes::HtmlInputType,
     ) -> Result<(), SessionError> {
@@ -373,14 +371,11 @@ impl SessionStorage {
                     );
                     let position = match value_position {
                         Some(position) => {
-                            self.writeback_input_value(
-                                control, node, slot, container, position, raw,
-                            )?;
+                            self.writeback_input_value(control, node, slot, position, raw)?;
                             position
                         }
-                        None => self.append_input_value_from_current(
-                            control, node, slot, container, raw, generated,
-                        )?,
+                        None => self
+                            .append_input_value_from_current(control, node, slot, raw, generated)?,
                     };
                     // Nested dirty=false value change in Default or DefaultOn:
                     // copy the actual replaced native field without a sanitizer.
@@ -472,7 +467,6 @@ impl SessionStorage {
         control: &mut ParseControl,
         node: usize,
         slot: usize,
-        container: usize,
         raw: usize,
         generated: bool,
     ) -> Result<usize, SessionError> {
@@ -517,13 +511,7 @@ impl SessionStorage {
         payload_write::<InputState>(control, 1)?;
         payload_write::<Attribute>(control, 1)?;
         let incoming = Attribute::new(QualifiedName::new(Namespace::none(), None, name), value);
-        self.append_registered_attribute(
-            control,
-            node,
-            container,
-            incoming,
-            [name_slot, value_slot],
-        )?;
+        self.append_registered_attribute(control, node, incoming, [name_slot, value_slot])?;
         let Some(RetainedPayload::Input {
             state: destination, ..
         }) = self.payloads.values.get_mut(slot)
@@ -538,7 +526,6 @@ impl SessionStorage {
         control: &mut ParseControl,
         node: usize,
         slot: usize,
-        container: usize,
         position: usize,
         raw: usize,
     ) -> Result<(), SessionError> {
@@ -554,32 +541,24 @@ impl SessionStorage {
             payload_write::<Attribute>(control, 1)?;
             payload_write::<Option<Attribute>>(control, 1)?;
             let mut incoming = Some(Attribute::new(attribute.name().clone(), value));
-            // Registry redirects and known shared-wrapper restoration are
-            // preadmitted. The actual slot producer then commits all or none.
-            payload_write::<[StringLocation; 2]>(control, 2)?;
+            // The registry rebinding and the native commit are preadmitted. The storage's
+            // replacement commits all or none.
+            payload_write::<[FieldRef; 2]>(control, 2)?;
             let mut next_state = self.read_input_state(control, slot)?;
             next_state.value_rewritten_during_creation = true;
             payload_write::<InputState>(control, 1)?;
-            payload_write::<[Option<AttributeStorage>; 2]>(control, 2)?;
             control.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
-            payload_write::<OrderedAttributes>(control, 1)?;
-            let result = self.replace_attribute_storage(
-                control,
-                node,
-                container,
-                position,
-                &mut incoming,
-                &[Some(old_slot)],
-            );
+            self.retire_field_group(control, old_slot)?;
+            self.payloads.forget_attribute_strings(node);
+            let result =
+                self.construction
+                    .replace_attribute(control, node, position, &mut incoming);
             match result {
                 Ok(old) => {
-                    self.bind_string(old_slot, StringLocation::Detached)
+                    self.detach_attribute_string(control, old_slot)?;
+                    self.bind_string(new_slot, FieldRef::AttributeValue(node, position))
                         .map_err(|_| latch_registry_row(control))?;
-                    self.bind_string(
-                        new_slot,
-                        StringLocation::AttributeValue(container, position),
-                    )
-                    .map_err(|_| latch_registry_row(control))?;
+                    self.flush_attribute_origins(control, new_slot)?;
                     let Some(RetainedPayload::Input { state, .. }) =
                         self.payloads.values.get_mut(slot)
                     else {

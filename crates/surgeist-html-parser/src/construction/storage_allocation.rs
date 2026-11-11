@@ -340,7 +340,7 @@ impl SessionStorage {
                     value,
                     allocation,
                     origins,
-                    location: StringLocation::Detached,
+                    location: FieldRef::Detached,
                 },
             )
             .map_err(|_| latch_registry_row(control))?;
@@ -453,71 +453,7 @@ impl SessionStorage {
                 }
                 OrderedCreation::Select { metadata: None } => {}
             }
-            let container = self.element_attribute_container(control, node.index)?;
-            let (values, allocation) = control.new_vector()?;
-            let prepared = match self.prepare_payload_slot(control) {
-                Ok(prepared) => prepared,
-                Err(error) => {
-                    release_vector(control, values, allocation)?;
-                    return Err(error);
-                }
-            };
             let count = attributes.len();
-            let stage = self
-                .payloads
-                .push_row(
-                    prepared,
-                    RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                        values,
-                        allocation,
-                        original_len: count,
-                        reversed_pairs: 0,
-                    })),
-                )
-                .map_err(|_| latch_registry_row(control))?;
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let mut remaining = count;
-            let mut last_name_slot = None;
-            while let Some(attribute) = attributes.try_pop(control)? {
-                let (local, local_ticket) = match self.register_text(control, attribute.name) {
-                    Ok(value) => value,
-                    Err(error) => {
-                        attribute.value.release(control)?;
-                        return Err(error);
-                    }
-                };
-                last_name_slot.get_or_insert(local_ticket);
-                let (value, value_ticket) = self.register_text(control, attribute.value)?;
-                let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                    values,
-                    allocation,
-                    ..
-                }))) = self.payloads.values.get_mut(stage)
-                else {
-                    return Err(latch_registry_row(control));
-                };
-                control.reserve_vector_geometric_toward(values, allocation, 1, count)?;
-                payload_write::<Attribute>(control, 1)?;
-                payload_write::<[StringLocation; 2]>(control, 2)?;
-                control.acquire(HtmlParseResource::ManagedAttributes, 1)?;
-                values.push(Attribute::new(
-                    QualifiedName::new(Namespace::none(), None, local),
-                    value,
-                ));
-                remaining = remaining
-                    .checked_sub(1)
-                    .ok_or_else(|| latch_registry_row(control))?;
-                self.bind_string(
-                    local_ticket,
-                    StringLocation::AttributeName(stage, remaining),
-                )
-                .map_err(|_| latch_registry_row(control))?;
-                self.bind_string(
-                    value_ticket,
-                    StringLocation::AttributeValue(stage, remaining),
-                )
-                .map_err(|_| latch_registry_row(control))?;
-            }
             if count >= construction_owner::NAME_INDEX_MIN_ENTRIES {
                 // The attributes are installed one at a time, each in its own edit: they look
                 // up their names in one table, which the effects of an attribute may add to.
@@ -526,50 +462,76 @@ impl SessionStorage {
                     count.saturating_add(construction_owner::NAME_INDEX_SPARE_ENTRIES),
                 )?;
             }
-            self.edit_attributes(control, node.index, container, stage, count, false)?;
-            self.begin_attribute_transfer(control, stage, container, 0)?;
-            for position in 0..count {
-                self.edit_attributes(control, node.index, container, stage, 1, true)?;
-                if self.effects.form.is_some() {
-                    self.drain_form_effects(control)?;
-                }
-                self.initial_nonce_attribute(control, node.index, position)?;
-                match creation {
-                    OrderedCreation::Details { .. } => {
-                        self.initial_details_attribute(control, node.index, position)?
-                    }
-                    OrderedCreation::Input {
-                        input, association, ..
-                    } => self.initial_input_attribute(
+            let mut stage = StagedAttributes::new(control)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let first_row = self.payloads.values.len();
+            let installed = (|| {
+                let mut remaining = count;
+                let mut last_name_slot = None;
+                while let Some(attribute) = attributes.try_pop(control)? {
+                    let (local, local_ticket) = match self.register_text(control, attribute.name) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            attribute.value.release(control)?;
+                            return Err(error);
+                        }
+                    };
+                    last_name_slot.get_or_insert(local_ticket);
+                    let (value, value_ticket) = self.register_text(control, attribute.value)?;
+                    self.construction.acquire_attribute(control)?;
+                    remaining = remaining
+                        .checked_sub(1)
+                        .ok_or_else(|| latch_registry_row(control))?;
+                    stage.push(
                         control,
-                        node.index,
-                        input,
-                        association,
-                        (container, position),
-                        InputAttributeInitialization::Installed,
-                    )?,
-                    OrderedCreation::Select { .. } => {
-                        self.initial_select_attribute(control, node.index, position)?
+                        Attribute::new(QualifiedName::new(Namespace::none(), None, local), value),
+                        count,
+                    )?;
+                    self.bind_string(local_ticket, FieldRef::AttributeName(node.index, remaining))
+                        .map_err(|_| latch_registry_row(control))?;
+                    self.bind_string(
+                        value_ticket,
+                        FieldRef::AttributeValue(node.index, remaining),
+                    )
+                    .map_err(|_| latch_registry_row(control))?;
+                }
+                self.construction
+                    .reserve_attributes(control, node.index, count)?;
+                self.payloads.forget_attribute_strings(node.index);
+                for position in 0..count {
+                    self.append_staged_attribute(control, node.index, &mut stage, None)?;
+                    if self.effects.form.is_some() {
+                        self.drain_form_effects(control)?;
+                    }
+                    self.initial_nonce_attribute(control, node.index, position)?;
+                    match creation {
+                        OrderedCreation::Details { .. } => {
+                            self.initial_details_attribute(control, node.index, position)?
+                        }
+                        OrderedCreation::Input {
+                            input, association, ..
+                        } => self.initial_input_attribute(
+                            control,
+                            node.index,
+                            input,
+                            association,
+                            position,
+                            InputAttributeInitialization::Installed,
+                        )?,
+                        OrderedCreation::Select { .. } => {
+                            self.initial_select_attribute(control, node.index, position)?
+                        }
                     }
                 }
-            }
-            // Close the real source redirect after every installed slot/effect.
-            payload_write::<PreparedAttributeMerge>(control, 1)?;
-            self.finish_attribute_merge(
-                control,
-                PreparedAttributeMerge {
-                    target: node.index,
-                    container,
-                    stage,
-                    start: 0,
-                    count: 0,
-                    earlier: [None; 4],
-                },
-            )?;
-
+                Ok(last_name_slot)
+            })();
+            let released = stage.release(control);
+            let last_name_slot = installed?;
+            released?;
+            self.flush_attribute_origins(control, first_row)?;
             self.construction.retire_name_index(control)?;
             // The strings are registered last attribute first, as in the unordered
-            // creation, once the merges that forget the layout are done.
+            // creation, once the edits that forget the layout are done.
             if let Some(slot) = last_name_slot {
                 self.payloads
                     .record_attribute_strings(node.index, slot)
@@ -703,157 +665,92 @@ impl SessionStorage {
                 .len()
                 .checked_add(namespace.len())
                 .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
-            let (values, allocation) = control.new_vector()?;
+            let mut stage = StagedAttributes::new(control)?;
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
-            let admission = match self.prepare_payload_slot(control) {
-                Ok(admission) => admission,
-                Err(error) => {
-                    release_vector(control, values, allocation)?;
-                    return Err(error);
-                }
-            };
-            let container = self
-                .payloads
-                .push_row(
-                    admission,
-                    RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                        values,
-                        allocation,
-                        original_len,
-                        reversed_pairs: 0,
-                    })),
-                )
-                .map_err(|_| latch_registry_row(control))?;
+            // The record this creation makes is the next one, and names its attributes' strings.
+            let node_index = self.construction.len(control)?;
+            let first_row = self.payloads.values.len();
             // Names and values register as adjacent rows, last attribute first.
             let mut last_name_slot = None;
-            while let Some(attribute) = attributes.try_pop(control)? {
-                let attribute_name = self.register_text(control, attribute.name);
-                let (local, local_ticket) = match attribute_name {
-                    Ok(value) => value,
-                    Err(error) => {
-                        attribute.value.release(control)?;
-                        return Err(error);
-                    }
-                };
-                last_name_slot.get_or_insert(local_ticket);
-                let (value, value_ticket) = self.register_text(control, attribute.value)?;
-                control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-                units = units
-                    .checked_add(local.len())
-                    .and_then(|sum| sum.checked_add(value.len()))
-                    .ok_or_else(|| {
-                        control.stop_representation(HtmlParseResource::ManagedUtf16Units)
-                    })?;
-                let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                    values,
-                    allocation,
-                    ..
-                }))) = self.payloads.values.get_mut(container)
-                else {
-                    return Err(latch_registry_row(control));
-                };
-                control.reserve_vector_geometric_toward(values, allocation, 1, original_len)?;
-                control.charge(
-                    HtmlParseWorkCategory::CopyByte,
-                    mem::size_of::<Attribute>() as u64,
-                )?;
-                control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
-                control.acquire(HtmlParseResource::ManagedAttributes, 1)?;
-                let position = attributes.len();
-                values.push(Attribute::new(
-                    QualifiedName::new(Namespace::none(), None, local),
-                    value,
-                ));
-                self.bind_string(
-                    local_ticket,
-                    StringLocation::AttributeName(container, position),
-                )
-                .map_err(|_| latch_registry_row(control))?;
-                self.bind_string(
-                    value_ticket,
-                    StringLocation::AttributeValue(container, position),
-                )
-                .map_err(|_| latch_registry_row(control))?;
+            let staged = (|| {
+                while let Some(attribute) = attributes.try_pop(control)? {
+                    let attribute_name = self.register_text(control, attribute.name);
+                    let (local, local_ticket) = match attribute_name {
+                        Ok(value) => value,
+                        Err(error) => {
+                            attribute.value.release(control)?;
+                            return Err(error);
+                        }
+                    };
+                    last_name_slot.get_or_insert(local_ticket);
+                    let (value, value_ticket) = self.register_text(control, attribute.value)?;
+                    control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+                    units = units
+                        .checked_add(local.len())
+                        .and_then(|sum| sum.checked_add(value.len()))
+                        .ok_or_else(|| {
+                            control.stop_representation(HtmlParseResource::ManagedUtf16Units)
+                        })?;
+                    self.construction.acquire_attribute(control)?;
+                    stage.push_plain(
+                        control,
+                        Attribute::new(QualifiedName::new(Namespace::none(), None, local), value),
+                        original_len,
+                    )?;
+                    let position = attributes.len();
+                    self.bind_string(local_ticket, FieldRef::AttributeName(node_index, position))
+                        .map_err(|_| latch_registry_row(control))?;
+                    self.bind_string(value_ticket, FieldRef::AttributeValue(node_index, position))
+                        .map_err(|_| latch_registry_row(control))?;
+                }
+                stage.reverse(control)
+            })();
+            if let Err(error) = staged {
+                stage.release(control)?;
+                return Err(error);
             }
-            self.reverse_attributes(control, container)?;
-            let Some(RetainedPayload::Attributes(storage)) =
-                self.payloads.values.get_mut(container)
-            else {
-                return Err(latch_registry_row(control));
-            };
-            let taken = storage.take();
-            let Some(AttributeStorage::Building {
-                values,
-                allocation,
-                original_len,
-                reversed_pairs,
-            }) = taken
-            else {
-                *storage = taken;
-                return Err(latch_registry_row(control));
-            };
+            let (values, allocation) = stage.into_parts();
             let (backing, shared) = match control.share_owned(values) {
                 Ok(value) => value,
                 Err((stop, values)) => {
-                    *storage = Some(AttributeStorage::Building {
-                        values,
-                        allocation,
-                        original_len,
-                        reversed_pairs,
-                    });
+                    release_vector(control, values, allocation)?;
                     return Err(stop.into());
                 }
             };
             let ordered = match validate_parser_attributes(backing, control) {
                 Ok(values) => values,
                 Err((error, backing)) => {
-                    // Preserve the admitted shared wrapper in the owning phase
-                    // even when intrinsic duplicate checking or work stops.
-                    let values = match control.release_shared(backing, shared) {
-                        Ok(values) => values,
+                    // Preserve the admitted shared wrapper even when intrinsic duplicate
+                    // checking or work stops.
+                    return match control.release_shared(backing, shared) {
+                        Ok(values) => {
+                            release_vector(control, values, allocation)?;
+                            Err(error)
+                        }
                         Err(refused) => {
-                            // Unpublished backing is uniquely owned, so a
-                            // refusal is an invariant stop. The refused Arc and
-                            // ticket stay in the row for cleanup to retry.
+                            // Unpublished backing is uniquely owned, so a refusal is an
+                            // invariant stop. The accounting of the refused list stays with
+                            // the owner for its release.
                             let (_, backing, shared) = refused.into_parts();
-                            *storage = Some(AttributeStorage::Unvalidated {
-                                backing,
-                                allocation,
-                                shared,
-                                original_len,
-                                reversed_pairs,
-                            });
-                            return Err(latch_registry_row(control));
+                            drop(backing);
+                            self.construction
+                                .absorb_attribute_list(control, allocation, shared)?;
+                            Err(latch_registry_row(control))
                         }
                     };
-                    *storage = Some(AttributeStorage::Building {
-                        values,
-                        allocation,
-                        original_len,
-                        reversed_pairs,
-                    });
-                    return Err(error);
                 }
             };
-            *storage = Some(AttributeStorage::Frozen {
-                values: ordered,
-                allocation,
-                shared,
-                element: None,
-            });
+            // The list belongs to the record from here on, and the parse accounts for it with
+            // the other lists of its storage.
+            self.construction
+                .absorb_attribute_list(control, allocation, shared)?;
             control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             control.charge(
                 HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<OrderedAttributes>() as u64,
             )?;
-            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-                values, ..
-            }))) = self.payloads.values.get(container)
-            else {
-                return Err(latch_registry_row(control));
-            };
-            let attributes = values.clone();
+            let attributes = ordered;
             let template = exact_ascii(control, Some(&name), "template")?;
             let link_flags = exact_ascii(control, Some(&name), "link")?
                 .then(surgeist_html::elements::link::HtmlLinkFlags::fresh);
@@ -870,25 +767,19 @@ impl SessionStorage {
                 0,
                 prepared,
             )?;
-            self.bind_string(name_ticket, StringLocation::ElementName(node.index))
-                .map_err(|_| latch_registry_row(control))?;
-            self.bind_string(namespace_ticket, StringLocation::Namespace(node.index))
-                .map_err(|_| latch_registry_row(control))?;
-            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-                element, ..
-            }))) = self.payloads.values.get_mut(container)
-            else {
+            if node.index != node_index {
                 return Err(latch_registry_row(control));
-            };
-            *element = Some(node.index);
-            self.payloads
-                .join_row(container)
+            }
+            self.bind_string(name_ticket, FieldRef::ElementName(node.index))
+                .map_err(|_| latch_registry_row(control))?;
+            self.bind_string(namespace_ticket, FieldRef::Namespace(node.index))
                 .map_err(|_| latch_registry_row(control))?;
             if let Some(slot) = last_name_slot {
                 self.payloads
                     .record_attribute_strings(node.index, slot)
                     .map_err(|_| latch_registry_row(control))?;
             }
+            self.flush_attribute_origins(control, first_row)?;
             self.initial_nonce_attributes(control, node.index)?;
             self.initial_associated_state(control, node.index)?;
             self.initial_meta_attributes(control, node.index)?;

@@ -10,7 +10,7 @@
 //! slot's admission and its row. Every such stop must leave every retained
 //! resource at zero after cleanup.
 use super::tests::storage_zero;
-use super::{KindList, RetainedPayload, StringLocation, literal_string};
+use super::{FieldRef, KindList, RetainedPayload, literal_string};
 use crate::construction::effects::tests::{graph, request};
 use crate::parser::control::{
     PreparedSlotStopScope, prepared_slot_sites, prepared_slots, stop_after_prepared_slot,
@@ -378,8 +378,8 @@ fn reconstructed_formatting_rows_leave_nothing_retained_when_the_parse_stops_aft
         &[
             ("src/construction/associated.rs", "initial_associated_state"),
             (
-                "src/construction/storage_allocation.rs",
-                "allocate_html_payload_prepared",
+                "src/construction/storage_strings.rs",
+                "register_group_string_owned",
             ),
         ],
     );
@@ -393,8 +393,8 @@ fn form_control_rows_leave_nothing_retained_when_the_parse_stops_after_their_slo
         ),
         &[
             (
-                "src/construction/storage_allocation.rs",
-                "allocate_ordered_payload",
+                "src/construction/storage_strings.rs",
+                "register_group_string_owned",
             ),
             ("src/construction/storage_allocation.rs", "register_raw"),
         ],
@@ -451,8 +451,8 @@ fn text_select_and_style_order_rows_leave_nothing_retained_when_the_parse_stops_
             ),
             ("src/construction/effects.rs", "retain_work_list"),
             (
-                "src/construction/storage_allocation.rs",
-                "allocate_ordered_payload",
+                "src/construction/storage_strings.rs",
+                "register_group_string_owned",
             ),
         ],
     );
@@ -483,7 +483,10 @@ fn nonce_and_svg_script_rows_leave_nothing_retained_when_the_parse_stops_after_t
         &[
             ("src/construction/nonce.rs", "prepare_nonce"),
             ("src/construction/svg.rs", "retain_svg_slot"),
-            ("src/construction/foreign.rs", "allocate_foreign_payload"),
+            (
+                "src/construction/storage_strings.rs",
+                "register_group_string_owned",
+            ),
         ],
     );
 }
@@ -495,8 +498,8 @@ fn attribute_and_cause_rows_leave_nothing_retained_when_the_parse_stops_after_th
         &[
             ("src/construction/provenance.rs", "prepare_node_causes"),
             (
-                "src/construction/storage_allocation.rs",
-                "allocate_html_payload_prepared",
+                "src/construction/storage_strings.rs",
+                "register_group_string_owned",
             ),
         ],
     );
@@ -545,8 +548,8 @@ fn fragment_reconstructed_formatting_rows_leave_nothing_retained_when_the_parse_
         &fragment("<a href=x>1<p>2</a>3<form><input></form>"),
         &[
             (
-                "src/construction/storage_allocation.rs",
-                "allocate_ordered_payload",
+                "src/construction/storage_strings.rs",
+                "register_group_string_owned",
             ),
             (
                 "src/construction/session_creation.rs",
@@ -765,7 +768,7 @@ fn a_refused_row_that_owns_a_string_is_released_with_the_registry() {
         value,
         allocation,
         origins: None,
-        location: StringLocation::Detached,
+        location: FieldRef::Detached,
     };
     assert!(storage.payloads.push_row(prepared, row).is_err());
     session.release(&mut c).unwrap();

@@ -59,7 +59,7 @@ pub(super) fn textarea_raw<'a>(
     let Some(RetainedPayload::String {
         value,
         allocation,
-        location: StringLocation::Detached,
+        location: FieldRef::Detached,
         ..
     }) = payloads.values.get(raw)
     else {

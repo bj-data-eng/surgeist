@@ -115,7 +115,7 @@ impl SessionStorage {
                     let end = units.checked_add(added).ok_or_else(|| {
                         control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                     })?;
-                    let source = self.field_slot(control, StringLocation::Text(child))?;
+                    let source = self.field_slot(control, FieldRef::Text(child))?;
                     let mut incoming = self.copied_slot_group(control, source)?;
                     if incoming.is_none() && self.graph_recorded() {
                         let evidence = self.evidence.as_mut().ok_or(SessionError::WrongToken)?;
@@ -273,7 +273,7 @@ impl SessionStorage {
             value: extended,
             allocation,
             origins: group,
-            location: StringLocation::Detached,
+            location: FieldRef::Detached,
         };
         let Some(RetainedPayload::Textarea { state: stored, .. }) =
             self.payloads.values.get_mut(slot)

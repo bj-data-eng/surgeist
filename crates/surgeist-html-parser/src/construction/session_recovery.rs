@@ -217,7 +217,7 @@ impl ParserArenaSession {
             prepared,
         )?;
         storage
-            .bind_string(ticket, StringLocation::Comment(node.index))
+            .bind_string(ticket, FieldRef::Comment(node.index))
             .map_err(|_| latch_registry_row(control))?;
         Ok(node)
     }
@@ -260,14 +260,11 @@ impl ParserArenaSession {
         storage
             .bind_string(
                 target_ticket,
-                StringLocation::ProcessingInstructionTarget(node.index),
+                FieldRef::ProcessingInstructionTarget(node.index),
             )
             .map_err(|_| latch_registry_row(control))?;
         storage
-            .bind_string(
-                data_ticket,
-                StringLocation::ProcessingInstructionData(node.index),
-            )
+            .bind_string(data_ticket, FieldRef::ProcessingInstructionData(node.index))
             .map_err(|_| latch_registry_row(control))?;
         storage.bind_pi_map(control, map, node.index)?;
         storage.parse_pi_map(control, node.index, map)?;
@@ -331,13 +328,13 @@ impl ParserArenaSession {
                 0,
             )?;
             storage
-                .bind_string(a, StringLocation::DoctypeName(node.index))
+                .bind_string(a, FieldRef::DoctypeName(node.index))
                 .map_err(|_| latch_registry_row(control))?;
             storage
-                .bind_string(b, StringLocation::DoctypePublic(node.index))
+                .bind_string(b, FieldRef::DoctypePublic(node.index))
                 .map_err(|_| latch_registry_row(control))?;
             storage
-                .bind_string(d, StringLocation::DoctypeSystem(node.index))
+                .bind_string(d, FieldRef::DoctypeSystem(node.index))
                 .map_err(|_| latch_registry_row(control))?;
             Ok(node)
         })();

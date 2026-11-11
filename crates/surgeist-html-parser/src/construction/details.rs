@@ -1,9 +1,6 @@
 //! HTML877d Details source-ordered hooks over the canonical ordinary tree.
 use super::*;
-use surgeist_html::{
-    bounded::construction::HtmlConstructionAttributeEditMode, construction::ConstructionNodeKind,
-    values::OrderedAttributes,
-};
+use surgeist_html::construction::ConstructionNodeKind;
 
 #[derive(Clone, Copy)]
 pub(super) enum NotificationDomain {
@@ -217,8 +214,7 @@ impl SessionStorage {
         )?;
         Ok(())
     }
-    /// Remove one actual no-namespace open slot without shifting an unpolled
-    /// suffix. The existing registry retains both capacity and precise progress.
+    /// Remove the no-namespace open attribute.
     fn remove_details_open(
         &mut self,
         c: &mut ParseControl,
@@ -234,134 +230,6 @@ impl SessionStorage {
                 close_other: false,
             },
         )
-    }
-    pub(super) fn edit_removing_attribute(
-        &mut self,
-        c: &mut ParseControl,
-        node: usize,
-        container: usize,
-        position: Option<usize>,
-    ) -> Result<(), SessionError> {
-        self.payloads.forget_attribute_strings(node);
-        c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
-        payload_write::<Option<AttributeStorage>>(c, 2)?;
-        c.charge(
-            HtmlParseWorkCategory::CopyByte,
-            mem::size_of::<OrderedAttributes>() as u64,
-        )?;
-        payload_write::<usize>(c, 1)?;
-        payload_write::<bool>(c, 1)?;
-        // Everything that can refuse is checked before ownership leaves the
-        // container; the node stays an element while its attributes change.
-        if !matches!(
-            self.construction
-                .storage(c)?
-                .node_at(node)
-                .map(|record| record.kind()),
-            Some(ConstructionNodeKind::Element(_))
-        ) {
-            return Err(latch_registry_row(c));
-        }
-        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
-        else {
-            return Err(latch_registry_row(c));
-        };
-        // The count this swap will record, settled before anything is taken so
-        // an overflow leaves the row and the edit untouched.
-        let next_shifted = match (position, &*storage) {
-            (Some(_), Some(AttributeStorage::Removing { shifted, .. })) => Some(
-                shifted
-                    .checked_add(1)
-                    .ok_or_else(|| latch_registry_row(c))?,
-            ),
-            _ => None,
-        };
-        let taken = storage.take();
-        let Some(AttributeStorage::Removing {
-            values,
-            mut allocation,
-            mut shared,
-            element,
-            index,
-            mut shifted,
-            mut popped,
-            rebound,
-        }) = taken
-        else {
-            *storage = taken;
-            return Err(latch_registry_row(c));
-        };
-        drop(values);
-        let result = (|| {
-            self.construction.begin_attributes(
-                c,
-                node,
-                HtmlConstructionAttributeEditMode::Slots,
-            )?;
-            let group = self.construction.attribute_edit(c)?;
-            let slot = if let Some(position) = position {
-                group.swap_adjacent(position)
-            } else {
-                group.pop()
-            }
-            .map_err(|e| construction_owner::construction_error(c, e))?;
-            let ready = prepare_attribute_slot(c, slot, &mut shared, &mut allocation)?;
-            if position.is_none() {
-                c.release(HtmlParseResource::ManagedAttributes, 1)?;
-            }
-            ready.commit().map_err(|refusal| {
-                construction_owner::construction_error(c, refusal.into_parts().1)
-            })?;
-            Ok::<_, SessionError>(())
-        })();
-        if result.is_ok() {
-            if let Some(next) = next_shifted {
-                shifted = next;
-            } else {
-                popped = true;
-            }
-        }
-        let Some(ConstructionNodeKind::Element(element_record)) = self
-            .construction
-            .storage(c)?
-            .node_at(node)
-            .map(|record| record.kind())
-        else {
-            // The record was an element before ownership left the row and the
-            // edit only rearranges its attributes. The shared attributes live
-            // in that record, so no Arc exists to hand back to the row; the
-            // construction owner's open edit is returned instead.
-            let invariant = latch_registry_row(c);
-            // The invariant is the reported first stop; an abort refusal is
-            // secondary and latched by its owner.
-            let _ = self.construction.abort_attributes(c);
-            return Err(invariant);
-        };
-        let values = element_record.attributes().to_ordered();
-        c.restore_attribute_weak(values.shared_attributes(), &mut shared);
-        *storage = Some(AttributeStorage::Removing {
-            values,
-            allocation,
-            shared,
-            element,
-            index,
-            shifted,
-            popped,
-            rebound,
-        });
-        #[cfg(test)]
-        if result.is_ok()
-            && position.is_some()
-            && let Some(cancellation) = self.cancel_after_details_shift.take()
-        {
-            cancellation.cancel();
-        }
-        if result.is_ok() {
-            self.construction.finish_attributes(c)?;
-        } else {
-            self.construction.abort_attributes(c)?;
-        }
-        result
     }
 }
 
@@ -710,65 +578,6 @@ mod tests {
         }
     }
     #[test]
-    fn details_committed_shift_cancellation_keeps_phase_for_true_cleanup() {
-        let request = request("<details open=v a=1 name=g b=2>");
-        let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
-        let root = session.root(&mut c).unwrap();
-        let mut lexer =
-            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
-        let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
-        // Scheduling instrumentation only: no alternate operation or minted
-        // phase. Cancel the real token after the actual adjacent slot commit.
-        session.active_mut().unwrap().cancel_after_details_shift =
-            Some(request.cancellation().clone());
-        assert_eq!(
-            session.remove_details_attribute(
-                &mut c,
-                &node,
-                surgeist_html::elements::details::HtmlDetailsAttribute::Open
-            ),
-            Err(SessionError::Stop(HtmlParseStop::Cancelled))
-        );
-        assert!(
-            session
-                .active()
-                .unwrap()
-                .payloads
-                .values
-                .iter()
-                .any(|payload| matches!(
-                    payload,
-                    RetainedPayload::Attributes(Some(AttributeStorage::Removing {
-                        shifted: 1,
-                        popped: false,
-                        ..
-                    }))
-                ))
-        );
-        assert_eq!(
-            attributes(&session, &node),
-            vec![
-                (vec![97], vec![49]),
-                (vec![111, 112, 101, 110], vec![118]),
-                (vec![110, 97, 109, 101], vec![103]),
-                (vec![98], vec![50])
-            ]
-        );
-        assert_eq!(
-            session.freeze(&mut c).err(),
-            Some(SessionError::Stop(HtmlParseStop::Cancelled))
-        );
-        let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
-        lexer.release(&mut c).unwrap();
-        session.release(&mut c).unwrap();
-        zero(&c);
-        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
-        assert_eq!(
-            c.usage().resource(HtmlParseResource::WorkCredits).current,
-            work
-        );
-    }
-    #[test]
     fn details_managed_clone_owns_independent_attributes_and_notification_domain() {
         let request = request("<details name=g open a=x>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
@@ -853,22 +662,24 @@ mod tests {
         let storage = session.active().unwrap();
         let mut removed = Vec::new();
         let mut current = Vec::new();
-        for payload in &storage.payloads.values {
+        for (slot, payload) in storage.payloads.values.iter().enumerate() {
             if let RetainedPayload::String {
-                value,
-                location,
-                origins: Some(group),
-                ..
+                value, location, ..
             } = payload
             {
+                let group = storage
+                    .payloads
+                    .row_group(&mut c, slot)
+                    .unwrap()
+                    .expect("every string of the details element has an origin group");
                 let evidence = storage.evidence.as_ref().unwrap();
                 let header = evidence.require_group(group).unwrap();
                 if value.code_units() == [111, 112, 101, 110] || value.code_units() == [118] {
-                    assert!(matches!(location, StringLocation::Detached));
+                    assert!(matches!(location, FieldRef::Detached));
                     assert!(header.retirement.is_some());
                     removed.push(value.code_units().to_vec());
                 }
-                if let StringLocation::AttributeName(_, position) = location
+                if let FieldRef::AttributeName(_, position) = location
                     && value.code_units() == [98]
                 {
                     current.push(*position);
@@ -1184,78 +995,5 @@ mod tests {
         assert_eq!(record.rule.branch, "ordinary-start/self-closing");
         assert_eq!((location.start(), location.end()), (15, 37));
         completed.release().unwrap();
-    }
-
-    #[test]
-    fn a_shift_count_at_the_end_of_its_range_reports_the_registry_row_and_aborts_the_edit() {
-        let request = request("<details open=v a=1>");
-        let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
-        let root = session.root(&mut c).unwrap();
-        let mut lexer =
-            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
-        let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
-        let storage = session.active_mut().unwrap();
-        let container = storage
-            .element_attribute_container(&mut c, node.index)
-            .unwrap();
-        // The state a removal installs before its first adjacent swap, with
-        // the shift count already at the end of its range.
-        let Some(RetainedPayload::Attributes(slot)) = storage.payloads.values.get_mut(container)
-        else {
-            panic!("attribute container")
-        };
-        let Some(AttributeStorage::Frozen {
-            values,
-            allocation,
-            shared,
-            element,
-        }) = slot.take()
-        else {
-            panic!("frozen attributes")
-        };
-        *slot = Some(AttributeStorage::Removing {
-            values,
-            allocation,
-            shared,
-            element,
-            index: 0,
-            shifted: usize::MAX,
-            popped: false,
-            rebound: 0,
-        });
-        let result = storage.edit_removing_attribute(&mut c, node.index, container, Some(0));
-        let invariant = HtmlParseStop::InternalInvariant(
-            crate::parser::control::HtmlParseInvariant::RegistryRow,
-        );
-        assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
-        assert_eq!(c.stop(), Some(invariant), "latched as the first stop");
-        assert!(!storage.construction.has_attribute_edit());
-        // The refusal came before anything was taken: the row still holds the
-        // state it was given. Put the frozen state back for the release check.
-        let Some(RetainedPayload::Attributes(slot)) = storage.payloads.values.get_mut(container)
-        else {
-            panic!("attribute container")
-        };
-        let Some(AttributeStorage::Removing {
-            values,
-            allocation,
-            shared,
-            element,
-            shifted: usize::MAX,
-            popped: false,
-            ..
-        }) = slot.take()
-        else {
-            panic!("untouched removing attributes")
-        };
-        *slot = Some(AttributeStorage::Frozen {
-            values,
-            allocation,
-            shared,
-            element,
-        });
-        lexer.release(&mut c).unwrap();
-        session.release(&mut c).unwrap();
-        zero(&c);
     }
 }

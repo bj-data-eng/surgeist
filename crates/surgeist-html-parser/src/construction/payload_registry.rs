@@ -49,6 +49,8 @@ pub(super) struct PayloadStorage {
     /// How many topology changes have been announced, or `None` once the count
     /// cannot go on; see [`tree_root`].
     pub(super) topology_changes: Option<u64>,
+    /// The origin groups of the attribute fields that rows hold the strings of.
+    pub(super) detail_origins: DetailOrigins,
 }
 
 pub(super) enum RetainedPayload {
@@ -139,12 +141,11 @@ pub(super) enum RetainedPayload {
         value: DocumentString,
         allocation: DocumentStringAllocation,
         origins: Option<OriginGroupRef>,
-        location: StringLocation,
+        location: FieldRef,
     },
     HistoricalString {
         origins: OriginGroupRef,
     },
-    Attributes(Option<AttributeStorage>),
     // Presence is an actual closed-recipient proof issued by ordinary creation;
     // no task was queued and the source toggle tracker remains null.
     Details {
@@ -320,16 +321,6 @@ impl ScriptMetadata {
 /// The join a registry row provides, when it is bound to a record.
 fn row_join(row: &RetainedPayload) -> Option<(Join, usize)> {
     Some(match row {
-        RetainedPayload::Attributes(Some(
-            AttributeStorage::Frozen {
-                element: Some(node),
-                ..
-            }
-            | AttributeStorage::Removing {
-                element: Some(node),
-                ..
-            },
-        )) => (Join::Attributes, *node),
         RetainedPayload::NodeDocument {
             node: Some(node), ..
         } => (Join::NodeDocument, *node),
@@ -366,7 +357,7 @@ fn row_join(row: &RetainedPayload) -> Option<(Join, usize)> {
             node: Some(node), ..
         } => (Join::LookupRegistry, *node),
         RetainedPayload::String {
-            location: StringLocation::ProcessingInstructionData(node),
+            location: FieldRef::ProcessingInstructionData(node),
             ..
         } => (Join::ProcessingInstructionData, *node),
         RetainedPayload::PiAttributes {
@@ -443,6 +434,26 @@ impl PayloadStorage {
         match self.values.get_mut(slot) {
             Some(row) => Ok(row),
             None => Err(latch_registry_row(control)),
+        }
+    }
+    /// The origin group of the string the row at `slot` holds. A string bound to an attribute
+    /// field has its group in the table of attribute origins once the install of the attribute
+    /// is done; until then, and for every other string, the row holds it.
+    pub(super) fn row_group(
+        &self,
+        control: &mut ParseControl,
+        slot: usize,
+    ) -> Result<Option<&OriginGroupRef>, SessionError> {
+        match self.values.get(slot) {
+            Some(RetainedPayload::String {
+                origins: Some(group),
+                ..
+            }) => Ok(Some(group)),
+            Some(RetainedPayload::String { location, .. }) if location.attribute().is_some() => {
+                self.detail_origins.get(control, *location)
+            }
+            Some(RetainedPayload::String { .. }) => Ok(None),
+            _ => Err(SessionError::WrongToken),
         }
     }
     /// The first registry row of `join` bound to `node`: one join cell, however
@@ -712,8 +723,7 @@ impl PayloadStorage {
     /// A latched registry-row stop does not name its row. When one is latched, an attribute join
     /// that names a row a lost edit emptied is accepted, at most one such join; every other join
     /// and every other stop is still checked.
-    fn assert_joins_match_registry(&self, registry_row_stop: bool) {
-        let mut tolerated = 0;
+    fn assert_joins_match_registry(&self) {
         let mut expected: Vec<NodeJoins> = vec![NodeJoins::default(); self.node_joins.len()];
         let mut lists: [Vec<usize>; KIND_LISTS] = Default::default();
         for (slot, row) in self.values.iter().enumerate() {
@@ -739,19 +749,6 @@ impl PayloadStorage {
             // row that was current when it was written.
             let mut cell = *cell;
             *cell.rows.get_mut(Join::StyleOrder) = joined.rows.copy(Join::StyleOrder);
-            if registry_row_stop
-                && tolerated == 0
-                && cell.get(Join::Attributes).is_none()
-                && joined.get(Join::Attributes).is_some_and(|slot| {
-                    matches!(
-                        self.values.get(slot),
-                        Some(RetainedPayload::Attributes(None))
-                    )
-                })
-            {
-                tolerated += 1;
-                *cell.rows.get_mut(Join::Attributes) = joined.rows.copy(Join::Attributes);
-            }
             if let Some(slot) = joined.get(Join::StyleOrder) {
                 assert!(
                     matches!(self.values.get(slot), Some(RetainedPayload::StyleOrder(_))),
@@ -775,12 +772,7 @@ impl PayloadStorage {
         owner: &ControlIdentity,
     ) -> Result<(), SessionError> {
         #[cfg(test)]
-        self.assert_joins_match_registry(matches!(
-            control.stop(),
-            Some(crate::parser::control::HtmlParseStop::InternalInvariant(
-                crate::parser::control::HtmlParseInvariant::RegistryRow
-            ))
-        ));
+        self.assert_joins_match_registry();
         let Self {
             mut values,
             allocation,
@@ -789,14 +781,20 @@ impl PayloadStorage {
             kind_slots,
             explicit_forms,
             prepared_entries,
+            detail_origins,
             ..
         } = self;
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
         let join_entries = node_joins.len() as u64;
+        let mut detail_refused = detail_origins.release(control).err();
         // A refused release latches its stop in the controller (`ParseControl::fail`),
         // and cleanup continues so every other owner is still released; the first
         // refusal is returned once the walk is complete.
-        let mut refused = release_vector(control, node_joins, node_joins_allocation).err();
+        let mut refused = detail_refused.take();
+        keep_first(
+            &mut refused,
+            release_vector(control, node_joins, node_joins_allocation),
+        );
         keep_first(
             &mut refused,
             release_logical(
@@ -851,79 +849,6 @@ impl PayloadStorage {
                         None => break,
                     }
                 }
-            }
-            if let RetainedPayload::Attributes(storage) = payload {
-                let Some(storage) = storage.take() else {
-                    refused.get_or_insert(SessionError::Consumed);
-                    continue;
-                };
-                let count = match &storage {
-                    AttributeStorage::Building { values, .. }
-                    | AttributeStorage::Transferring { values, .. } => values.len(),
-                    AttributeStorage::Frozen { values, .. }
-                    | AttributeStorage::Removing { values, .. } => values.len(),
-                    AttributeStorage::Unvalidated { backing, .. } => backing.len(),
-                };
-                match storage {
-                    AttributeStorage::Building {
-                        values, allocation, ..
-                    }
-                    | AttributeStorage::Transferring {
-                        values, allocation, ..
-                    } => {
-                        if let Err(error) = release_vector(control, values, allocation) {
-                            refused.get_or_insert(error);
-                        }
-                    }
-                    AttributeStorage::Frozen {
-                        values,
-                        allocation,
-                        shared,
-                        ..
-                    }
-                    | AttributeStorage::Removing {
-                        values,
-                        allocation,
-                        shared,
-                        ..
-                    } => {
-                        let backing = values.into_shared_attributes();
-                        match control.release_shared(backing, shared) {
-                            Ok(vector) => {
-                                if let Err(error) = release_vector(control, vector, allocation) {
-                                    refused.get_or_insert(error);
-                                }
-                            }
-                            Err(_) => {
-                                refused.get_or_insert(SessionError::AliasedPayload);
-                            }
-                        }
-                    }
-                    AttributeStorage::Unvalidated {
-                        backing,
-                        allocation,
-                        shared,
-                        ..
-                    } => match control.release_shared(backing, shared) {
-                        Ok(vector) => {
-                            if let Err(error) = release_vector(control, vector, allocation) {
-                                refused.get_or_insert(error);
-                            }
-                        }
-                        Err(_) => {
-                            refused.get_or_insert(SessionError::AliasedPayload);
-                        }
-                    },
-                }
-                keep_first(
-                    &mut refused,
-                    release_logical(
-                        control,
-                        owner,
-                        HtmlParseResource::ManagedAttributes,
-                        count as u64,
-                    ),
-                );
             }
         }
         while let Some(payload) = values.pop() {

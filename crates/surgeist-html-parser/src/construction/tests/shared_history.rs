@@ -32,7 +32,7 @@ fn shared_history_reconstructs_every_literal_prefix_without_retired_prefix_backi
         node = Some(inserted._node);
         let storage = session.active().unwrap();
         let slot = storage
-            .field_slot(&mut c, StringLocation::Text(node.as_ref().unwrap().index))
+            .field_slot(&mut c, FieldRef::Text(node.as_ref().unwrap().index))
             .unwrap();
         let RetainedPayload::String {
             origins: Some(group),
@@ -201,7 +201,7 @@ fn two_leaf_history(
     lexer.release(&mut c).unwrap();
     let storage = session.active().unwrap();
     let slot = storage
-        .field_slot(&mut c, StringLocation::Text(node.unwrap().index))
+        .field_slot(&mut c, FieldRef::Text(node.unwrap().index))
         .unwrap();
     let RetainedPayload::String {
         origins: Some(group),
@@ -1227,7 +1227,7 @@ fn assert_merged_text_retains_qualified_origins(
                 } else {
                     let storage = session.active_mut().unwrap();
                     let slot = storage
-                        .field_slot(&mut c, StringLocation::Text(inserted._node.index))
+                        .field_slot(&mut c, FieldRef::Text(inserted._node.index))
                         .unwrap();
                     let RetainedPayload::String { origins, .. } = &storage.payloads.values[slot]
                     else {
@@ -1254,7 +1254,7 @@ fn assert_merged_text_retains_qualified_origins(
     let units = native_text(&session, &node);
     let storage = session.active_mut().unwrap();
     let slot = storage
-        .field_slot(&mut c, StringLocation::Text(node.index))
+        .field_slot(&mut c, FieldRef::Text(node.index))
         .unwrap();
     let RetainedPayload::String { origins, .. } = &storage.payloads.values[slot] else {
         panic!("registered native Text field");

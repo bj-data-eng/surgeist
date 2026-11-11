@@ -507,28 +507,16 @@ impl Drop for PreparedSlotStopScope {
 pub(crate) enum WalkSite {
     /// The credit of each bank the construction owner retires.
     ConstructionBank,
-    /// The retirement of each name witness of an attribute edit.
-    AttributeWitness,
     /// Each owner a frozen arena releases.
     FrozenOwner,
 }
 
 /// Fixed-size diagnostic metadata for actual execution between real polls.
-/// It neither admits work/storage nor participates in parser decisions. Only
-/// the observed append and registry operations are instrumented here; this is
-/// not an observation of every parser instruction or provider implementation.
+/// It neither admits work/storage nor participates in parser decisions.
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct OwnedSpanObservation {
     pub(crate) polls: u64,
-    pub(crate) append_calls: u64,
-    pub(crate) append_slots: usize,
-    pub(crate) largest_append_copy_bytes: usize,
-    pub(crate) registry_iterations: usize,
-    pub(crate) largest_registry_iterations_between_polls: usize,
-    pub(crate) largest_registry_credits_between_polls: usize,
-    registry_iterations_since_poll: usize,
-    registry_credits_since_poll: usize,
 }
 
 #[derive(Clone)]
@@ -803,8 +791,6 @@ impl ParseControl {
         #[cfg(test)]
         {
             self.owned_spans.polls = self.owned_spans.polls.saturating_add(1);
-            self.owned_spans.registry_iterations_since_poll = 0;
-            self.owned_spans.registry_credits_since_poll = 0;
         }
         if self.cancellation.is_cancelled() {
             return self.fail(HtmlParseStop::Cancelled);
@@ -814,6 +800,12 @@ impl ParseControl {
             return self.fail(HtmlParseStop::Cancelled);
         }
         Ok(())
+    }
+    /// Whether a refusal armed by [`Self::refuse_next_shared_release`] is still waiting for the
+    /// release of a shared allocation.
+    #[cfg(test)]
+    pub(crate) fn shared_release_refusal_pending(&self) -> bool {
+        self.shared_release_fault
     }
     /// Forces the next `release_shared` to refuse, returning the payload and
     /// its ticket unchanged, as an aliased payload would.
@@ -894,47 +886,8 @@ impl ParseControl {
         std::mem::take(&mut self.text_append_backing_fault)
     }
     #[cfg(test)]
-    pub(crate) fn clear_owned_span_observation(&mut self) {
-        self.owned_spans = OwnedSpanObservation::default();
-    }
-    #[cfg(test)]
     pub(crate) fn owned_span_observation(&self) -> OwnedSpanObservation {
         self.owned_spans
-    }
-    #[cfg(test)]
-    fn observe_attribute_append(&mut self, slots: usize) {
-        // The actual fixed pop/push transfers each slot twice. Observe its
-        // performed copy span, not an unrelated prepaid whole-vector total.
-        let bytes = slots.saturating_mul(2 * size_of::<surgeist_html::values::Attribute>());
-        self.owned_spans.append_calls = self.owned_spans.append_calls.saturating_add(1);
-        self.owned_spans.append_slots = self.owned_spans.append_slots.saturating_add(slots);
-        self.owned_spans.largest_append_copy_bytes =
-            self.owned_spans.largest_append_copy_bytes.max(bytes);
-    }
-    #[cfg(test)]
-    pub(crate) fn observe_registry_iteration(&mut self) {
-        let observed = &mut self.owned_spans;
-        observed.registry_iterations = observed.registry_iterations.saturating_add(1);
-        observed.registry_iterations_since_poll =
-            observed.registry_iterations_since_poll.saturating_add(1);
-        observed.largest_registry_iterations_between_polls = observed
-            .largest_registry_iterations_between_polls
-            .max(observed.registry_iterations_since_poll);
-        self.observe_registry_credits(1);
-    }
-    #[cfg(test)]
-    pub(crate) fn observe_registry_location_write(&mut self, bytes: usize) {
-        // Actual read and write of one location, plus its record-write event.
-        self.observe_registry_credits(bytes.saturating_mul(2).saturating_add(1));
-    }
-    #[cfg(test)]
-    fn observe_registry_credits(&mut self, credits: usize) {
-        let observed = &mut self.owned_spans;
-        observed.registry_credits_since_poll =
-            observed.registry_credits_since_poll.saturating_add(credits);
-        observed.largest_registry_credits_between_polls = observed
-            .largest_registry_credits_between_polls
-            .max(observed.registry_credits_since_poll);
     }
     /// Latches a checked-arithmetic failure observed after the caller's initial
     /// checkpoint. No extra poll can replace that already observed first stop.
@@ -1570,46 +1523,6 @@ impl ParseControl {
     ) -> Result<(), HtmlParseStop> {
         allocation.capacity = vector.capacity();
         result
-    }
-    /// The only Weak reference permitted here is this actual wrapper ticket.
-    /// Its temporary removal and restoration are prepaid, even if reserve
-    /// latches a terminal failure. Opaque Arc headers stay outside byte counts.
-    fn prepare_attribute_edit(
-        &mut self,
-        values: &Arc<Vec<surgeist_html::values::Attribute>>,
-        shared: &SharedAllocation<Vec<surgeist_html::values::Attribute>>,
-        vector: &VectorCapacity<surgeist_html::values::Attribute>,
-    ) -> Result<(), HtmlParseStop> {
-        self.charge_many(&[
-            (HtmlParseWorkCategory::RecordVisit, 3),
-            (HtmlParseWorkCategory::ProviderCall, 9),
-            (
-                HtmlParseWorkCategory::CopyByte,
-                const { (2 * size_of::<Weak<Vec<surgeist_html::values::Attribute>>>()) as u64 },
-            ),
-            (HtmlParseWorkCategory::RecordWrite, 2),
-        ])?;
-        if !Arc::ptr_eq(&shared.owner, &self.identity)
-            || !Arc::ptr_eq(&vector.owner, &self.identity)
-        {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ForeignControl,
-            ));
-        }
-        if shared.shared.as_ptr() != Arc::as_ptr(values)
-            || shared.bytes != size_of::<Vec<surgeist_html::values::Attribute>>() as u64
-            || vector.capacity != values.capacity()
-        {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::CapacityMismatch,
-            ));
-        }
-        if Arc::strong_count(values) != 1 || Arc::weak_count(values) != 1 {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::SharedAllocationAliased,
-            ));
-        }
-        Ok(())
     }
     /// Consumes real storage plus its ticket, returning both on invalid owner
     /// or capacity. Cleanup needs no budget, and releases capacity only: managed
@@ -2602,6 +2515,15 @@ impl<T> OwnedVec<T> {
     ) -> Result<&mut [T], HtmlParseStop> {
         self.require_owner(control)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        Ok(&mut self.vector)
+    }
+    /// Lends the admitted entries for editing in place as [`Self::as_mut_slice`] does, for a
+    /// caller that charged the visit beforehand, so that nothing but a foreign owner refuses it.
+    pub(crate) fn as_mut_slice_prepaid(
+        &mut self,
+        control: &mut ParseControl,
+    ) -> Result<&mut [T], HtmlParseStop> {
+        self.require_owner(control)?;
         Ok(&mut self.vector)
     }
     /// Swaps two actual admitted fixed slots. No payload clone, allocation,

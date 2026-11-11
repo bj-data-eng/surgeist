@@ -2,6 +2,7 @@
 use super::*;
 use history::{FrozenHistory, HistoryView, HtmlParseOriginGroup};
 use provenance::{AssociationView, ConstructionCause, NativeAssociation, NativeDestination};
+use surgeist_html::construction::ConstructionNodeKind;
 use surgeist_html::{
     construction::HtmlNode,
     elements::{
@@ -124,38 +125,32 @@ pub(crate) fn prepare_public_readers(
         storage: &FrozenStorage,
         records: ConstructionView<'_>,
         c: &mut ParseControl,
-        location: StringLocation,
+        location: FieldRef,
     ) -> Result<(), SessionError> {
         match location {
-            StringLocation::Detached => Ok(()),
-            StringLocation::Text(i)
-            | StringLocation::Comment(i)
-            | StringLocation::ProcessingInstructionTarget(i)
-            | StringLocation::ProcessingInstructionData(i)
-            | StringLocation::DoctypeName(i)
-            | StringLocation::DoctypePublic(i)
-            | StringLocation::DoctypeSystem(i)
-            | StringLocation::ElementName(i)
-            | StringLocation::Namespace(i) => node(records, c, i),
-            StringLocation::AttributeName(slot, index)
-            | StringLocation::AttributeValue(slot, index)
-            | StringLocation::AttributeNamespace(slot, index)
-            | StringLocation::AttributePrefix(slot, index) => {
+            FieldRef::Detached => Ok(()),
+            FieldRef::Text(i)
+            | FieldRef::Comment(i)
+            | FieldRef::ProcessingInstructionTarget(i)
+            | FieldRef::ProcessingInstructionData(i)
+            | FieldRef::DoctypeName(i)
+            | FieldRef::DoctypePublic(i)
+            | FieldRef::DoctypeSystem(i)
+            | FieldRef::ElementName(i)
+            | FieldRef::Namespace(i) => node(records, c, i),
+            FieldRef::AttributeName(owner, index)
+            | FieldRef::AttributeValue(owner, index)
+            | FieldRef::AttributeNamespace(owner, index)
+            | FieldRef::AttributePrefix(owner, index) => {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-                    element: Some(owner),
-                    values,
-                    ..
-                }))) = storage.payloads.values.get(slot)
-                else {
-                    return Err(SessionError::WrongToken);
-                };
-                if index >= values.len() {
-                    return Err(SessionError::WrongToken);
-                };
-                node(records, c, *owner)
+                match records.node_at(owner).map(|record| record.kind()) {
+                    Some(ConstructionNodeKind::Element(element))
+                        if index < element.attributes().len() => {}
+                    _ => return Err(SessionError::WrongToken),
+                }
+                node(records, c, owner)
             }
-            StringLocation::PiName(slot, index) | StringLocation::PiValue(slot, index) => {
+            FieldRef::PiName(slot, index) | FieldRef::PiValue(slot, index) => {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let Some(RetainedPayload::PiAttributes {
                     node: Some(owner),
@@ -176,32 +171,17 @@ pub(crate) fn prepare_public_readers(
         storage: &FrozenStorage,
         records: ConstructionView<'_>,
         c: &mut ParseControl,
-        value: StringLocation,
+        value: FieldRef,
     ) -> Result<(), SessionError> {
         match value {
-            StringLocation::AttributeName(slot, ordinal)
-            | StringLocation::AttributeValue(slot, ordinal)
-            | StringLocation::AttributeNamespace(slot, ordinal)
-            | StringLocation::AttributePrefix(slot, ordinal) => {
+            // The ordinal describes the retired field, not a current attribute index: only the
+            // element that held it must exist.
+            FieldRef::AttributeName(owner, _)
+            | FieldRef::AttributeValue(owner, _)
+            | FieldRef::AttributeNamespace(owner, _)
+            | FieldRef::AttributePrefix(owner, _) => {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                match storage.payloads.values.get(slot) {
-                    Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                        values,
-                        original_len: 0,
-                        ..
-                    }))) if ordinal < values.capacity() => Ok(()),
-                    Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-                        values,
-                        element,
-                        ..
-                    }))) if ordinal < values.shared_attributes().capacity() => {
-                        if let Some(owner) = element {
-                            node(records, c, *owner)?;
-                        }
-                        Ok(())
-                    }
-                    _ => Err(SessionError::WrongToken),
-                }
+                node(records, c, owner)
             }
             _ => location(storage, records, c, value),
         }
@@ -266,7 +246,7 @@ pub(crate) fn prepare_public_readers(
         }
         match row.destination {
             NativeDestination::Field(value) => {
-                if value == StringLocation::Detached {
+                if value == FieldRef::Detached {
                     return Err(SessionError::WrongToken);
                 }
                 location(storage, records, c, value)?;
@@ -429,15 +409,10 @@ pub enum HtmlParseDestination<'a> {
 }
 pub enum HtmlParseRetiredDestination<'a> {
     Detached,
-    /// A historical field whose retained container proves an actual native owner.
+    /// A historical field of a native owner.
     /// Its ordinal describes the retired field, not a current attribute index.
     Field {
         node: HtmlNode<'a>,
-        field: HtmlParseField,
-    },
-    /// A historical construction field without a surviving native binding.
-    /// The role and ordinal are qualified by this cause and its original group.
-    StagedField {
         field: HtmlParseField,
     },
 }
@@ -462,48 +437,34 @@ pub enum HtmlParseField {
 /// The node a field names and which of its fields it is.
 fn field_of(
     history: &FrozenHistory,
-    location: StringLocation,
+    location: FieldRef,
 ) -> Result<(HtmlNode<'_>, HtmlParseField), HtmlParseUnresolvedReference> {
     let (node, field) = match location {
-        StringLocation::Text(i) => (i, HtmlParseField::Text),
-        StringLocation::Comment(i) => (i, HtmlParseField::Comment),
-        StringLocation::ProcessingInstructionTarget(i) => {
+        FieldRef::Text(i) => (i, HtmlParseField::Text),
+        FieldRef::Comment(i) => (i, HtmlParseField::Comment),
+        FieldRef::ProcessingInstructionTarget(i) => {
             (i, HtmlParseField::ProcessingInstructionTarget)
         }
-        StringLocation::ProcessingInstructionData(i) => {
-            (i, HtmlParseField::ProcessingInstructionData)
-        }
-        StringLocation::DoctypeName(i) => (i, HtmlParseField::DoctypeName),
-        StringLocation::DoctypePublic(i) => (i, HtmlParseField::DoctypePublic),
-        StringLocation::DoctypeSystem(i) => (i, HtmlParseField::DoctypeSystem),
-        StringLocation::ElementName(i) => (i, HtmlParseField::ElementName),
-        StringLocation::Namespace(i) => (i, HtmlParseField::Namespace),
-        StringLocation::AttributeName(i, a) => (
-            attribute_node(history, i)?,
-            HtmlParseField::AttributeName(a),
-        ),
-        StringLocation::AttributeValue(i, a) => (
-            attribute_node(history, i)?,
-            HtmlParseField::AttributeValue(a),
-        ),
-        StringLocation::AttributeNamespace(i, a) => (
-            attribute_node(history, i)?,
-            HtmlParseField::AttributeNamespace(a),
-        ),
-        StringLocation::AttributePrefix(i, a) => (
-            attribute_node(history, i)?,
-            HtmlParseField::AttributePrefix(a),
-        ),
-        StringLocation::PiName(i, a) => (
+        FieldRef::ProcessingInstructionData(i) => (i, HtmlParseField::ProcessingInstructionData),
+        FieldRef::DoctypeName(i) => (i, HtmlParseField::DoctypeName),
+        FieldRef::DoctypePublic(i) => (i, HtmlParseField::DoctypePublic),
+        FieldRef::DoctypeSystem(i) => (i, HtmlParseField::DoctypeSystem),
+        FieldRef::ElementName(i) => (i, HtmlParseField::ElementName),
+        FieldRef::Namespace(i) => (i, HtmlParseField::Namespace),
+        FieldRef::AttributeName(i, a) => (i, HtmlParseField::AttributeName(a)),
+        FieldRef::AttributeValue(i, a) => (i, HtmlParseField::AttributeValue(a)),
+        FieldRef::AttributeNamespace(i, a) => (i, HtmlParseField::AttributeNamespace(a)),
+        FieldRef::AttributePrefix(i, a) => (i, HtmlParseField::AttributePrefix(a)),
+        FieldRef::PiName(i, a) => (
             pi_node(history, i)?,
             HtmlParseField::ProcessingInstructionAttributeName(a),
         ),
-        StringLocation::PiValue(i, a) => (
+        FieldRef::PiValue(i, a) => (
             pi_node(history, i)?,
             HtmlParseField::ProcessingInstructionAttributeValue(a),
         ),
         // A detached payload is not a native destination.
-        StringLocation::Detached => {
+        FieldRef::Detached => {
             return Err(HtmlParseUnresolvedReference::new(
                 HtmlParseUnresolvedKind::Fact,
             ));
@@ -559,20 +520,6 @@ fn destination(
             ))?,
         }),
     })
-}
-fn attribute_node(
-    history: &FrozenHistory,
-    slot: usize,
-) -> Result<usize, HtmlParseUnresolvedReference> {
-    match history.storage().payloads.values.get(slot) {
-        Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-            element: Some(node),
-            ..
-        }))) => Ok(*node),
-        _ => Err(HtmlParseUnresolvedReference::new(
-            HtmlParseUnresolvedKind::Fact,
-        )),
-    }
 }
 fn pi_node(history: &FrozenHistory, slot: usize) -> Result<usize, HtmlParseUnresolvedReference> {
     match history.storage().payloads.values.get(slot) {
@@ -840,41 +787,8 @@ impl<'a> HtmlParseCause<'a> {
         let Some(location) = self.cause.retired_destination() else {
             return Ok(None);
         };
-        if location == StringLocation::Detached {
+        if location == FieldRef::Detached {
             return Ok(Some(HtmlParseRetiredDestination::Detached));
-        }
-        let attribute = match location {
-            StringLocation::AttributeName(slot, ordinal) => {
-                Some((slot, HtmlParseField::AttributeName(ordinal)))
-            }
-            StringLocation::AttributeValue(slot, ordinal) => {
-                Some((slot, HtmlParseField::AttributeValue(ordinal)))
-            }
-            StringLocation::AttributeNamespace(slot, ordinal) => {
-                Some((slot, HtmlParseField::AttributeNamespace(ordinal)))
-            }
-            StringLocation::AttributePrefix(slot, ordinal) => {
-                Some((slot, HtmlParseField::AttributePrefix(ordinal)))
-            }
-            _ => None,
-        };
-        if let Some((slot, field)) = attribute {
-            return match self.history.storage().payloads.values.get(slot) {
-                Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-                    element: Some(owner),
-                    ..
-                }))) => Ok(Some(HtmlParseRetiredDestination::Field {
-                    node: self.history.native_node(*owner)?,
-                    field,
-                })),
-                Some(RetainedPayload::Attributes(Some(
-                    AttributeStorage::Building { .. }
-                    | AttributeStorage::Frozen { element: None, .. },
-                ))) => Ok(Some(HtmlParseRetiredDestination::StagedField { field })),
-                _ => Err(HtmlParseUnresolvedReference::new(
-                    HtmlParseUnresolvedKind::Fact,
-                )),
-            };
         }
         let (node, field) = field_of(self.history, location)?;
         Ok(Some(HtmlParseRetiredDestination::Field { node, field }))

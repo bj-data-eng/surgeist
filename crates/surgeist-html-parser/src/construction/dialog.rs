@@ -424,9 +424,6 @@ mod tests {
         tag.name.release(&mut c).unwrap();
         let attribute = attribute.take().unwrap();
         let storage = session.active_mut().unwrap();
-        let container = storage
-            .element_attribute_container(&mut c, node.index)
-            .unwrap();
         let (name, name_slot) = storage.register_text(&mut c, attribute.name).unwrap();
         let (value, value_slot) = storage.register_text(&mut c, attribute.value).unwrap();
         watch();
@@ -434,7 +431,6 @@ mod tests {
             .append_registered_attribute(
                 &mut c,
                 node.index,
-                container,
                 Attribute::new(QualifiedName::new(Namespace::none(), None, name), value),
                 [name_slot, value_slot],
             )

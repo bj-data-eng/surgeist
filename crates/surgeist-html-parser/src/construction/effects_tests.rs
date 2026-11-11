@@ -1303,18 +1303,18 @@ fn non_element_clone_binding_boundary(kind: usize) {
             .all(|payload| match payload {
                 RetainedPayload::String {
                     location, value, ..
-                } => !matches!(location, StringLocation::Detached) || value.block().holders() == 1,
+                } => !matches!(location, FieldRef::Detached) || value.block().holders() == 1,
                 _ => true,
             });
         let installed_bound=(nodes..nodes+installed).all(|node| {
             let storage=session.active().unwrap();
-            let bound=|location: StringLocation,value:&DocumentString|storage.payloads.values[slots..].iter().any(|payload|matches!(payload,RetainedPayload::String{location:actual,value:stored,..} if *actual==location && value.shares_storage_with(stored)));
+            let bound=|location: FieldRef,value:&DocumentString|storage.payloads.values[slots..].iter().any(|payload|matches!(payload,RetainedPayload::String{location:actual,value:stored,..} if *actual==location && value.shares_storage_with(stored)));
             let record=storage.construction.node_at(node).unwrap();
             let held=|field:HtmlStoredString|record.stored_string(field);
             match record.kind() {
-                ConstructionNodeKind::Text(_)=>held(HtmlStoredString::Text).is_some_and(|value|bound(StringLocation::Text(node),value)),
-                ConstructionNodeKind::Comment(_)=>held(HtmlStoredString::Comment).is_some_and(|value|bound(StringLocation::Comment(node),value)),
-                ConstructionNodeKind::ProcessingInstruction(_)=>held(HtmlStoredString::ProcessingInstructionTarget).is_some_and(|value|bound(StringLocation::ProcessingInstructionTarget(node),value))&&held(HtmlStoredString::ProcessingInstructionData).is_some_and(|value|bound(StringLocation::ProcessingInstructionData(node),value)),
+                ConstructionNodeKind::Text(_)=>held(HtmlStoredString::Text).is_some_and(|value|bound(FieldRef::Text(node),value)),
+                ConstructionNodeKind::Comment(_)=>held(HtmlStoredString::Comment).is_some_and(|value|bound(FieldRef::Comment(node),value)),
+                ConstructionNodeKind::ProcessingInstruction(_)=>held(HtmlStoredString::ProcessingInstructionTarget).is_some_and(|value|bound(FieldRef::ProcessingInstructionTarget(node),value))&&held(HtmlStoredString::ProcessingInstructionData).is_some_and(|value|bound(FieldRef::ProcessingInstructionData(node),value)),
                 _=>false,
             }
         });
@@ -2017,11 +2017,6 @@ fn each_payload_lookup_of_one_node_costs_the_same_however_many_payloads_are_unre
                 record($name, &$c, before);
             }};
         }
-        measured!(
-            "frozen attribute container",
-            c,
-            storage.element_attribute_container(&mut c, div)
-        );
         measured!("node document", c, storage.node_document_ref(&mut c, div));
         measured!(
             "set node document",
@@ -2066,7 +2061,7 @@ fn each_payload_lookup_of_one_node_costs_the_same_however_many_payloads_are_unre
     };
     let small = measure(8);
     let large = measure(32);
-    assert_eq!(small.len(), 11);
+    assert_eq!(small.len(), 10);
     for ((name, small), (_, large)) in small.iter().zip(&large) {
         assert_eq!(
             small, large,
@@ -2286,46 +2281,59 @@ fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
 }
 
 #[test]
-fn a_refused_attribute_replacement_hands_the_edit_back_and_cleans_up() {
+fn a_refused_attribute_replacement_leaves_the_attributes_and_the_incoming_value_with_the_caller() {
+    use surgeist_html::values::{Attribute, Namespace, QualifiedName};
     let request = request("<body><div id=a>");
     let (mut c, mut session, _proof, nodes) = graph(&request);
     let div = named(&nodes, "div", 0).index;
     let storage = session.active_mut().unwrap();
-    // The container row does not exist: the refusal comes after the edit began
-    // and its group was taken, and must give the group back and abort it.
-    let refused = storage.replace_attribute_storage(&mut c, div, usize::MAX / 2, 0, &mut None, &[]);
-    let invariant =
-        HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow);
+    let incoming = || Attribute::new(QualifiedName::new(Namespace::none(), None, "title"), "t");
+    // A position past the list: the storage refuses it as a request the parser's own
+    // sequencing never makes, and nothing about the element changes.
+    let mut value = Some(incoming());
+    let refused = storage
+        .construction
+        .replace_attribute(&mut c, div, 5, &mut value);
+    let invariant = HtmlParseStop::InternalInvariant(
+        crate::parser::control::HtmlParseInvariant::ConstructionOwnerRefusal,
+    );
     assert_eq!(refused.err(), Some(SessionError::Stop(invariant)));
     assert_eq!(c.stop(), Some(invariant));
-    assert!(!storage.construction.has_attribute_edit());
+    assert!(value.is_some(), "the incoming attribute is not taken");
+    assert_eq!(
+        element_record(&storage.construction, &mut c, div)
+            .unwrap()
+            .attributes()
+            .len(),
+        1
+    );
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
 
 #[test]
-fn a_replacement_on_a_non_element_is_refused_with_the_container_frozen() {
+fn a_replacement_on_a_non_element_is_refused_with_the_element_attributes_untouched() {
     let request = request("<body><div id=a>");
     let (mut c, mut session, _proof, nodes) = graph(&request);
     let div = named(&nodes, "div", 0).index;
     let storage = session.active_mut().unwrap();
-    let container = storage.element_attribute_container(&mut c, div).unwrap();
     // Node 0 is the document, not an element: the edit cannot be about it.
-    let refused = storage.replace_attribute_storage(&mut c, 0, container, 0, &mut None, &[]);
-    // The edit's own begin refuses a document first; either way the refusal is
-    // an invariant stop and the container still holds its frozen attributes.
-    let Some(SessionError::Stop(stop @ HtmlParseStop::InternalInvariant(_))) = refused.err() else {
-        panic!("expected an invariant stop")
-    };
-    assert_eq!(c.stop(), Some(stop));
-    assert!(matches!(
-        storage.payloads.values.get(container),
-        Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-            element: Some(owner),
-            ..
-        }))) if *owner == div
-    ));
-    assert!(!storage.construction.has_attribute_edit());
+    let refused = storage
+        .construction
+        .replace_attribute(&mut c, 0, 0, &mut None);
+    assert_eq!(refused.err(), Some(SessionError::WrongToken));
+    assert_eq!(
+        c.stop(),
+        None,
+        "a wrong kind of node is the caller's mistake"
+    );
+    assert_eq!(
+        element_record(&storage.construction, &mut c, div)
+            .unwrap()
+            .attributes()
+            .len(),
+        1
+    );
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }

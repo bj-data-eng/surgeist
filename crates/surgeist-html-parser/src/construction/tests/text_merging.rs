@@ -35,7 +35,7 @@ fn text_append_spare_capacity_copy_work_depends_on_incoming_not_prefix() {
             .allocate_owned(&mut c, NewRecord::Text(value), false, 0, 0)
             .unwrap();
         storage
-            .bind_string(slot, StringLocation::Text(node.index))
+            .bind_string(slot, FieldRef::Text(node.index))
             .unwrap();
         storage
             .insert(&mut c, &root, &node, None, InsertionCause::NonParser)
@@ -49,7 +49,7 @@ fn text_append_spare_capacity_copy_work_depends_on_incoming_not_prefix() {
         let group = {
             let storage = session.active().unwrap();
             let slot = storage
-                .field_slot(&mut c, StringLocation::Text(first._node.index))
+                .field_slot(&mut c, FieldRef::Text(first._node.index))
                 .unwrap();
             let RetainedPayload::String {
                 origins: Some(group),
@@ -145,12 +145,12 @@ fn text_append_current_ticket_lookup_is_independent_of_unrelated_payloads() {
         let storage = session.active().unwrap();
         let before = c.usage().work(HtmlParseWorkCategory::RecordVisit);
         let slot = storage
-            .field_slot(&mut c, StringLocation::Text(text.index))
+            .field_slot(&mut c, FieldRef::Text(text.index))
             .unwrap();
         let work = c.usage().work(HtmlParseWorkCategory::RecordVisit) - before;
         let RetainedPayload::String {
             value,
-            location: StringLocation::Text(owner),
+            location: FieldRef::Text(owner),
             origins: Some(_),
             ..
         } = &storage.payloads.values[slot]

@@ -219,9 +219,9 @@ host's root is never inserted by the parser (parser template start tag steps, li
 and the DOM lets a retained template be inserted under any element, so its parent
 may be the host, another element or nothing, and neither the construction import
 nor the capture builder relates it to the root's host. A transition either commits a coherent
-generic state or leaves the prior logical state unchanged. Each committed
-attribute slot is such a transition; a complete incremental attribute group does
-not roll back its already committed prefix on a later stop. Any reserved capacity
+generic state or leaves the prior logical state unchanged. Each direct attribute edit
+is such a transition; the appends of a merge do not roll back their already committed
+prefix on a later stop. Any reserved capacity
 remains observable to the caller's actual allocation owner on failure. Temporary
 parser algorithm state belongs in its session, not in a published invalid HTML
 record. HTML never applies parser placement, recovery or language conformance
@@ -308,63 +308,69 @@ An unchecked parts constructor was rejected because a public immutable result
 would cease to certify its own invariants. Controlled shared storage keeps
 generic invariants with their owner while parser effects remain in parser.
 
-#### Complete controlled attribute edits
+#### Direct attribute edits
 
-`bounded::construction::HtmlConstructionAttributeEdit` owns the same construction storage and
-one checked element throughout an attribute edit group. It consumes that storage
-through a fallible boundary returning the complete unconsumed owner and operands
-on refusal. Its read-only storage view supports parser metadata/effect reads;
-neither another attribute editor nor a generic mutation or publication can
-obtain the storage while the group is active. It exposes no mutable record,
-`OrderedAttributes`, `Arc` or `Vec`. This retained exclusive owner, rather than
-a weak name reference alone, qualifies the unchanged target and planned prefix.
-HTML owns expanded-name validity; parser owns HTML-language selection, recovery,
-source/provenance validation, evidence, effects and its existing controller and
-allocation tickets.
+An attribute edit is one method of `HtmlConstructionStorage`, reached through
+`bounded::construction`. Each method qualifies its element, reads and compares first,
+charges its consumer for the work before it runs, asks the consumer once to admit the
+growth of the list, and only then changes the list. A refusal leaves the records, the
+attributes and the usage as they were, with two residues. The name index is a cache of the
+names of one element: an edit may rebuild it before a later refusal, and the index then
+describes the element as it is, which a refused edit did not change. When the allocator
+refuses the room that was admitted and the consumer then refuses to record the capacity the
+list kept, the list holds the room the fallback reserved; no attribute changed, and the
+consumer's refusal is its stop. No
+mutable record, `OrderedAttributes`, `Arc` or `Vec` is exposed, and a list that another
+owner holds is refused before anything changes. HTML owns expanded-name validity; the
+consumer owns HTML-language selection, recovery, provenance, effects and the policy of
+its allocation tickets.
 
-The group has these concrete paths:
-
-| Path | Owner-controlled transition |
+| Method | Edit |
 | --- | --- |
-| Named merge | Plan source-order null-namespace names against the installed attributes and earlier lexical names, retain exact name admissions, materialize the selected source operands, reserve the actual installed backing once, then append the actual reversed stage one last slot at a time. |
-| Checked append | Admit one actual attribute against the current installed prefix before committing its slot. Capacity-only reservation may precede this check at the original driver checkpoint. Initial ordered construction and generated single-attribute insertion cannot rely on a tokenizer duplicate flag. |
-| Checked replacement | Validate the actual incoming expanded name against every other installed slot before replacing the selected slot. A value-only path retains the existing name under the owner; a no-scan same-name replacement must qualify the actual existing namespace/local-name backing, not accept a caller equality assertion. |
-| Adjacent swap and final pop | Swap exactly two initialized adjacent slots, or return the actual last initialized attribute. These transitions preserve uniqueness without another name scan and retain the original incremental removal order. |
+| `reserve_attributes` | Makes room for further attributes; admits the growth once when the list is full and reports the dimensions afterwards. |
+| `append_attribute` | Appends one attribute whose expanded name repeats none of the element's; a duplicate is refused with the duplicate-attribute cause before the attribute is taken. |
+| `append_planned_attribute` | Appends the attribute a merge plan kept for a candidate. The name is looked up through the index like any other, so a name the list already holds is refused as a duplicate. When the lookup finds no attribute with the name, the attribute is the candidate's own backing, and the entry the plan left for the position is in the index, that entry stays and no new one is entered; otherwise the index no longer describes the element and the next edit rebuilds it. |
+| `replace_attribute` | Replaces the attribute at an index and returns the old one; the new name must repeat no other attribute. |
+| `remove_attribute` | Removes the attribute at an index, shifts the later ones down and returns it; the shift is charged in quanta before it runs. |
+| `plan_attribute_merge` | Decides which candidates a merge keeps, the first of equal names winning, reports each kept candidate to the consumer in order and changes nothing. |
 
-Named-merge setup retains the explicit candidate count. Planning accepts exactly
-the next source index; completing planning requires every candidate and its
-decision, and completing the group requires every selected append. The owner
-rejects skipped, repeated or excess candidates and premature completion. Parser
-supplies the actual lexical count through its existing charged header read.
-Named merge retains its exclusive group through all selected appends and their
-read-only-tree ID effects. A checked initial/single append ends its group after
-that slot, returning storage before any initial effect that needs another
-checked edit. The parser's original stage and reservation progress persist
-between these groups; ending a group does not copy or rebuild the collection.
+The consumer of a growing edit implements `HtmlAttributeAdmission`: a `Charge` that also
+admits the growth of one list (`admit_growth` receives the dimensions before and the least
+capacity that holds the edit, and returns the capacity to reserve, which cannot be smaller)
+and records its capacity (`record_growth`). The capacity chosen is recorded before the list
+is reserved, so a refusal there leaves the list as it was. It is recorded again after the
+reservation only when the capacity reached differs from the one chosen: when the allocator
+refused the spare room and the list holds the room that is needed, when it overshot, or when
+it refused everything and the capacity is unchanged. The consumer of a merge plan implements
+`HtmlAttributeMerge`: the candidate count, each candidate's null-namespace local name, and
+where the kept decisions go. The parser grows a list to the greater of the length the edit
+needs and double its capacity, so the capacity depends on the list alone and never on a
+limit. A merge reserves once for all its kept candidates before the first append, so a
+single merge into an empty list leaves no spare room, and merges of one attribute each
+double the list and cost copies in proportion to their number.
 
-Initial ordered construction reserves the entire requested installed capacity
-once before transfer and per-slot effects, preserving its original allocation
-failure checkpoint. A capacity-only reservation changes no initialized slot or
-name decision. Each later checked append validates the actual current prefix
-and final effective name before committing that slot; available capacity is not
-validity evidence. Named merge retains its different original order: complete
-name planning and source materialization precede its installed-capacity reserve.
+An append moves one attribute and reserves only when the list is full, so the bytes it
+copies do not depend on the list length. A merge of `m` candidates into a list of `n`
+attributes plans in work linear in `n + m` and the lengths of the names, then appends the
+kept candidates one by one.
 
-Checked initial/generated installation validates the final effective expanded
-name against the actual current prefix after all preceding semantic effects and
-name adjustments. Each exact namespace/local-name comparison is separately
-admitted, and exclusive ownership continues from that check through the slot
-commit. A duplicate produces the typed refusal without appending, consuming its
-incoming slot or running that attribute's effects; the generic owner does not
-repair or choose a lexical recovery. The normal parser retains its source-defined
-duplicate recovery before installation. Native, foreign/adjusted and generated
-producers must each either supply actual HTML-owned evidence for those exact
-operands and current prefix or execute these checks. A tokenizer assertion or an
-earlier check before a name-changing effect is insufficient. Without a lent name
-index, checking successive prefixes costs quadratic name-pair work, measured from the
-real input size and exact-name comparison actions. With one, the check is a probe of the
-few names that share a hash: see [name index](#attribute-name-index). Do not hide a batch
-scan or raise a blanket limit to accommodate the change.
+After each committed append the parser performs its location/redirect progress and the
+form or initial-attribute effects before the next append. Every committed prefix is a valid
+ordered collection; a stop between appends does not roll back the prefix already appended.
+Available capacity is never evidence that a name is valid.
+
+Checked installation validates the final effective expanded name against the actual
+current prefix after all preceding semantic effects and name adjustments. A duplicate
+produces the typed refusal without appending, consuming the incoming attribute or running
+its effects; the generic owner does not repair or choose a lexical recovery. The normal
+parser retains its source-defined duplicate recovery before installation. Native,
+foreign/adjusted and generated producers must each either supply actual HTML-owned
+evidence for those exact operands and current prefix or execute these checks. A tokenizer
+assertion or an earlier check before a name-changing effect is insufficient. Without a
+name index, checking successive prefixes costs quadratic name-pair work, measured from the
+real input size and exact-name comparison; with one, the check is a probe of the few names
+that share a hash: see [name index](#attribute-name-index). Do not hide a batch scan or
+raise a blanket limit to accommodate the change.
 
 <a id="attribute-name-index"></a>
 
@@ -375,147 +381,62 @@ validation: the shared `HtmlNameIndex` (an insert-only open-addressed index hash
 random key for the whole process, a power-of-two slot count and at most half the slots in use) over slot storage
 (`Vec<HtmlNameIndexSlot>`) that the consumer reserves and accounts. The hash is that of the
 exact expanded name (namespace URI units, then local-name units; prefix and value never count).
-Each entry records a stored attribute or a planned candidate and also keeps 32 bits of the
-name's hash, so a probe reads a name only where those bits equal the sought name's. The table
-never decides equality: a probe step hands the occupant back, and the cursor compares the two
-names through its own admitted comparison actions. Every clearing chunk, hash, probe step and
-comparison is admitted before it runs, so a refusal leaves state at an exact step. A
-vacancy borrows nothing, and the cursor keeps it between the probe that found it and the commit
-that fills it.
+Each entry records the position of a stored attribute, or of an attribute a merge plan means
+to append, and also keeps 32 bits of the name's hash, so a probe reads a name only where those
+bits equal the sought name's. The table never decides equality: a probe hands the occupant back
+and the edit compares the two names, charging each comparison before it reads. Every clearing
+chunk, hash, probe step and comparison is charged before it runs.
 
 The consumer's slot storage has at least `HtmlAttributeNameIndex::slots_required(entries)` slots
-of capacity; it adopts them with `new`, lends the index to an edit when the edit begins
-(`HtmlConstructionAttributeEdit::begin_indexed`) or to a validation (`validate_indexed`), and takes
-it back with `HtmlConstructionAttributeCompletion::take_index` or `into_parts_with_index`
-(`HtmlAttributeValidation::take_index`, `abort_with_index` or `finish_with_index`) and
-`into_storage` to release it. An index cannot be lent to an edit that has started, so every name
-it describes was entered by a step of an edit that held it; `into_parts`, `abort` and `finish`
-drop an index that was not taken first. The owner never allocates the table. A rebuild starts a new
-`HtmlNameIndex` over the cleared storage, and the clearing action that completes the slots also
-lends them to it for the first time, which reads every slot once and is admitted with that action.
+of capacity; it adopts them with `new`, passes the index to an edit as `names` or to a validation
+(`validate_indexed`), and takes it back with `into_storage` to release it, or with
+`HtmlAttributeValidation::take_index`, `abort_with_index` or `finish_with_index`. The owner never
+allocates the table.
 
-The index describes the attributes of one element of one storage as they were at one revision. The
+The index describes the first `len` attributes of one element of one storage as they were at one
+revision, followed by `planned` entries for attributes a merge plan has not appended yet. The
 storage keeps a serial of its own and a revision that every committed change to an attribute list
-advances (an append, replacement, swap or pop, through an index or not, a merge append, the
-`ReplaceAttributes` operation, and the rollback of appended records), and
-an index records the serial, the element, the revision and the length it describes after each
-append it served. A step that finds any of them different rebuilds the index before it looks a
+advances (an append, replacement or removal, with an index or without, and the
+`ReplaceAttributes` operation, and the rollback of appended records). An edit that finds the
+serial, element, revision, length or planned count different rebuilds the index before it looks a
 name up, so an edit that held no index, or held it for another element or storage, cannot leave a
 stale index trusted. The revision is advanced where an element's attribute list is taken for
-change, not by each caller: in-place changes go through `OrderedAttributes::construction_backing_mut`,
-which takes the revision to advance, and whole-list replacement through
-`replace_in_construction`; reserving capacity changes no attribute and does not advance it. The
-commit of `ReplaceAttributes` describes its extra write. Without enough capacity a step compares every name as before; the verdict is
-the same and the work quadratic. Verdicts equal the pairwise ones, including the first reached
-failure: a repeat is reported against the single earlier attribute that owns the name, at the
-attribute that repeats it. A table that cannot serve a step (storage, probe or vacancy that does not
-fit) refuses with the `IndexUnavailable` cause: `HtmlConstructionCause::IndexUnavailable` for
-an edit and `HtmlAttributeValidationError::IndexUnavailable` for a validation.
+change, not by each caller: in-place changes go through
+`OrderedAttributes::construction_backing_mut`, which takes the revision to advance, and
+whole-list replacement through `replace_in_construction`; reserving capacity changes no
+attribute and does not advance it. Without enough capacity an edit compares every name; the
+verdict is the same and the work quadratic. Verdicts equal the pairwise ones, including the first
+reached failure: a repeat is reported against the single earlier attribute that owns the name, at
+the attribute that repeats it. A table that cannot serve a step refuses with the
+`IndexUnavailable` cause: `HtmlConstructionCause::IndexUnavailable` for an edit and
+`HtmlAttributeValidationError::IndexUnavailable` for a validation.
 
-Three steps use the index:
+Three paths use the index:
 
-| Step | Use |
+| Path | Use |
 | --- | --- |
-| Checked append in `Slots` mode | Looks the appended name up and, at the empty slot its probe reaches, enters the new position at commit. The index keeps describing the element across edits while only such appends change it. Replacement, swap, pop and merge appends make it describe nothing, and the next append clears and refills it from the stored attributes before looking the name up. An edit of another element does the same. |
-| Named-merge planning | The first candidate clears and fills the index with the installed null-namespace names. A candidate probes it, a match with an installed name or an earlier kept candidate (whose name the consumer supplies for the comparison as before) marks it not kept, and a candidate with no match is entered. |
+| `append_attribute` | Looks the appended name up and enters the new position in the empty slot the probe reached. The index keeps describing the element across appends. Replacement and removal make it describe nothing, and the next edit clears and refills it from the stored attributes. An edit of another element does the same. |
+| `plan_attribute_merge` | Clears and fills the index with the installed null-namespace names, then probes each candidate: a match with an installed name or an earlier kept candidate marks it not kept, and a candidate with no match is entered at the position it will take. The appends of the plan then find the index already describing them. |
 | `HtmlAttributeStorage::validate_indexed` | Enters each name in order after probing for it. |
 
-Clearing, hashing, probing and inserting are `Inspect`/`Compare` descriptions with their own work
-(slots written and bytes copied per 256-slot clearing chunk, record visits and inspected bytes of
-the lengths and units hashed, one slot read and one admitted write per probe slot), so a consumer
-that charges `description().charge()` generically needs no new case.
+Clearing, hashing, probing and inserting are charged as `Inspect`, `Compare` and
+`RecordWrite` work (slots written and bytes copied per 256-slot clearing chunk, record visits and
+inspected bytes of the lengths and units hashed, one slot read and one write per probe slot).
 
-Named merge replaces the existing parser `missing: OwnedVec<bool>` allocation
-with one HTML-owned plan allocation of private decision/name records. It is the
-same role in the algorithm, not an additional plan bank or second attribute
-representation. The parser retains the non-cloneable ticket for that actual
-allocation; HTML exposes issued snapshots/actions for its real element layout,
-capacity, initialized entries and retirement. No caller can insert a decision,
-assert validity, alter a record or supply a separately invented proof. The group
-stores no parser resource totals or second execution ledger.
+A merge compares the same names in the same order as the pairwise comparison: for each candidate
+in source order, the installed attributes up to the first null-namespace/local-name match, then
+the earlier kept candidates. Exact UTF-16 comparison and short-circuit order are those of the
+pinned algorithm. Prefixes and values do not determine duplicate identity. With a name index the
+plan probes instead of inspecting every installed attribute and earlier candidate; the decisions
+are identical. The plan's decisions belong to the consumer, which keeps them as
+`HtmlAttributeMerge::keep` receives them. `append_planned_attribute` skips the comparison only
+when the attribute's name is the candidate's own backing and the index still describes the
+element as the plan left it; any other attribute is appended as `append_attribute` appends it,
+so a decision is never proof for an attribute it was not made for.
 
-Before input transfer, parser retains its existing target html/body tests,
-source/controller/alias checks, start-tag and lowercase-name tests, text
-ownership, source ranges and lexical evidence validation. The HTML planner then
-performs the original semantic comparisons once: for each candidate in source
-order, inspect installed attributes until the first null-namespace/local-name
-match, then inspect earlier lexical names in source order until the first match.
-The earlier-lexical loop still runs when an installed match was found. Exact
-UTF-16 comparison and short-circuit order remain the original order. Prefixes
-and values do not determine duplicate identity. With a lent name index the planner reaches the same decision by probing instead of inspecting every installed attribute and earlier lexical name; the decisions are identical. The owner derives each keep
-decision; parser may observe it for staging but cannot use that boolean to
-authorize a later append.
-
-A candidate comparison cursor borrows its actual immutable `DocumentString`
-only until that candidate's comparisons finish; it does not retain a reference
-into `Tag` across `input.take()`. Its plan record retains an HTML-issued
-`Weak<Vec<u16>>` for the actual local-name backing. Earlier lexical operands
-supplied for a comparison are qualified against their recorded backing before
-the exact comparison. The weak reference prevents header-address reuse while
-the witness exists; a bare pointer, hash or length does not provide that proof.
-No string backing, strong name clone, new identity allocation or parser-owned
-validity certificate is introduced. The complete group retains all candidate
-admissions and source/selected-prefix progress privately; witnesses cannot be
-extracted, mixed with another group, replayed or applied to another target.
-
-Every planning refusal, including plan allocation and witness admission, leaves
-the caller's `Option<Tag>` occupied with its original exact values, backings,
-source associations and accounting owners. The final borrowed-input write
-admission remains before the original `input.take()`. Thereafter parser performs
-its existing reverse materialization, string registration, ignored-attribute
-evidence and source-location binding. `FrozenUtf16` already contains a
-`DocumentString`; registration retains that same backing. Before each selected
-append, HTML qualifies the actual staged attribute against the next retained
-name admission, its null namespace, this target and the group's current selected
-prefix. Equal text in a different backing is a refusal. This identity check
-reuses the completed name comparisons; named merge must not rescan the target
-or lexical names after materialization.
-
-Each inspection, exact comparison, plan write, weak-reference provider/header
-operation, actual reservation, identity qualification and initialized slot move
-has a bounded description admitted by the original controller before execution.
-Reserve reports actual before/after capacity and leaves the actual enlarged
-owner recoverable after a post-provider stop. A slot action reaches a guarded
-consuming `try_ready(self)` transition only after its validation, write admission
-and post-provider observations complete. Pending, failed, foreign or
-out-of-order requests return a `HtmlConstructionRefusal` that hands the slot back
-with its typed cause; every owner and input slot stays owned by the caller,
-including an incoming replacement `Option<Attribute>` or the real last staged
-attribute. Only the private ready owner exposes infallible
-commit. That owner retains or exclusively borrows the actual incoming slot and
-group through commit, so a caller cannot substitute an attribute after its name
-was qualified. Commit moves one actual slot and its prepaid fixed progress update with
-no intervening fallible work. A dropped/unaccepted observation cannot become
-ready. Retry of an unperformed action is distinct from replay after commit.
-
-After each committed append, parser performs its original location/redirect
-progress and required form or initial-attribute effects before the next append.
-Every committed prefix is a valid ordered collection. Adjacent removal swaps
-likewise retain the actual initialized partial order. Stopping or aborting a
-group recovers the same storage, capacity, installed prefix and unconsumed stage;
-it does not promise whole-group rollback or a successful partial document.
-Outstanding name witnesses and the actual plan allocation remain owned until
-completion or explicit retirement through abort. Retirement drops witnesses,
-reports the actual released plan allocation and lets the existing parser ticket
-owner release its actual entries/capacity without useful-work polling, another
-allocation or an invented refund. Refused retirement keeps that owner for retry.
-
-The accepted refinement in [#1174](https://github.com/bj-data-eng/surgeist/issues/1174)
-and [#1179](https://github.com/bj-data-eng/surgeist/issues/1179) preserves semantic
-comparison order, source progress, borrowed `Tag` refusal and sticky first-stop
-ownership, while charging actual added witness/layout work. Plan records are
-larger than booleans and live through append/abort; provider/header checks,
-progress writes and actual capacity/high-water observations must be counted.
-Numeric work totals and the limit outcome at an old cap can therefore differ.
-Opaque Arc-header bytes remain outside known payload-byte accounting; operations
-on those headers still incur their real admitted work. Checked initial/single
-append and name-changing replacement require their own actual
-invariant comparisons; these are distinct from named merge's one-pass reuse
-and are separately accepted by the initial/generated-installation clarification
-in those issues. They must never be presented as fixed witness overhead. No hidden duplicate
-scan, uncharged state or fabricated capacity satisfies this contract. This
-clarification selects the boundary; implementation and independent acceptance
-review must still establish it.
+A failed edit hands nothing back: the incoming `Option<Attribute>` keeps its value, and the
+element's list, capacity and usage are as before. Stopping between the appends of a merge
+leaves the consumer to release the staged attributes it still holds.
 
 #### Controlled text append
 
@@ -806,8 +727,7 @@ the commit never receives a state it would have to skip. Every refusal hands the
 owner back unchanged inside `HtmlConstructionRefusal`, with its command, actual
 allocations and capacities untouched; a consumed operation cannot be presented
 again because the check takes it by value. Only success issues the
-private-field ready owner. Initialization, text append, attribute slots,
-candidate planning, attribute edits and lease recovery use the same refusal
+private-field ready owner. Initialization, text append and lease recovery use the same refusal
 rules: `HtmlConstructionRefusal<T>` carries the owner or owners, `reason`,
 `owner` and `into_parts`.
 
@@ -840,8 +760,7 @@ retain their existing implementation. This is a specialized adaptation of
 
 HTML issues `HtmlConstructionAllocationId` with private fields identifying one
 storage identity, role and generation. Roles are `Identity`, `Records`,
-`Children`, `ArenaWrapper` and `AttributePlan`. The last role identifies
-the complete attribute group's actual decision/name-plan allocation. Equality is identity
+`Children` and `ArenaWrapper`. Equality is identity
 equality; IDs have no public numeric or
 pointer conversion, constructor or arithmetic. Reallocation advances the
 generation with checked arithmetic.
@@ -849,20 +768,10 @@ generation with checked arithmetic.
 Installed attribute vectors and their shared wrappers retain the parser's
 existing `VectorCapacity<Attribute>` and `SharedAllocation<Vec<Attribute>>`
 tickets over the actual public payload. `HtmlConstructionAttributeCapacity`
-reports their actual initialized length, capacity and public element layout;
-the editor's actions report actual reservation and uniqueness work. They do not
-need a second opaque attribute-vector/wrapper ticket or another ledger. Only
-the private name-decision plan requires the opaque `AttributePlan` role.
-
-A plan reservation plans one candidate's decision at a time. Its description's minimum
-capacity is the least capacity that holds that decision. `perform` reserves exactly
-the minimum; the consumer may admit a larger, amortizing capacity, which cannot be
-smaller and is requested with the candidate action's `perform_with_capacity`, so planning
-`n` candidates requests `O(log n)` reallocations. A smaller capacity, or use on any other
-candidate action, latches `CapacityMismatch` before a provider call. The parser
-doubles the plan, never beyond the edit's candidate count; the capacity depends on the
-plan and the candidate count only, never on a limit, and is admitted before it is
-allocated.
+reports their actual initialized length, capacity and public element layout, and
+`HtmlAttributeAdmission` receives the growth of a list before it is reserved and the
+capacity reached afterwards. They need no second opaque attribute-vector/wrapper ticket
+or another ledger.
 
 Allocation reports never issue construction node handles. A pending creation
 can allocate its child bank before committing a record; aborting it leaves that

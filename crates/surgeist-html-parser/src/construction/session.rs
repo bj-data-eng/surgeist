@@ -239,7 +239,7 @@ impl ParserArenaSession {
         }
         for payload in &storage.payloads.values {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::String { location: StringLocation::ElementName(owner), .. } if *owner == index)
+            if matches!(payload, RetainedPayload::String { location: FieldRef::ElementName(owner), .. } if *owner == index)
             {
                 return Ok(contents);
             }
@@ -434,8 +434,6 @@ impl ParserArenaSession {
             effects,
             evidence,
             fragment,
-            #[cfg(test)]
-                cancel_after_details_shift: _,
             #[cfg(test)]
                 cancel_after_radio_peer: _,
             #[cfg(test)]

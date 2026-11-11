@@ -339,7 +339,7 @@ fn radio_name_change_uses_actual_managed_fields_and_retirement_then_removal_earl
     assert!(!session.input_state(&mut c, &b).unwrap().flags.checkedness());
     let storage = session.active().unwrap();
     assert!(storage.payloads.values.iter().any(|p|matches!(p,
-        RetainedPayload::String {value,location:StringLocation::Detached,origins:Some(group),..}
+        RetainedPayload::String {value,location:FieldRef::Detached,origins:Some(group),..}
         if value.code_units()==[97] && storage.evidence.as_ref().unwrap().require_group(group).unwrap().retirement.is_some())));
     session
         .remove_input_attribute(&mut c, &a, radio::InputGroupAttribute::Name)

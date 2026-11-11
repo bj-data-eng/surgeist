@@ -610,13 +610,11 @@ mod tests {
         let mut original = None;
         let mut adjusted = None;
         let mut href = None;
-        for entry in &storage.payloads.values {
+        for (slot, entry) in storage.payloads.values.iter().enumerate() {
             if let RetainedPayload::String {
-                value,
-                origins: Some(maps),
-                location,
-                ..
+                value, location, ..
             } = entry
+                && let Some(maps) = storage.payloads.row_group(&mut c, slot).unwrap()
             {
                 if value == &DocumentString::from("viewbox") {
                     original = Some((
@@ -627,7 +625,7 @@ mod tests {
                         storage.observed_origins(maps, &mut c).unwrap()[0].kind,
                     ));
                 }
-                if matches!(location, StringLocation::AttributeName(_, 0)) {
+                if matches!(location, FieldRef::AttributeName(_, 0)) {
                     adjusted = Some((
                         value.code_units().as_ptr(),
                         storage.observed_origins(maps, &mut c).unwrap()[0]
@@ -636,7 +634,7 @@ mod tests {
                         storage.observed_origins(maps, &mut c).unwrap()[0].kind,
                     ));
                 }
-                if matches!(location, StringLocation::AttributeName(_, 1)) {
+                if matches!(location, FieldRef::AttributeName(_, 1)) {
                     href = Some((
                         storage.observed_origins(maps, &mut c).unwrap().len(),
                         storage.observed_origins(maps, &mut c).unwrap()[0].start,
@@ -900,14 +898,9 @@ mod tests {
             &capability,
         );
         let spent = work(&c);
-        // Only the refused unsharing leaves the staged row emptied (a leak) or
-        // holding the refused Arc and ticket.
-        let reached = session.active().unwrap().payloads.values.iter().any(|row| {
-            matches!(
-                row,
-                RetainedPayload::Attributes(None | Some(AttributeStorage::Unvalidated { .. }))
-            )
-        });
+        // Only a validation that stopped consumes the armed refusal, in the release of its
+        // shared list, whose accounting stays with the owner for the release to credit.
+        let reached = !c.shared_release_refusal_pending();
         let released = lexer.release(&mut c);
         let mut cleanup = session.release(&mut c);
         if matches!(cleanup, Err(SessionError::Stop(_))) {
@@ -1071,172 +1064,112 @@ impl SessionStorage {
                 .len()
                 .checked_add(namespace.uri().map_or(0, DocumentString::len))
                 .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
-            let (values, allocation) = control.new_vector()?;
+            let mut stage = StagedAttributes::new(control)?;
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
-            let admission = match self.prepare_payload_slot(control) {
-                Ok(admission) => admission,
-                Err(error) => {
-                    release_vector(control, values, allocation)?;
-                    return Err(error);
-                }
-            };
-            let container = self
-                .payloads
-                .push_row(
-                    admission,
-                    RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                        values,
-                        allocation,
-                        original_len,
-                        reversed_pairs: 0,
-                    })),
-                )
-                .map_err(|_| latch_registry_row(control))?;
-            while let Some(attribute) = attributes.try_pop(control)? {
-                let adjusted = self.foreign_attribute(control, attribute.name, foreign);
-                let (qualified, local_ticket, namespace_ticket, prefix_ticket) = match adjusted {
-                    Ok(value) => value,
-                    Err(error) => {
-                        attribute.value.release(control)?;
-                        return Err(error);
+            // The record this creation makes is the next one, and names its attributes' strings.
+            let node_index = self.construction.len(control)?;
+            let first_row = self.payloads.values.len();
+            let staged = (|| {
+                while let Some(attribute) = attributes.try_pop(control)? {
+                    let adjusted = self.foreign_attribute(control, attribute.name, foreign);
+                    let (qualified, local_ticket, namespace_ticket, prefix_ticket) = match adjusted
+                    {
+                        Ok(value) => value,
+                        Err(error) => {
+                            attribute.value.release(control)?;
+                            return Err(error);
+                        }
+                    };
+                    let (value, value_ticket) = self.register_text(control, attribute.value)?;
+                    control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+                    units = units
+                        .checked_add(qualified.local_name().len())
+                        .and_then(|sum| {
+                            sum.checked_add(
+                                qualified.namespace().uri().map_or(0, DocumentString::len),
+                            )
+                        })
+                        .and_then(|sum| {
+                            sum.checked_add(qualified.prefix().map_or(0, DocumentString::len))
+                        })
+                        .and_then(|sum| sum.checked_add(value.len()))
+                        .ok_or_else(|| {
+                            control.stop_representation(HtmlParseResource::ManagedUtf16Units)
+                        })?;
+                    self.construction.acquire_attribute(control)?;
+                    stage.push_plain(control, Attribute::new(qualified, value), original_len)?;
+                    payload_write::<[FieldRef; 2]>(control, 2)?;
+                    if namespace_ticket.is_some() {
+                        payload_write::<FieldRef>(control, 1)?;
                     }
-                };
-                let (value, value_ticket) = self.register_text(control, attribute.value)?;
-                control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-                units = units
-                    .checked_add(qualified.local_name().len())
-                    .and_then(|sum| {
-                        sum.checked_add(qualified.namespace().uri().map_or(0, DocumentString::len))
-                    })
-                    .and_then(|sum| {
-                        sum.checked_add(qualified.prefix().map_or(0, DocumentString::len))
-                    })
-                    .and_then(|sum| sum.checked_add(value.len()))
-                    .ok_or_else(|| {
-                        control.stop_representation(HtmlParseResource::ManagedUtf16Units)
-                    })?;
-                let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                    values,
-                    allocation,
-                    ..
-                }))) = self.payloads.values.get_mut(container)
-                else {
-                    return Err(latch_registry_row(control));
-                };
-                control.reserve_vector_geometric_toward(values, allocation, 1, original_len)?;
-                payload_write::<Attribute>(control, 1)?;
-                payload_write::<[StringLocation; 2]>(control, 2)?;
-                if namespace_ticket.is_some() {
-                    payload_write::<StringLocation>(control, 1)?;
+                    if prefix_ticket.is_some() {
+                        payload_write::<FieldRef>(control, 1)?;
+                    }
+                    let position = attributes.len();
+                    self.bind_string(local_ticket, FieldRef::AttributeName(node_index, position))?;
+                    self.bind_string(value_ticket, FieldRef::AttributeValue(node_index, position))?;
+                    if let Some(ticket) = namespace_ticket {
+                        self.bind_string(
+                            ticket,
+                            FieldRef::AttributeNamespace(node_index, position),
+                        )?;
+                    }
+                    if let Some(ticket) = prefix_ticket {
+                        self.bind_string(ticket, FieldRef::AttributePrefix(node_index, position))?;
+                    }
                 }
-                if prefix_ticket.is_some() {
-                    payload_write::<StringLocation>(control, 1)?;
-                }
-                control.acquire(HtmlParseResource::ManagedAttributes, 1)?;
-                let position = attributes.len();
-                values.push(Attribute::new(qualified, value));
-                self.bind_string(
-                    local_ticket,
-                    StringLocation::AttributeName(container, position),
-                )?;
-                self.bind_string(
-                    value_ticket,
-                    StringLocation::AttributeValue(container, position),
-                )?;
-                if let Some(ticket) = namespace_ticket {
-                    self.bind_string(
-                        ticket,
-                        StringLocation::AttributeNamespace(container, position),
-                    )?;
-                }
-                if let Some(ticket) = prefix_ticket {
-                    self.bind_string(ticket, StringLocation::AttributePrefix(container, position))?;
-                }
+                stage.reverse(control)
+            })();
+            if let Err(error) = staged {
+                stage.release(control)?;
+                return Err(error);
             }
-            self.reverse_attributes(control, container)?;
-            payload_write::<Option<AttributeStorage>>(control, 2)?;
-            let Some(RetainedPayload::Attributes(storage)) =
-                self.payloads.values.get_mut(container)
-            else {
-                return Err(latch_registry_row(control));
-            };
-            let taken = storage.take();
-            let Some(AttributeStorage::Building {
-                values,
-                allocation,
-                original_len,
-                reversed_pairs,
-            }) = taken
-            else {
-                *storage = taken;
-                return Err(latch_registry_row(control));
-            };
+            let (values, allocation) = stage.into_parts();
             let (backing, shared) = match control.share_owned(values) {
                 Ok(value) => value,
                 Err((stop, values)) => {
-                    *storage = Some(AttributeStorage::Building {
-                        values,
-                        allocation,
-                        original_len,
-                        reversed_pairs,
-                    });
+                    release_vector(control, values, allocation)?;
                     return Err(stop.into());
                 }
             };
             let ordered = match validate_parser_attributes(backing, control) {
                 Ok(values) => values,
                 Err((error, backing)) => {
-                    // Preserve the admitted shared wrapper in the owning phase
-                    // even when intrinsic duplicate checking or work stops.
-                    let values = match control.release_shared(backing, shared) {
-                        Ok(values) => values,
+                    // Preserve the admitted shared wrapper even when intrinsic duplicate
+                    // checking or work stops.
+                    return match control.release_shared(backing, shared) {
+                        Ok(values) => {
+                            release_vector(control, values, allocation)?;
+                            Err(error)
+                        }
                         Err(refused) => {
-                            // Unpublished backing is uniquely owned, so a
-                            // refusal is an invariant stop. The refused Arc and
-                            // ticket stay in the row for cleanup to retry.
+                            // Unpublished backing is uniquely owned, so a refusal is an
+                            // invariant stop. The accounting of the refused list stays with
+                            // the owner for its release.
                             let (_, backing, shared) = refused.into_parts();
-                            *storage = Some(AttributeStorage::Unvalidated {
-                                backing,
-                                allocation,
-                                shared,
-                                original_len,
-                                reversed_pairs,
-                            });
-                            return Err(latch_registry_row(control));
+                            drop(backing);
+                            self.construction
+                                .absorb_attribute_list(control, allocation, shared)?;
+                            Err(latch_registry_row(control))
                         }
                     };
-                    *storage = Some(AttributeStorage::Building {
-                        values,
-                        allocation,
-                        original_len,
-                        reversed_pairs,
-                    });
-                    return Err(error);
                 }
             };
-            *storage = Some(AttributeStorage::Frozen {
-                values: ordered,
-                allocation,
-                shared,
-                element: None,
-            });
+            // The list belongs to the record from here on, and the parse accounts for it with
+            // the other lists of its storage.
+            self.construction
+                .absorb_attribute_list(control, allocation, shared)?;
             control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             control.charge(
                 HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<OrderedAttributes>() as u64,
             )?;
-            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-                values, ..
-            }))) = self.payloads.values.get(container)
-            else {
-                return Err(latch_registry_row(control));
-            };
-            let attributes = values.clone();
+            let attributes = ordered;
             let template = false;
             // Preadmit the actual native-alias bindings and both usage writes.
             // Successful allocation and binding have no fallible alias gap.
-            payload_write::<StringLocation>(
+            payload_write::<FieldRef>(
                 control,
                 u64::from(namespace_ticket.is_some()).saturating_add(1),
             )?;
@@ -1256,21 +1189,17 @@ impl SessionStorage {
                 0,
                 prepared,
             )?;
+            if node.index != node_index {
+                return Err(latch_registry_row(control));
+            }
             if let Some(slot) = svg {
                 self.bind_svg_slot(control, slot, node.index)?;
             }
-            self.bind_string(name_ticket, StringLocation::ElementName(node.index))?;
+            self.bind_string(name_ticket, FieldRef::ElementName(node.index))?;
             if let Some(ticket) = namespace_ticket {
-                self.bind_string(ticket, StringLocation::Namespace(node.index))?;
+                self.bind_string(ticket, FieldRef::Namespace(node.index))?;
             }
-            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-                element, ..
-            }))) = self.payloads.values.get_mut(container)
-            else {
-                return Err(latch_registry_row(control));
-            };
-            *element = Some(node.index);
-            self.payloads.join_row(container)?;
+            self.flush_attribute_origins(control, first_row)?;
 
             self.initial_nonce_attributes(control, node.index)?;
             Ok(node)

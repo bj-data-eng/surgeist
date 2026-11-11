@@ -478,8 +478,8 @@ fn textarea_text_appended_after_a_child_was_removed_extends_the_rebuilt_raw_valu
 
 #[test]
 fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded() {
-    // Registry slots: initial raw/textarea/form3, name/namespace/attrs3,
-    // actual native A1 and first children-change raw1 plus two retired static postconnection list slots plus four real document facts and the textarea empty backing/nonce facts =17, including the creation row.
+    // Registry slots: initial raw/textarea/form3, name/namespace2,
+    // actual native A1 and first children-change raw1 plus two retired static postconnection list slots plus four real document facts and the textarea empty backing/nonce facts =16, including the creation row.
     // The finite auxiliary cap admits the initial lexical/topology staging,
     // measured from an unconstrained run, then exactly five reset slots;
     // the next reset retains the current raw and latches the slot cap.
@@ -511,7 +511,7 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
         .insert_text(&mut c, &node, None, &mut text, None)
         .unwrap();
     tokenizer.release(&mut c).unwrap();
-    assert_eq!(session.active().unwrap().payloads.values.len(), 17);
+    assert_eq!(session.active().unwrap().payloads.values.len(), 16);
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
@@ -559,7 +559,7 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
         }
     ));
     let storage = session.active().unwrap();
-    assert_eq!(storage.payloads.values.len(), 22);
+    assert_eq!(storage.payloads.values.len(), 21);
     let RetainedPayload::String { value, .. } = &storage.payloads.values[current_slot] else {
         panic!("original current raw retained")
     };

@@ -242,7 +242,7 @@ fn a_row_naming_a_missing_group_is_reported_when_it_is_lent() {
 
 #[test]
 fn a_row_with_an_unresolvable_destination_is_reported_when_it_is_lent() {
-    use crate::construction::StringLocation as Location;
+    use crate::construction::FieldRef as Location;
     let cases: [(&str, NativeDestination, Kind); 9] = [
         ("node", NativeDestination::Node(usize::MAX), Kind::Node),
         (
@@ -261,7 +261,7 @@ fn a_row_with_an_unresolvable_destination_is_reported_when_it_is_lent() {
         (
             "attribute field",
             NativeDestination::Field(Location::AttributeName(usize::MAX, 0)),
-            Kind::Fact,
+            Kind::Node,
         ),
         (
             "detached field",
@@ -438,13 +438,13 @@ fn a_cause_naming_a_missing_group_reports_it_from_the_group_readers() {
 
 #[test]
 fn a_cause_naming_an_unresolvable_retired_destination_reports_it() {
-    use crate::construction::StringLocation as Location;
+    use crate::construction::FieldRef as Location;
     let cases = [
         ("node", Location::Text(usize::MAX), Kind::Node),
         (
             "attribute",
             Location::AttributeValue(usize::MAX, 0),
-            Kind::Fact,
+            Kind::Node,
         ),
     ];
     for (name, location, kind) in cases {
@@ -468,7 +468,7 @@ fn a_cause_naming_an_unresolvable_retired_destination_reports_it() {
 
 #[test]
 fn a_detached_retired_destination_is_an_answer_not_a_fault() {
-    use crate::construction::StringLocation as Location;
+    use crate::construction::FieldRef as Location;
     let mut report = parse("<p>A&amp;B");
     let index = corrupted_cause(
         &mut report,

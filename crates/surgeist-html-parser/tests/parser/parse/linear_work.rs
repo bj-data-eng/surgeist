@@ -262,9 +262,12 @@ fn reservation_work_added_by_each_doubling_of_merged_attributes_beyond_creating_
 #[test]
 fn reservation_work_added_by_each_doubling_of_one_selects_options_is_near_double() {
     // An option inserted last settles from the select's summary of its list, so
-    // the list is not collected per insertion and total work is linear too.
+    // the list is not collected per insertion and total work is linear too. The retained
+    // rows of the parse hold about ten per option and their capacity doubles at 1024 rows, so
+    // the sizes are chosen where no size sits on a capacity step: each doubling then crosses
+    // one step.
     assert_doublings_add_near_double(
-        [50, 100, 200, 400],
+        [60, 120, 240, 480],
         |options| {
             format!(
                 "<!doctype html><select>{}</select>",

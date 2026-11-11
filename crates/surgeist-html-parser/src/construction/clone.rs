@@ -113,23 +113,23 @@ impl SessionStorage {
                         if !supported || element.name().prefix().is_some() {
                             return Err(SessionError::WrongToken);
                         }
-                        let name = self.field_slot(c, StringLocation::ElementName(node))?;
+                        let name = self.field_slot(c, FieldRef::ElementName(node))?;
                         control_field_owner(&self.payloads, c, name)?;
                         if namespace.is_some() {
-                            let namespace = self.field_slot(c, StringLocation::Namespace(node))?;
+                            let namespace = self.field_slot(c, FieldRef::Namespace(node))?;
                             control_field_owner(&self.payloads, c, namespace)?;
                         }
-                        let container = self.element_attribute_container(c, node)?;
                         for (position, attr) in element.attributes().iter().enumerate() {
                             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                             for location in [
-                                attr.name().namespace().uri().map(|_| {
-                                    StringLocation::AttributeNamespace(container, position)
-                                }),
+                                attr.name()
+                                    .namespace()
+                                    .uri()
+                                    .map(|_| FieldRef::AttributeNamespace(node, position)),
                                 attr.name()
                                     .prefix()
-                                    .map(|_| StringLocation::AttributePrefix(container, position)),
+                                    .map(|_| FieldRef::AttributePrefix(node, position)),
                             ]
                             .into_iter()
                             .flatten()
@@ -137,15 +137,11 @@ impl SessionStorage {
                                 let slot = self.field_slot(c, location)?;
                                 control_field_owner(&self.payloads, c, slot)?;
                             }
-                            let name = self.field_slot(
-                                c,
-                                StringLocation::AttributeName(container, position),
-                            )?;
+                            let name =
+                                self.field_slot(c, FieldRef::AttributeName(node, position))?;
                             control_field_owner(&self.payloads, c, name)?;
-                            let value = self.field_slot(
-                                c,
-                                StringLocation::AttributeValue(container, position),
-                            )?;
+                            let value =
+                                self.field_slot(c, FieldRef::AttributeValue(node, position))?;
                             control_field_owner(&self.payloads, c, value)?;
                         }
                         for name in ["select", "option", "selectedcontent"] {
@@ -172,14 +168,14 @@ impl SessionStorage {
                         }
                     }
                     ConstructionNodeKind::Text(_) => {
-                        self.field_slot(c, StringLocation::Text(node))?;
+                        self.field_slot(c, FieldRef::Text(node))?;
                     }
                     ConstructionNodeKind::Comment(_) => {
-                        self.field_slot(c, StringLocation::Comment(node))?;
+                        self.field_slot(c, FieldRef::Comment(node))?;
                     }
                     ConstructionNodeKind::ProcessingInstruction(_) => {
-                        self.field_slot(c, StringLocation::ProcessingInstructionTarget(node))?;
-                        self.field_slot(c, StringLocation::ProcessingInstructionData(node))?;
+                        self.field_slot(c, FieldRef::ProcessingInstructionTarget(node))?;
+                        self.field_slot(c, FieldRef::ProcessingInstructionData(node))?;
                         self.pi_attribute(c, node, "name")?;
                     }
                     _ => return Err(SessionError::WrongToken),
@@ -302,16 +298,16 @@ impl SessionStorage {
                     ConstructionNodeKind::Text(_)
                 );
                 let location = if text {
-                    StringLocation::Text(source)
+                    FieldRef::Text(source)
                 } else {
-                    StringLocation::Comment(source)
+                    FieldRef::Comment(source)
                 };
                 let source_slot = self.field_slot(c, location)?;
                 let (value, slot) = self.copy_registered_field(c, source_slot)?;
                 // Admit the registry binding before installing its native
                 // alias. Allocation success and binding must have no fallible
                 // gap, including a stop at the first binding-copy admission.
-                payload_write::<StringLocation>(c, 1)?;
+                payload_write::<FieldRef>(c, 1)?;
                 if text {
                     payload_write::<Option<usize>>(c, 1)?;
                 }
@@ -330,9 +326,9 @@ impl SessionStorage {
                 self.bind_string(
                     slot,
                     if text {
-                        StringLocation::Text(node.index)
+                        FieldRef::Text(node.index)
                     } else {
-                        StringLocation::Comment(node.index)
+                        FieldRef::Comment(node.index)
                     },
                 )
                 .map_err(|_| latch_registry_row(c))?;
@@ -343,13 +339,12 @@ impl SessionStorage {
             ConstructionNodeKind::ProcessingInstruction(_) => {
                 let map = self.prepare_pi_map(c)?;
                 payload_write::<Option<usize>>(c, 1)?;
-                let slot =
-                    self.field_slot(c, StringLocation::ProcessingInstructionTarget(source))?;
+                let slot = self.field_slot(c, FieldRef::ProcessingInstructionTarget(source))?;
                 let (target, target_slot) = self.copy_registered_field(c, slot)?;
-                let slot = self.field_slot(c, StringLocation::ProcessingInstructionData(source))?;
+                let slot = self.field_slot(c, FieldRef::ProcessingInstructionData(source))?;
                 let (data, data_slot) = self.copy_registered_field(c, slot)?;
 
-                payload_write::<[StringLocation; 2]>(c, 2)?;
+                payload_write::<[FieldRef; 2]>(c, 2)?;
                 let node = self.allocate_in_document_owned(
                     c,
                     NewRecord::ProcessingInstruction(HtmlProcessingInstruction::new(target, data)),
@@ -360,14 +355,11 @@ impl SessionStorage {
                 )?;
                 self.bind_string(
                     target_slot,
-                    StringLocation::ProcessingInstructionTarget(node.index),
+                    FieldRef::ProcessingInstructionTarget(node.index),
                 )
                 .map_err(|_| latch_registry_row(c))?;
-                self.bind_string(
-                    data_slot,
-                    StringLocation::ProcessingInstructionData(node.index),
-                )
-                .map_err(|_| latch_registry_row(c))?;
+                self.bind_string(data_slot, FieldRef::ProcessingInstructionData(node.index))
+                    .map_err(|_| latch_registry_row(c))?;
                 payload_write::<usize>(c, 1)?;
 
                 self.bind_pi_map(c, map, node.index)?;
@@ -390,7 +382,7 @@ impl SessionStorage {
         }
         let prepared = self.prepare_document_allocation(c, Some(document), template)?;
         let bindings = self.prepare_clone_metadata(c, source)?;
-        let slot = self.field_slot(c, StringLocation::ElementName(source))?;
+        let slot = self.field_slot(c, FieldRef::ElementName(source))?;
         let (name, name_slot) = self.copy_registered_field(c, slot)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let namespace_present = element_record(&self.construction, c, source)?
@@ -399,108 +391,52 @@ impl SessionStorage {
             .uri()
             .is_some();
         let (namespace, namespace_slot) = if namespace_present {
-            let slot = self.field_slot(c, StringLocation::Namespace(source))?;
+            let slot = self.field_slot(c, FieldRef::Namespace(source))?;
             let (namespace, slot) = self.copy_registered_literal_field(c, slot, false)?;
             (Namespace::from_uri(namespace), Some(slot))
         } else {
             (Namespace::none(), None)
         };
-        let (values, allocation) = c.new_vector()?;
-        let admission = match self.prepare_payload_slot_owned(c) {
-            Ok(admission) => admission,
-            Err(error) => {
-                release_vector(c, values, allocation)?;
-                return Err(error);
-            }
-        };
-        let container = self
-            .payloads
-            .push_row(
-                admission,
-                RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                    values,
-                    allocation,
-                    original_len: 0,
-                    reversed_pairs: 0,
-                })),
-            )
-            .map_err(|_| latch_registry_row(c))?;
-        payload_write::<Option<AttributeStorage>>(c, 2)?;
-        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
-        else {
-            return Err(latch_registry_row(c));
-        };
-        let taken = storage.take();
-        let Some(AttributeStorage::Building {
-            values, allocation, ..
-        }) = taken
-        else {
-            *storage = taken;
-            return Err(latch_registry_row(c));
-        };
+        // The element is created without attributes; they are appended one at a time below.
+        let stage = StagedAttributes::new(c)?;
+        let (values, allocation) = stage.into_parts();
         let (backing, shared) = match c.share_owned(values) {
             Ok(value) => value,
             Err((stop, values)) => {
-                *storage = Some(AttributeStorage::Building {
-                    values,
-                    allocation,
-                    original_len: 0,
-                    reversed_pairs: 0,
-                });
+                release_vector(c, values, allocation)?;
                 return Err(stop.into());
             }
         };
         let ordered = match validate_parser_attributes(backing, c) {
             Ok(value) => value,
             Err((error, backing)) => {
-                let values = match c.release_shared(backing, shared) {
-                    Ok(values) => values,
+                // The backing here is the empty vector just created, and validating fewer than
+                // two attributes has no comparison to charge or refuse, so no limit or
+                // cancellation reaches this arm and no test can force it with a work cut.
+                return match c.release_shared(backing, shared) {
+                    Ok(values) => {
+                        release_vector(c, values, allocation)?;
+                        Err(error)
+                    }
                     Err(refused) => {
-                        // Unpublished backing is uniquely owned, so a refusal
-                        // is an invariant stop. The refused Arc and ticket stay
-                        // in the row for cleanup to retry. The backing here is
-                        // the empty vector just created, and validating fewer
-                        // than two attributes has no comparison to charge or
-                        // refuse, so no limit or cancellation reaches this arm
-                        // and no test can force it with a work cut.
                         let (_, backing, shared) = refused.into_parts();
-                        *storage = Some(AttributeStorage::Unvalidated {
-                            backing,
-                            allocation,
-                            shared,
-                            original_len: 0,
-                            reversed_pairs: 0,
-                        });
-                        return Err(latch_registry_row(c));
+                        drop(backing);
+                        self.construction
+                            .absorb_attribute_list(c, allocation, shared)?;
+                        Err(latch_registry_row(c))
                     }
                 };
-                *storage = Some(AttributeStorage::Building {
-                    values,
-                    allocation,
-                    original_len: 0,
-                    reversed_pairs: 0,
-                });
-                return Err(error);
             }
         };
-        *storage = Some(AttributeStorage::Frozen {
-            values: ordered,
-            allocation,
-            shared,
-            element: None,
-        });
+        self.construction
+            .absorb_attribute_list(c, allocation, shared)?;
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<OrderedAttributes>(c, 1)?;
-        let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen { values, .. }))) =
-            self.payloads.values.get(container)
-        else {
-            return Err(latch_registry_row(c));
-        };
-        let attributes = values.clone();
+        let attributes = ordered;
         // Native installation and all payload alias locations are one fixed
         // commit. A terminal stop may precede allocation, never strand an
         // installed native backing with a detached/unbound registry location.
-        payload_write::<StringLocation>(c, u64::from(namespace_slot.is_some()).saturating_add(1))?;
+        payload_write::<FieldRef>(c, u64::from(namespace_slot.is_some()).saturating_add(1))?;
         payload_write::<Option<usize>>(c, 1)?;
         let link_flags = self
             .html_local(c, source, "link")?
@@ -517,21 +453,12 @@ impl SessionStorage {
             0,
             prepared,
         )?;
-        self.bind_string(name_slot, StringLocation::ElementName(node.index))
+        self.bind_string(name_slot, FieldRef::ElementName(node.index))
             .map_err(|_| latch_registry_row(c))?;
         if let Some(slot) = namespace_slot {
-            self.bind_string(slot, StringLocation::Namespace(node.index))
+            self.bind_string(slot, FieldRef::Namespace(node.index))
                 .map_err(|_| latch_registry_row(c))?;
         }
-        let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element, .. }))) =
-            self.payloads.values.get_mut(container)
-        else {
-            return Err(latch_registry_row(c));
-        };
-        *element = Some(node.index);
-        self.payloads
-            .join_row(container)
-            .map_err(|_| latch_registry_row(c))?;
         self.bind_clone_metadata(c, node.index, bindings)?;
         self.initial_associated_state(c, node.index)?;
         if base::is_base(
@@ -556,136 +483,75 @@ impl SessionStorage {
         let count = element_record(&self.construction, c, source)?
             .attributes()
             .len();
-        let original_container = self.element_attribute_container(c, source)?;
+        // The clone's attributes are appended in one list, grown once to the source's length.
+        self.construction.reserve_attributes(c, node.index, count)?;
         for position in 0..count {
-            let name_slot = self.field_slot(
-                c,
-                StringLocation::AttributeName(original_container, position),
-            )?;
+            let name_slot = self.field_slot(c, FieldRef::AttributeName(source, position))?;
             let (name, name_slot) = self.copy_registered_field(c, name_slot)?;
-            let value_slot = self.field_slot(
-                c,
-                StringLocation::AttributeValue(original_container, position),
-            )?;
+            let value_slot = self.field_slot(c, FieldRef::AttributeValue(source, position))?;
             let (value, value_slot) = self.copy_registered_field(c, value_slot)?;
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let attribute = element_attribute(&self.construction, c, source, position)?;
             let has_namespace = attribute.name().namespace().uri().is_some();
             let has_prefix = attribute.name().prefix().is_some();
             let (namespace, namespace_slot) = if has_namespace {
-                let slot = self.field_slot(
-                    c,
-                    StringLocation::AttributeNamespace(original_container, position),
-                )?;
+                let slot = self.field_slot(c, FieldRef::AttributeNamespace(source, position))?;
                 let (value, slot) = self.copy_registered_literal_field(c, slot, false)?;
                 (Namespace::from_uri(value), Some(slot))
             } else {
                 (Namespace::none(), None)
             };
             let (prefix, prefix_slot) = if has_prefix {
-                let slot = self.field_slot(
-                    c,
-                    StringLocation::AttributePrefix(original_container, position),
-                )?;
+                let slot = self.field_slot(c, FieldRef::AttributePrefix(source, position))?;
                 let (value, slot) = self.copy_registered_literal_field(c, slot, true)?;
                 (Some(value), Some(slot))
             } else {
                 (None, None)
             };
-            let (values, allocation) = c.new_vector()?;
-            let admission = match self.prepare_payload_slot_owned(c) {
-                Ok(admission) => admission,
-                Err(error) => {
-                    release_vector(c, values, allocation)?;
-                    return Err(error);
-                }
-            };
-            let stage = self
-                .payloads
-                .push_row(
-                    admission,
-                    RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                        values,
-                        allocation,
-                        original_len: 1,
-                        reversed_pairs: 0,
-                    })),
-                )
-                .map_err(|_| latch_registry_row(c))?;
-            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
-                values: actual,
-                allocation: ticket,
-                ..
-            }))) = self.payloads.values.get_mut(stage)
-            else {
-                return Err(latch_registry_row(c));
-            };
-            c.reserve_vector(actual, ticket, 1)?;
+            let first_row = name_slot.min(value_slot);
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             payload_write::<Attribute>(c, 1)?;
-            payload_write::<[StringLocation; 2]>(c, 2)?;
+            payload_write::<[FieldRef; 2]>(c, 2)?;
             if namespace_slot.is_some() {
-                payload_write::<StringLocation>(c, 1)?;
+                payload_write::<FieldRef>(c, 1)?;
             }
             if prefix_slot.is_some() {
-                payload_write::<StringLocation>(c, 1)?;
+                payload_write::<FieldRef>(c, 1)?;
             }
-            c.acquire(HtmlParseResource::ManagedAttributes, 1)?;
-            actual.push(Attribute::new(
-                QualifiedName::new(namespace, prefix, name),
-                value,
-            ));
-            self.bind_string(name_slot, StringLocation::AttributeName(stage, 0))
+            self.construction.acquire_attribute(c)?;
+            self.bind_string(name_slot, FieldRef::AttributeName(node.index, position))
                 .map_err(|_| latch_registry_row(c))?;
-            self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0))
+            self.bind_string(value_slot, FieldRef::AttributeValue(node.index, position))
                 .map_err(|_| latch_registry_row(c))?;
             if let Some(slot) = namespace_slot {
-                self.bind_string(slot, StringLocation::AttributeNamespace(stage, 0))
+                self.bind_string(slot, FieldRef::AttributeNamespace(node.index, position))
                     .map_err(|_| latch_registry_row(c))?;
             }
             if let Some(slot) = prefix_slot {
-                self.bind_string(slot, StringLocation::AttributePrefix(stage, 0))
+                self.bind_string(slot, FieldRef::AttributePrefix(node.index, position))
                     .map_err(|_| latch_registry_row(c))?;
             }
-            self.edit_attributes(c, node.index, container, stage, 1, false)?;
-            self.begin_attribute_transfer(c, stage, container, position)?;
-            self.edit_attributes(c, node.index, container, stage, 1, true)?;
-            self.clone_attribute_hook(c, node.index, bindings, container, position)?;
-            self.finish_attribute_merge(
-                c,
-                PreparedAttributeMerge {
-                    target: node.index,
-                    container,
-                    stage,
-                    start: position,
-                    count: 0,
-                    earlier: [
-                        Some(name_slot),
-                        Some(value_slot),
-                        namespace_slot,
-                        prefix_slot,
-                    ],
-                },
-            )?;
+            let mut incoming = Some(Attribute::new(
+                QualifiedName::new(namespace, prefix, name),
+                value,
+            ));
+            self.payloads.forget_attribute_strings(node.index);
+            self.append_attribute_with_effects(c, node.index, &mut incoming, None)?;
+            let first_row = [
+                Some(name_slot),
+                Some(value_slot),
+                namespace_slot,
+                prefix_slot,
+            ]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(first_row);
+            self.flush_attribute_origins(c, first_row)?;
+            self.clone_attribute_hook(c, node.index, bindings, position)?;
         }
         self.finish_clone_metadata(c, source, node.index, bindings)?;
         Ok(node.index)
-    }
-
-    pub(super) fn element_attribute_container(
-        &self,
-        c: &mut ParseControl,
-        node: usize,
-    ) -> Result<usize, SessionError> {
-        let Some(slot) = self.payloads.joined(c, node, Join::Attributes)? else {
-            return Err(SessionError::AttributeStorageUnavailable);
-        };
-        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if matches!(self.payloads.values.get(slot), Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element: Some(owner), .. }))) if *owner == node)
-        {
-            Ok(slot)
-        } else {
-            Err(SessionError::AttributeStorageUnavailable)
-        }
     }
 
     fn retain_clone_metadata(
@@ -978,7 +844,6 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
         bindings: CloneBindings,
-        container: usize,
         position: usize,
     ) -> Result<(), SessionError> {
         self.initial_nonce_attribute(c, node, position)?;
@@ -1004,7 +869,7 @@ impl SessionStorage {
                 bindings
                     .association
                     .ok_or(SessionError::FormAssociationMetadataUnavailable)?,
-                (container, position),
+                position,
                 initialization,
             )?;
         }
@@ -1171,16 +1036,16 @@ impl SessionStorage {
         };
         control_field_owner(&self.payloads, c, source)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let Some(RetainedPayload::String { value, origins, .. }) = self.payloads.values.get(source)
-        else {
+        let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(source) else {
             return Err(latch_registry_row(c));
         };
         c.charge(
             HtmlParseWorkCategory::InspectByte,
             std::mem::size_of_val(value.code_units()) as u64,
         )?;
-        let origins = origins
-            .as_ref()
+        let origins = self
+            .payloads
+            .row_group(c, source)?
             .map(|origins| {
                 self.evidence
                     .as_mut()
@@ -1200,14 +1065,13 @@ impl SessionStorage {
         let mut buffer = Utf16Buffer::new(c)?;
         let result = (|| {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let Some(RetainedPayload::String { value, origins, .. }) =
-                self.payloads.values.get(source)
+            let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(source)
             else {
                 return Err(latch_registry_row(c));
             };
             buffer.extend_units(value.code_units(), c)?;
-            origins
-                .as_ref()
+            self.payloads
+                .row_group(c, source)?
                 .map(|origins| {
                     self.evidence
                         .as_mut()
@@ -1229,9 +1093,9 @@ impl SessionStorage {
     pub(super) fn field_slot(
         &self,
         c: &mut ParseControl,
-        location: StringLocation,
+        location: FieldRef,
     ) -> Result<usize, SessionError> {
-        if let StringLocation::Text(node) = location {
+        if let FieldRef::Text(node) = location {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let slot = self
                 .payloads
@@ -1241,7 +1105,7 @@ impl SessionStorage {
                 .text()
                 .ok_or(SessionError::WrongToken)?;
             let Some(RetainedPayload::String {
-                location: StringLocation::Text(owner),
+                location: FieldRef::Text(owner),
                 value,
                 allocation,
                 ..
@@ -1255,7 +1119,7 @@ impl SessionStorage {
             c.require_document_string(allocation, value)?;
             return Ok(slot);
         }
-        if let StringLocation::ProcessingInstructionData(node) = location {
+        if let FieldRef::ProcessingInstructionData(node) = location {
             // Parsing a processing instruction reaches this for every
             // pseudo-attribute piece, so the instruction's data row is joined.
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
@@ -1267,7 +1131,7 @@ impl SessionStorage {
                 .get(Join::ProcessingInstructionData)
                 .ok_or(SessionError::WrongToken)?;
             let Some(RetainedPayload::String {
-                location: StringLocation::ProcessingInstructionData(owner),
+                location: FieldRef::ProcessingInstructionData(owner),
                 ..
             }) = self.payloads.values.get(slot)
             else {
@@ -1301,41 +1165,32 @@ fn control_field_owner(
 ) -> Result<(), SessionError> {
     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(RetainedPayload::String {
-        value,
-        allocation,
-        origins,
-        ..
+        value, allocation, ..
     }) = payloads.values.get(slot)
     else {
         return Err(SessionError::WrongToken);
     };
     c.require_document_string(allocation, value)?;
-    if let Some(maps) = origins {
+    if let Some(maps) = payloads.row_group(c, slot)? {
         maps.require_disposal_owner(c)?;
     }
     Ok(())
 }
 
-pub(super) fn same_location(a: StringLocation, b: StringLocation) -> bool {
+pub(super) fn same_location(a: FieldRef, b: FieldRef) -> bool {
     match (a, b) {
-        (StringLocation::ElementName(a), StringLocation::ElementName(b))
-        | (StringLocation::Namespace(a), StringLocation::Namespace(b))
-        | (StringLocation::Text(a), StringLocation::Text(b))
-        | (StringLocation::Comment(a), StringLocation::Comment(b))
-        | (
-            StringLocation::ProcessingInstructionTarget(a),
-            StringLocation::ProcessingInstructionTarget(b),
-        )
-        | (
-            StringLocation::ProcessingInstructionData(a),
-            StringLocation::ProcessingInstructionData(b),
-        ) => a == b,
-        (StringLocation::AttributeName(a, x), StringLocation::AttributeName(b, y))
-        | (StringLocation::AttributeValue(a, x), StringLocation::AttributeValue(b, y))
-        | (StringLocation::AttributeNamespace(a, x), StringLocation::AttributeNamespace(b, y))
-        | (StringLocation::AttributePrefix(a, x), StringLocation::AttributePrefix(b, y)) => {
-            a == b && x == y
+        (FieldRef::ElementName(a), FieldRef::ElementName(b))
+        | (FieldRef::Namespace(a), FieldRef::Namespace(b))
+        | (FieldRef::Text(a), FieldRef::Text(b))
+        | (FieldRef::Comment(a), FieldRef::Comment(b))
+        | (FieldRef::ProcessingInstructionTarget(a), FieldRef::ProcessingInstructionTarget(b))
+        | (FieldRef::ProcessingInstructionData(a), FieldRef::ProcessingInstructionData(b)) => {
+            a == b
         }
+        (FieldRef::AttributeName(a, x), FieldRef::AttributeName(b, y))
+        | (FieldRef::AttributeValue(a, x), FieldRef::AttributeValue(b, y))
+        | (FieldRef::AttributeNamespace(a, x), FieldRef::AttributeNamespace(b, y))
+        | (FieldRef::AttributePrefix(a, x), FieldRef::AttributePrefix(b, y)) => a == b && x == y,
         _ => false,
     }
 }

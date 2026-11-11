@@ -110,7 +110,7 @@ fn hidden_input_ordered_initialization_reset_and_frozen_values_are_independent()
             RetainedPayload::HistoricalString { .. } | RetainedPayload::Retired
         )));
         if rewritten {
-            assert!(storage.payloads.values.iter().any(|p| matches!(p, RetainedPayload::String { value, origins:Some(_), location:StringLocation::Detached, .. } if value.code_units() == [65,13,66,10,67] || value.code_units() == [65,13,66])));
+            assert!(storage.payloads.values.iter().any(|p| matches!(p, RetainedPayload::String { value, origins:Some(_), location:FieldRef::Detached, .. } if value.code_units() == [65,13,66,10,67] || value.code_units() == [65,13,66])));
         }
         session.insert(&mut c, &parent, &node, None, None).unwrap();
         lexer.release(&mut c).unwrap();
@@ -2258,14 +2258,18 @@ fn hidden_input_sanitization_preserves_exact_utf16_origin_groups_and_original_ev
         .unwrap()
         .attribute_value_slot(&mut c, node.index, 0)
         .unwrap();
-    let RetainedPayload::String {
-        value,
-        origins: Some(origins),
-        ..
-    } = &session.active().unwrap().payloads.values[source_slot]
+    let RetainedPayload::String { value, .. } =
+        &session.active().unwrap().payloads.values[source_slot]
     else {
         unreachable!()
     };
+    let origins = session
+        .active()
+        .unwrap()
+        .payloads
+        .row_group(&mut c, source_slot)
+        .unwrap()
+        .expect("the attribute value has an origin group");
     assert_eq!(value.code_units(), expected);
     assert_eq!(
         session
@@ -2297,7 +2301,7 @@ fn hidden_input_sanitization_preserves_exact_utf16_origin_groups_and_original_ev
             RetainedPayload::String {
                 value,
                 origins: Some(origins),
-                location: StringLocation::Detached,
+                location: FieldRef::Detached,
                 ..
             } if value.code_units() == [0xd83d, 0xde00, 0xd800, 65, 13, 66, 10, 67] => Some(
                 session

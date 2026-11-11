@@ -101,57 +101,6 @@ fn a_refused_text_append_returns_its_operands() {
 }
 
 #[test]
-fn a_refused_attribute_edit_is_unchanged_and_aborts_to_its_storage() {
-    let (owner, target) = create(storage(), element("target"));
-    let edit = HtmlConstructionAttributeEdit::begin(
-        owner,
-        target,
-        HtmlConstructionAttributeEditMode::Slots,
-    );
-    let refusal = edit.try_finish().unwrap_err();
-    expect_not_ready(&refusal);
-    let (mut edit, _) = refusal.into_parts();
-    assert!(edit.next_action().unwrap().is_some());
-    let (storage, _plan) = edit.abort().into_parts();
-    assert_eq!(storage.len(), 1);
-}
-
-#[test]
-fn a_refused_attribute_slot_and_candidate_are_unchanged() {
-    let (owner, target) = create(storage(), element("target"));
-    let mut edit = HtmlConstructionAttributeEdit::begin(
-        owner,
-        target,
-        HtmlConstructionAttributeEditMode::Slots,
-    );
-    while let Some(action) = edit.next_action().unwrap() {
-        action.perform().unwrap().accept();
-    }
-    let slot = edit.reserve(1).unwrap();
-    let refusal = slot.try_ready().unwrap_err();
-    expect_not_ready(&refusal);
-    let (mut slot, _) = refusal.into_parts();
-    assert!(slot.next_action().unwrap().is_some());
-    drop(slot);
-    let (owner, _plan) = edit.abort().into_parts();
-
-    let mut merge = HtmlConstructionAttributeEdit::begin(
-        owner,
-        target,
-        HtmlConstructionAttributeEditMode::NamedMerge { candidate_count: 1 },
-    );
-    while let Some(action) = merge.next_action().unwrap() {
-        action.perform().unwrap().accept();
-    }
-    let name: DocumentString = "x".into();
-    let candidate = merge.candidate(0, &name).unwrap();
-    let refusal = candidate.try_finish().unwrap_err();
-    expect_not_ready(&refusal);
-    let (mut candidate, _) = refusal.into_parts();
-    assert!(candidate.next_action().unwrap().is_some());
-}
-
-#[test]
 fn a_refused_recovery_hands_back_the_result_and_the_lease() {
     let (owner, root) = fragment(storage());
     let (result, lease) = publish(owner, root);
