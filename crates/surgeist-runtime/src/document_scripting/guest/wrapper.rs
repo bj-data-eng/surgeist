@@ -6,7 +6,7 @@ pub(super) enum GuestReceiver {
     Window(DomHostedGlobalId),
     Node {
         node: surgeist_dom::NodeId,
-        fragment: Option<Rc<interfaces::FragmentLifetime>>,
+        lifetime: Option<Rc<interfaces::NodeLifetime>>,
     },
 }
 
@@ -32,7 +32,7 @@ pub(super) fn event_receiver<'scope>(
         let id = node.payload().id().ok_or(Error::RegistryConflict)?;
         return Ok(Some(GuestReceiver::Node {
             node: id.node(),
-            fragment: node.payload().fragment_lifetime(),
+            lifetime: node.payload().lifetime(),
         }));
     }
     let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;

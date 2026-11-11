@@ -156,14 +156,14 @@ impl Capture {
                     GuestReceiver::Window(_) => {
                         events.register_retained(owner, scope, key, options, observed, None)?;
                     }
-                    GuestReceiver::Node { fragment, .. } => {
+                    GuestReceiver::Node { lifetime, .. } => {
                         events.register_retained(
                             owner,
                             scope,
                             key,
                             options,
                             observed,
-                            fragment.clone(),
+                            lifetime.clone(),
                         )?;
                     }
                 }

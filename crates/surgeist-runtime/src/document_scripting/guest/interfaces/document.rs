@@ -8,7 +8,8 @@ use surgeist_html::values::DocumentString;
 const NODE: &[u16] = &ascii(b"Node");
 const DOCUMENT: &[u16] = &ascii(b"Document");
 mod fragment;
-pub(in crate::document_scripting::guest) use fragment::FragmentLifetime;
+mod ordinary;
+pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
 
 #[derive(Clone, Copy)]
 pub(in crate::document_scripting::guest) enum GuestNode {
@@ -35,7 +36,7 @@ impl GuestNode {
 
 pub(in crate::document_scripting::guest) struct GuestNodeProjection {
     node: Cell<Option<GuestNode>>,
-    fragment_lifetime: Option<Rc<FragmentLifetime>>,
+    lifetime: Option<Rc<NodeLifetime>>,
 }
 
 impl GuestNodeProjection {
@@ -43,10 +44,8 @@ impl GuestNodeProjection {
         self.node.get()
     }
 
-    pub(in crate::document_scripting::guest) fn fragment_lifetime(
-        &self,
-    ) -> Option<Rc<FragmentLifetime>> {
-        self.fragment_lifetime.clone()
+    pub(in crate::document_scripting::guest) fn lifetime(&self) -> Option<Rc<NodeLifetime>> {
+        self.lifetime.clone()
     }
 }
 
@@ -63,6 +62,7 @@ pub(super) struct DocumentBindings {
     prototype: RetainedCallbackObject,
     constructed: RefCell<Option<Box<ConstructedPin>>>,
     fragment: fragment::FragmentBindings,
+    ordinary: ordinary::OrdinaryBindings,
 }
 
 impl Drop for DocumentBindings {
@@ -88,6 +88,7 @@ enum Observation {
     String(DocumentString),
     Boolean(bool),
     Node(Option<NodeId>),
+    Document(Option<DocumentId>),
 }
 
 impl DocumentBindings {
@@ -253,14 +254,8 @@ impl DocumentBindings {
         ] {
             install_interface(scope, &global, name, interface, prototype)?;
         }
-        let fragment = fragment::FragmentBindings::install(
-            scope,
-            &node,
-            &node_constructor,
-            inbox,
-            capture,
-            fund,
-        )?;
+        let fragment =
+            fragment::FragmentBindings::install(scope, &node, &node_constructor, capture, fund)?;
         let getter = capture(size_of::<Capture>())?;
         install_getter(
             scope,
@@ -274,7 +269,7 @@ impl DocumentBindings {
             ObjectPrototype::Object(&prototype),
             GuestNodeProjection {
                 node: Cell::new(Some(GuestNode::Document(document))),
-                fragment_lifetime: None,
+                lifetime: None,
             },
             fund,
         )?;
@@ -286,6 +281,7 @@ impl DocumentBindings {
             prototype,
             constructed: RefCell::new(None),
             fragment,
+            ordinary: ordinary::OrdinaryBindings::new(inbox),
         })
     }
 
@@ -295,9 +291,19 @@ impl DocumentBindings {
         events: &GuestEvents,
         node: surgeist_dom::NodeId,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        self.open_projected(scope, events, node)?
+            .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
+    }
+
+    fn open_projected<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        events: &GuestEvents,
+        node: NodeId,
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
         events.step()?;
         if node == self.attached_id.node() {
-            return Ok(scope.open_callback_object(&self.attached)?);
+            return Ok(Some(scope.open_callback_object(&self.attached)?));
         }
         let holder = {
             let pins = self
@@ -317,13 +323,13 @@ impl DocumentBindings {
             }
         };
         match holder {
-            Some(holder) => Ok(scope.open_callback_object(&holder)?),
-            None => self.fragment.open(scope, events, node),
+            Some(holder) => Ok(Some(scope.open_callback_object(&holder)?)),
+            None => self.ordinary.open(scope, events, node),
         }
     }
 
-    pub(super) fn reap_fragments(&self, process: &mut Process, retired: &Cell<bool>) {
-        self.fragment.reap(process, retired);
+    pub(super) fn reap_nodes(&self, process: &mut Process, retired: &Cell<bool>) {
+        self.ordinary.reap(process, retired);
     }
 }
 
@@ -445,9 +451,7 @@ impl Capture {
                 Ok(match member {
                     NodeMember::Type => Observation::Number(node_type),
                     NodeMember::Name => Observation::String(node.node_name()),
-                    NodeMember::OwnerDocument => {
-                        Observation::Node(node.owner_document().map(DocumentId::node))
-                    }
+                    NodeMember::OwnerDocument => Observation::Document(node.owner_document()),
                     NodeMember::Parent => Observation::Node(node.parent()),
                     NodeMember::Connected => Observation::Boolean(node.is_connected()),
                 })
@@ -462,16 +466,57 @@ impl Capture {
                         conversion.copy_to_js(value.code_units())
                     })
                     .map_err(Error::from)?),
-                Observation::Node(None) => Ok(scope.primitive(Primitive::Null)?),
+                Observation::Node(None) | Observation::Document(None) => {
+                    Ok(scope.primitive(Primitive::Null)?)
+                }
                 Observation::Node(Some(node)) => events
                     .public
                     .as_ref()
                     .ok_or(Error::ExpiredIdentity)?
                     .document
                     .open(scope, &events, node),
+                Observation::Document(Some(document)) => {
+                    self.project_document(scope, &owner, &events, document)
+                }
             }
         })();
         complete(scope, &events, result)
+    }
+
+    fn project_document<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        document: DocumentId,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let bindings = &events
+            .public
+            .as_ref()
+            .ok_or(Error::ExpiredIdentity)?
+            .document;
+        if let Some(value) = bindings.open_projected(scope, events, document.node())? {
+            return Ok(value);
+        }
+        let prototype = scope.open_callback_object(&bindings.prototype)?;
+        bindings
+            .ordinary
+            .project(scope, owner, events, &prototype, |inbox, key| {
+                self.with_native(owner, |session, _| {
+                    let watch = session
+                        .dom()
+                        .raw_mut()
+                        .watch_node_retirement(
+                            document.node(),
+                            inbox,
+                            key,
+                            events.limits.node_retirement,
+                            &owner.cancellation,
+                        )
+                        .map_err(DocumentScriptNativeError::from)?;
+                    Ok((GuestNode::Document(document), watch))
+                })
+            })
     }
 
     fn root_node<'scope>(
@@ -555,7 +600,7 @@ impl Capture {
                 ObjectPrototype::Object(selected.prototype()),
                 GuestNodeProjection {
                     node: Cell::new(None),
-                    fragment_lifetime: None,
+                    lifetime: None,
                 },
                 |bytes| events.reserve(&owner, bytes),
             )?;

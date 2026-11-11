@@ -366,7 +366,7 @@ struct TracedListener {
 enum RegisteredListenerObject {
     Retained {
         callback: RefCell<Option<RetainedCallbackObject>>,
-        fragment: Option<Rc<interfaces::FragmentLifetime>>,
+        lifetime: Option<Rc<interfaces::NodeLifetime>>,
     },
     Traced(TracedListener),
 }
@@ -382,8 +382,8 @@ impl RegisteredGuestListener {
     pub(crate) fn target_retired(&self) -> bool {
         match &self.object {
             RegisteredListenerObject::Traced(traced) => traced.lifetime.retired.get(),
-            RegisteredListenerObject::Retained { fragment, .. } => {
-                fragment.as_ref().is_some_and(|target| target.is_retired())
+            RegisteredListenerObject::Retained { lifetime, .. } => {
+                lifetime.as_ref().is_some_and(|target| target.is_retired())
             }
         }
     }

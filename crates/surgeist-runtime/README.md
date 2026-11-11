@@ -295,8 +295,9 @@ Document and Window listeners share the native registry. Borrowed
 through a Document uses the canonical Window capture and bubble path.
 The `DocumentFragment` constructor and `Document.createDocumentFragment`
 publish ordinary native Fragments with exact retirement watches.
-Their wrappers survive collection and adoption. Native destruction releases
-the original managed wrapper and its listener registrations.
+Their wrappers survive collection and adoption. `ownerDocument` follows the
+native destination, including a Document created by the Rust host. Native
+destruction releases the original managed wrapper and its listener registrations.
 `DocumentGuestEventLimits` includes the native watch storage and work limits.
 AbortSignal and other descendant Node projections are separate capabilities.
 

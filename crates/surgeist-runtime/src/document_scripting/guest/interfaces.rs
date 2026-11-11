@@ -5,7 +5,7 @@ mod listener_methods;
 mod operations;
 
 use super::*;
-pub(super) use document::{FragmentLifetime, GuestNodeProjection};
+pub(super) use document::{GuestNodeProjection, NodeLifetime};
 use surgeist_bindings_js::{
     Arguments, ConstructorArguments, ConstructorCallback, ConstructorCompletion, FunctionMetadata,
     WellKnownSymbol,
@@ -93,8 +93,8 @@ pub(super) struct PublicEventBindings {
 }
 
 impl PublicEventBindings {
-    pub(super) fn reap_fragments(&self, process: &mut Process, retired: &Cell<bool>) {
-        self.document.reap_fragments(process, retired);
+    pub(super) fn reap_nodes(&self, process: &mut Process, retired: &Cell<bool>) {
+        self.document.reap_nodes(process, retired);
     }
 
     pub(super) fn install(
