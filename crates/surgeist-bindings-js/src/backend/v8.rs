@@ -85,6 +85,7 @@ struct Roots {
     callbacks: RefCell<BTreeMap<u32, CallbackEntry>>,
     interrupt: v8::IsolateHandle,
     dom_exception_key: v8::Global<v8::Private>,
+    declared_constructor_key: v8::Global<v8::Private>,
     cleanup_interrupt: Cell<bool>,
     // User panic payloads remain owned until teardown outside native callback
     // frames. Their arbitrary destructors follow ordinary Rust drop behavior.
@@ -260,10 +261,14 @@ impl Engine {
             .map_err(|_| Error::IdentityExhausted)?;
         let mut isolate = v8::Isolate::new(Default::default());
         isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
-        let dom_exception_key = {
+        let (dom_exception_key, declared_constructor_key) = {
             v8::scope!(let scope, &mut isolate);
-            let key = v8::Private::new(scope, None);
-            v8::Global::new(scope, key)
+            let dom_exception = v8::Private::new(scope, None);
+            let declared_constructor = v8::Private::new(scope, None);
+            (
+                v8::Global::new(scope, dom_exception),
+                v8::Global::new(scope, declared_constructor),
+            )
         };
         let roots = Rc::new(Roots {
             owner: Rc::new(OwnerState::new(owner)),
@@ -275,6 +280,7 @@ impl Engine {
             callbacks: RefCell::new(BTreeMap::new()),
             interrupt: isolate.thread_safe_handle(),
             dom_exception_key,
+            declared_constructor_key,
             cleanup_interrupt: Cell::new(false),
             panic_payloads: Cell::new(Vec::new()),
         });
@@ -658,6 +664,10 @@ impl Entered<'_, '_, '_> {
                     .build(scope)
                     .ok_or(Error::BackendUnavailable)?;
                 let handler = private_handler(scope, "construct", trap)?;
+                let key = v8::Local::new(scope, &roots.declared_constructor_key);
+                if handler.set_private(scope, key, function.into()) != Some(true) {
+                    return Err(Error::BackendUnavailable);
+                }
                 let proxy = v8::Proxy::new(scope, function.into(), handler)
                     .ok_or(Error::BackendUnavailable)?;
                 // Never expose the private target through its default prototype.
@@ -958,14 +968,20 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
-    fn is_constructor(&mut self, value: &Root) -> Result<bool, Error> {
-        self.validate_root(value)?;
+    fn qualify_window_event_target(
+        &mut self,
+        constructor: &Root,
+        prototype: &Root,
+    ) -> Result<(), Error> {
+        self.validate_root(constructor)?;
+        self.validate_root(prototype)?;
         self.attempt(
-            ExceptionPhase::Coerce,
-            |scope, roots, _realm, _intrinsics| {
-                let value = roots.local(scope, value)?;
-                Ok(v8::Local::<v8::Object>::try_from(value)
-                    .is_ok_and(|object| object.is_constructor()))
+            ExceptionPhase::PropertyRead,
+            |scope, roots, realm, _intrinsics| {
+                let constructor = roots.local(scope, constructor)?;
+                let prototype = roots.local(scope, prototype)?;
+                let key = v8::Local::new(scope, &roots.declared_constructor_key);
+                window::qualify_event_target(scope, constructor, prototype, key, realm)
             },
         )
     }

@@ -255,25 +255,11 @@ impl Execution<'_> {
                 Ok(result) => result,
                 Err(error) => return Ok(Err(error)),
             };
-            if !scope.operations.is_constructor(&parent.root)?
-                || scope
-                    .callback_object(&parent)?
-                    .associated_realm()
-                    .identity()
-                    != scope.realm_authority()?.identity()
-            {
-                return Err(Error::PropertyRejected);
-            }
+            scope
+                .operations
+                .qualify_window_event_target(&parent.root, &prototype.root)?;
             let global = scope.global()?;
-            let installed =
-                scope.get(&global, PropertyKey::String(&b"EventTarget".map(u16::from)))?;
             let prototype_key = &b"prototype".map(u16::from);
-            let parent_prototype = scope.get(&parent, PropertyKey::String(prototype_key))?;
-            if !scope.strict_equals(&installed, &parent)?
-                || !scope.strict_equals(&parent_prototype, &prototype)?
-            {
-                return Err(Error::PropertyRejected);
-            }
             let name = &b"Window".map(u16::from);
             let constructor = ConstructorCallback::bounded(
                 0,
