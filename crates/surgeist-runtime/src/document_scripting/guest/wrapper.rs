@@ -57,6 +57,17 @@ pub(super) fn event_target_value<'scope>(
             }
         }
         DomEventTarget::Node(node) => {
+            events.step()?;
+            if let Some(value) = scope.native_object_reference::<GuestEventProjection>(
+                event,
+                interfaces::EVENT_TARGET_REFERENCE,
+            )? && scope
+                .native_object::<interfaces::GuestNodeProjection>(&value)?
+                .and_then(|projection| projection.payload().id())
+                .is_some_and(|projected| projected.node() == *node)
+            {
+                return Ok(value);
+            }
             return events
                 .public
                 .as_ref()
