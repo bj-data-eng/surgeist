@@ -951,6 +951,57 @@ sources = [
         }
     }
 
+    #[test]
+    fn matching_publications_admit_the_fri06_subgrid_representative_cohort() {
+        const EDITION: &str = "fri06-subgrid-representatives";
+        const SOURCES: [&str; 3] = [
+            "html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html",
+            "html/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first.html",
+            "html/subgrid/subgrid_baseline_vertical_nested_inner_row1_first.html",
+        ];
+        const NESTED_RECORD: &str = r#"
+[[records]]
+source = "html/subgrid/subgrid_baseline_vertical_nested_inner_row1_first.html"
+source_sha256 = "9592ab1e071d1f5e84d4cba8a418a6ae44e536ac4c73f25cda75603990308896"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "e976b23604e2b6c6473180e8d8e139226e52ad4f48bde50f81295c82e566d883"
+border_box_rtl = "5dd8061c50ed882274cb8e03b3a3f93b93175064e925d72ae4b0b099b0d0a859"
+content_box_ltr = "96009d535308dff119638a571c18b70c8dbd78c5329e7248f4519f73c7b9178f"
+content_box_rtl = "dae90b2af97ce8a0fb2df9bd06081e1258b40cd60feedf3b41fa3d72f400a643"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "vertical-rl"
+root_position = "relative"
+atomic_paragraphs = 6
+grid_reference_owners = ["/", "/0", "/0/0"]
+"#;
+        let mut input = [unannotated_catalogue(), NESTED_RECORD.as_bytes()].concat();
+        Declaration::parse(&input).expect("the three original BlockFlow records must parse");
+        input.extend_from_slice(
+            format!("\n[[matching_publications]]\nedition = {EDITION:?}\nsources = {SOURCES:?}\n")
+                .as_bytes(),
+        );
+
+        let declaration = Declaration::parse(&input)
+            .expect("the three original FRI06 Subgrid sources must be admitted for matching");
+        let selected: BTreeSet<_> = declaration
+            .records
+            .iter()
+            .filter(|record| record.matching_edition() == Some(EDITION))
+            .map(|record| {
+                assert_eq!(record.source_kind, SourceKind::Original);
+                assert_eq!(record.historical_sha256.len(), 4);
+                record.source.as_str()
+            })
+            .collect();
+        assert_eq!(selected, SOURCES.into_iter().collect());
+    }
+
     const AUTHORED_MATCHING_SOURCE: &str = "html/qualification/physical-border-descendant.html";
     const ORIGINAL_MATCHING_SOURCE: &str = "html/grid/grid_fit_content_points_argument.html";
 
