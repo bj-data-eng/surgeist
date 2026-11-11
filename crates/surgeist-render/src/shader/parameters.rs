@@ -1022,10 +1022,196 @@ mod surface_grid_parameter_tests {
 #[cfg(test)]
 mod accounting_tests {
     use super::*;
+    use crate::accounting::{FrameFixture, RendererCpu};
+    use crate::filter::RuntimeUnitFilterAmount;
     use crate::{
-        GlyphRunLimits, RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind,
-        RenderAttemptStatus, RenderLimits,
+        GlyphRunLimits, RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
+        RenderAttemptKind, RenderAttemptStatus, RenderChangeKind, RenderCpuEvent, RenderCpuScope,
+        RenderEvent, RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity,
+        RenderRefusal, RenderRefusalReason, UnitFilterAmount,
     };
+
+    fn ordered_color_operations() -> [RuntimeColorOperation; 2] {
+        let unit = |value| {
+            RuntimeUnitFilterAmount::try_from_algorithm(UnitFilterAmount::try_new(value).unwrap())
+                .unwrap()
+        };
+        [
+            RuntimeColorOperation::for_test(RuntimeColorOperationKind::Invert(unit(0.25))),
+            RuntimeColorOperation::for_test(RuntimeColorOperationKind::Opacity(unit(0.75))),
+        ]
+    }
+
+    #[test]
+    fn color_filter_serialization_writes_exact_header_and_ordered_records() {
+        // WGSL wire words in little-endian order: count and header padding,
+        // then tag, zero flag, exponent, alignment and four payload words.
+        const EMPTY: [u32; 4] = [0, 0, 0, 0];
+        const ONE: [u32; 12] = [1, 0, 0, 0, 4, 0, 0, 0, 0x3e80_0000, 0, 0, 0];
+        const TWO: [u32; 20] = [
+            2,
+            0,
+            0,
+            0,
+            4,
+            0,
+            0,
+            0,
+            0x3e80_0000,
+            0,
+            0,
+            0,
+            5,
+            0,
+            0,
+            0,
+            0x3f40_0000,
+            0,
+            0,
+            0,
+        ];
+        let operations = ordered_color_operations();
+        let account = Account::for_test();
+        for (source, expected) in [
+            (&operations[..0], EMPTY.as_slice()),
+            (&operations[..1], ONE.as_slice()),
+            (operations.as_slice(), TWO.as_slice()),
+        ] {
+            let bytes = ColorFilterOperationBytes::try_from_runtime_operations_with_limits(
+                &account,
+                source,
+                ColorFilterOperationBufferLimits::for_test(80, 80),
+            )
+            .unwrap();
+            let expected = expected
+                .iter()
+                .flat_map(|word| word.to_le_bytes())
+                .collect::<Vec<_>>();
+            assert_eq!(bytes.as_bytes(), expected, "{} records", source.len());
+        }
+    }
+
+    #[test]
+    fn color_filter_serialization_respects_exact_work_prefix_and_backing_custody() {
+        use RenderWork::{FilterOperationVisits, SerializedBytes};
+
+        let operations = ordered_color_operations();
+        let phase = RenderPhase::GpuPrepare;
+        let retained = RenderResource::RetainedCpuBytes;
+        let owner_scope = RenderCpuScope::FrameBacking;
+        // The header admits 16 bytes. Each operation admits one visit before
+        // its 32 bytes. The refusal tuple is (current usage, requested work).
+        for (work, limit, bytes, visits, refusal) in [
+            (SerializedBytes, 15, 0, 0, Some((0, 16))),
+            (SerializedBytes, 16, 16, 1, Some((16, 32))),
+            (SerializedBytes, 48, 48, 2, Some((48, 32))),
+            (SerializedBytes, 80, 80, 2, None),
+            (FilterOperationVisits, 0, 16, 0, Some((0, 1))),
+            (FilterOperationVisits, 1, 48, 1, Some((1, 1))),
+            (FilterOperationVisits, 2, 80, 2, None),
+        ] {
+            let limits = RenderLimits::new().with_work_limit(work, limit).unwrap();
+            let options = RenderAccountingOptions::new()
+                .with_limits(limits)
+                .with_profile(RenderProfile::Detailed {
+                    timing: false,
+                    event_limit: 64,
+                    filter: RenderPhaseFilter::All,
+                });
+            let cpu = RendererCpu::new(options).unwrap();
+            let (result, started, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let account = attempt.account().at(phase);
+                    account.phase(phase, || {
+                        ColorFilterOperationBytes::try_from_runtime_operations_with_limits(
+                            &account,
+                            &operations,
+                            ColorFilterOperationBufferLimits::for_test(80, 80),
+                        )
+                    })
+                })
+                .unwrap()
+                .into_parts();
+            assert!(started);
+            assert_eq!(fault, None);
+
+            let attempt = report.attempt().unwrap();
+            let usage = attempt.phase_usage(phase);
+            assert_eq!(usage.work(SerializedBytes), bytes, "{work:?} cap {limit}");
+            assert_eq!(
+                usage.work(FilterOperationVisits),
+                visits,
+                "{work:?} cap {limit}"
+            );
+
+            let cpu_interval = report.renderer_cpu().unwrap();
+            let backing = cpu_interval.scope_usage(owner_scope);
+            let opening = backing.opening_live(retained);
+            let changes = cpu_interval.events().filter_map(|event| match event {
+                RenderCpuEvent::Change {
+                    scope,
+                    quantity: RenderQuantity::Resource(resource),
+                    amount,
+                    kind,
+                    ..
+                } if scope == owner_scope && resource == retained => Some((kind, amount)),
+                _ => None,
+            });
+            let changes = changes.collect::<Vec<_>>();
+            if let Some((current, amount)) = refusal {
+                let refusal = RenderRefusal {
+                    phase: RenderPhase::Attempt,
+                    quantity: RenderQuantity::Work(work),
+                    current,
+                    amount,
+                    reason: RenderRefusalReason::Limit { limit },
+                };
+                let diagnostic = Some(RenderAccountingError::Refused(refusal));
+                assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
+                assert_eq!(attempt.refusal(), Some(refusal));
+                assert_eq!(report.accounting_diagnostic(), diagnostic);
+                assert_eq!(result.unwrap_err().accounting_diagnostic(), diagnostic);
+                assert!(attempt.events().any(|event| matches!(
+                    event,
+                    RenderEvent::Refused { phase: origin, .. } if origin == phase
+                )));
+                let allocated = backing.peak(retained) - opening;
+                assert!(allocated >= 80);
+                assert_eq!(backing.live(retained), opening);
+                assert_eq!(
+                    changes,
+                    [
+                        (RenderChangeKind::Acquire, allocated),
+                        (RenderChangeKind::Release, allocated),
+                    ]
+                );
+            } else {
+                assert_eq!(attempt.status(), RenderAttemptStatus::Succeeded);
+                assert_eq!(attempt.refusal(), None);
+                let bytes = result.unwrap();
+                assert_eq!(bytes.as_bytes().len(), 80);
+                let capacity = bytes.bytes.capacity() as u64;
+                let owner = SharedValue::<Vec<u8>>::allocation_size_for_test() as u64;
+                assert_eq!(backing.live(retained), opening + capacity + owner);
+                assert_eq!(backing.peak(retained), backing.live(retained));
+                assert_eq!(
+                    changes,
+                    [
+                        (RenderChangeKind::Acquire, capacity),
+                        (RenderChangeKind::Acquire, owner),
+                    ]
+                );
+                drop(bytes);
+            }
+
+            let after = cpu.snapshot().unwrap();
+            assert_eq!(
+                after.scope_usage(owner_scope).unwrap().live(retained),
+                opening
+            );
+            assert_eq!(after.fault(), None);
+        }
+    }
 
     #[test]
     fn exact_color_records_preserve_content_and_charge_only_reached_comparisons() {
