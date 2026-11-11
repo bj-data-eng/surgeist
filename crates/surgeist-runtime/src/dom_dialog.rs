@@ -4,9 +4,9 @@
 //! caller-selected domains. This owner neither runs the Dialog tail nor owns a
 //! second canonical operation, listener registry or task loop.
 use crate::dom_event::{
-    DomEventDispatchError, DomEventDispatchLimits, DomEventDispatchOutcome,
-    DomEventDispatchReceipt, DomEventDispatcher, DomEventDom, DomEventType, NativeDomEvent,
-    NativeDomEventOwner,
+    DispatchCall, DispatchFunding, DomEventDispatchError, DomEventDispatchLimits,
+    DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
+    DomEventType, NativeDomEvent, NativeDomEventOwner,
 };
 use std::{
     cell::RefCell,
@@ -120,28 +120,9 @@ struct Job {
     request: DomSourceEventRequest,
     event: NativeDomEventOwner,
     phase: Phase,
-    // Reserved before kernel entry, including callbacks which can add jobs.
-    payload_reserved: usize,
-    // The canonical custody bank owns the affine scope body. This separate
-    // Source reservation contains only the event adapter's own payload.
-    source_payload_reserved: usize,
-    // Every represented value above drops before its original Source debit.
-    retained: DomSourceEventRetention,
-}
-impl Job {
-    fn payload_bytes(&self) -> Result<usize, DomSourceEventRuntimeError> {
-        let receipt = match &self.phase {
-            Phase::Delivered { receipt, .. } => receipt.retained_backing_bytes(),
-            _ => 0,
-        };
-        self.event
-            .retained_payload_bytes()
-            .and_then(|bytes| bytes.checked_add(receipt))
-            .map(|bytes| bytes.max(self.payload_reserved))
-            .ok_or(DomSourceEventRuntimeError::Admission(
-                DomSourceEventResource::StorageBytes,
-            ))
-    }
+    // The original Source receipt for the job header only. Event bodies and
+    // dispatch backing carry their own transferred receipts.
+    _retained: DomSourceEventRetention,
 }
 struct State {
     owner: DomOwnerId,
@@ -198,18 +179,9 @@ impl State {
         while let Some(job) = cursor {
             self.step(1, cancel)?;
             let row = job.borrow();
-            let payload = row
-                .payload_bytes()?
-                .checked_sub(NativeDomEventOwner::initial_payload_bytes().ok_or(
-                    DomSourceEventRuntimeError::Admission(DomSourceEventResource::StorageBytes),
-                )?)
-                .ok_or(DomSourceEventRuntimeError::Protocol)?;
-            bytes = bytes
-                .checked_add(size_of::<RefCell<Job>>())
-                .and_then(|bytes| bytes.checked_add(payload))
-                .ok_or(DomSourceEventRuntimeError::Admission(
-                    DomSourceEventResource::StorageBytes,
-                ))?;
+            bytes = bytes.checked_add(size_of::<RefCell<Job>>()).ok_or(
+                DomSourceEventRuntimeError::Admission(DomSourceEventResource::StorageBytes),
+            )?;
             cursor = row.next.clone();
         }
         Ok(bytes)
@@ -330,9 +302,7 @@ impl State {
                 }
             },
             phase: Phase::Ready,
-            payload_reserved: payload,
-            source_payload_reserved: payload,
-            retained,
+            _retained: retained,
         }));
         if let Some(tail) = lookup.previous {
             tail.borrow_mut().next = Some(job.clone());
@@ -585,35 +555,25 @@ impl SourceEventRuntime {
         let job = original.borrow_mut().job(dom.raw(), request, cancel)?;
         let delivered = matches!(job.borrow().phase, Phase::Delivered { .. });
         if !delivered {
-            let (event, scope) = {
+            let (event, scope, funding) = {
                 let mut state = original.borrow_mut();
                 state.step(1, cancel)?;
-                let formation = job
-                    .borrow()
-                    .event
-                    .dispatch_formation(limits.dispatch)
-                    .ok_or(DomSourceEventRuntimeError::Admission(
-                        DomSourceEventResource::StorageBytes,
-                    ))?;
-                let maximum = formation.full;
-                let source_maximum = formation.source;
-                let previous = job.borrow().payload_reserved;
-                if maximum > previous {
-                    state.admit(maximum - previous, cancel)?;
-                }
-                let source_previous = job.borrow().source_payload_reserved;
-                if source_maximum > source_previous {
-                    let retained = dom.raw().retain_source_event_payload(
-                        request,
-                        source_maximum - source_previous,
-                        0,
-                        cancel,
-                    )?;
-                    let mut row = job.borrow_mut();
-                    row.retained.absorb(retained)?;
-                    row.source_payload_reserved = source_maximum;
-                }
-                job.borrow_mut().payload_reserved = maximum.max(previous);
+                let formation = {
+                    let row = job.borrow();
+                    if row.event.is_abandoned() {
+                        return Err(DomSourceEventRuntimeError::Dispatch(
+                            dispatcher.abandoned_dispatch_error(dom.raw()),
+                        ));
+                    }
+                    row.event.dispatch_formation(limits.dispatch).ok_or(
+                        DomSourceEventRuntimeError::Admission(DomSourceEventResource::StorageBytes),
+                    )?
+                };
+                state.admit(formation.full, cancel)?;
+                let retained =
+                    dom.raw()
+                        .retain_source_event_payload(request, formation.source, 0, cancel)?;
+                let funding = DispatchFunding::source(&state.body_bytes, retained, formation);
                 if matches!(job.borrow().phase, Phase::Ready) {
                     let permit = state.executor.begin_dispatch(dom.raw(), request, cancel)?;
                     job.borrow_mut().phase = Phase::Dispatching {
@@ -628,28 +588,21 @@ impl SourceEventRuntime {
                     return Err(DomSourceEventRuntimeError::Protocol);
                 };
                 let scope = state.executor.enter_dispatch(dom.raw(), permit, cancel)?;
-                (std::ops::Deref::deref(&row.event).clone(), scope)
+                (std::ops::Deref::deref(&row.event).clone(), scope, funding)
             };
-            let outcome = if event.has_started() {
-                dispatcher.resume_with_host(
+            let outcome = dispatcher
+                .deliver(
                     dom.raw_mut(),
                     context,
                     &event,
-                    limits.dispatch,
-                    cancel,
-                    true,
+                    DispatchCall {
+                        limits: limits.dispatch,
+                        cancel,
+                        host: true,
+                        funding,
+                    },
                 )
-            } else {
-                dispatcher.dispatch_with_host(
-                    dom.raw_mut(),
-                    context,
-                    &event,
-                    limits.dispatch,
-                    cancel,
-                    true,
-                )
-            }
-            .map_err(DomSourceEventRuntimeError::Dispatch)?;
+                .map_err(DomSourceEventRuntimeError::Dispatch)?;
             if let DomEventDispatchOutcome::HostInvocation(invocation) = &outcome {
                 invocation
                     .retain_source_scope(scope)
@@ -745,9 +698,10 @@ impl SourceEventRuntime {
             state.jobs = next;
         }
         let phase = std::mem::replace(&mut job.borrow_mut().phase, Phase::Ready);
-        let Phase::Delivered { receipt, .. } = phase else {
+        let Phase::Delivered { mut receipt, .. } = phase else {
             unreachable!();
         };
+        receipt.release_producer_retention();
         Ok(DomSourceEventServiceProgress::Serviced { receipt })
     }
 }
@@ -891,9 +845,11 @@ mod payload_tests {
             let actual = job.borrow().event.retained_payload_bytes().unwrap();
             size_of::<RefCell<State>>()
                 + DomSourceEventExecutor::binding_payload_bytes()
+                + size_of::<std::cell::Cell<usize>>()
                 + size_of::<RefCell<Job>>()
                 + actual
-                + (LISTENERS - 1) * size_of::<DomEventListenerFailure>()
+                + size_of::<Vec<DomEventListenerFailure>>()
+                + LISTENERS * size_of::<DomEventListenerFailure>()
         };
         let tight = required - 1;
         let (mut dom, owner, runtime, mut dispatcher, request) = fixture(tight);
@@ -967,7 +923,7 @@ mod payload_tests {
                 &DomEventDom::borrow(&mut dom),
                 DomSourceEventRuntimeLimits {
                     jobs: 1,
-                    storage_bytes: required + LISTENERS * size_of::<DomEventListenerFailure>(),
+                    storage_bytes: required,
                     work: 1_000_000,
                 },
                 &cancel,

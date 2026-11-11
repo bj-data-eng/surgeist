@@ -229,7 +229,6 @@ impl DomStyleRuntime {
                     delivery: Delivery::NotStarted,
                     delivery_publication: None,
                     running: false,
-                    dispatch_reserved: 0,
                     token,
                 };
                 let id = task.id();

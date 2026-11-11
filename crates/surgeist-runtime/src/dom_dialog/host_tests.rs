@@ -133,7 +133,10 @@ fn completed_source_body_custody_covers_host_event_and_index_observers_once() {
         let event = invocation.event().clone();
         let (live, event_body, continuation_body) = event.inspect_fixed_body_storage();
         let counter_body = std::mem::size_of_val(live.as_ref());
-        assert_eq!(live.get(), counter_body + event_body + continuation_body);
+        assert_eq!(
+            live.get(),
+            counter_body + event_body + continuation_body + event.inspect_active_dispatch_bytes()
+        );
         event.prevent_default();
         invocation.complete(&dispatcher, Ok(())).unwrap();
         let DomSourceEventServiceProgress::Serviced { receipt } =

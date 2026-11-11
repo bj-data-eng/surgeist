@@ -232,7 +232,43 @@ pub struct DomSourceEventRetention {
     pub(crate) bytes: usize,
     pub(crate) units: usize,
 }
+/// The original event's admitted payload charge, independent of the event's
+/// work, request, and execution scope. Drop the backing before this receipt.
+#[derive(Debug)]
+pub struct DomSourceEventPayloadRetention {
+    _debit: crate::store::custody::Debit,
+}
 impl DomSourceEventRetention {
+    /// Transfer an admitted subextent to backing that can outlive the
+    /// original event's work. The canonical storage debit remains live while
+    /// the transferred portion leaves the request's diagnostic mirrors.
+    pub fn split_payload(
+        &mut self,
+        bytes: usize,
+        units: usize,
+    ) -> Result<DomSourceEventPayloadRetention, DomError> {
+        let remaining_bytes = self
+            .bytes
+            .checked_sub(bytes)
+            .ok_or(DomError::RepresentationExhausted)?;
+        let remaining_units = self
+            .units
+            .checked_sub(units)
+            .ok_or(DomError::RepresentationExhausted)?;
+        let custody = self
+            .custody
+            .as_mut()
+            .ok_or(DomError::InvalidSourceEvent)?
+            .split(crate::store::custody::Usage::new(bytes, units))?;
+        self.bytes = remaining_bytes;
+        self.units = remaining_units;
+        self.work.bytes.fetch_sub(bytes, Ordering::Relaxed);
+        self.work.units.fetch_sub(units, Ordering::Relaxed);
+        Ok(DomSourceEventPayloadRetention {
+            _debit: custody.into_payload_debit(),
+        })
+    }
+
     /// Transfer a checked resource subextent from this same original request.
     /// This grants no dispatch, publication or Source execution permission.
     pub fn split(&mut self, bytes: usize, units: usize) -> Result<Self, DomError> {

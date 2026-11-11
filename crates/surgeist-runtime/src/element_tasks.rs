@@ -6,8 +6,9 @@
 //! leave a reentrantly queued task untracked. Dropping this owner abandons its
 //! remaining tasks; it never reports those tasks as delivered.
 use crate::dom_event::{
-    DomEventDispatchError, DomEventDispatchLimits, DomEventDispatchOutcome,
-    DomEventDispatchReceipt, DomEventDispatcher, DomEventDom, NativeDomEvent, NativeDomEventOwner,
+    DispatchCall, DispatchFunding, DomEventDispatchError, DomEventDispatchLimits,
+    DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
+    NativeDomEvent, NativeDomEventOwner,
 };
 use std::cell::{Cell, RefCell};
 use std::fmt;
@@ -371,22 +372,6 @@ impl TaskPayload {
         self.source = source;
         other.full = 0;
         other.source = 0;
-        Ok(())
-    }
-    pub(crate) fn shrink(
-        &mut self,
-        full: usize,
-        source: usize,
-    ) -> Result<(), DomElementTaskRuntimeError> {
-        let remove_full = self
-            .full
-            .checked_sub(full)
-            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
-        let remove_source = self
-            .source
-            .checked_sub(source)
-            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
-        drop(self.split(remove_full, remove_source)?);
         Ok(())
     }
 }
@@ -1222,12 +1207,14 @@ enum PreparedEvent {
     Dispatch(
         NativeDomEvent,
         Option<surgeist_dom::DomSourceEventDispatchGuard>,
+        DispatchFunding,
     ),
 }
 impl ElementTaskState {
-    fn prepare_event(
+    fn prepare_event<C>(
         &mut self,
         dom: &mut DomEventDom<'_>,
+        dispatcher: &DomEventDispatcher<C>,
         value: DomElementTask,
         limits: DomElementTaskRunLimits,
         cancel: &AtomicBool,
@@ -1306,21 +1293,29 @@ impl ElementTaskState {
                     .map_err(DomElementTaskRuntimeError::Dom)?,
             );
         }
-        let previous = self.tasks[index]
-            .event
-            .as_ref()
-            .map_or((0, 0), NativeDomEventOwner::element_task_extent);
-        let formation = self.tasks[index]
-            .event
-            .as_ref()
-            .map_or_else(
-                || NativeDomEventOwner::fresh_dispatch_formation(limits.dispatch),
-                |event| event.dispatch_formation(limits.dispatch),
+        let (formation, fixed) = if let Some(event) = &self.tasks[index].event {
+            if event.is_abandoned() {
+                return Err(DomElementTaskRuntimeError::Dispatch(
+                    dispatcher.abandoned_dispatch_error(dom.raw()),
+                ));
+            }
+            (event.dispatch_formation(limits.dispatch), 0)
+        } else {
+            (
+                NativeDomEventOwner::fresh_dispatch_formation(limits.dispatch),
+                NativeDomEventOwner::initial_payload_bytes()
+                    .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?,
             )
+        };
+        let formation = formation.ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        let extra = formation
+            .full
+            .checked_add(fixed)
             .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
-        let maximum = formation.full.max(previous.0);
-        let source_maximum = formation.source.max(previous.1);
-        let extra = maximum - previous.0;
+        let source_bytes = formation
+            .source
+            .checked_add(fixed)
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
         if self
             .byte_total(0, 0, 0)?
             .checked_add(extra)
@@ -1329,14 +1324,10 @@ impl ElementTaskState {
             return Err(DomElementTaskRuntimeError::Admission);
         }
         let retained = source
-            .retain_payload(dom.raw_mut(), source_maximum - previous.1, cancel)
+            .retain_payload(dom.raw_mut(), source_bytes, cancel)
             .map_err(DomElementTaskRuntimeError::Dom)?;
-        let mut retained = TaskPayload::new(
-            self.payload_bytes.clone(),
-            extra,
-            source_maximum - previous.1,
-            retained,
-        )?;
+        let mut retained =
+            TaskPayload::new(self.payload_bytes.clone(), extra, source_bytes, retained)?;
         let task = &mut self.tasks[index];
         if task.event.is_none() {
             let backing = crate::dom_event::EventBodyCustody::element(&mut retained)?;
@@ -1359,23 +1350,24 @@ impl ElementTaskState {
             .event
             .as_ref()
             .ok_or(DomElementTaskRuntimeError::Binding)?;
-        event.retain_element_task(retained);
         let scope = if let Some(request) = &task.request {
             let Some(events) = self.events.as_ref() else {
-                event.settle_element_task();
                 return Err(DomElementTaskRuntimeError::Binding);
             };
             match events.task_dispatch_scope(dom, request, &mut task.permit, cancel) {
                 Ok(scope) => Some(scope),
                 Err(error) => {
-                    event.settle_element_task();
                     return Err(DomElementTaskRuntimeError::SourceEvent(error));
                 }
             }
         } else {
             None
         };
-        Ok(PreparedEvent::Dispatch((**event).clone(), scope))
+        Ok(PreparedEvent::Dispatch(
+            (**event).clone(),
+            scope,
+            DispatchFunding::element(retained),
+        ))
     }
     fn finish_dialog_event(
         &mut self,
@@ -1558,28 +1550,27 @@ impl DomElementTaskRuntime {
         let result = (|| {
             let prepared = {
                 let mut owner = state.borrow_mut();
-                owner.prepare_event(dom, value, limits, cancel)?
+                owner.prepare_event(dom, dispatcher, value, limits, cancel)?
             };
-            let (event, scope) = match prepared {
+            let (event, _scope, funding) = match prepared {
                 PreparedEvent::Destroyed => return Ok(ElementTaskStep::Destroyed),
                 PreparedEvent::Delivered => return Ok(ElementTaskStep::Complete),
-                PreparedEvent::Dispatch(event, scope) => (event, scope),
+                PreparedEvent::Dispatch(event, scope, funding) => (event, scope, funding),
             };
-            let _scope = scope;
-            let outcome = if event.has_started() {
-                dispatcher.resume(dom.raw_mut(), context, &event, limits.dispatch, cancel)
-            } else {
-                dispatcher.dispatch(dom.raw_mut(), context, &event, limits.dispatch, cancel)
-            };
+            let outcome = dispatcher
+                .deliver(
+                    dom.raw_mut(),
+                    context,
+                    &event,
+                    DispatchCall {
+                        limits: limits.dispatch,
+                        cancel,
+                        host: false,
+                        funding,
+                    },
+                )
+                .map_err(DomElementTaskRuntimeError::Dispatch)?;
             let mut owner = state.borrow_mut();
-            owner
-                .tasks
-                .iter()
-                .find(|task| task.value.id() == value.id())
-                .and_then(|task| task.event.as_ref())
-                .expect("original actual event owner")
-                .settle_element_task();
-            let outcome = outcome.map_err(DomElementTaskRuntimeError::Dispatch)?;
             let task = owner
                 .tasks
                 .iter_mut()
@@ -1640,7 +1631,7 @@ impl DomElementTaskRuntime {
                 if let Some(mut receipt) = task.receipt.take() {
                     // Ordinary caller output transfer ends product ownership of
                     // diagnostic failure backing; shared Event/Path stay charged.
-                    receipt.release_element_task_retention();
+                    receipt.release_producer_retention();
                     Ok(DomElementTaskProgress::Complete {
                         task: value,
                         receipt,

@@ -1,6 +1,6 @@
 //! Actual frozen-path and failure-replacement admission under changed retry policy.
 use super::*;
-use std::mem::{size_of, size_of_val};
+use std::mem::size_of;
 
 fn retained_failure() -> (
     Ordinary,
@@ -62,35 +62,21 @@ fn retry() -> DomEventDispatchLimits {
 #[test]
 fn lowered_path_policy_keeps_actual_frozen_storage_and_admits_failure_bank_overlap() {
     let (mut fixture, mut dispatcher, event, mut calls) = retained_failure();
-    let (expected_source, scope_bytes) = {
+    {
         let continuation = event._custody.borrow();
         let dispatch = continuation.as_ref().unwrap();
         assert_eq!(dispatch.path.capacity(), 12);
         assert_eq!(dispatch.snapshot.as_ref().unwrap().capacity(), 4);
         assert_eq!(dispatch.failures.capacity(), 1);
         assert_eq!(dispatch.failures.len(), 1);
-        // These are separate simultaneously owned occurrences: event/control
-        // bodies, frozen shared path and backing, retained snapshot backing,
-        // old failure backing, and the prepared replacement owner/backing.
-        // Vec fields already inline in Dispatch/EventPath are not added again.
-        let old_live = size_of_val(event.event.0.as_ref())
-            + size_of_val(event.event.1.as_ref())
-            + size_of_val(event._custody.as_ref())
-            + size_of_val(event._body.as_ref())
-            + size_of_val(dispatch.path.as_ref())
-            + dispatch.path.capacity() * size_of::<PathItem>()
-            + dispatch.snapshot.as_ref().unwrap().capacity() * size_of::<DomEventRegistrationId>()
-            + dispatch.failures.capacity() * size_of::<DomEventListenerFailure>();
-        let replacement =
-            size_of::<Vec<DomEventListenerFailure>>() + 4 * size_of::<DomEventListenerFailure>();
-        (
-            old_live + replacement,
-            dispatch.association_custody.retained_bytes(),
-        )
-    };
+    }
+    // The old banks and scope remain charged while a whole replacement is
+    // formed. Only its independent header and backing need additional funding.
+    let replacement =
+        size_of::<Vec<DomEventListenerFailure>>() + 4 * size_of::<DomEventListenerFailure>();
     let formation = event.dispatch_formation(retry()).unwrap();
-    assert_eq!(formation.source, expected_source);
-    assert_eq!(formation.full, expected_source + scope_bytes);
+    assert_eq!(formation.source, replacement);
+    assert_eq!(formation.full, replacement);
     let receipt = complete(
         dispatcher
             .resume(

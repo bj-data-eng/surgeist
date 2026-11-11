@@ -29,8 +29,8 @@ pub use withdrawal::{
 };
 
 use crate::dom_event::{
-    DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
-    DomEventDom, NativeDomEvent, NativeDomEventOwner,
+    DispatchCall, DispatchFunding, DomEventDispatchLimits, DomEventDispatchOutcome,
+    DomEventDispatchReceipt, DomEventDispatcher, DomEventDom, NativeDomEvent, NativeDomEventOwner,
 };
 use std::sync::{
     Arc,
@@ -353,7 +353,6 @@ struct Task {
     delivery: Delivery,
     delivery_publication: Option<surgeist_dom::DomParsedHtmlStyleDeliveryPublication>,
     running: bool,
-    dispatch_reserved: usize,
     // Any original admission carried by this token outlives represented task,
     // delivery and processing graphs on ordinary Drop and target retirement.
     token: DomStyleNotificationToken,
@@ -800,25 +799,6 @@ impl StyleState {
             }
             if !counted {
                 add(&mut bytes, size_of::<DomStyleCssomRoot>())?;
-            }
-            let Some(task) = completion.as_task() else {
-                continue;
-            };
-            match &task.delivery {
-                Delivery::NotStarted => {}
-                Delivery::Dispatching(event) => add(
-                    &mut bytes,
-                    event
-                        .retained_payload_bytes()
-                        .ok_or(DomStyleRuntimeError::Admission)?
-                        .max(task.dispatch_reserved)
-                        .checked_sub(
-                            NativeDomEventOwner::initial_payload_bytes()
-                                .ok_or(DomStyleRuntimeError::Admission)?,
-                        )
-                        .ok_or(DomStyleRuntimeError::Admission)?,
-                )?,
-                Delivery::Delivered(receipt) => add(&mut bytes, receipt.retained_backing_bytes())?,
             }
         }
         for stage in self.staged.iter().chain(candidate) {
@@ -1305,7 +1285,6 @@ impl StyleState {
                         delivery: Delivery::NotStarted,
                         delivery_publication: None,
                         running: false,
-                        dispatch_reserved: 0,
                     };
                     self.completions.push(if imports {
                         Completion::Waiting(task)
@@ -2556,30 +2535,38 @@ impl DomStyleRuntime {
                         }
                     };
                     if let Some(event) = event {
-                        {
-                            let mut state = original.borrow_mut();
+                        let funding = {
+                            let state = original.borrow();
                             let index = state.task_index(id)?;
-                            let previous = state.completions[index].task().dispatch_reserved;
                             let Delivery::Dispatching(owner) =
                                 &state.completions[index].task().delivery
                             else {
-                                unreachable!("actual retained event")
+                                return Err(DomStyleRuntimeError::Protocol);
                             };
+                            if owner.is_abandoned() {
+                                return Err(DomStyleRuntimeError::Dispatch(
+                                    dispatcher.abandoned_dispatch_error(dom.raw()),
+                                ));
+                            }
                             let formation = owner
                                 .dispatch_formation(limits)
                                 .ok_or(DomStyleRuntimeError::Admission)?;
-                            state.completions[index].task_mut().dispatch_reserved = formation.full;
-                            if let Err(error) = state.admit(0, cancel) {
-                                state.completions[index].task_mut().dispatch_reserved = previous;
-                                return Err(error);
-                            }
-                        }
-                        let outcome = if event.has_started() {
-                            dispatcher.resume(dom.raw_mut(), context, &event, limits, cancel)
-                        } else {
-                            dispatcher.dispatch(dom.raw_mut(), context, &event, limits, cancel)
-                        }
-                        .map_err(DomStyleRuntimeError::Dispatch)?;
+                            state.admit(formation.full, cancel)?;
+                            DispatchFunding::style(&state.body_bytes, formation.full)
+                        };
+                        let outcome = dispatcher
+                            .deliver(
+                                dom.raw_mut(),
+                                context,
+                                &event,
+                                DispatchCall {
+                                    limits,
+                                    cancel,
+                                    host: false,
+                                    funding,
+                                },
+                            )
+                            .map_err(DomStyleRuntimeError::Dispatch)?;
                         match outcome {
                             DomEventDispatchOutcome::Complete(receipt) => {
                                 let mut state = original.borrow_mut();
@@ -2724,10 +2711,11 @@ impl DomStyleRuntime {
                         let Completion::Queued(task) = state.completions.remove(index) else {
                             unreachable!("prequalified queued cleanup")
                         };
-                        let Delivery::Delivered(receipt) = task.delivery else {
+                        let Delivery::Delivered(mut receipt) = task.delivery else {
                             unreachable!("prequalified delivered cleanup")
                         };
                         drop(cleanup);
+                        receipt.release_producer_retention();
                         return Ok(DomStyleNetworkingProgress::Complete { task: id, receipt });
                     }
                     drop(cleanup);
@@ -2745,9 +2733,10 @@ impl DomStyleRuntime {
                         Completion::Queued(task) => task,
                         Completion::ParsedProcessing(_) | Completion::Waiting(_) => unreachable!(),
                     };
-                    let Delivery::Delivered(receipt) = task.delivery else {
+                    let Delivery::Delivered(mut receipt) = task.delivery else {
                         unreachable!()
                     };
+                    receipt.release_producer_retention();
                     return Ok(DomStyleNetworkingProgress::Complete { task: id, receipt });
                 }
             }
@@ -2789,7 +2778,6 @@ impl Drop for StyleTaskRunning {
             .find(|entry| entry.as_task().is_some_and(|task| task.id() == self.id))
         {
             entry.task_mut().running = false;
-            entry.task_mut().dispatch_reserved = 0;
         }
     }
 }

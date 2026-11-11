@@ -5,6 +5,48 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{DocumentId, DomBatch, DomCommit, DomLimits, Namespace};
 
 impl<C> DomEventDispatcher<C> {
+    fn dispatch(
+        &mut self,
+        dom: &mut Dom,
+        context: &mut C,
+        event: &NativeDomEvent,
+        limits: DomEventDispatchLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        self.start_dispatch(
+            dom,
+            context,
+            event,
+            DispatchCall {
+                limits,
+                cancel,
+                host: false,
+                funding: DispatchFunding(Funding::Fixture),
+            },
+        )
+    }
+
+    fn resume(
+        &mut self,
+        dom: &mut Dom,
+        context: &mut C,
+        event: &NativeDomEvent,
+        limits: DomEventDispatchLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        self.continue_dispatch(
+            dom,
+            context,
+            event,
+            DispatchCall {
+                limits,
+                cancel,
+                host: false,
+                funding: DispatchFunding(Funding::Fixture),
+            },
+        )
+    }
+
     pub(crate) fn inspect_pending_index_bytes(&self) -> usize {
         self.pending.capacity() * std::mem::size_of::<ContinuationObservation>()
     }
@@ -65,17 +107,44 @@ impl NativeDomEvent {
             self.inspect_continuation_body_bytes(),
         )
     }
+
+    pub(crate) fn inspect_active_dispatch_bytes(&self) -> usize {
+        let custody = self.0.continuation.upgrade().unwrap();
+        let retained = custody.dispatch.borrow();
+        let dispatch = retained.as_ref().unwrap();
+        let (_, path) = manipulation_observation_layout(self, &self.composed_path());
+        let snapshot = dispatch.snapshot.as_ref().unwrap();
+        path + snapshot.capacity() * std::mem::size_of::<DomEventRegistrationId>()
+            + dispatch.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>()
+            + dispatch.association_custody.retained_bytes()
+    }
+}
+
+impl NativeDomEventOwner {
+    pub(crate) fn inspect_element_task_source_bytes(&self) -> usize {
+        let mut source = EventBodyCustody::event_bytes() + EventBodyCustody::continuation_bytes();
+        if let Some(dispatch) = self._custody.borrow().as_ref() {
+            let Funding::Element(retained) = &dispatch.funding.0 else {
+                panic!("actual Element dispatch receipt")
+            };
+            let PathFunding::Element { _retained: path } = &dispatch.path._funding else {
+                panic!("actual Element path receipt")
+            };
+            source += retained.source() + path.source();
+        }
+        source
+    }
 }
 
 impl DomEventComposedPath {
     pub(crate) fn inspect_element_task_source_bytes(&self) -> usize {
-        self.path
-            .as_ref()
-            .unwrap()
-            ._manipulation
-            .as_ref()
-            .unwrap()
-            .source()
+        let PathFunding::Element {
+            _retained: retained,
+        } = &self.path.as_ref().unwrap()._funding
+        else {
+            panic!("actual Element path receipt")
+        };
+        retained.source()
     }
 }
 

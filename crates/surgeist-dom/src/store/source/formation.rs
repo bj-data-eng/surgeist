@@ -63,6 +63,10 @@ pub(crate) struct SourceRetention {
     _event: Arc<EventWorkCustody>,
 }
 impl SourceRetention {
+    pub(crate) fn into_payload_debit(self) -> custody::Debit {
+        self.debit
+    }
+
     pub(crate) fn split(&mut self, usage: custody::Usage) -> Result<Self, DomError> {
         Ok(Self {
             debit: self.debit.split(usage)?,
