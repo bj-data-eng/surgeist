@@ -114,6 +114,13 @@ cover twelve Grid and Subgrid variants. The [other plain-box sources](captured/f
 cover forty Grid, Grid Lanes, and Subgrid variants. The focused manifest tests
 check each historical association and complete geometry.
 
+The [FRI08 wrapped-text Subgrid edition](captured/fri08-wrapped-subgrid-text/qualification.json)
+covers eight variants of the two sibling-footer sources. The focused manifest
+test checks all historical box rectangles, the text ranges from the
+stylesheet's [Ahem WOFF2](../../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2),
+and the hidden leaves' client and scroll extents. Native Grid sizing uses
+prepared Text measurements at the widths requested by Layout.
+
 The [Grid Lanes original diagnostic receipt](captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
 records the complete raw numeric differences from all 36 source-qualified
 original axis captures. It is separate from matching editions. Use the
