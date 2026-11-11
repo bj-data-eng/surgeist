@@ -43,20 +43,32 @@ pub(crate) fn verify_historical(current: &Golden, historical: &Golden) -> Result
             "original Flex parent must observe one Grid child",
         ));
     };
-    let (parent_x, parent_y, parent_width, _) = rectangle(&current.expectations)?;
-    let (x, y, grid_width, _) = rectangle(observed)?;
-    let authored_width = current
-        .root
-        .style
-        .get("width")
-        .and_then(|value| value.strip_suffix("px"))
-        .ok_or_else(|| Error::new("missing authored Flex parent width"))?;
-    if parse_number(authored_width)? != parent_width
+    let (parent_x, parent_y, parent_width, parent_height) = rectangle(&current.expectations)?;
+    let (x, y, grid_width, grid_height) = rectangle(observed)?;
+    let percentage_parent = historical
+        .name
+        .split_once("__")
+        .is_some_and(|(stem, _)| stem == "chrome_issue_325928327");
+    let preferred_size_matches = if percentage_parent {
+        current.root.style.get("width") == Some("max-content")
+            && parent_width == grid_width
+            && parent_height == grid_height
+            && original_percentage_grid_shape(grid)
+            && original_percentage_grid_shape(&historical.root)
+    } else {
+        let authored_width = current
+            .root
+            .style
+            .get("width")
+            .and_then(|value| value.strip_suffix("px"))
+            .ok_or_else(|| Error::new("missing authored Flex parent width"))?;
+        parse_number(authored_width)? == parent_width && grid.children.len() == 2
+    };
+    if !preferred_size_matches
         || current.root.style.get("height") != Some("max-content")
         || current.root.style.get("direction") != grid.style.get("direction")
         || current.root.style.get("box-sizing") != grid.style.get("box-sizing")
         || grid.style.get("display") != Some("grid")
-        || grid.children.len() != 2
     {
         return Err(Error::new("original Flex parent or Grid sizing changed"));
     }
@@ -83,7 +95,24 @@ pub(crate) fn verify_historical(current: &Golden, historical: &Golden) -> Result
         &historical.root,
         &historical.expectations,
         true,
+        !percentage_parent,
     )
+}
+
+fn original_percentage_grid_shape(grid: &Node) -> bool {
+    let [item] = grid.children.as_slice() else {
+        return false;
+    };
+    let [ratio_box] = item.children.as_slice() else {
+        return false;
+    };
+    grid.style.get("width") == Some("100%")
+        && grid.style.get("height") == Some("40px")
+        && grid.style.get("justify-items") == Some("center")
+        && item.style.get("height") == Some("100%")
+        && ratio_box.style.get("height") == Some("100%")
+        && ratio_box.style.get("aspect-ratio") == Some("1")
+        && ratio_box.children.is_empty()
 }
 
 fn rectangle(node: &Expectation) -> Result<(Scalar, Scalar, Scalar, Scalar), Error> {
@@ -110,6 +139,7 @@ fn compare_subtree(
     historical: &Node,
     expected: &Expectation,
     root: bool,
+    has_text_leaves: bool,
 ) -> Result<(), Error> {
     if current.kind != historical.kind
         || current.text != historical.text
@@ -123,12 +153,18 @@ fn compare_subtree(
     {
         return Err(Error::new("original Grid source subtree changed"));
     }
-    if current.style.get("font-family") != Some("ahem")
-        || current.style.get("font-size") != Some("10px")
-        || current.style.get("line-height") != Some("10px")
-        || (!root && (!current.children.is_empty() || current.text.is_none()))
-    {
-        return Err(Error::new("original Grid text or font mapping changed"));
+    if has_text_leaves {
+        if current.style.get("font-family") != Some("ahem")
+            || current.style.get("font-size") != Some("10px")
+            || current.style.get("line-height") != Some("10px")
+            || (!root && (!current.children.is_empty() || current.text.is_none()))
+        {
+            return Err(Error::new("original Grid text or font mapping changed"));
+        }
+    } else if current.text.is_some() {
+        return Err(Error::new(
+            "original percentage Grid unexpectedly contains text",
+        ));
     }
     let (x, y, width, height) = rectangle(observed)?;
     let origin = if root { (0.0, 0.0) } else { (x, y) };
@@ -143,7 +179,14 @@ fn compare_subtree(
         .zip(&observed.children)
         .zip(historical.children.iter().zip(&expected.children))
     {
-        compare_subtree(current, observed, historical, expected, false)?;
+        compare_subtree(
+            current,
+            observed,
+            historical,
+            expected,
+            false,
+            has_text_leaves,
+        )?;
     }
     Ok(())
 }
