@@ -55,6 +55,10 @@ impl Clock {
         }
     }
 
+    pub const fn source(&self) -> DomHostedSourceId {
+        self.source
+    }
+
     /// Samples the actual clock; the source identity fixes its epoch/domain.
     pub fn sample(&mut self) -> Result<Sample, Error> {
         #[cfg(test)]
@@ -1157,6 +1161,329 @@ mod tests {
                     ],
                     [800, 1100, 2000, 2600]
                 );
+            }
+
+            fn hosted_dialog_for_clock(
+                observations: &[Result<u64, Error>],
+                cancel: &AtomicBool,
+            ) -> (
+                DomSession,
+                HostedRuntime,
+                crate::DomHostedTopLevel,
+                surgeist_dom::NodeId,
+            ) {
+                let mut session = session_with_dom_limits(|limits| {
+                    limits.with_dispatch_custody(
+                        surgeist_dom::DomDispatchCustodyLimits::new(
+                            8, 64, 2_000_000, 2_000_000, 100_000,
+                        )
+                        .unwrap(),
+                    )
+                });
+                let mut hosted = session.hosted_execution();
+                script(&hosted, observations);
+                let host = hosted.create_host(&mut session.dom(), cancel).unwrap();
+                let top = hosted
+                    .create_top_level(&mut session.dom(), host, cancel)
+                    .unwrap();
+                let snapshot = session.snapshot();
+                let html = snapshot
+                    .document(top.document())
+                    .unwrap()
+                    .document_element()
+                    .unwrap();
+                let body = snapshot.node(html).unwrap().children()[1];
+                let mut batch = DomBatch::new();
+                let target = batch.create_element_ns(
+                    top.document(),
+                    surgeist_dom::Namespace::html(),
+                    "dialog",
+                );
+                batch.insert_before(&target, body, None);
+                let target = session
+                    .dom()
+                    .apply(batch, cancel)
+                    .unwrap()
+                    .created(&target)
+                    .unwrap()
+                    .unwrap();
+                (session, hosted, top, target)
+            }
+
+            #[test]
+            fn canceled_clock_preflight_keeps_the_private_dialog_firing_for_resume() {
+                use surgeist_dom::{DomSourceAdvance, DomSourcePhase};
+
+                let cancel = AtomicBool::new(false);
+                let (mut session, hosted, top, target) =
+                    hosted_dialog_for_clock(&[Ok(150_001), Ok(260_001), Ok(430_001)], &cancel);
+                let before_firing = session.snapshot().stamp();
+                let operation = {
+                    let mut dom = session.dom();
+                    let mut lease = dom
+                        .raw_mut()
+                        .begin_source_edit(
+                            DomSourceEdit::show_dialog(target),
+                            source_limits(),
+                            &cancel,
+                        )
+                        .unwrap();
+                    let DomSourceAdvance::EventFiring(firing) =
+                        lease.advance_for_runtime(&cancel).unwrap()
+                    else {
+                        panic!("the exact Show firing remains private until clock acknowledgment");
+                    };
+                    let prepared = lease.status();
+                    assert_eq!(prepared.phase(), DomSourcePhase::EventFiring);
+                    assert!(!prepared.has_published());
+                    assert!(matches!(
+                        lease.advance(&cancel),
+                        Err(surgeist_dom::DomError::HostedSourceUnavailable),
+                    ));
+                    assert!(matches!(
+                        hosted.finish_source_event_firing(
+                            &mut lease,
+                            firing,
+                            &AtomicBool::new(true)
+                        ),
+                        Err(DomHostedRuntimeError::Cancelled),
+                    ));
+                    assert_eq!(lease.status().phase(), DomSourcePhase::EventFiring);
+                    assert_eq!(lease.snapshot().stamp(), before_firing);
+                    prepared.operation()
+                };
+                let mut source = session.source_execution();
+                let mut services = DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                };
+                let DomSourceDriveProgress::Pending {
+                    request: DomSourceRequest::Event(request),
+                    reason: crate::DomSourceUnavailable::Event,
+                } = source
+                    .resume(
+                        &mut session.dom(),
+                        operation,
+                        source_limits(),
+                        &mut services,
+                        &cancel,
+                    )
+                    .unwrap()
+                else {
+                    panic!("the same private firing must complete through the original runtime");
+                };
+                assert_eq!(request.operation(), operation);
+                assert_eq!(request.subject(), target);
+                let mut dom = session.dom();
+                let observed = dom
+                    .raw()
+                    .source_event_time(&request)
+                    .unwrap()
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(observed.global(), top.global());
+                assert_eq!(observed.occurrence().microseconds(), 400);
+                let mut lease = dom
+                    .raw_mut()
+                    .resume_source_edit(operation, source_limits(), &cancel)
+                    .unwrap();
+                lease.request_cancel();
+                assert!(
+                    matches!(lease.advance(&cancel).unwrap(), DomSourceProgress::Complete(done)
+                    if done.operation() == operation && done.cancellation_requested())
+                );
+            }
+
+            #[test]
+            fn dialog_clock_failure_survives_inline_and_meta_service_and_watcher_settlement() {
+                use crate::{
+                    DomEventCallback, DomEventDispatchLimits, DomEventDispatcher,
+                    DomEventListenerOptions, DomEventRegistryLimits, DomEventTimestampUnavailable,
+                    DomEventType, DomSourceEventRuntimeLimits, DomSourceEventServiceLimits,
+                    DomSourceEventServiceProgress, DomSourceInlineStyleEdit, DomSourceUnavailable,
+                };
+                use surgeist_dom::{
+                    DomInlineStyleRequestLimits, DomInlineStyleSourceContext, DomMetaAtomicLimits,
+                    DomSourceEventClockFailure, DomSourceEventKind,
+                };
+
+                let meta = DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128).unwrap();
+                for (meta, reading, failure) in [
+                    (
+                        None,
+                        Err(Error::Unavailable),
+                        DomSourceEventClockFailure::Unavailable,
+                    ),
+                    (
+                        Some(meta),
+                        Ok(100_001),
+                        DomSourceEventClockFailure::Regressed,
+                    ),
+                ] {
+                    let cancel = AtomicBool::new(false);
+                    let (mut session, _, _, target) = hosted_dialog_for_clock(
+                        &[Ok(150_001), Ok(260_001), reading, Ok(560_001)],
+                        &cancel,
+                    );
+                    session
+                        .dom()
+                        .raw_mut()
+                        .configure_inline_styles(
+                            surgeist_dom::DomInlineStyleLimits::new(
+                                surgeist_cssom::CssomLimits::default(),
+                                8,
+                                64_000_000,
+                                8_000_000,
+                                16_000_000,
+                            )
+                            .unwrap(),
+                            &cancel,
+                        )
+                        .unwrap();
+                    let mut source = session.source_execution();
+                    let mut services = DomSourceServices {
+                        meta,
+                        execution_scope: None,
+                        style_policy: &mut |_| None,
+                        url: None,
+                    };
+                    assert!(matches!(
+                        source
+                            .apply(
+                                &mut session.dom(),
+                                DomSourceEdit::set_attribute(target, "open", ""),
+                                source_limits(),
+                                &mut services,
+                                &cancel,
+                            )
+                            .unwrap(),
+                        DomSourceDriveProgress::Complete(_)
+                    ));
+                    let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+                        registrations: 2,
+                        pending_events: 1,
+                        nested_dispatches: 1,
+                        storage_bytes: 2_000_000,
+                        work: 100_000,
+                    })
+                    .unwrap();
+                    for event_type in [DomEventType::CANCEL, DomEventType::BEFORE_TOGGLE] {
+                        dispatcher
+                            .add_listener(
+                                &mut session.dom(),
+                                target,
+                                event_type,
+                                DomEventCallback::new(|_, _, seen: &mut Vec<_>, event| {
+                                    seen.push((event.event_type(), event.time_stamp()));
+                                    Ok(())
+                                }),
+                                DomEventListenerOptions::default(),
+                            )
+                            .unwrap();
+                    }
+                    source
+                        .raise_event_runtime_limits(
+                            &session.dom(),
+                            DomSourceEventRuntimeLimits {
+                                jobs: 1,
+                                storage_bytes: 16_000_000,
+                                work: 1_000_000,
+                            },
+                            &cancel,
+                        )
+                        .unwrap();
+
+                    let context =
+                        DomInlineStyleSourceContext::new(session.snapshot().stamp(), Vec::new())
+                            .unwrap();
+                    let resolver =
+                        |_: &[_], _: &_| panic!("Dialog firing has no inline declarations");
+                    let mut progress = source
+                        .apply_with_inline_styles(
+                            &mut session.dom(),
+                            DomSourceInlineStyleEdit::new(
+                                DomSourceEdit::request_close_dialog(target, None),
+                                context,
+                                DomInlineStyleRequestLimits {
+                                    input: surgeist_css::source::CssUtf16InputLimits::default(),
+                                    declaration:
+                                        surgeist_cssom::CssomDeclarationRequestLimits::default(),
+                                },
+                            ),
+                            source_limits(),
+                            &mut services,
+                            resolver,
+                            &cancel,
+                        )
+                        .unwrap();
+                    let mut seen = Vec::new();
+                    for kind in [DomSourceEventKind::Cancel, DomSourceEventKind::BeforeToggle] {
+                        let DomSourceDriveProgress::Pending {
+                            request: DomSourceRequest::Event(request),
+                            reason: DomSourceUnavailable::Event,
+                        } = progress
+                        else {
+                            panic!("the reached Dialog firing must expose its real request");
+                        };
+                        assert_eq!(request.kind(), kind);
+                        assert_eq!(request.subject(), target);
+                        let delivered = source
+                            .service_event(
+                                &mut session.dom(),
+                                &request,
+                                &mut dispatcher,
+                                &mut seen,
+                                DomSourceEventServiceLimits {
+                                    source: source_limits(),
+                                    dispatch: DomEventDispatchLimits {
+                                        path_items: 16,
+                                        snapshot_listeners: 2,
+                                        failure_records: 2,
+                                        callbacks: 2,
+                                        work: 100_000,
+                                    },
+                                },
+                                &cancel,
+                            )
+                            .unwrap();
+                        assert!(
+                            matches!(delivered, DomSourceEventServiceProgress::Serviced { ref receipt }
+                            if receipt.callbacks() == 1 && !receipt.default_prevented())
+                        );
+                        progress = source
+                            .resume_with_inline_styles(
+                                &mut session.dom(),
+                                request.operation(),
+                                source_limits(),
+                                &mut services,
+                                resolver,
+                                &cancel,
+                            )
+                            .unwrap();
+                    }
+                    assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
+                    assert!(session.dom().pending_source_edit().is_none());
+                    assert!(
+                        session
+                            .snapshot()
+                            .node(target)
+                            .unwrap()
+                            .attribute(&"open".into())
+                            .is_none()
+                    );
+                    assert_eq!(
+                        seen,
+                        [
+                            (
+                                DomEventType::CANCEL,
+                                Err(DomEventTimestampUnavailable::Provider(failure))
+                            ),
+                            (DomEventType::BEFORE_TOGGLE, Ok(0.4)),
+                        ]
+                    );
+                }
             }
 
             #[test]

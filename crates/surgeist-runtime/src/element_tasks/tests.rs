@@ -530,7 +530,10 @@ fn never_hosted_details_delivers_with_an_unavailable_creation_clock() {
     assert!(receipt.failures().is_empty());
     assert_eq!(
         observed.get(),
-        Some((None, Err(crate::DomEventTimestampUnavailable)))
+        Some((
+            None,
+            Err(crate::DomEventTimestampUnavailable::NoAuthenticatedClock)
+        ))
     );
 }
 

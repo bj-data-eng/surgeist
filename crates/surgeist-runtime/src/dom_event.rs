@@ -1691,7 +1691,7 @@ struct Event {
     event_type: RefCell<Option<DomEventType>>,
     init: Cell<DomEventInit>,
     trusted: Cell<bool>,
-    creation: Option<DomEventCreationObservation>,
+    creation: Result<DomEventCreationObservation, DomEventTimestampUnavailable>,
     toggle: Option<DomToggleEvent>,
     storage: EventStorage,
     target: RefCell<Option<DomEventTarget>>,
@@ -2188,7 +2188,7 @@ impl EventInvocationOwner {
     fn new(
         original: NodeId,
         data: EventData,
-        creation: Option<EventCreation>,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
         backing: EventBodyCustody,
     ) -> Self {
         let (cause, toggle, cancelable) = match data {
@@ -2477,11 +2477,21 @@ impl NativeDomEvent {
     }
     /// Construct the load event for an actual owning Style completion operation.
     pub(crate) fn style_load(target: NodeId, backing: EventBodyCustody) -> EventInvocationOwner {
-        EventInvocationOwner::new(target, EventData::StyleLoad, None, backing)
+        EventInvocationOwner::new(
+            target,
+            EventData::StyleLoad,
+            Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
+            backing,
+        )
     }
     /// Construct the error event for an actual owning Style completion operation.
     pub(crate) fn style_error(target: NodeId, backing: EventBodyCustody) -> EventInvocationOwner {
-        EventInvocationOwner::new(target, EventData::StyleError, None, backing)
+        EventInvocationOwner::new(
+            target,
+            EventData::StyleError,
+            Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
+            backing,
+        )
     }
     /// The actual Details task owner supplies its exact queued/coalesced data.
     /// The selected HTML firing clause supplies no source Element. Equal states
@@ -2498,7 +2508,7 @@ impl NativeDomEvent {
                 old_state: payload.old_state().as_str(),
                 new_state: payload.new_state().as_str(),
             }),
-            creation,
+            creation.ok_or(DomEventTimestampUnavailable::NoAuthenticatedClock),
             backing,
         )
     }
@@ -2506,12 +2516,13 @@ impl NativeDomEvent {
     pub(crate) fn dialog_cancel(
         target: NodeId,
         cancelable: bool,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(
             target,
             EventData::DialogCancel { cancelable },
-            None,
+            creation,
             backing,
         )
     }
@@ -2521,7 +2532,12 @@ impl NativeDomEvent {
         creation: Option<EventCreation>,
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
-        EventInvocationOwner::new(target, EventData::DialogClose, creation, backing)
+        EventInvocationOwner::new(
+            target,
+            EventData::DialogClose,
+            creation.ok_or(DomEventTimestampUnavailable::NoAuthenticatedClock),
+            backing,
+        )
     }
 
     /// Actual null-source Dialog toggle task payload, including equal states.
@@ -2538,7 +2554,7 @@ impl NativeDomEvent {
                 old_state: old.as_str(),
                 new_state: new.as_str(),
             }),
-            creation,
+            creation.ok_or(DomEventTimestampUnavailable::NoAuthenticatedClock),
             backing,
         )
     }
@@ -2550,6 +2566,7 @@ impl NativeDomEvent {
         old: surgeist_html::elements::dialog::HtmlDialogState,
         new: surgeist_html::elements::dialog::HtmlDialogState,
         cancelable: bool,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(
@@ -2561,7 +2578,7 @@ impl NativeDomEvent {
                 },
                 cancelable,
             },
-            None,
+            creation,
             backing,
         )
     }

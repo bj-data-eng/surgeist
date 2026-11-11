@@ -334,13 +334,13 @@ pub use button::{DomButton, DomButtonState};
 pub use fieldset::{DomFieldset, DomFieldsetState};
 pub use form::DomForm;
 
-pub use store::source::operation::DomSourceLease;
 pub use store::source::operation::fullscreen::{
     DomFullscreenExitHandoffCommit, DomFullscreenExitJob, DomSourceFullscreenExitHandoffRequest,
 };
 pub use store::source::operation::meta::{
     DomMetaSourcePreparation, DomMetaSourcePublished, DomMetaSourceRuntimeHold, DomMetaSourceStep,
 };
+pub use store::source::operation::{DomSourceEventFiringLoan, DomSourceLease};
 pub use style::{
     DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCssomOwnerBinding,
     DomStyleCssomPublicationRejection, DomStyleCssomRoot, DomStyleCssomRootError,

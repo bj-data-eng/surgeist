@@ -1132,3 +1132,147 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
         DomElementTaskProgress::Empty
     ));
 }
+
+#[test]
+fn adopted_dialog_fires_without_timing_after_its_original_global_retires() {
+    let mut session = session();
+    let original = create_top(&mut session);
+    let destination = create_top(&mut session);
+    let original_body = body(&session, original.document());
+    let destination_body = body(&session, destination.document());
+    let mut batch = DomBatch::new();
+    let target = batch.create_element_ns(original.document(), Namespace::html(), "dialog");
+    batch.insert_before(&target, original_body, None);
+    let target = session
+        .dom()
+        .apply(batch, &cancel())
+        .unwrap()
+        .created(&target)
+        .unwrap()
+        .unwrap();
+    let mut batch = DomBatch::new();
+    batch.adopt(target, destination.document());
+    batch.insert_before(target, destination_body, None);
+    session.dom().apply(batch, &cancel()).unwrap();
+    retire_top(&mut session, original);
+    let snapshot = session.snapshot();
+    assert_eq!(
+        snapshot.node(target).unwrap().parent(),
+        Some(destination_body)
+    );
+    assert_eq!(
+        snapshot.relevant_global(target).unwrap(),
+        Some(original.global())
+    );
+    assert!(
+        snapshot
+            .document(destination.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+
+    let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 1,
+        pending_events: 1,
+        nested_dispatches: 1,
+        storage_bytes: 1_000_000,
+        work: 100_000,
+    })
+    .unwrap();
+    dispatcher
+        .add_listener(
+            &mut session.dom(),
+            target,
+            DomEventType::BEFORE_TOGGLE,
+            DomEventCallback::new(|_, _, seen: &mut Vec<_>, event| {
+                seen.push((event.current_target(), event.phase(), event.time_stamp()));
+                event.prevent_default();
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let source_limits =
+        DomSourceLimits::new(16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64);
+    let mut source = session.source_execution();
+    source
+        .raise_event_runtime_limits(
+            &session.dom(),
+            DomSourceEventRuntimeLimits {
+                jobs: 1,
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::Event(request),
+        reason: DomSourceUnavailable::Event,
+    } = source
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::show_dialog(target),
+            source_limits,
+            &mut services,
+            &cancel(),
+        )
+        .unwrap()
+    else {
+        panic!("a selected beforetoggle still reaches its actual adopted target");
+    };
+    let mut seen = Vec::new();
+    let serviced = source
+        .service_event(
+            &mut session.dom(),
+            &request,
+            &mut dispatcher,
+            &mut seen,
+            DomSourceEventServiceLimits {
+                source: source_limits,
+                dispatch: dispatch_limits(),
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert!(
+        matches!(serviced, DomSourceEventServiceProgress::Serviced { ref receipt }
+        if receipt.callbacks() == 1 && receipt.default_prevented())
+    );
+    assert_eq!(
+        seen,
+        [(
+            Some(target.into()),
+            DomEventPhase::AtTarget,
+            Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
+        )]
+    );
+    assert!(matches!(
+        source
+            .resume(
+                &mut session.dom(),
+                request.operation(),
+                source_limits,
+                &mut services,
+                &cancel()
+            )
+            .unwrap(),
+        DomSourceDriveProgress::Complete(_),
+    ));
+    assert!(session.dom().pending_source_edit().is_none());
+    assert!(
+        session
+            .snapshot()
+            .node(target)
+            .unwrap()
+            .attribute(&"open".into())
+            .is_none()
+    );
+}

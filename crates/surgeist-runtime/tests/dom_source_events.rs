@@ -673,6 +673,7 @@ fn native_show_publishes_empty_open_before_waiting_for_remembered_focus() {
 fn canceled_receipt_is_actual_and_distinct_from_callback_failure_without_running_tail() {
     let cancel = AtomicBool::new(false);
     let (mut session, subject) = fixture(session_limits());
+    assert_eq!(session.snapshot().relevant_global(subject).unwrap(), None);
     let mut listeners = dispatcher();
     listeners
         .add_listener(
@@ -682,6 +683,10 @@ fn canceled_receipt_is_actual_and_distinct_from_callback_failure_without_running
             DomEventCallback::new(|_, _, observed: &mut (usize, bool), event| {
                 observed.0 += 1;
                 observed.1 = event.cancelable();
+                assert_eq!(
+                    event.time_stamp(),
+                    Err(DomEventTimestampUnavailable::NoAuthenticatedClock)
+                );
                 event.prevent_default();
                 Err(DomEventCallbackError { code: 91 })
             }),

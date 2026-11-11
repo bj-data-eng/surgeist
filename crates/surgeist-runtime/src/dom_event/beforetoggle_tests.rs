@@ -30,6 +30,7 @@ fn show_event(target: NodeId) -> EventInvocationOwner {
         HtmlDialogState::Closed,
         HtmlDialogState::Open,
         true,
+        Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
         test_event_backing(),
     )
 }

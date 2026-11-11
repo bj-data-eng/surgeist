@@ -18,10 +18,10 @@ use crate::element_tasks::{DomElementTaskRuntime, DomElementTaskRuntimeError};
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DomError, DomNativeCheckpointLimits, DomNativeHtmlInstallError, DomNativeHtmlInstallTarget,
-    DomSelectCompletionStart, DomSelectTask, DomSelectTaskCompletion, DomSourceCompletion,
-    DomSourceEdit, DomSourceLease, DomSourceLimits, DomSourceNativeHtmlInstallLimits,
-    DomSourceOperationId, DomSourceProgress, DomSourceRequest, DomStyleInlineCspObservation,
-    DomStyleSource,
+    DomSelectCompletionStart, DomSelectTask, DomSelectTaskCompletion, DomSourceAdvance,
+    DomSourceCompletion, DomSourceEdit, DomSourceLease, DomSourceLimits,
+    DomSourceNativeHtmlInstallLimits, DomSourceOperationId, DomSourceProgress, DomSourceRequest,
+    DomStyleInlineCspObservation, DomStyleSource,
 };
 
 /// Borrowed services for the reached requests of one actual Source operation.
@@ -784,18 +784,35 @@ impl DomSourceRuntime {
             // and all represented external banks before returning.
             let advanced = if let Some(limits) = meta {
                 self.styles
-                    .advance_meta(lease, resolver.as_deref_mut(), limits, cancel)
-                    .map(Advanced::Meta)
+                    .advance_meta(
+                        lease,
+                        resolver.as_deref_mut(),
+                        limits,
+                        surgeist_dom::DomSourceEventClockMode::Hosted,
+                        cancel,
+                    )
+                    .map(|advanced| match advanced {
+                        DomSourceAdvance::Progress(outcome) => Advanced::Meta(outcome),
+                        DomSourceAdvance::EventFiring(firing) => Advanced::EventFiring(firing),
+                    })
                     .map_err(DomSourceDriveError::Meta)
             } else if let Some(resolver) = resolver.as_deref_mut() {
                 lease
-                    .advance_with_inline_styles(resolver, cancel)
-                    .map(|progress| Advanced::Source(progress.into_parts()))
+                    .advance_inline_for_runtime(resolver, cancel)
+                    .map(|advanced| match advanced {
+                        DomSourceAdvance::Progress(progress) => {
+                            Advanced::Source(progress.into_parts())
+                        }
+                        DomSourceAdvance::EventFiring(firing) => Advanced::EventFiring(firing),
+                    })
                     .map_err(|error| DomSourceRuntimeError::Inline(error).into())
             } else {
                 lease
-                    .advance(cancel)
-                    .map(|progress| Advanced::Source((progress, None)))
+                    .advance_for_runtime(cancel)
+                    .map(|advanced| match advanced {
+                        DomSourceAdvance::Progress(progress) => Advanced::Source((progress, None)),
+                        DomSourceAdvance::EventFiring(firing) => Advanced::EventFiring(firing),
+                    })
                     .map_err(|error| DomSourceRuntimeError::Dom(error).into())
             };
             settlement.finish(&lease.snapshot());
@@ -810,6 +827,13 @@ impl DomSourceRuntime {
                     (source, inline)
                 }
                 Advanced::Source(progress) => progress,
+                // The reached Dialog firings precede inline mutation. The
+                // original CSSOM and Meta/Style loans have already ended.
+                Advanced::EventFiring(firing) => (
+                    self.hosted
+                        .finish_source_event_firing(lease, firing, cancel)?,
+                    None,
+                ),
             };
             if let Some(publication) = publication {
                 return Ok(DomSourceDriveProgress::InlineSource {
@@ -1000,6 +1024,7 @@ enum Advanced {
         ),
     ),
     Meta(crate::DomStyleMetaSourceOutcome),
+    EventFiring(surgeist_dom::DomSourceEventFiring),
 }
 
 struct DriveRoot<'a> {

@@ -545,7 +545,12 @@ fn pending_association_native_meta_source_hold_refuses_before_missing_owner_and_
             &AtomicBool::new(false),
         )
         .unwrap();
-    let error = match hold.prepare(&[], None, &AtomicBool::new(false)) {
+    let error = match hold.prepare(
+        &[],
+        None,
+        surgeist_dom::DomSourceEventClockMode::ContextFree,
+        &AtomicBool::new(false),
+    ) {
         Err(error) => error,
         Ok(_) => panic!("native Meta cannot cross the original parsed association"),
     };

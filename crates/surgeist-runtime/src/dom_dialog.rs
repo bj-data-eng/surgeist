@@ -269,6 +269,8 @@ impl State {
         self.step(1, cancel)?;
         let backing =
             crate::dom_event::EventBodyCustody::source(&mut retained, &self.body_bytes, storage)?;
+        let creation =
+            crate::dom_lifecycle::EventCreation::from_source(dom.source_event_time(request)?);
         let job = Rc::new(RefCell::new(Job {
             next: None,
             request: request.clone(),
@@ -282,6 +284,7 @@ impl State {
                         payload.old_state(),
                         payload.new_state(),
                         request.cancelable(),
+                        creation,
                         backing,
                     )
                 }
@@ -297,9 +300,12 @@ impl State {
                         backing,
                     )
                 }
-                surgeist_dom::DomSourceEventKind::Cancel => {
-                    NativeDomEvent::dialog_cancel(request.subject(), request.cancelable(), backing)
-                }
+                surgeist_dom::DomSourceEventKind::Cancel => NativeDomEvent::dialog_cancel(
+                    request.subject(),
+                    request.cancelable(),
+                    creation,
+                    backing,
+                ),
                 surgeist_dom::DomSourceEventKind::Close => {
                     NativeDomEvent::dialog_close(request.subject(), None, backing)
                 }

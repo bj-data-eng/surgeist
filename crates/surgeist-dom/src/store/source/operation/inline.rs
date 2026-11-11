@@ -17,6 +17,7 @@ pub(super) enum AdvanceError {
     Inline(DomInlineStyleError),
     Unwind(Box<dyn std::any::Any + Send>),
     NativePrepared,
+    EventFiring,
 }
 impl From<DomError> for AdvanceError {
     fn from(error: DomError) -> Self {
@@ -33,6 +34,7 @@ pub(super) struct Execution<'a> {
     pub(super) resolver: Option<&'a mut Resolver<'a>>,
     pub(super) publication: Option<DomInlineStyleSourcePublication>,
     pub(super) native: Option<meta::Execution>,
+    pub(super) hosted_events: bool,
 }
 impl Execution<'_> {
     pub(super) fn disabled() -> Self {
@@ -40,6 +42,7 @@ impl Execution<'_> {
             resolver: None,
             publication: None,
             native: None,
+            hosted_events: false,
         }
     }
 }
@@ -110,22 +113,53 @@ impl DomSourceLease<'_> {
     /// the actual canonical segment; repeated requests do not repeat it.
     pub fn advance_with_inline_styles(
         &mut self,
-        mut resolver: impl FnMut(
+        resolver: impl FnMut(
             &[CssomDeclarationCandidate],
             &CssomContext,
         ) -> Result<CssomAdmission, surgeist_cssom::CssomError>,
         cancel: &AtomicBool,
     ) -> Result<DomInlineStyleSourceProgress, DomInlineStyleError> {
+        match self.advance_inline(resolver, false, cancel)? {
+            DomSourceAdvance::Progress(progress) => Ok(progress),
+            DomSourceAdvance::EventFiring(_) => Err(DomError::HostedSourceUnavailable.into()),
+        }
+    }
+
+    /// Advance the original inline operation through the clock-aware adapter.
+    pub fn advance_inline_for_runtime(
+        &mut self,
+        resolver: impl FnMut(
+            &[CssomDeclarationCandidate],
+            &CssomContext,
+        ) -> Result<CssomAdmission, surgeist_cssom::CssomError>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceAdvance<DomInlineStyleSourceProgress>, DomInlineStyleError> {
+        self.advance_inline(resolver, true, cancel)
+    }
+
+    fn advance_inline(
+        &mut self,
+        mut resolver: impl FnMut(
+            &[CssomDeclarationCandidate],
+            &CssomContext,
+        ) -> Result<CssomAdmission, surgeist_cssom::CssomError>,
+        hosted_events: bool,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceAdvance<DomInlineStyleSourceProgress>, DomInlineStyleError> {
         let mut execution = Execution {
             resolver: Some(&mut resolver),
             publication: None,
             native: None,
+            hosted_events,
         };
         match self.advance_execution(&mut execution, None, cancel) {
-            Ok(source) => Ok(DomInlineStyleSourceProgress {
+            Ok(source) => Ok(DomSourceAdvance::Progress(DomInlineStyleSourceProgress {
                 source,
                 inline: execution.publication,
-            }),
+            })),
+            Err(AdvanceError::EventFiring) => {
+                Ok(DomSourceAdvance::EventFiring(self.prepared_event_firing()?))
+            }
             Err(AdvanceError::Dom(error)) => Err(error.into()),
             Err(AdvanceError::Inline(error)) => Err(error),
             Err(AdvanceError::Unwind(payload)) => std::panic::resume_unwind(payload),

@@ -1,14 +1,32 @@
 use super::*;
 use crate::dom_event::{
     DomEventConstructionError, DomEventCreationObservation, DomEventDispatcher, DomEventInit,
-    DomStandaloneEventTarget, NativeDomEvent,
+    DomEventTimestampUnavailable, DomStandaloneEventTarget, NativeDomEvent,
 };
-use surgeist_dom::DocumentId;
+use surgeist_dom::{
+    DocumentId, DomSourceEventClockFailure, DomSourceEventFiring, DomSourceEventTime,
+    DomSourceLease, DomSourceProgress,
+};
 
 /// Private one-use proof of this constructor's current Global and clock join.
 pub(crate) struct EventCreation(DomEventCreationObservation);
 
 impl EventCreation {
+    pub(crate) fn from_source(
+        observation: Option<Result<DomSourceEventTime, DomSourceEventClockFailure>>,
+    ) -> Result<Self, DomEventTimestampUnavailable> {
+        let time = observation
+            .ok_or(DomEventTimestampUnavailable::NoAuthenticatedClock)?
+            .map_err(DomEventTimestampUnavailable::Provider)?;
+        let origin = time.origin();
+        Ok(Self(DomEventCreationObservation {
+            global: time.global(),
+            source: origin.source(),
+            origin_microseconds: origin.microseconds(),
+            occurrence_microseconds: time.occurrence().microseconds(),
+        }))
+    }
+
     pub(crate) fn into_observation(self) -> DomEventCreationObservation {
         self.0
     }
@@ -103,6 +121,44 @@ impl NativeTaskRunning {
 }
 
 impl HostedRuntime {
+    pub(crate) fn finish_source_event_firing(
+        &self,
+        lease: &mut DomSourceLease<'_>,
+        firing: DomSourceEventFiring,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceProgress, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        let HostedState {
+            source,
+            clock,
+            work,
+            limits,
+            ..
+        } = &mut *state;
+        if clock.source() != source.id() {
+            return Err(DomHostedRuntimeError::Protocol);
+        }
+        spend(work, limits.work, cancel)?;
+        let loan = lease
+            .begin_event_firing(firing, source, cancel)
+            .map_err(DomHostedRuntimeError::Dom)?;
+        // A provider failure is the outcome of this one actual attempt. Seal
+        // it with the selected body so mandatory Source cleanup can continue.
+        let occurrence = clock
+            .sample()
+            .and_then(|sample| sample.coarsen())
+            .map(|sample| sample.microseconds)
+            .map_err(|error| match error {
+                clock::Error::Unavailable => DomSourceEventClockFailure::Unavailable,
+                clock::Error::Regressed => DomSourceEventClockFailure::Regressed,
+                clock::Error::Overflow => DomSourceEventClockFailure::Overflow,
+            });
+        loan.finish(occurrence).map_err(DomHostedRuntimeError::Dom)
+    }
+
     /// Construct an initialized untrusted Event from this session's actual
     /// current Global, original time origin and shared native clock.
     pub fn create_event(

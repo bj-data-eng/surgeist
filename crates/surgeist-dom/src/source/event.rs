@@ -16,6 +16,62 @@ pub struct DomSourceEventId {
     pub(crate) operation: DomSourceOperationId,
     pub(crate) occurrence: u64,
 }
+/// Selects whether an exact native advance can request an authenticated clock.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSourceEventClockMode {
+    /// Context-free DOM execution can deliver selected events without timing.
+    ContextFree,
+    /// Return a sealed firing for the original hosted issuer to acknowledge.
+    Hosted,
+}
+
+/// A native clock attempt that supplied no usable time for a selected event.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSourceEventClockFailure {
+    /// The original clock could not supply a monotonic time.
+    Unavailable,
+    /// The native reading preceded the original clock's latest reading.
+    Regressed,
+    /// The actual native time exceeded the representation.
+    Overflow,
+}
+
+/// The original issuer's observation for an exact synchronous firing.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomSourceEventTime {
+    pub(crate) global: crate::DomHostedGlobalId,
+    pub(crate) origin: crate::DomHostedMoment,
+    pub(crate) occurrence: crate::DomHostedMoment,
+}
+impl DomSourceEventTime {
+    pub const fn global(self) -> crate::DomHostedGlobalId {
+        self.global
+    }
+
+    pub const fn origin(self) -> crate::DomHostedMoment {
+        self.origin
+    }
+
+    pub const fn occurrence(self) -> crate::DomHostedMoment {
+        self.occurrence
+    }
+}
+
+/// A reached synchronous firing whose real request is still private to DOM.
+#[derive(Debug)]
+pub struct DomSourceEventFiring {
+    pub(crate) identity: DomSourceEventId,
+    pub(crate) global: crate::DomHostedGlobalId,
+    pub(crate) document: crate::DocumentId,
+    pub(crate) origin: crate::DomHostedMoment,
+}
+
+/// Adapter advance before a reached firing can expose its actual request.
+pub enum DomSourceAdvance<T> {
+    Progress(T),
+    EventFiring(DomSourceEventFiring),
+}
+
 /// Exact native event firing clause admitted by the original Source engine.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceEventKind {

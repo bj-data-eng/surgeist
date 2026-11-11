@@ -47,12 +47,23 @@ impl DomEventCreationObservation {
     }
 }
 
-/// An existing selected producer has supplied no authenticated creation clock.
+/// Why a selected producer cannot supply this Event's creation timestamp.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DomEventTimestampUnavailable;
+pub enum DomEventTimestampUnavailable {
+    /// The event has no available authenticated creation clock.
+    NoAuthenticatedClock,
+    /// The original authenticated clock refused its one firing observation.
+    Provider(surgeist_dom::DomSourceEventClockFailure),
+}
 impl std::fmt::Display for DomEventTimestampUnavailable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("authenticated Event creation clock unavailable")
+        use surgeist_dom::DomSourceEventClockFailure as Failure;
+        f.write_str(match self {
+            Self::NoAuthenticatedClock => "authenticated Event creation clock unavailable",
+            Self::Provider(Failure::Unavailable) => "original Event creation clock unavailable",
+            Self::Provider(Failure::Regressed) => "original Event creation clock regressed",
+            Self::Provider(Failure::Overflow) => "original Event creation clock overflowed",
+        })
     }
 }
 impl std::error::Error for DomEventTimestampUnavailable {}
@@ -158,7 +169,7 @@ impl NativeDomEvent {
                 event_type: RefCell::new(event_type),
                 init: Cell::new(init),
                 trusted: Cell::new(false),
-                creation: Some(creation.into_observation()),
+                creation: Ok(creation.into_observation()),
                 toggle: None,
                 storage,
                 target: RefCell::new(None),
@@ -174,13 +185,15 @@ impl NativeDomEvent {
     /// Actual original creation observation. Existing selected sources can lack
     /// this capability independently of their valid delivery authority.
     pub fn creation(&self) -> Option<&DomEventCreationObservation> {
-        self.0.creation.as_ref()
+        self.0.creation.as_ref().ok()
     }
     /// Original signed coarse relative time in milliseconds.
     pub fn time_stamp(&self) -> Result<f64, DomEventTimestampUnavailable> {
-        self.creation()
+        self.0
+            .creation
+            .as_ref()
             .map(DomEventCreationObservation::milliseconds)
-            .ok_or(DomEventTimestampUnavailable)
+            .map_err(|error| *error)
     }
     /// Actual construction trust, reset by ordinary dispatch and initialization.
     pub fn is_trusted(&self) -> bool {

@@ -202,7 +202,10 @@ fn never_hosted_dialog_tasks_deliver_with_unavailable_creation_timing() {
         assert!(receipt.failures().is_empty());
         assert_eq!(
             observed.take(),
-            Some((None, Err(crate::DomEventTimestampUnavailable)))
+            Some((
+                None,
+                Err(crate::DomEventTimestampUnavailable::NoAuthenticatedClock)
+            ))
         );
     }
     assert_eq!(runtime.pending_total_tasks().unwrap(), 0);

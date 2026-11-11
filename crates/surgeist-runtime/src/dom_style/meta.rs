@@ -5,7 +5,8 @@ use std::cell::Cell;
 use std::rc::Rc;
 use surgeist_dom::{
     DocumentString, DomBatch, DomMetaAtomicLimits, DomMetaInlineBatch, DomMetaOrdinaryCommit,
-    DomMetaOrdinaryPreparation, DomMetaRuntimePrefix, DomMetaRuntimeUsage, DomSourceProgress,
+    DomMetaOrdinaryPreparation, DomMetaRuntimePrefix, DomMetaRuntimeUsage, DomSourceAdvance,
+    DomSourceEventClockMode, DomSourceProgress,
 };
 
 /// Native Meta preparation failed before its joined owners published.
@@ -840,8 +841,9 @@ impl DomStyleRuntime {
         lease: &mut DomSourceLease<'_>,
         resolver: Option<&mut surgeist_dom::DomMetaInlineResolver<'_>>,
         limits: DomMetaAtomicLimits,
+        clock: DomSourceEventClockMode,
         cancel: &AtomicBool,
-    ) -> Result<DomStyleMetaSourceOutcome, DomStyleMetaError> {
+    ) -> Result<DomSourceAdvance<DomStyleMetaSourceOutcome>, DomStyleMetaError> {
         let owner = self.original()?;
         let mut state = owner
             .try_borrow_mut()
@@ -908,7 +910,7 @@ impl DomStyleRuntime {
         steps.prefix(&hold)?;
         let mut preparation =
             match hold
-                .prepare(&references, resolver, cancel)
+                .prepare(&references, resolver, clock, cancel)
                 .map_err(|error| {
                     if let surgeist_dom::DomMetaAtomicError::MissingOwner { root } = &error
                         && let Err(reason) = state.require_bound_if_registered(*root, cancel)
@@ -918,6 +920,9 @@ impl DomStyleRuntime {
                     DomStyleMetaError::Meta(error)
                 })? {
                 surgeist_dom::DomMetaSourceStep::Prepared(preparation) => preparation,
+                surgeist_dom::DomMetaSourceStep::EventFiring(firing) => {
+                    return Ok(DomSourceAdvance::EventFiring(firing));
+                }
                 surgeist_dom::DomMetaSourceStep::Progress(progress) => {
                     let (source, inline) = progress.into_parts();
                     let outcome = DomStyleMetaSourceOutcome {
@@ -929,7 +934,7 @@ impl DomStyleRuntime {
                     // This is the infallible original-output ownership frontier.
                     // Reverse declaration order disposes both external banks before
                     // the hold releases their actual Source charges.
-                    return Ok(outcome);
+                    return Ok(DomSourceAdvance::Progress(outcome));
                 }
             };
         let StyleState {
@@ -1137,6 +1142,6 @@ impl DomStyleRuntime {
         drop(references);
         drop(capabilities);
         drop(hold);
-        Ok(outcome)
+        Ok(DomSourceAdvance::Progress(outcome))
     }
 }
