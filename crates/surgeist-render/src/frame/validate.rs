@@ -533,7 +533,8 @@ mod repeated_proof_edge_tests {
     use crate::frame::{FrameContext, FramePlan, forced_base_graph_for_test};
     use crate::{
         Antialiasing, BackdropCaptureBounds, BackdropFilterInput, Capabilities, Color,
-        FilterAmount, FilterList, FilterOp, Layer, Rect, Scene, Size,
+        FilterAmount, FilterList, FilterOp, Layer, Rect, RenderAccountingError, RenderQuantity,
+        RenderResource, Scene, Size,
     };
 
     fn graph(backdrop: bool) -> crate::accounting::OwnedBox<GpuRenderGraph> {
@@ -577,6 +578,37 @@ mod repeated_proof_edge_tests {
             )
             .unwrap()
         }
+    }
+
+    #[test]
+    fn lowering_releases_read_counts_when_last_use_storage_refuses() {
+        let graph = graph(false);
+        let resources = graph.resources.len();
+        let count_bytes = u64::try_from(resources * std::mem::size_of::<u32>()).unwrap();
+        let last_use_bytes =
+            u64::try_from(resources * std::mem::size_of::<Option<SemanticPassId>>()).unwrap();
+        let options = RenderAccountingOptions::new()
+            .with_limits(RenderLimits::new().with_scratch_bytes(count_bytes + last_use_bytes - 1));
+        let mut accounting = RenderAccountingContext::new(options);
+        let error = accounting
+            .run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                graph.lowering_view(account).map(|_| ())
+            })
+            .unwrap_err();
+        let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+            panic!("the second read table must return the scratch refusal");
+        };
+        let scratch = RenderResource::ScratchCpuBytes;
+        assert_eq!(refusal.quantity(), RenderQuantity::Resource(scratch));
+        assert_eq!(
+            (refusal.current(), refusal.amount()),
+            (count_bytes, last_use_bytes)
+        );
+        let attempt = accounting.last_attempt().unwrap().attempt().unwrap();
+        assert_eq!(attempt.usage().peak(scratch), count_bytes);
+        assert_eq!(attempt.usage().live(scratch), 0);
+
+        graph.lowering_view(&Account::for_test()).unwrap();
     }
 
     #[test]
