@@ -55,13 +55,6 @@ impl CssMediaQueryList {
         &self.queries
     }
 
-    /// Checks whether these ordered members retain the same syntax, spans
-    /// and source snapshots. Commas and list-level source are excluded.
-    #[must_use]
-    pub fn same_retained_members(&self, members: &[CssMediaQuery]) -> bool {
-        crate::source::provenance::same_provenance_by_source_identity(self.queries(), members)
-    }
-
     /// Compares the members and commas with their provenance. Members with
     /// exact UTF16 root origins compare every source by snapshot identity.
     /// Independently supplied equal input can reuse its established member
@@ -76,7 +69,7 @@ impl CssMediaQueryList {
                 .zip(&other.queries)
                 .all(|(left, right)| {
                     if has_exact_member_source(left) || has_exact_member_source(right) {
-                        crate::source::provenance::same_provenance_by_source_identity(left, right)
+                        left.same_retained_provenance(right)
                     } else {
                         crate::source::same_provenance(left, right)
                     }
@@ -194,6 +187,13 @@ impl CssMediaQuery {
             Self::Typed(v) => v.origin(),
             Self::Never(v) => v.origin(),
         }
+    }
+
+    /// Compares syntax and spans while requiring identity of every source.
+    /// No source text or original units are read.
+    #[must_use]
+    pub fn same_retained_provenance(&self, other: &Self) -> bool {
+        crate::source::provenance::same_provenance_by_source_identity(self, other)
     }
 
     /// Compares two parsed members and their provenance after qualifying the

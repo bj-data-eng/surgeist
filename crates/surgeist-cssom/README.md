@@ -286,13 +286,12 @@ caller cancellation signal before the live publication fence. For text
 replacement, comparing independently allocated original inputs spends the
 remaining preparation work. Equal originals preserve the revision, while
 distinct originals retain their own source even when their normalization agrees.
-An exact single-medium append can reuse an original member removed earlier in
-the same batch. The append spends its remaining preparation work on reached
-prior members and original units. Publication compares their retained origins
-without rereading original units.
-When member edits restore an exact whole list from earlier in the batch, they
-also restore its original source and comma origins. Any additional displaced
-row shares the staged source allowance until restoration or supersession.
+Member edits can restore an earlier exact whole list, including its original
+source and comma origins, or the original ordered members of a committed
+list without a list source. Both comparisons share the remaining work
+allowance. Publication compares the retained origins without rereading
+original units. Any additional displaced row shares the staged source
+allowance until restoration or supersession.
 
 `CssCustomMediaRule::name` and `query` expose readonly facets of the checked
 current rule. The query is an authored boolean or a typed `MediaList`, including

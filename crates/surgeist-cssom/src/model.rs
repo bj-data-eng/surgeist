@@ -262,6 +262,35 @@ pub struct CssomSheetInputs {
     pub media: CssMediaQueryList,
 }
 impl CssomSheetInputs {
+    /// The mirrored media payload belongs to the sheet's separate MediaList.
+    pub(crate) fn same_metadata(&self, other: &Self) -> bool {
+        let Self {
+            version,
+            base_url,
+            location,
+            constructor_document,
+            owner,
+            title,
+            alternate,
+            disabled,
+            origin_clean,
+            constructed,
+            disallow_modification,
+            media: _,
+        } = self;
+        version == &other.version
+            && base_url == &other.base_url
+            && location == &other.location
+            && constructor_document == &other.constructor_document
+            && owner == &other.owner
+            && title == &other.title
+            && *alternate == other.alternate
+            && *disabled == other.disabled
+            && *origin_clean == other.origin_clean
+            && *constructed == other.constructed
+            && *disallow_modification == other.disallow_modification
+    }
+
     /// Source constructor defaults; host identity/base/document remain explicit.
     pub fn constructed(
         version: CssomInputVersion,

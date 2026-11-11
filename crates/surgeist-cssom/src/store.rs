@@ -1039,19 +1039,14 @@ impl CssomBatch {
             return true;
         }
         self.affected.iter().any(|id| match id {
-            // Equality of CSS values ignores where they were parsed from, so a
-            // sheet, its inputs and its diagnostics also compare their provenance.
             CssomObjectId::Sheet(id) => {
-                !same_provenance(&self.staged.sheets[id].inputs, &self.base.sheets[id].inputs)
-                    || self.staged.sheets[id].owner_rule != self.base.sheets[id].owner_rule
-                    || !same_provenance(
-                        &self.staged.sheets[id].authored,
-                        &self.base.sheets[id].authored,
-                    )
-                    || !same_provenance(
-                        &self.staged.sheets[id].diagnostics,
-                        &self.base.sheets[id].diagnostics,
-                    )
+                let staged = &self.staged.sheets[id];
+                let base = &self.base.sheets[id];
+                !staged.inputs.same_metadata(&base.inputs)
+                    || staged.owner_rule != base.owner_rule
+                    || staged.media != base.media
+                    || !same_provenance(&staged.authored, &base.authored)
+                    || !same_provenance(&staged.diagnostics, &base.diagnostics)
             }
             CssomObjectId::RuleList(id) => self.staged.lists.get(id) != self.base.lists.get(id),
             CssomObjectId::Rule(id) => {

@@ -3,6 +3,7 @@ use crate::parser_resources::check_resource_diagnostics;
 use crate::sheet_operations::{check_cancellation, sheet_utf16_error, sheet_utf16_limits};
 use crate::*;
 use std::sync::{Arc, atomic::AtomicBool};
+use surgeist_css::component::CssValueOrigin;
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
 use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
 use surgeist_css::serialization::CssSerializationLimits;
@@ -156,7 +157,7 @@ impl CssomBatch {
             let (report, work) = match source.into() {
                 CssomSheetText::Utf8(source) => {
                     check_input(source, &this.limits)?;
-                    (CssMediaQuery::parse_medium(&parser, source), None)
+                    (CssMediaQuery::parse_medium(&parser, source), 0)
                 }
                 CssomSheetText::Utf16(source) => CssMediaQuery::parse_medium_utf16_with_work(
                     &parser,
@@ -164,11 +165,10 @@ impl CssomBatch {
                     sheet_utf16_limits(&this.limits),
                     || check_cancellation(cancel),
                 )
-                .map(|(report, work)| (report, Some(work)))
                 .map_err(sheet_utf16_error)?,
             };
             let (candidate, diagnostics) = recovered(report)?;
-            let Some(mut candidate) = candidate else {
+            let Some(candidate) = candidate else {
                 return Ok(CssomMediaEdit {
                     changed: false,
                     diagnostics,
@@ -217,34 +217,12 @@ impl CssomBatch {
                     keep
                 });
             } else {
-                // A previous edit can remove a base member, and later deletes
-                // can shift this append into any earlier position. Reuse a
-                // matching original now while this append owns work and polling.
-                if let Some(work) = work
-                    && let Some(base) =
-                        this.media_restoration_row(id).map(Arc::as_ref).or_else(|| {
-                            if exact_media_source(current).is_some() {
-                                return None;
-                            }
-                            this.base
-                                .media
-                                .get(id)
-                                .filter(|base| !std::ptr::eq(*base, current))
-                        })
-                    && let Some(original) = retained_base_member(
-                        base,
-                        &candidate,
-                        sheet_utf16_limits(&this.limits)
-                            .max_work
-                            .saturating_sub(work),
-                        cancel,
-                    )?
-                {
-                    candidate = original.clone();
-                }
                 selected.push(candidate);
             }
-            let value = this.media_after_member_edit(id, selected)?;
+            let remaining_work = sheet_utf16_limits(&this.limits)
+                .max_work
+                .saturating_sub(work);
+            let value = this.media_after_member_edit(id, selected, remaining_work, cancel)?;
             Ok(CssomMediaEdit {
                 changed: this.replace_media(id, value, false, None)?,
                 diagnostics,
@@ -325,21 +303,43 @@ fn same_exact_units(
     Ok(true)
 }
 
-fn retained_base_member<'a>(
-    base: &'a CssMediaQueryList,
-    candidate: &CssMediaQuery,
-    mut remaining_work: usize,
+fn ordered_media_matches(
+    baseline: &CssMediaQueryList,
+    selected: &[CssMediaQuery],
+    require_exact: bool,
+    remaining_work: &mut usize,
     cancel: &AtomicBool,
-) -> Result<Option<&'a CssMediaQuery>, CssomError> {
-    for member in base.queries() {
-        charge_comparison(&mut remaining_work, cancel)?;
-        if member
-            .same_exact_provenance(candidate, || charge_comparison(&mut remaining_work, cancel))?
+) -> Result<bool, CssomError> {
+    if baseline.queries().len() != selected.len() {
+        return Ok(false);
+    }
+    let mut saw_exact = false;
+    for (prior, current) in baseline.queries().iter().zip(selected) {
+        let (prior_source, current_source) =
+            (exact_member_source(prior), exact_member_source(current));
+        saw_exact |= prior_source.is_some() || current_source.is_some();
+        let matches = if let (Some(prior_source), Some(current_source)) =
+            (prior_source, current_source)
+            && !prior_source.same_snapshot(current_source)
         {
-            return Ok(Some(member));
+            charge_comparison(remaining_work, cancel)?;
+            prior.same_exact_provenance(current, || charge_comparison(remaining_work, cancel))?
+        } else {
+            check_cancellation(cancel)?;
+            prior.same_retained_provenance(current)
+        };
+        if !matches {
+            return Ok(false);
         }
     }
-    Ok(None)
+    Ok(!require_exact || saw_exact)
+}
+
+fn exact_member_source(query: &CssMediaQuery) -> Option<&surgeist_css::source::CssSourceSnapshot> {
+    let CssValueOrigin::Parsed(origin) = query.origin() else {
+        return None;
+    };
+    origin.source().original_utf16().map(|_| origin.source())
 }
 
 fn exact_media_source(list: &CssMediaQueryList) -> Option<(CssParserContext, &Arc<Vec<u16>>)> {
@@ -427,15 +427,36 @@ impl CssomBatch {
         &mut self,
         id: &CssomMediaListId,
         selected: Vec<CssMediaQuery>,
+        mut remaining_work: usize,
+        cancel: &AtomicBool,
     ) -> Result<Arc<CssMediaQueryList>, CssomError> {
-        if let Some(baseline) = self.media_restoration_row(id) {
-            if baseline.same_retained_members(&selected) {
-                let baseline = baseline.clone();
-                self.media_restorations.remove(id);
-                return Ok(baseline);
-            }
-        } else if let Some(current) = self.staged.media.get_shared(id)
-            && exact_media_source(current).is_some()
+        let current_exact = self
+            .staged
+            .media
+            .get_shared(id)
+            .filter(|row| exact_media_source(row).is_some());
+        let latest = self.media_restoration_row(id).or(current_exact);
+        let committed = self.base.media.get_shared(id);
+        // The latest explicit exact input owns whole-list restoration. A
+        // committed row without a list source can still own the same ordered
+        // exact members. An explicit replacement cannot resurrect an older
+        // whole-list source.
+        if let Some(row) = latest
+            && ordered_media_matches(row, &selected, false, &mut remaining_work, cancel)?
+        {
+            let row = row.clone();
+            self.media_restorations.remove(id);
+            return Ok(row);
+        }
+        if let Some(row) = committed.filter(|row| row.parse_source().is_none())
+            && ordered_media_matches(row, &selected, true, &mut remaining_work, cancel)?
+        {
+            let row = row.clone();
+            self.media_restorations.remove(id);
+            return Ok(row);
+        }
+        if !self.media_restorations.contains_key(id)
+            && let Some(current) = current_exact
         {
             let restoration = if self
                 .base
