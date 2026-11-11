@@ -33,16 +33,24 @@ impl Operation {
         dom: &Dom,
         locked_cssom: Option<&surgeist_cssom::CssomStore>,
     ) -> bool {
+        // A settled handoff keeps its job and closing credit in the fullscreen
+        // bank. Current producer inputs and live continuations stay with Source.
         self.published
             && dom.state.incomplete_source == Some(self.id)
             && matches!(self.commands, OperationRoot::Edit(_))
-            && !self.event_exposed
+            && self.observation().is_none()
             && self.event_custody.is_none()
+            && self.draft.fullscreen_exit.is_none()
             && self.child.is_none()
+            && self.draft.hosted_pending.is_none()
             && self.hosted_global.is_none()
             && self.request_close.is_none()
-            && self.inline_source.is_none()
-            && self.meta_policy.is_none()
+            && self
+                .draft
+                .inline_recording
+                .as_ref()
+                .is_none_or(|recording| !recording.has_inputs())
+            && !self.meta_reached()
             && self.pending_meta.is_none()
             && self.meta_receipt.is_none()
             && self.draft.method.is_none()

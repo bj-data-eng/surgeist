@@ -1786,7 +1786,7 @@ impl DomSourceLease<'_> {
         self.dom.snapshot()
     }
     pub fn advance(&mut self, cancel: &AtomicBool) -> Result<DomSourceProgress, DomError> {
-        match self.advance_execution(&mut Execution::disabled(), cancel) {
+        match self.advance_execution(&mut Execution::disabled(), None, cancel) {
             Ok(progress) => Ok(progress),
             Err(AdvanceError::Dom(error)) => Err(error),
             Err(
@@ -1799,6 +1799,7 @@ impl DomSourceLease<'_> {
     fn advance_execution(
         &mut self,
         execution: &mut Execution<'_>,
+        loaned_cssom: Option<&std::sync::MutexGuard<'_, surgeist_cssom::CssomStore>>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, AdvanceError> {
         check_cancel(cancel)?;
@@ -1889,7 +1890,10 @@ impl DomSourceLease<'_> {
             .ok_or(DomError::InvalidSourceOperation)?;
         op.custody_bytes = custody;
         op.custody_units = custody_units;
-        let result = self.advance_operation(&mut op, execution, locked.as_deref(), cancel);
+        let locked_cssom = locked
+            .as_deref()
+            .or_else(|| loaned_cssom.map(|guard| &**guard));
+        let result = self.advance_operation(&mut op, execution, locked_cssom, cancel);
         if self.complete
             || matches!(
                 &result,

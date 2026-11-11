@@ -112,7 +112,7 @@ impl DomSourceLease<'_> {
             publication: None,
             native: None,
         };
-        match self.advance_execution(&mut execution, cancel) {
+        match self.advance_execution(&mut execution, None, cancel) {
             Ok(source) => Ok(DomInlineStyleSourceProgress {
                 source,
                 inline: execution.publication,

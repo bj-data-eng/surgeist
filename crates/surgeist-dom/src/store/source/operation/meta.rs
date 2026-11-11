@@ -763,7 +763,10 @@ impl<'lease, 'dom> DomMetaSourceRuntimeHold<'lease, 'dom> {
                         runtime: self.usage,
                     }),
                 };
-                match self.lease.advance_execution(&mut execution, cancel) {
+                // Receipt validation already holds this exact producer lock
+                // through the Source advance and its publication fence.
+                let cssom = receipt.as_ref().and_then(|loan| loan.guard.as_ref());
+                match self.lease.advance_execution(&mut execution, cssom, cancel) {
                     Ok(source) => {
                         return Ok(Err(crate::DomInlineStyleSourceProgress {
                             source,
