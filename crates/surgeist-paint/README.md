@@ -16,7 +16,9 @@ degenerate case from a concrete radial size request.
 borrowed color weights for a solid result. Its [basis policy](docs/reference.md#zero-height-gradient-colors)
 keeps mixed length/percentage semantics explicit.
 `resolve_border_image` partitions an already-sized image and its outset paint
-area into source regions and destination rectangles.
+area into source regions and destination rectangles. When the source first
+needs sizing, use `resolve_border_image_area` to obtain the default sizing
+extent and pass the resolved area to `resolve_border_image_in_area`.
 
 Callers retain exact source identities, geometry and appearance associations.
 The order is not a Render command stream or a complete transform/clip tree.

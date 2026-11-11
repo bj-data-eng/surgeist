@@ -586,10 +586,11 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
 }
 
 #[test]
-fn sized_border_image_uses_completed_border_geometry_without_changing_layout() {
+fn border_image_area_from_completed_layout_precedes_source_partition() {
     use surgeist_paint::{
-        BorderImageOutset, BorderImageRequest, BorderImageSlice, BorderImageSource,
-        BorderImageWidth, resolve_border_image,
+        BorderImageAreaRequest, BorderImageOutset, BorderImagePartitionRequest, BorderImageSlice,
+        BorderImageSource, BorderImageWidth, resolve_border_image_area,
+        resolve_border_image_in_area,
     };
 
     let border = |value| layout::LengthOf::value(layout::LengthPercentageOf::px(value).unwrap());
@@ -609,26 +610,37 @@ fn sized_border_image_uses_completed_border_geometry_without_changing_layout() {
     assert_eq!(output.size, layout::Size::new(40.0, 20.0));
     assert_eq!(output.border, layout::Edges::new(2.0, 3.0, 4.0, 5.0));
 
-    let geometry = resolve_border_image(
-        BorderImageRequest {
+    let area = resolve_border_image_area(
+        BorderImageAreaRequest {
             border_origin: output.location.map(f64::from),
             border_size: output.size.map(f64::from),
             border_widths: output.border.map(f64::from),
+            outsets: layout::Edges::all(BorderImageOutset::BorderWidthMultiple(1.0)),
+        },
+        options(),
+    )
+    .result
+    .unwrap();
+    assert_eq!(area.default_size(), layout::Size::new(48.0, 26.0));
+    assert_eq!(area.rect().min(), layout::Point::new(-5.0, -2.0));
+    assert_eq!(area.rect().max(), layout::Point::new(43.0, 24.0));
+
+    let geometry = resolve_border_image_in_area(
+        area,
+        BorderImagePartitionRequest {
             source: BorderImageSource {
                 coordinate_size: layout::Size::new(20.0, 10.0),
                 natural_size: layout::Size::new(Some(10.0), Some(5.0)),
             },
             slices: layout::Edges::all(BorderImageSlice::SourceUnits(2.0)),
             widths: layout::Edges::all(BorderImageWidth::BorderWidthMultiple(2.0)),
-            outsets: layout::Edges::all(BorderImageOutset::BorderWidthMultiple(1.0)),
             fill_center: true,
         },
         options(),
     )
     .result
     .unwrap();
-    assert_eq!(geometry.area().min(), layout::Point::new(-5.0, -2.0));
-    assert_eq!(geometry.area().max(), layout::Point::new(43.0, 24.0));
+    assert_eq!(geometry.area(), area.rect());
     assert_eq!(
         geometry.used_widths(),
         layout::Edges::new(4.0, 6.0, 8.0, 10.0)

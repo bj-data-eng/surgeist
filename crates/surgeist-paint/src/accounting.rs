@@ -56,6 +56,7 @@ pub(crate) enum OperationKind {
     GradientStops,
     RadialGradient,
     ZeroHeightGradient,
+    BorderImageArea,
     BorderImage,
 }
 const MAX_OPERATION_SCOPES: usize = 10;
@@ -69,6 +70,7 @@ impl OperationKind {
             Self::GradientStops => "paint gradient stops",
             Self::RadialGradient => "paint radial gradient",
             Self::ZeroHeightGradient => "paint zero-height gradient colors",
+            Self::BorderImageArea => "paint border image area",
             Self::BorderImage => "paint border image geometry",
         }
     }
@@ -80,7 +82,7 @@ impl OperationKind {
             Self::GradientStops => 7,
             Self::RadialGradient => 5,
             Self::ZeroHeightGradient => 7,
-            Self::BorderImage => 5,
+            Self::BorderImageArea | Self::BorderImage => 5,
         }
     }
 }
@@ -199,6 +201,7 @@ pub enum PaintPhase {
     GradientStopFixup,
     GradientStopDistribution,
     BorderImageGeometry,
+    BorderImageArea,
 }
 impl PaintPhase {
     fn name(self) -> &'static str {
@@ -219,6 +222,7 @@ impl PaintPhase {
             Self::GradientStopFixup => "gradient_stop_fixup",
             Self::GradientStopDistribution => "gradient_stop_distribution",
             Self::BorderImageGeometry => "border_image_geometry",
+            Self::BorderImageArea => "border_image_area",
         }
     }
 }
