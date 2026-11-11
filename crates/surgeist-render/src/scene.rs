@@ -2,8 +2,9 @@ use super::{
     command::{RenderCommands, normalize_commands},
     *,
 };
-use std::{fmt, mem, ops::Deref};
+use std::{mem, ops::Deref};
 mod inspect;
+mod value;
 pub use inspect::SceneSummary;
 
 /// An authored, ordered tree of renderer-facing draw commands.
@@ -14,6 +15,8 @@ pub use inspect::SceneSummary;
 /// Clearing or dropping a scene releases its commands with a bounded call
 /// stack. Nested disposal may use temporary storage for layers with pending
 /// siblings.
+/// Cloning, comparing, and formatting nested commands may use temporary
+/// storage proportional to the nesting depth.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Scene {
     pub(crate) commands: Vec<Command>,
@@ -328,7 +331,6 @@ pub(crate) enum Command {
 }
 
 /// Owns a layer's authored children and disposes of their tree iteratively.
-#[derive(Clone, PartialEq)]
 pub(crate) struct LayerCommands(Vec<Command>);
 
 impl From<Vec<Command>> for LayerCommands {
@@ -342,12 +344,6 @@ impl Deref for LayerCommands {
 
     fn deref(&self) -> &Self::Target {
         &self.0
-    }
-}
-
-impl fmt::Debug for LayerCommands {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(formatter)
     }
 }
 
