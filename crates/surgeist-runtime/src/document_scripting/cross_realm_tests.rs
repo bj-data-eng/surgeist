@@ -198,6 +198,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::adopted_element_uses_its_registered_creation_realm();
     super::guest::tests::element_projection_admits_exact_work_and_backing();
     super::guest::tests::refused_element_realm_installation_releases_guest_backing();
+    super::guest::tests::native_element_ancestors_are_projected_and_metered();
     super::guest::tests::unpublished_window_requires_its_original_bound_registry();
     super::guest::tests::fragment_custody_survives_collection_and_releases_on_retirement();
     super::guest::tests::fragment_watch_refusal_preserves_native_state();

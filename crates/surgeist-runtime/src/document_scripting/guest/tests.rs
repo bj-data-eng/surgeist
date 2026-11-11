@@ -43,7 +43,7 @@ fn attach_public_nodes(
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),
                 source_edits: DomSourceLimits::new(16_000_000, 200_000, source_work, 64, 64, 64, 2),
                 dispatch: DomEventDispatchLimits {
-                    path_items: 2,
+                    path_items: 8,
                     snapshot_listeners: 8,
                     failure_records: 4,
                     callbacks: 8,
@@ -440,6 +440,115 @@ pub(in crate::document_scripting) fn refused_element_realm_installation_releases
         ))
     ));
     drop(exact_backing);
+}
+
+pub(in crate::document_scripting) fn native_element_ancestors_are_projected_and_metered() {
+    use surgeist_dom::DomBatch;
+    use surgeist_html::values::Namespace;
+
+    let mut host = public_node_host(1_000, 20_000);
+    let permit = host.permit().unwrap();
+    let document = permit.document();
+    let events = host.guest_events().unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let root = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "globalThis.trackedElement = window.document.documentElement",
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let before = events.budget.work.get();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "trackedElement.isConnected")
+    })
+    .unwrap();
+    let shallow = events.budget.work.get() - before;
+
+    let cancel = host.native.cancellation.clone();
+    let ancestor = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let ancestor = batch.create_element_ns(document, Namespace::html(), "div");
+            let intermediate = batch.create_element_ns(document, Namespace::html(), "span");
+            let parent = batch.create_element_ns(document, Namespace::html(), "p");
+            batch.detach(root);
+            batch.insert_before(root, &parent, None);
+            batch.insert_before(&parent, &intermediate, None);
+            batch.insert_before(&intermediate, &ancestor, None);
+            let commit = dom.apply(batch, &cancel).unwrap();
+            commit.created(&ancestor).unwrap().unwrap()
+        })
+        .unwrap();
+    let result = host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            globalThis.observedParent = trackedElement.parentNode;
+            globalThis.observedAncestor = trackedElement.getRootNode();
+            let path;
+            trackedElement.addEventListener("ancestor", event => { path = event.composedPath(); }, { once: true });
+            const dispatched = trackedElement.dispatchEvent(new Event("ancestor", { bubbles: true }));
+            return observedParent instanceof HTMLParagraphElement
+                && observedAncestor instanceof HTMLDivElement
+                && dispatched && path.length === 4 && path[0] === trackedElement
+                && path[1] === observedParent && path[2] instanceof HTMLSpanElement
+                && path[3] === observedAncestor && observedParent.parentNode === path[2]
+                && trackedElement.parentNode === observedParent
+                && trackedElement.getRootNode({ composed: true }) === observedAncestor
+                && !trackedElement.isConnected && observedAncestor.parentNode === null;
+        })()"#,
+        )
+    });
+    match result {
+        Ok(()) => {}
+        Err(DocumentScriptError::Script(Error::HostFailure(failure))) => panic!(
+            "live ancestor projection refused: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        ),
+        Err(error) => panic!("live ancestor projection refused: {error:?}"),
+    }
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.insert_before(ancestor, document, None);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "window.document.documentElement === observedAncestor && trackedElement.getRootNode() === window.document")
+    }).unwrap();
+    let before = events.budget.work.get();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "trackedElement.isConnected")
+    })
+    .unwrap();
+    let deep = events.budget.work.get() - before;
+    assert!(
+        deep > shallow,
+        "native ancestor reads must charge actual visited records"
+    );
+    let retained = events.budget.used.get();
+    events.budget.work.set(events.limits.work - deep + 1);
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        host.in_document(&permit, |scope| {
+            scope
+                .evaluate(&units("trackedElement.isConnected"))
+                .map(drop)
+        })
+    else {
+        panic!("a one-short ancestor walk must refuse");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::WorkLimit)
+    ));
+    assert_eq!(events.budget.used.get(), retained);
 }
 
 pub(in crate::document_scripting) fn fragment_custody_survives_collection_and_releases_on_retirement()
