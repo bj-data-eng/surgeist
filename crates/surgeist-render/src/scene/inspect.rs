@@ -73,7 +73,9 @@ fn walk<'a>(
                 account.work(RenderWork::AuthoredShadows, 1)?;
                 paint_image(shadow.paint(), account, images)?;
             }
-            Command::Image { image, .. } => image_observation(image, account, images)?,
+            Command::Image { image, .. } | Command::ImageRegion { image, .. } => {
+                image_observation(image, account, images)?
+            }
             Command::PreparedGlyphRun { run, paint, .. } => {
                 for _ in run.glyphs() {
                     account.work(RenderWork::GlyphVisits, 1)?;

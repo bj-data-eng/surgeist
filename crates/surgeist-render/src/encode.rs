@@ -237,6 +237,15 @@ fn encode_vello_commands(
             RenderCommand::Image { image, rect, fit } => {
                 encode_image(scene, transform, image, *rect, *fit, account)?
             }
+            RenderCommand::ImageRegion {
+                image,
+                rect,
+                region,
+            } => {
+                let local = image_transform(region.local().size(), *rect, ImageFit::Fill, account)?;
+                let source_to_device = affine_product(transform, local, account)?;
+                scene.draw_image_region(image, *region, source_to_device, account)?;
+            }
             RenderCommand::PreparedGlyphRun {
                 run: outline,
                 transform: run_transform,

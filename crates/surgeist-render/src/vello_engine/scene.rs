@@ -108,6 +108,42 @@ impl VelloScene {
         self.payloads.keep(account.import_image(image)?, account)
     }
 
+    pub(crate) fn draw_image_region(
+        &mut self,
+        image: &crate::Image,
+        region: crate::image::ResolvedImageRegion,
+        source_to_device: kurbo::Affine,
+        account: &Account,
+    ) -> Result<()> {
+        self.import_image(image, account)?;
+        let expansion = super::image_atlas::ImageExpansion::for_region(
+            region.window(),
+            image.rendering_hint() == Some(crate::ImageRendering::Pixelated),
+            source_to_device,
+            account,
+        )?;
+        let brush = crate::encode::image_brush(image).with_extend(peniko::Extend::Pad);
+        let local = region.local();
+        let dx = account.coordinate(|| -local.x())?;
+        let dy = account.coordinate(|| -local.y())?;
+        account.work(RenderWork::CoordinateVisits, 2)?;
+        let brush_transform = geometry::affine_product(
+            kurbo::Affine::translate((dx, dy)),
+            expansion.compensation(),
+            account,
+        )?;
+        let first_patch = self.encoding.resources.patches.len();
+        self.fill(
+            Fill::NonZero,
+            source_to_device,
+            &brush,
+            Some(brush_transform),
+            &kurbo::Rect::new(0.0, 0.0, local.width(), local.height()),
+            account,
+        )?;
+        self.mark_image_expansion(first_patch, image.data.data.id(), expansion, account)
+    }
+
     /// Associates integer expansion with only the matching image draws appended
     /// by this callback. Geometry stays in its original coordinates; the callback
     /// applies the supplied compensation to the image brush transform.
@@ -137,7 +173,18 @@ impl VelloScene {
         expansion: super::image_atlas::ImageExpansion,
         account: &Account,
     ) -> Result<()> {
-        for patch in &self.encoding.resources.patches[first_patch..] {
+        let suffix = self
+            .encoding
+            .resources
+            .patches
+            .get(first_patch..)
+            .ok_or_else(|| {
+                crate::Error::new(
+                    crate::BackendErrorCode::RenderFailed,
+                    "image patch suffix starts beyond the recorded patches",
+                )
+            })?;
+        for patch in suffix {
             account.work(RenderWork::ResourceProbes, 1)?;
             if let Patch::Image {
                 image,

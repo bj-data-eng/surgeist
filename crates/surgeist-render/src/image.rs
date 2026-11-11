@@ -1,4 +1,4 @@
-use super::{BackendErrorCode, Error, PhysicalSize, Result, Size};
+use super::{BackendErrorCode, Error, PhysicalSize, Rect, Result, Size};
 use crate::accounting::{
     Account, AccountedVec, CpuAccount, RenderCpuScope, RenderWork, SharedValue, StorageAccount,
 };
@@ -235,6 +235,131 @@ impl Image {
     pub(crate) const fn content_identity(&self) -> &ImageContentIdentity {
         &self.content_identity
     }
+}
+
+/// An atlas sampling window qualified against the exact original image axes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ImageWindow {
+    source_size: PhysicalSize,
+    size: PhysicalSize,
+    first_pixel: u32,
+}
+
+impl ImageWindow {
+    pub(crate) const fn source_size(self) -> PhysicalSize {
+        self.source_size
+    }
+
+    pub(crate) const fn size(self) -> PhysicalSize {
+        self.size
+    }
+
+    pub(crate) const fn first_pixel(self) -> u32 {
+        self.first_pixel
+    }
+}
+
+/// A source rectangle in its enclosing texel window's local coordinates.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ResolvedImageRegion {
+    local: Rect,
+    window: ImageWindow,
+}
+
+impl ResolvedImageRegion {
+    pub(crate) const fn local(self) -> Rect {
+        self.local
+    }
+
+    pub(crate) const fn window(self) -> ImageWindow {
+        self.window
+    }
+
+    pub(crate) fn try_new(image: &Image, source: Rect, account: &Account) -> Result<Self> {
+        let source_size = PhysicalSize::new(image.data.width, image.data.height);
+        let (first_x, end_x, local_x) = region_axis(
+            source.x(),
+            source.width(),
+            source_size.width(),
+            "x",
+            account,
+        )?;
+        let (first_y, end_y, local_y) = region_axis(
+            source.y(),
+            source.height(),
+            source_size.height(),
+            "y",
+            account,
+        )?;
+        let width = account.coordinate(|| end_x - first_x)?;
+        let height = account.coordinate(|| end_y - first_y)?;
+        let last_y = account.coordinate(|| end_y - 1)?;
+        let last_x = account.coordinate(|| end_x - 1)?;
+        // For qualified u32 axes, the largest linear source index fits u64.
+        let stride = u64::from(source_size.width());
+        let last_row = account.coordinate(|| u64::from(last_y) * stride)?;
+        let last_pixel = account.coordinate(|| last_row + u64::from(last_x))?;
+        if account.coordinate(|| last_pixel > u64::from(u32::MAX))? {
+            return Err(Error::invalid_value(
+                "image source region",
+                last_pixel,
+                "last source pixel index must fit the native u32 storage index",
+            ));
+        }
+        let first_row = account.coordinate(|| u64::from(first_y) * stride)?;
+        let first_pixel = account.coordinate(|| first_row + u64::from(first_x))?;
+        let first_pixel = account.coordinate(|| first_pixel as u32)?;
+        Ok(Self {
+            local: Rect::new(local_x, local_y, source.width(), source.height()),
+            window: ImageWindow {
+                source_size,
+                size: PhysicalSize::new(width, height),
+                first_pixel,
+            },
+        })
+    }
+}
+
+fn region_axis(
+    min: f64,
+    extent: f64,
+    source_extent: u32,
+    axis: &'static str,
+    account: &Account,
+) -> Result<(u32, u32, f64)> {
+    let max = account.coordinate(|| min + extent)?;
+    let invalid = || {
+        Error::invalid_value(
+            format!("image source region {axis}"),
+            format!("{min}..{max}"),
+            "must be nonempty and within the image",
+        )
+    };
+    if !account.coordinate(|| min >= 0.0)? || !account.coordinate(|| extent > 0.0)? {
+        return Err(invalid());
+    }
+    let (larger, smaller) = if account.coordinate(|| min >= extent)? {
+        (min, extent)
+    } else {
+        (extent, min)
+    };
+    // Compare before rounding the sum. Near the source boundary the larger
+    // term is at least half the bound, so this difference is exact.
+    let remaining = account.coordinate(|| f64::from(source_extent) - larger)?;
+    if !account.coordinate(|| smaller <= remaining)? {
+        return Err(invalid());
+    }
+    let rounded_smaller = account.coordinate(|| max - larger)?;
+    let tail = account.coordinate(|| smaller - rounded_smaller)?;
+    let first = account.coordinate(|| min.floor())?;
+    let mut end = account.coordinate(|| max.ceil())?;
+    if account.coordinate(|| end == max)? && account.coordinate(|| tail > 0.0)? {
+        end = account.coordinate(|| end + 1.0)?;
+    }
+    let local = account.coordinate(|| min - first)?;
+    let first = account.coordinate(|| first as u32)?;
+    let end = account.coordinate(|| end as u32)?;
+    Ok((first, end, local))
 }
 
 pub(crate) fn validate_rgba_image(size: Size, byte_len: usize) -> Result<()> {

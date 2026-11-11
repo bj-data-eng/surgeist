@@ -3,7 +3,7 @@ use super::stats::collect_render_stats;
 use super::{
     frame::{FrameContext, FramePlan, LogicalBounds},
     geometry::offset_radii,
-    image::ResolvedMaskUploadDescriptor,
+    image::{ResolvedImageRegion, ResolvedMaskUploadDescriptor},
     layer::LayerFilter,
     paint::PaintKind,
     scene::Command,
@@ -107,6 +107,11 @@ pub(crate) enum RenderCommand {
         image: SharedValue<Image>,
         rect: Rect,
         fit: ImageFit,
+    },
+    ImageRegion {
+        image: SharedValue<Image>,
+        rect: Rect,
+        region: ResolvedImageRegion,
     },
     TextRun {
         font: SharedValue<FontRef<'static>>,
@@ -632,6 +637,20 @@ fn normalize_commands_in_context(
                     fit: *fit,
                 }
             }
+            Command::ImageRegion {
+                image,
+                source,
+                rect,
+            } => {
+                validate_rect(*rect, "image target rectangle")?;
+                let region = ResolvedImageRegion::try_new(image, *source, account)?;
+                account.work(RenderWork::ImageIdentityCopies, 1)?;
+                RenderCommand::ImageRegion {
+                    image: shared(image.clone(), None, account.import_image(image)?, account)?,
+                    rect: *rect,
+                    region,
+                }
+            }
             Command::PreparedGlyphRun {
                 run,
                 transform,
@@ -759,7 +778,7 @@ fn emit_command(command: &RenderCommand, account: &Account) -> Result<()> {
             (RenderWork::CommandsEmitted, 1),
             (RenderWork::ShadowsEmitted, 1),
         ])?,
-        RenderCommand::Image { image, .. } => {
+        RenderCommand::Image { image, .. } | RenderCommand::ImageRegion { image, .. } => {
             account.work(RenderWork::CommandsEmitted, 1)?;
             observe_image(image, account)?;
         }
@@ -1256,7 +1275,9 @@ fn command_bounds(command: &RenderCommand, account: &Account) -> Result<Option<O
         RenderCommand::Fill { shape, .. } => render_shape_bounds(shape, account).map(Some),
         RenderCommand::Stroke { shape, stroke, .. } => stroke_shape_bounds(shape, stroke).map(Some),
         RenderCommand::Shadow { shape, shadow } => shadow_bounds(shape, shadow).map(Some),
-        RenderCommand::Image { rect, .. } => OffscreenBounds::try_new(*rect).map(Some),
+        RenderCommand::Image { rect, .. } | RenderCommand::ImageRegion { rect, .. } => {
+            OffscreenBounds::try_new(*rect).map(Some)
+        }
         RenderCommand::PreparedGlyphRun {
             run: outline,
             transform,
@@ -1407,6 +1428,7 @@ pub(crate) fn outer_box_shadow_bounds_for_test(command: &RenderCommand) -> Resul
         RenderCommand::Fill { .. }
         | RenderCommand::Stroke { .. }
         | RenderCommand::Image { .. }
+        | RenderCommand::ImageRegion { .. }
         | RenderCommand::TextRun { .. }
         | RenderCommand::PreparedGlyphRun { .. }
         | RenderCommand::Layer { .. } => Ok(None),

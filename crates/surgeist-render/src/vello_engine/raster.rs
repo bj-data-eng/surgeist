@@ -290,7 +290,7 @@ pub(super) fn prepare(
         if let Some(atlas) = atlas {
             let image_atlas = recording.request_image_atlas(atlas.extent)?;
             for entry in atlas.entries {
-                if entry.factors() == [1, 1] {
+                if entry.factors() == [1, 1] && entry.window().is_none() {
                     recording.write_image(image_atlas, entry.origin, entry.image)?;
                 } else {
                     recording.expand_image(image_atlas, entry)?;

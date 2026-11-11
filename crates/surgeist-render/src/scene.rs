@@ -80,6 +80,20 @@ impl Scene {
         self
     }
 
+    /// Maps an image source rectangle in pixel coordinates to a destination.
+    ///
+    /// The source must be nonempty and within the original image. Its fractional
+    /// bounds control the mapping. Sampling clamps to the enclosing texel cells.
+    /// The renderer validates the source when it normalizes the scene.
+    pub fn image_region(&mut self, image: Image, source: Rect, destination: Rect) -> &mut Self {
+        self.commands.push(Command::ImageRegion {
+            image,
+            source,
+            rect: destination,
+        });
+        self
+    }
+
     /// Copies an authored text run into the scene's owned command storage.
     ///
     /// Borrowed font names and glyph slices no longer need to outlive the call.
@@ -239,6 +253,11 @@ pub(crate) enum Command {
         image: Image,
         rect: Rect,
         fit: ImageFit,
+    },
+    ImageRegion {
+        image: Image,
+        source: Rect,
+        rect: Rect,
     },
     TextRun {
         font: FontRef<'static>,

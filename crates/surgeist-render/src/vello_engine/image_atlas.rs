@@ -2,6 +2,7 @@
 
 use super::bounded::{self, EncodingBacking, OwnedEncoding, RasterRegistry};
 use crate::accounting::{Account, AccountedVec, RenderPhase, RenderResource, RenderWork};
+use crate::image::ImageWindow;
 use peniko::ImageData;
 use vello_encoding::{DrawImage, Encoding, Patch};
 
@@ -14,6 +15,7 @@ pub(super) const MAX_TEXELS: u64 = PACKED_MAX as u64 * PACKED_MAX as u64;
 pub(super) struct ImageExpansion {
     factors: [u32; 2],
     extent: PhysicalSize,
+    window: Option<ImageWindow>,
 }
 
 impl ImageExpansion {
@@ -29,8 +31,30 @@ impl ImageExpansion {
     }
 
     fn from_factors(image: &ImageData, factors: [u32; 2]) -> Result<Self> {
-        let width = image.width.checked_mul(factors[0]);
-        let height = image.height.checked_mul(factors[1]);
+        Self::from_source(PhysicalSize::new(image.width, image.height), factors, None)
+    }
+
+    pub(super) fn for_region(
+        window: ImageWindow,
+        pixelated: bool,
+        source_to_device: kurbo::Affine,
+        account: &Account,
+    ) -> Result<Self> {
+        let factors = if pixelated {
+            crate::image::pixelated_multipliers(source_to_device, account)?
+        } else {
+            [1, 1]
+        };
+        Self::from_source(window.size(), factors, Some(window))
+    }
+
+    fn from_source(
+        source: PhysicalSize,
+        factors: [u32; 2],
+        window: Option<ImageWindow>,
+    ) -> Result<Self> {
+        let width = source.width().checked_mul(factors[0]);
+        let height = source.height().checked_mul(factors[1]);
         match (width, height) {
             (Some(width), Some(height))
                 if width != 0
@@ -43,6 +67,7 @@ impl ImageExpansion {
                 Ok(Self {
                     factors,
                     extent: PhysicalSize::new(width, height),
+                    window,
                 })
             }
             _ => Err(failed(
@@ -71,6 +96,10 @@ impl AtlasEntry {
     }
     pub(super) fn extent(&self) -> PhysicalSize {
         self.expansion.extent
+    }
+
+    pub(super) fn window(&self) -> Option<ImageWindow> {
+        self.expansion.window
     }
 }
 
@@ -115,11 +144,20 @@ impl ImageAtlasPlan {
                     Some(expansion) => *expansion,
                     None => ImageExpansion::from_factors(image, [1, 1])?,
                 };
-                let bytes = u64::from(image.width) * u64::from(image.height) * 4;
+                let bytes = (u64::from(image.width) * u64::from(image.height))
+                    .checked_mul(4)
+                    .ok_or_else(|| failed("image atlas requires complete RGBA8 source data"))?;
                 if image.format != peniko::ImageFormat::Rgba8
                     || u64::try_from(image.data.data().len()).ok() != Some(bytes)
                 {
                     return Err(failed("image atlas requires complete RGBA8 source data"));
+                }
+                if let Some(window) = expansion.window
+                    && window.source_size() != PhysicalSize::new(image.width, image.height)
+                {
+                    return Err(failed(
+                        "image atlas region must match its original source axes",
+                    ));
                 }
                 // Blob identity identifies bytes, while dimensions identify their
                 // two-dimensional interpretation. Sampling/alpha flags stay per draw.
@@ -128,6 +166,13 @@ impl ImageAtlasPlan {
                     image.width,
                     image.height,
                     expansion.factors,
+                    expansion.window.map(|window| {
+                        (
+                            window.first_pixel(),
+                            window.size().width(),
+                            window.size().height(),
+                        )
+                    }),
                 );
                 let index = if let Some(index) = identities.get(&identity, &account)? {
                     *index

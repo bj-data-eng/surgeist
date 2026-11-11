@@ -1919,6 +1919,7 @@ pub fn surgeist_render::Scene::clear(&mut self)
 pub fn surgeist_render::Scene::clip(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, children: impl core::ops::function::FnOnce(&mut surgeist_render::Scene)) -> &mut Self
 pub fn surgeist_render::Scene::fill(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, paint: impl core::convert::Into<surgeist_render::Paint>) -> &mut Self
 pub fn surgeist_render::Scene::image(&mut self, image: surgeist_render::Image, rect: surgeist_render::Rect, fit: surgeist_render::ImageFit) -> &mut Self
+pub fn surgeist_render::Scene::image_region(&mut self, image: surgeist_render::Image, source: surgeist_render::Rect, destination: surgeist_render::Rect) -> &mut Self
 pub fn surgeist_render::Scene::inspect(&self, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::SceneSummary>
 pub fn surgeist_render::Scene::is_empty(&self) -> bool
 pub fn surgeist_render::Scene::layer(&mut self, layer: surgeist_render::Layer, children: impl core::ops::function::FnOnce(&mut surgeist_render::Scene)) -> &mut Self

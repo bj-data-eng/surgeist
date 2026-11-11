@@ -915,6 +915,10 @@ impl RecordingBuilder {
             .keep(self.account.import_image_data(&entry.image)?, &self.account)?;
         let extent = entry.extent();
         let factors = entry.factors();
+        let (source_size, first_pixel) = entry.window().map_or_else(
+            || (PhysicalSize::new(entry.image.width, entry.image.height), 0),
+            |window| (window.size(), window.first_pixel()),
+        );
         let byte_len = u64::try_from(entry.image.data.data().len())
             .ok()
             .and_then(|length| length.checked_add(32))
@@ -928,14 +932,14 @@ impl RecordingBuilder {
         self.push(RasterCommand::UploadImageSource {
             buffer,
             header: [
-                entry.image.width,
-                entry.image.height,
+                source_size.width(),
+                source_size.height(),
                 entry.origin[0],
                 entry.origin[1],
                 factors[0],
                 factors[1],
-                extent.width(),
-                extent.height(),
+                entry.image.width,
+                first_pixel,
             ],
             image_data: entry.image,
         })?;
