@@ -74,6 +74,11 @@ match an original. Any mismatch or incomplete observation fails. Historical
 missing-root-context errors remain raw failures; a current capture never turns
 them into historical passes.
 
+The [original Block axis edition](../../../examples/qualify-root-context/README.md#original-block-axes-qualification)
+covers all 20 direction and box-sizing variants across five writing modes.
+The focused Block axis test checks the original topology and compares every
+registered rectangle tree through Native layout.
+
 The [Grid Lanes original diagnostic receipt](captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
 records the complete raw numeric differences from all 36 source-qualified
 original axis captures. It is separate from matching editions. Use the
