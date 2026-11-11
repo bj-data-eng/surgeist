@@ -707,7 +707,11 @@ impl HtmlConstructionCaptureAdapter {
             HtmlConstructionResult::Document(value) => value.root().id(),
             HtmlConstructionResult::Fragment(value) => value.root().id(),
         };
-        let checkpoint = (builder.data.records.len(), builder.data.usage);
+        let checkpoint = (
+            builder.data.records.len(),
+            builder.data.usage,
+            builder.data.block_sequence,
+        );
         let account = builder
             .account
             .ready(builder.limits)
@@ -741,6 +745,8 @@ impl HtmlConstructionCaptureAdapter {
         let result = result.and(synced);
         if let Err(reason) = result {
             builder.data.records.truncate(checkpoint.0);
+            // The records the import made are gone, and so are the blocks they listed.
+            storage::roll_back_blocks(&mut builder.data.blocks, checkpoint.2);
             // A refused give-back can only be a ledger defect, which stays latched in the
             // operation and fails the builder's next charge; the import's own refusal is the one
             // reported.
@@ -1369,7 +1375,14 @@ mod tests {
                 ),
             )
             .unwrap();
-        source.append_text(&shadow, "inside").unwrap();
+        // The text borrows a block, so that an import lists it and a refused import must take it
+        // back.
+        let mut inside = Vec::with_capacity(64);
+        inside.extend("inside".encode_utf16());
+        let block = surgeist_html::values::TextBlock::from_utf16(inside);
+        source
+            .append_text(&shadow, block.string(0..6).unwrap())
+            .unwrap();
         let source = source.finish().unwrap();
         let source_id = source.root().id();
         let mut ids = vec![source_id];
@@ -1382,7 +1395,7 @@ mod tests {
             }
             cursor += 1;
         }
-        let make = |work| {
+        let make = |work, earlier: bool| {
             let revision = HtmlHostFactsRevision::fresh();
             let mut builder = HtmlCaptureBuilder::new(
                 HtmlCaptureLimits::new(20, 100, 0, 100, 20, 0, 0, 16 * 1024 * 1024),
@@ -1395,6 +1408,14 @@ mod tests {
                     HtmlCaptureRegistryInput::Unavailable,
                 )
                 .unwrap();
+            // An earlier record may borrow the block the import's text borrows, and then a
+            // rollback must keep that listing.
+            if earlier {
+                builder
+                    .add_text(&document, block.string(0..6).unwrap())
+                    .unwrap();
+            }
+
             let nodes = ids
                 .iter()
                 .map(|id| {
@@ -1428,47 +1449,63 @@ mod tests {
                 HtmlConstructionCaptureLimits::new(20, 1000, work),
             )
         };
-        let (builder, _, facts, limits) = make(100_000);
-        let full = HtmlConstructionCaptureAdapter::fragment(
-            builder,
-            source.clone(),
-            facts,
-            limits,
-            HtmlSemanticCancellation::new(),
-        )
-        .unwrap();
-        let total = full.usage().work();
-        for cutoff in 0..total {
-            let (builder, document, facts, limits) = make(cutoff);
-            let usage = builder.usage();
-            let identity = builder.data.identity.clone();
-            let capacity = builder.data.records.capacity();
-            let fact_allocation = facts.nodes.as_ptr();
-            let failure = HtmlConstructionCaptureAdapter::fragment(
+        for earlier in [false, true] {
+            let (builder, _, facts, limits) = make(100_000, earlier);
+            let full = HtmlConstructionCaptureAdapter::fragment(
                 builder,
                 source.clone(),
                 facts,
                 limits,
                 HtmlSemanticCancellation::new(),
             )
-            .unwrap_err();
-            assert_eq!(
-                failure.reason,
-                HtmlConstructionCaptureError::LimitExceeded,
-                "cutoff {cutoff}"
-            );
-            assert_eq!(failure.builder.data.identity, identity);
-            assert_eq!(failure.builder.usage(), usage);
-            assert_eq!(failure.builder.data.records.len(), 1);
-            assert!(failure.builder.data.records.capacity() >= capacity);
-            assert_eq!(failure.facts.nodes.as_ptr(), fact_allocation);
-            assert_eq!(failure.source.fragment().unwrap().root().id(), source_id);
-            let capture = failure.builder.finish().unwrap();
-            let id = capture.subject_id(&document).unwrap();
-            let HtmlCapturedNodeKind::Document(facts) = capture.node(&id).unwrap().kind() else {
-                panic!("document")
-            };
-            assert_eq!(facts.scripting(), HtmlScriptingStatus::Enabled);
+            .unwrap();
+            let total = full.usage().work();
+            // The import lists its text's block unless an earlier record listed it already.
+            assert_eq!(full.builder.data.blocks.len(), 1);
+            for cutoff in 0..total {
+                let (builder, document, facts, limits) = make(cutoff, earlier);
+                let usage = builder.usage();
+                let identity = builder.data.identity.clone();
+                let capacity = builder.data.records.capacity();
+                let fact_allocation = facts.nodes.as_ptr();
+                let failure = HtmlConstructionCaptureAdapter::fragment(
+                    builder,
+                    source.clone(),
+                    facts,
+                    limits,
+                    HtmlSemanticCancellation::new(),
+                )
+                .unwrap_err();
+                assert_eq!(
+                    failure.reason,
+                    HtmlConstructionCaptureError::LimitExceeded,
+                    "cutoff {cutoff}"
+                );
+                assert_eq!(failure.builder.data.identity, identity);
+                assert_eq!(failure.builder.usage(), usage);
+                assert_eq!(failure.builder.data.records.len(), 1 + usize::from(earlier));
+                // The import's listings are gone and the earlier record's listing is not.
+                assert_eq!(
+                    failure.builder.data.blocks.len(),
+                    usize::from(earlier),
+                    "cutoff {cutoff}, earlier record {earlier}"
+                );
+                assert_eq!(
+                    failure.builder.data.blocks.find(&block).is_some(),
+                    earlier,
+                    "cutoff {cutoff}, earlier record {earlier}"
+                );
+                assert!(failure.builder.data.records.capacity() >= capacity);
+                assert_eq!(failure.facts.nodes.as_ptr(), fact_allocation);
+                assert_eq!(failure.source.fragment().unwrap().root().id(), source_id);
+                let capture = failure.builder.finish().unwrap();
+                let id = capture.subject_id(&document).unwrap();
+                let HtmlCapturedNodeKind::Document(facts) = capture.node(&id).unwrap().kind()
+                else {
+                    panic!("document")
+                };
+                assert_eq!(facts.scripting(), HtmlScriptingStatus::Enabled);
+            }
         }
     }
 }

@@ -973,6 +973,11 @@ struct CaptureData {
     host_revision: HtmlHostFactsRevision,
     records: Vec<Record>,
     registries: Vec<RegistryRecord>,
+    /// The blocks that borrowed strings of the records index, each with the capacity it keeps
+    /// alive, so that the capture accounts for each block once.
+    blocks: storage::BlockTable,
+    /// The number the next listed block takes, which only grows.
+    block_sequence: usize,
     usage: HtmlCaptureUsage,
 }
 /// One immutable bounded producer capture, reusable across context queries.
@@ -1117,6 +1122,8 @@ impl HtmlCaptureBuilder {
                 host_revision,
                 records: Vec::new(),
                 registries: Vec::new(),
+                blocks: storage::BlockTable::new(),
+                block_sequence: 0,
                 usage: HtmlCaptureUsage::default(),
             },
             limits,
@@ -1248,7 +1255,16 @@ impl HtmlCaptureBuilder {
         admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
     ) -> Result<HtmlCaptureBuilderSubject, preflight::Failure<E>> {
         preflight::reserve_storage(&mut self.data.records, 1, true, self.controlled, admit)?;
-        self.commit(charges)?;
+        let listing = storage::list_blocks(
+            &mut self.data.blocks,
+            &mut self.data.block_sequence,
+            |visit| storage::kind_strings(&kind, visit),
+        )
+        .map_err(|_| preflight::Failure::AllocationFailed)?;
+        if let Err(error) = self.commit(charges) {
+            listing.undo(&mut self.data.blocks);
+            return Err(error.into());
+        }
         let index = self.data.records.len();
         let container = matches!(
             kind,
@@ -1421,7 +1437,16 @@ impl HtmlCaptureBuilder {
             return Err(HtmlCaptureError::NonceAlreadyEstablished);
         }
         let charges = self.admit(0, 0, 0, value.len(), 0, 0)?;
-        self.commit(charges)?;
+        let listing = storage::list_blocks(
+            &mut self.data.blocks,
+            &mut self.data.block_sequence,
+            |visit| visit(&value),
+        )
+        .map_err(|_| HtmlCaptureError::RepresentationExhausted)?;
+        if let Err(error) = self.commit(charges) {
+            listing.undo(&mut self.data.blocks);
+            return Err(error);
+        }
         let element = self.data.records[index].kind.element_mut()?;
         element.nonce = HtmlCapturedNonce::Value(value);
         Ok(())
@@ -1650,7 +1675,22 @@ impl HtmlCaptureBuilder {
         }
         let charges = self.admit(0, 0, 0, units, 1, definitions.as_ref().map_or(0, Vec::len))?;
         reserve(&mut self.data.registries, 1)?;
-        self.commit(charges)?;
+        let definition_strings = |visit: &mut dyn FnMut(&DocumentString)| {
+            for definition in definitions.iter().flatten() {
+                visit(&definition.name);
+                visit(&definition.local_name);
+            }
+        };
+        let listing = storage::list_blocks(
+            &mut self.data.blocks,
+            &mut self.data.block_sequence,
+            definition_strings,
+        )
+        .map_err(|_| HtmlCaptureError::RepresentationExhausted)?;
+        if let Err(error) = self.commit(charges) {
+            listing.undo(&mut self.data.blocks);
+            return Err(error);
+        }
         let index = self.data.registries.len();
         self.data.registries.push(RegistryRecord {
             complete: definitions.is_some(),
@@ -1733,7 +1773,20 @@ impl HtmlCaptureBuilder {
             1,
         )?;
         reserve(&mut self.data.registries[registry.index].definitions, 1)?;
-        self.commit(charges)?;
+        let definition_strings = |visit: &mut dyn FnMut(&DocumentString)| {
+            visit(&definition.name);
+            visit(&definition.local_name);
+        };
+        let listing = storage::list_blocks(
+            &mut self.data.blocks,
+            &mut self.data.block_sequence,
+            definition_strings,
+        )
+        .map_err(|_| HtmlCaptureError::RepresentationExhausted)?;
+        if let Err(error) = self.commit(charges) {
+            listing.undo(&mut self.data.blocks);
+            return Err(error);
+        }
         let records = &mut self.data.registries[registry.index].definitions;
         let record_index = records.len();
         records.push(definition);
@@ -2472,6 +2525,8 @@ impl HtmlCaptureBuilder {
             host_revision: self.data.host_revision.clone(),
             records: std::mem::take(&mut self.data.records),
             registries: std::mem::take(&mut self.data.registries),
+            blocks: std::mem::take(&mut self.data.blocks),
+            block_sequence: self.data.block_sequence,
             usage: self.data.usage,
         }))
     }

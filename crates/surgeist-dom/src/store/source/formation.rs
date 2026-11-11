@@ -400,6 +400,9 @@ pub(crate) struct Formation {
     ancestors: Option<Arc<crate::source::event::EventWork>>,
     work_limit: u64,
     dependencies: WorkDependencies,
+    /// The transaction's list of blocks to charge, when the formation belongs to one. A
+    /// formation of an event retains payload outside any transaction and charges no block.
+    blocks: Option<Arc<super::super::block_custody::BlockAdoptions>>,
 }
 impl Drop for Formation {
     fn drop(&mut self) {
@@ -432,6 +435,7 @@ impl Formation {
                     ancestors: None,
                     work_limit: 0,
                     dependencies: WorkDependencies::from_draft(draft),
+                    blocks: Some(draft.blocks.clone()),
                 }));
             }
             (None, None) => return Ok(None),
@@ -452,6 +456,7 @@ impl Formation {
             ancestors: draft.source_ancestors.clone(),
             work_limit: limits.work,
             dependencies: WorkDependencies::from_draft(draft),
+            blocks: Some(draft.blocks.clone()),
         }))
     }
     pub(in crate::store) fn from_event(
@@ -478,6 +483,7 @@ impl Formation {
             work_limit: limits.work,
             ancestors: work.ancestors.clone(),
             dependencies: WorkDependencies::from_event(event_custody),
+            blocks: None,
         }
     }
     pub(in crate::store) fn fork(&self) -> Self {
@@ -496,6 +502,7 @@ impl Formation {
             ancestors: self.ancestors.clone(),
             work_limit: self.work_limit,
             dependencies: self.dependencies.clone(),
+            blocks: self.blocks.clone(),
         }
     }
     fn absorb_debit(&self, incoming: Option<custody::Debit>) {
@@ -623,6 +630,21 @@ impl Formation {
                 resource: DomResource::SourceRetainedBytes,
                 limit: self.limit,
             })
+    }
+    /// Charges the block `value` borrows, once for the store, as any other retained custody.
+    pub(crate) fn adopt_block(
+        &self,
+        value: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        match &self.blocks {
+            Some(blocks) => blocks.adopt(
+                value,
+                |next| self.admit_custody_usage(next, cancel),
+                || self.step(cancel),
+            ),
+            None => Ok(()),
+        }
     }
     pub(crate) fn retain_bytes(&self, bytes: usize, cancel: &AtomicBool) -> Result<(), DomError> {
         self.retain_payload(storage::Payload { bytes, units: 0 }, cancel)
@@ -1075,6 +1097,21 @@ pub(crate) fn share(
         let mut payload = storage::Payload::default();
         payload.string(value)?;
         budget.retain_payload(payload, cancel)?;
+    }
+    Ok(value.clone())
+}
+/// Shares a string that a Text or Comment node holds, which lists its block: the string is priced by
+/// the occurrence rule, as the node's own payload prices it, and the store charges the block once.
+pub(crate) fn share_listed(
+    value: &DocumentString,
+    budget: Option<&Formation>,
+    cancel: &AtomicBool,
+) -> Result<DocumentString, DomError> {
+    if let Some(budget) = budget {
+        let mut payload = storage::Payload::default();
+        payload.listed_string(value)?;
+        budget.retain_payload(payload, cancel)?;
+        budget.adopt_block(value, cancel)?;
     }
     Ok(value.clone())
 }

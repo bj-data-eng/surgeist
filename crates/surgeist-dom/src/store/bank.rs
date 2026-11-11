@@ -12,6 +12,8 @@ use std::{
     sync::{Arc, Mutex, MutexGuard, Weak},
 };
 
+use surgeist_html::values::{TextBlock, TextBlockTable, TextBlockTableError};
+
 use super::{
     DomError,
     custody::{Debit, Held, Ledger, MaterializationId, SharedDebit, Usage},
@@ -1088,6 +1090,12 @@ struct RegistryState {
     pages: Option<Box<RegistryNode>>,
     records: Option<Box<RegistryNode>>,
     released: Option<Box<ReleaseNode>>,
+    /// The text blocks that borrowed strings of this domain index, each charged once by the debit
+    /// its entry holds. An entry holds its block weakly, so the block's address stays its own.
+    blocks: TextBlockTable<BlockEntry>,
+    /// The charge for the capacity of `blocks`, which grows with it, and the capacity it covers.
+    blocks_bank: Debit,
+    blocks_charged: usize,
     next_nonce: u64,
     _administration: Debit,
 }
@@ -1160,20 +1168,39 @@ pub(crate) struct CustodyRegistry {
     ledger: Ledger,
 }
 
+/// What the registry keeps for a listed block: the debit that charges it, whether a published
+/// transaction relies on it, and how many unpublished transactions still do.
+struct BlockEntry {
+    /// Held for its release when the entry goes.
+    _debit: Debit,
+    published: bool,
+    claims: usize,
+}
+
+/// The entries the table of blocks reserves first.
+const BLOCK_TABLE_ROOM: usize = 4;
+
 impl CustodyRegistry {
+    /// The bytes the registry charges for each entry of capacity of its table of blocks.
+    pub const TABLE_ENTRY_BYTES: usize = TextBlockTable::<BlockEntry>::ENTRY_BYTES;
+
     pub const fn administration_usage() -> Usage {
         Usage::new(size_of::<Mutex<RegistryState>>(), 0)
     }
 
     pub fn new(
         ledger: &Ledger,
-        admit: impl FnMut(Usage) -> Result<(), DomError>,
+        mut admit: impl FnMut(Usage) -> Result<(), DomError>,
     ) -> Result<Self, DomError> {
-        let administration = ledger.retain(Self::administration_usage(), admit)?;
+        let administration = ledger.retain(Self::administration_usage(), &mut admit)?;
+        let blocks_bank = ledger.retain(Usage::ZERO, &mut admit)?;
         let state = Arc::new(Mutex::new(RegistryState {
             pages: None,
             records: None,
             released: None,
+            blocks: TextBlockTable::new(),
+            blocks_bank,
+            blocks_charged: 0,
             next_nonce: 1,
             _administration: administration,
         }));
@@ -1195,6 +1222,153 @@ impl CustodyRegistry {
 
     pub fn ledger(&self) -> &Ledger {
         &self.ledger
+    }
+
+    /// Whether a debit charges `block` in this domain.
+    #[cfg(test)]
+    pub fn block_listed(&self, block: &TextBlock) -> bool {
+        self.lock().blocks.find(block).is_some()
+    }
+
+    /// Relies on a debit that charges `block`, in one critical section so that no other
+    /// transaction changes the listing between the look and the claim: a published listing, a
+    /// claim on a listing that only unpublished transactions hold, or a new listing made with the
+    /// debit `retain` makes. Returns whether the caller must record the block, which it does for a
+    /// claim and for a listing, so that it gives the claim up or publishes it; a published listing
+    /// needs no record.
+    ///
+    /// A listing is admitted through `admit` and a new debit through `retain`, and the table is
+    /// charged by its capacity, in one debit that grows before the table reserves. `step` is
+    /// called once for each entry an insertion moves, before it moves any. A refusal lists and
+    /// claims nothing, and the room the table kept stays charged.
+    pub fn adopt_block(
+        &self,
+        block: &TextBlock,
+        mut admit: impl FnMut(Usage) -> Result<(), DomError>,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<bool, DomError> {
+        let mut state = self.lock();
+        if let Some(entry) = state.blocks.find_mut(block) {
+            if entry.published {
+                return Ok(false);
+            }
+            return match entry.claims.checked_add(1) {
+                Some(claims) => {
+                    entry.claims = claims;
+                    Ok(true)
+                }
+                // A count that cannot grow is as good as published: the listing is kept for good.
+                None => {
+                    entry.published = true;
+                    Ok(false)
+                }
+            };
+        }
+        for _ in 0..state.blocks.shifted_by_insert(block) {
+            step()?;
+        }
+        let entry = Self::TABLE_ENTRY_BYTES;
+        let len = state.blocks.len();
+        // The room is reserved exactly, in steps that at least double it, so that the charge is
+        // known before the table reserves.
+        let target = if len < state.blocks.capacity() {
+            state.blocks.capacity()
+        } else {
+            state
+                .blocks
+                .capacity()
+                .checked_mul(2)
+                .ok_or(DomError::RepresentationExhausted)?
+                .max(BLOCK_TABLE_ROOM)
+        };
+        let needed = target.max(state.blocks_charged);
+        if needed > state.blocks_charged {
+            let extra = needed
+                .checked_sub(state.blocks_charged)
+                .and_then(|rooms| rooms.checked_mul(entry))
+                .ok_or(DomError::RepresentationExhausted)?;
+            state.blocks_bank.grow(Usage::new(extra, 0), &mut admit)?;
+            state.blocks_charged = needed;
+        }
+        let additional = target
+            .checked_sub(len)
+            .ok_or(DomError::RepresentationExhausted)?;
+        state
+            .blocks
+            .reserve_exact(additional)
+            .map_err(|_| DomError::AllocationFailed)?;
+        let debit = self.ledger.retain(
+            Usage::new(block.retained_bytes(), block.capacity()),
+            &mut admit,
+        )?;
+        // A reservation that kept more room than asked for is charged too, at the next listing.
+        match state.blocks.insert(
+            block,
+            BlockEntry {
+                _debit: debit,
+                published: false,
+                claims: 1,
+            },
+        ) {
+            Ok(()) => Ok(true),
+            Err(TextBlockTableError::Present) => Err(DomError::RepresentationExhausted),
+            Err(TextBlockTableError::AllocationFailed) => Err(DomError::AllocationFailed),
+        }
+    }
+
+    /// Marks the listing of each of `blocks` as relied on by a published transaction. The blocks
+    /// are the ones the caller recorded, which the table already charges by capacity, so the work
+    /// is proportional to listings that are charged and is not metered.
+    pub fn publish_blocks<'a>(&self, blocks: impl Iterator<Item = &'a TextBlock>) {
+        let mut state = self.lock();
+        for block in blocks {
+            if let Some(entry) = state.blocks.find_mut(block) {
+                entry.published = true;
+            }
+        }
+    }
+
+    /// Gives up the claim an unpublished transaction made on each of `blocks`, and unlists the
+    /// blocks nothing relies on any more, which releases their debits. The work is proportional
+    /// to the blocks the caller recorded, which the table already charges by capacity, and is not
+    /// metered.
+    pub fn release_claims<'a>(&self, blocks: impl Iterator<Item = &'a TextBlock>) {
+        let mut state = self.lock();
+        for block in blocks {
+            let Some(entry) = state.blocks.find_mut(block) else {
+                continue;
+            };
+            if entry.published {
+                continue;
+            }
+            // A claim count never goes below the claims that were made.
+            let Some(claims) = entry.claims.checked_sub(1) else {
+                continue;
+            };
+            entry.claims = claims;
+            if claims == 0 {
+                drop(state.blocks.remove(block));
+            }
+        }
+    }
+
+    /// Releases the debit of every block that no string holds any more, which the registry would
+    /// otherwise keep until the next sweep. The work is proportional to the listings the table
+    /// already charges by capacity and is not metered.
+    pub fn sweep_blocks(&self) {
+        self.lock().blocks.sweep(drop);
+    }
+
+    /// The number of listed blocks.
+    #[cfg(test)]
+    pub fn listed_blocks(&self) -> usize {
+        self.lock().blocks.len()
+    }
+
+    /// The capacity of the table of blocks, which the registry charges.
+    #[cfg(test)]
+    pub fn listed_capacity(&self) -> usize {
+        self.lock().blocks.capacity()
     }
 
     pub fn total(&self) -> Usage {

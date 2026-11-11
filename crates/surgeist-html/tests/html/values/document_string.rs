@@ -112,7 +112,7 @@ fn range_bounds_are_rejected_without_a_panic() {
     assert!(block.get(2..5).is_none());
     assert_eq!(block.get(1..3), Some(&[98_u16, 99][..]));
     assert!(!block.string(4..4).unwrap().is_whole_block());
-    assert!(block.string(0..4).unwrap().is_whole_block());
+    assert!(!block.string(0..4).unwrap().is_whole_block());
     assert_eq!(block.string(1..4).unwrap().range(), 1..4);
     assert!(
         TextRangeError::Reversed { start: 3, end: 1 }
@@ -122,12 +122,15 @@ fn range_bounds_are_rejected_without_a_panic() {
 }
 
 #[test]
-fn a_whole_range_is_the_whole_block_string() {
+fn a_whole_range_borrows_the_block_the_owner_form_covers() {
     let block = TextBlock::from_utf16(units("abcd"));
-    let whole = block.string(0..4).unwrap();
-    assert!(whole.is_whole_block());
-    assert!(whole.shares_storage_with(&block.whole()));
-    assert_eq!(whole.range(), 0..4);
+    let range = block.string(0..4).unwrap();
+    let owner = block.whole();
+    assert!(!range.is_whole_block() && owner.is_whole_block());
+    assert!(range.borrowed_block().is_some() && owner.borrowed_block().is_none());
+    assert_eq!(range, owner);
+    assert!(!range.shares_storage_with(&owner));
+    assert_eq!(range.range(), 0..4);
 }
 
 #[test]
@@ -261,15 +264,30 @@ fn a_range_over_a_whole_block_is_still_a_borrower_of_it() {
 }
 
 #[test]
-fn a_range_counts_its_own_length_and_a_whole_block_string_its_capacity() {
+fn every_string_keeps_the_capacity_of_its_block_and_a_listing_owner_counts_a_borrower_by_length() {
     let mut vector = Vec::with_capacity(31);
     vector.extend(units("abcdef"));
     let capacity = vector.capacity();
     let owner = DocumentString::from_utf16(vector);
     assert_eq!(owner.retained_units(), capacity);
+    assert_eq!(owner.occurrence_units(), capacity);
     let block = owner.block();
     for range in [0..6, 1..3, 4..4, 6..6] {
         let borrower = block.string(range.clone()).unwrap();
-        assert_eq!(borrower.retained_units(), range.len());
+        assert_eq!(borrower.retained_units(), capacity);
+        assert_eq!(borrower.occurrence_units(), range.len());
     }
+}
+
+#[test]
+fn a_borrower_copies_its_units_into_a_shared_vector_and_an_owner_hands_its_block_over() {
+    let owner = DocumentString::from("abc");
+    let borrower = owner.block().string(0..3).unwrap();
+    assert!(Arc::ptr_eq(
+        &owner.to_shared_utf16(),
+        &owner.to_shared_utf16()
+    ));
+    let copy = borrower.to_shared_utf16();
+    assert!(!Arc::ptr_eq(&copy, &owner.to_shared_utf16()));
+    assert_eq!(copy.as_slice(), [97, 98, 99]);
 }

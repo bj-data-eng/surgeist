@@ -940,7 +940,7 @@ impl Draft {
                     return Err(DomError::WrongNodeKind);
                 }
                 let mut extra = source::storage::Payload::default();
-                extra.string(v)?;
+                extra.listed_string(v)?;
                 let value = super::staged::fresh_language(
                     incoming,
                     if text { true } else { retained },

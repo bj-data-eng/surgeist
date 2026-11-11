@@ -17,9 +17,10 @@ use surgeist_html::values::DocumentString;
 mod attributes;
 mod autofocus;
 pub(crate) mod bank;
+mod base;
+mod block_custody;
 #[cfg(test)]
 mod block_custody_tests;
-mod base;
 pub(crate) mod canonical;
 mod changes;
 #[cfg(test)]
@@ -1670,6 +1671,8 @@ impl Dom {
             let prepared = self.prepare(batch, cancelled)?;
             self.publish(prepared, cancelled)
         })();
+        // Blocks that no string holds any more, whatever the outcome, give their charge back.
+        self.custody_registry.sweep_blocks();
         #[cfg(test)]
         self.observe_source_lifecycle();
         result
@@ -1813,6 +1816,7 @@ impl Dom {
         )?;
         let changed = guarded.value.changed_from(&self.state);
         let Prepared {
+            blocks,
             inline_echo: _,
             sharing,
             inline_positions: _,
@@ -1995,6 +1999,7 @@ impl Dom {
             to,
             changes,
             _formation: formation,
+            blocks,
         })
     }
     fn publish_prepared(&mut self, publication: PreparedPublication) -> DomCommit {
@@ -2004,11 +2009,13 @@ impl Dom {
         &mut self,
         publication: PreparedPublication,
     ) -> CommittedPublication {
+        // The blocks the transaction listed stay listed: the nodes that borrow them are published.
+        publication.blocks.publish();
         let (inline_index, inline_objects) = match self.inline_styles.as_mut() {
             Some(owner) => (Some(&mut owner.index), Some(&mut owner.objects)),
             None => (None, None),
         };
-        PublicationFields {
+        let committed = PublicationFields {
             state: &mut self.state,
             state_custody: &mut self.state_custody,
             style_cssom_roots: &mut self.style_cssom_roots,
@@ -2018,7 +2025,11 @@ impl Dom {
             inline_index,
             inline_objects,
         }
-        .publish(publication)
+        .publish(publication);
+        // Blocks that no string holds any more, such as those of the state this publication
+        // replaced, give their charge back whichever route published.
+        self.custody_registry.sweep_blocks();
+        committed
     }
     fn trim_history(&mut self) {
         self.history.trim(self.limits);
@@ -2090,6 +2101,7 @@ impl PublicationFields<'_> {
             to,
             changes,
             _formation,
+            blocks: _,
         } = publication;
         if let Some(sharing) = sharing {
             match sharing {
@@ -2208,6 +2220,8 @@ struct Draft {
     input_captures: bank::Bank<source::input::InputEntry>,
     input_captures_custody: bank::BankCustody<source::input::InputEntry>,
     custody_registry: bank::CustodyRegistry,
+    /// The blocks this transaction listed in the registry, which it takes back unless it publishes.
+    blocks: Arc<block_custody::BlockAdoptions>,
     journal: transaction::Journal<transaction::Undo>,
     fullscreen_exit: Option<fullscreen::exit::Frame>,
     // An actual published parallel invocation retains this same Work atom.
@@ -2341,6 +2355,7 @@ pub(crate) struct PreparedPublication {
     _formation: Option<source::formation::Formation>,
     name_promotions: name_registry::Promotions,
     sharing: Option<SharingPublication>,
+    blocks: Arc<block_custody::BlockAdoptions>,
 }
 struct Prepared {
     node_retirement_candidates: Vec<NodeId>,
@@ -2370,6 +2385,7 @@ struct Prepared {
     formation: Option<source::formation::Formation>,
     name_promotions: name_registry::Promotions,
     sharing: Option<value_sharing::Session>,
+    blocks: Arc<block_custody::BlockAdoptions>,
 }
 
 struct PreparedRoot {
@@ -2657,6 +2673,9 @@ impl Draft {
             ));
         }
         let registry = dom.custody_registry.clone();
+        // A block whose last holder dropped since the last transaction is released before this
+        // transaction admits anything.
+        registry.sweep_blocks();
         let ledger = registry.ledger();
         let mut admit_initial = |usage: custody::Usage| {
             admission.step(cancelled)?;
@@ -2680,7 +2699,7 @@ impl Draft {
             Ok(())
         };
         let header = ledger.retain(
-            custody::Usage::new(size_of::<Draft>(), 0),
+            custody::Usage::new(size_of::<Draft>() + block_custody::BlockAdoptions::BYTES, 0),
             &mut admit_initial,
         )?;
         let journal = transaction::Journal::new(ledger, &mut admit_initial)?;
@@ -2780,6 +2799,7 @@ impl Draft {
             base_custody: dom.state_custody.clone(),
             input_captures: bank::Bank::default(),
             input_captures_custody: bank::BankCustody::default(),
+            blocks: block_custody::BlockAdoptions::new(registry.clone()),
             custody_registry: registry,
             names,
             sharing: Some(sharing),
@@ -3489,12 +3509,12 @@ impl Draft {
                     Creation::Element(_) | Creation::ElementNs { .. } => {
                         unreachable!("Element was allocated through formed ingress")
                     }
-                    Creation::Text(data) => NewNode::Text(source::formation::share(
+                    Creation::Text(data) => NewNode::Text(source::formation::share_listed(
                         data,
                         metadata_formation.as_ref(),
                         cancelled,
                     )?),
-                    Creation::Comment(data) => NewNode::Comment(source::formation::share(
+                    Creation::Comment(data) => NewNode::Comment(source::formation::share_listed(
                         data,
                         metadata_formation.as_ref(),
                         cancelled,

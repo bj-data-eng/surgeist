@@ -100,30 +100,59 @@ impl State {
         Ok((next, enable))
     }
     // Candidate aliases of old names retain the same allocation. Charge new
-    // immutable backing once within this exact Document's old/new state union.
+    // immutable backing once within this exact Document's old/new state union: a name that
+    // aliases another keeps no backing of its own, and the block of a name that borrows one is
+    // charged once however many names of the union borrow it.
     pub(super) fn additional_backing(
         &self,
         old: Option<&Self>,
     ) -> Result<usize, DomStyleRuntimeError> {
         let mut bytes = 0usize;
         for (index, name) in self.names().enumerate() {
-            if old.is_some_and(|old| old.names().any(|n| n.shares_storage_with(name)))
-                || self
-                    .names()
-                    .take(index)
-                    .any(|n| n.shares_storage_with(name))
-            {
+            let held = |other: &DocumentString| other.shares_storage_with(name);
+            if old.is_some_and(|old| old.names().any(held)) || self.names().take(index).any(held) {
                 continue;
             }
-            bytes = name
-                .retained_units()
-                .checked_mul(size_of::<u16>())
-                .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
+            let block_held = |other: &DocumentString| shares_block(name, other);
+            let block = name
+                .borrowed_block()
+                .filter(|_| {
+                    !(old.is_some_and(|old| old.names().any(block_held))
+                        || self.names().take(index).any(block_held))
+                })
+                .map_or(0, surgeist_html::values::TextBlock::retained_bytes);
+            bytes = occurrence_backing(name)?
+                .0
+                .checked_add(block)
                 .and_then(|n| n.checked_add(bytes))
                 .ok_or(DomStyleRuntimeError::Admission)?;
         }
         Ok(bytes)
     }
+}
+/// The bytes and units a name accounts for by itself: its own length when it borrows a block that
+/// its holder charges apart (see [`block_backing`]), and the capacity of its block when it owns it.
+pub(super) fn occurrence_backing(
+    name: &DocumentString,
+) -> Result<(usize, usize), DomStyleRuntimeError> {
+    let units = name.occurrence_units();
+    let bytes = units
+        .checked_mul(size_of::<u16>())
+        .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
+        .ok_or(DomStyleRuntimeError::Admission)?;
+    Ok((bytes, units))
+}
+/// The bytes and units of the block a name borrows, which are charged once for every name of the
+/// union that borrows it; `None` for an owner, whose block [`occurrence_backing`] counts.
+pub(super) fn block_backing(name: &DocumentString) -> Option<(usize, usize)> {
+    name.borrowed_block()
+        .map(|block| (block.retained_bytes(), block.capacity()))
+}
+/// Whether `name` borrows the block that `other` holds, as an owner or as a borrower, so that a
+/// charge made for `other` covers the block of `name`.
+pub(super) fn shares_block(name: &DocumentString, other: &DocumentString) -> bool {
+    name.borrowed_block()
+        .is_some_and(|block| block.shares_allocation_with(other.block()))
 }
 /// The enable-set algorithm targets only named sheets; unnamed sheets keep
 /// their current flag. Both real producer adapters share this exact decision.

@@ -8,6 +8,7 @@ mod name_index;
 mod name_lookup;
 mod newlines;
 mod numeric_retained_capacity;
+mod text_block_table;
 mod tokens;
 mod vocabulary;
 mod xml_name_code_points;

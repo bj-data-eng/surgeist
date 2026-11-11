@@ -3,7 +3,8 @@
 use std::{collections::HashMap, error::Error, fmt, sync::Arc};
 
 pub use document_string::{
-    DocumentString, TextBlock, TextRangeError, Utf8ConversionError, WeakTextBlock,
+    DocumentString, TextBlock, TextBlockTable, TextBlockTableError, TextRangeError,
+    Utf8ConversionError, WeakTextBlock,
 };
 
 pub(crate) const HTML_NAMESPACE_URI: &str = "http://www.w3.org/1999/xhtml";

@@ -500,15 +500,23 @@ impl Dom {
                         HtmlNodeKind::Text(value) => {
                             control.charge(value.len())?;
                             NewNode::Text(
-                                source::formation::share(&value, formation.as_ref(), cancelled)
-                                    .map_err(|error| source_error(&visit.source, error))?,
+                                source::formation::share_listed(
+                                    &value,
+                                    formation.as_ref(),
+                                    cancelled,
+                                )
+                                .map_err(|error| source_error(&visit.source, error))?,
                             )
                         }
                         HtmlNodeKind::Comment(value) => {
                             control.charge(value.len())?;
                             NewNode::Comment(
-                                source::formation::share(&value, formation.as_ref(), cancelled)
-                                    .map_err(|error| source_error(&visit.source, error))?,
+                                source::formation::share_listed(
+                                    &value,
+                                    formation.as_ref(),
+                                    cancelled,
+                                )
+                                .map_err(|error| source_error(&visit.source, error))?,
                             )
                         }
                         HtmlNodeKind::ProcessingInstruction(value) => {
