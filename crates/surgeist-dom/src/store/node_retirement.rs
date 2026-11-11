@@ -3,7 +3,7 @@
 use std::sync::{Mutex, MutexGuard};
 
 use super::*;
-use crate::{DomSourceEventPayloadRetention, DomSourceEventRequest};
+use crate::{DomSourceEventPayloadRetention, DomSourceEventRequest, DomSourceEventRetention};
 
 struct Queue {
     open: bool,
@@ -79,18 +79,6 @@ fn side(slot: usize, bit: usize) -> usize {
 }
 
 impl Row {
-    fn leaf(&self, slot: usize) -> Option<&Armed> {
-        let mut row = self;
-        loop {
-            match row {
-                Self::Leaf(armed) => return Some(armed),
-                Self::Branch(branch) => {
-                    row = branch.children[side(slot, branch.bit)].as_ref()?;
-                }
-            }
-        }
-    }
-
     fn match_path(
         &self,
         node: NodeId,
@@ -113,35 +101,37 @@ impl Row {
         }
     }
 
-    // The first differing bit separates two exact slot identities. Each
-    // branch tests a lower bit than its parent, so the path has fixed depth.
-    fn insert(
-        root: &mut Option<Self>,
-        row: Box<Armed>,
-        bit: usize,
-        backing: DomSourceEventPayloadRetention,
-    ) {
-        let slot = row.notice.node.slot;
-        if let Some(Self::Branch(branch)) = root
-            && branch.bit > bit
-        {
-            Self::insert(
-                &mut branch.children[side(slot, branch.bit)],
-                row,
-                bit,
-                backing,
-            );
-            return;
+    // The first differing bit separates two exact slot identities. Return
+    // it up the original descent until the parent of the splice is reached.
+    // None means that child installed the watch and no more work may refuse.
+    fn arm_below(&mut self, admission: &WatchAdmission<'_>) -> Result<Option<usize>, DomError> {
+        admission.step()?;
+        match self {
+            Self::Leaf(armed) => {
+                let differing = admission.node.slot ^ armed.notice.node.slot;
+                let bit = differing
+                    .checked_ilog2()
+                    .ok_or(DomError::NodeRetirementAlreadyWatched)?;
+                Ok(Some(1 << bit))
+            }
+            Self::Branch(branch) => {
+                let child = &mut branch.children[side(admission.node.slot, branch.bit)];
+                let Some(bit) = child
+                    .as_mut()
+                    .ok_or(DomError::RepresentationExhausted)?
+                    .arm_below(admission)?
+                else {
+                    return Ok(None);
+                };
+                admission.step()?;
+                if branch.bit > bit {
+                    admission.splice(child, Some(bit))?;
+                    Ok(None)
+                } else {
+                    Ok(Some(bit))
+                }
+            }
         }
-        let index = side(slot, bit);
-        let mut children = [None, None];
-        children[1 - index] = root.take();
-        children[index] = Some(Self::Leaf(row));
-        *root = Some(Self::Branch(Box::new(Branch {
-            bit,
-            children,
-            _backing: backing,
-        })));
     }
 
     fn remove(root: &mut Option<Self>, node: NodeId, key: Option<usize>) -> Option<Box<Armed>> {
@@ -204,6 +194,9 @@ pub struct DomNodeRetirementWatch {
 
 impl Drop for DomNodeRetirementWatch {
     fn drop(&mut self) {
+        // One administrative path per affine watch. Each branch tests a
+        // strictly lower slot bit, so both descent and unwind have at most
+        // usize::BITS branch visits. This also works after Source exhaustion.
         let armed = self.index.remove(self.node, Some(self.custody_key));
         drop(armed);
     }
@@ -262,6 +255,71 @@ impl Index {
     }
 }
 
+struct WatchAdmission<'a> {
+    dom: &'a Dom,
+    request: &'a DomSourceEventRequest,
+    inbox: &'a DomNodeRetirementInbox,
+    node: NodeId,
+    custody_key: usize,
+    cancel: &'a AtomicBool,
+}
+
+impl WatchAdmission<'_> {
+    fn step(&self) -> Result<(), DomError> {
+        self.dom.source_event_step(self.request, self.cancel)
+    }
+
+    fn form(&self, extra: usize) -> Result<(Box<Armed>, DomSourceEventRetention), DomError> {
+        let leaf = size_of::<Armed>();
+        let notice = size_of::<Notice>();
+        let mut retained = self.dom.retain_source_event_payload(
+            self.request,
+            leaf + notice + extra,
+            0,
+            self.cancel,
+        )?;
+        let backing = retained.split_payload(leaf, 0)?;
+        let notice = Box::new(Notice {
+            node: self.node,
+            custody_key: self.custody_key,
+            next: None,
+            _backing: retained.split_payload(notice, 0)?,
+        });
+        let armed = Box::new(Armed {
+            notice,
+            queue: self.inbox.queue.clone(),
+            backing,
+        });
+        Ok((armed, retained))
+    }
+
+    fn splice(&self, root: &mut Option<Row>, bit: Option<usize>) -> Result<(), DomError> {
+        self.step()?;
+        let branch_bytes = bit.map_or(0, |_| size_of::<Branch>());
+        let (armed, mut retained) = self.form(branch_bytes)?;
+        let branch = if let Some(bit) = bit {
+            Some(Box::new(Branch {
+                bit,
+                children: [None, None],
+                _backing: retained.split_payload(branch_bytes, 0)?,
+            }))
+        } else {
+            None
+        };
+        drop(retained);
+        check_cancel(self.cancel)?;
+        *root = Some(if let Some(mut branch) = branch {
+            let index = side(self.node.slot, branch.bit);
+            branch.children[1 - index] = root.take();
+            branch.children[index] = Some(Row::Leaf(armed));
+            Row::Branch(branch)
+        } else {
+            Row::Leaf(armed)
+        });
+        Ok(())
+    }
+}
+
 impl Dom {
     /// Admit an inbox for exact retirement notices under an original Source
     /// event. Its custody survives the original event and retains no engine.
@@ -302,76 +360,38 @@ impl Dom {
         }
         self.source_event_step(request, cancel)?;
         self.state.node(self.owner, node)?;
-        let reserve_branch = if let Some(index) = &self.node_retirements {
-            let root = lock(&index.armed);
-            if root
-                .as_ref()
-                .and_then(|row| row.leaf(node.slot))
-                .is_some_and(|row| row.notice.node.slot == node.slot)
-            {
-                return Err(DomError::NodeRetirementAlreadyWatched);
-            }
-            root.is_some()
-        } else {
-            false
-        };
-        let leaf = size_of::<Armed>();
-        let notice = size_of::<Notice>();
-        let branch = if reserve_branch {
-            size_of::<Branch>()
-        } else {
-            0
-        };
-        let header = if self.node_retirements.is_none() {
-            size_of::<Index>()
-        } else {
-            0
-        };
-        let mut retained =
-            self.retain_source_event_payload(request, leaf + notice + branch + header, 0, cancel)?;
-        let leaf_backing = retained.split_payload(leaf, 0)?;
-        let notice_backing = retained.split_payload(notice, 0)?;
-        let index = match self.node_retirements.as_ref() {
-            Some(index) => index.clone(),
-            None => {
-                let index = Arc::new(Index {
-                    armed: Mutex::new(None),
-                    _backing: retained.split_payload(header, 0)?,
-                });
-                self.node_retirements = Some(index.clone());
-                index
-            }
-        };
-        let notice = Box::new(Notice {
+        let admission = WatchAdmission {
+            dom: self,
+            request,
+            inbox,
             node,
             custody_key,
-            next: None,
-            _backing: notice_backing,
-        });
-        let armed = Box::new(Armed {
-            notice,
-            queue: inbox.queue.clone(),
-            backing: leaf_backing,
-        });
-        {
+            cancel,
+        };
+        let index = if let Some(index) = &self.node_retirements {
             let mut root = lock(&index.armed);
-            if let Some(existing) = root.as_ref() {
-                let leaf = existing
-                    .leaf(node.slot)
-                    .ok_or(DomError::RepresentationExhausted)?;
-                let differing_bit = (node.slot ^ leaf.notice.node.slot)
-                    .checked_ilog2()
-                    .ok_or(DomError::NodeRetirementAlreadyWatched)?;
-                Row::insert(
-                    &mut root,
-                    armed,
-                    1 << differing_bit,
-                    retained.split_payload(branch, 0)?,
-                );
+            if let Some(row) = root.as_mut() {
+                if let Some(bit) = row.arm_below(&admission)? {
+                    admission.splice(&mut root, Some(bit))?;
+                }
             } else {
-                *root = Some(Row::Leaf(armed));
+                admission.splice(&mut root, None)?;
             }
-        }
+            index.clone()
+        } else {
+            admission.step()?;
+            let header = size_of::<Index>();
+            let (armed, mut retained) = admission.form(header)?;
+            let backing = retained.split_payload(header, 0)?;
+            drop(retained);
+            let index = Arc::new(Index {
+                armed: Mutex::new(Some(Row::Leaf(armed))),
+                _backing: backing,
+            });
+            check_cancel(cancel)?;
+            self.node_retirements = Some(index.clone());
+            index
+        };
         Ok(DomNodeRetirementWatch {
             index,
             node,
