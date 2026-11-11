@@ -5,7 +5,7 @@ use super::exact_differences::{
 };
 use super::root_context::QualifiedRootContext;
 use super::{
-    Error, Expectation, Golden, Node, NumericComparisonSink, RootContext, Scalar,
+    Error, Expectation, Golden, Node, NumericComparisonSink, RootContext, Scalar, TestTree,
     compare_captured_with_batch, layout, parse_number,
 };
 
@@ -45,10 +45,7 @@ pub(crate) fn verify_historical(current: &Golden, historical: &Golden) -> Result
     };
     let (parent_x, parent_y, parent_width, parent_height) = rectangle(&current.expectations)?;
     let (x, y, grid_width, grid_height) = rectangle(observed)?;
-    let percentage_parent = historical
-        .name
-        .split_once("__")
-        .is_some_and(|(stem, _)| stem == "chrome_issue_325928327");
+    let percentage_parent = is_percentage_parent(&historical.name);
     let preferred_size_matches = if percentage_parent {
         current.root.style.get("width") == Some("max-content")
             && parent_width == grid_width
@@ -97,6 +94,11 @@ pub(crate) fn verify_historical(current: &Golden, historical: &Golden) -> Result
         true,
         !percentage_parent,
     )
+}
+
+fn is_percentage_parent(case: &str) -> bool {
+    case.split_once("__")
+        .is_some_and(|(stem, _)| stem == "chrome_issue_325928327")
 }
 
 fn original_percentage_grid_shape(grid: &Node) -> bool {
@@ -191,8 +193,47 @@ fn compare_subtree(
     Ok(())
 }
 
-/// Report complete rounded box differences and the independently captured
-/// unrounded Grid offset within the actual Flex parent.
+// The percentage capture admits only boxes whose browser rectangles are
+// identical before and after rounding. Use those rectangles for both comparisons.
+fn compare_unrounded_subtree(
+    tree: &TestTree,
+    node: usize,
+    expected: &Expectation,
+    path: &str,
+    fields: &mut Vec<String>,
+) -> Result<(), Error> {
+    let actual = &tree.nodes[node];
+    if actual.children.len() != expected.children.len() {
+        return Err(Error::new(format!("{path}: incomplete Native source tree")));
+    }
+    let (x, y, width, height) = rectangle(expected)?;
+    let unrounded = actual.unrounded;
+    let location = if node == 0 {
+        layout::Point::new(0.0, 0.0)
+    } else {
+        unrounded.location
+    };
+    for (field, browser, native) in [
+        ("x", x, location.x),
+        ("y", y, location.y),
+        ("width", width, unrounded.size.width),
+        ("height", height, unrounded.size.height),
+    ] {
+        if browser != native {
+            fields.push(format!(
+                "{path}: unrounded {field}, browser {browser}, Native {native}"
+            ));
+        }
+    }
+    for (index, (&child, observation)) in actual.children.iter().zip(&expected.children).enumerate()
+    {
+        compare_unrounded_subtree(tree, child, observation, &format!("{path}/{index}"), fields)?;
+    }
+    Ok(())
+}
+
+/// Report complete rounded box differences and the source profile's unrounded
+/// observations within the actual Flex parent.
 pub(crate) fn compare(
     golden: &Golden,
 ) -> Result<(Vec<String>, Result<QualifiedComparison, String>), QualificationError> {
@@ -212,6 +253,15 @@ pub(crate) fn compare(
             .any(|node| !node.unrounded_present || !node.final_layout_present)
         {
             return Err(Error::new("incomplete Native original Flex parent layout"));
+        }
+        if is_percentage_parent(&golden.name) {
+            return compare_unrounded_subtree(
+                tree,
+                0,
+                &golden.expectations,
+                &golden.name,
+                &mut fields,
+            );
         }
         let [grid] = tree.nodes[0].children.as_slice() else {
             return Err(Error::new("Native Flex parent must have one Grid child"));
