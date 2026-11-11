@@ -986,12 +986,71 @@ fn fri05_c06_computed_overflow_corpus_outputs_parse() {
 
 #[test]
 fn fri05_c06_computed_overflow_corpus_outputs_match_layout() {
-    for path in fri05_c06_computed_overflow_paths() {
-        let golden = support::Golden::parse_file(&path)
+    let originals = fri05_c06_computed_overflow_paths();
+    assert_eq!(originals.len(), 44);
+    for path in &originals {
+        let golden = support::Golden::parse_file(path)
             .unwrap_or_else(|error| panic!("{} failed to parse: {error}", path.display()));
-        support::assert_surgeist_matches(&golden)
-            .unwrap_or_else(|error| panic!("{} failed layout comparison: {error}", path.display()));
+        assert_fri05_computed_overflow_topology(path, &golden);
     }
+    assert_registered_originals_match(&originals);
+}
+
+fn assert_fri05_computed_overflow_topology(path: &Path, golden: &support::Golden) {
+    let family = path
+        .parent()
+        .unwrap()
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
+    let source = golden.name.split_once("__").unwrap().0;
+    let root = &golden.root;
+    let expected = &golden.expectations;
+    assert_eq!(root.kind, support::NodeKind::Div);
+    assert_eq!(root.style.get("display"), Some(family));
+    assert_eq!(root.children.len(), 1, "{family}/{source}");
+    assert_eq!(expected.children.len(), 1, "{family}/{source}");
+    let child = &root.children[0];
+    let child_expected = &expected.children[0];
+    assert_eq!(child.kind, support::NodeKind::Div);
+    let nested = matches!(
+        source,
+        "fri05_hidden_auto_minimum" | "fri05_nested_zero_axis_overflow"
+    );
+    assert_eq!(
+        child.children.len(),
+        usize::from(nested),
+        "{family}/{source}"
+    );
+    assert_eq!(
+        child_expected.children.len(),
+        usize::from(nested),
+        "{family}/{source}"
+    );
+    if nested {
+        let leaf = &child.children[0];
+        assert_eq!(leaf.kind, support::NodeKind::Div);
+        assert!(leaf.children.is_empty());
+        let leaf_expected = &child_expected.children[0];
+        assert!(leaf_expected.children.is_empty() && leaf_expected.scroll_size.is_none());
+    }
+
+    let (root_overflow, child_overflow) = match source {
+        "fri05_hidden_auto_minimum" => (None, Some("hidden")),
+        "fri05_mixed_axis_clip_margin" => (Some("clip"), None),
+        _ => (Some("auto"), None),
+    };
+    assert_eq!(root.style.get("overflow-x"), root_overflow);
+    assert_eq!(child.style.get("overflow-x"), child_overflow);
+    assert_eq!(
+        expected.scroll_size.is_some(),
+        root_overflow == Some("auto")
+    );
+    assert_eq!(
+        child_expected.scroll_size.is_some(),
+        child_overflow == Some("hidden")
+    );
 }
 
 #[test]
