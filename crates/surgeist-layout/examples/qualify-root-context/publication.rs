@@ -215,6 +215,20 @@ fn matching_input<'a>(bytes: &'a [u8], edition: &str) -> Result<DeclarationInput
     Ok(input)
 }
 
+fn current_diagnostic_reference(owner: &Path) -> Result<authority::DiagnosticReference> {
+    let catalogue = RelativePath::new("examples/qualify-root-context/corpus.toml")?;
+    require_regular_input(owner, &catalogue)?;
+    let bytes = fs::read(owner.join(catalogue.as_str()))?;
+    let paired = matching_input(&bytes, authority::GRID_LANES_PAIRED_EDITION)?;
+    paired
+        .declaration
+        .records
+        .iter()
+        .find_map(Record::source_equivalent_matching)
+        .map(|pair| pair.diagnostics.clone())
+        .ok_or_else(|| "missing current original diagnostic reference".into())
+}
+
 fn specialized_input(bytes: &[u8], profile: SpecializedProfile) -> Result<DeclarationInput<'_>> {
     let mut input = DeclarationInput::parse(bytes)?;
     input
@@ -338,8 +352,16 @@ fn finish(
     let mut snapshot = inventory(root, owner, input, mode, access)?;
     origin.inputs(root, &mut snapshot, access)?;
     let stored_terminal = if has_terminal && matches!(access, InputAccess::ReadOnly) {
-        require_regular_input(root, &RelativePath::new(terminal_name)?)?;
-        let bytes = fs::read(root.join(terminal_name))?;
+        let bytes = if diagnostics {
+            read_pair_input(
+                root,
+                terminal_name,
+                &current_diagnostic_reference(owner)?.sha256,
+            )?
+        } else {
+            require_regular_input(root, &RelativePath::new(terminal_name)?)?;
+            fs::read(root.join(terminal_name))?
+        };
         if diagnostics {
             authority::OriginalDiagnosticReceipt::parse(std::str::from_utf8(&bytes)?)?;
         } else if !derive_terminal {
@@ -510,6 +532,16 @@ fn finish(
         };
         if let Some(diagnostics) = paired_diagnostics {
             diagnostics.verify_freshness(owner)?;
+        }
+        if diagnostics
+            && let Some(stored) = stored_terminal.as_deref()
+            && read_pair_input(
+                root,
+                terminal_name,
+                &current_diagnostic_reference(owner)?.sha256,
+            )? != stored
+        {
+            return Err("original diagnostic receipt changed during replay".into());
         }
         publish_terminal(
             root,
@@ -1368,6 +1400,9 @@ impl<'a> CheckedPairDiagnostics<'a> {
     }
 
     fn verify_freshness(&self, owner: &Path) -> Result<()> {
+        if current_diagnostic_reference(owner)? != *self.reference {
+            return Err("original diagnostic reference changed during paired replay".into());
+        }
         let receipt = read_pair_input(
             &self.root,
             authority::ORIGINAL_DIAGNOSTIC_RECEIPT,
