@@ -51,6 +51,10 @@ mod flex_composition_tests;
 mod flex_content_text;
 #[path = "flex_text_projection.rs"]
 mod flex_text_projection;
+#[path = "grid_lanes_native_pair.rs"]
+pub(crate) mod grid_lanes_native_pair;
+#[path = "grid_lanes_source_delta.rs"]
+mod grid_lanes_source_delta;
 #[path = "measured_leaf.rs"]
 mod measured_leaf;
 #[path = "original_subgrid_body.rs"]

@@ -336,6 +336,7 @@ enum AdmittedComparison {
 
 pub struct AdmittedEdition {
     freshness: Freshness,
+    diagnostic_freshness: Option<Freshness>,
     cases: Vec<AdmittedCase>,
 }
 
@@ -389,6 +390,13 @@ impl EditionRun {
 }
 
 impl AdmittedEdition {
+    fn verify_diagnostic_freshness(&self) -> Result<()> {
+        if let Some(diagnostics) = &self.diagnostic_freshness {
+            diagnostics.verify()?;
+        }
+        Ok(())
+    }
+
     pub(super) fn outputs(&self) -> impl Iterator<Item = &str> {
         self.cases.iter().map(|case| case.output.as_str())
     }
@@ -407,7 +415,10 @@ impl AdmittedEdition {
         Ok(EditionRun::finish(
             cases,
             self.cases.len(),
-            self.freshness.verify(),
+            self.freshness.verify().and_then(|uncovered| {
+                self.verify_diagnostic_freshness()?;
+                Ok(uncovered)
+            }),
         ))
     }
 
@@ -571,7 +582,10 @@ impl AdmittedRegistry {
         let freshness = self
             .editions
             .iter()
-            .try_for_each(|edition| edition.freshness.verify_files())
+            .try_for_each(|edition| {
+                edition.freshness.verify_files()?;
+                edition.verify_diagnostic_freshness()
+            })
             .and_then(|()| verify_live(&self.owner, &self.selected_records));
         Ok(EditionRun::finish(cases, declared_cases, freshness))
     }
@@ -624,7 +638,24 @@ pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEditio
 }
 
 // Register only a complete publisher terminal after reviewed capture/check.
+const REGISTERED_GRID_LANES_PAIRED_TERMINAL_SHA256: &str =
+    "18b755e5ada7fbb11a631bbbb40e962515e3c6a2ee43ffc41ab0473acfb7ec9e";
+
+pub(super) fn admit_grid_lanes_axis_controls(owner: &Path) -> Result<AdmittedEdition> {
+    admit(
+        owner,
+        Registration {
+            edition: Edition::Matching(authority::GRID_LANES_PAIRED_EDITION),
+            terminal_sha256: REGISTERED_GRID_LANES_PAIRED_TERMINAL_SHA256,
+        },
+    )
+}
+
 const REGISTERED_MATCHING: &[(&str, &str)] = &[
+    (
+        authority::GRID_LANES_PAIRED_EDITION,
+        REGISTERED_GRID_LANES_PAIRED_TERMINAL_SHA256,
+    ),
     (
         "baseline-math",
         "67103ca9a9de1abadf8f090d8c50d9127a5b296d46f030db57f67eafba7710b1",
@@ -864,9 +895,17 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     let edition = match edition {
         Edition::Exact(edition) => edition,
         Edition::Matching(_) => {
-            let cases = admit_matching(&root, &terminal, &report, &artifacts)?;
+            let (cases, diagnostic_freshness) =
+                admit_matching(owner, &root, &terminal, &report, &artifacts)?;
             freshness.verify()?;
-            return Ok(AdmittedEdition { freshness, cases });
+            if let Some(diagnostics) = &diagnostic_freshness {
+                diagnostics.verify()?;
+            }
+            return Ok(AdmittedEdition {
+                freshness,
+                diagnostic_freshness,
+                cases,
+            });
         }
         Edition::Specialized(profile) => {
             let cases = admit_specialized(
@@ -878,7 +917,11 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
                 profile,
             )?;
             freshness.verify()?;
-            return Ok(AdmittedEdition { freshness, cases });
+            return Ok(AdmittedEdition {
+                freshness,
+                diagnostic_freshness: None,
+                cases,
+            });
         }
     };
     let exact_cases = terminal
@@ -1070,11 +1113,17 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         return Err(changed("complete selected canonical reference census"));
     }
     freshness.verify()?;
-    Ok(AdmittedEdition { freshness, cases })
+    Ok(AdmittedEdition {
+        freshness,
+        diagnostic_freshness: None,
+        cases,
+    })
 }
 
 pub(super) struct AuthenticatedOriginalDiagnostics {
     cases: BTreeMap<(String, String), support::Golden>,
+    sources: BTreeMap<String, Vec<u8>>,
+    freshness: Freshness,
 }
 
 impl AuthenticatedOriginalDiagnostics {
@@ -1082,6 +1131,13 @@ impl AuthenticatedOriginalDiagnostics {
         self.cases
             .get(&(source.to_owned(), variant.to_owned()))
             .ok_or_else(|| changed("missing authenticated original diagnostic case"))
+    }
+
+    fn source(&self, source: &str) -> Result<&[u8]> {
+        self.sources
+            .get(source)
+            .map(Vec::as_slice)
+            .ok_or_else(|| changed("missing authenticated original diagnostic source"))
     }
 }
 
@@ -1205,8 +1261,25 @@ pub(super) fn admit_original_diagnostics(
     if cases.len() != artifacts.len() {
         return Err(changed("complete original diagnostic replay census"));
     }
+    let sources = records
+        .into_iter()
+        .map(|(source, record)| {
+            let bytes = read_pinned(
+                &root,
+                &PathDigest {
+                    path: source.to_owned(),
+                    sha256: record.source_sha256.as_str().to_owned(),
+                },
+            )?;
+            Ok((source.to_owned(), bytes))
+        })
+        .collect::<Result<_>>()?;
     freshness.verify()?;
-    Ok(AuthenticatedOriginalDiagnostics { cases })
+    Ok(AuthenticatedOriginalDiagnostics {
+        cases,
+        sources,
+        freshness,
+    })
 }
 
 fn verify_grid_lanes_capture_contract<'a, Case>(
@@ -1216,19 +1289,9 @@ fn verify_grid_lanes_capture_contract<'a, Case>(
     historical: impl Iterator<Item = &'a str>,
 ) -> Result<()> {
     const BROWSER_OWNER: &str = "browser-owner.toml";
-    const GLOBAL_INPUTS: [&str; 9] = [
-        BROWSER_OWNER,
-        "corpus.toml",
-        "fonts/Ahem.ttf",
-        "fonts/PROVENANCE.md",
-        "origin/selected-originals.json",
-        "origin/source-provenance.json",
-        "origin/source-receipt.json",
-        "scripts/gentest/test_base_style.css",
-        authority::ROOT_HELPER_INPUT,
-    ];
-    let expected: BTreeSet<_> = GLOBAL_INPUTS
+    let expected: BTreeSet<_> = authority::GRID_LANES_SHARED_INPUTS
         .into_iter()
+        .chain(["corpus.toml", "origin/selected-originals.json"])
         .chain(receipt.records.iter().map(|record| record.source.as_str()))
         .chain(historical)
         .collect();
@@ -1470,17 +1533,18 @@ fn verify_matching_original_selection<Case>(
 }
 
 fn admit_matching(
+    owner: &Path,
     root: &Path,
     terminal: &Qualification,
     report: &Report,
     artifacts: &BTreeMap<&str, &CapturedArtifact>,
-) -> Result<Vec<AdmittedCase>> {
+) -> Result<(Vec<AdmittedCase>, Option<Freshness>)> {
     let declaration = Declaration::parse(&read_pinned(root, &terminal.declaration)?)
         .map_err(|error| malformed(error.to_string()))?;
     let records: BTreeMap<_, _> = declaration
         .records
         .iter()
-        .filter(|r| r.matching_publication.as_deref() == Some(terminal.edition.as_str()))
+        .filter(|r| r.matching_edition() == Some(terminal.edition.as_str()))
         .map(|r| (r.source.as_str(), r))
         .collect();
     if records.len() != terminal.records.len()
@@ -1488,6 +1552,28 @@ fn admit_matching(
     {
         return Err(changed("complete matching edition source census"));
     }
+    let diagnostics = if terminal.edition == authority::GRID_LANES_PAIRED_EDITION {
+        verify_grid_lanes_capture_contract(root, terminal, report, std::iter::empty())?;
+        if report.metadata.generator != authority::FIXED_GENERATOR
+            || !report.metadata.source_imports.is_empty()
+        {
+            return Err(changed("paired Grid Lanes report lineage"));
+        }
+        let reference = records
+            .values()
+            .next()
+            .and_then(|record| record.source_equivalent_matching())
+            .ok_or_else(|| changed("missing paired diagnostic reference"))?;
+        let originals = admit_original_diagnostics(owner, &reference.diagnostics.sha256)?;
+        authority::verify_grid_lanes_producing_helper(&originals.freshness.pins)?;
+        authority::verify_grid_lanes_shared_inputs(
+            &originals.freshness.pins,
+            &terminal.retained_inputs,
+        )?;
+        Some(originals)
+    } else {
+        None
+    };
     let mut consumed = BTreeSet::new();
     let mut cases = Vec::new();
     for qualified in &terminal.cases {
@@ -1553,6 +1639,27 @@ fn admit_matching(
                 "matching edition contains raw geometry differences: {raw:?}"
             )));
         }
+        if let Some(pair) = record.source_equivalent_matching() {
+            let diagnostics = diagnostics
+                .as_ref()
+                .ok_or_else(|| changed("missing authenticated original diagnostics"))?;
+            let control_source = read_pinned(
+                root,
+                &PathDigest {
+                    path: descriptor.source.clone(),
+                    sha256: record.source_sha256.as_str().to_owned(),
+                },
+            )?;
+            support::grid_lanes_native_pair::verify_declared_pair(
+                pair,
+                &descriptor.variant,
+                diagnostics.source(&pair.original)?,
+                &control_source,
+                diagnostics.golden(&pair.original, &descriptor.variant)?,
+                &golden,
+            )
+            .map_err(|error| changed(format!("{}: {error}", descriptor.name)))?;
+        }
         cases.push(AdmittedCase {
             output: descriptor.output.path.clone(),
             comparison: AdmittedComparison::MatchingGeometry,
@@ -1562,7 +1669,7 @@ fn admit_matching(
     if consumed.len() != artifacts.len() {
         return Err(changed("unconsumed matching generated artifact"));
     }
-    Ok(cases)
+    Ok((cases, diagnostics.map(|diagnostics| diagnostics.freshness)))
 }
 
 fn admit_specialized(

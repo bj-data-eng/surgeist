@@ -6,7 +6,10 @@ use std::error::Error;
 use serde::{Deserialize, Serialize};
 use surgeist_generator::{RelativePath, Sha256Digest};
 
-use super::capture_authority::{MatchingProvenance, PathDigest};
+use super::capture_authority::{
+    DiagnosticReference, GRID_LANES_AXIS_ORIGINAL_SOURCES, MatchingMembership, MatchingProvenance,
+    PathDigest, SourceEquivalentMatching, grid_lanes_control_source,
+};
 pub(crate) use super::capture_authority::{SourceKind, SpecializedProfile};
 use crate::fixture_variants::fixture_cases;
 
@@ -36,10 +39,32 @@ struct SemanticPublication {
 }
 
 #[derive(Deserialize)]
+#[serde(untagged)]
+enum MatchingPublication {
+    Independent(IndependentMatchingPublication),
+    SourceEquivalent(SourceEquivalentPublication),
+}
+
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct MatchingPublication {
+struct IndependentMatchingPublication {
     edition: String,
     sources: Vec<RelativePath>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceEquivalentPublication {
+    edition: String,
+    diagnostics: DiagnosticReference,
+    pairs: Vec<SourcePair>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourcePair {
+    original: RelativePath,
+    control: RelativePath,
 }
 
 #[derive(Deserialize)]
@@ -63,7 +88,7 @@ pub(crate) struct Record {
     #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
     pub(crate) specialized_publication: Option<SpecializedProfile>,
     #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
-    pub(crate) matching_publication: Option<String>,
+    pub(crate) matching_publication: Option<MatchingMembership>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -284,11 +309,57 @@ impl Declaration {
         }
         let mut editions = BTreeSet::new();
         for publication in catalogue.matching_publications {
-            super::capture_authority::validate_matching_edition(&publication.edition)?;
-            if publication.sources.is_empty() || !editions.insert(publication.edition.clone()) {
+            let (edition, members) = match publication {
+                MatchingPublication::Independent(publication) => {
+                    let membership = MatchingMembership::Independent(publication.edition.clone());
+                    (
+                        publication.edition,
+                        publication
+                            .sources
+                            .into_iter()
+                            .map(|source| (source, membership.clone()))
+                            .collect::<Vec<_>>(),
+                    )
+                }
+                MatchingPublication::SourceEquivalent(publication) => {
+                    let mut originals = BTreeSet::new();
+                    if publication.pairs.len() != GRID_LANES_AXIS_ORIGINAL_SOURCES.len() {
+                        return Err(
+                            "source-equivalent matching requires exactly nine source pairs".into(),
+                        );
+                    }
+                    let mut members = Vec::new();
+                    for pair in publication.pairs {
+                        if grid_lanes_control_source(pair.original.as_str()).as_deref()
+                            != Some(pair.control.as_str())
+                            || !originals.insert(pair.original.clone())
+                            || !catalogue.records.iter().any(|record| {
+                                record.source == pair.original
+                                    && record.source_kind == SourceKind::Original
+                            })
+                        {
+                            return Err(
+                                "source-equivalent matching original/control association changed"
+                                    .into(),
+                            );
+                        }
+                        members.push((
+                            pair.control,
+                            MatchingMembership::SourceEquivalent(SourceEquivalentMatching {
+                                edition: publication.edition.clone(),
+                                original: pair.original.as_str().to_owned(),
+                                diagnostics: publication.diagnostics.clone(),
+                            }),
+                        ));
+                    }
+                    (publication.edition, members)
+                }
+            };
+            super::capture_authority::validate_matching_edition(&edition)?;
+            if members.is_empty() || !editions.insert(edition) {
                 return Err("matching publication requires a unique nonempty edition".into());
             }
-            for source in publication.sources {
+            for (source, membership) in members {
                 let record = catalogue
                     .records
                     .iter_mut()
@@ -309,7 +380,8 @@ impl Declaration {
                 {
                     return Err("matching publication requires unique unpaired box sources without other authority".into());
                 }
-                record.matching_publication = Some(publication.edition.clone());
+                membership.validate(record.source.as_str(), record.source_kind)?;
+                record.matching_publication = Some(membership);
             }
         }
         Ok(Self {
@@ -320,14 +392,13 @@ impl Declaration {
         &self,
         selected: &BTreeMap<String, serde_json::Value>,
     ) -> Result<Vec<String>, Box<dyn Error + Send + Sync>> {
-        let matching_editions: BTreeSet<_> = selected
-            .values()
-            .filter_map(|record| {
-                record
-                    .get("matching_publication")
-                    .and_then(serde_json::Value::as_str)
-            })
-            .collect();
+        let mut matching_editions = BTreeSet::new();
+        for record in selected.values() {
+            if let Some(wire) = record.get("matching_publication") {
+                let membership: MatchingMembership = serde_json::from_value(wire.clone())?;
+                matching_editions.insert(membership.edition().to_owned());
+            }
+        }
         let mut matched = 0;
         let mut uncovered = Vec::new();
         for record in &self.records {
@@ -338,8 +409,7 @@ impl Declaration {
                 }
                 matched += 1;
             } else if record
-                .matching_publication
-                .as_deref()
+                .matching_edition()
                 .is_some_and(|edition| matching_editions.contains(edition))
             {
                 return Err("selected matching edition membership changed".into());
@@ -389,6 +459,18 @@ fn validate_semantic_references(
 }
 
 impl Record {
+    pub(crate) fn matching_edition(&self) -> Option<&str> {
+        self.matching_publication
+            .as_ref()
+            .map(MatchingMembership::edition)
+    }
+
+    pub(crate) fn source_equivalent_matching(&self) -> Option<&SourceEquivalentMatching> {
+        match &self.matching_publication {
+            Some(MatchingMembership::SourceEquivalent(pair)) => Some(pair),
+            _ => None,
+        }
+    }
     pub(crate) fn source_names(&self) -> Result<(&str, &str), Box<dyn Error + Send + Sync>> {
         let family = self
             .source
@@ -632,6 +714,7 @@ impl Record {
 
 #[cfg(test)]
 mod tests {
+    use super::super::capture_authority::GRID_LANES_PAIRED_EDITION;
     use super::*;
 
     fn unannotated_catalogue() -> &'static [u8] {
@@ -893,10 +976,7 @@ sources = [
         assert_eq!(record.source.as_str(), AUTHORED_MATCHING_SOURCE);
         assert!(matches!(record.source_kind, SourceKind::Authored));
         assert!(record.historical_sha256.is_empty());
-        assert_eq!(
-            record.matching_publication.as_deref(),
-            Some("source-controls")
-        );
+        assert_eq!(record.matching_edition(), Some("source-controls"));
         assert!(matches!(
             record.expected,
             ExpectedDisposition::Generated { .. }
@@ -1096,5 +1176,79 @@ sources = [
                 .into_iter()
                 .collect()
         );
+    }
+
+    #[test]
+    fn paired_matching_requires_the_exact_complete_source_association() {
+        let live = include_str!("../../../examples/qualify-root-context/corpus.toml");
+        let (prefix, publication) = live.rsplit_once("\n[[matching_publications]]\n").unwrap();
+        let parse = |publication: &str| {
+            Declaration::parse(
+                format!("{prefix}\n[[matching_publications]]\n{publication}").as_bytes(),
+            )
+        };
+        let valid = parse(publication).unwrap();
+        let selected: BTreeMap<_, _> = valid
+            .records
+            .iter()
+            .filter(|record| record.matching_edition() == Some(GRID_LANES_PAIRED_EDITION))
+            .map(|record| {
+                assert!(record.source_equivalent_matching().is_some());
+                (
+                    record.source.as_str().to_owned(),
+                    serde_json::to_value(record).unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(selected.len(), 9);
+        valid.check_live_records(&selected).unwrap();
+        let unpaired = Declaration::parse(prefix.as_bytes()).unwrap();
+        assert!(unpaired.check_live_records(&selected).is_err());
+
+        let mut rows = publication
+            .lines()
+            .filter(|line| line.contains("{ original ="));
+        let first = rows.next().unwrap();
+        let second = rows.next().unwrap();
+        let missing = publication.replacen(first, "", 1);
+        let duplicate = publication.replacen(second, first, 1);
+        let (first_original, first_control) = first.split_once(", control =").unwrap();
+        let (second_original, second_control) = second.split_once(", control =").unwrap();
+        let swapped = publication
+            .replace(
+                first,
+                &format!("{first_original}, control ={second_control}"),
+            )
+            .replace(
+                second,
+                &format!("{second_original}, control ={first_control}"),
+            );
+        let unlinked = publication
+            .lines()
+            .filter(|line| !line.starts_with("diagnostics = "))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for (name, invalid) in [
+            ("missing", missing),
+            ("duplicate", duplicate),
+            ("swapped", swapped),
+            ("unlinked", unlinked),
+        ] {
+            assert!(
+                parse(&invalid).is_err(),
+                "accepted {name} source association"
+            );
+        }
+
+        let independent = format!(
+            "edition = {:?}\nsources = [{}]\n",
+            GRID_LANES_PAIRED_EDITION,
+            selected
+                .keys()
+                .map(|source| format!("{source:?}"))
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+        assert!(parse(&independent).is_err());
     }
 }

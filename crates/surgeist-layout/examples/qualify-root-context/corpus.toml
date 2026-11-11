@@ -3020,3 +3020,18 @@ containing_direction = "ltr"
 hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
+
+[[matching_publications]]
+edition = "grid-lanes-axis-controls"
+diagnostics = { edition = "grid-lanes-axis-original-diagnostics", sha256 = "a393498f143c6cbd7ebe7503c16fefb410d0495e586253bb1bc31b9354418d0e" }
+pairs = [
+  { original = "html/grid-lanes/grid_lanes_axes_horizontal_tb_parallel.html", control = "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html" },
+  { original = "html/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child.html", control = "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html" },
+  { original = "html/grid-lanes/grid_lanes_axes_sideways_lr_parallel.html", control = "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html" },
+  { original = "html/grid-lanes/grid_lanes_axes_sideways_opposing.html", control = "html/qualification/grid_lanes_axes_sideways_opposing_control.html" },
+  { original = "html/grid-lanes/grid_lanes_axes_sideways_rl_parallel.html", control = "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html" },
+  { original = "html/grid-lanes/grid_lanes_axes_vertical_lr_parallel.html", control = "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html" },
+  { original = "html/grid-lanes/grid_lanes_axes_vertical_opposing.html", control = "html/qualification/grid_lanes_axes_vertical_opposing_control.html" },
+  { original = "html/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child.html", control = "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html" },
+  { original = "html/grid-lanes/grid_lanes_axes_vertical_rl_parallel.html", control = "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html" },
+]

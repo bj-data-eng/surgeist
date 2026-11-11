@@ -478,7 +478,7 @@ pub(super) fn declared_matching_edition(name: &str) -> Option<&'static str> {
         .as_ref()?
         .records
         .iter()
-        .filter_map(|r| r.matching_publication.as_deref())
+        .filter_map(Record::matching_edition)
         .find(|edition| *edition == name)
 }
 const CUSTODY_HELPER: &[u8] = include_bytes!("custody.js");

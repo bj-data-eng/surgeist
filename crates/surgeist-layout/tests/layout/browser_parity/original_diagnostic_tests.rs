@@ -12,6 +12,12 @@ fn owner() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
 }
 
+fn copy_file(from: &Path, to: &Path, relative: &str) {
+    let target = to.join(relative);
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    fs::copy(from.join(relative), target).unwrap();
+}
+
 #[test]
 fn original_diagnostics_replay_all_nine_families_and_four_variants() {
     let replayed = admit_original_diagnostics(owner(), RECEIPT_SHA256).unwrap();
@@ -55,13 +61,8 @@ impl CopiedBundle {
         let receipt =
             fs::read_to_string(original.join(authority::ORIGINAL_DIAGNOSTIC_RECEIPT)).unwrap();
         let receipt = authority::OriginalDiagnosticReceipt::parse(&receipt).unwrap();
-        fn copy(from: &Path, to: &Path, relative: &str) {
-            let target = to.join(relative);
-            fs::create_dir_all(target.parent().unwrap()).unwrap();
-            fs::copy(from.join(relative), target).unwrap();
-        }
         for file in static_files(&original).unwrap() {
-            copy(&original, &bundle.root, &file);
+            copy_file(&original, &bundle.root, &file);
         }
         for file in receipt
             .current_owner_inputs
@@ -69,9 +70,24 @@ impl CopiedBundle {
             .map(String::as_str)
             .chain([OWNER_DECLARATION])
         {
-            copy(owner(), &bundle.owner, file);
+            copy_file(owner(), &bundle.owner, file);
         }
         bundle
+    }
+
+    fn copy_controls(&self) {
+        let relative = Edition::Matching(authority::GRID_LANES_PAIRED_EDITION).artifact_root();
+        let from = owner().join(&relative);
+        let to = self.owner.join(&relative);
+        let terminal =
+            Qualification::parse(&fs::read_to_string(from.join(authority::TERMINAL)).unwrap())
+                .unwrap();
+        for file in static_files(&from).unwrap() {
+            copy_file(&from, &to, &file);
+        }
+        for file in terminal.current_owner_inputs.keys() {
+            copy_file(owner(), &self.owner, file);
+        }
     }
 
     fn read(&self, path: &str) -> Value {
@@ -174,6 +190,90 @@ impl Drop for CopiedBundle {
     fn drop(&mut self) {
         fs::remove_dir_all(&self.owner).unwrap();
     }
+}
+
+#[test]
+fn paired_matching_refuses_missing_altered_or_stale_original_diagnostics() {
+    let bundle = CopiedBundle::new();
+    bundle.copy_controls();
+    let admitted = admit_grid_lanes_axis_controls(&bundle.owner).unwrap();
+    let selected = admitted.outputs().map(str::to_owned).collect();
+    assert!(
+        admitted
+            .execute_selected(&selected)
+            .unwrap()
+            .registered_coverage_complete()
+    );
+
+    let path = bundle.root.join(authority::ORIGINAL_DIAGNOSTIC_RECEIPT);
+    let receipt = fs::read(&path).unwrap();
+    fs::remove_file(&path).unwrap();
+    let error = admit_grid_lanes_axis_controls(&bundle.owner).err().unwrap();
+    assert!(
+        error
+            .to_string()
+            .contains(authority::ORIGINAL_DIAGNOSTIC_RECEIPT),
+        "{error}"
+    );
+
+    let mut changed = receipt.clone();
+    changed.push(b'\n');
+    fs::write(&path, changed).unwrap();
+    let error = admit_grid_lanes_axis_controls(&bundle.owner).err().unwrap();
+    assert!(
+        error
+            .to_string()
+            .contains(authority::ORIGINAL_DIAGNOSTIC_RECEIPT),
+        "{error}"
+    );
+    fs::write(path, receipt).unwrap();
+
+    let report = bundle.receipt()["report"]["path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let stale = admitted
+        .execute_selected_before_freshness(&selected, || {
+            let mut bytes = fs::read(bundle.root.join(&report)).unwrap();
+            bytes.push(b'\n');
+            bundle.write(&report, &bytes);
+        })
+        .unwrap();
+    assert!(stale.freshness_error.unwrap().contains(&report));
+    assert_eq!(stale.cases.len(), 36);
+    assert!(
+        stale
+            .cases
+            .iter()
+            .all(|case| case.raw.as_ref().unwrap().is_empty() && case.qualified.is_err())
+    );
+}
+
+#[test]
+fn paired_matching_refuses_an_adoptable_older_producing_helper() {
+    let terminal_path = owner()
+        .join(Edition::Matching(authority::GRID_LANES_PAIRED_EDITION).artifact_root())
+        .join(authority::TERMINAL);
+    let bytes = fs::read(&terminal_path).unwrap();
+    let mut wire: Value = parse_json(&bytes).unwrap();
+    let mut inputs: BTreeMap<String, String> =
+        serde_json::from_value(wire["retained_inputs"].clone()).unwrap();
+    inputs.insert(
+        authority::ROOT_HELPER_INPUT.to_owned(),
+        crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256.to_owned(),
+    );
+    wire["capture_validation"] =
+        serde_json::to_value(authority::CaptureValidation::from_retained(&inputs).unwrap())
+            .unwrap();
+    wire["retained_inputs"] = serde_json::to_value(inputs).unwrap();
+    let text = serde_json::to_string(&wire).unwrap();
+    let error = Qualification::parse(&text).err().unwrap();
+    assert!(
+        error
+            .to_string()
+            .contains("source-equivalent Grid Lanes producing helper"),
+        "{error}"
+    );
 }
 
 #[test]

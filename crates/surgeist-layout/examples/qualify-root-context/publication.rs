@@ -208,7 +208,7 @@ fn matching_input<'a>(bytes: &'a [u8], edition: &str) -> Result<DeclarationInput
     input
         .declaration
         .records
-        .retain(|record| record.matching_publication.as_deref() == Some(edition));
+        .retain(|record| record.matching_edition() == Some(edition));
     if input.declaration.records.is_empty() {
         return Err("unknown matching publication edition".into());
     }
@@ -438,6 +438,18 @@ fn finish(
         if matches!(edition, Edition::Matching(_)) {
             terminal_cases = matching_cases(root, input, &snapshot, &corpus, &report)?;
         }
+        let paired_diagnostics =
+            if edition == Edition::Matching(authority::GRID_LANES_PAIRED_EDITION) {
+                Some(verify_matching_pairs(
+                    owner,
+                    root,
+                    &declaration.records,
+                    &terminal_cases,
+                    &string_inputs(&snapshot.expected_inputs),
+                )?)
+            } else {
+                None
+            };
         if let Edition::Specialized(profile) = edition {
             terminal_cases = specialized_cases(root, input, &snapshot, &corpus, &report, profile)?;
         }
@@ -479,6 +491,9 @@ fn finish(
                 }
             }
         };
+        if let Some(diagnostics) = paired_diagnostics {
+            diagnostics.verify_freshness(owner)?;
+        }
         publish_terminal(
             root,
             &snapshot.expected_inputs,
@@ -1185,6 +1200,156 @@ fn matching_cases(
             ))
         })
         .collect()
+}
+
+fn read_pair_input(root: &Path, path: &str, digest: &str) -> Result<Vec<u8>> {
+    require_regular_input(root, &RelativePath::new(path)?)?;
+    let bytes = fs::read(root.join(path))?;
+    if authority::sha256(&bytes) != digest {
+        return Err(format!("source-equivalent pairing input changed: {path}").into());
+    }
+    Ok(bytes)
+}
+
+struct CheckedPairDiagnostics<'a> {
+    root: PathBuf,
+    reference: &'a authority::DiagnosticReference,
+    receipt: authority::OriginalDiagnosticReceipt,
+}
+
+impl<'a> CheckedPairDiagnostics<'a> {
+    fn check(owner: &Path, reference: &'a authority::DiagnosticReference) -> Result<Self> {
+        reference.validate()?;
+        let root = edition_parent(owner)?.join(authority::ORIGINAL_DIAGNOSTIC_EDITION);
+        require_directory(&root)?;
+        let read_receipt = || {
+            read_pair_input(
+                &root,
+                authority::ORIGINAL_DIAGNOSTIC_RECEIPT,
+                &reference.sha256,
+            )
+        };
+        let before = read_receipt()?;
+        run_with_output(
+            owner,
+            QualificationMode::CheckGridLanesDiagnostics,
+            &mut std::io::sink(),
+        )?;
+        if read_receipt()? != before {
+            return Err("original diagnostic receipt changed during pairing admission".into());
+        }
+        let receipt = authority::OriginalDiagnosticReceipt::parse(std::str::from_utf8(&before)?)?;
+        authority::verify_grid_lanes_producing_helper(&receipt.retained_inputs)?;
+        Ok(Self {
+            root,
+            reference,
+            receipt,
+        })
+    }
+
+    fn case(
+        &self,
+        source: &str,
+        variant: &str,
+    ) -> Result<(Vec<u8>, crate::parity_support::Golden)> {
+        let case = self
+            .receipt
+            .cases
+            .iter()
+            .find(|case| case.case.source == source && case.case.variant == variant)
+            .ok_or("missing original diagnostic pair case")?;
+        let hash = self
+            .receipt
+            .retained_inputs
+            .get(source)
+            .ok_or("missing original diagnostic source pin")?;
+        let html = read_pair_input(&self.root, source, hash)?;
+        let xml = read_pair_input(&self.root, &case.case.output.path, &case.case.output.sha256)?;
+        Ok((
+            html,
+            crate::parity_support::Golden::parse(std::str::from_utf8(&xml)?)?,
+        ))
+    }
+
+    fn verify_freshness(&self, owner: &Path) -> Result<()> {
+        let receipt = read_pair_input(
+            &self.root,
+            authority::ORIGINAL_DIAGNOSTIC_RECEIPT,
+            &self.reference.sha256,
+        )?;
+        let inputs = self
+            .receipt
+            .retained_inputs
+            .iter()
+            .map(|(path, digest)| Ok((RelativePath::new(path)?, Sha256Digest::from_text(digest)?)))
+            .collect::<Result<_>>()?;
+        check_input_census(
+            &self.root,
+            &inputs,
+            Some((authority::ORIGINAL_DIAGNOSTIC_RECEIPT, &receipt)),
+        )?;
+        for entry in [&self.receipt.report, &self.receipt.ownership]
+            .into_iter()
+            .chain(self.receipt.cases.iter().map(|case| &case.case.output))
+        {
+            read_pair_input(&self.root, &entry.path, &entry.sha256)?;
+        }
+        for (path, digest) in &self.receipt.current_owner_inputs {
+            read_pair_input(owner, path, digest)?;
+        }
+        require_current_inputs(owner)?;
+        Ok(())
+    }
+}
+
+fn verify_matching_pairs<'a>(
+    owner: &Path,
+    root: &Path,
+    records: &'a [Record],
+    cases: &[authority::QualifiedCase],
+    retained: &BTreeMap<String, String>,
+) -> Result<CheckedPairDiagnostics<'a>> {
+    if records.len() != authority::GRID_LANES_AXIS_ORIGINAL_SOURCES.len()
+        || cases.len() != records.len() * fixture_cases().len()
+    {
+        return Err("incomplete Grid Lanes source-equivalent matching census".into());
+    }
+    let first = records[0]
+        .source_equivalent_matching()
+        .ok_or("missing source-equivalent matching association")?;
+    let originals = CheckedPairDiagnostics::check(owner, &first.diagnostics)?;
+    authority::verify_grid_lanes_shared_inputs(&originals.receipt.retained_inputs, retained)?;
+    for qualified in cases {
+        let case = qualified.descriptor();
+        let record = records
+            .iter()
+            .find(|record| record.source.as_str() == case.source)
+            .ok_or("missing paired control record")?;
+        let pair = record
+            .source_equivalent_matching()
+            .ok_or("missing paired control association")?;
+        if pair.diagnostics != first.diagnostics {
+            return Err("paired control diagnostic references differ".into());
+        }
+        let (original_source, original) = originals.case(&pair.original, &case.variant)?;
+        let control_source = read_pair_input(root, &case.source, record.source_sha256.as_str())?;
+        let control_xml = read_pair_input(root, &case.output.path, &case.output.sha256)?;
+        let control = crate::parity_support::Golden::parse(std::str::from_utf8(&control_xml)?)?;
+        crate::parity_support::grid_lanes_native_pair::verify_declared_pair(
+            pair,
+            &case.variant,
+            &original_source,
+            &control_source,
+            &original,
+            &control,
+        )
+        .map_err(|error| format!("{}: {error}", case.name))?;
+    }
+    eprintln!(
+        "qualify-root-context: {} source-equivalent Grid Lanes Native pairs verified",
+        cases.len()
+    );
+    Ok(originals)
 }
 
 fn specialized_cases(

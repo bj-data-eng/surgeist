@@ -29,6 +29,16 @@ pub(crate) const TERMINAL: &str = "qualification.json";
 pub(crate) const TERMINAL_SCHEMA: u8 = 3;
 pub(crate) const ORIGINAL_DIAGNOSTIC_EDITION: &str = "grid-lanes-axis-original-diagnostics";
 pub(crate) const ORIGINAL_DIAGNOSTIC_RECEIPT: &str = "diagnostics.json";
+pub(crate) const GRID_LANES_PAIRED_EDITION: &str = "grid-lanes-axis-controls";
+pub(crate) const GRID_LANES_SHARED_INPUTS: [&str; 7] = [
+    "browser-owner.toml",
+    "fonts/Ahem.ttf",
+    "fonts/PROVENANCE.md",
+    "origin/source-provenance.json",
+    "origin/source-receipt.json",
+    "scripts/gentest/test_base_style.css",
+    ROOT_HELPER_INPUT,
+];
 pub(crate) const GRID_LANES_AXIS_ORIGINAL_SOURCES: [&str; 9] = [
     "html/grid-lanes/grid_lanes_axes_horizontal_tb_parallel.html",
     "html/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child.html",
@@ -40,6 +50,73 @@ pub(crate) const GRID_LANES_AXIS_ORIGINAL_SOURCES: [&str; 9] = [
     "html/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child.html",
     "html/grid-lanes/grid_lanes_axes_vertical_rl_parallel.html",
 ];
+
+pub(crate) fn grid_lanes_control_source(original: &str) -> Option<String> {
+    let source = GRID_LANES_AXIS_ORIGINAL_SOURCES
+        .iter()
+        .find(|source| **source == original)?;
+    let stem = source
+        .strip_prefix("html/grid-lanes/")?
+        .strip_suffix(".html")?;
+    Some(format!("html/qualification/{stem}_control.html"))
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DiagnosticReference {
+    pub(crate) edition: String,
+    pub(crate) sha256: String,
+}
+
+impl DiagnosticReference {
+    pub(crate) fn validate(&self) -> Result<()> {
+        if self.edition != ORIGINAL_DIAGNOSTIC_EDITION {
+            return Err(malformed("wrong paired original diagnostic edition"));
+        }
+        digest(&self.sha256)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SourceEquivalentMatching {
+    pub(crate) edition: String,
+    pub(crate) original: String,
+    pub(crate) diagnostics: DiagnosticReference,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub(crate) enum MatchingMembership {
+    Independent(String),
+    SourceEquivalent(SourceEquivalentMatching),
+}
+
+impl MatchingMembership {
+    pub(crate) fn edition(&self) -> &str {
+        match self {
+            Self::Independent(edition) => edition,
+            Self::SourceEquivalent(pair) => &pair.edition,
+        }
+    }
+
+    pub(crate) fn validate(&self, source: &str, kind: SourceKind) -> Result<()> {
+        validate_matching_edition(self.edition())?;
+        match self {
+            Self::Independent(edition) if edition != GRID_LANES_PAIRED_EDITION => Ok(()),
+            Self::SourceEquivalent(pair)
+                if pair.edition == GRID_LANES_PAIRED_EDITION
+                    && kind == SourceKind::Authored
+                    && grid_lanes_control_source(&pair.original).as_deref() == Some(source) =>
+            {
+                pair.diagnostics.validate()
+            }
+            _ => Err(malformed(
+                "matching membership requires its declared source-equivalent association",
+            )),
+        }
+    }
+}
 pub(crate) const ROOT_HELPER_INPUT: &str = "scripts/gentest/test_helper.js";
 const ROOT_HELPER_OWNER: &str = "tests/layout/browser_parity/scripts/gentest/test_helper.js";
 const ROOT_HELPER: &[u8] = include_bytes!("scripts/gentest/test_helper.js");
@@ -108,6 +185,28 @@ pub(crate) fn root_helper_profile(digest: &str) -> Result<RootCaptureProfile> {
         FIXED_ORTHOGONAL_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextFixedOrthogonalV1),
         _ => Err(changed("unsupported retained root proof helper")),
     }
+}
+
+pub(crate) fn verify_grid_lanes_producing_helper(inputs: &BTreeMap<String, String>) -> Result<()> {
+    if inputs.get(ROOT_HELPER_INPUT).map(String::as_str) != Some(FIXED_ORTHOGONAL_HELPER_SHA256) {
+        return Err(changed("source-equivalent Grid Lanes producing helper"));
+    }
+    Ok(())
+}
+
+pub(crate) fn verify_grid_lanes_shared_inputs(
+    original: &BTreeMap<String, String>,
+    control: &BTreeMap<String, String>,
+) -> Result<()> {
+    for path in GRID_LANES_SHARED_INPUTS {
+        if original
+            .get(path)
+            .is_none_or(|digest| control.get(path) != Some(digest))
+        {
+            return Err(changed(format!("Grid Lanes pair shared input: {path}")));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -1778,6 +1877,7 @@ impl Qualification {
         let mut outputs = BTreeSet::new();
         let mut variants = BTreeSet::new();
         let mut matching_history = BTreeSet::new();
+        let mut paired_diagnostics = None;
         for case in &self.cases {
             let descriptor = case.descriptor();
             path(&descriptor.output.path)?;
@@ -1832,6 +1932,19 @@ impl Qualification {
                         .ok_or_else(|| malformed("matching source stem"))?;
                     let variant = descriptor.variant.as_str();
                     let kind = record.source_kind()?;
+                    let membership: MatchingMembership =
+                        serde_json::from_value(record.value["matching_publication"].clone())
+                            .map_err(|_| malformed("missing or invalid matching membership"))?;
+                    membership.validate(&descriptor.source, kind)?;
+                    if let MatchingMembership::SourceEquivalent(pair) = &membership {
+                        if paired_diagnostics
+                            .as_ref()
+                            .is_some_and(|reference| reference != &pair.diagnostics)
+                        {
+                            return Err(malformed("paired matching diagnostic references differ"));
+                        }
+                        paired_diagnostics = Some(pair.diagnostics.clone());
+                    }
                     if self
                         .current_owner_inputs
                         .get(&kind.owner_path(&descriptor.source))
@@ -1839,7 +1952,7 @@ impl Qualification {
                     {
                         return Err(changed("matching current source owner"));
                     }
-                    if record.value["matching_publication"] != self.edition
+                    if membership.edition() != self.edition
                         || !record.value["semantic_specifications"].is_null()
                         || !record.value["specialized_publication"].is_null()
                         || !record.value["relation"].is_null()
@@ -1898,6 +2011,14 @@ impl Qualification {
                 != matching_history
         {
             return Err(malformed("matching historical input census changed"));
+        }
+        if self.edition == GRID_LANES_PAIRED_EDITION {
+            if paired_diagnostics.is_none()
+                || self.records.len() != GRID_LANES_AXIS_ORIGINAL_SOURCES.len()
+            {
+                return Err(malformed("incomplete source-equivalent matching cohort"));
+            }
+            verify_grid_lanes_producing_helper(&self.retained_inputs)?;
         }
         if matching
             && (self.cases.len() != self.records.len() * fixture_cases().len()

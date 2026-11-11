@@ -1,0 +1,2161 @@
+{
+  "schema_version": 3,
+  "edition": "grid-lanes-axis-controls",
+  "declaration": {
+    "path": "corpus.toml",
+    "sha256": "8df66d250ce1132251ae9b7e92ef00a18d77cd7510ba533cf88d44e24140d85e"
+  },
+  "records": [
+    {
+      "source": "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html",
+      "sha256": "d86019f4f71985f27514d5822b0156d9270765e83178c23cfb1d91e05710e797",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {},
+        "matching_publication": {
+          "diagnostics": {
+            "edition": "grid-lanes-axis-original-diagnostics",
+            "sha256": "a393498f143c6cbd7ebe7503c16fefb410d0495e586253bb1bc31b9354418d0e"
+          },
+          "edition": "grid-lanes-axis-controls",
+          "original": "html/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child.html"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html",
+        "source_kind": "authored",
+        "source_sha256": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19"
+      }
+    },
+    {
+      "source": "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html",
+      "sha256": "47a56d62f831e65cc3cc6f72ef1a4a272dbe40734442ad6f1e4998f5d3ad4c07",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {},
+        "matching_publication": {
+          "diagnostics": {
+            "edition": "grid-lanes-axis-original-diagnostics",
+            "sha256": "a393498f143c6cbd7ebe7503c16fefb410d0495e586253bb1bc31b9354418d0e"
+          },
+          "edition": "grid-lanes-axis-controls",
+          "original": "html/grid-lanes/grid_lanes_axes_horizontal_tb_parallel.html"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html",
+        "source_kind": "authored",
+        "source_sha256": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b"
+      }
+    },
+    {
+      "source": "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html",
+      "sha256": "b27a3176edc6eb0db18e951c39cb058f0a58e09579232529c07a2f5be3506e3c",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {},
+        "matching_publication": {
+          "diagnostics": {
+            "edition": "grid-lanes-axis-original-diagnostics",
+            "sha256": "a393498f143c6cbd7ebe7503c16fefb410d0495e586253bb1bc31b9354418d0e"
+          },
+          "edition": "grid-lanes-axis-controls",
+          "original": "html/grid-lanes/grid_lanes_axes_sideways_lr_parallel.html"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html",
+        "source_kind": "authored",
+        "source_sha256": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e"
+      }
+    },
+    {
+      "source": "html/qualification/grid_lanes_axes_sideways_opposing_control.html",
+      "sha256": "0da3ec0733d7a17d2164aafb7dbe0a56344d112ccbe998506cd0ee751c0ccf7a",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {},
+        "matching_publication": {
+          "diagnostics": {
+            "edition": "grid-lanes-axis-original-diagnostics",
+            "sha256": "a393498f143c6cbd7ebe7503c16fefb410d0495e586253bb1bc31b9354418d0e"
+          },
+          "edition": "grid-lanes-axis-controls",
+          "original": "html/grid-lanes/grid_lanes_axes_sideways_opposing.html"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/qualification/grid_lanes_axes_sideways_opposing_control.html",
+        "source_kind": "authored",
+        "source_sha256": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e"
+      }
+    },
+    {
+      "source": "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html",
+      "sha256": "42aec1dc6b3266f2adc9a9e742362c940efba288fd3bccbcdd10a36b1fac0b78",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {},
+        "matching_publication": {
+          "diagnostics": {
+            "edition": "grid-lanes-axis-original-diagnostics",
+            "sha256": "a393498f143c6cbd7ebe7503c16fefb410d0495e586253bb1bc31b9354418d0e"
+          },
+          "edition": "grid-lanes-axis-controls",
+          "original": "html/grid-lanes/grid_lanes_axes_sideways_rl_parallel.html"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html",
+        "source_kind": "authored",
+        "source_sha256": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241"
+      }
+    },
+    {
+      "source": "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html",
+      "sha256": "fd5a1213d26a43bd954b5d77ab72dc066e3e249995fff38d8bca7176bfedf5cc",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {},
+        "matching_publication": {
+          "diagnostics": {
+            "edition": "grid-lanes-axis-original-diagnostics",
+            "sha256": "a393498f143c6cbd7ebe7503c16fefb410d0495e586253bb1bc31b9354418d0e"
+          },
+          "edition": "grid-lanes-axis-controls",
+          "original": "html/grid-lanes/grid_lanes_axes_vertical_lr_parallel.html"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html",
+        "source_kind": "authored",
+        "source_sha256": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a"
+      }
+    },
+    {
+      "source": "html/qualification/grid_lanes_axes_vertical_opposing_control.html",
+      "sha256": "1c334e10a6ad41605994c715df95dbf5a30d20d42fcb827f51937903b9d05ec2",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {},
+        "matching_publication": {
+          "diagnostics": {
+            "edition": "grid-lanes-axis-original-diagnostics",
+            "sha256": "a393498f143c6cbd7ebe7503c16fefb410d0495e586253bb1bc31b9354418d0e"
+          },
+          "edition": "grid-lanes-axis-controls",
+          "original": "html/grid-lanes/grid_lanes_axes_vertical_opposing.html"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/qualification/grid_lanes_axes_vertical_opposing_control.html",
+        "source_kind": "authored",
+        "source_sha256": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1"
+      }
+    },
+    {
+      "source": "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html",
+      "sha256": "650d0da4e6cd1d2078135bf5347315dd6764453aa1b0c8f055a0cb2a47a6676a",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {},
+        "matching_publication": {
+          "diagnostics": {
+            "edition": "grid-lanes-axis-original-diagnostics",
+            "sha256": "a393498f143c6cbd7ebe7503c16fefb410d0495e586253bb1bc31b9354418d0e"
+          },
+          "edition": "grid-lanes-axis-controls",
+          "original": "html/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child.html"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html",
+        "source_kind": "authored",
+        "source_sha256": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6"
+      }
+    },
+    {
+      "source": "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html",
+      "sha256": "40c30e32de7a27864ad82bc94c75664527e1e67f46012819be4f145368124c26",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {},
+        "matching_publication": {
+          "diagnostics": {
+            "edition": "grid-lanes-axis-original-diagnostics",
+            "sha256": "a393498f143c6cbd7ebe7503c16fefb410d0495e586253bb1bc31b9354418d0e"
+          },
+          "edition": "grid-lanes-axis-controls",
+          "original": "html/grid-lanes/grid_lanes_axes_vertical_rl_parallel.html"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html",
+        "source_kind": "authored",
+        "source_sha256": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49"
+      }
+    }
+  ],
+  "browser_settings": {"source":"chrome-for-testing","version":"149.0.7827.115","version_output":"Google Chrome for Testing 149.0.7827.115","cache_root":"tmp/surgeist-browser","provenance_format":"chrome-for-testing/{version} ({repository_relative_executable})","launch":{"batch_size":50,"navigation_timeout_ms":10000,"dom_poll_interval_ms":25,"arguments":["headless=new","mute-audio","disable-background-networking","disable-background-timer-throttling","disable-backgrounding-occluded-windows","disable-breakpad","disable-client-side-phishing-detection","disable-component-extensions-with-background-pages","disable-component-update","disable-default-apps","disable-dev-shm-usage","disable-domain-reliability","disable-features=TranslateUI,MediaRouter,OptimizationHints,AutofillServerCommunication","disable-hang-monitor","disable-ipc-flooding-protection","disable-popup-blocking","disable-prompt-on-repost","disable-renderer-backgrounding","disable-sync","enable-automation","enable-blink-features=IdleDetection,CSSGridLanesLayout","enable-features=NetworkService,NetworkServiceInProcess","force-color-profile=srgb","lang=en_US","metrics-recording-only","no-default-browser-check","no-first-run","use-mock-keychain"]}},
+  "report": {
+    "path": "xml/generation-reports/all.json",
+    "sha256": "9c6c97f86233ea69a3688ce705a45c620ff04426589102a7ceb83299afeb6578"
+  },
+  "ownership": {
+    "path": "xml/generation-ownership.json",
+    "sha256": "63f1fec96a3d9a661908c5463c446334434b99ca7aa13093fe397fdad0d73280"
+  },
+  "cases": [
+    {
+      "case": {
+        "name": "grid_lanes_axes_horizontal_parent_orthogonal_child_control__border_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control__border_box_ltr.xml",
+          "sha256": "0f019cd4b05201ba61d00a79038fdc7fc367b6a2265a39341c21544806a8cef1"
+        },
+        "record_sha256": "d86019f4f71985f27514d5822b0156d9270765e83178c23cfb1d91e05710e797"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html",
+        "source_sha256": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+        "variant": "border_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "0f019cd4b05201ba61d00a79038fdc7fc367b6a2265a39341c21544806a8cef1",
+        "record_sha256": "d86019f4f71985f27514d5822b0156d9270765e83178c23cfb1d91e05710e797",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "b13e32b3a4df29ab038c9660a85d292255318ae4cd416a4da4df7a8cb3b10a10",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_horizontal_parent_orthogonal_child_control__border_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control__border_box_rtl.xml",
+          "sha256": "f898948879c982debf2529b37df69606cfe5eb58a5066448084d46c6e573a405"
+        },
+        "record_sha256": "d86019f4f71985f27514d5822b0156d9270765e83178c23cfb1d91e05710e797"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html",
+        "source_sha256": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+        "variant": "border_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "f898948879c982debf2529b37df69606cfe5eb58a5066448084d46c6e573a405",
+        "record_sha256": "d86019f4f71985f27514d5822b0156d9270765e83178c23cfb1d91e05710e797",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "af1be53d25875b01bbaf0be7598308bdcc4675619977fd49140dec02d6fdbd2e",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_horizontal_parent_orthogonal_child_control__content_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control__content_box_ltr.xml",
+          "sha256": "50c706be17751281b626ab39dcb5c858d5b283123b1aac7b89a25993da19ad59"
+        },
+        "record_sha256": "d86019f4f71985f27514d5822b0156d9270765e83178c23cfb1d91e05710e797"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html",
+        "source_sha256": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+        "variant": "content_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "50c706be17751281b626ab39dcb5c858d5b283123b1aac7b89a25993da19ad59",
+        "record_sha256": "d86019f4f71985f27514d5822b0156d9270765e83178c23cfb1d91e05710e797",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "6c638a33f18c3b48dff58160df4212d2b4df389fad291d7598212acc8b4a15aa",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_horizontal_parent_orthogonal_child_control__content_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control__content_box_rtl.xml",
+          "sha256": "8d820599689651e9fa594ec25848cc863ab6f3f6dd11250337b08f6536226a41"
+        },
+        "record_sha256": "d86019f4f71985f27514d5822b0156d9270765e83178c23cfb1d91e05710e797"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html",
+        "source_sha256": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+        "variant": "content_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "8d820599689651e9fa594ec25848cc863ab6f3f6dd11250337b08f6536226a41",
+        "record_sha256": "d86019f4f71985f27514d5822b0156d9270765e83178c23cfb1d91e05710e797",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "7143cf381ebfe5e6aedcf2cef357dd6a73b615fab729880aed8db527c35ba65c",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_horizontal_tb_parallel_control__border_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_horizontal_tb_parallel_control__border_box_ltr.xml",
+          "sha256": "d67ded935659d5e1cc48f7896d39ef4ceac3d8988ae4ec5969c7771671e5fa74"
+        },
+        "record_sha256": "47a56d62f831e65cc3cc6f72ef1a4a272dbe40734442ad6f1e4998f5d3ad4c07"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html",
+        "source_sha256": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+        "variant": "border_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "d67ded935659d5e1cc48f7896d39ef4ceac3d8988ae4ec5969c7771671e5fa74",
+        "record_sha256": "47a56d62f831e65cc3cc6f72ef1a4a272dbe40734442ad6f1e4998f5d3ad4c07",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "6548dc9f28cab93679af512170acd484c272fbcb4ba174d693601290335513de",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_horizontal_tb_parallel_control__border_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_horizontal_tb_parallel_control__border_box_rtl.xml",
+          "sha256": "b2b24bf6ec12e165786280216374be2774c3d6fea811cf07a44b1a770ee7c722"
+        },
+        "record_sha256": "47a56d62f831e65cc3cc6f72ef1a4a272dbe40734442ad6f1e4998f5d3ad4c07"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html",
+        "source_sha256": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+        "variant": "border_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "b2b24bf6ec12e165786280216374be2774c3d6fea811cf07a44b1a770ee7c722",
+        "record_sha256": "47a56d62f831e65cc3cc6f72ef1a4a272dbe40734442ad6f1e4998f5d3ad4c07",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "527fa9bf43f38a78cfea45e96606f00d9c154b924558196d7b71fefd587b89ae",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_horizontal_tb_parallel_control__content_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_horizontal_tb_parallel_control__content_box_ltr.xml",
+          "sha256": "46537cf25ec0e22b50564b1d58bceb8396433777365f59725173b53ed2e38640"
+        },
+        "record_sha256": "47a56d62f831e65cc3cc6f72ef1a4a272dbe40734442ad6f1e4998f5d3ad4c07"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html",
+        "source_sha256": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+        "variant": "content_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "46537cf25ec0e22b50564b1d58bceb8396433777365f59725173b53ed2e38640",
+        "record_sha256": "47a56d62f831e65cc3cc6f72ef1a4a272dbe40734442ad6f1e4998f5d3ad4c07",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "23491e397986f5eefb85b5de7dd6c11d20ba06b2d7ff9d9b7f25768608c9b3ae",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_horizontal_tb_parallel_control__content_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_horizontal_tb_parallel_control__content_box_rtl.xml",
+          "sha256": "9af8858d3a449ca7db88d0d2955ee8082a97ada308cf72bb92cb13d2fbcda36a"
+        },
+        "record_sha256": "47a56d62f831e65cc3cc6f72ef1a4a272dbe40734442ad6f1e4998f5d3ad4c07"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html",
+        "source_sha256": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+        "variant": "content_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "9af8858d3a449ca7db88d0d2955ee8082a97ada308cf72bb92cb13d2fbcda36a",
+        "record_sha256": "47a56d62f831e65cc3cc6f72ef1a4a272dbe40734442ad6f1e4998f5d3ad4c07",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "17c5861cd0122397744f85b1a6521f284b52c5a9c1c6d93807962faa241c59c6",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_sideways_lr_parallel_control__border_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_sideways_lr_parallel_control__border_box_ltr.xml",
+          "sha256": "db02edf75d33114809f226ce4d1ca9dc006baf56d54935cf62731c1e2c361066"
+        },
+        "record_sha256": "b27a3176edc6eb0db18e951c39cb058f0a58e09579232529c07a2f5be3506e3c"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html",
+        "source_sha256": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+        "variant": "border_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "db02edf75d33114809f226ce4d1ca9dc006baf56d54935cf62731c1e2c361066",
+        "record_sha256": "b27a3176edc6eb0db18e951c39cb058f0a58e09579232529c07a2f5be3506e3c",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "a5f917ac35a412bdcf30facc8514880c92f4ab2661a8f7a0317a561727796d91",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_sideways_lr_parallel_control__border_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_sideways_lr_parallel_control__border_box_rtl.xml",
+          "sha256": "8ae5c357d2d715df02b7b2d1ba0e6d9e5d5116274f553ceb06db4b47c8928cb6"
+        },
+        "record_sha256": "b27a3176edc6eb0db18e951c39cb058f0a58e09579232529c07a2f5be3506e3c"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html",
+        "source_sha256": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+        "variant": "border_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "8ae5c357d2d715df02b7b2d1ba0e6d9e5d5116274f553ceb06db4b47c8928cb6",
+        "record_sha256": "b27a3176edc6eb0db18e951c39cb058f0a58e09579232529c07a2f5be3506e3c",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "3575867c16ee3a6deb001214509a8bed4d17791ba5cbc9e73de7f80ea4e2b034",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_sideways_lr_parallel_control__content_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_sideways_lr_parallel_control__content_box_ltr.xml",
+          "sha256": "eb8975a272d43e9eba5730a786e5611a10851d2458507e21227dd0b26071dc3d"
+        },
+        "record_sha256": "b27a3176edc6eb0db18e951c39cb058f0a58e09579232529c07a2f5be3506e3c"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html",
+        "source_sha256": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+        "variant": "content_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "eb8975a272d43e9eba5730a786e5611a10851d2458507e21227dd0b26071dc3d",
+        "record_sha256": "b27a3176edc6eb0db18e951c39cb058f0a58e09579232529c07a2f5be3506e3c",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "df6fb5051a17211b773d9218be37ace7d3c646e9fa1705bbe88c35f1e3a26529",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_sideways_lr_parallel_control__content_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_sideways_lr_parallel_control__content_box_rtl.xml",
+          "sha256": "25b5d5adf202c4e680dcfea2a64eb00a405ed1d434f44598993e47625450dd21"
+        },
+        "record_sha256": "b27a3176edc6eb0db18e951c39cb058f0a58e09579232529c07a2f5be3506e3c"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html",
+        "source_sha256": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+        "variant": "content_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "25b5d5adf202c4e680dcfea2a64eb00a405ed1d434f44598993e47625450dd21",
+        "record_sha256": "b27a3176edc6eb0db18e951c39cb058f0a58e09579232529c07a2f5be3506e3c",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "60786f6dca852d922c1bb1742d9fc162b2c2ab16211905ff20f0d6e1816673bb",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_sideways_opposing_control__border_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_sideways_opposing_control.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_sideways_opposing_control__border_box_ltr.xml",
+          "sha256": "d8e51ad8f52d19aaeb83f5ade1686cc0b7c99e6f616c63d19908b1ac31f08454"
+        },
+        "record_sha256": "0da3ec0733d7a17d2164aafb7dbe0a56344d112ccbe998506cd0ee751c0ccf7a"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_sideways_opposing_control.html",
+        "source_sha256": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+        "variant": "border_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "d8e51ad8f52d19aaeb83f5ade1686cc0b7c99e6f616c63d19908b1ac31f08454",
+        "record_sha256": "0da3ec0733d7a17d2164aafb7dbe0a56344d112ccbe998506cd0ee751c0ccf7a",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "4d3ccbaf0f5dcc218b36745bc9b6d1d895823e1540716e3e34cbd0f09d5a2a95",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_sideways_opposing_control__border_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_sideways_opposing_control.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_sideways_opposing_control__border_box_rtl.xml",
+          "sha256": "9fa6080b49a61aba795486b80878954501a751269b5e197d24a7261e15835f1c"
+        },
+        "record_sha256": "0da3ec0733d7a17d2164aafb7dbe0a56344d112ccbe998506cd0ee751c0ccf7a"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_sideways_opposing_control.html",
+        "source_sha256": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+        "variant": "border_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "9fa6080b49a61aba795486b80878954501a751269b5e197d24a7261e15835f1c",
+        "record_sha256": "0da3ec0733d7a17d2164aafb7dbe0a56344d112ccbe998506cd0ee751c0ccf7a",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "a8142b413644198936c7c29e07690348a1cc9d7ac1d7bffa04dacf8bc9ffae2f",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_sideways_opposing_control__content_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_sideways_opposing_control.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_sideways_opposing_control__content_box_ltr.xml",
+          "sha256": "228af7b51d90b72ed51df293fb3155172635dbdef8e4ae8707607ee52b208365"
+        },
+        "record_sha256": "0da3ec0733d7a17d2164aafb7dbe0a56344d112ccbe998506cd0ee751c0ccf7a"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_sideways_opposing_control.html",
+        "source_sha256": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+        "variant": "content_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "228af7b51d90b72ed51df293fb3155172635dbdef8e4ae8707607ee52b208365",
+        "record_sha256": "0da3ec0733d7a17d2164aafb7dbe0a56344d112ccbe998506cd0ee751c0ccf7a",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "5205cf64e634cdb595604aafa8d696384f9f12527f8bcaabfa102c19c0688b52",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_sideways_opposing_control__content_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_sideways_opposing_control.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_sideways_opposing_control__content_box_rtl.xml",
+          "sha256": "b5939d71fbef8fd48e9fcf1ca5bf9f2d25851bf2cc81c79a7c395838ab522223"
+        },
+        "record_sha256": "0da3ec0733d7a17d2164aafb7dbe0a56344d112ccbe998506cd0ee751c0ccf7a"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_sideways_opposing_control.html",
+        "source_sha256": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+        "variant": "content_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "b5939d71fbef8fd48e9fcf1ca5bf9f2d25851bf2cc81c79a7c395838ab522223",
+        "record_sha256": "0da3ec0733d7a17d2164aafb7dbe0a56344d112ccbe998506cd0ee751c0ccf7a",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "a8f8ebcdbf7d0a722c97f2c3da6041b4d966ce15030c114429db3cb5a1662aeb",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_sideways_rl_parallel_control__border_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_sideways_rl_parallel_control__border_box_ltr.xml",
+          "sha256": "34a68f54df8540d59241476687e0c71a376390473254489c585fcb71be2acc02"
+        },
+        "record_sha256": "42aec1dc6b3266f2adc9a9e742362c940efba288fd3bccbcdd10a36b1fac0b78"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html",
+        "source_sha256": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+        "variant": "border_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "34a68f54df8540d59241476687e0c71a376390473254489c585fcb71be2acc02",
+        "record_sha256": "42aec1dc6b3266f2adc9a9e742362c940efba288fd3bccbcdd10a36b1fac0b78",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "4d721b36cd2eb3d584d2b34df73bcf30fcd8f8aeb0c0c6958e9a0ad9a4ea0cdb",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_sideways_rl_parallel_control__border_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_sideways_rl_parallel_control__border_box_rtl.xml",
+          "sha256": "80c06365ecf63a97c03325455980451d960b772142ee36147df51458a2855a1f"
+        },
+        "record_sha256": "42aec1dc6b3266f2adc9a9e742362c940efba288fd3bccbcdd10a36b1fac0b78"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html",
+        "source_sha256": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+        "variant": "border_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "80c06365ecf63a97c03325455980451d960b772142ee36147df51458a2855a1f",
+        "record_sha256": "42aec1dc6b3266f2adc9a9e742362c940efba288fd3bccbcdd10a36b1fac0b78",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "ebbe5fbe9b9ff005f5bb0a8a75ea161d662dee5bc816a76f2631b2ffccc64167",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_sideways_rl_parallel_control__content_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_sideways_rl_parallel_control__content_box_ltr.xml",
+          "sha256": "7bdf70e02791ce0855902de1dcccfe3dda98ff438ff00c869c8ab47044a0c482"
+        },
+        "record_sha256": "42aec1dc6b3266f2adc9a9e742362c940efba288fd3bccbcdd10a36b1fac0b78"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html",
+        "source_sha256": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+        "variant": "content_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "7bdf70e02791ce0855902de1dcccfe3dda98ff438ff00c869c8ab47044a0c482",
+        "record_sha256": "42aec1dc6b3266f2adc9a9e742362c940efba288fd3bccbcdd10a36b1fac0b78",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "c9780f89fa123cd843add28a695654f23e2f3116464727e2028cc2dd9a8d2afd",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_sideways_rl_parallel_control__content_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_sideways_rl_parallel_control__content_box_rtl.xml",
+          "sha256": "9d53df0ad0536a5e271c49861e64113cc4b7ee26ecc680410e0c5ac19488dd98"
+        },
+        "record_sha256": "42aec1dc6b3266f2adc9a9e742362c940efba288fd3bccbcdd10a36b1fac0b78"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html",
+        "source_sha256": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+        "variant": "content_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "9d53df0ad0536a5e271c49861e64113cc4b7ee26ecc680410e0c5ac19488dd98",
+        "record_sha256": "42aec1dc6b3266f2adc9a9e742362c940efba288fd3bccbcdd10a36b1fac0b78",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "1809396773f273bf9b7de62791b9a216b545809c59e0e01097430b93b0d265a8",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_lr_parallel_control__border_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_lr_parallel_control__border_box_ltr.xml",
+          "sha256": "86e1eee590b5b58a649f0be49ad23708f4a3e90a1fe18af167c73580618852bf"
+        },
+        "record_sha256": "fd5a1213d26a43bd954b5d77ab72dc066e3e249995fff38d8bca7176bfedf5cc"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html",
+        "source_sha256": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+        "variant": "border_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "86e1eee590b5b58a649f0be49ad23708f4a3e90a1fe18af167c73580618852bf",
+        "record_sha256": "fd5a1213d26a43bd954b5d77ab72dc066e3e249995fff38d8bca7176bfedf5cc",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "0237b07c71bb938b3f75cf724dfeff5394b62434a78125349f5583f891f499fe",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_lr_parallel_control__border_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_lr_parallel_control__border_box_rtl.xml",
+          "sha256": "05a8b197f9e47b89873cfe963c21c1479a0eceded469fc442c63944bbf3ad859"
+        },
+        "record_sha256": "fd5a1213d26a43bd954b5d77ab72dc066e3e249995fff38d8bca7176bfedf5cc"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html",
+        "source_sha256": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+        "variant": "border_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "05a8b197f9e47b89873cfe963c21c1479a0eceded469fc442c63944bbf3ad859",
+        "record_sha256": "fd5a1213d26a43bd954b5d77ab72dc066e3e249995fff38d8bca7176bfedf5cc",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "69a4e89d117952740de95443c54fc9a27477f4f7c1e0bf5aefc8f393d95712f3",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_lr_parallel_control__content_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_lr_parallel_control__content_box_ltr.xml",
+          "sha256": "363225bd5a4ed96cc64cdd548561ab9e226fa289df41aeec40f3a19bd8c8e8af"
+        },
+        "record_sha256": "fd5a1213d26a43bd954b5d77ab72dc066e3e249995fff38d8bca7176bfedf5cc"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html",
+        "source_sha256": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+        "variant": "content_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "363225bd5a4ed96cc64cdd548561ab9e226fa289df41aeec40f3a19bd8c8e8af",
+        "record_sha256": "fd5a1213d26a43bd954b5d77ab72dc066e3e249995fff38d8bca7176bfedf5cc",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "647a46633edbd68d0ebebec35d7786ec69023fd629c2eea557f879fa8ceede5f",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_lr_parallel_control__content_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_lr_parallel_control__content_box_rtl.xml",
+          "sha256": "0abda0d6215c8a778d4a52fadc4ad7eb4675d0fd817e152903fd6b189b35873b"
+        },
+        "record_sha256": "fd5a1213d26a43bd954b5d77ab72dc066e3e249995fff38d8bca7176bfedf5cc"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html",
+        "source_sha256": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+        "variant": "content_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "0abda0d6215c8a778d4a52fadc4ad7eb4675d0fd817e152903fd6b189b35873b",
+        "record_sha256": "fd5a1213d26a43bd954b5d77ab72dc066e3e249995fff38d8bca7176bfedf5cc",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "b1824e130449de20adc0b3b17a1db68e21cb387ec198c6cc21766e96efe70bbd",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_opposing_control__border_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_vertical_opposing_control.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_opposing_control__border_box_ltr.xml",
+          "sha256": "7e7fd2f8d1cfa1b7b4db87f918b2747967d22c0ca117486fd822c4870469f03b"
+        },
+        "record_sha256": "1c334e10a6ad41605994c715df95dbf5a30d20d42fcb827f51937903b9d05ec2"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_opposing_control.html",
+        "source_sha256": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+        "variant": "border_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "7e7fd2f8d1cfa1b7b4db87f918b2747967d22c0ca117486fd822c4870469f03b",
+        "record_sha256": "1c334e10a6ad41605994c715df95dbf5a30d20d42fcb827f51937903b9d05ec2",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "3af9c8f7cba3a1721aa678c60fec657fd8eba83b772bf6b80fc07884c71716f9",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_opposing_control__border_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_vertical_opposing_control.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_opposing_control__border_box_rtl.xml",
+          "sha256": "7c4f78d75898355fa263bfc0d2cf33f2cfd5e28f1a2f787778d8a0e11e861556"
+        },
+        "record_sha256": "1c334e10a6ad41605994c715df95dbf5a30d20d42fcb827f51937903b9d05ec2"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_opposing_control.html",
+        "source_sha256": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+        "variant": "border_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "7c4f78d75898355fa263bfc0d2cf33f2cfd5e28f1a2f787778d8a0e11e861556",
+        "record_sha256": "1c334e10a6ad41605994c715df95dbf5a30d20d42fcb827f51937903b9d05ec2",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "449b554dc943db380aa33aa4e82bc03da26c98054c64bafbdddedcc02bc7c0ad",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_opposing_control__content_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_vertical_opposing_control.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_opposing_control__content_box_ltr.xml",
+          "sha256": "94f43aac280be277666aa9facf90cdeea35ce102ef2f2f51747dedb11ea3e625"
+        },
+        "record_sha256": "1c334e10a6ad41605994c715df95dbf5a30d20d42fcb827f51937903b9d05ec2"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_opposing_control.html",
+        "source_sha256": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+        "variant": "content_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "94f43aac280be277666aa9facf90cdeea35ce102ef2f2f51747dedb11ea3e625",
+        "record_sha256": "1c334e10a6ad41605994c715df95dbf5a30d20d42fcb827f51937903b9d05ec2",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "d15dc745f0a9270a50ea4b576c98ef8711e0d741fe5db5e9b0555d5ddbc0c678",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_opposing_control__content_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_vertical_opposing_control.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_opposing_control__content_box_rtl.xml",
+          "sha256": "27c032cbddd5e6e47c709d7dced155206a4591e4b9f46e6e7da9aad27d3fa3f4"
+        },
+        "record_sha256": "1c334e10a6ad41605994c715df95dbf5a30d20d42fcb827f51937903b9d05ec2"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_opposing_control.html",
+        "source_sha256": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+        "variant": "content_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "27c032cbddd5e6e47c709d7dced155206a4591e4b9f46e6e7da9aad27d3fa3f4",
+        "record_sha256": "1c334e10a6ad41605994c715df95dbf5a30d20d42fcb827f51937903b9d05ec2",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "3badd0b5e1fd90729cacb00c7133f6957f56c0b073ef679bfeec3a05cd57937f",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_parent_orthogonal_child_control__border_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control__border_box_ltr.xml",
+          "sha256": "0f3e947932d7d2bcebd222f87d85dc06541bf4b7306adbf91c876d75f64e0606"
+        },
+        "record_sha256": "650d0da4e6cd1d2078135bf5347315dd6764453aa1b0c8f055a0cb2a47a6676a"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html",
+        "source_sha256": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+        "variant": "border_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "0f3e947932d7d2bcebd222f87d85dc06541bf4b7306adbf91c876d75f64e0606",
+        "record_sha256": "650d0da4e6cd1d2078135bf5347315dd6764453aa1b0c8f055a0cb2a47a6676a",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "0cc1a427800139f0fef9bc29ddd61d3a165e6c4d57ce7389e3b755c0d4523980",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_parent_orthogonal_child_control__border_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control__border_box_rtl.xml",
+          "sha256": "20d26c2270411d237e35e611031f57fddf59a796cba00611290d5b4304c2da0a"
+        },
+        "record_sha256": "650d0da4e6cd1d2078135bf5347315dd6764453aa1b0c8f055a0cb2a47a6676a"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html",
+        "source_sha256": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+        "variant": "border_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "20d26c2270411d237e35e611031f57fddf59a796cba00611290d5b4304c2da0a",
+        "record_sha256": "650d0da4e6cd1d2078135bf5347315dd6764453aa1b0c8f055a0cb2a47a6676a",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "9e6b60c032329d0f3448d09338b5b0faf0d01092b0ad1585b786a5ed37b3a994",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_parent_orthogonal_child_control__content_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control__content_box_ltr.xml",
+          "sha256": "7d576a64e85a5fdbb378a1097e6a06840083a8df5d2838b28d4d54908ed6b6fa"
+        },
+        "record_sha256": "650d0da4e6cd1d2078135bf5347315dd6764453aa1b0c8f055a0cb2a47a6676a"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html",
+        "source_sha256": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+        "variant": "content_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "7d576a64e85a5fdbb378a1097e6a06840083a8df5d2838b28d4d54908ed6b6fa",
+        "record_sha256": "650d0da4e6cd1d2078135bf5347315dd6764453aa1b0c8f055a0cb2a47a6676a",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "f7db56fc91a89caca94b261cfbd9ef864a5cb478ce5c2767ecf6d9d009ef8358",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_parent_orthogonal_child_control__content_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control__content_box_rtl.xml",
+          "sha256": "b3ec102c1be37ada4743e266b9371a321e8a2eadf4a1bc32e906b0ce5c24d966"
+        },
+        "record_sha256": "650d0da4e6cd1d2078135bf5347315dd6764453aa1b0c8f055a0cb2a47a6676a"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html",
+        "source_sha256": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+        "variant": "content_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "b3ec102c1be37ada4743e266b9371a321e8a2eadf4a1bc32e906b0ce5c24d966",
+        "record_sha256": "650d0da4e6cd1d2078135bf5347315dd6764453aa1b0c8f055a0cb2a47a6676a",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "a3f0f6f69e9f7d72cadc4d031700c92fdd5cc36df291552ee7d7ee4ce3e14a39",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_rl_parallel_control__border_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_rl_parallel_control__border_box_ltr.xml",
+          "sha256": "efa7aa634e4a0c20fdeee0c282205e311546b1877644e2c7dd00cd052c8d6d12"
+        },
+        "record_sha256": "40c30e32de7a27864ad82bc94c75664527e1e67f46012819be4f145368124c26"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html",
+        "source_sha256": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+        "variant": "border_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "efa7aa634e4a0c20fdeee0c282205e311546b1877644e2c7dd00cd052c8d6d12",
+        "record_sha256": "40c30e32de7a27864ad82bc94c75664527e1e67f46012819be4f145368124c26",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "99c71082f1e2c3a4eb9c7a1d7d36dc89f6684067c95e258957d6fdf62da06f7e",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_rl_parallel_control__border_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_rl_parallel_control__border_box_rtl.xml",
+          "sha256": "0b228c14d665410a871aad1ded408a26790b4f9429b9d57055cbab84e309e35b"
+        },
+        "record_sha256": "40c30e32de7a27864ad82bc94c75664527e1e67f46012819be4f145368124c26"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html",
+        "source_sha256": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+        "variant": "border_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "0b228c14d665410a871aad1ded408a26790b4f9429b9d57055cbab84e309e35b",
+        "record_sha256": "40c30e32de7a27864ad82bc94c75664527e1e67f46012819be4f145368124c26",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "9d0da7f593cd973fe974155ca53939e5a80bcb48a6a237a41c960ee6f1e44468",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_rl_parallel_control__content_box_ltr",
+        "source": "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_rl_parallel_control__content_box_ltr.xml",
+          "sha256": "06c6a17516c1fc7bb1e578d40040c4303dd13e0ec0e62152f5341b807a3d4989"
+        },
+        "record_sha256": "40c30e32de7a27864ad82bc94c75664527e1e67f46012819be4f145368124c26"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html",
+        "source_sha256": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+        "variant": "content_box_ltr",
+        "historical_sha256": null,
+        "capture_sha256": "06c6a17516c1fc7bb1e578d40040c4303dd13e0ec0e62152f5341b807a3d4989",
+        "record_sha256": "40c30e32de7a27864ad82bc94c75664527e1e67f46012819be4f145368124c26",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "39151789bab26b6e5dc3f9cab4302e3fd64c05958796c9ea5cb0dd7185a8e137",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_lanes_axes_vertical_rl_parallel_control__content_box_rtl",
+        "source": "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/qualification/grid_lanes_axes_vertical_rl_parallel_control__content_box_rtl.xml",
+          "sha256": "f8bad5336d14e033b6045ee0ce1bb3a31212826e6166136aeed06fcf550ed97b"
+        },
+        "record_sha256": "40c30e32de7a27864ad82bc94c75664527e1e67f46012819be4f145368124c26"
+      },
+      "historical": null,
+      "matching": "geometry",
+      "identity": {
+        "source": "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html",
+        "source_sha256": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+        "variant": "content_box_rtl",
+        "historical_sha256": null,
+        "capture_sha256": "f8bad5336d14e033b6045ee0ce1bb3a31212826e6166136aeed06fcf550ed97b",
+        "record_sha256": "40c30e32de7a27864ad82bc94c75664527e1e67f46012819be4f145368124c26",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "12bfc6f5652b2b266ac5078ce4c9b7373d62a7e06b18a18bd823f4d4bc966540",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+          "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+          "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+          "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+          "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+          "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+          "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+          "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+          "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+          "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    }
+  ],
+  "retained_inputs": {
+    "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "corpus.toml": "8df66d250ce1132251ae9b7e92ef00a18d77cd7510ba533cf88d44e24140d85e",
+    "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+    "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+    "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+    "html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+    "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+    "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+    "html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+    "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+    "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+    "origin/selected-originals.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+    "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+  },
+  "current_owner_inputs": {
+    "examples/qualify-root-context/html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html": "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19",
+    "examples/qualify-root-context/html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html": "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b",
+    "examples/qualify-root-context/html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html": "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e",
+    "examples/qualify-root-context/html/qualification/grid_lanes_axes_sideways_opposing_control.html": "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e",
+    "examples/qualify-root-context/html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html": "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241",
+    "examples/qualify-root-context/html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html": "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a",
+    "examples/qualify-root-context/html/qualification/grid_lanes_axes_vertical_opposing_control.html": "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1",
+    "examples/qualify-root-context/html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html": "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6",
+    "examples/qualify-root-context/html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html": "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49",
+    "tests/layout/browser_parity/corpus.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "tests/layout/browser_parity/fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "tests/layout/browser_parity/fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+  },
+  "capture_validation": {
+    "producer_profile": "root-context-fixed-orthogonal-v1",
+    "producer_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
+    "validator_profile": "root-context-fixed-orthogonal-v1",
+    "validator_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+  }
+}
