@@ -172,9 +172,9 @@ logical block padding/inset declarations with
 
 Margins use physical computed values from Typed OM when available. The
 descriptor preserves `auto` and the supported length projections. The inline
-fallback projects physical and logical margin declarations in declaration
-order using the node's writing mode and direction. Logical block margins
-therefore reach the physical margin fields with `auto` intact.
+fallback projects physical and logical margins using the node's writing mode
+and direction. Important declarations take precedence on each physical edge.
+Declaration order resolves equal priorities.
 
 After root-context source checks, parsed inline `border-block*` and
 `border-inline*` declarations on the root or its descendants refuse with
