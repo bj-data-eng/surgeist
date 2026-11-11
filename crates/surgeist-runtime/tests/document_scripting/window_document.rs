@@ -251,3 +251,58 @@ pub(super) fn window_uses_the_real_global_event_target() {
         .unwrap();
     assert_eq!(String::from_utf16(&result).unwrap(), "ok");
 }
+
+pub(super) fn window_resolves_the_inherited_event_target_operations() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        if (typeof Window !== "function") return "missing Window interface object";
+        const target = EventTarget.prototype;
+        if (Object.getPrototypeOf(window) !== Window.prototype
+            || Object.getPrototypeOf(Window) !== EventTarget
+            || !target.isPrototypeOf(window) || !(window instanceof Window)
+            || Reflect.setPrototypeOf(window, {})) {
+            return "Window must inherit EventTarget through its immutable global prototype";
+        }
+        for (const key of ["addEventListener", "removeEventListener", "dispatchEvent"]) {
+            if (Object.hasOwn(window, key) || window[key] !== target[key]) {
+                return "Window must resolve the original inherited EventTarget operations";
+            }
+        }
+        let calls = 0;
+        function observe(event) {
+            if (this === window && event.target === window && event.currentTarget === window) calls++;
+            event.preventDefault();
+        }
+        window.addEventListener("inherited", observe);
+        if (dispatchEvent(new Event("inherited", { cancelable: true })) || calls !== 1) {
+            return "ordinary registration and unqualified dispatch must use the native Global";
+        }
+        removeEventListener("inherited", observe);
+        if (!window.dispatchEvent(new Event("inherited", { cancelable: true })) || calls !== 1) {
+            return "unqualified removal must remove the native registration";
+        }
+        addEventListener("inherited", observe, { once: true });
+        window.dispatchEvent(new Event("inherited"));
+        if (calls !== 2) return "unqualified registration must use the native Global";
+        let conversions = 0;
+        try {
+            target.addEventListener.call(Object.create(Window.prototype), {
+                toString() { conversions++; return "inherited"; },
+            }, observe);
+            return "a prototype forgery must fail the Window receiver check";
+        } catch (error) {
+            if (!(error instanceof TypeError) || conversions !== 0) {
+                return "receiver qualification must precede conversion";
+            }
+        }
+        return "ok";
+    })()"#;
+    let result = host
+        .in_document(&permit, |scope| {
+            let value = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&result).unwrap(), "ok");
+}
