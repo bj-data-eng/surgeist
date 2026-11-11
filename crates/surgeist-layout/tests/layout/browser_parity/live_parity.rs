@@ -525,6 +525,139 @@ fn parse_json<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, String> {
 mod tests {
     use super::*;
 
+    struct TestDirectory(std::path::PathBuf);
+
+    impl TestDirectory {
+        fn new() -> Self {
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let index = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "surgeist-live-corpus-{}-{now}-{index}",
+                std::process::id()
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+
+        fn write(&self, relative: &str, bytes: &[u8]) {
+            let path = self.0.join(relative);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, bytes).unwrap();
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn raw_live_comparison_survives_a_missing_unrelated_source() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
+        let report: serde_json::Value =
+            parse_json(&read_file(&root, LIVE_REPORT).unwrap()).unwrap();
+        let missing = "html/flex/flex_basis_unconstraint_column.html";
+        let unaffected = "html/flex/flex_root_ignored.html";
+        let cases: Vec<_> = report["generated"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|row| {
+                row["variant"] == "border_box_ltr"
+                    && matches!(row["source"].as_str(), Some(path) if path == missing || path == unaffected)
+            })
+            .cloned()
+            .collect();
+        assert_eq!(cases.len(), 2);
+
+        let scratch = TestDirectory::new();
+        let source_bytes = read_file(&root, unaffected).unwrap();
+        let declaration = read_file(&root, LIVE_DECLARATION).unwrap();
+        scratch.write(unaffected, &source_bytes);
+        scratch.write(LIVE_DECLARATION, &declaration);
+        let mut inputs = BTreeMap::new();
+        let mut ownership = BTreeMap::new();
+        for row in &cases {
+            let source = row["source"].as_str().unwrap();
+            let path = row["output"].as_str().unwrap();
+            inputs.insert(source, row["source_sha256"].as_str().unwrap().to_owned());
+            ownership.insert(path, row["output_sha256"].as_str().unwrap().to_owned());
+            scratch.write(path, &read_file(&root, path).unwrap());
+        }
+        let mut synthetic = serde_json::json!({
+            "metadata": { "schema_version": 4, "inputs": inputs },
+            "filter": null,
+            "summary": { "generated": 2, "unsupported": 0, "expected_fail": 0,
+                         "quarantined": 0, "failed_to_generate": 0 },
+            "generated": cases,
+            "unsupported": [],
+            "expected_fail": [],
+            "quarantined": [],
+            "failed_to_generate": [],
+        });
+        scratch.write(HISTORICAL_REPORT, &serde_json::to_vec(&synthetic).unwrap());
+        synthetic["metadata"]["inputs"][LIVE_DECLARATION] = serde_json::json!(sha256(&declaration));
+        let live = serde_json::to_vec(&synthetic).unwrap();
+        scratch.write(LIVE_REPORT, &live);
+        ownership.insert(LIVE_REPORT, sha256(&live));
+        scratch.write(
+            LIVE_OWNERSHIP,
+            &serde_json::to_vec(&serde_json::json!({
+                "schema_version": 1,
+                "artifacts": ownership,
+            }))
+            .unwrap(),
+        );
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(
+            scratch.0.join(LIVE_REPORT),
+            scratch.0.join("live-xml/unowned-link"),
+        )
+        .unwrap();
+
+        let run = LiveCorpusRun::collect(&scratch.0)
+            .expect("one missing source must not stop unaffected raw comparisons");
+        let raw = run.raw_failures();
+        assert!(raw.iter().any(|line| line.contains(missing)));
+        assert!(raw.iter().any(|line| {
+            line.contains("live-xml/flex/flex_root_ignored__border_box_ltr.xml")
+                && line.contains("\"kind\":\"differences\"")
+        }));
+        #[cfg(unix)]
+        assert!(raw.iter().any(|line| line.contains("unowned-link")));
+    }
+
+    #[test]
+    fn ordinary_corpus_entry_cannot_record_in_place_of_verifying() {
+        let scratch = TestDirectory::new();
+        let receipt = scratch.0.join("receipt.json");
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "layout::browser_parity::runs_all_checked_in_browser_parity_xml",
+                "--exact",
+            ])
+            .current_dir(&scratch.0)
+            .env("SURGEIST_PARITY_WRITE_LIVE_RECEIPT", &receipt)
+            .env_remove("SURGEIST_PARITY_RAW_EXACT")
+            .env_remove("SURGEIST_PARITY_FILTER")
+            .output()
+            .unwrap();
+        assert!(
+            !receipt.exists(),
+            "ordinary corpus entry must never write a candidate receipt"
+        );
+        assert!(!child.status.success());
+        assert!(
+            String::from_utf8_lossy(&child.stdout)
+                .contains("failed to locate surgeist-layout crate")
+        );
+    }
+
     fn capture_report(variants: &[&str]) -> CaptureReport {
         let generated = variants
             .iter()

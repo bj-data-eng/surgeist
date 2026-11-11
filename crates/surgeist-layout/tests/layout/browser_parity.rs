@@ -3240,6 +3240,25 @@ fn raw_corpus_reports_current_differences_with_many_historical_failures() {
 }
 
 #[test]
+fn raw_filter_includes_explicit_and_shared_live_capture_paths() {
+    let originals = support::fixture_files("xml").unwrap();
+    let name = "flex_basis_unconstraint_column__border_box_ltr.xml";
+    let live_path = format!("live-xml/flex/{name}");
+    for filter in [live_path.as_str(), name] {
+        let raw = run_raw_browser_parity(originals.clone(), Some(filter)).unwrap_err();
+        assert!(
+            raw.contains(&format!("{live_path}: {{\"kind\":\"differences\"")),
+            "filter {filter} must compare the live capture: {raw}"
+        );
+        if filter == name {
+            assert!(raw.contains(&format!(
+                "xml/flex/{name} failed: MissingRootContextAuthority"
+            )));
+        }
+    }
+}
+
+#[test]
 fn raw_corpus_reports_a_missing_xml_and_still_executes_later_originals() {
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     let original =
