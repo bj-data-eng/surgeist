@@ -153,7 +153,7 @@ impl Drop for GuestBacking {
 pub(crate) struct RegisteredGuestListener {
     pub(crate) code: u64,
     object: RetainedCallbackObject,
-    settings: DomHostedTopLevel,
+    registration_window: DomHostedTopLevel,
     _backing: GuestBacking,
 }
 
@@ -359,7 +359,8 @@ impl DocumentScriptHost {
         })?
     }
 
-    /// Register the exact guest function under the attached Window's authority.
+    /// Register the exact guest object under the attached Window's authority.
+    /// This Rust-hosted entry supplies the native attachment explicitly.
     pub fn add_guest_event_listener(
         &mut self,
         permit: &DocumentScriptPermit,
@@ -369,7 +370,7 @@ impl DocumentScriptHost {
         options: DomEventListenerOptions,
     ) -> Result<DomEventRegistrationId, DocumentGuestEventError> {
         self.check_permit(permit)?;
-        let settings = self.attachment()?.target;
+        let registration_window = self.attachment()?.target;
         let owner = self.native.clone();
         let events = self.guest_events()?;
         self.in_document(permit, |scope| {
@@ -379,9 +380,6 @@ impl DocumentScriptHost {
                 let observed = scope.callback_object(&value)?;
                 if observed.associated_realm().identity() != permit.realm {
                     return Err(DocumentGuestEventError::CallbackRealmUnavailable);
-                }
-                if !scope.is_callable(&value)? {
-                    return Err(Error::ExpectedFunction.into());
                 }
                 let target = DomEventTarget::from(target.native.clone());
                 let mut cursor = 0;
@@ -417,7 +415,7 @@ impl DocumentScriptHost {
                 let callback = DomEventCallback::guest(Rc::new(RegisteredGuestListener {
                     code,
                     object,
-                    settings,
+                    registration_window,
                     _backing: backing,
                 }));
                 let mut session = owner
@@ -593,7 +591,7 @@ impl GuestEvents {
                     .ok_or(DocumentGuestEventError::RegistryState)?;
                 let authority = callback.object.associated_realm();
                 authority.check_owner_active()?;
-                if callback.settings != attachment.target
+                if callback.registration_window != attachment.target
                     || authority.identity() != attachment.realm.identity()
                     || scope.realm_authority()?.identity() != authority.identity()
                 {
@@ -611,8 +609,15 @@ impl GuestEvents {
                     }
                 }
                 self.step()?;
-                let function = scope.open_callback_object(&callback.object)?;
-                match scope.call(&function, &receiver, std::slice::from_ref(&argument)) {
+                let object = scope.open_callback_object(&callback.object)?;
+                let arguments = std::slice::from_ref(&argument);
+                let called = if scope.is_callable(&object)? {
+                    scope.call(&object, &receiver, arguments)
+                } else {
+                    self.step()?;
+                    scope.call_object_operation(&object, &b"handleEvent".map(u16::from), arguments)
+                };
+                match called {
                     Ok(_) => Ok(None),
                     Err(Error::Exception(exception)) => Ok(Some(DocumentGuestListenerException {
                         registration: selected.registration(),

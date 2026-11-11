@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{Error, Process, RealmAuthority, Scope, Value};
+use crate::{Error, Exception, ExceptionPhase, Process, PropertyKey, RealmAuthority, Scope, Value};
 
 pub(crate) struct CallbackObjectIdentity {
     pub(crate) owner: u64,
@@ -91,6 +91,28 @@ impl<'scope> Scope<'scope> {
     ) -> Result<Value<'scope>, Error> {
         let root = self.operations.open_callback_object(&callback.holder)?;
         Ok(self.value(root))
+    }
+
+    /// Read one Web IDL callback-interface operation and call it with the
+    /// original object as receiver. A noncallable result produces the entered
+    /// Realm's intrinsic TypeError. The host qualifies and enters the callback
+    /// object's Realm and prepares the retained callback context.
+    pub fn call_object_operation(
+        &mut self,
+        object: &Value<'scope>,
+        operation: &[u16],
+        arguments: &[Value<'scope>],
+    ) -> Result<Value<'scope>, Error> {
+        let method = self.get(object, PropertyKey::String(operation))?;
+        if !self.is_callable(&method)? {
+            let error = self.type_error(&b"Callback operation must be callable".map(u16::from))?;
+            return Err(Error::Exception(Exception {
+                phase: ExceptionPhase::Invoke,
+                value: error.root,
+                rule: None,
+            }));
+        }
+        self.call(&method, object, arguments)
     }
 }
 
