@@ -264,9 +264,13 @@ authority therefore closes live work immediately while physically retained
 backing stays charged until its last observation drops. The original accounting
 counters include their own retained targets. The element task counter carries
 its separate DOM Source debit through its final shared reference, independent of
-task State. Signal listener integration, callback realms, and authenticated
-creation observations for Style notifications and synchronous Dialog firing
-remain separate work.
+task State.
+
+Hosted Style load and synchronous Dialog `beforetoggle` and `cancel` record the
+original Global's clock when the Event body is first admitted. The same
+observation survives retained delivery and retry. Missing or retired clocks
+produce typed unavailability. Provider failure remains distinct. Signal listener
+integration and standard callback Realm qualification remain separate work.
 
 For an external synchronous host, register `DomEventCallback::host(key)` instead
 of a borrowed Rust callback. The key is routing data owned by the application;
