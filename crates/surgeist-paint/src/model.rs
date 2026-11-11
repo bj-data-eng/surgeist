@@ -148,6 +148,7 @@ pub enum PaintError {
     GradientStops(crate::GradientStopsError),
     RadialGradient(crate::RadialGradientError),
     ZeroHeightGradient(crate::ZeroHeightGradientError),
+    BorderImage(crate::BorderImageGeometryError),
     MissingRoot,
     MultipleRoots {
         first: BoxId,

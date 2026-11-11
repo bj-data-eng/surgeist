@@ -42,6 +42,10 @@ dimensions! {
         GradientCoordinate,
         /// One source-item or expanded stop-record visit, including repeated walks.
         GradientStopVisit,
+        /// One border-image input scalar validity check.
+        BorderImageValidation,
+        /// One border-image coordinate calculation or inspection.
+        BorderImageCoordinate,
     }
 }
 
@@ -52,6 +56,7 @@ pub(crate) enum OperationKind {
     GradientStops,
     RadialGradient,
     ZeroHeightGradient,
+    BorderImage,
 }
 const MAX_OPERATION_SCOPES: usize = 10;
 
@@ -64,6 +69,7 @@ impl OperationKind {
             Self::GradientStops => "paint gradient stops",
             Self::RadialGradient => "paint radial gradient",
             Self::ZeroHeightGradient => "paint zero-height gradient colors",
+            Self::BorderImage => "paint border image geometry",
         }
     }
     fn scope_limit(&self) -> usize {
@@ -74,6 +80,7 @@ impl OperationKind {
             Self::GradientStops => 7,
             Self::RadialGradient => 5,
             Self::ZeroHeightGradient => 7,
+            Self::BorderImage => 5,
         }
     }
 }
@@ -191,6 +198,7 @@ pub enum PaintPhase {
     GradientStopResolution,
     GradientStopFixup,
     GradientStopDistribution,
+    BorderImageGeometry,
 }
 impl PaintPhase {
     fn name(self) -> &'static str {
@@ -210,6 +218,7 @@ impl PaintPhase {
             Self::GradientStopResolution => "gradient_stop_resolution",
             Self::GradientStopFixup => "gradient_stop_fixup",
             Self::GradientStopDistribution => "gradient_stop_distribution",
+            Self::BorderImageGeometry => "border_image_geometry",
         }
     }
 }
