@@ -184,6 +184,43 @@ fn namespace_element_validation_uses_element_context_and_preserves_utf16() {
 }
 
 #[test]
+fn fresh_native_audio_and_video_preserve_exact_namespaces() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let cases = [
+        (HTML, "audio", "audio"),
+        (HTML, "p:video", "video"),
+        (HTML, "Audio", "Audio"),
+        (SVG, "video", "video"),
+        ("urn:example", "audio", "audio"),
+    ];
+    let tickets: Vec<_> = cases
+        .iter()
+        .map(|(namespace, qualified, _)| {
+            batch.create_element_ns(&document, Namespace::from_uri(*namespace), *qualified)
+        })
+        .collect();
+    let commit = apply(&mut dom, batch);
+    let document = commit.document(&document).unwrap();
+    let snapshot = dom.snapshot();
+    for ((namespace, qualified, local), ticket) in cases.iter().zip(&tickets) {
+        let id = commit.created(ticket).unwrap().unwrap();
+        let node = snapshot.node(id).unwrap();
+        let element = node.as_element().unwrap();
+        assert_eq!(node.owner_document(), Some(document));
+        assert!(node.parent().is_none());
+        assert_eq!(node.tag_name(), Some(DocumentString::from(*qualified)));
+        assert_eq!(
+            element.name().namespace_uri(),
+            Namespace::from_uri(*namespace).uri()
+        );
+        assert_eq!(element.name().local_name(), &DocumentString::from(*local));
+        assert!(element.attributes().is_empty());
+    }
+}
+
+#[test]
 fn unmet_builtin_profiles_reject_the_whole_batch_with_the_actual_requirement() {
     let mut dom = dom();
     for (ns, name, requirement) in [
