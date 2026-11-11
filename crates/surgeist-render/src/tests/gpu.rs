@@ -4642,6 +4642,87 @@ fn foreground_backdrop_kernel_refusal_preserves_publication_and_allows_retry() {
 }
 
 #[test]
+fn backdrop_zero_blur_preserves_the_captured_pixels() {
+    assert_zero_blur_backdrop_pixels(
+        FilterList::none(),
+        [
+            [0, 255, 0, 255],
+            [0, 255, 0, 255],
+            [255, 0, 0, 255],
+            [0, 0, 255, 255],
+            [0, 0, 255, 255],
+        ],
+    );
+}
+
+#[test]
+fn backdrop_zero_blur_is_captured_before_the_same_layer_foreground_filter() {
+    let invert = color_filter_list([ColorFilterOp::Invert(
+        UnitFilterAmount::try_new(1.0).unwrap(),
+    )]);
+    assert_zero_blur_backdrop_pixels(
+        invert,
+        [
+            [0, 255, 0, 255],
+            [255, 0, 255, 255],
+            [0, 255, 255, 255],
+            [255, 255, 0, 255],
+            [0, 0, 255, 255],
+        ],
+    );
+}
+
+fn assert_zero_blur_backdrop_pixels(foreground: FilterList, expected: [[u8; 4]; 5]) {
+    use crate::{RenderAccountingOptions, RenderLimits, RenderWork};
+
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::KernelSampleVisits, 0)
+        .unwrap();
+    let options =
+        Options::default().with_accounting(RenderAccountingOptions::new().with_limits(limits));
+    let mut renderer = pollster::block_on(Renderer::new(options)).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(7.0, 5.0), 1.0)).unwrap();
+    let backdrop = BackdropFilterInput::try_new(
+        FilterList::try_ops(vec![FilterOp::blur(FilterBlur::try_new(0.0).unwrap())]).unwrap(),
+        BackdropCaptureBounds::try_new(Rect::new(1.0, 1.0, 5.0, 3.0)).unwrap(),
+        Some(ClipInput::try_shape(Shape::rect(Rect::new(2.0, 1.0, 3.0, 3.0))).unwrap()),
+    )
+    .unwrap();
+    let mut scene = Scene::new();
+    scene.fill(
+        Rect::new(1.0, 1.0, 2.0, 3.0),
+        color_from_straight_rgba8_for_test([0, 255, 0, 255]),
+    );
+    scene.layer(
+        Layer::new()
+            .try_backdrop_filter(backdrop)
+            .unwrap()
+            .with_filter_list(foreground),
+        |scene| {
+            scene.fill(
+                Rect::new(3.0, 2.0, 1.0, 1.0),
+                color_from_straight_rgba8_for_test([255, 0, 0, 255]),
+            );
+        },
+    );
+    let parameters = Parameters {
+        base_color: color_from_straight_rgba8_for_test([0, 0, 255, 255]),
+        ..Parameters::default()
+    };
+    let stats = pollster::block_on(renderer.render(&mut surface, &scene, parameters))
+        .expect("an identity backdrop must publish through the GPU graph");
+    assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+    let terminal = renderer.last_attempt().unwrap();
+    let report = terminal.attempt().unwrap();
+    assert_eq!(report.usage().work(RenderWork::KernelSampleVisits), 0);
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    for (x, expected) in (1..=5).zip(expected) {
+        assert_eq!(pixel_rgba(&output, x, 2), expected, "pixel at x={x}");
+    }
+}
+
+#[test]
 fn backdrop_blur_mirrors_at_semantic_bounds_not_allocation_padding() {
     let size = PhysicalSize::new(8, 6);
     let origin = (2, 1);
