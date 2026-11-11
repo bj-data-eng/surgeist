@@ -403,6 +403,26 @@ fn image_repeat_keeps_a_subnormal_correction_at_the_overflow_boundary() {
 }
 
 #[test]
+fn image_repeat_retains_both_phase_residuals_at_the_overflow_midpoint() {
+    let high = 2.0_f64.powi(1023);
+    let step = 2.0_f64.powi(971);
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(-0.5 * high, 0.0, 0.25 * high, 1.0),
+        Rect::new((-0.5 * step).next_up(), 0.0, f64::MAX, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let repeated = repeat
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .unwrap();
+    assert_eq!(
+        repeated.tile_rects(),
+        [Rect::new(-f64::MAX, 0.0, f64::MAX, 1.0)]
+    );
+}
+
+#[test]
 fn image_repeat_resolves_an_odd_subnormal_period() {
     let unit = f64::from_bits(1);
     let placement = ResolvedImagePlacement::from_parts(
