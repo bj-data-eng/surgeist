@@ -562,9 +562,71 @@ pub(super) fn stopped_host_resumes_original_settings_read() {
     assert_eq!(prepared.result(), HtmlScriptResult::Uninitialized);
 }
 
+pub(super) fn stopped_host_preserves_executable_frontier() {
+    let (mut session, top) = setup();
+    let document = top.document();
+    let body = body(&session, document);
+    let mut batch = DomBatch::new();
+    let script = make_script(&mut batch, document);
+    let script = session
+        .dom()
+        .apply(batch, &cancel())
+        .unwrap()
+        .created(&script)
+        .unwrap()
+        .unwrap();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    let read = request(
+        apply(&mut host, DomSourceEdit::insert_before(script, body, None)),
+        DomSourceScriptStep::ReadScripting,
+    );
+    assert!(
+        host.service_script_settings(&permit, read, LIMITS)
+            .unwrap()
+            .unwrap()
+            .enabled()
+    );
+    let executable = request(
+        resume(&mut host, read.operation()),
+        DomSourceScriptStep::ExecutablePreparation,
+    );
+    assert_eq!(executable.operation(), read.operation());
+
+    let mut session = host.stop().into_session().unwrap();
+    let mut source = session.source_execution();
+    let resumed = source
+        .resume(
+            &mut session.dom(),
+            executable.operation(),
+            LIMITS,
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert_eq!(
+        request(resumed, DomSourceScriptStep::ExecutablePreparation),
+        executable
+    );
+    let status = session.dom().pending_source_edit().unwrap();
+    assert_eq!(status.operation(), executable.operation());
+    assert!(!status.has_published());
+    let snapshot = session.snapshot();
+    assert_eq!(snapshot.stamp(), read.basis());
+    assert_eq!(snapshot.node(script).unwrap().parent(), None);
+}
+
 pub(super) fn run() {
     let foreign = text_and_attribute_keep_the_private_segment();
     adopted_script_uses_original_settings_and_current_browsing_context(foreign);
     published_iframe_prefix_keeps_its_script_tail_after_cancel();
     stopped_host_resumes_original_settings_read();
+    stopped_host_preserves_executable_frontier();
 }
