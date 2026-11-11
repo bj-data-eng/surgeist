@@ -2614,6 +2614,122 @@ fn non_render_operations_do_not_mutate_last_successful_stats() {
     assert_eq!(renderer.stats(), last_successful);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn exact_graph_replaces_only_its_headless_target_after_frame_and_cleanup() {
+    use crate::{
+        Layer, RenderAccountingOptions, RenderAttemptStatus, RenderClock, RenderEvent, RenderPhase,
+        RenderPhaseFilter, RenderProfile, RenderWork, ResolvedLayerAlphaMask,
+    };
+
+    pollster::block_on(async {
+        let accounting = RenderAccountingOptions::new()
+            .with_clock(RenderClock::Host(|| Duration::ZERO))
+            .with_profile(RenderProfile::Detailed {
+                timing: true,
+                event_limit: 16_384,
+                filter: RenderPhaseFilter::All,
+            });
+        let mut renderer = Renderer::new(Options::default().with_accounting(accounting))
+            .await
+            .unwrap();
+        let size = Size::new(2.0, 1.0);
+        let mut target = renderer.create_headless(size, 1.0).await.unwrap();
+        let mut other = renderer.create_headless(size, 1.0).await.unwrap();
+        let target_parameters = Parameters {
+            base_color: Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap(),
+            debug: false,
+        };
+        let other_parameters = Parameters {
+            base_color: Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap(),
+            debug: true,
+        };
+        for (surface, parameters) in [
+            (&mut target, target_parameters),
+            (&mut other, other_parameters),
+        ] {
+            let stats = renderer
+                .render(surface, &Scene::new(), parameters)
+                .await
+                .unwrap();
+            assert_eq!(stats.route, Some(RenderRoute::DirectVello));
+            assert_eq!(surface.headless_publication_count_for_test(), 1);
+            assert_eq!(surface.last_parameters, Some(parameters));
+        }
+        let target_texture = headless_publication_texture_for_test(&target);
+        let other_texture = headless_publication_texture_for_test(&other);
+        assert_ne!(*target_texture, *other_texture);
+        assert_eq!(
+            renderer.read_headless(&target).await.unwrap().rgba(),
+            &[255, 0, 0, 255, 255, 0, 0, 255]
+        );
+        let other_pixels = renderer.read_headless(&other).await.unwrap();
+        assert_eq!(other_pixels.rgba(), &[0, 0, 255, 255, 0, 0, 255, 255]);
+
+        let rect = Rect::new(0.0, 0.0, 2.0, 1.0);
+        let mask =
+            Image::from_rgba(size, Arc::<[u8]>::from([255, 255, 255, 255, 0, 0, 0, 128])).unwrap();
+        let mut graph = Scene::new();
+        graph.layer(
+            Layer::new()
+                .with_resolved_alpha_mask(ResolvedLayerAlphaMask::try_new(mask, rect).unwrap()),
+            |scene| {
+                scene.fill(rect, Color::try_rgba(0.0, 1.0, 0.0, 1.0).unwrap());
+            },
+        );
+        let replacement_parameters = Parameters::default();
+        let stats = renderer
+            .render(&mut target, &graph, replacement_parameters)
+            .await
+            .unwrap();
+        assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+        assert!(stats.composite_passes > 0);
+        assert_ne!(
+            *headless_publication_texture_for_test(&target),
+            *target_texture
+        );
+        assert_eq!(
+            *headless_publication_texture_for_test(&other),
+            *other_texture
+        );
+        assert_eq!(target.headless_publication_count_for_test(), 2);
+        assert_eq!(other.headless_publication_count_for_test(), 1);
+        assert_eq!(target.last_parameters, Some(replacement_parameters));
+        assert_eq!(other.last_parameters, Some(other_parameters));
+        let replacement = renderer.read_headless(&target).await.unwrap();
+        assert_eq!(replacement.rgba(), &[0, 255, 0, 255, 0, 255, 0, 128]);
+        assert_eq!(renderer.read_headless(&other).await.unwrap(), other_pixels);
+
+        assert_eq!(renderer.stats(), stats);
+        let report = renderer.last_attempt().unwrap();
+        assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+        assert_eq!(report.cleanup_fault(), None);
+        let attempt = report.attempt().unwrap();
+        assert_eq!(
+            attempt.usage().work(RenderWork::CompositePasses),
+            stats.composite_passes
+        );
+        assert_eq!(attempt.dropped_events(), 0);
+        let expected = [
+            RenderPhase::Frame,
+            RenderPhase::Cleanup,
+            RenderPhase::Publish,
+        ];
+        let completed: Vec<_> = attempt
+            .events()
+            .filter_map(|event| match event {
+                RenderEvent::Phase { phase, .. } if expected.contains(&phase) => Some(phase),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(completed, expected);
+        for phase in expected {
+            assert_eq!(attempt.phase_count(phase), 1);
+            assert_eq!(attempt.phase_elapsed(phase), Some(Duration::ZERO));
+        }
+    });
+}
+
 #[test]
 fn failed_and_canceled_graph_frames_preserve_last_successful_stats() {
     let mut renderer = pollster::block_on(Renderer::new(
