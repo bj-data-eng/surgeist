@@ -551,6 +551,76 @@ pub(in crate::document_scripting) fn native_element_ancestors_are_projected_and_
     assert_eq!(events.budget.used.get(), retained);
 }
 
+pub(in crate::document_scripting) fn qualified_tag_presentation_admits_its_utf16_work() {
+    use surgeist_dom::DomBatch;
+    use surgeist_html::values::Namespace;
+
+    let mut host = public_node_host(1_000, 20_000);
+    let permit = host.permit().unwrap();
+    let document = permit.document();
+    let snapshot = host.snapshot().unwrap();
+    let previous = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let prefix = "prefix".repeat(12);
+    let local = "element".repeat(32) + "Ω";
+    let qualified = format!("{prefix}:{local}");
+    let expected = qualified.to_ascii_uppercase();
+    let units_expected = u64::try_from(expected.encode_utf16().count()).unwrap();
+    let cancel = host.native.cancellation.clone();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        let element = batch.create_element_ns(document, Namespace::html(), qualified.as_str());
+        batch.detach(previous);
+        batch.insert_before(&element, document, None);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "globalThis.tagProbe = window.document.documentElement",
+            ))
+            .map(drop)
+    })
+    .unwrap();
+
+    let events = host.guest_events().unwrap();
+    let retained = events.budget.used.get();
+    let mut tag_work = 0;
+    for property in ["tagName", "nodeName"] {
+        let before = events.budget.work.get();
+        let probe = format!("tagProbe.{property} === '{expected}'");
+        host.in_document(&permit, |scope| assert_guest(scope, &probe))
+            .unwrap();
+        let work = events.budget.work.get() - before;
+        assert!(
+            work >= units_expected,
+            "{property} must admit the complete qualified spelling before materializing it"
+        );
+        assert_eq!(events.budget.used.get(), retained);
+        if property == "tagName" {
+            tag_work = work;
+        }
+    }
+
+    events.budget.work.set(events.limits.work - tag_work + 1);
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = host
+        .in_document(&permit, |scope| {
+            scope.evaluate(&units("tagProbe.tagName")).map(drop)
+        })
+    else {
+        panic!("one-short spelling admission must refuse before copying");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::WorkLimit)
+    ));
+    assert_eq!(events.budget.used.get(), retained);
+}
+
 pub(in crate::document_scripting) fn fragment_custody_survives_collection_and_releases_on_retirement()
  {
     let mut host = public_node_host(1_000, 20_000);
