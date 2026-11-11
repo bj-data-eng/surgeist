@@ -1151,22 +1151,27 @@ fn style_denial_before_a_disabled_script_completes_the_original_insertion() {
 
 #[test]
 fn published_style_acknowledges_sheet_after_svg_refusal() {
-    check_published_style_after_svg_refusal(StyleClose::Complete);
+    check_published_style_across_script_yield(StyleClose::Complete);
 }
 
 #[test]
 fn published_style_retains_acknowledgment_through_svg_close_refusals() {
-    check_published_style_after_svg_refusal(StyleClose::Retry);
+    check_published_style_across_script_yield(StyleClose::Retry);
 }
 
 #[test]
 fn published_style_closes_after_an_independent_cssom_commit() {
-    check_published_style_after_svg_refusal(StyleClose::RetryAfterCssomCommit);
+    check_published_style_across_script_yield(StyleClose::RetryAfterCssomCommit);
 }
 
 #[test]
 fn parked_style_refuses_a_changed_initial_disabled_effect() {
-    check_published_style_after_svg_refusal(StyleClose::ChangedEffect);
+    check_published_style_across_script_yield(StyleClose::ChangedEffect);
+}
+
+#[test]
+fn ordinary_script_close_refusal_keeps_the_original_style_receipt() {
+    check_published_style_across_script_yield(StyleClose::OrdinaryRetry);
 }
 
 enum StyleClose {
@@ -1174,9 +1179,10 @@ enum StyleClose {
     Retry,
     RetryAfterCssomCommit,
     ChangedEffect,
+    OrdinaryRetry,
 }
 
-fn check_published_style_after_svg_refusal(scenario: StyleClose) {
+fn check_published_style_across_script_yield(scenario: StyleClose) {
     use crate::{DomDocumentScriptingFacts, DomSourceScriptStep, DomStyleInlineCspObservation};
     use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
     use surgeist_html::values::Namespace;
@@ -1196,7 +1202,6 @@ fn check_published_style_after_svg_refusal(scenario: StyleClose) {
     assert!(empty.sheets().is_empty());
 
     let mut batch = DomBatch::new();
-    let detached = batch.create_html_document(document, None);
     let wrapper = batch.create_element_ns(document, Namespace::html(), "div");
     let style = batch.create_element_ns(document, Namespace::html(), "style");
     if matches!(scenario, StyleClose::ChangedEffect) {
@@ -1207,13 +1212,20 @@ fn check_published_style_after_svg_refusal(scenario: StyleClose) {
     let script = batch.create_element_ns(document, Namespace::html(), "script");
     let code = batch.create_text(document, "globalThis.ran = true");
     batch.insert_before(&code, &script, None);
-    let svg = batch.create_element_ns(&detached, Namespace::svg(), "script");
-    for child in [&style, &script, &svg] {
-        batch.insert_before(child, &wrapper, None);
-    }
+    batch.insert_before(&style, &wrapper, None);
+    batch.insert_before(&script, &wrapper, None);
+    let svg = if matches!(scenario, StyleClose::OrdinaryRetry) {
+        None
+    } else {
+        let detached = batch.create_html_document(document, None);
+        let svg = batch.create_element_ns(&detached, Namespace::svg(), "script");
+        batch.insert_before(&svg, &wrapper, None);
+        Some(svg)
+    };
     let setup = dom.apply(batch, &cancel).unwrap();
-    let [wrapper, style, script, svg] =
-        [wrapper, style, script, svg].map(|node| setup.created(&node).unwrap().unwrap());
+    let [wrapper, style, script] =
+        [wrapper, style, script].map(|node| setup.created(&node).unwrap().unwrap());
+    let svg = svg.map(|node| setup.created(&node).unwrap().unwrap());
     let facts = DomDocumentScriptingFacts {
         engine: HtmlScriptingEngine::Supported,
         policy: HtmlScriptingPolicy {
@@ -1292,17 +1304,20 @@ fn check_published_style_after_svg_refusal(scenario: StyleClose) {
     };
     let check_prefix = |snapshot: &crate::DomSnapshot| {
         assert_eq!(snapshot.node(wrapper).unwrap().parent(), Some(parent));
-        assert_eq!(
-            snapshot.node(wrapper).unwrap().children(),
-            [style, script, svg]
-        );
+        let children = [Some(style), Some(script), svg]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        assert_eq!(snapshot.node(wrapper).unwrap().children(), children);
         let script = snapshot.node(script).unwrap().as_html_script().unwrap();
         assert!(!script.flags().already_started());
         assert_eq!(script.script_type(), None);
         assert_eq!(script.preparation_document(), None);
-        let svg = snapshot.node(svg).unwrap().as_svg_script().unwrap();
-        assert_eq!(svg.origin(), crate::DomSvgScriptOrigin::Native);
-        assert!(!svg.flags().already_processed());
+        if let Some(svg) = svg {
+            let svg = snapshot.node(svg).unwrap().as_svg_script().unwrap();
+            assert_eq!(svg.origin(), crate::DomSvgScriptOrigin::Native);
+            assert!(!svg.flags().already_processed());
+        }
     };
     check_prefix(&prefix);
     let producer = if matches!(scenario, StyleClose::RetryAfterCssomCommit) {
@@ -1387,20 +1402,92 @@ fn check_published_style_after_svg_refusal(scenario: StyleClose) {
     drop(registration);
     dom.release_document_script_registration(&binding);
     assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+    let with_outputs = |outputs| {
+        let limits = source_limits();
+        DomSourceLimits::new(
+            limits.retained_bytes(),
+            limits.retained_string_code_units(),
+            limits.work(),
+            limits.phase_publications(),
+            outputs,
+            limits.published_native_identities(),
+            limits.nested_operations(),
+        )
+    };
+    if matches!(scenario, StyleClose::OrdinaryRetry) {
+        let spent = dom.changes_since(before.stamp()).unwrap().changes().len();
+        let mut lease = dom
+            .resume_source_edit(read.operation(), with_outputs(spent), &cancel)
+            .unwrap();
+        let refused = lease.advance(&cancel);
+        assert!(
+            matches!(refused, Err(DomError::SourceOutputLimit)),
+            "{refused:?}"
+        );
+        drop(lease);
+        let unchanged = dom.snapshot();
+        assert_eq!(unchanged.stamp(), prefix.stamp());
+        assert_eq!(
+            unchanged.incomplete_source_operation(),
+            Some(read.operation())
+        );
+        assert_eq!(
+            unchanged.node(style).unwrap().as_style().unwrap().state(),
+            old_style
+        );
+        check_prefix(&unchanged);
+
+        let mut batch = root.batch(CssomEditGuard::from_snapshot(&applied)).unwrap();
+        assert!(batch.set_disabled(&sheet, true).unwrap());
+        root.commit(&mut Some(batch)).unwrap();
+        let changed = root.snapshot().unwrap();
+        assert_ne!(changed.revision(), applied.revision());
+        assert_eq!(changed.sheets(), applied.sheets());
+        let mut lease = dom
+            .resume_source_edit(read.operation(), source_limits(), &cancel)
+            .unwrap();
+        let retry = lease.advance(&cancel);
+        assert!(
+            matches!(retry, Err(DomError::StyleReceiptMismatch)),
+            "retry must still qualify the exact original Style receipt: {retry:?}"
+        );
+        drop(lease);
+        assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+
+        let mut batch = root.batch(CssomEditGuard::from_snapshot(&changed)).unwrap();
+        assert!(batch.set_disabled(&sheet, false).unwrap());
+        root.commit(&mut Some(batch)).unwrap();
+        let restored = root.snapshot().unwrap();
+        let mut lease = dom
+            .resume_source_edit(read.operation(), source_limits(), &cancel)
+            .unwrap();
+        let DomSourceProgress::Complete(completion) = lease.advance(&cancel).unwrap() else {
+            panic!("the original operation must complete after restoring the accepted effect");
+        };
+        assert_eq!(completion.operation(), read.operation());
+        drop(lease);
+        assert!(dom.pending_source_edit().is_none());
+        let closed = dom.snapshot();
+        assert_eq!(closed.incomplete_source_operation(), None);
+        let association = closed
+            .node(style)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .unwrap();
+        assert_eq!(association.id(), &sheet);
+        assert_eq!(association.revision(), applied.revision());
+        assert_eq!(association.association(), notification.association());
+        assert_eq!(root.snapshot().unwrap().revision(), restored.revision());
+        let script = closed.node(script).unwrap().as_html_script().unwrap();
+        assert!(script.flags().already_started());
+        assert_eq!(script.preparation_document(), Some(document));
+        return;
+    }
     let limits = if !matches!(scenario, StyleClose::Complete) {
         let spent = dom.changes_since(before.stamp()).unwrap().changes().len();
-        let with_outputs = |outputs| {
-            let limits = source_limits();
-            DomSourceLimits::new(
-                limits.retained_bytes(),
-                limits.retained_string_code_units(),
-                limits.work(),
-                limits.phase_publications(),
-                outputs,
-                limits.published_native_identities(),
-                limits.nested_operations(),
-            )
-        };
         let status = dom.pending_source_edit().unwrap();
         let mut lease = dom
             .resume_source_edit(read.operation(), with_outputs(spent + 1), &cancel)
