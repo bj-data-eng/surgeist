@@ -868,6 +868,32 @@ mod tests {
     }
 
     #[test]
+    fn partition_reduces_opposing_widths_whose_sum_rounds_to_the_extent() {
+        let result = geometry(partition_request(0.0, 1.0, 0.5, 0.5 + f64::EPSILON * 0.5));
+        let widths = result.used_widths();
+        assert!(widths.left < 0.5);
+        assert!(widths.right <= 1.0 - widths.left);
+    }
+
+    #[test]
+    fn partition_uses_the_tighter_axis_when_both_opposing_sums_round_to_one() {
+        let mut input = partition_request(-0.5, 1.0, 0.5, 0.5 + f64::EPSILON * 0.5);
+        input.border_origin.y = -0.5;
+        input.border_size.height = 1.0;
+        let px = |value| BorderImageWidth::LengthPercentage(LengthPercentageOf::px(value).unwrap());
+        input.widths.top = px(0.375 + f64::EPSILON * 0.25);
+        input.widths.bottom = px(0.625);
+        let result = geometry(input);
+        assert!(
+            result
+                .regions()
+                .iter()
+                .all(|row| row[1].destination().is_none())
+        );
+        assert!(result.regions()[1][0].destination().is_some());
+    }
+
+    #[test]
     fn partition_keeps_meeting_fraction_and_source_units_empty_in_either_order() {
         let mut input = request();
         input.source.coordinate_size.width = 0.9;
