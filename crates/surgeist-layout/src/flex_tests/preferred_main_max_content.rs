@@ -655,3 +655,225 @@ fn preferred_main_max_content_measures_cyclic_leaf_before_performing_layout() {
     discovery_precedes_leaf_perform::<f32>();
     discovery_precedes_leaf_perform::<f64>();
 }
+
+fn formal_inline_request<S: LayoutScalar>(operation: SizingOperation) -> LayoutRootRequestOf<S> {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let sizing = request::<S>(flow, Some(300.0), None).sizing_request();
+    let mut axes = sizing.axes();
+    axes.width = axes.width.with_operation(operation);
+    LayoutRootRequestOf::flex_item(
+        sizing.with_axes(axes),
+        FlexItemRootContextOf::new(flow, Size::NONE, Size::NONE),
+    )
+}
+
+#[test]
+fn preferred_main_max_content_preserves_formal_auto_wrapping_bound() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let tree = two_item_row::<f64>(flow, FlexDirection::Row, FlexWrap::Wrap, Some(62.0));
+    let mut root = tree.node_input(0).clone();
+    root.size = Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO);
+    let tree = tree.style(0, root);
+    let batch =
+        compute_layout(&tree, 0, formal_inline_request(SizingOperation::MaxContent)).unwrap();
+    // The formal Auto path collects lines against its existing authored bound.
+    // These items occupy two lines, with no within-line gap in the contribution.
+    for phase in [Phase::Unrounded, Phase::Final] {
+        assert_eq!(
+            readback::single_box_output(&batch, 0, phase).size,
+            Size::new(60.0, 20.0)
+        );
+        assert_eq!(
+            readback::single_box_output(&batch, 2, phase).location,
+            Point::new(0.0, 10.0)
+        );
+    }
+}
+
+#[test]
+fn preferred_main_max_content_preserves_formal_inherent_child_operation() {
+    let source = percentage_tree::<f64>(Direction::Ltr, BoxSizing::BorderBox);
+    let mut tree = OracleTreeOf::<f64>::new();
+    for node in 0..4 {
+        tree = tree
+            .children(node, Traverse::children(&source, node))
+            .style(node, source.node_input(node).clone());
+    }
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let input = ComputeInputOf::for_child(
+        RunMode::ComputeSize,
+        SizingMode::InherentSize,
+        RequestedAxis::Both,
+        Size::NONE,
+        Size::NONE,
+        ContainingLayoutContext::new(flow, ParentFormattingContext::Flex),
+        formal_inline_request(SizingOperation::MinContent).sizing_request(),
+    );
+    let output = tree.borrow_compute().compute_child(0, input).unwrap();
+    assert_eq!(output.size, Size::new(40.0, 40.0));
+    let queries = tree.inputs(1);
+    assert!(
+        queries.iter().any(|query| {
+            query.sizing_mode() == SizingMode::InherentSize
+                && query.sizing_request().axes().width.operation() == SizingOperation::MinContent
+                && query.parent().width.is_none()
+        }),
+        "the authored preference measurement lost the formal child operation: {queries:?}"
+    );
+    assert!(queries.iter().all(|query| query.parent().width.is_none()));
+    for node in 0..4 {
+        assert_eq!(tree.layout(node), None);
+        assert_eq!(tree.final_layout(node), None);
+    }
+}
+
+#[test]
+fn preferred_main_max_content_under_grid_is_not_backfilled_by_ratio() {
+    let tree = PublicLayoutTreeOf::<f64>::new()
+        .children(0, [1])
+        .children(1, [2])
+        .children(2, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Grid,
+                size: Size::new(PreferredSizeOf::px(100.0), PreferredSizeOf::AUTO),
+                grid_template_columns: vec![TrackComponentOf::px(100.0)],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Flex,
+                size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::px(10.0)),
+                aspect_ratio: AspectRatioOf::new(2.0),
+                justify_self: Some(AlignItems::Start),
+                align_self: Some(AlignItems::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::Block,
+                ..NodeInputOf::default()
+            },
+        )
+        .measure(2, Size::new(65.0, 10.0));
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
+    for phase in [Phase::Unrounded, Phase::Final] {
+        assert_eq!(
+            readback::single_box_output(&batch, 1, phase).size,
+            Size::new(65.0, 10.0)
+        );
+    }
+}
+
+#[test]
+fn preferred_main_max_content_inside_flex_item_reaches_the_child_owner() {
+    let tree = PublicLayoutTreeOf::<f64>::new()
+        .children(0, [1])
+        .children(1, [2])
+        .children(2, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Flex,
+                size: Size::new(PreferredSizeOf::px(100.0), PreferredSizeOf::AUTO),
+                align_items: Some(AlignItems::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Flex,
+                size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::AUTO),
+                align_items: Some(AlignItems::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::Block,
+                size: Size::new(PreferredSizeOf::percent(0.5), PreferredSizeOf::px(10.0)),
+                min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                ..NodeInputOf::default()
+            },
+        )
+        .measure(2, Size::new(40.0, 10.0));
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
+    for phase in [Phase::Unrounded, Phase::Final] {
+        for (node, width) in [(0, 100.0), (1, 40.0), (2, 20.0)] {
+            assert_eq!(
+                readback::single_box_output(&batch, node, phase).size,
+                Size::new(width, 10.0),
+                "node {node}"
+            );
+        }
+    }
+}
+
+#[test]
+fn preferred_main_max_content_positioned_child_reaches_the_child_owner() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let mut refused = Vec::new();
+    for display in [Display::Block, Display::Flex, Display::Grid] {
+        let tree = PublicLayoutTreeOf::<f64>::new()
+            .children(0, [1])
+            .children(1, [2])
+            .children(2, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display,
+                    size: Size::new(PreferredSizeOf::px(50.0), PreferredSizeOf::px(100.0)),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    position: Position::Absolute,
+                    size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::px(10.0)),
+                    align_items: Some(AlignItems::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    ..NodeInputOf::default()
+                },
+            )
+            .measure_with(2, |input| {
+                let inline = input.content_sizing_request().axes().width;
+                let width = match inline.operation() {
+                    SizingOperation::MinContent => 25.0,
+                    SizingOperation::MaxContent => 65.0,
+                    SizingOperation::Normal => inline
+                        .space()
+                        .definite_size()
+                        .map_or(65.0, |size| size.get().clamp(25.0, 65.0)),
+                };
+                Size::new(width, 10.0)
+            });
+        match compute_layout(&tree, 0, request(flow, Some(300.0), None)) {
+            Ok(batch) => {
+                for phase in [Phase::Unrounded, Phase::Final] {
+                    let output = readback::single_box_output(&batch, 1, phase);
+                    assert_eq!(output.size, Size::new(65.0, 10.0), "{display:?}");
+                    assert_eq!(output.location, Point::ZERO, "{display:?}");
+                }
+            }
+            Err(error) => refused.push(format!("{display:?}: {error:?}")),
+        }
+    }
+    assert!(refused.is_empty(), "{refused:?}");
+}
