@@ -1016,3 +1016,83 @@ fn prepared_source_rejects_uncovered_units_false_font_and_observation_as_input()
         assert!(decode_fixture(&fixture).is_err());
     }
 }
+
+#[test]
+fn original_block_axes_admit_only_the_qualified_static_frame() {
+    const REQUEST: &[u8] =
+        b"{\"schema_version\":1,\"original_block_axes\":\"fixed-first-block-v1\"}\n";
+
+    let box_node = |position, width, height, x, y, margin, children| {
+        let mut style = json!({
+            "display": "block", "position": position, "boxSizing": "border-box",
+            "writingMode": "vertical-rl", "direction": "ltr",
+            "size": {
+                "width": {"unit": "px", "value": width},
+                "height": {"unit": "px", "value": height},
+            },
+        });
+        if let Some(top) = margin {
+            style["margin"] = json!({"top": {"unit": "px", "value": top}});
+        }
+        let rectangle = json!({"x": x, "y": y, "width": width, "height": height});
+        json!({
+            "layoutInput": "box", "tagName": "div", "style": style,
+            "unroundedLayout": rectangle, "smartRoundedLayout": rectangle,
+            "worldRoundedLayout": rectangle, "children": children,
+        })
+    };
+    let first = box_node("relative", 30, 20, 70, 13, Some(13), vec![]);
+    let second = box_node("relative", 20, 30, 50, 0, None, vec![]);
+    let mut root = box_node("absolute", 100, 100, 0, 0, None, vec![first, second]);
+    root["gridAlignmentProfile"] = json!({"profile": 1, "owners": []});
+    root["useRounding"] = json!(true);
+    root["viewport"] = json!({"rootContext": {
+        "kind": "absolute-root-local",
+        "containingWidth": 800, "containingHeight": 600, "containingDirection": "ltr",
+        "hypotheticalDirection": "ltr", "hypotheticalDisplay": "block",
+        "hypotheticalAnchor": "inline-start", "hypotheticalInlineOffset": 0,
+        "hypotheticalBlockOffset": 0,
+        "fallback": {
+            "initialContainingBlock": {"width": 800, "height": 600},
+            "nearestScrollport": "none",
+            "containingLimits": {"width": "unbounded", "height": "unbounded"},
+        },
+    }});
+    let error = decode_fixture(&root).unwrap_err();
+    assert_eq!(
+        error.field_path,
+        "viewport.rootContext.hypotheticalBlockOffset"
+    );
+
+    let request = BoxObservationRequest::from_input_bytes(Some(REQUEST))
+        .expect("the original Block axis source profile must be admitted");
+    assert!(BoxObservationRequest::from_input_bytes(Some(&REQUEST[..REQUEST.len() - 1])).is_err());
+
+    let decode_original = |value: &serde_json::Value| {
+        decode(
+            &value.to_string(),
+            "block_axes_vertical_rl__border_box_ltr",
+            "border-box-ltr",
+            request,
+        )
+    };
+    assert!(matches!(
+        decode_original(&root).unwrap(),
+        DecodedMeasurement::Supported(_)
+    ));
+
+    root["viewport"]["rootContext"]["hypotheticalBlockOffset"] = json!(1);
+    let error = decode_original(&root).unwrap_err();
+    assert_eq!(
+        error.field_path,
+        "viewport.rootContext.hypotheticalBlockOffset"
+    );
+
+    let context = root["viewport"]["rootContext"].as_object_mut().unwrap();
+    context.remove("hypotheticalBlockOffset");
+    let error = decode_original(&root).unwrap_err();
+    assert_eq!(
+        error.field_path,
+        "viewport.rootContext.hypotheticalBlockOffset"
+    );
+}
