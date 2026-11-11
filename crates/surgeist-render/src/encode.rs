@@ -1682,6 +1682,141 @@ mod image_fit_accounting_tests {
 }
 
 #[cfg(test)]
+mod layer_transform_accounting_tests {
+    use super::*;
+    use crate::accounting::{FrameFixture, RendererCpu};
+
+    fn tagged_layer_commands() -> (RenderCommands, Transform, Transform) {
+        let clip = ClipInput::try_shape(Shape::rect(Rect::new(0.0, 0.0, 1.0, 1.0)))
+            .unwrap()
+            .with_coordinate_space(
+                CoordinateSpaceTag::surface(Transform::translation(1.0, 1.0).unwrap()).unwrap(),
+            );
+        let layer_transform = Transform::try_new([2.0, 0.0, 0.0, 1.0, -1.0, -1.0]).unwrap();
+        let initial_transform = Transform::translation(3.0, 1.0).unwrap();
+        let layer = Layer::new()
+            .with_transform(layer_transform)
+            .try_clip_input(clip)
+            .unwrap();
+        let mut scene = Scene::new();
+        scene.layer(layer, |scene| {
+            scene.fill(Rect::new(0.0, 0.0, 4.0, 4.0), Color::BLACK);
+        });
+        let commands = scene
+            .normalize(Capabilities::CURRENT, &Account::for_test())
+            .unwrap();
+        (commands, layer_transform, initial_transform)
+    }
+
+    fn assert_refusal_before_native_path(
+        cap: u64,
+        amount: u64,
+        encode: impl FnOnce(&Account) -> Result<VelloScene>,
+    ) {
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::CoordinateVisits, cap)
+            .unwrap()
+            .with_work_limit(RenderWork::PathElementVisits, 0)
+            .unwrap();
+        let options = RenderAccountingOptions::new()
+            .with_limits(limits)
+            .with_profile(RenderProfile::Detailed {
+                timing: false,
+                event_limit: 128,
+                filter: RenderPhaseFilter::Phase(RenderPhase::Encode),
+            });
+        let cpu = RendererCpu::new(options).unwrap();
+        let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| encode(attempt.account()).map(drop))
+            .unwrap()
+            .into_parts();
+        assert_eq!(fault, None);
+        let error = result.unwrap_err();
+        let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+            panic!("expected a transform coordinate refusal at cap {cap}: {error:?}");
+        };
+        assert_eq!(
+            refusal.quantity(),
+            RenderQuantity::Work(RenderWork::CoordinateVisits),
+            "transform composition must refuse before native geometry at cap {cap}",
+        );
+        assert_eq!(
+            (refusal.current(), refusal.amount()),
+            (cap, amount),
+            "wrong admission boundary at cap {cap}",
+        );
+        assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: cap });
+        let report = report.attempt().unwrap();
+        assert_eq!(report.status(), RenderAttemptStatus::Refused);
+        assert_eq!(
+            report.dropped_events(),
+            0,
+            "incomplete profile at cap {cap}"
+        );
+        assert!(report.events().any(|event| matches!(
+            event,
+            RenderEvent::Refused {
+                phase: RenderPhase::Encode,
+                ..
+            }
+        )));
+        let usage = report.phase_usage(RenderPhase::Encode);
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), cap);
+        assert_eq!(usage.work(RenderWork::PathElementVisits), 0);
+        assert_eq!(usage.work(RenderWork::PaintVisits), 0);
+    }
+
+    #[test]
+    fn direct_layer_and_tagged_clip_refuse_before_native_geometry() {
+        let (commands, _, initial_transform) = tagged_layer_commands();
+        let extent = PhysicalSize::new(8, 4);
+        // Each product reads twelve input coefficients and performs twenty
+        // scalar operations. A separate charge starts each product.
+        for (cap, amount) in [(0, 12), (31, 1), (32, 12), (63, 1)] {
+            assert_refusal_before_native_path(cap, amount, |account| {
+                encode_vello_scene_with_initial_transform(
+                    &commands,
+                    initial_transform,
+                    extent,
+                    account,
+                )
+            });
+        }
+        encode_vello_scene_with_initial_transform(
+            &commands,
+            initial_transform,
+            extent,
+            &Account::for_test(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn clip_capture_refuses_during_composition_and_finite_validation() {
+        let (commands, layer_transform, initial_transform) = tagged_layer_commands();
+        let Some(RenderCommand::Layer { layer, .. }) = commands.iter().next() else {
+            panic!("expected one normalized layer");
+        };
+        let elements = [(layer.clip.as_ref().unwrap().clone(), layer_transform)];
+        let extent = PhysicalSize::new(8, 4);
+        // Each product is followed by six finite checks before its result
+        // can be used as the next product's input.
+        for (cap, amount) in [(0, 12), (31, 1), (32, 1), (37, 1), (38, 12), (75, 1)] {
+            assert_refusal_before_native_path(cap, amount, |account| {
+                encode_vello_clip_coverage_scene(&elements, initial_transform, extent, account)
+            });
+        }
+        encode_vello_clip_coverage_scene(
+            &elements,
+            initial_transform,
+            extent,
+            &Account::for_test(),
+        )
+        .unwrap();
+    }
+}
+
+#[cfg(test)]
 mod ordinary_gradient_accounting_tests {
     use super::*;
     use crate::accounting::RenderAttemptKind;
