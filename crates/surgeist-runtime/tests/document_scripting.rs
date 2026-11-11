@@ -355,7 +355,7 @@ fn native_read_snapshot_and_explicit_queue() -> DocumentScriptPermit {
         .unwrap();
     assert_eq!(
         captured_status(&capture, top.document()),
-        HtmlScriptingStatus::Unavailable
+        HtmlScriptingStatus::Disabled
     );
     assert_eq!(queued_calls.load(Ordering::Relaxed), 0);
     assert_eq!(Arc::strong_count(&queued_calls), 1);
@@ -632,6 +632,69 @@ fn native_failure(result: Result<(), DocumentScriptError>) -> surgeist_bindings_
     }
 }
 
+fn stopped_scripting_snapshots() -> (
+    DocumentId,
+    DomSnapshot,
+    DomDocumentScriptingObservation,
+    DomSnapshot,
+) {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let observation = host.observe_scripting(&host.permit().unwrap()).unwrap();
+    assert_eq!(observation.status(), HtmlScriptingStatus::Enabled);
+    let historical = host.snapshot().unwrap();
+    let fresh = host.stop().into_session().unwrap().snapshot();
+    (top.document(), historical, observation, fresh)
+}
+
+fn stopped_host_captures_known_no_engine() {
+    let (document, _, _, fresh) = stopped_scripting_snapshots();
+    let capture = fresh
+        .html_capture(
+            document,
+            None,
+            capture_limits(),
+            DomHtmlCaptureLimits::new(32, 10_000),
+            &cancel(),
+        )
+        .unwrap();
+    let status = captured_status(&capture, document);
+    assert_eq!(status, HtmlScriptingStatus::Disabled);
+    assert_eq!(
+        media_scripting_for_status(status),
+        Some(CssMediaScripting::None)
+    );
+}
+
+fn stopped_host_rejects_the_last_live_observation() {
+    let (document, historical, observation, fresh) = stopped_scripting_snapshots();
+    let adapter = DomHtmlCaptureLimits::new(32, 10_000);
+    let prior = historical
+        .with_document_scripting(observation)
+        .unwrap()
+        .html_capture(None, capture_limits(), adapter, &cancel())
+        .unwrap();
+    assert_eq!(
+        captured_status(&prior, document),
+        HtmlScriptingStatus::Enabled
+    );
+    match fresh.with_document_scripting(observation) {
+        Err(DomHtmlCaptureError::StaleScriptingObservation) => {}
+        Err(error) => panic!("the old observation must be stale: {error:?}"),
+        Ok(capture) => {
+            let capture = capture
+                .html_capture(None, capture_limits(), adapter, &cancel())
+                .unwrap();
+            panic!(
+                "a fresh stopped snapshot accepted the prior live observation: {:?}",
+                captured_status(&capture, document)
+            );
+        }
+    }
+}
+
 fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         match scenario.as_str() {
@@ -643,12 +706,16 @@ fn main() {
             "retirement-after-refusal" => native_refusal_stays_typed_and_sticky(),
             "retirement-unwind" => retirement_unwind_disposes_the_revoked_guest_owner(),
             "retirement-admission" => retirement_refusals_follow_actual_canonical_publication(),
+            "stop-known-no-engine" => stopped_host_captures_known_no_engine(),
+            "stop-stale-observation" => stopped_host_rejects_the_last_live_observation(),
             _ => panic!("unknown scripting scenario: {scenario}"),
         }
         return;
     }
     failed_enable_preserves_original_owner();
     let expired_permit = native_read_snapshot_and_explicit_queue();
+    stopped_host_captures_known_no_engine();
+    stopped_host_rejects_the_last_live_observation();
     real_retirement_revokes_and_abandons(&expired_permit);
     retirement_unwind_disposes_the_revoked_guest_owner();
     retirement_refusals_follow_actual_canonical_publication();
