@@ -382,9 +382,13 @@ pub(super) fn detach_callback(
         };
         let number = scope.unrestricted_double(value)?;
         scope.check_active()?;
-        if number != 0.0 && !number.is_nan() {
-            detach(scope, &native, attachment, active)?;
-        }
+        finish_detach_conversion(
+            scope,
+            &native,
+            attachment,
+            active,
+            number != 0.0 && !number.is_nan(),
+        )?;
         Ok(Completion::Undefined)
     }
 }
@@ -404,11 +408,12 @@ fn require_delegated_comment(
     Ok(())
 }
 
-fn detach(
+fn finish_detach_conversion(
     scope: &mut Scope<'_>,
     native: &NativeOwner,
     attachment: &Attachment,
     active: ActiveSource,
+    should_detach: bool,
 ) -> Result<(), Error> {
     let performed = (|| {
         let cancel = &native.cancellation;
@@ -417,10 +422,13 @@ fn detach(
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         native.qualify_event(attachment, &mut session, &active)?;
+        if !should_detach {
+            return Ok(None);
+        }
         require_delegated_comment(&session, attachment, active.delegated)?;
         let execution = session.source_execution_scope(attachment.target.host(), cancel)?;
         let mut source = session.source_execution();
-        Ok(source.apply(
+        Ok(Some(source.apply(
             &mut session.dom(),
             DomSourceEdit::detach(active.delegated),
             active.limits,
@@ -431,18 +439,18 @@ fn detach(
                 url: None,
             },
             cancel,
-        ))
+        )))
     })();
     match performed {
         Err(error) => refuse(scope, &attachment.failures, error),
-        Ok(Err(error)) => refuse(scope, &attachment.source_failures, error),
-        Ok(Ok(DomSourceDriveProgress::Complete(_))) => Ok(()),
-        Ok(Ok(DomSourceDriveProgress::Failed(failure))) => refuse(
+        Ok(Some(Err(error))) => refuse(scope, &attachment.source_failures, error),
+        Ok(None | Some(Ok(DomSourceDriveProgress::Complete(_)))) => Ok(()),
+        Ok(Some(Ok(DomSourceDriveProgress::Failed(failure)))) => refuse(
             scope,
             &attachment.failures,
             DocumentScriptNativeError::Dom(failure.into_parts().1),
         ),
-        Ok(Ok(_)) => refuse(
+        Ok(Some(Ok(_))) => refuse(
             scope,
             &attachment.failures,
             DocumentScriptNativeError::SourcePending,
