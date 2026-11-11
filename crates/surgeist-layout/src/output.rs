@@ -691,8 +691,8 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
 /// for two cases with an explicit hypothetical block-start offset. A
 /// vertical-lr or vertical-rl principal Block can fit its Auto inline size
 /// with a definite opposite preferred size. A Grid with two Auto preferred
-/// sizes, fixed authored tracks on both axes, and no leaf measurement uses
-/// normal Grid sizing.
+/// sizes, fixed templates on both axes, and no leaf measurement uses normal
+/// Grid sizing when every track after placement is fixed.
 ///
 /// The offset is the hypothetical position relative to the containing block's
 /// physical top. A supplied offset requires both preferred sizes to resolve
