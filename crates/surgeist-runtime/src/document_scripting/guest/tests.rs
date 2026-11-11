@@ -513,6 +513,34 @@ pub(in crate::document_scripting) fn native_element_ancestors_are_projected_and_
     let shallow = events.budget.work.get() - before;
 
     let cancel = host.native.cancellation.clone();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        let fragment = batch.create_fragment(document);
+        batch.detach(root);
+        batch.insert_before(root, &fragment, None);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    let fragment = host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            let path;
+            trackedElement.addEventListener("fragment", event => { path = event.composedPath(); }, { once: true });
+            const dispatched = trackedElement.dispatchEvent(new Event("fragment", { bubbles: true }));
+            const parent = trackedElement.parentNode;
+            return dispatched && path.length === 2 && path[0] === trackedElement
+                && parent instanceof DocumentFragment && path[1] === parent
+                && trackedElement.getRootNode() === parent
+                && parent.ownerDocument === window.document && !trackedElement.isConnected;
+        })()"#)
+    });
+    match fragment {
+        Ok(()) => {}
+        Err(DocumentScriptError::Script(Error::HostFailure(failure))) => panic!(
+            "fresh native Fragment projection refused: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        ),
+        Err(error) => panic!("fresh native Fragment projection refused: {error:?}"),
+    }
     let ancestor = host
         .with_native(|dom, _, _| {
             let mut batch = DomBatch::new();
