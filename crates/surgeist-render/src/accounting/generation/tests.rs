@@ -150,8 +150,8 @@ fn retirement_zeros_every_leaf_and_surviving_native_and_registration_drops_are_h
     );
     generation.retire();
     generation.retire();
-    for index in LEAVES {
-        let usage = generation.usage_at(index).unwrap();
+    for scope in RETIREMENT_LEAVES {
+        let usage = generation.usage_at(scope).unwrap();
         for resource in [
             RenderResource::GpuBytes,
             RenderResource::OpaqueGpuObjects,
@@ -445,7 +445,7 @@ fn lifecycle_work_overflow_records_first_fault_after_mandatory_custody_cleanup()
         .cache_registration(GenerationClass::CacheEffects, 16)
         .unwrap();
     registration.set_idle(true).unwrap();
-    let scope = generation.0.scopes[GenerationClass::CacheEffects.index()];
+    let scope = generation.0.scopes[RenderGenerationScope::Effects.index()];
     generation
         .0
         .ledger
