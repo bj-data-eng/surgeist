@@ -669,6 +669,7 @@ pub(crate) struct GraphLoweringResolvedAlphaMaskComposition {
     quality: ImageQuality,
     rendering: Option<ImageRendering>,
     extend: Extend,
+    value: crate::layer::MaskValue,
 }
 
 impl GraphLoweringResolvedAlphaMaskComposition {
@@ -700,6 +701,10 @@ impl GraphLoweringResolvedAlphaMaskComposition {
     #[must_use]
     pub(crate) const fn extend(self) -> Extend {
         self.extend
+    }
+
+    pub(crate) const fn value(self) -> crate::layer::MaskValue {
+        self.value
     }
 }
 
@@ -1394,6 +1399,7 @@ fn graph_lowering_composite(
                                 quality: mask.quality,
                                 rendering: mask.rendering,
                                 extend: mask.extend,
+                                value: mask.value,
                             },
                             &account.storage(),
                         )

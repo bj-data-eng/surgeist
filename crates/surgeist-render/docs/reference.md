@@ -545,13 +545,20 @@ interpretation and its typed capability boundary remain separate from this
 supported layer set. `CompositingCapabilities::supports_blend_modes` describes
 the complete concrete layer choices.
 
-Effect-free layers use the direct Vello route. A resolved alpha mask or other
+Effect-free layers use the direct Vello route. A resolved image mask or other
 supported graph requirement selects the GPU graph without changing the selected
 blend function; nested capture-local layers can still use Vello raster spans.
 Clipping, mask alpha and opacity attenuate the premultiplied source before
 composition. Both routes retain the same Ledger admission, resource custody and
 atomic publication rules as other layers. Host-observed profiling durations do
 not establish pixel-value-independent execution timing.
+
+`Layer::with_resolved_luminance_mask` consumes straight sRGB RGBA8 texels
+mapped to layer-local bounds. `MaskLuminanceSpace` selects encoded-sRGB or
+linear-sRGB luminance. The GPU multiplies each texel's luminance by alpha
+before coverage interpolation. Resolved alpha and luminance masks both use
+`supports_resolved_alpha_mask_execution`. Authored mask interpretation uses
+the separate `supports_luminance_mask_mode` capability. [CSS Masking 1, mask processing](https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#MaskValues)
 
 ## Layer composition and isolation
 

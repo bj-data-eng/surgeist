@@ -295,6 +295,9 @@ pub surgeist_render::MaskCompositeMode::Add
 pub surgeist_render::MaskCompositeMode::Exclude
 pub surgeist_render::MaskCompositeMode::Intersect
 pub surgeist_render::MaskCompositeMode::Subtract
+pub enum surgeist_render::MaskLuminanceSpace
+pub surgeist_render::MaskLuminanceSpace::LinearSrgb
+pub surgeist_render::MaskLuminanceSpace::Srgb
 pub enum surgeist_render::MaskMode
 pub surgeist_render::MaskMode::Alpha
 pub surgeist_render::MaskMode::Luminance
@@ -1339,6 +1342,7 @@ pub fn surgeist_render::Layer::mask(&self) -> core::option::Option<&surgeist_ren
 pub fn surgeist_render::Layer::new() -> Self
 pub const fn surgeist_render::Layer::opacity(&self) -> f32
 pub fn surgeist_render::Layer::resolved_alpha_mask(&self) -> core::option::Option<&surgeist_render::ResolvedLayerAlphaMask>
+pub fn surgeist_render::Layer::resolved_luminance_mask(&self) -> core::option::Option<&surgeist_render::ResolvedLayerLuminanceMask>
 pub const fn surgeist_render::Layer::transform(&self) -> surgeist_render::Transform
 pub fn surgeist_render::Layer::try_backdrop_filter(self, backdrop_filter: surgeist_render::BackdropFilterInput) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Layer::try_clip(self, clip: surgeist_render::Shape) -> surgeist_render::Result<Self>
@@ -1349,6 +1353,7 @@ pub fn surgeist_render::Layer::try_opacity(self, opacity: f32) -> surgeist_rende
 pub const fn surgeist_render::Layer::with_composition(self, composition: surgeist_render::LayerComposition) -> Self
 pub fn surgeist_render::Layer::with_filter_list(self, filters: surgeist_render::FilterList) -> Self
 pub fn surgeist_render::Layer::with_resolved_alpha_mask(self, alpha_mask: surgeist_render::ResolvedLayerAlphaMask) -> Self
+pub fn surgeist_render::Layer::with_resolved_luminance_mask(self, mask: surgeist_render::ResolvedLayerLuminanceMask) -> Self
 pub const fn surgeist_render::Layer::with_transform(self, transform: surgeist_render::Transform) -> Self
 impl core::default::Default for surgeist_render::Layer
 pub fn surgeist_render::Layer::default() -> Self
@@ -1924,6 +1929,12 @@ impl surgeist_render::ResolvedLayerAlphaMask
 pub const fn surgeist_render::ResolvedLayerAlphaMask::bounds(&self) -> surgeist_render::Rect
 pub const fn surgeist_render::ResolvedLayerAlphaMask::image(&self) -> &surgeist_render::Image
 pub fn surgeist_render::ResolvedLayerAlphaMask::try_new(image: surgeist_render::Image, bounds: surgeist_render::Rect) -> surgeist_render::Result<Self>
+pub struct surgeist_render::ResolvedLayerLuminanceMask
+impl surgeist_render::ResolvedLayerLuminanceMask
+pub const fn surgeist_render::ResolvedLayerLuminanceMask::bounds(&self) -> surgeist_render::Rect
+pub const fn surgeist_render::ResolvedLayerLuminanceMask::color_space(&self) -> surgeist_render::MaskLuminanceSpace
+pub const fn surgeist_render::ResolvedLayerLuminanceMask::image(&self) -> &surgeist_render::Image
+pub fn surgeist_render::ResolvedLayerLuminanceMask::try_new(image: surgeist_render::Image, bounds: surgeist_render::Rect, color_space: surgeist_render::MaskLuminanceSpace) -> surgeist_render::Result<Self>
 pub struct surgeist_render::ResourceCacheBudget(_)
 impl surgeist_render::ResourceCacheBudget
 pub const surgeist_render::ResourceCacheBudget::DEFAULT: Self

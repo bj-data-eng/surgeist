@@ -4,7 +4,7 @@ use super::{
     frame::{FrameContext, FramePlan, LogicalBounds},
     geometry::offset_radii,
     image::{ResolvedImageRegion, ResolvedMaskUploadDescriptor},
-    layer::LayerFilter,
+    layer::{LayerFilter, MaskValue},
     paint::PaintKind,
     scene::Command,
     shape::ShapeKind,
@@ -224,11 +224,14 @@ pub(crate) struct RenderLayerMask {
     bounds: Rect,
     upload: SharedValue<ResolvedMaskUploadDescriptor>,
     annihilates_source: bool,
+    value: MaskValue,
 }
 
 impl RenderLayerMask {
     fn from_resolved_in(
-        mask: &ResolvedLayerAlphaMask,
+        image: &Image,
+        bounds: Rect,
+        value: MaskValue,
         capabilities: Capabilities,
         account: &Account,
     ) -> Result<Self> {
@@ -236,16 +239,21 @@ impl RenderLayerMask {
             PrimitiveFamily::MasksAndClips,
             PrimitiveOperation::ResolvedAlphaMaskExecution,
         ))?;
-        let image_size = mask.image().size();
+        let image_size = image.size();
         let annihilates_source = image_size.width() == 0.0 || image_size.height() == 0.0;
         account.work(RenderWork::ImageIdentityCopies, 1)?;
-        let upload = ResolvedMaskUploadDescriptor::try_from_image(mask.image().clone())?;
-        let upload = shared(upload, None, account.import_image(mask.image())?, account)?;
+        let upload = ResolvedMaskUploadDescriptor::try_from_image(image.clone())?;
+        let upload = shared(upload, None, account.import_image(image)?, account)?;
         Ok(Self {
-            bounds: mask.bounds(),
+            bounds,
             upload,
             annihilates_source,
+            value,
         })
+    }
+
+    pub(crate) const fn value(&self) -> MaskValue {
+        self.value
     }
 
     #[must_use]
@@ -464,7 +472,7 @@ impl LayerPassPlan {
         }
 
         let has_clip = clip.is_some();
-        let has_resolved_mask = layer.resolved_alpha_mask().is_some();
+        let has_resolved_mask = layer.resolved_image_mask().is_some();
         let opacity_delta = (layer.opacity() - 1.0).abs();
         let opacity_is_clip_identity = opacity_delta < f32::EPSILON;
         let has_opacity = opacity_delta > f32::EPSILON;
@@ -1173,8 +1181,10 @@ impl NormalizedLayer {
             .map(|clip| RenderClip::from_input_in(clip, capabilities, account))
             .transpose()?;
         let mask = layer
-            .resolved_alpha_mask()
-            .map(|mask| RenderLayerMask::from_resolved_in(mask, capabilities, account))
+            .resolved_image_mask()
+            .map(|(image, bounds, value)| {
+                RenderLayerMask::from_resolved_in(image, bounds, value, capabilities, account)
+            })
             .transpose()?;
         let backdrop = layer
             .backdrop_filter()
