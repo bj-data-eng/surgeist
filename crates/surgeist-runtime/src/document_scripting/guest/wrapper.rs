@@ -74,8 +74,9 @@ impl GuestEvents {
                 return Err(DocumentScriptNativeError::Revoked.into());
             }
         }
-        let invocation = self.prepare(owner, target, event)?;
+        event.check_dispatch_state()?;
         let mut reports = self.reports.reserve(self, owner)?;
+        let invocation = self.prepare(owner, target, event)?;
         let receipt = self.run(
             owner,
             scope,
