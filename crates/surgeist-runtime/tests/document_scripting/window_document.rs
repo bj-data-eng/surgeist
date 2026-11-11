@@ -150,7 +150,7 @@ pub(super) fn document_dispatch_preserves_native_observer_and_refusal() {
                 .add_listener(
                     dom,
                     window.clone(),
-                    &kind.encode_utf16().collect::<Vec<_>>(),
+                    kind.encode_utf16().collect::<Vec<_>>(),
                     DomEventCallback::new(move |_, _, _, event| {
                         assert_eq!(event.target().as_ref(), Some(&expected_document));
                         assert_eq!(event.current_target().as_ref(), Some(&expected_window));
