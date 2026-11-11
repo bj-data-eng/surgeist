@@ -1,0 +1,37 @@
+<test name="fri07_flex_composition__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" direction="rtl" writing-mode="sideways-rl" position="absolute" flex-direction="column-reverse" flex-wrap="wrap-reverse" overflow-x="auto" overflow-y="auto" scrollbar-width="15" font-family="ahem" font-size="10px" line-height="10px" width="120px" height="180px" row-gap="6px" column-gap="6px">
+      <div source-tag="div" display="flex" direction="rtl" order="2" writing-mode="vertical-lr" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" width="50px" height="40px"/>
+      <div source-tag="img" display="block" direction="rtl" order="-1" writing-mode="sideways-rl" overflow-x="clip" overflow-y="clip" scrollbar-width="15" overflow-clip-margin="content-box" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" width="40px" height="80px"/>
+      <div source-tag="div" display="flex" direction="rtl" order="1" flex-item-collapse="collapsed" writing-mode="sideways-rl" overflow-x="auto" overflow-y="auto" scrollbar-width="15" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" width="100px" height="30px">
+        <div source-tag="div" display="flex" direction="rtl" flex-item-collapse="collapsed" writing-mode="sideways-rl" font-family="ahem" font-size="10px" line-height="10px" width="140px" height="60px"/>
+      </div>
+      <div source-tag="div" display="flex" direction="rtl" writing-mode="sideways-rl" overflow-x="auto" overflow-y="auto" scrollbar-width="15" font-family="ahem" font-size="10px" line-height="10px" flex-shrink="0" width="70px" height="60px">
+        <div source-tag="div" display="flex" direction="rtl" writing-mode="sideways-rl" font-family="ahem" font-size="10px" line-height="10px" width="120px" height="100px"/>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="120" height="180" scroll_width="0" scroll_height="0">
+      <node x="0" y="134" width="50" height="40"/>
+      <node x="0" y="0" width="40" height="80"/>
+      <node x="0" y="92" width="100" height="30" scroll_width="40" scroll_height="0">
+        <node x="-40" y="0" width="140" height="15"/>
+      </node>
+      <node x="46" y="0" width="70" height="60" scroll_width="50" scroll_height="0">
+        <node x="-50" y="0" width="120" height="45"/>
+      </node>
+    </node>
+  </expectations>
+  <flex-composition-image natural-width="80" natural-height="40"/>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="120" height="180" scroll-width="120" scroll-height="180" client-width="120" client-height="180"/>
+    <world-rounded-layout node-path="0.0" x="0" y="134" width="50" height="40" scroll-width="50" scroll-height="40" client-width="50" client-height="40"/>
+    <world-rounded-layout node-path="0.1" x="0" y="0" width="40" height="80" scroll-width="40" scroll-height="80" client-width="40" client-height="80"/>
+    <world-rounded-layout node-path="0.2" x="0" y="92" width="100" height="30" scroll-width="140" scroll-height="15" client-width="100" client-height="15"/>
+    <world-rounded-layout node-path="0.2.0" x="-40" y="0" width="140" height="15" scroll-width="140" scroll-height="15" client-width="140" client-height="15"/>
+    <world-rounded-layout node-path="0.3" x="46" y="0" width="70" height="60" scroll-width="120" scroll-height="45" client-width="70" client-height="45"/>
+    <world-rounded-layout node-path="0.3.0" x="-50" y="0" width="120" height="45" scroll-width="120" scroll-height="45" client-width="120" client-height="45"/>
+  </diagnostics>
+</test>
