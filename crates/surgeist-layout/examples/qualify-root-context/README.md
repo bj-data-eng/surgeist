@@ -248,6 +248,18 @@ The edition also retains the shared capture TTF described in the
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri07-intrinsic-flex-text
 ~~~
 
+The [original inline Subgrid alignment edition](../../tests/layout/browser_parity/captured/original-inline-subgrid-alignment/qualification.json)
+covers both original sources and all eight historical captures. The four labels
+for each source retain the authored LTR content-box tree. The proof checks the
+source stylesheet, static inline Grid, and zero-edge LTR containing frame.
+Replay uses standalone Normal sizing with definite available inline space and
+indefinite block space. It compares every historical box, including the item
+offsets in the horizontal and orthogonal Subgrids.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry original-inline-subgrid-alignment
+~~~
+
 ## Grid Lanes original diagnostics
 
 The [Grid Lanes diagnostic receipt](../../tests/layout/browser_parity/captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
