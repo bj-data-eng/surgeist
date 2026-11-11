@@ -1768,6 +1768,7 @@ fn admit_specialized(
         | SpecializedProfile::OriginalFlexParent
         | SpecializedProfile::OriginalPercentageFlexParent
         | SpecializedProfile::OriginalBlockAxes
+        | SpecializedProfile::OriginalFlexAxes
         | SpecializedProfile::OriginalSubgridBody
         | SpecializedProfile::PreparedAtomicPercentage
         | SpecializedProfile::HorizontalBrFontBand
@@ -1827,7 +1828,7 @@ fn admit_specialized(
                         .map_err(|error| changed(error.to_string()))?;
                     (Ok(current), AdmittedComparison::OriginalFlexParent)
                 }
-                SpecializedProfile::OriginalBlockAxes => {
+                SpecializedProfile::OriginalBlockAxes | SpecializedProfile::OriginalFlexAxes => {
                     let historical = std::str::from_utf8(&historical)
                         .map_err(|error| malformed(error.to_string()))?;
                     qualification_catalogue::verify_historical_geometry(
@@ -1840,16 +1841,14 @@ fn admit_specialized(
                         .records
                         .iter()
                         .find(|record| record.source == case.case.source)
-                        .ok_or_else(|| changed("missing original Block axis record"))?;
+                        .ok_or_else(|| changed("missing original axis record"))?;
                     let expected: qualification_catalogue::ExpectedDisposition =
                         serde_json::from_value(record.value["expected"].clone())
                             .map_err(|error| malformed(error.to_string()))?;
                     let qualification_catalogue::ExpectedDisposition::Generated { metadata } =
                         expected
                     else {
-                        return Err(changed(
-                            "original Block axis record requires generated geometry",
-                        ));
+                        return Err(changed("original axis record requires generated geometry"));
                     };
                     qualification_catalogue::verify_absolute_metadata(
                         xml,
