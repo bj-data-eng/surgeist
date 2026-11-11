@@ -203,12 +203,16 @@ impl StyleImageSource {
     /// [`StyleImageSourceKind::Unresolved`].
     pub fn require_resolved(&self) -> Result<()> {
         if let StyleImageSourceKind::Unresolved(reference) = &self.kind {
-            return Err(Error::unresolved_resource(UnresolvedResource::new(
-                UnresolvedResourceKind::Image,
-                reference.identifier(),
-            )));
+            return Err(Self::unresolved_error(reference));
         }
         Ok(())
+    }
+
+    pub(super) fn unresolved_error(reference: &StyleResourceRef) -> Error {
+        Error::unresolved_resource(UnresolvedResource::new(
+            UnresolvedResourceKind::Image,
+            reference.identifier(),
+        ))
     }
 
     /// Returns the source phase and payload.
@@ -1015,29 +1019,26 @@ impl ImageRepeatPlan {
     /// The supplied capabilities are consulted for that semantic operation, but
     /// those modes do not currently produce an [`ImageRepeatPlan`].
     pub fn try_new(repeat: BackgroundRepeat, capabilities: Capabilities) -> Result<Self> {
-        if matches!(repeat.x(), RepeatMode::Round) || matches!(repeat.y(), RepeatMode::Round) {
-            let unsupported = UnsupportedPrimitive::new(
-                PrimitiveFamily::ImageSampling,
-                PrimitiveOperation::BackgroundRepeatRound,
-            );
-            capabilities.ensure_supported(unsupported)?;
-            return Err(Error::unsupported_render_primitive(unsupported));
-        }
-        if matches!(repeat.x(), RepeatMode::Space) || matches!(repeat.y(), RepeatMode::Space) {
-            let unsupported = UnsupportedPrimitive::new(
-                PrimitiveFamily::ImageSampling,
-                PrimitiveOperation::BackgroundRepeatSpace,
-            );
-            capabilities.ensure_supported(unsupported)?;
-            return Err(Error::unsupported_render_primitive(unsupported));
-        }
-
         let mode = match (repeat.x(), repeat.y()) {
-            (RepeatMode::NoRepeat, RepeatMode::NoRepeat) => ImageRepeatMode::NoRepeat,
-            (RepeatMode::Repeat, RepeatMode::NoRepeat) => ImageRepeatMode::RepeatX,
-            (RepeatMode::NoRepeat, RepeatMode::Repeat) => ImageRepeatMode::RepeatY,
-            (RepeatMode::Repeat, RepeatMode::Repeat) => ImageRepeatMode::RepeatBoth,
-            _ => unreachable!("round and space are rejected before repeat mode mapping"),
+            (RepeatMode::Round, _) | (_, RepeatMode::Round) => {
+                Err(PrimitiveOperation::BackgroundRepeatRound)
+            }
+            (RepeatMode::Space, _) | (_, RepeatMode::Space) => {
+                Err(PrimitiveOperation::BackgroundRepeatSpace)
+            }
+            (RepeatMode::NoRepeat, RepeatMode::NoRepeat) => Ok(ImageRepeatMode::NoRepeat),
+            (RepeatMode::Repeat, RepeatMode::NoRepeat) => Ok(ImageRepeatMode::RepeatX),
+            (RepeatMode::NoRepeat, RepeatMode::Repeat) => Ok(ImageRepeatMode::RepeatY),
+            (RepeatMode::Repeat, RepeatMode::Repeat) => Ok(ImageRepeatMode::RepeatBoth),
+        };
+        let mode = match mode {
+            Ok(mode) => mode,
+            Err(operation) => {
+                let unsupported =
+                    UnsupportedPrimitive::new(PrimitiveFamily::ImageSampling, operation);
+                capabilities.ensure_supported(unsupported)?;
+                return Err(Error::unsupported_render_primitive(unsupported));
+            }
         };
         Ok(Self { repeat, mode })
     }
