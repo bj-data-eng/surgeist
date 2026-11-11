@@ -1730,6 +1730,277 @@ fn resume_svg_fixture_failure(
 }
 
 #[test]
+fn configured_inline_source_closes_empty_profile_after_svg_refusal() {
+    let cancel = cancel();
+    let (mut dom, source, document) = constructor();
+    let initial = dom.snapshot();
+    let html = initial.node(document.node()).unwrap().children()[0];
+    let parent = initial.node(html).unwrap().children()[1];
+    let suffix = style_svg_suffix(&mut dom, document, true);
+    let style = suffix.style.unwrap();
+    let (binding, registration) = attach_svg_cleanup_fixture(&mut dom, &source, document);
+    dom.configure_inline_styles(
+        crate::DomInlineStyleLimits::new(
+            surgeist_cssom::CssomLimits::default(),
+            32,
+            64_000_000,
+            8_000_000,
+            4_000_000,
+        )
+        .unwrap(),
+        &cancel,
+    )
+    .unwrap();
+    let before = dom.snapshot();
+    let old_style = before.node(style).unwrap().as_style().unwrap().state();
+    let context = crate::DomInlineStyleSourceContext::new(before.stamp(), vec![]).unwrap();
+    let (read, prefix) = {
+        let mut lease = dom
+            .begin_source_edit_with_inline_styles(
+                DomSourceEdit::insert_before(suffix.wrapper, parent, None),
+                context,
+                source_limits(),
+                crate::DomInlineStyleRequestLimits {
+                    input: CssUtf16InputLimits::default(),
+                    declaration: Default::default(),
+                },
+                &cancel,
+            )
+            .unwrap();
+        let advance = |lease: &mut crate::DomSourceLease<'_>| {
+            let (progress, inline) = lease
+                .advance_with_inline_styles(no_svg_fixture_inline_inputs, &cancel)
+                .unwrap()
+                .into_parts();
+            assert!(inline.is_none());
+            progress
+        };
+        let DomSourceProgress::Request(DomSourceRequest::Style(policy)) = advance(&mut lease)
+        else {
+            panic!("configured inline source must publish its actual Style CSP request");
+        };
+        assert_eq!(policy.source().element(), style);
+        let denial = crate::DomStyleInlineCspObservation::evaluated(
+            policy.source(),
+            Arc::new(vec!["style-src 'none'".into()]),
+            1,
+            false,
+        );
+        lease.accept_inline_csp(&policy, &denial, &cancel).unwrap();
+        let read = profile_svg_fixture_script(advance(&mut lease), &lease, &suffix, document);
+        assert!(
+            matches!(advance(&mut lease), DomSourceProgress::Request(DomSourceRequest::Script(again)) if again == read)
+        );
+        (read, lease.snapshot())
+    };
+    assert_eq!(prefix.node(suffix.wrapper).unwrap().parent(), Some(parent));
+    assert_eq!(
+        prefix.node(style).unwrap().as_style().unwrap().state(),
+        old_style
+    );
+    assert_eq!(read.relevant_global(), Some(binding.global));
+    drop(registration);
+    dom.release_document_script_registration(&binding);
+    assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+    let mut lease = dom
+        .resume_source_edit(read.operation(), source_limits(), &cancel)
+        .unwrap();
+    match lease.advance_with_inline_styles(no_svg_fixture_inline_inputs, &cancel) {
+        Err(crate::DomInlineStyleError::Dom(DomError::SvgScriptProcessingUnavailable)) => {}
+        Err(error) => panic!("expected the original SVG refusal, got {error:?}"),
+        Ok(_) => panic!("the actual SVG requirement must refuse"),
+    }
+    drop(lease);
+    let closed = dom.snapshot();
+    suffix.check_private_scripts(&closed);
+    assert_eq!(closed.node(suffix.wrapper).unwrap().parent(), Some(parent));
+    assert_eq!(
+        closed.node(style).unwrap().as_style().unwrap().state(),
+        old_style
+    );
+    assert!(!dom.has_style_cssom_roots());
+    let pending = dom.pending_source_edit();
+    assert!(
+        pending.is_none(),
+        "the empty configured inline profile must release the original marker: {pending:?}"
+    );
+    assert_eq!(closed.incomplete_source_operation(), None);
+    assert_eq!(
+        dom.changes_since(prefix.stamp()).unwrap().changes(),
+        [crate::DomChange::SourceOperation]
+    );
+}
+
+#[test]
+fn empty_meta_source_closes_accepted_cssom_sheet_after_svg_refusal() {
+    let cancel = cancel();
+    let (mut dom, source, document) = constructor();
+    let initial = dom.snapshot();
+    let html = initial.node(document.node()).unwrap().children()[0];
+    let parent = initial.node(html).unwrap().children()[1];
+    let suffix = style_svg_suffix(&mut dom, document, true);
+    let style = suffix.style.unwrap();
+    let (binding, registration) = attach_svg_cleanup_fixture(&mut dom, &source, document);
+    let root = DomStyleCssomRoot::new(
+        document.node(),
+        CssomStore::new(Default::default(), Default::default()).unwrap(),
+    );
+    let caps = [&root];
+    let empty = root.snapshot().unwrap();
+    let limits = crate::DomMetaAtomicLimits::new(64_000_000, 1_000_000, 4_000_000, 256).unwrap();
+    let before = dom.snapshot();
+    let old_style = before.node(style).unwrap().as_style().unwrap().state();
+    let (read, prefix, sheet, applied, mut notification) = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::insert_before(suffix.wrapper, parent, None),
+                source_limits(),
+                &cancel,
+            )
+            .unwrap();
+        let advance = |lease: &mut crate::DomSourceLease<'_>| {
+            let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
+            let crate::DomMetaSourceStep::Progress(progress) =
+                hold.prepare(&caps, None, &cancel).unwrap()
+            else {
+                panic!("an empty Meta recording must not produce a Meta boundary");
+            };
+            let (source, inline) = progress.into_parts();
+            assert!(inline.is_none());
+            source
+        };
+        let DomSourceProgress::Request(DomSourceRequest::Style(policy)) = advance(&mut lease)
+        else {
+            panic!("Meta-configured ordinary source must reach its actual CSP request");
+        };
+        assert_eq!(policy.source().element(), style);
+        lease
+            .accept_inline_csp(
+                &policy,
+                &crate::DomStyleInlineCspObservation::complete_empty(policy.source(), 1),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Style(create)) = advance(&mut lease)
+        else {
+            panic!("accepted Style CSP must reach its CSSOM creation");
+        };
+        let (sheet, notification) = publish_style_sheet(&mut lease, &root, create);
+        let applied = root.snapshot().unwrap();
+        assert_ne!(applied.revision(), empty.revision());
+        assert_eq!(applied.sheets(), std::slice::from_ref(&sheet));
+        let read = profile_svg_fixture_script(advance(&mut lease), &lease, &suffix, document);
+        assert!(
+            matches!(advance(&mut lease), DomSourceProgress::Request(DomSourceRequest::Script(again)) if again == read)
+        );
+        assert_eq!(
+            notification.origin(),
+            &crate::DomStyleNotificationOrigin::NativeSource(read.operation())
+        );
+        (read, lease.snapshot(), sheet, applied, notification)
+    };
+    assert_eq!(prefix.node(suffix.wrapper).unwrap().parent(), Some(parent));
+    assert_eq!(
+        prefix.node(style).unwrap().as_style().unwrap().state(),
+        old_style
+    );
+    assert_eq!(read.relevant_global(), Some(binding.global));
+    drop(registration);
+    dom.release_document_script_registration(&binding);
+    assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+    {
+        let mut lease = dom
+            .resume_source_edit(read.operation(), source_limits(), &cancel)
+            .unwrap();
+        {
+            let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
+            assert!(
+                matches!(hold.prepare(&[], None, &cancel), Err(crate::DomMetaAtomicError::MissingOwner { root }) if root == document.node())
+            );
+        }
+        assert_eq!(lease.snapshot().stamp(), prefix.stamp());
+        assert_eq!(
+            lease.status().phase(),
+            crate::DomSourcePhase::ScriptPreparation
+        );
+        let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
+        match hold.prepare(&caps, None, &cancel) {
+            Err(crate::DomMetaAtomicError::Dom(DomError::SvgScriptProcessingUnavailable)) => {}
+            Err(error) => panic!("expected the original SVG refusal, got {error:?}"),
+            Ok(_) => panic!("the actual SVG requirement must refuse"),
+        };
+    }
+    let closed = dom.snapshot();
+    suffix.check_private_scripts(&closed);
+    assert_eq!(closed.node(suffix.wrapper).unwrap().parent(), Some(parent));
+    let current = root.snapshot().unwrap();
+    assert_eq!(current.revision(), applied.revision());
+    assert_eq!(current.sheets(), applied.sheets());
+    let pending = dom.pending_source_edit();
+    assert!(
+        pending.is_none(),
+        "empty Meta must settle the accepted CSSOM receipt and original marker: {pending:?}"
+    );
+    assert_eq!(closed.incomplete_source_operation(), None);
+    let associated = closed
+        .node(style)
+        .unwrap()
+        .as_style()
+        .unwrap()
+        .sheet()
+        .unwrap()
+        .unwrap();
+    assert_eq!(associated.id(), &sheet);
+    assert_eq!(associated.revision(), applied.revision());
+    assert_eq!(associated.association(), notification.association());
+    assert_eq!(
+        dom.changes_since(prefix.stamp()).unwrap().changes(),
+        [
+            crate::DomChange::ElementState(style),
+            crate::DomChange::SourceOperation
+        ]
+    );
+    assert!(matches!(
+        dom.finish_style_notification(
+            &mut notification,
+            crate::DomStyleNotificationDelivery::Native,
+            1,
+            &cancel
+        )
+        .unwrap(),
+        crate::DomStyleNotificationCompletion::Complete(_)
+    ));
+}
+
+fn no_svg_fixture_inline_inputs(
+    _: &[surgeist_cssom::CssomDeclarationCandidate],
+    _: &surgeist_cssom::CssomContext,
+) -> Result<surgeist_cssom::CssomAdmission, surgeist_cssom::CssomError> {
+    panic!("this fixture has no inline declaration inputs")
+}
+
+fn profile_svg_fixture_script(
+    progress: DomSourceProgress,
+    lease: &crate::DomSourceLease<'_>,
+    suffix: &StyleSvgSuffix,
+    document: DocumentId,
+) -> crate::DomSourceScriptRequest {
+    let DomSourceProgress::Request(DomSourceRequest::Script(read)) = progress else {
+        panic!("actual Style receipt must be followed by the original Script settings request");
+    };
+    assert_eq!(read.operation(), lease.operation());
+    assert_eq!(read.step(), crate::DomSourceScriptStep::ReadScripting);
+    assert_eq!(read.subject(), Some(suffix.script));
+    assert_eq!(read.node_document(), Some(document));
+    let prefix = lease.snapshot();
+    assert_eq!(read.basis(), prefix.stamp());
+    assert_eq!(prefix.incomplete_source_operation(), Some(read.operation()));
+    assert!(lease.status().has_published());
+    suffix.check_private_scripts(&prefix);
+    read
+}
+
+#[test]
 fn stopped_registration_does_not_accept_a_prior_script_settings_receipt() {
     use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
     use surgeist_html::values::Namespace;
