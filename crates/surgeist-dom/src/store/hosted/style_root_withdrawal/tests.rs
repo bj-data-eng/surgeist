@@ -1590,6 +1590,221 @@ fn check_published_style_across_script_yield(scenario: StyleClose) {
 }
 
 #[test]
+fn fullscreen_handoff_requalifies_the_original_style_removal() {
+    use surgeist_cssom::CssomSheetListTarget;
+    use surgeist_html::elements::style::HtmlStyleUpdateAction;
+    use surgeist_html::values::Namespace;
+
+    let cancel = cancel();
+    let limits = DomLimits::new(
+        64,
+        100_000,
+        256,
+        128,
+        128,
+        16,
+        4_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_fullscreen_exits(4)
+    .unwrap()
+    .with_fullscreen_events(4)
+    .unwrap();
+    let (mut dom, source, document, fullscreen) =
+        crate::store::source::operation::fullscreen::native_fixture(limits);
+    let parent = dom.snapshot().node(fullscreen).unwrap().parent().unwrap();
+
+    let mut batch = DomBatch::new();
+    let script = batch.create_element_ns(document, Namespace::html(), "script");
+    batch.set_attribute(&script, "type", "application/x-unrecognized");
+    let text = batch.create_text(document, "globalThis.ran = true");
+    batch.insert_before(&text, &script, None);
+    batch.insert_before(&script, parent, None);
+    let script = dom
+        .apply(batch, &cancel)
+        .unwrap()
+        .created(&script)
+        .unwrap()
+        .unwrap();
+    let (root, sheet, attached) =
+        style_resource(&mut dom, document, script, document.node(), false);
+    let style = dom.snapshot().node(script).unwrap().children()[1];
+    let mut batch = DomBatch::new();
+    batch.set_attribute(script, "type", "text/javascript");
+    dom.apply(batch, &cancel).unwrap();
+    let (binding, registration) = attach_svg_cleanup_fixture(&mut dom, &source, document);
+    let before = dom.snapshot();
+    let expected = before
+        .node(style)
+        .unwrap()
+        .as_style()
+        .unwrap()
+        .sheet()
+        .unwrap()
+        .unwrap();
+    assert_eq!(expected.id(), &sheet);
+    assert_eq!(before.node(style).unwrap().parent(), Some(script));
+    assert!(
+        !before
+            .node(script)
+            .unwrap()
+            .as_html_script()
+            .unwrap()
+            .flags()
+            .already_started()
+    );
+    assert!(
+        before
+            .node(fullscreen)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .fullscreen_flag()
+    );
+
+    let (read, removed) = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::replace_child(style, parent, fullscreen),
+                source_limits(),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Style(remove)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("the original removal of Style from Script must reach CSSOM");
+        };
+        assert_eq!(
+            remove.action(),
+            crate::DomStyleAction::Update(HtmlStyleUpdateAction::RemoveAssociatedSheet)
+        );
+        assert_eq!(remove.source().element(), style);
+        assert_eq!(remove.sheet(), Some(expected));
+        let remove = lease
+            .qualify_cssom(&remove, root.root(), &attached)
+            .unwrap();
+        let mut batch = root
+            .batch(CssomEditGuard::from_snapshot(&attached))
+            .unwrap();
+        batch.remove_sheet(&sheet).unwrap();
+        let commit = root.commit(&mut Some(batch)).unwrap();
+        let removed = root.snapshot().unwrap();
+        assert!(removed.sheets().is_empty());
+        assert!(
+            lease
+                .accept_cssom_publication(&remove, commit, removed.clone(), None)
+                .unwrap()
+                .is_none()
+        );
+        let DomSourceProgress::Request(DomSourceRequest::Script(read)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("the old parent must ask for the actual Script settings");
+        };
+        assert_eq!(read.subject(), Some(script));
+        assert_eq!(read.operation(), lease.operation());
+        (read, removed)
+    };
+    drop(registration);
+    dom.release_document_script_registration(&binding);
+
+    let mut lease = dom
+        .resume_source_edit(read.operation(), source_limits(), &cancel)
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(handoff)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("the actual disabled Script must reach the original fullscreen handoff");
+    };
+    assert_eq!(handoff.operation(), read.operation());
+    assert_eq!(handoff.document(), document);
+    let prefix = lease.snapshot();
+    assert!(
+        prefix
+            .node(fullscreen)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .fullscreen_flag()
+    );
+
+    let mut batch = root.batch(CssomEditGuard::from_snapshot(&removed)).unwrap();
+    assert!(
+        batch
+            .set_sheet_list_membership(
+                removed.sheet_list(),
+                &[CssomSheetListTarget::Existing(&sheet)],
+            )
+            .unwrap()
+    );
+    root.commit(&mut Some(batch)).unwrap();
+    let changed = root.snapshot().unwrap();
+    assert_eq!(changed.sheets(), std::slice::from_ref(&sheet));
+    assert_ne!(changed.revision(), removed.revision());
+
+    match lease.prepare_fullscreen_exit_handoff(&handoff, &source, &cancel) {
+        Err(DomError::StyleReceiptMismatch) => {}
+        Err(other) => {
+            panic!("the original Style effect must refuse at the fullscreen fence: {other:?}")
+        }
+        Ok(prepared) => {
+            let job = prepared.publish();
+            panic!(
+                "the fullscreen handoff published after invalidating the original Style receipt: {job:?}"
+            );
+        }
+    }
+    assert_eq!(lease.snapshot().stamp(), prefix.stamp());
+    assert_eq!(
+        lease.snapshot().incomplete_source_operation(),
+        Some(read.operation())
+    );
+    let mut batch = root.batch(CssomEditGuard::from_snapshot(&changed)).unwrap();
+    assert!(
+        batch
+            .set_sheet_list_membership(changed.sheet_list(), &[])
+            .unwrap()
+    );
+    root.commit(&mut Some(batch)).unwrap();
+    let restored = root.snapshot().unwrap();
+
+    let job = lease
+        .prepare_fullscreen_exit_handoff(&handoff, &source, &cancel)
+        .unwrap()
+        .publish();
+    assert_eq!(job.id(), handoff.invocation());
+    assert_eq!(root.snapshot().unwrap().revision(), restored.revision());
+    assert_eq!(lease.snapshot().node(fullscreen).unwrap().parent(), None);
+    let DomSourceProgress::Request(DomSourceRequest::Style(insertion)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("the later Style insertion must ask for its own CSP decision");
+    };
+    assert_eq!(insertion.source().operation(), read.operation());
+    assert_eq!(insertion.source().element(), style);
+    assert_eq!(
+        insertion.action(),
+        crate::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
+    );
+    let denial = crate::DomStyleInlineCspObservation::evaluated(
+        insertion.source(),
+        Arc::new(vec!["style-src 'none'".into()]),
+        1,
+        false,
+    );
+    lease
+        .accept_inline_csp(&insertion, &denial, &cancel)
+        .unwrap();
+    let DomSourceProgress::Complete(completion) = lease.advance(&cancel).unwrap() else {
+        panic!("the original source tail must complete after the exact handoff");
+    };
+    assert_eq!(completion.operation(), read.operation());
+    assert_eq!(lease.snapshot().incomplete_source_operation(), None);
+}
+
+#[test]
 fn replacement_closes_original_style_removal_after_svg_refusal() {
     use surgeist_html::elements::style::HtmlStyleUpdateAction;
 
