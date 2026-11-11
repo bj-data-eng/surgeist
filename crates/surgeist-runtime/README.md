@@ -293,7 +293,13 @@ native Global and retains each created Document in its creation realm.
 Document and Window listeners share the native registry. Borrowed
 `EventTarget.prototype` methods authenticate the exact Window, and dispatch
 through a Document uses the canonical Window capture and bubble path.
-AbortSignal and descendant Node projections are separate capabilities.
+The `DocumentFragment` constructor and `Document.createDocumentFragment`
+publish ordinary native Fragments with exact retirement watches.
+Their wrappers survive collection and adoption. `ownerDocument` follows the
+native destination, including a Document created by the Rust host. Native
+destruction releases the original managed wrapper and its listener registrations.
+`DocumentGuestEventLimits` includes the native watch storage and work limits.
+AbortSignal and other descendant Node projections are separate capabilities.
 
 An attachment can enable callable Window timers with `WindowTimerLimits`.
 `setTimeout` keeps the callable and arguments in the attached Window's realm.

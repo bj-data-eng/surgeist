@@ -1,4 +1,165 @@
 use super::*;
+
+fn public_fragment_host(node_work: u64) -> DocumentScriptHost {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 2,
+        nested_dispatches: 2,
+        storage_bytes: 32_000,
+        work: 10_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancellation).unwrap();
+    let mut registry = Some(registry);
+    PreparedDocumentScriptHost::prepare(session, 2_000_000, cancellation)
+        .unwrap()
+        .enable_with_guest_event_registry(
+            target,
+            HtmlScriptingPolicy {
+                user_allows: true,
+                automation_allows: true,
+            },
+            DocumentScriptHooks {
+                child_count: &units("readChildCount"),
+                detach_source_node_if: &units("detachIf"),
+            },
+            &mut registry,
+            DocumentGuestEventLimits {
+                storage_bytes: 64_000,
+                work: 10_000,
+                pending_exception_reports: 4,
+                node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),
+                dispatch: DomEventDispatchLimits {
+                    path_items: 2,
+                    snapshot_listeners: 8,
+                    failure_records: 4,
+                    callbacks: 8,
+                    work: 10_000,
+                },
+            },
+        )
+        .unwrap()
+}
+
+pub(in crate::document_scripting) fn fragment_custody_survives_collection_and_releases_on_retirement()
+ {
+    let mut host = public_fragment_host(1_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                r#"(() => {
+            const fragment = new DocumentFragment();
+            const listener = () => {};
+            globalThis.originalMarker = Symbol();
+            fragment.marker = originalMarker;
+            globalThis.fragmentProbe = new WeakRef(fragment);
+            globalThis.listenerProbe = new WeakRef(listener);
+            fragment.addEventListener("retire", listener);
+        })()"#,
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    host.checkpoint().unwrap();
+    host.engine
+        .as_mut()
+        .unwrap()
+        .process
+        .execution()
+        .memory_pressure();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "fragmentProbe.deref()?.marker === originalMarker && !!listenerProbe.deref()",
+        )
+    })
+    .unwrap();
+
+    let snapshot = host.snapshot().unwrap();
+    let fragment = snapshot
+        .nodes()
+        .find(|id| {
+            matches!(
+                snapshot.node(*id).unwrap().kind(),
+                surgeist_dom::DomNodeKind::DocumentFragment
+            )
+        })
+        .unwrap();
+    let events = host.guest_events().unwrap();
+    let before = events.budget.used.get();
+    let id = events
+        .registry
+        .borrow()
+        .next_guest_registration(
+            &fragment.into(),
+            &units("retire"),
+            false,
+            &mut 0,
+            &AtomicBool::new(false),
+        )
+        .unwrap()
+        .unwrap()
+        .0;
+    host.with_native(|dom, _, _| {
+        let mut batch = surgeist_dom::DomBatch::new();
+        batch.destroy(fragment);
+        dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    })
+    .unwrap();
+    assert!(!events.registry.borrow().has_registration(id));
+    assert!(events.budget.used.get() < before);
+    let collected = |host: &mut DocumentScriptHost| {
+        host.in_document(&permit, |scope| {
+            let result = scope.evaluate(&units(
+                "fragmentProbe.deref() === undefined && listenerProbe.deref() === undefined",
+            ))?;
+            let yes = scope.primitive(Primitive::Boolean(true))?;
+            scope.strict_equals(&result, &yes)
+        })
+        .unwrap()
+    };
+    for _ in 0..8 {
+        host.checkpoint().unwrap();
+        host.engine
+            .as_mut()
+            .unwrap()
+            .process
+            .execution()
+            .memory_pressure();
+        if collected(&mut host) {
+            return;
+        }
+    }
+    panic!("retirement must release the last managed Fragment and callback references");
+}
+
+pub(in crate::document_scripting) fn fragment_watch_refusal_preserves_native_state() {
+    let mut host = public_fragment_host(2);
+    let permit = host.permit().unwrap();
+    let before = host.snapshot().unwrap();
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = host
+        .in_document(&permit, |scope| {
+            scope.evaluate(&units("new DocumentFragment()")).map(drop)
+        })
+    else {
+        panic!("watch admission must refuse the Fragment");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(
+                DomError::NodeRetirementWorkLimit { limit: 2 }
+            ))
+        ))
+    ));
+    let after = host.snapshot().unwrap();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.nodes().count(), before.nodes().count());
+    host.stop().into_session().unwrap();
+}
 use crate::DomEventRegistryLimits;
 use surgeist_bindings_js::{ExceptionPhase, Primitive, PropertyKey};
 
@@ -60,6 +221,7 @@ fn attach_registry_with_limits(
             storage_bytes: 32_000,
             work: 1000,
             pending_exception_reports,
+            node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
             dispatch: DomEventDispatchLimits {
                 path_items: 1,
                 snapshot_listeners: 8,
@@ -107,6 +269,7 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
         storage_bytes: 32_000,
         work: 1_000,
         pending_exception_reports: 2,
+        node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
         dispatch: DomEventDispatchLimits {
             path_items: 1,
             snapshot_listeners: 2,
@@ -844,6 +1007,7 @@ pub(in crate::document_scripting) fn full_guest_report_bank_preserves_original_r
                 storage_bytes: 32_000,
                 work: 1000,
                 pending_exception_reports: 1,
+                node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
                 dispatch: DomEventDispatchLimits {
                     path_items: 1,
                     snapshot_listeners: 1,

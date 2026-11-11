@@ -741,7 +741,7 @@ impl ScriptEngine {
     fn settle_engine_cleanup(&mut self, realm: &RealmAuthority) {
         self.comments.drain_retirements(&mut self.process);
         if let Some(events) = &self.guest_events {
-            events.reap_retired_targets();
+            events.reap_retired_targets(&mut self.process);
         }
         if realm.check_owner_active().is_err() {
             self.comments.release_all(&mut self.process);

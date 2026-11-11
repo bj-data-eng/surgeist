@@ -2,26 +2,57 @@
 
 use super::*;
 use surgeist_bindings_js::conversion::declarations::node_get_root_node_0_options;
-use surgeist_dom::DomBatch;
+use surgeist_dom::{DomBatch, DomNodeKind, DomNodeRetirementInbox, NodeId};
 use surgeist_html::values::DocumentString;
 
 const NODE: &[u16] = &ascii(b"Node");
 const DOCUMENT: &[u16] = &ascii(b"Document");
+mod fragment;
+mod ordinary;
+pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
 
-pub(in crate::document_scripting::guest) struct GuestDocumentProjection {
-    document: Cell<Option<DocumentId>>,
+#[derive(Clone, Copy)]
+pub(in crate::document_scripting::guest) enum GuestNode {
+    Document(DocumentId),
+    Fragment(NodeId),
 }
 
-impl GuestDocumentProjection {
-    pub(in crate::document_scripting::guest) fn id(&self) -> Option<DocumentId> {
-        self.document.get()
+impl GuestNode {
+    pub(in crate::document_scripting::guest) fn node(self) -> NodeId {
+        match self {
+            Self::Document(id) => id.node(),
+            Self::Fragment(id) => id,
+        }
+    }
+
+    fn node_type(self, kind: DomNodeKind<'_>) -> Result<f64, DocumentScriptNativeError> {
+        match (self, kind) {
+            (Self::Document(_), DomNodeKind::Document(_)) => Ok(9.0),
+            (Self::Fragment(_), DomNodeKind::DocumentFragment) => Ok(11.0),
+            _ => Err(DocumentScriptNativeError::ProjectionCustody),
+        }
     }
 }
 
-struct ConstructedPin {
+pub(in crate::document_scripting::guest) struct GuestNodeProjection {
+    node: Cell<Option<GuestNode>>,
+    lifetime: Option<Rc<NodeLifetime>>,
+}
+
+impl GuestNodeProjection {
+    pub(in crate::document_scripting::guest) fn id(&self) -> Option<GuestNode> {
+        self.node.get()
+    }
+
+    pub(in crate::document_scripting::guest) fn lifetime(&self) -> Option<Rc<NodeLifetime>> {
+        self.lifetime.clone()
+    }
+}
+
+struct DocumentPin {
     document: Option<DocumentId>,
-    holder: Rc<RetainedCallbackObject>,
-    next: Option<Box<ConstructedPin>>,
+    holder: RetainedCallbackObject,
+    next: Option<Box<DocumentPin>>,
     _backing: GuestBacking,
 }
 
@@ -29,13 +60,16 @@ pub(super) struct DocumentBindings {
     attached_id: DocumentId,
     attached: RetainedCallbackObject,
     prototype: RetainedCallbackObject,
-    constructed: RefCell<Option<Box<ConstructedPin>>>,
+    documents: RefCell<Option<Box<DocumentPin>>>,
+    fragment: fragment::FragmentBindings,
+    ordinary: ordinary::OrdinaryBindings,
 }
 
 impl Drop for DocumentBindings {
     fn drop(&mut self) {
-        let head = self.constructed.get_mut();
-        while let Some(mut pin) = head.take() {
+        let head = self.documents.get_mut();
+        while let Some(pin) = head.take() {
+            let mut pin = *pin;
             *head = pin.next.take();
         }
     }
@@ -54,6 +88,7 @@ enum Observation {
     Number(f64),
     String(DocumentString),
     Boolean(bool),
+    Node(Option<NodeId>),
     Document(Option<DocumentId>),
 }
 
@@ -62,6 +97,7 @@ impl DocumentBindings {
         scope: &mut Scope<'scope>,
         document: DocumentId,
         target_prototype: &Value<'scope>,
+        inbox: DomNodeRetirementInbox,
         capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
         fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
     ) -> Result<Self, DocumentGuestEventError> {
@@ -212,40 +248,15 @@ impl DocumentBindings {
                 )?;
             }
         }
+        fragment::install_factory(scope, &prototype, capture)?;
         for (name, interface, prototype) in [
             (NODE, &node_constructor, &node),
             (DOCUMENT, &document_constructor, &prototype),
         ] {
-            define_data(
-                scope,
-                prototype,
-                PropertyKey::String(CONSTRUCTOR),
-                interface,
-                true,
-                false,
-                true,
-            )?;
-            let tag = scope.well_known_symbol(WellKnownSymbol::ToStringTag)?;
-            let value = scope.string(name)?;
-            define_data(
-                scope,
-                prototype,
-                PropertyKey::Value(&tag),
-                &value,
-                false,
-                false,
-                true,
-            )?;
-            define_data(
-                scope,
-                &global,
-                PropertyKey::String(name),
-                interface,
-                true,
-                false,
-                true,
-            )?;
+            install_interface(scope, &global, name, interface, prototype)?;
         }
+        let fragment =
+            fragment::FragmentBindings::install(scope, &node, &node_constructor, capture, fund)?;
         let getter = capture(size_of::<Capture>())?;
         install_getter(
             scope,
@@ -257,8 +268,9 @@ impl DocumentBindings {
         )?;
         let attached = scope.project_retained_native_object(
             ObjectPrototype::Object(&prototype),
-            GuestDocumentProjection {
-                document: Cell::new(Some(document)),
+            GuestNodeProjection {
+                node: Cell::new(Some(GuestNode::Document(document))),
+                lifetime: None,
             },
             fund,
         )?;
@@ -268,7 +280,9 @@ impl DocumentBindings {
             attached_id: document,
             attached,
             prototype,
-            constructed: RefCell::new(None),
+            documents: RefCell::new(None),
+            fragment,
+            ordinary: ordinary::OrdinaryBindings::new(inbox),
         })
     }
 
@@ -278,27 +292,131 @@ impl DocumentBindings {
         events: &GuestEvents,
         node: surgeist_dom::NodeId,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        if let Some(value) = self.open_document(scope, events, node)? {
+            return Ok(value);
+        }
+        self.ordinary
+            .open(scope, events, node)?
+            .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
+    }
+
+    fn open_document<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        events: &GuestEvents,
+        node: NodeId,
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
         events.step()?;
         if node == self.attached_id.node() {
-            return Ok(scope.open_callback_object(&self.attached)?);
+            return Ok(Some(scope.open_callback_object(&self.attached)?));
         }
-        let holder = {
-            let pins = self
-                .constructed
-                .try_borrow()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            let mut next = pins.as_deref();
-            loop {
-                let pin = next.ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                events.step()?;
-                if pin.document.is_some_and(|document| document.node() == node) {
-                    break pin.holder.clone();
-                }
-                next = pin.next.as_deref();
+        let pins = self
+            .documents
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let mut next = pins.as_deref();
+        while let Some(pin) = next {
+            events.step()?;
+            if pin.document.is_some_and(|document| document.node() == node) {
+                return Ok(Some(scope.open_callback_object(&pin.holder)?));
+            }
+            next = pin.next.as_deref();
+        }
+        Ok(None)
+    }
+
+    fn publish_document<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        prototype: &Value<'scope>,
+        resolve: impl FnOnce() -> Result<DocumentId, DocumentGuestEventError>,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let mut pins = self
+            .documents
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let backing = events.reserve(owner, size_of::<DocumentPin>())?;
+        let holder = events.project(
+            owner,
+            scope,
+            ObjectPrototype::Object(prototype),
+            GuestNodeProjection {
+                node: Cell::new(None),
+                lifetime: None,
+            },
+        )?;
+        let value = scope.open_callback_object(&holder)?;
+        let projection = scope
+            .native_object::<GuestNodeProjection>(&value)?
+            .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+        let mut pin = Box::new(DocumentPin {
+            document: None,
+            holder,
+            next: None,
+            _backing: backing,
+        });
+        let document = match resolve() {
+            Ok(document) => document,
+            Err(error) => {
+                let first = refuse(scope, &events.refusal, error);
+                let pin = *pin;
+                let _ = scope.release_callback_object(pin.holder);
+                return first.map_err(Into::into);
             }
         };
-        Ok(scope.open_callback_object(&holder)?)
+        projection
+            .payload()
+            .node
+            .set(Some(GuestNode::Document(document)));
+        pin.document = Some(document);
+        pin.next = pins.take();
+        *pins = Some(pin);
+        Ok(value)
     }
+
+    pub(super) fn reap_nodes(&self, process: &mut Process, retired: &Cell<bool>) {
+        self.ordinary.reap(process, retired);
+    }
+}
+
+fn install_interface<'scope>(
+    scope: &mut Scope<'scope>,
+    global: &Value<'scope>,
+    name: &[u16],
+    interface: &Value<'scope>,
+    prototype: &Value<'scope>,
+) -> Result<(), Error> {
+    define_data(
+        scope,
+        prototype,
+        PropertyKey::String(CONSTRUCTOR),
+        interface,
+        true,
+        false,
+        true,
+    )?;
+    let tag = scope.well_known_symbol(WellKnownSymbol::ToStringTag)?;
+    let value = scope.string(name)?;
+    define_data(
+        scope,
+        prototype,
+        PropertyKey::Value(&tag),
+        &value,
+        false,
+        false,
+        true,
+    )?;
+    define_data(
+        scope,
+        global,
+        PropertyKey::String(name),
+        interface,
+        true,
+        false,
+        true,
+    )
 }
 
 fn install_getter<'scope>(
@@ -359,8 +477,7 @@ impl Capture {
         arguments: Arguments<'scope>,
         member: NodeMember,
     ) -> Result<Completion<'scope>, Error> {
-        let Some(projection) =
-            scope.native_object::<GuestDocumentProjection>(arguments.receiver())?
+        let Some(projection) = scope.native_object::<GuestNodeProjection>(arguments.receiver())?
         else {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"Node required"))?,
@@ -376,28 +493,14 @@ impl Capture {
             let observation = self.with_native(&owner, |session, _| {
                 let snapshot = session.snapshot();
                 let node = snapshot
-                    .document(id)
-                    .map_err(DocumentScriptNativeError::from)?
                     .node(id.node())
                     .map_err(DocumentScriptNativeError::from)?;
+                let node_type = id.node_type(node.kind())?;
                 Ok(match member {
-                    NodeMember::Type => Observation::Number(9.0),
+                    NodeMember::Type => Observation::Number(node_type),
                     NodeMember::Name => Observation::String(node.node_name()),
                     NodeMember::OwnerDocument => Observation::Document(node.owner_document()),
-                    NodeMember::Parent => {
-                        let parent = node
-                            .parent()
-                            .map(|parent| {
-                                snapshot
-                                    .node(parent)
-                                    .map_err(DocumentScriptNativeError::from)?
-                                    .as_document()
-                                    .map(|document| document.id())
-                                    .ok_or(DocumentScriptNativeError::ProjectionCustody)
-                            })
-                            .transpose()?;
-                        Observation::Document(parent)
-                    }
+                    NodeMember::Parent => Observation::Node(node.parent()),
                     NodeMember::Connected => Observation::Boolean(node.is_connected()),
                 })
             })?;
@@ -411,16 +514,42 @@ impl Capture {
                         conversion.copy_to_js(value.code_units())
                     })
                     .map_err(Error::from)?),
-                Observation::Document(None) => Ok(scope.primitive(Primitive::Null)?),
-                Observation::Document(Some(document)) => events
+                Observation::Node(None) | Observation::Document(None) => {
+                    Ok(scope.primitive(Primitive::Null)?)
+                }
+                Observation::Node(Some(node)) => events
                     .public
                     .as_ref()
                     .ok_or(Error::ExpiredIdentity)?
                     .document
-                    .open(scope, &events, document.node()),
+                    .open(scope, &events, node),
+                Observation::Document(Some(document)) => {
+                    self.project_document(scope, &owner, &events, document)
+                }
             }
         })();
         complete(scope, &events, result)
+    }
+
+    fn project_document<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        document: DocumentId,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let bindings = &events
+            .public
+            .as_ref()
+            .ok_or(Error::ExpiredIdentity)?
+            .document;
+        if let Some(value) = bindings.open_document(scope, events, document.node())? {
+            return Ok(value);
+        }
+        let prototype = scope.open_callback_object(&bindings.prototype)?;
+        // Published Document nodes survive for the native owner lifetime.
+        // Their guest pins belong to this attachment, like new Document().
+        bindings.publish_document(scope, owner, events, &prototype, || Ok(document))
     }
 
     fn root_node<'scope>(
@@ -428,8 +557,7 @@ impl Capture {
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
     ) -> Result<Completion<'scope>, Error> {
-        let Some(projection) =
-            scope.native_object::<GuestDocumentProjection>(arguments.receiver())?
+        let Some(projection) = scope.native_object::<GuestNodeProjection>(arguments.receiver())?
         else {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"Node required"))?,
@@ -445,7 +573,7 @@ impl Capture {
             self.with_native(&owner, |session, _| {
                 session
                     .snapshot()
-                    .document(id)
+                    .node(id.node())
                     .map_err(DocumentScriptNativeError::from)?;
                 Ok(())
             })?;
@@ -465,8 +593,6 @@ impl Capture {
             let root = self.with_native(&owner, |session, _| {
                 let snapshot = session.snapshot();
                 let node = snapshot
-                    .document(id)
-                    .map_err(DocumentScriptNativeError::from)?
                     .node(id.node())
                     .map_err(DocumentScriptNativeError::from)?;
                 Ok(if options.composed {
@@ -499,69 +625,41 @@ impl Capture {
                 .as_ref()
                 .ok_or(Error::ExpiredIdentity)?
                 .document;
-            let backing = events.reserve(
-                &owner,
-                size_of::<ConstructedPin>() + size_of::<RetainedCallbackObject>(),
-            )?;
-            let holder = scope.project_retained_native_object(
-                ObjectPrototype::Object(selected.prototype()),
-                GuestDocumentProjection {
-                    document: Cell::new(None),
-                },
-                |bytes| events.reserve(&owner, bytes),
-            )?;
-            let value = scope.open_callback_object(&holder)?;
-            let projection = scope
-                .native_object::<GuestDocumentProjection>(&value)?
-                .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-            let mut pin = Box::new(ConstructedPin {
-                document: None,
-                holder: Rc::new(holder),
-                next: None,
-                _backing: backing,
-            });
-            let mut pins = bindings
-                .constructed
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
             let attached = owner
                 .attachment
                 .get()
                 .ok_or(DocumentScriptNativeError::Revoked)?
                 .target;
-            let document = self.with_native(&owner, |session, global| {
-                let hosted = session.hosted_execution();
-                let mut dom = session.dom();
-                let context = hosted
-                    .with_current_top_level(
-                        &mut dom,
-                        attached,
-                        &owner.cancellation,
-                        |source, dom| {
-                            source
-                                .document_constructor_context(
-                                    dom.raw(),
-                                    global,
-                                    &owner.cancellation,
-                                )
-                                .map_err(DomHostedRuntimeError::Dom)
-                        },
-                    )
-                    .map_err(DocumentScriptNativeError::from)?;
-                let mut batch = DomBatch::new();
-                let ticket = batch.construct_document(context);
-                let commit = dom
-                    .apply(batch, &owner.cancellation)
-                    .map_err(DocumentScriptNativeError::from)?;
-                commit
-                    .document(&ticket)
-                    .map_err(|error| DocumentScriptNativeError::from(error).into())
-            })?;
-            projection.payload().document.set(Some(document));
-            pin.document = Some(document);
-            pin.next = pins.take();
-            *pins = Some(pin);
-            Ok(value)
+            bindings.publish_document(scope, &owner, &events, selected.prototype(), || {
+                self.with_native(&owner, |session, global| {
+                    let hosted = session.hosted_execution();
+                    let mut dom = session.dom();
+                    let context = hosted
+                        .with_current_top_level(
+                            &mut dom,
+                            attached,
+                            &owner.cancellation,
+                            |source, dom| {
+                                source
+                                    .document_constructor_context(
+                                        dom.raw(),
+                                        global,
+                                        &owner.cancellation,
+                                    )
+                                    .map_err(DomHostedRuntimeError::Dom)
+                            },
+                        )
+                        .map_err(DocumentScriptNativeError::from)?;
+                    let mut batch = DomBatch::new();
+                    let ticket = batch.construct_document(context);
+                    let commit = dom
+                        .apply(batch, &owner.cancellation)
+                        .map_err(DocumentScriptNativeError::from)?;
+                    commit
+                        .document(&ticket)
+                        .map_err(|error| DocumentScriptNativeError::from(error).into())
+                })
+            })
         })();
         match result {
             Ok(value) => Ok(ConstructorCompletion::Return(value)),

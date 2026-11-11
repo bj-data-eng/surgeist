@@ -153,8 +153,18 @@ impl Capture {
                         options,
                         callback_realm.clone(),
                     )?,
-                    GuestReceiver::Window(_) | GuestReceiver::Document(_) => {
-                        events.register_retained(owner, scope, key, options, observed)?;
+                    GuestReceiver::Window(_) => {
+                        events.register_retained(owner, scope, key, options, observed, None)?;
+                    }
+                    GuestReceiver::Node { lifetime, .. } => {
+                        events.register_retained(
+                            owner,
+                            scope,
+                            key,
+                            options,
+                            observed,
+                            lifetime.clone(),
+                        )?;
                     }
                 }
             }

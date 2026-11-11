@@ -1052,11 +1052,16 @@ impl<C> DomEventDispatcher<C> {
     }
 
     #[cfg(feature = "document-scripting")]
-    pub(crate) fn reap_guest_target_registrations(&mut self) {
+    pub(crate) fn reap_guest_target_registrations(
+        &mut self,
+        mut release: impl FnMut(&crate::document_scripting::guest::RegisteredGuestListener),
+    ) {
         for slot in &mut self.slots {
-            if slot.registration.as_ref().is_some_and(|entry| {
-                matches!(&entry.callback.0, CallbackKind::Guest(listener) if listener.target_retired())
-            }) {
+            if let Some(entry) = &slot.registration
+                && let CallbackKind::Guest(listener) = &entry.callback.0
+                && listener.target_retired()
+            {
+                release(listener);
                 slot.registration.take();
             }
         }

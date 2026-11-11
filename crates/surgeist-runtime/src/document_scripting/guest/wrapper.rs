@@ -4,7 +4,10 @@ use surgeist_bindings_js::{Arguments, FunctionMetadata, NativeObject};
 pub(super) enum GuestReceiver {
     Projected(Rc<NativeObject<GuestTargetProjection>>),
     Window(DomHostedGlobalId),
-    Document(DocumentId),
+    Node {
+        node: surgeist_dom::NodeId,
+        lifetime: Option<Rc<interfaces::NodeLifetime>>,
+    },
 }
 
 impl GuestReceiver {
@@ -12,7 +15,7 @@ impl GuestReceiver {
         match self {
             Self::Projected(projection) => projection.payload().native.clone().into(),
             Self::Window(global) => (*global).into(),
-            Self::Document(document) => document.node().into(),
+            Self::Node { node, .. } => (*node).into(),
         }
     }
 }
@@ -25,9 +28,12 @@ pub(super) fn event_receiver<'scope>(
     if let Some(projection) = scope.native_object::<GuestTargetProjection>(receiver)? {
         return Ok(Some(GuestReceiver::Projected(projection)));
     }
-    if let Some(document) = scope.native_object::<interfaces::GuestDocumentProjection>(receiver)? {
-        let id = document.payload().id().ok_or(Error::RegistryConflict)?;
-        return Ok(Some(GuestReceiver::Document(id)));
+    if let Some(node) = scope.native_object::<interfaces::GuestNodeProjection>(receiver)? {
+        let id = node.payload().id().ok_or(Error::RegistryConflict)?;
+        return Ok(Some(GuestReceiver::Node {
+            node: id.node(),
+            lifetime: node.payload().lifetime(),
+        }));
     }
     let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
     let global = scope.global()?;
@@ -51,6 +57,17 @@ pub(super) fn event_target_value<'scope>(
             }
         }
         DomEventTarget::Node(node) => {
+            events.step()?;
+            if let Some(value) = scope.native_object_reference::<GuestEventProjection>(
+                event,
+                interfaces::EVENT_TARGET_REFERENCE,
+            )? && scope
+                .native_object::<interfaces::GuestNodeProjection>(&value)?
+                .and_then(|projection| projection.payload().id())
+                .is_some_and(|projected| projected.node() == *node)
+            {
+                return Ok(value);
+            }
             return events
                 .public
                 .as_ref()
