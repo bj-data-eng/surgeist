@@ -223,8 +223,12 @@ fn watched_creation_reuses_a_slot_retired_by_the_same_publication() {
     detach.detach(original);
     dom.apply(detach, &cancel).unwrap();
     let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let mut peer_inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
     let original_watch = dom
         .watch_node_retirement(original, &inbox, 11, GENEROUS, &cancel)
+        .unwrap();
+    let peer_watch = dom
+        .watch_node_retirement(original, &peer_inbox, 11, GENEROUS, &cancel)
         .unwrap();
     let before = dom.snapshot();
     dom.custody_registry.reconcile_releases();
@@ -255,6 +259,7 @@ fn watched_creation_reuses_a_slot_retired_by_the_same_publication() {
     assert!(dom.snapshot().node(original).is_ok());
     assert_eq!(bytes(&dom), baseline);
     assert!(inbox.take().is_none());
+    assert!(peer_inbox.take().is_none());
 
     let (batch, ticket) = replace();
     let (_, successor, successor_watch) = dom
@@ -267,7 +272,11 @@ fn watched_creation_reuses_a_slot_retired_by_the_same_publication() {
     let notice = inbox.take().unwrap();
     assert_eq!((notice.node(), notice.custody_key()), (original, 11));
     assert!(inbox.take().is_none());
+    let notice = peer_inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (original, 11));
+    assert!(peer_inbox.take().is_none());
     drop(original_watch);
+    drop(peer_watch);
 
     let mut destroy = DomBatch::new();
     destroy.destroy(successor);
@@ -275,6 +284,7 @@ fn watched_creation_reuses_a_slot_retired_by_the_same_publication() {
     let notice = inbox.take().unwrap();
     assert_eq!((notice.node(), notice.custody_key()), (successor, 13));
     assert!(inbox.take().is_none());
+    assert!(peer_inbox.take().is_none());
     drop(successor_watch);
 }
 
@@ -323,14 +333,34 @@ fn replacement_watch_can_still_disarm_the_old_generation_before_publication() {
         }) if limit == exact - 1
     ));
     assert_eq!(bytes(&dom), staged_bytes);
-    let index = attempt(exact).unwrap();
+    let watch = attempt(exact).unwrap();
     assert_eq!(bytes(&dom), exact);
-    assert!(index.prepare_match(original, || Ok(())).unwrap());
-    assert!(index.prepare_match(created, || Ok(())).unwrap());
+    assert!(
+        watch
+            .index
+            .prepare_match(original, false, || Ok(()))
+            .unwrap()
+    );
+    assert!(
+        watch
+            .index
+            .prepare_match(created, false, || Ok(()))
+            .unwrap()
+    );
     drop(old_watch);
-    assert!(!index.prepare_match(original, || Ok(())).unwrap());
-    assert!(index.prepare_match(created, || Ok(())).unwrap());
-    let watch = dom.finish_watch(index, created, 19);
+    assert!(
+        !watch
+            .index
+            .prepare_match(original, false, || Ok(()))
+            .unwrap()
+    );
+    assert!(
+        watch
+            .index
+            .prepare_match(created, false, || Ok(()))
+            .unwrap()
+    );
+    let watch = dom.finish_watch(watch, created);
     dom.publish_prepared(publication);
     assert!(inbox.take().is_none());
 
@@ -494,4 +524,237 @@ fn ordinary_watches_survive_detach_adopt_and_failed_destruction() {
     let notice = inbox.take().unwrap();
     assert_eq!((notice.node(), notice.custody_key()), (fresh, 73));
     assert!(inbox.take().is_none());
+}
+
+#[test]
+fn independent_inboxes_publish_and_disarm_their_original_watches() {
+    for disarm_first in [false, true] {
+        let cancel = AtomicBool::new(false);
+        let (mut dom, _, node) = fixture(&cancel);
+        let mut first_inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+        let mut second_inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+        let mut first = Some(
+            dom.watch_node_retirement(node, &first_inbox, 41, GENEROUS, &cancel)
+                .unwrap(),
+        );
+        let second = dom
+            .watch_node_retirement(node, &second_inbox, 41, GENEROUS, &cancel)
+            .unwrap();
+
+        let mut refused = DomBatch::new();
+        refused.destroy(node);
+        assert!(matches!(
+            dom.apply(refused, &cancel),
+            Err(DomError::InvalidDestruction)
+        ));
+        assert!(first_inbox.take().is_none());
+        assert!(second_inbox.take().is_none());
+
+        if disarm_first {
+            let watch = first.take();
+            std::thread::scope(|scope| scope.spawn(move || drop(watch)).join().unwrap());
+        }
+        let mut detach = DomBatch::new();
+        detach.detach(node);
+        dom.apply(detach, &cancel).unwrap();
+        assert!(first_inbox.take().is_none());
+        assert!(second_inbox.take().is_none());
+
+        let mut destruction = DomBatch::new();
+        destruction.destroy(node);
+        dom.apply(destruction, &cancel).unwrap();
+        let first_notice = first_inbox.take();
+        assert_eq!(
+            first_notice.map(|notice| (notice.node(), notice.custody_key())),
+            (!disarm_first).then_some((node, 41))
+        );
+        let second_notice = second_inbox.take().unwrap();
+        assert_eq!(
+            (second_notice.node(), second_notice.custody_key()),
+            (node, 41)
+        );
+        assert!(first_inbox.take().is_none());
+        assert!(second_inbox.take().is_none());
+        drop(first);
+        drop(second);
+    }
+}
+
+#[test]
+fn ordinary_retirement_prepares_shared_delivery_without_repeating_prepaid_work() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, _, node) = fixture(&cancel);
+    let mut first = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let mut second = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let first_watch = dom
+        .watch_node_retirement(node, &first, 1, GENEROUS, &cancel)
+        .unwrap();
+    let second_watch = dom
+        .watch_node_retirement(node, &second, 2, GENEROUS, &cancel)
+        .unwrap();
+    let mut checks = 0;
+    assert!(
+        first_watch
+            .index
+            .prepare_match(node, false, || {
+                checks += 1;
+                check_cancel(&cancel)
+            })
+            .unwrap()
+    );
+    // This fixture has one radix leaf. Both slots and both deliveries
+    // already have work reserved by registration.
+    assert_eq!(checks, 1);
+
+    let mut detach = DomBatch::new();
+    detach.detach(node);
+    dom.apply(detach, &cancel).unwrap();
+    let mut destroy = DomBatch::new();
+    destroy.destroy(node);
+    dom.apply(destroy, &cancel).unwrap();
+    assert_eq!(first.take().unwrap().custody_key(), 1);
+    assert_eq!(second.take().unwrap().custody_key(), 2);
+    drop((first_watch, second_watch));
+}
+
+#[test]
+fn shared_watch_storage_and_growth_are_admitted_before_changing_custody() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, _, node) = fixture(&cancel);
+    let first_inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let second_inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let third_inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    dom.custody_registry.reconcile_releases();
+    let baseline = bytes(&dom);
+    let first = dom
+        .watch_node_retirement(node, &first_inbox, 17, GENEROUS, &cancel)
+        .unwrap();
+    let per_watch = size_of::<Armed>() + size_of::<Notice>();
+    let per_slot = size_of::<watches::Entry>();
+    let before_second = baseline + size_of::<Index>() + per_watch;
+    assert_eq!(bytes(&dom), before_second);
+
+    // One native page, one index leaf and the original custody admit. The
+    // new two-entry bank prepays both entries' eventual release and both
+    // exact slot unlinks, including the watch already armed.
+    let disarm = 2 * u64::from(usize::BITS) + 1;
+    let second_work = disarm + 9;
+    let second_peak = before_second + per_watch + size_of::<watches::Shared>() + 2 * per_slot;
+    assert!(matches!(
+        dom.watch_node_retirement(
+            node,
+            &second_inbox,
+            17,
+            DomNodeRetirementLimits::new(second_peak - 1, second_work),
+            &cancel
+        ),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::NodeRetirementCanonicalBytes,
+            limit,
+        }) if limit == second_peak - 1
+    ));
+    assert!(matches!(
+        dom.watch_node_retirement(
+            node,
+            &second_inbox,
+            17,
+            DomNodeRetirementLimits::new(second_peak, second_work - 1),
+            &cancel
+        ),
+        Err(DomError::NodeRetirementWorkLimit { limit }) if limit == second_work - 1
+    ));
+    assert_eq!(bytes(&dom), before_second);
+    let second = dom
+        .watch_node_retirement(
+            node,
+            &second_inbox,
+            17,
+            DomNodeRetirementLimits::new(second_peak, second_work),
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(bytes(&dom), second_peak);
+    assert!(matches!(
+        dom.watch_node_retirement(node, &first_inbox, 81, GENEROUS, &cancel),
+        Err(DomError::NodeRetirementAlreadyWatched)
+    ));
+
+    // The replacement vector has four slots. Admit its overlap with the
+    // still-live two-slot vector, relocation/teardown visits and one unlink.
+    let third_peak = second_peak + per_watch + 4 * per_slot;
+    let third_work = disarm + 14;
+    assert!(matches!(
+        dom.watch_node_retirement(
+            node,
+            &third_inbox,
+            17,
+            DomNodeRetirementLimits::new(third_peak - 1, third_work),
+            &cancel
+        ),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::NodeRetirementCanonicalBytes,
+            limit,
+        }) if limit == third_peak - 1
+    ));
+    assert!(matches!(
+        dom.watch_node_retirement(
+            node,
+            &third_inbox,
+            17,
+            DomNodeRetirementLimits::new(third_peak, third_work - 1),
+            &cancel
+        ),
+        Err(DomError::NodeRetirementWorkLimit { limit }) if limit == third_work - 1
+    ));
+    assert_eq!(bytes(&dom), second_peak);
+    let third = dom
+        .watch_node_retirement(
+            node,
+            &third_inbox,
+            17,
+            DomNodeRetirementLimits::new(third_peak, third_work),
+            &cancel,
+        )
+        .unwrap();
+    let third_retained = third_peak - 2 * per_slot;
+    assert_eq!(bytes(&dom), third_retained);
+
+    drop(second);
+    assert_eq!(bytes(&dom), third_retained - per_watch);
+    let second = dom
+        .watch_node_retirement(
+            node,
+            &second_inbox,
+            81,
+            DomNodeRetirementLimits::new(third_retained, 1000),
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(bytes(&dom), third_retained);
+    cancel.store(true, Ordering::Relaxed);
+    drop((third, first, second));
+    assert_eq!(bytes(&dom), baseline + size_of::<Index>());
+}
+
+#[test]
+fn closing_one_inbox_leaves_the_other_native_delivery_live() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, _, node) = fixture(&cancel);
+    let closed = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let mut remaining = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let closed_watch = dom
+        .watch_node_retirement(node, &closed, 21, GENEROUS, &cancel)
+        .unwrap();
+    let remaining_watch = dom
+        .watch_node_retirement(node, &remaining, 21, GENEROUS, &cancel)
+        .unwrap();
+    drop(closed);
+    let mut edit = DomBatch::new();
+    edit.detach(node);
+    edit.destroy(node);
+    dom.apply(edit, &cancel).unwrap();
+    let notice = remaining.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (node, 21));
+    assert!(remaining.take().is_none());
+    drop((closed_watch, remaining_watch));
 }
