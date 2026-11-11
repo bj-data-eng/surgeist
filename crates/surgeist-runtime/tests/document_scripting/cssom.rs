@@ -310,7 +310,7 @@ fn media_mutations_and_branched_copy() {
         sheet.media = null;
         if (media.mediaText !== '' || media.length !== 0 || media[0] !== undefined || media.item(0) !== null) return 8;
 
-        media[Symbol.toPrimitive] = () => { throw new Error('the genuine MediaList was coerced'); };
+        media[Symbol.toPrimitive] = () => { throw new Error('the branded MediaList was coerced'); };
         const proto = CSSStyleSheet.prototype;
         const target = new Proxy(function Target() {}, {
             get(object, key, receiver) {
