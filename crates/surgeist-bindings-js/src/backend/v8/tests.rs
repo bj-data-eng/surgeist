@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
 
 use super::Engine;
-use crate::backend::{Engine as EngineApi, Operations};
-use crate::{Error, ExceptionPhase, Realm};
+use crate::backend::{Engine as EngineApi, Operations, RealmProfile};
+use crate::{EngineKind, Error, ExceptionPhase, Process, Realm};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -70,7 +70,9 @@ struct Host {
 impl Host {
     fn new(observations: Observations) -> Result<Self, String> {
         let mut engine = Engine::bootstrap().map_err(|error| error.to_string())?;
-        let realm = engine.create_realm().map_err(|error| error.to_string())?;
+        let realm = engine
+            .create_realm(RealmProfile::Plain)
+            .map_err(|error| error.to_string())?;
         engine.isolate.set_slot(Rc::new(State {
             next_id: Cell::new(0),
             native: RefCell::default(),
@@ -571,6 +573,7 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     inheriting_from_a_wrapper_does_not_grant_a_native_method_receiver()?;
     repeated_host_teardown_discards_queued_jobs_without_executing_them()?;
     distinct_realms_share_native_state_without_sharing_globals()?;
+    window_requires_a_constructible_event_target_interface()?;
     invalid_native_identity_types_are_rejected()?;
     nested_callback_scopes_share_production_roots_and_release_self_cleared_custody()?;
     missing_managed_holder_refuses_and_allows_other_pins_to_release()?;
@@ -580,6 +583,34 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     native_references_follow_only_guest_reachability()?;
     cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal()?;
     crate::conversion::tests::run()?;
+    Ok(())
+}
+
+fn window_requires_a_constructible_event_target_interface() -> TestResult {
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut execution = process.execution();
+    let pending = execution.prepare_window_realm()?;
+    let rejected = execution.finish_window_realm(pending, |scope, prototype| {
+        let callable = scope.evaluate(&"() => {}".encode_utf16().collect::<Vec<_>>())?;
+        scope.define_new_property(
+            &callable,
+            crate::PropertyKey::String(&b"prototype".map(u16::from)),
+            crate::PropertyDescriptor::Data {
+                value: prototype,
+                writable: false,
+                enumerable: false,
+                configurable: false,
+            },
+        )?;
+        Ok::<_, Error>((callable, ()))
+    });
+    assert!(matches!(rejected, Err(Error::PropertyRejected)));
+    let ordinary = execution.create_realm()?;
+    execution.in_realm(&ordinary, |scope| {
+        let value = scope.evaluate(&"typeof Window".encode_utf16().collect::<Vec<_>>())?;
+        assert_eq!(scope.to_utf16(&value)?, b"undefined".map(u16::from));
+        Ok(())
+    })?;
     Ok(())
 }
 
@@ -776,7 +807,7 @@ fn fixed_arity_captures_only_the_selected_prefix() -> TestResult {
 
 fn missing_managed_holder_refuses_and_allows_other_pins_to_release() -> TestResult {
     let mut engine = Engine::bootstrap()?;
-    let realm = engine.create_realm()?;
+    let realm = engine.create_realm(RealmProfile::Plain)?;
     let (missing, retained) = engine.with_context(&realm, |entered| {
         Ok((entered.managed_object()?, entered.managed_object()?))
     })?;
@@ -843,7 +874,7 @@ fn cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal() -> Test
             Err(Error::RegistryConflict)
         ));
         assert!(matches!(
-            host.engine.create_realm(),
+            host.engine.create_realm(RealmProfile::Plain),
             Err(Error::RegistryConflict)
         ));
         assert!(matches!(
@@ -878,7 +909,7 @@ fn cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal() -> Test
         host.engine.roots.fail(Error::ExpectedObject);
         drop(FailureOnDrop(owner.clone()));
         assert!(matches!(
-            host.engine.create_realm(),
+            host.engine.create_realm(RealmProfile::Plain),
             Err(Error::ExpectedObject)
         ));
         assert!(matches!(
@@ -1000,7 +1031,7 @@ fn registry_failure_rejects_native_work(source: &str) -> TestResult {
         Err(Error::RegistryConflict)
     ));
     assert!(matches!(
-        host.engine.create_realm(),
+        host.engine.create_realm(RealmProfile::Plain),
         Err(Error::RegistryConflict)
     ));
     assert!(matches!(
@@ -1277,7 +1308,7 @@ fn repeated_host_teardown_discards_queued_jobs_without_executing_them() -> TestR
 fn distinct_realms_share_native_state_without_sharing_globals() -> TestResult {
     let mut host = Host::new(Observations::default())?;
     let first = host.realm.clone();
-    let second = host.engine.create_realm()?;
+    let second = host.engine.create_realm(RealmProfile::Plain)?;
     host.install(&second)?;
     let native = host.counter(6)?;
     host.eval_in(
