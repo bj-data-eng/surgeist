@@ -92,7 +92,9 @@ Empty source or destination regions emit no plan.
 Each drawable region carries its source rectangle, destination clip, and two
 patterns local to the clip minimum. Stretch emits one tile. Repeat centers
 a tile and extends in both directions to the clip. Its anchor represents
-that centered pattern modulo one tile. Round chooses the nearest positive
+that centered pattern modulo one tile. Repeat uses both clip endpoints when
+reducing the phase and can select an equivalent anchor on either side of the
+clip minimum to preserve its precision. Round chooses the nearest positive
 whole count, with half ties toward the higher count, then divides the clip
 extent evenly. Stretch and Round use the clip endpoints for the first and
 final boundaries of the subdivision.
