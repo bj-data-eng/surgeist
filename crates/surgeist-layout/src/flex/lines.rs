@@ -215,7 +215,9 @@ pub(super) fn flex_line_collection_size<S: LayoutScalar>(constants: &Constants<S
         .axes
         .main_size(constants.node_inner_size)
         .or_else(|| {
-            if constants.available_main.operation() != crate::SizingOperation::Normal {
+            if constants.preferred_inline_discovery
+                || constants.available_main.operation() == crate::SizingOperation::MinContent
+            {
                 // A maximum bounds the intrinsic result without supplying its constraint.
                 return None;
             }
