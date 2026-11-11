@@ -33,11 +33,7 @@ fn in_realm_root(scope: &mut Scope<'_>, root: &Root) -> Result<Root, Error> {
     Ok(scope.retain(&read))
 }
 
-pub(in crate::document_scripting) fn attached_registered_function_uses_the_exact_native_invocation()
-{
-    let cancel = Arc::new(AtomicBool::new(false));
-    let mut host = host(cancel);
-    let permit = host.permit().unwrap();
+fn attach_registry(host: &mut DocumentScriptHost, permit: &DocumentScriptPermit) {
     let mut registry = Some(
         DomEventDispatcher::new(DomEventRegistryLimits {
             registrations: 8,
@@ -49,7 +45,7 @@ pub(in crate::document_scripting) fn attached_registered_function_uses_the_exact
         .unwrap(),
     );
     host.attach_guest_event_registry(
-        &permit,
+        permit,
         &mut registry,
         DocumentGuestEventLimits {
             storage_bytes: 32_000,
@@ -65,6 +61,14 @@ pub(in crate::document_scripting) fn attached_registered_function_uses_the_exact
     )
     .unwrap();
     assert!(registry.is_none());
+}
+
+pub(in crate::document_scripting) fn attached_registered_function_uses_the_exact_native_invocation()
+{
+    let cancel = Arc::new(AtomicBool::new(false));
+    let mut host = host(cancel);
+    let permit = host.permit().unwrap();
+    attach_registry(&mut host, &permit);
     let target = host.create_guest_event_target(&permit).unwrap();
     let kind = [0xd800];
     let event = host
@@ -183,4 +187,147 @@ pub(in crate::document_scripting) fn attached_registered_function_uses_the_exact
     assert!(report.exceptions().is_empty());
     assert_eq!(event.native().current_target(), None);
     assert_eq!(event.native().composed_path().count(), 0);
+}
+
+fn proxy_in_scope(scope: &mut Scope<'_>, target: &Root) -> Result<Root, Error> {
+    let target = scope.import(target)?;
+    let create = scope.evaluate(&units(
+        "globalThis.proxyReads = 0; globalThis.proxyCalls = 0;
+        (target => new Proxy(target, {
+            get(t, k, r) { proxyReads++; return Reflect.get(t, k, r); },
+            getPrototypeOf(t) { proxyReads++; return Reflect.getPrototypeOf(t); },
+            apply(t, r, args) { proxyCalls++; return Reflect.apply(t, r, args); }
+        }))",
+    ))?;
+    let receiver = scope.primitive(Primitive::Undefined)?;
+    let proxy = scope.call(&create, &receiver, &[target])?;
+    Ok(scope.retain(&proxy))
+}
+
+fn assert_guest(scope: &mut Scope<'_>, expression: &str) -> Result<(), Error> {
+    let observed = scope.evaluate(&units(expression))?;
+    let yes = scope.primitive(Primitive::Boolean(true))?;
+    assert!(scope.strict_equals(&observed, &yes)?, "{expression}");
+    Ok(())
+}
+
+pub(in crate::document_scripting) fn attached_proxy_uses_its_own_realm() {
+    let mut host = host(Arc::new(AtomicBool::new(false)));
+    let permit = host.permit().unwrap();
+    attach_registry(&mut host, &permit);
+    let target = host.create_guest_event_target(&permit).unwrap();
+    let kind = [u16::from(b'x')];
+    let event = host
+        .create_guest_event(&permit, &kind, DomEventInit::default())
+        .unwrap();
+    let in_attached = host
+        .in_document(&permit, |scope| {
+            let callable = scope.evaluate(&units(
+                "globalThis.targetCalls = 0; (() => { targetCalls++; })",
+            ))?;
+            Ok(scope.retain(&callable))
+        })
+        .unwrap();
+    let (other, allowed, denied) = {
+        let engine = host.engine.as_mut().unwrap();
+        let mut execution = engine.process.execution();
+        let other = execution.create_realm().unwrap();
+        let in_other = execution
+            .in_realm(&other, |scope| {
+                let global = scope.global()?;
+                let target = target.object(scope)?;
+                let event = event.object(scope)?;
+                scope.set(
+                    &global,
+                    PropertyKey::String(&units("expectedTarget")),
+                    &target,
+                )?;
+                scope.set(
+                    &global,
+                    PropertyKey::String(&units("expectedEvent")),
+                    &event,
+                )?;
+                let callable = scope.evaluate(&units(
+                    "globalThis.targetCalls = 0; (function(e) {
+                    if (this !== expectedTarget || e !== expectedEvent) throw 1;
+                    targetCalls++;
+                })",
+                ))?;
+                Ok(scope.retain(&callable))
+            })
+            .unwrap();
+        let allowed = execution
+            .in_realm(&engine.realm, |scope| proxy_in_scope(scope, &in_other))
+            .unwrap();
+        let denied = execution
+            .in_realm(&other, |scope| proxy_in_scope(scope, &in_attached))
+            .unwrap();
+        let allowed = execution
+            .in_realm(&other, |scope| in_realm_root(scope, &allowed))
+            .unwrap();
+        let denied = execution
+            .in_realm(&engine.realm, |scope| in_realm_root(scope, &denied))
+            .unwrap();
+        (other, allowed, denied)
+    };
+    let allow = host.add_guest_event_listener(
+        &permit,
+        &target,
+        &kind,
+        &allowed,
+        DomEventListenerOptions::default(),
+    );
+    let deny = host.add_guest_event_listener(
+        &permit,
+        &target,
+        &kind,
+        &denied,
+        DomEventListenerOptions::default(),
+    );
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "proxyReads === 0 && proxyCalls === 0 && targetCalls === 0",
+        )
+    })
+    .unwrap();
+    {
+        let engine = host.engine.as_mut().unwrap();
+        engine
+            .process
+            .execution()
+            .in_realm(&other, |scope| {
+                assert_guest(
+                    scope,
+                    "proxyReads === 0 && proxyCalls === 0 && targetCalls === 0",
+                )
+            })
+            .unwrap();
+    }
+    assert!(
+        allow.is_ok() && matches!(deny, Err(DocumentGuestEventError::CallbackRealmUnavailable)),
+        "accept the attached Proxy and refuse the unattached one: attached {allow:?}, unattached {deny:?}"
+    );
+    let report = host.dispatch_guest_event(&permit, &target, &event).unwrap();
+    assert_eq!(report.receipt().callbacks(), 1);
+    assert!(report.receipt().failures().is_empty());
+    assert!(report.exceptions().is_empty());
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "proxyReads === 0 && proxyCalls === 1 && targetCalls === 0",
+        )
+    })
+    .unwrap();
+    let engine = host.engine.as_mut().unwrap();
+    engine
+        .process
+        .execution()
+        .in_realm(&other, |scope| {
+            assert_guest(
+                scope,
+                "proxyReads === 0 && proxyCalls === 0 && targetCalls === 1",
+            )
+        })
+        .unwrap();
 }

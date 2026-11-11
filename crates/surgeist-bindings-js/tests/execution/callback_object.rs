@@ -122,11 +122,6 @@ pub(super) fn associated_realm_and_exact_custody(process: &mut Process) -> Resul
             scope.callback_object(&primitive),
             Err(Error::ExpectedObject)
         ));
-        let proxy = scope.evaluate(&units("new Proxy(function(){}, { get() { throw 1 } })"))?;
-        assert!(matches!(
-            scope.callback_object(&proxy),
-            Err(Error::CallbackRealmUnavailable)
-        ));
         Ok(())
     })?;
     let exact = execution.in_realm(&b, |scope| price(scope, &function_in_b))?;
@@ -177,6 +172,100 @@ pub(super) fn associated_realm_and_exact_custody(process: &mut Process) -> Resul
     evaluate(&mut execution, &b, "gc()")?;
     execution.memory_pressure();
     assert_eq!(drops.get(), 1);
+    Ok(())
+}
+
+fn proxy_with_traps(
+    execution: &mut Execution<'_>,
+    realm: &Realm,
+    target: &Root,
+    traps: &Rc<Cell<usize>>,
+) -> Result<Root, Error> {
+    let count = traps.clone();
+    execution.in_realm(realm, |scope| {
+        let target = scope.import(target)?;
+        let mark = scope.function(&Callback::new(move |_, _| {
+            count.set(count.get() + 1);
+            Ok(Completion::Undefined)
+        }))?;
+        let create = scope.evaluate(&units(
+            "(target, mark) => new Proxy(target, {
+                get(t, k, r) { mark(); return Reflect.get(t, k, r); },
+                getPrototypeOf(t) { mark(); return Reflect.getPrototypeOf(t); },
+                apply(t, r, args) { mark(); return Reflect.apply(t, r, args); }
+            })",
+        ))?;
+        let undefined = scope.primitive(Primitive::Undefined)?;
+        let proxy = scope.call(&create, &undefined, &[target, mark])?;
+        Ok(scope.retain(&proxy))
+    })
+}
+
+pub(super) fn proxy_objects_use_their_own_associated_realm(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let a = execution.create_realm()?;
+    let b = execution.create_realm()?;
+    let (a_id, a_function) = execution.in_realm(&a, |scope| {
+        let function = scope.evaluate(&units("() => 11"))?;
+        Ok((scope.realm_authority()?.identity(), scope.retain(&function)))
+    })?;
+    let (b_id, b_function, b_object) = execution.in_realm(&b, |scope| {
+        let function = scope.evaluate(&units("() => 23"))?;
+        let object = scope.evaluate(&units("({answer: 37})"))?;
+        Ok((
+            scope.realm_authority()?.identity(),
+            scope.retain(&function),
+            scope.retain(&object),
+        ))
+    })?;
+    assert_ne!(a_id, b_id);
+    let traps = Rc::new(Cell::new(0));
+    let in_a = proxy_with_traps(&mut execution, &a, &b_function, &traps)?;
+    let in_b = proxy_with_traps(&mut execution, &b, &a_function, &traps)?;
+    let object_in_a = proxy_with_traps(&mut execution, &a, &b_object, &traps)?;
+    let retained_in_b = retain_in(&mut execution, &b, &in_a)?;
+    let retained_in_a = retain_in(&mut execution, &a, &in_b)?;
+    let object_retained_in_b = retain_in(&mut execution, &b, &object_in_a)?;
+
+    for (retaining, original, retained, expected, callable, result) in [
+        (&b, &in_a, &retained_in_b, a_id, true, 23.0),
+        (&a, &in_b, &retained_in_a, b_id, true, 11.0),
+        (&b, &object_in_a, &object_retained_in_b, a_id, false, 37.0),
+    ] {
+        execution.in_realm(retaining, |scope| {
+            let before = traps.get();
+            let proxy = scope.import(retained)?;
+            let observed = scope.callback_object(&proxy).unwrap_or_else(|error| {
+                panic!("the exact Proxy's creation context must be observable: {error:?}")
+            });
+            assert_eq!(observed.associated_realm().identity(), expected);
+            let charged = account(u64::MAX);
+            let holder =
+                scope.retain_callback_object(observed, |bytes| Backing::admit(&charged, bytes))?;
+            assert_eq!(holder.associated_realm().identity(), expected);
+            let opened = scope.open_callback_object(&holder)?;
+            let exact = scope.import(original)?;
+            assert!(scope.strict_equals(&opened, &exact)?);
+            assert_eq!(scope.is_callable(&opened)?, callable);
+            assert_eq!(traps.get(), before, "qualification must be trap-free");
+            let observed = if callable {
+                let undefined = scope.primitive(Primitive::Undefined)?;
+                scope.call(&opened, &undefined, &[])?
+            } else {
+                scope.get(&opened, PropertyKey::String(&units("answer")))?
+            };
+            let expected = scope.primitive(Primitive::Number(result))?;
+            assert!(scope.strict_equals(&observed, &expected)?);
+            assert_eq!(
+                traps.get(),
+                before + 1,
+                "the invocation control must reach its trap"
+            );
+            Ok(())
+        })?;
+    }
     Ok(())
 }
 

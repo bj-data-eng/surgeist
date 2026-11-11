@@ -2298,6 +2298,9 @@ fn declared_constructor_host_refusals_are_terminal() -> Result<(), Error> {
 fn main() -> Result<(), Error> {
     v8::V8::set_flags_from_string("--expose-gc");
     let mut process = Process::bootstrap(EngineKind::V8)?;
+    if std::env::args().nth(1).as_deref() == Some("proxy-callback-object") {
+        return callback_object::proxy_objects_use_their_own_associated_realm(&mut process);
+    }
     if std::env::args().nth(1).as_deref() == Some("callback-object") {
         callback_object::associated_realm_and_exact_custody(&mut process)?;
         drop(process);
@@ -2349,6 +2352,7 @@ fn main() -> Result<(), Error> {
     captured_intrinsics_survive_guest_replacement_and_realm_lease_release(&mut process)?;
     managed_holder_preserves_object_and_creation_realm_until_release(&mut process)?;
     callback_object::associated_realm_and_exact_custody(&mut process)?;
+    callback_object::proxy_objects_use_their_own_associated_realm(&mut process)?;
     declared_constructors_preserve_calls_metadata_and_installed_descriptors(&mut process)?;
     declared_callable_length_is_exact_and_only_captures_supplied_prefix(&mut process)?;
     declared_constructor_length_is_exact_u32(&mut process)?;

@@ -196,6 +196,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     rejected_comment_requires_each_diagnostic_utf16_work_unit();
     window_binding_storage_admits_exact_and_refuses_one_byte_short();
     super::guest::tests::attached_registered_function_uses_the_exact_native_invocation();
+    super::guest::tests::attached_proxy_uses_its_own_realm();
 }
 
 fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
