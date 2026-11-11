@@ -678,6 +678,35 @@ fn mixed_foreground_and_intrinsic_color_preserve_actual_overlap_order() {
 }
 
 #[test]
+fn visible_sbix_bitmap_fitting_charges_its_coordinate_work_in_bitmap() {
+    let font = FontData::try_from_bytes(
+        ahem_sbix_font(rgba_png()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
+    let mut accounting = crate::RenderAccountingContext::default();
+    let ready = font
+        .prepare_glyph_run(&instance(16.0), &one_glyph(), limits(), &mut accounting)
+        .unwrap();
+    assert_eq!(ready.bounds().kind(), TextRunBoundsKind::Ink);
+    assert!(matches!(
+        ready.paints(),
+        [crate::text::GlyphPaint::Bitmap { .. }]
+    ));
+    let attempt = accounting.last_attempt().unwrap().attempt().unwrap();
+    // Fill reads six coordinates, compares two axes and computes two ratios.
+    // Its affine product captures twelve factors and performs twenty operations.
+    assert_eq!(
+        attempt
+            .phase_usage(crate::RenderPhase::Bitmap)
+            .work(crate::RenderWork::CoordinateVisits),
+        42,
+        "visible sbix fitting must be charged in Bitmap"
+    );
+}
+
+#[test]
 fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_storage() {
     let tiny = FontData::try_from_bytes(
         ahem_sbix_font(rgba_png()),
