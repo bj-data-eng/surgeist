@@ -22,6 +22,8 @@ use surgeist_runtime::{document_scripting::*, *};
 mod script_preparation;
 #[path = "document_scripting/source_events.rs"]
 mod source_events;
+#[path = "document_scripting/window_document.rs"]
+mod window_document;
 #[path = "document_scripting/window_timers.rs"]
 mod window_timers;
 
@@ -2224,6 +2226,7 @@ fn main() {
             }
             "window-event-live-operations" => native_window_event_observes_its_live_standalone_dispatch(),
             "window-event-listeners" => native_window_registers_and_removes_guest_event_listeners(),
+            "window-document-projection" => window_document::window_projects_the_live_document_and_node_brands(),
             "window-timer-scheduling" => window_timers::window_schedules_and_cancels_after_guest_entry(),
             "native_window_exposes_dom_exception" => native_window_exposes_dom_exception(),
             "dom-exception-error-data" => {
@@ -2291,6 +2294,7 @@ fn main() {
     native_window_event_observes_its_live_standalone_dispatch();
     native_window_registers_and_removes_guest_event_listeners();
     window_timers::window_schedules_and_cancels_after_guest_entry();
+    window_document::window_projects_the_live_document_and_node_brands();
     native_window_exposes_dom_exception();
     native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();
     native_window_dom_exception_admission_and_hook_collision();
