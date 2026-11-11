@@ -737,6 +737,53 @@ mod tests {
     }
 
     #[test]
+    fn tiling_repeat_uses_both_clip_endpoints_for_center_phase() {
+        let mut input = center_only(18_014_398_509_481_984.0, 1.0);
+        input.border_origin.x = -0.5;
+        let repeat = Size::new(BorderImageRepeat::Repeat, BorderImageRepeat::Stretch);
+        let plan = tiling(input, repeat);
+        let region = plan.regions()[1][1].unwrap();
+        assert_eq!(region.clip().min().x, -0.5);
+        assert_eq!(region.clip().max().x, 18_014_398_509_481_984.0);
+        assert_eq!(
+            region.axes().width.placement(),
+            BorderImageAxisPlacement::Repeat { anchor: -0.25 }
+        );
+    }
+
+    #[test]
+    fn tiling_space_counts_only_tiles_inside_the_exact_clip_span() {
+        let mut input = center_only(9_007_199_254_740_992.0, 2.0);
+        input.border_origin.x = 0.5;
+        let repeat = Size::new(BorderImageRepeat::Space, BorderImageRepeat::Stretch);
+        let plan = tiling(input, repeat);
+        let region = plan.regions()[1][1].unwrap();
+        assert_eq!(region.clip().min().x, 0.5);
+        assert_eq!(region.clip().max().x, 9_007_199_254_740_992.0);
+        assert_eq!(
+            region.axes().width.placement(),
+            spaced(4_503_599_627_370_495, 1.5)
+        );
+    }
+
+    #[test]
+    fn tiling_round_compares_the_exact_clip_span_to_the_half_count() {
+        let mut input = center_only(4_503_599_627_370_497.0, 2.0);
+        input.border_origin.x = 0.25;
+        let repeat = Size::new(BorderImageRepeat::Round, BorderImageRepeat::Stretch);
+        let plan = tiling(input, repeat);
+        let region = plan.regions()[1][1].unwrap();
+        assert_eq!(region.clip().min().x, 0.25);
+        assert_eq!(region.clip().max().x, 4_503_599_627_370_497.0);
+        assert_eq!(
+            region.axes().width.placement(),
+            BorderImageAxisPlacement::Fit {
+                count: NonZeroU64::new(2_251_799_813_685_248).unwrap(),
+            }
+        );
+    }
+
+    #[test]
     fn tiling_reports_refusal_prefix_and_releases_a_provisional_plan() {
         use BorderImageRepeat::{Repeat, Space};
         let geometry = geometry(request());
