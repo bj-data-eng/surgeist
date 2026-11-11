@@ -1055,6 +1055,13 @@ four component derivations and then two maximum-coordinate proofs. Numeric
 failure retains completed work, releases operation backing, and transfers no
 output. Standalone image placement performs the same proof without a context.
 
+Both standalone image repetition and background normalization admit repeat-axis
+work in the `Repeat` phase. `CoordinateVisits` covers tile and clip checks,
+intersection tests, first repeated positions, axis and grid counts, and
+position generation. An empty axis retains its admitted work, and the
+`RepeatTiles` count advances for admitted tile emissions. Ledger refusal
+stops the planner at the corresponding check or calculation.
+
 ## Preparation accounting
 
 `FontData::prepare_glyph_run` and `prepare_text_layout` take a mutable

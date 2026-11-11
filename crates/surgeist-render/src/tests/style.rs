@@ -1284,7 +1284,9 @@ fn background_normalization_checks_placement_then_repeat_then_attachment() {
         (
             4.0,
             no_repeat,
-            6,
+            // Placement maxima, two intersecting axis plans, grid count
+            // and limit, and both output tile maxima.
+            22,
             1,
             Some("background attachment coordinate space"),
         ),

@@ -1135,11 +1135,10 @@ impl ImageRepeatPlan {
                         repeats_y,
                         &account,
                     )?;
-                    let tile_count = x_positions
-                        .len()
-                        .checked_mul(y_positions.len())
+                    let tile_count = account
+                        .coordinate(|| x_positions.len().checked_mul(y_positions.len()))?
                         .ok_or_else(|| image_repeat_tile_count_error("overflow"))?;
-                    validate_image_repeat_tile_count(tile_count)?;
+                    validate_image_repeat_tile_count(tile_count, &account)?;
                     let mut tile_rects = account.retained(tile_count)?;
                     for y in y_positions.iter() {
                         for x in x_positions.iter() {
@@ -1187,7 +1186,7 @@ fn repeat_positions(
     repeats: bool,
     account: &Account,
 ) -> Result<AccountedVec<f64>> {
-    if tile_axis <= 0.0 || !tile_axis.is_finite() {
+    if account.coordinate(|| tile_axis <= 0.0)? || account.coordinate(|| !tile_axis.is_finite())? {
         return Err(Error::invalid_value(
             "image repeat tile size",
             tile_axis,
@@ -1195,8 +1194,8 @@ fn repeat_positions(
         ));
     }
 
-    let clip_end = clip_origin + clip_axis;
-    if !clip_end.is_finite() {
+    let clip_end = account.coordinate(|| clip_origin + clip_axis)?;
+    if account.coordinate(|| !clip_end.is_finite())? {
         return Err(Error::invalid_value(
             "image repeat geometry",
             format!("origin {clip_origin}, axis {clip_axis}"),
@@ -1204,50 +1203,73 @@ fn repeat_positions(
         ));
     }
     if !repeats {
-        let mut positions = account.temporary(usize::from(
-            tile_origin < clip_end && tile_origin + tile_axis > clip_origin,
-        ))?;
-        if tile_origin < clip_end && tile_origin + tile_axis > clip_origin {
+        let intersects = account.coordinate(|| tile_origin < clip_end)? && {
+            let tile_end = account.coordinate(|| tile_origin + tile_axis)?;
+            account.coordinate(|| tile_end > clip_origin)?
+        };
+        let mut positions = account.temporary(usize::from(intersects))?;
+        if intersects {
             account.work(RenderWork::CoordinateVisits, 1)?;
             positions.push(tile_origin)?;
         }
         return Ok(positions);
     }
 
-    let origin = first_repeated_tile_origin(clip_origin, tile_origin, tile_axis);
-    let count = repeat_position_count(origin, clip_end, tile_axis)?;
-    validate_image_repeat_tile_count(count)?;
+    let origin = first_repeated_tile_origin(clip_origin, tile_origin, tile_axis, account)?;
+    let count = repeat_position_count(origin, clip_end, tile_axis, account)?;
+    validate_image_repeat_tile_count(count, account)?;
 
     let mut positions = account.temporary(count)?;
     for index in 0..count {
-        account.work(RenderWork::CoordinateVisits, 1)?;
-        positions.push(origin + tile_axis * index as f64)?;
+        let index = account.coordinate(|| index as f64)?;
+        let offset = account.coordinate(|| tile_axis * index)?;
+        let position = account.coordinate(|| origin + offset)?;
+        positions.push(position)?;
     }
     Ok(positions)
 }
 
-fn first_repeated_tile_origin(clip_origin: f64, tile_origin: f64, tile_axis: f64) -> f64 {
-    let offset = ((clip_origin - tile_origin) / tile_axis).floor();
-    let mut origin = tile_origin + offset * tile_axis;
-    if origin + tile_axis <= clip_origin {
-        origin += tile_axis;
+fn first_repeated_tile_origin(
+    clip_origin: f64,
+    tile_origin: f64,
+    tile_axis: f64,
+    account: &Account,
+) -> Result<f64> {
+    let delta = account.coordinate(|| clip_origin - tile_origin)?;
+    let quotient = account.coordinate(|| delta / tile_axis)?;
+    let index = account.coordinate(|| quotient.floor())?;
+    let offset = account.coordinate(|| index * tile_axis)?;
+    let origin = account.coordinate(|| tile_origin + offset)?;
+    let end = account.coordinate(|| origin + tile_axis)?;
+    if account.coordinate(|| end <= clip_origin)? {
+        return Ok(end);
     }
-    origin
+    Ok(origin)
 }
 
-fn repeat_position_count(origin: f64, clip_end: f64, tile_axis: f64) -> Result<usize> {
-    if origin >= clip_end {
+fn repeat_position_count(
+    origin: f64,
+    clip_end: f64,
+    tile_axis: f64,
+    account: &Account,
+) -> Result<usize> {
+    if account.coordinate(|| origin >= clip_end)? {
         return Ok(0);
     }
-    let count = ((clip_end - origin) / tile_axis).ceil();
-    if !count.is_finite() || count < 0.0 || count > usize::MAX as f64 {
+    let delta = account.coordinate(|| clip_end - origin)?;
+    let quotient = account.coordinate(|| delta / tile_axis)?;
+    let count = account.coordinate(|| quotient.ceil())?;
+    if account.coordinate(|| !count.is_finite())?
+        || account.coordinate(|| count < 0.0)?
+        || account.coordinate(|| count > usize::MAX as f64)?
+    {
         return Err(image_repeat_tile_count_error(count));
     }
-    Ok(count as usize)
+    account.coordinate(|| count as usize)
 }
 
-fn validate_image_repeat_tile_count(tile_count: usize) -> Result<()> {
-    if tile_count > MAX_IMAGE_REPEAT_TILES {
+fn validate_image_repeat_tile_count(tile_count: usize, account: &Account) -> Result<()> {
+    if account.coordinate(|| tile_count > MAX_IMAGE_REPEAT_TILES)? {
         return Err(image_repeat_tile_count_error(tile_count));
     }
     Ok(())
@@ -1510,9 +1532,9 @@ mod accounting_tests {
         );
         let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::RepeatTiles), 4);
-        // Four generated positions plus both maximum-coordinate proofs for
-        // each of the four retained tiles.
-        assert_eq!(usage.work(RenderWork::CoordinateVisits), 12);
+        // Two 20-action axis plans, three actions for each of the four
+        // positions, the grid count and limit, and both maxima for each tile.
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 62);
         assert_eq!(
             usage.work(RenderWork::PreparedTransferredBytes),
             (resolved.tile_rects.capacity() * std::mem::size_of::<Rect>()) as u64
