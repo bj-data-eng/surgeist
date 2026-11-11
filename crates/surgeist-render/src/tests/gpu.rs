@@ -11925,6 +11925,228 @@ fn renderer_public_dispatch_validates_direct_and_masked_composition_routes() {
 }
 
 #[test]
+fn gpu_resolved_mask_stack_keeps_coverage_at_fractional_output_edge() {
+    use crate::{ResolvedMaskLayer, ResolvedMaskSource};
+
+    let image = Image::from_rgba(Size::new(1.0, 1.0), vec![255; 4]).unwrap();
+    let mask = ResolvedLayerAlphaMask::try_new(image, Rect::new(0.5, 0.0, 0.5, 1.0)).unwrap();
+    let stack = [ResolvedMaskLayer {
+        source: ResolvedMaskSource::Alpha(mask.clone()),
+        composite: MaskCompositeMode::Intersect,
+    }];
+    let target = |scene: &mut Scene| {
+        scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+    };
+    let mut single = Scene::new();
+    single.layer(Layer::new().with_resolved_alpha_mask(mask), target);
+    let mut grouped = Scene::new();
+    grouped.masked_group(&stack, target);
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(0.5, 1.0), 1.0)).unwrap();
+    for (name, scene) in [("single", single), ("stack", grouped)] {
+        pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+        let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        assert_eq!(pixel_alpha(&output, 0, 0), 255, "{name}");
+    }
+}
+
+#[test]
+fn gpu_resolved_mask_stack_keeps_coverage_at_shared_samples() {
+    use crate::{ResolvedMaskLayer, ResolvedMaskSource};
+
+    let size = Size::new(1.0, 1.0);
+    let image = Image::from_rgba(size, vec![255; 4]).unwrap();
+    let mask =
+        |x| ResolvedLayerAlphaMask::try_new(image.clone(), Rect::new(x, 0.0, 0.5, 1.0)).unwrap();
+    let resolved = |x| ResolvedMaskLayer {
+        source: ResolvedMaskSource::Alpha(mask(x)),
+        composite: MaskCompositeMode::Intersect,
+    };
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface = pollster::block_on(renderer.create_headless(size, 1.0)).unwrap();
+    let mut alpha = |scene: &Scene| {
+        pollster::block_on(renderer.render(&mut surface, scene, Parameters::default())).unwrap();
+        let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        pixel_alpha(&output, 0, 0)
+    };
+    let target = |width| {
+        move |scene: &mut Scene| {
+            scene.fill(Rect::new(0.0, 0.0, width, 1.0), Color::BLACK);
+        }
+    };
+
+    for x in [0.0, 0.5] {
+        let mut single = Scene::new();
+        single.layer(Layer::new().with_resolved_alpha_mask(mask(x)), target(1.0));
+        assert_eq!(alpha(&single), 255, "each mask includes the sample center");
+    }
+    let mut touching = Scene::new();
+    touching.masked_group(&[resolved(0.5), resolved(0.0)], target(1.0));
+
+    let mut single = Scene::new();
+    single.layer(
+        Layer::new().with_resolved_alpha_mask(mask(0.5)),
+        target(0.25),
+    );
+    let expected_edge = alpha(&single);
+    assert!((63..=65).contains(&expected_edge));
+    let mut disjoint = Scene::new();
+    disjoint.masked_group(&[resolved(0.5)], target(0.25));
+
+    assert_eq!([alpha(&touching), alpha(&disjoint)], [255, expected_edge]);
+}
+
+#[test]
+fn gpu_resolved_mask_stack_preserves_fractional_mask_sampling() {
+    use crate::{ResolvedMaskLayer, ResolvedMaskSource};
+
+    let size = Size::new(1.0, 1.0);
+    let bounds = Rect::new(0.25, 0.0, 0.5, 1.0);
+    let image = Image::from_rgba(size, vec![255; 4]).unwrap();
+    let mask = ResolvedLayerAlphaMask::try_new(image, bounds).unwrap();
+    let stack = [ResolvedMaskLayer {
+        source: ResolvedMaskSource::Alpha(mask.clone()),
+        composite: MaskCompositeMode::Intersect,
+    }];
+    let target = |scene: &mut Scene| {
+        scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+    };
+    let mut single = Scene::new();
+    single.layer(Layer::new().with_resolved_alpha_mask(mask), target);
+    let mut grouped = Scene::new();
+    grouped.masked_group(&stack, target);
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface = pollster::block_on(renderer.create_headless(size, 1.0)).unwrap();
+    for (name, scene) in [("single", single), ("stack", grouped)] {
+        pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+        let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        assert_eq!(pixel_alpha(&output, 0, 0), 255, "{name}");
+    }
+}
+
+#[test]
+fn gpu_resolved_mask_stack_composites_coverage_bottom_up_in_isolation() {
+    use crate::{
+        MaskLuminanceSpace, ResolvedLayerLuminanceMask, ResolvedMaskLayer, ResolvedMaskSource,
+    };
+    use MaskCompositeMode::{Add, Exclude, Intersect, Subtract};
+
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let size = Size::new(4.0, 1.0);
+    let mut surface = pollster::block_on(renderer.create_headless(size, 1.0)).unwrap();
+    let bottom = ResolvedMaskLayer {
+        source: ResolvedMaskSource::Alpha(
+            ResolvedLayerAlphaMask::try_new(
+                Image::from_rgba(Size::new(1.0, 1.0), vec![0, 0, 0, 64]).unwrap(),
+                Rect::new(0.0, 0.0, 2.0, 1.0),
+            )
+            .unwrap(),
+        ),
+        composite: Intersect,
+    };
+    let luminance = |bounds| {
+        ResolvedMaskSource::Luminance(
+            ResolvedLayerLuminanceMask::try_new(
+                Image::from_rgba(Size::new(1.0, 1.0), vec![128, 128, 128, 255]).unwrap(),
+                bounds,
+                MaskLuminanceSpace::Srgb,
+            )
+            .unwrap(),
+        )
+    };
+    let top = luminance(Rect::new(1.0, 0.0, 2.0, 1.0));
+    let white = Color::try_rgba(1.0, 1.0, 1.0, 1.0).unwrap();
+    let mut check = |masks: &[ResolvedMaskLayer], expected: [u8; 3]| {
+        let mut scene = Scene::new();
+        scene.fill(Rect::new(3.0, 0.0, 1.0, 1.0), Color::BLACK);
+        scene.masked_group(masks, |target| {
+            target.fill(Rect::new(0.0, 0.0, 4.0, 1.0), white);
+        });
+        let stats =
+            pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+                .unwrap();
+        let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        for (x, expected) in (0..3).zip(expected) {
+            let [r, g, b, actual] = pixel_rgba(&output, x, 0);
+            assert!(
+                actual.abs_diff(expected) <= 2,
+                "{masks:?} x={x}: {actual} vs {expected}"
+            );
+            if expected != 0 {
+                assert_eq!([r, g, b], [255; 3], "target color at x={x}");
+            }
+        }
+        assert_eq!(&output.rgba()[12..16], &[0, 0, 0, 255]);
+        // A zero-coverage result may be simplified before route selection.
+        if expected != [0; 3] {
+            assert_eq!(stats.route, Some(RenderRoute::GpuGraph), "{masks:?}");
+        }
+    };
+
+    for (composite, expected) in [
+        (Add, [64, 160, 128]),
+        (Subtract, [0, 96, 128]),
+        (Intersect, [0, 32, 0]),
+        (Exclude, [64, 128, 128]),
+    ] {
+        check(
+            &[
+                ResolvedMaskLayer {
+                    source: top.clone(),
+                    composite,
+                },
+                bottom.clone(),
+            ],
+            expected,
+        );
+    }
+    check(
+        &[
+            ResolvedMaskLayer {
+                source: luminance(Rect::new(0.0, 0.0, 3.0, 1.0)),
+                composite: Intersect,
+            },
+            ResolvedMaskLayer {
+                source: top,
+                composite: Subtract,
+            },
+            bottom.clone(),
+        ],
+        [0, 48, 64],
+    );
+    check(
+        &[
+            ResolvedMaskLayer {
+                source: ResolvedMaskSource::Transparent,
+                composite: Add,
+            },
+            bottom.clone(),
+        ],
+        [64, 64, 0],
+    );
+    check(
+        &[
+            ResolvedMaskLayer {
+                source: ResolvedMaskSource::Transparent,
+                composite: Intersect,
+            },
+            bottom,
+        ],
+        [0, 0, 0],
+    );
+
+    let mut masked = Scene::new();
+    let mut direct = Scene::new();
+    let bounds = Rect::new(0.0, 0.0, 1.0, 1.0);
+    masked.masked_group(&[], |scene| {
+        scene.fill(bounds, white);
+    });
+    direct.fill(bounds, white);
+    assert_eq!(masked, direct);
+}
+
+#[test]
 fn gpu_luminance_mask_uses_selected_transfer_and_straight_rgba() {
     use crate::{MaskLuminanceSpace, ResolvedLayerLuminanceMask};
 

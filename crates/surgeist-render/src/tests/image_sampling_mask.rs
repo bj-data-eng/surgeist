@@ -42,6 +42,24 @@ fn reference_alpha(image: Image, size: PhysicalSize, bounds: Rect) -> Vec<u8> {
 }
 
 #[test]
+fn empty_mask_stack_appends_a_fresh_child_scene() {
+    let previous = Rect::new(0.0, 0.0, 1.0, 1.0);
+    let child = Rect::new(1.0, 0.0, 1.0, 1.0);
+    let mut scene = Scene::new();
+    scene.fill(previous, Color::BLACK);
+
+    let mut expected = scene.clone();
+    expected.fill(child, Color::BLACK);
+    scene.masked_group(&[], |scene| {
+        scene.fill(previous, Color::BLACK);
+        scene.clear();
+        scene.fill(child, Color::BLACK);
+    });
+
+    assert_eq!(scene, expected);
+}
+
+#[test]
 fn pixelated_mask_fractional_integer_and_downscale_follow_virtual_lattice() {
     let image = mask(PhysicalSize::new(3, 1), &[0, 128, 255], Extend::Pad);
     // At 8/3 scale the nearest integer enlargement is 3. Virtual texel

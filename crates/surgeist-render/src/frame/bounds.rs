@@ -98,6 +98,7 @@ impl FrameContext {
 pub(super) struct SemanticSourceBounds {
     known_non_empty_extent: Option<NonEmptyLogicalBounds>,
     contains_unresolved_content: bool,
+    sampled_mask_coverage: bool,
 }
 
 impl SemanticSourceBounds {
@@ -108,7 +109,13 @@ impl SemanticSourceBounds {
         Self {
             known_non_empty_extent,
             contains_unresolved_content,
+            sampled_mask_coverage: false,
         }
+    }
+
+    const fn with_sampled_mask_coverage(mut self, sampled: bool) -> Self {
+        self.sampled_mask_coverage = sampled && !self.is_exactly_empty();
+        self
     }
 
     pub(super) const fn exactly_empty() -> Self {
@@ -165,7 +172,8 @@ impl SemanticSourceBounds {
         Ok(Self::from_parts(
             known_non_empty_extent,
             self.contains_unresolved_content() || other.contains_unresolved_content(),
-        ))
+        )
+        .with_sampled_mask_coverage(self.sampled_mask_coverage || other.sampled_mask_coverage))
     }
 
     pub(super) fn try_intersect(self, other: Self, name: &'static str) -> Result<Self> {
@@ -195,7 +203,17 @@ impl SemanticSourceBounds {
         Ok(Self::from_parts(
             known_non_empty_extent,
             self.contains_unresolved_content() || other.contains_unresolved_content(),
-        ))
+        )
+        .with_sampled_mask_coverage(self.sampled_mask_coverage || other.sampled_mask_coverage))
+    }
+
+    fn try_limit_to_output(self, output: Self, name: &'static str) -> Result<Self> {
+        if self.sampled_mask_coverage {
+            // The finite raster can contain samples on or beyond its
+            // continuous edge. The sampler determines coverage within it.
+            return Ok(output.with_sampled_mask_coverage(true));
+        }
+        self.try_intersect(output, name)
     }
 
     fn try_transform(self, transform: Transform, name: &'static str) -> Result<Self> {
@@ -211,10 +229,10 @@ impl SemanticSourceBounds {
             }
             None => None,
         };
-        Ok(Self::from_parts(
-            known_non_empty_extent,
-            self.contains_unresolved_content(),
-        ))
+        Ok(
+            Self::from_parts(known_non_empty_extent, self.contains_unresolved_content())
+                .with_sampled_mask_coverage(self.sampled_mask_coverage),
+        )
     }
 
     pub(super) fn try_for_clip(clip: &RenderClip, account: &Account) -> Result<Self> {
@@ -449,7 +467,12 @@ impl SemanticSourceContribution {
             layer_to_surface,
             account,
         )?;
-        let mut source_bounds = children.current_parent;
+        let mut source_bounds = match layer.mask.as_ref().filter(|mask| mask.supplies_coverage()) {
+            Some(mask) => {
+                SemanticSourceBounds::try_from_rect(mask.bounds())?.with_sampled_mask_coverage(true)
+            }
+            None => children.current_parent,
+        };
         source_bounds = Self::include_backdrop_contribution(
             source_bounds,
             current_parent,
@@ -639,6 +662,17 @@ impl SemanticCommandContribution {
                 | PorterDuffOperator::DestinationOut
                 | PorterDuffOperator::SourceAtop,
             ) => current_parent,
+            Some(PorterDuffOperator::SourceIn)
+                if source_bounds.sampled_mask_coverage && !current_parent.is_exactly_empty() =>
+            {
+                // Touching continuous mask bounds can share a device sample.
+                source_bounds.try_union(current_parent)?
+            }
+            Some(PorterDuffOperator::DestinationIn) if source_bounds.sampled_mask_coverage => {
+                // The target's antialiased pixels can extend beyond its
+                // continuous support. Leave the attenuation to the sampler.
+                current_parent
+            }
             Some(PorterDuffOperator::SourceIn | PorterDuffOperator::DestinationIn) => {
                 source_bounds.try_intersect(current_parent, "in-operator result support")?
             }
@@ -672,15 +706,15 @@ impl SemanticCommandContribution {
             return Ok(self);
         };
         let output_bounds = SemanticSourceBounds::from_logical_bounds(output_bounds);
-        let source_bounds = self.source_bounds.try_intersect(
+        let source_bounds = self.source_bounds.try_limit_to_output(
             output_bounds,
             "root observable source output-domain intersection",
         )?;
-        let affected_bounds = self.affected_bounds.try_intersect(
+        let affected_bounds = self.affected_bounds.try_limit_to_output(
             output_bounds,
             "root observable affected output-domain intersection",
         )?;
-        let current_parent = self.current_parent.try_intersect(
+        let current_parent = self.current_parent.try_limit_to_output(
             output_bounds,
             "root current-parent output-domain intersection",
         )?;

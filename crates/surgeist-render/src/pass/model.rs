@@ -363,6 +363,7 @@ pub(crate) struct RuntimeResolvedAlphaMaskComposition {
     pub(super) texel_center_facts: RuntimeMaskTexelCenterFacts,
     pub(super) sampling: ShaderMaskSamplingKey,
     value: crate::layer::MaskValue,
+    application: crate::layer::MaskApplication,
 }
 
 impl RuntimeResolvedAlphaMaskComposition {
@@ -372,6 +373,7 @@ impl RuntimeResolvedAlphaMaskComposition {
         image_dimensions: PhysicalSize,
         sampling: ShaderMaskSamplingKey,
         value: crate::layer::MaskValue,
+        application: crate::layer::MaskApplication,
     ) -> Result<Self> {
         let maximum_x = bounds.x() + bounds.width();
         let maximum_y = bounds.y() + bounds.height();
@@ -403,6 +405,7 @@ impl RuntimeResolvedAlphaMaskComposition {
             texel_center_facts: RuntimeMaskTexelCenterFacts::try_new(image_dimensions)?,
             sampling,
             value,
+            application,
         })
     }
 
@@ -433,6 +436,10 @@ impl RuntimeResolvedAlphaMaskComposition {
 
     pub(crate) const fn value(self) -> crate::layer::MaskValue {
         self.value
+    }
+
+    pub(crate) const fn application(self) -> crate::layer::MaskApplication {
+        self.application
     }
 }
 

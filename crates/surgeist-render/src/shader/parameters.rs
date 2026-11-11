@@ -550,7 +550,7 @@ impl BlurEdgeParameterBytes {
 /// affine translation plus zero alignment bytes `16..32`, mask rectangle
 /// `32..48`, image dimensions and pixelated lattice factors `48..64`, normalized
 /// texel-center facts `64..80`, opacity/blend/quality/extend `80..96`, and
-/// clip presence, mask value mode, source coordinate space and basic operator code `96..112`.
+/// clip presence, mask value and application bits, source coordinate space and basic operator code `96..112`.
 /// SourceOver is operator code zero; the separate local Plus mix code ignores it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CompositeParameterBytes([u8; 112]);
@@ -562,6 +562,7 @@ struct CompositeMaskParameterFacts {
     texel_center_facts: [f64; 4],
     sampling: ShaderMaskSamplingKey,
     value: crate::layer::MaskValue,
+    application: crate::layer::MaskApplication,
 }
 
 struct CompositeParameterFacts {
@@ -581,6 +582,7 @@ struct NarrowedCompositeMask {
     texel_centers: [f32; 4],
     sampling: ShaderMaskSamplingKey,
     value: crate::layer::MaskValue,
+    application: crate::layer::MaskApplication,
 }
 
 fn pixelated_mask_multipliers(
@@ -658,6 +660,7 @@ impl CompositeParameterBytes {
                 texel_center_facts: [half_x, half_y, texel_x, texel_y],
                 sampling: mask.sampling(),
                 value: mask.value(),
+                application: mask.application(),
             }
         });
         Self::try_from_facts(
@@ -749,6 +752,7 @@ impl CompositeParameterBytes {
                     texel_centers,
                     sampling: mask.sampling,
                     value: mask.value,
+                    application: mask.application,
                 })
             })
             .transpose()?;
@@ -772,13 +776,20 @@ impl CompositeParameterBytes {
             }
             write_u32(&mut bytes, 88, mask.sampling.quality().parameter_code());
             write_u32(&mut bytes, 92, mask.sampling.extend().parameter_code());
-            use crate::{MaskLuminanceSpace, layer::MaskValue};
+            use crate::{
+                MaskLuminanceSpace,
+                layer::{MaskApplication, MaskValue},
+            };
             let mask_value_code = match mask.value {
                 MaskValue::Alpha => 1,
                 MaskValue::Luminance(MaskLuminanceSpace::Srgb) => 2,
                 MaskValue::Luminance(MaskLuminanceSpace::LinearSrgb) => 3,
             };
-            write_u32(&mut bytes, 100, mask_value_code);
+            let mask_application = match mask.application {
+                MaskApplication::Attenuate => 0,
+                MaskApplication::CoverageSource => 4,
+            };
+            write_u32(&mut bytes, 100, mask_value_code | mask_application);
         }
 
         write_f32(&mut bytes, 80, opacity);
@@ -848,6 +859,7 @@ pub(crate) fn composite_parameter_bytes_for_gpu_vector_for_test(
             bounds: facts.mask_bounds,
             dimensions: facts.mask_dimensions,
             value: crate::layer::MaskValue::Alpha,
+            application: crate::layer::MaskApplication::Attenuate,
             texel_center_facts: [texel_x * 0.5, texel_y * 0.5, texel_x, texel_y],
             sampling: ShaderMaskSamplingKey::with_rendering(facts.quality, None, facts.extend),
         }
@@ -1089,6 +1101,7 @@ mod surface_grid_parameter_tests {
         let mask = CompositeMaskParameterFacts {
             bounds: [0.0, 0.0, 2.0, 3.0],
             value: crate::layer::MaskValue::Alpha,
+            application: crate::layer::MaskApplication::Attenuate,
             dimensions: [2, 3],
             texel_center_facts: [0.25, 1.0 / 6.0, 0.5, 1.0 / 3.0],
             sampling: ShaderMaskSamplingKey::with_rendering(
@@ -1446,6 +1459,7 @@ mod accounting_tests {
                         mask: Some(CompositeMaskParameterFacts {
                             bounds: [0.0, 0.0, 1.0, 1.0],
                             value: crate::layer::MaskValue::Alpha,
+                            application: crate::layer::MaskApplication::Attenuate,
                             dimensions: [0, 1],
                             texel_center_facts: [0.5, 0.5, 1.0, 1.0],
                             sampling: ShaderMaskSamplingKey::with_rendering(

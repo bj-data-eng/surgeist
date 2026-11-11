@@ -560,6 +560,13 @@ before coverage interpolation. Resolved alpha and luminance masks both use
 `supports_resolved_alpha_mask_execution`. Authored mask interpretation uses
 the separate `supports_luminance_mask_mode` capability. [CSS Masking 1, mask processing](https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#MaskValues)
 
+`Scene::masked_group` applies resolved mask coverage to isolated children.
+Supply `ResolvedMaskLayer` entries from top to bottom. Render starts with
+the bottom layer's coverage and combines each higher layer with the result.
+`ResolvedMaskSource::Transparent` participates with zero coverage. An empty
+stack appends the children directly. The resolved path uses the existing
+GPU coverage and Porter–Duff capabilities. [CSS Masking 1, mask compositing](https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#the-mask-composite)
+
 ## Layer composition and isolation
 
 `LayerComposition::try_porter_duff(operator, blend)` pairs one of the twelve basic

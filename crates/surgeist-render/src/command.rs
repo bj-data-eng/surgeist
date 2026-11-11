@@ -4,7 +4,7 @@ use super::{
     frame::{FrameContext, FramePlan, LogicalBounds},
     geometry::offset_radii,
     image::{ResolvedImageRegion, ResolvedMaskUploadDescriptor},
-    layer::{LayerFilter, MaskValue},
+    layer::{LayerFilter, MaskApplication, MaskValue},
     paint::PaintKind,
     scene::Command,
     shape::ShapeKind,
@@ -225,6 +225,7 @@ pub(crate) struct RenderLayerMask {
     upload: SharedValue<ResolvedMaskUploadDescriptor>,
     annihilates_source: bool,
     value: MaskValue,
+    application: MaskApplication,
 }
 
 impl RenderLayerMask {
@@ -232,6 +233,7 @@ impl RenderLayerMask {
         image: &Image,
         bounds: Rect,
         value: MaskValue,
+        application: MaskApplication,
         capabilities: Capabilities,
         account: &Account,
     ) -> Result<Self> {
@@ -249,11 +251,20 @@ impl RenderLayerMask {
             upload,
             annihilates_source,
             value,
+            application,
         })
     }
 
     pub(crate) const fn value(&self) -> MaskValue {
         self.value
+    }
+
+    pub(crate) const fn application(&self) -> MaskApplication {
+        self.application
+    }
+
+    pub(crate) fn supplies_coverage(&self) -> bool {
+        self.application == MaskApplication::CoverageSource
     }
 
     #[must_use]
@@ -1182,8 +1193,15 @@ impl NormalizedLayer {
             .transpose()?;
         let mask = layer
             .resolved_image_mask()
-            .map(|(image, bounds, value)| {
-                RenderLayerMask::from_resolved_in(image, bounds, value, capabilities, account)
+            .map(|(image, bounds, value, application)| {
+                RenderLayerMask::from_resolved_in(
+                    image,
+                    bounds,
+                    value,
+                    application,
+                    capabilities,
+                    account,
+                )
             })
             .transpose()?;
         let backdrop = layer
