@@ -5,7 +5,9 @@ use super::super::{
     validation::{validate_color, validate_finite_f64, validate_point},
 };
 use super::{clip::ClipInput, image::ResolvedImageResource};
-use crate::accounting::{Account, Hold, RenderWork};
+use crate::accounting::{
+    Account, Hold, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
+};
 
 const MAX_FILTER_BLUR_RADIUS: f64 = 256.0;
 
@@ -82,21 +84,36 @@ impl FilterList {
     /// the `Filters` /
     /// [`crate::PrimitiveOperation::GpuBlurFilterExecution`] identity, and a
     /// drop shadow returns `Filters` /
-    /// [`crate::PrimitiveOperation::GpuDropShadowFilterExecution`], as a bare
-    /// [`UnsupportedPrimitive`] rather than a crate [`Error`].
+    /// [`crate::PrimitiveOperation::GpuDropShadowFilterExecution`]. Retrieve
+    /// either typed identity through [`Error::unsupported_primitive`].
+    ///
+    /// The attempt admits actual result capacity before projection and records
+    /// one visit per inspected operation. A refusal publishes no pipeline.
     pub fn color_filter_pipeline(
         &self,
-    ) -> std::result::Result<Option<ColorFilterPipeline>, UnsupportedPrimitive> {
-        let Some(ops) = self.ops.as_deref() else {
-            return Ok(None);
-        };
-
-        let mut color_ops = Vec::with_capacity(ops.len());
-        for op in ops {
-            color_ops.push(ColorFilterOp::try_from_filter_op(op)?);
-        }
-
-        Ok(Some(ColorFilterPipeline { ops: color_ops }))
+        accounting: &mut RenderAccountingContext,
+    ) -> Result<Option<ColorFilterPipeline>> {
+        accounting.run(
+            RenderAttemptKind::ColorFilterProjection,
+            RenderPhase::Preparation,
+            |account| {
+                account.phase(RenderPhase::Preparation, || {
+                    let Some(ops) = self.ops.as_deref() else {
+                        return Ok(None);
+                    };
+                    let mut color_ops = account.retained(ops.len())?;
+                    for op in ops {
+                        account.work(RenderWork::FilterOperationVisits, 1)?;
+                        let operation = ColorFilterOp::try_from_filter_op(op)
+                            .map_err(Error::unsupported_render_primitive)?;
+                        color_ops.append_slot()?.write(operation);
+                    }
+                    Ok(Some(ColorFilterPipeline {
+                        ops: color_ops.into_preparation()?.into_retained(),
+                    }))
+                })
+            },
+        )
     }
 }
 

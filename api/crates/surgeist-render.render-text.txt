@@ -475,6 +475,10 @@ pub surgeist_render::RenderAccountingError::Invariant
 pub surgeist_render::RenderAccountingError::LedgerDefect(surgeist_ledger::Defect)
 pub surgeist_render::RenderAccountingError::Refused(surgeist_render::RenderRefusal)
 pub surgeist_render::RenderAccountingError::Setup(surgeist_render::RenderAccountingSetupError)
+pub surgeist_render::RenderAccountingError::StandaloneAllocation
+pub surgeist_render::RenderAccountingError::StandaloneAllocation::resource: surgeist_render::RenderResource
+pub surgeist_render::RenderAccountingError::StandaloneCapacityOverflow
+pub surgeist_render::RenderAccountingError::StandaloneCapacityOverflow::resource: surgeist_render::RenderResource
 impl core::convert::From<surgeist_render::RenderAccountingError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::RenderAccountingError) -> Self
 impl core::error::Error for surgeist_render::RenderAccountingError
@@ -488,6 +492,7 @@ pub surgeist_render::RenderAccountingSetupError::TimingUnavailable
 pub surgeist_render::RenderAttemptKind::Background
 pub surgeist_render::RenderAttemptKind::BoxDecoration
 pub surgeist_render::RenderAttemptKind::Clip
+pub surgeist_render::RenderAttemptKind::ColorFilterProjection
 pub surgeist_render::RenderAttemptKind::Frame
 pub surgeist_render::RenderAttemptKind::GlyphRun
 pub surgeist_render::RenderAttemptKind::ImageRepeat
@@ -1179,7 +1184,7 @@ pub fn surgeist_render::FilterDropShadow::try_from_shadow(shadow: surgeist_rende
 pub fn surgeist_render::FilterDropShadow::try_new(offset: surgeist_render::Point, blur: surgeist_render::FilterBlur, color: surgeist_render::Color) -> surgeist_render::Result<Self>
 pub struct surgeist_render::FilterList
 impl surgeist_render::FilterList
-pub fn surgeist_render::FilterList::color_filter_pipeline(&self) -> core::result::Result<core::option::Option<surgeist_render::style::filter::ColorFilterPipeline>, surgeist_render::UnsupportedPrimitive>
+pub fn surgeist_render::FilterList::color_filter_pipeline(&self, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<core::option::Option<surgeist_render::style::filter::ColorFilterPipeline>>
 pub const fn surgeist_render::FilterList::is_none(&self) -> bool
 pub const fn surgeist_render::FilterList::none() -> Self
 pub fn surgeist_render::FilterList::ops(&self) -> &[surgeist_render::FilterOp]

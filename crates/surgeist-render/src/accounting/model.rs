@@ -209,9 +209,11 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::BoxDecoration)
             || self.supported_for(RenderAttemptKind::PaintGradient)
             || self.supported_for(RenderAttemptKind::SdrColor)
+            || self.supported_for(RenderAttemptKind::ColorFilterProjection)
     }
     pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
         match kind {
+            RenderAttemptKind::ColorFilterProjection => matches!(self, Self::FilterOperationVisits),
             RenderAttemptKind::SdrColor => {
                 matches!(self, Self::PaintVisits | Self::CoordinateVisits)
             }
@@ -892,6 +894,8 @@ pub enum RenderAttemptKind {
     PaintGradient,
     /// Standalone resolved color preparation for an SDR sRGB destination.
     SdrColor,
+    /// Standalone projection of an authored list into a color-only pipeline.
+    ColorFilterProjection,
 }
 /// Semantic terminal outcome, separate from last-successful frame statistics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -976,6 +980,16 @@ pub enum RenderAccountingError {
     Setup(RenderAccountingSetupError),
     /// A general named limit refused.
     Refused(RenderRefusal),
+    /// A standalone backing reservation failed before acquiring custody.
+    StandaloneAllocation {
+        /// The requested backing dimension.
+        resource: RenderResource,
+    },
+    /// The requested standalone backing size cannot be represented.
+    StandaloneCapacityOverflow {
+        /// The requested backing dimension.
+        resource: RenderResource,
+    },
     /// This dimension has no producer at the selected operation boundary.
     InvalidLimit(RenderWork),
     /// A private fixed-scope, checkpoint or participant contract was violated.

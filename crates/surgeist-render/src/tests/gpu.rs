@@ -103,7 +103,7 @@ fn image_from_buffer(buffer: ImageBuffer) -> Image {
 
 fn color_filter_pipeline<const N: usize>(ops: [ColorFilterOp; N]) -> ColorFilterPipeline {
     color_filter_list(ops)
-        .color_filter_pipeline()
+        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
         .unwrap()
         .unwrap()
 }
@@ -2550,7 +2550,7 @@ fn color_filter_reference_straight_pixels_for_test(
     )
     .expect("the color-filter oracle operations must form one authored filter");
     let pipeline = filter
-        .color_filter_pipeline()
+        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
         .expect("the color-filter oracle fixture contains only color functions")
         .expect("the color-filter oracle fixture contains one nonempty color run");
     match working_format {
@@ -7103,7 +7103,7 @@ fn materialized_color_filter_fusion_matches_reference_bytes() {
         ColorFilterOp::Saturate(FilterAmount::try_new(1.5).unwrap()),
     ]);
     let pipeline = filters
-        .color_filter_pipeline()
+        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
         .unwrap()
         .expect("color-only filters should produce an executable color pipeline");
     let compiled = CompiledColorFilterPipeline::try_from_pipeline(&pipeline).unwrap();

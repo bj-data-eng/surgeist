@@ -2778,7 +2778,7 @@ fn filter_lists_classify_ordered_color_filter_pipelines() {
     .unwrap();
 
     let pipeline = list
-        .color_filter_pipeline()
+        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
         .expect("color-only filter lists should classify")
         .expect("color-only filter lists should produce a pipeline");
 
@@ -2799,7 +2799,106 @@ fn filter_lists_classify_ordered_color_filter_pipelines() {
 
 #[test]
 fn filter_none_has_no_executable_color_pipeline() {
-    assert_eq!(FilterList::none().color_filter_pipeline(), Ok(None));
+    assert!(
+        FilterList::none()
+            .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn color_filter_projection_accounts_for_exact_output_and_work_limits() {
+    use crate::{
+        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
+        RenderClock, RenderLimits, RenderPhase, RenderProfile, RenderQuantity, RenderResource,
+        RenderWork,
+    };
+    use std::{
+        sync::atomic::{AtomicU64, Ordering},
+        time::Duration,
+    };
+
+    static TICKS: AtomicU64 = AtomicU64::new(0);
+    fn clock() -> Duration {
+        Duration::from_nanos(TICKS.fetch_add(1, Ordering::Relaxed))
+    }
+    let brightness = FilterAmount::try_new(1.2).unwrap();
+    let opacity = UnitFilterAmount::try_new(0.75).unwrap();
+    let list = FilterList::try_ops(vec![
+        FilterOp::brightness(brightness),
+        FilterOp::opacity(opacity),
+    ])
+    .unwrap();
+    let bytes = (2 * std::mem::size_of::<ColorFilterOp>()) as u64;
+    let options = RenderAccountingOptions::new()
+        .with_clock(RenderClock::Host(clock))
+        .with_profile(RenderProfile::Summary { timing: true });
+    let mut accounting = RenderAccountingContext::new(options);
+    let visit = RenderWork::FilterOperationVisits;
+    let resource = RenderResource::RetainedCpuBytes;
+    for (byte_limit, visit_limit, expected_peak, expected_work, refusal) in [
+        (bytes - 1, 2, 0, 0, Some(RenderQuantity::Resource(resource))),
+        (bytes, 1, bytes, 1, Some(RenderQuantity::Work(visit))),
+        (bytes, 2, bytes, 2, None),
+    ] {
+        accounting.set_options(
+            options.with_limits(
+                RenderLimits::new()
+                    .with_retained_bytes(byte_limit)
+                    .with_work_limit(visit, visit_limit)
+                    .unwrap(),
+            ),
+        );
+        let result = list.color_filter_pipeline(&mut accounting);
+        let report = accounting.last_attempt().unwrap().attempt().unwrap();
+        assert_eq!(report.kind(), RenderAttemptKind::ColorFilterProjection);
+        assert_eq!(report.phase_count(RenderPhase::Preparation), 1);
+        assert!(report.phase_elapsed(RenderPhase::Preparation).unwrap() > Duration::ZERO);
+        assert_eq!(
+            report.phase_usage(RenderPhase::Preparation).work(visit),
+            expected_work
+        );
+        let usage = report.usage();
+        assert_eq!(usage.live(resource), 0);
+        assert_eq!(usage.peak(resource), expected_peak);
+        assert_eq!(usage.work(visit), expected_work);
+        assert_eq!(report.refusal().map(|error| error.quantity()), refusal);
+        if refusal.is_some() {
+            assert!(result.unwrap_err().accounting_diagnostic().is_some());
+            assert_eq!(report.status(), RenderAttemptStatus::Refused);
+            assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+        } else {
+            assert_eq!(
+                result.unwrap().unwrap().ops(),
+                [
+                    ColorFilterOp::Brightness(brightness),
+                    ColorFilterOp::Opacity(opacity)
+                ]
+            );
+            assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+            assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), bytes);
+        }
+    }
+
+    accounting.set_options(
+        options.with_limits(
+            RenderLimits::new()
+                .with_retained_bytes(0)
+                .with_work_limit(visit, 0)
+                .unwrap(),
+        ),
+    );
+    assert!(
+        FilterList::none()
+            .color_filter_pipeline(&mut accounting)
+            .unwrap()
+            .is_none()
+    );
+    let report = accounting.last_attempt().unwrap().attempt().unwrap();
+    assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+    assert_eq!(report.usage().peak(resource), 0);
+    assert_eq!(report.usage().work(visit), 0);
 }
 
 #[test]
@@ -3083,9 +3182,11 @@ fn color_filter_pipeline_rejects_pixel_moving_operations_with_typed_diagnostics(
     ];
 
     for (case, list, operation, label) in cases {
-        let unsupported = list
-            .color_filter_pipeline()
+        let mut accounting = crate::RenderAccountingContext::default();
+        let error = list
+            .color_filter_pipeline(&mut accounting)
             .expect_err("pixel-moving operations are not color-only filters");
+        let unsupported = error.unsupported_primitive().unwrap();
 
         assert_eq!(
             unsupported,
@@ -3096,6 +3197,27 @@ fn color_filter_pipeline_rejects_pixel_moving_operations_with_typed_diagnostics(
             unsupported.label(),
             label,
             "{case} returned the wrong label"
+        );
+        let report = accounting.last_attempt().unwrap().attempt().unwrap();
+        assert_eq!(
+            report.status(),
+            crate::RenderAttemptStatus::Failed(crate::ErrorCode::UnsupportedPrimitive)
+        );
+        assert_eq!(
+            report
+                .usage()
+                .work(crate::RenderWork::FilterOperationVisits),
+            2
+        );
+        assert_eq!(
+            report.usage().live(crate::RenderResource::RetainedCpuBytes),
+            0
+        );
+        assert_eq!(
+            report
+                .usage()
+                .work(crate::RenderWork::PreparedTransferredBytes),
+            0
         );
     }
 }
