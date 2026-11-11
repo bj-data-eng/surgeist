@@ -605,10 +605,10 @@ to the resulting work and allocations.
 Render captures the layer's completed children over transparent black.
 Positive sigma uses horizontal and vertical RGBA Gaussian passes with
 transparent-black sampling outside the input. The output includes the
-filter halo wherever it can contribute to the parent. Zero sigma still
-groups the children and skips both Gaussian passes. Layer clipping,
-resolved alpha masking, opacity, and composition apply to the group
-output. See the [layer composition contract](#layer-composition-and-isolation)
+filter halo wherever it can contribute to the parent. Sigma that is zero
+on the device grid still groups the children and skips both Gaussian passes.
+Layer clipping, resolved alpha masking, opacity, and composition apply to the
+group output. See the [layer composition contract](#layer-composition-and-isolation)
 for the finite operation domain of destructive operators.
 
 `FilterCapabilities::supports_layer_filters` and

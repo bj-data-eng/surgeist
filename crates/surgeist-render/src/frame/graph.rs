@@ -1266,7 +1266,6 @@ struct SemanticCommandPlanningState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum CaptureBoundsCoordinateSpace {
     Local,
-    FilterLocal,
     SurfaceGrid,
     #[cfg(test)]
     ForcedMappedForTest,
@@ -1286,8 +1285,7 @@ impl CaptureBoundsCoordinateSpace {
         raster_transform: Transform,
     ) -> Result<Option<NonEmptyLogicalBounds>> {
         let transform = match self {
-            Self::Local => return Ok(Some(bounds)),
-            Self::FilterLocal => capture_transform,
+            Self::Local => capture_transform,
             Self::SurfaceGrid => raster_transform,
             #[cfg(test)]
             Self::ForcedMappedForTest => raster_transform,
@@ -1661,7 +1659,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 next_parent_locality: state.parent_locality,
             });
         };
-        let grid_to_surface = if state.capture_space == CaptureBoundsCoordinateSpace::FilterLocal {
+        let grid_to_surface = if state.capture_space == CaptureBoundsCoordinateSpace::Local {
             state.parent_to_surface
         } else {
             raster_transform
@@ -1751,9 +1749,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         // The shader's destination coordinates belong to the parent image.
         // Ancestor transforms still determine raster density for local captures.
         let layer_to_destination = match state.capture_space {
-            CaptureBoundsCoordinateSpace::Local | CaptureBoundsCoordinateSpace::FilterLocal => {
-                layer_transform
-            }
+            CaptureBoundsCoordinateSpace::Local => layer_transform,
             CaptureBoundsCoordinateSpace::SurfaceGrid => layer_to_surface,
             #[cfg(test)]
             CaptureBoundsCoordinateSpace::ForcedMappedForTest => layer_to_surface,
@@ -1813,7 +1809,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         // The blur samples its own grid, even when the parent and other layers
         // use the final surface grid for pixel-sensitive drawing.
         let capture_space = if layer.foreground_blur.is_some() {
-            CaptureBoundsCoordinateSpace::FilterLocal
+            CaptureBoundsCoordinateSpace::Local
         } else {
             state.capture_space
         };
@@ -1936,7 +1932,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             return Ok(None);
         }
         let spatial = if let Some((spatial, _)) = finite_domain
-            && capture_space != CaptureBoundsCoordinateSpace::FilterLocal
+            && capture_space != CaptureBoundsCoordinateSpace::Local
         {
             spatial
         } else {

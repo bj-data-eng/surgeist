@@ -55,6 +55,10 @@ impl FrameContext {
                     ),
                     AlgorithmFilterStep::Blur(blur) => {
                         let support = InclusiveFilterKernelSupport::try_new(blur, raster_scale)?;
+                        if support.device_radius == 0 {
+                            // A positive authored sigma can round to zero on the device grid.
+                            continue;
+                        }
                         let result_bounds = support.inflate(source_bounds)?;
                         let edge_policy = match source_role {
                             FilterSourceRole::Ordinary => FilterEdgePolicy::TransparentBlack,
