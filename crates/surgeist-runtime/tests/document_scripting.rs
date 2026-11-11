@@ -20,6 +20,8 @@ use surgeist_runtime::{document_scripting::*, *};
 
 #[path = "document_scripting/document_fragment.rs"]
 mod document_fragment;
+#[path = "document_scripting/element_projection.rs"]
+mod element_projection;
 #[path = "document_scripting/script_preparation.rs"]
 mod script_preparation;
 #[path = "document_scripting/source_events.rs"]
@@ -2257,6 +2259,7 @@ fn main() {
             "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
             "document-fragment-retirement" => document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement(),
             "document-fragment-watched-document" => document_fragment::fragment_observes_a_destination_with_an_existing_host_watch(),
+            "document-element-projection" => element_projection::document_projects_its_current_native_element(),
             "character-data-creation" => text_comment::creates_canonical_text_and_comments(),
             "character-data-mutation" => text_comment::edits_canonical_character_data_and_live_ranges(),
             "character-data-arity" => text_comment::rejects_missing_arguments_before_coercion(),
@@ -2334,6 +2337,7 @@ fn main() {
     document_fragment::creates_fragments_through_the_canonical_document();
     document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement();
     document_fragment::fragment_observes_a_destination_with_an_existing_host_watch();
+    element_projection::document_projects_its_current_native_element();
     text_comment::creates_canonical_text_and_comments();
     text_comment::edits_canonical_character_data_and_live_ranges();
     text_comment::rejects_missing_arguments_before_coercion();
