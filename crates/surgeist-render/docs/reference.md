@@ -1114,7 +1114,8 @@ caller clones do not retain the context's participant.
 Render admits actual color-operation vector capacity before inspection and
 transfers it only when the complete pipeline succeeds. `none` produces no
 pipeline or output backing. Blur and drop shadow retain their typed primitive
-identities through `Error::unsupported_primitive`.
+identities through `Error::unsupported_primitive`. Backing reservation and size
+failures use the fixed standalone Render accounting diagnostics.
 
 `RenderAccountingContext::last_attempt` borrows a `RenderStandaloneReport` for
 the latest started operation. Its `kind` and terminal `status` identify that

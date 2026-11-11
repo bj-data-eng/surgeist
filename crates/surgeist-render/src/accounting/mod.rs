@@ -788,6 +788,9 @@ impl Account {
         AccountedVec::new(self, count, RenderResource::ScratchCpuBytes)
     }
     pub(crate) fn allocation_error(&self, resource: RenderResource) -> Error {
+        if self.kind == RenderAttemptKind::ColorFilterProjection {
+            return RenderAccountingError::StandaloneAllocation { resource }.into();
+        }
         #[cfg(feature = "render-paint")]
         if self.is_paint_gradient() {
             return crate::PaintGradientError::Allocation { resource }.into();
@@ -813,6 +816,9 @@ impl Account {
         .into()
     }
     pub(crate) fn capacity_error(&self, resource: RenderResource) -> Error {
+        if self.kind == RenderAttemptKind::ColorFilterProjection {
+            return RenderAccountingError::StandaloneCapacityOverflow { resource }.into();
+        }
         #[cfg(feature = "render-paint")]
         if self.is_paint_gradient() {
             return crate::PaintGradientError::CapacityOverflow { resource }.into();

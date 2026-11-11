@@ -7,7 +7,13 @@ mod resolved_reports;
 fn color_filter_projection_backing_failure_stays_in_render_accounting() {
     let resource = RenderResource::RetainedCpuBytes;
     let mut context = RenderAccountingContext::default();
-    for element_bytes in [1, 2] {
+    for (element_bytes, expected) in [
+        (1, RenderAccountingError::StandaloneAllocation { resource }),
+        (
+            2,
+            RenderAccountingError::StandaloneCapacityOverflow { resource },
+        ),
+    ] {
         let error = context
             .run(
                 RenderAttemptKind::ColorFilterProjection,
@@ -23,7 +29,7 @@ fn color_filter_projection_backing_failure_stays_in_render_accounting() {
                 },
             )
             .unwrap_err();
-        assert!(error.accounting_diagnostic().is_some(), "{error:?}");
+        assert_eq!(error.accounting_diagnostic(), Some(expected));
         let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().live(resource), 0);
         assert_eq!(report.usage().peak(resource), 0);

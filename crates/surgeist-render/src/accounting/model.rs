@@ -980,6 +980,16 @@ pub enum RenderAccountingError {
     Setup(RenderAccountingSetupError),
     /// A general named limit refused.
     Refused(RenderRefusal),
+    /// A standalone backing reservation failed before acquiring custody.
+    StandaloneAllocation {
+        /// The requested backing dimension.
+        resource: RenderResource,
+    },
+    /// The requested standalone backing size cannot be represented.
+    StandaloneCapacityOverflow {
+        /// The requested backing dimension.
+        resource: RenderResource,
+    },
     /// This dimension has no producer at the selected operation boundary.
     InvalidLimit(RenderWork),
     /// A private fixed-scope, checkpoint or participant contract was violated.

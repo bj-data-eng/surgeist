@@ -475,6 +475,10 @@ pub surgeist_render::RenderAccountingError::Invariant
 pub surgeist_render::RenderAccountingError::LedgerDefect(surgeist_ledger::Defect)
 pub surgeist_render::RenderAccountingError::Refused(surgeist_render::RenderRefusal)
 pub surgeist_render::RenderAccountingError::Setup(surgeist_render::RenderAccountingSetupError)
+pub surgeist_render::RenderAccountingError::StandaloneAllocation
+pub surgeist_render::RenderAccountingError::StandaloneAllocation::resource: surgeist_render::RenderResource
+pub surgeist_render::RenderAccountingError::StandaloneCapacityOverflow
+pub surgeist_render::RenderAccountingError::StandaloneCapacityOverflow::resource: surgeist_render::RenderResource
 impl core::convert::From<surgeist_render::RenderAccountingError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::RenderAccountingError) -> Self
 impl core::error::Error for surgeist_render::RenderAccountingError
