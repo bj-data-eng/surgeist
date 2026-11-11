@@ -288,6 +288,9 @@ mod node_projection;
 #[path = "../tests/bin/surgeist-layout-generate/measurement/original_block_axes_profile.rs"]
 mod original_block_axes_profile;
 #[cfg(test)]
+#[path = "../tests/bin/surgeist-layout-generate/measurement/original_flex_axes_profile.rs"]
+mod original_flex_axes_profile;
+#[cfg(test)]
 #[path = "../tests/bin/surgeist-layout-generate/measurement/original_flex_parent_profile.rs"]
 mod original_flex_parent_profile;
 #[cfg(test)]

@@ -20,7 +20,9 @@ use crate::horizontal_br_font_band_profile;
 use crate::original_subgrid_body_profile;
 use crate::prepared_atomic_percentage_profile;
 use crate::{empty_line_br_font_band_profile, vertical_br_font_band_profile};
-use crate::{original_block_axes_profile, original_flex_parent_profile};
+use crate::{
+    original_block_axes_profile, original_flex_axes_profile, original_flex_parent_profile,
+};
 pub(super) use flex_content_text::FlexContentText;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,6 +36,7 @@ pub(super) enum BoxObservationRequest {
     OriginalFlexParent,
     OriginalPercentageFlexParent,
     OriginalBlockAxes,
+    OriginalFlexAxes,
     OriginalSubgridBody,
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
@@ -76,6 +79,9 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::OriginalBlockAxes.input_bytes() => {
                 Ok(Self::OriginalBlockAxes)
             }
+            Some(bytes) if Some(bytes) == Self::OriginalFlexAxes.input_bytes() => {
+                Ok(Self::OriginalFlexAxes)
+            }
             Some(bytes) if Some(bytes) == Self::OriginalSubgridBody.input_bytes() => {
                 Ok(Self::OriginalSubgridBody)
             }
@@ -113,6 +119,10 @@ impl BoxObservationRequest {
             Self::OriginalBlockAxes => Some((
                 original_block_axes_profile::SCRIPT_PATH,
                 original_block_axes_profile::SCRIPT,
+            )),
+            Self::OriginalFlexAxes => Some((
+                original_flex_axes_profile::SCRIPT_PATH,
+                original_flex_axes_profile::SCRIPT,
             )),
             Self::OriginalSubgridBody => Some((
                 original_subgrid_body_profile::SCRIPT_PATH,
@@ -160,6 +170,7 @@ impl BoxObservationRequest {
                 Some(original_flex_parent_profile::percentage::REQUEST)
             }
             Self::OriginalBlockAxes => Some(original_block_axes_profile::REQUEST),
+            Self::OriginalFlexAxes => Some(original_flex_axes_profile::REQUEST),
             Self::OriginalSubgridBody => Some(original_subgrid_body_profile::REQUEST),
             Self::PreparedAtomicPercentage => Some(prepared_atomic_percentage_profile::REQUEST),
             Self::HorizontalBrFontBand => Some(horizontal_br_font_band_profile::REQUEST),
@@ -720,7 +731,9 @@ pub(super) fn decode(
         .and_then(WireViewport::hypothetical_block_offset);
     let requires_block_offset = matches!(
         request,
-        BoxObservationRequest::VerticalBrFontBand | BoxObservationRequest::OriginalBlockAxes
+        BoxObservationRequest::VerticalBrFontBand
+            | BoxObservationRequest::OriginalBlockAxes
+            | BoxObservationRequest::OriginalFlexAxes
     ) || (request == BoxObservationRequest::EmptyLineBrFontBand
         && wire
             .style
@@ -817,6 +830,7 @@ pub(super) fn decode(
         | BoxObservationRequest::OriginalFlexParent
         | BoxObservationRequest::OriginalPercentageFlexParent
         | BoxObservationRequest::OriginalBlockAxes
+        | BoxObservationRequest::OriginalFlexAxes
         | BoxObservationRequest::OriginalSubgridBody
         | BoxObservationRequest::PreparedAtomicPercentage
         | BoxObservationRequest::HorizontalBrFontBand
@@ -857,7 +871,10 @@ pub(super) fn decode(
         None
     };
     let root = wire.validate(&context, "horizontal-tb", use_rounding, true)?;
-    if request == BoxObservationRequest::OriginalBlockAxes {
+    if matches!(
+        request,
+        BoxObservationRequest::OriginalBlockAxes | BoxObservationRequest::OriginalFlexAxes
+    ) {
         context.compatible(
             root_local_positioned
                 && use_rounding
@@ -866,9 +883,9 @@ pub(super) fn decode(
                     .all(|key| has_attribute(&viewport, key, "ltr"))
                 && has_attribute(&viewport, "hypothetical-inline-offset", "0px"),
             "viewport",
-            "original Block axes require their first-block root-local frame",
+            "original axes require their first-block root-local frame",
         )?;
-        validate_original_block_axes(&root, &context)?;
+        validate_original_axes(&root, &context, request)?;
     }
     if root_local_positioned {
         let Observation::Geometry {
@@ -908,21 +925,27 @@ fn has_attribute(attrs: &Attributes, name: &str, value: &str) -> bool {
         .any(|(key, actual)| *key == name && actual == value)
 }
 
-fn validate_original_block_axes(
+fn validate_original_axes(
     root: &Node,
     context: &Context<'_>,
+    request: BoxObservationRequest,
 ) -> Result<(), MeasurementError> {
+    let (root_display, root_width, root_height, second_height) = match request {
+        BoxObservationRequest::OriginalBlockAxes => ("block", "100px", "100px", "30px"),
+        BoxObservationRequest::OriginalFlexAxes => ("flex", "180px", "140px", "35px"),
+        _ => unreachable!("only the original axis profiles validate their fixed box trees"),
+    };
     let [first, second] = root.children.as_slice() else {
         return Err(context.error(
             "children",
             MeasurementErrorKind::ContradictoryFields,
-            "original Block axes require two source children",
+            "original axes require two source children",
         ));
     };
-    for (index, (node, width, height)) in [
-        (root, "100px", "100px"),
-        (first, "30px", "20px"),
-        (second, "20px", "30px"),
+    for (index, (node, display, width, height)) in [
+        (root, root_display, root_width, root_height),
+        (first, "block", "30px", "20px"),
+        (second, "block", "20px", second_height),
     ]
     .into_iter()
     .enumerate()
@@ -940,11 +963,19 @@ fn validate_original_block_axes(
                 && node.text.is_none()
                 && (index == 0 || node.children.is_empty())
                 && has_attribute(&node.attrs, "source-tag", "div")
-                && has_attribute(&node.attrs, "display", "block")
+                && has_attribute(&node.attrs, "display", display)
                 && has_attribute(&node.attrs, "width", width)
                 && has_attribute(&node.attrs, "height", height),
             "style",
-            "original Block axes require fixed source boxes without text",
+            "original axes require fixed source boxes without text",
+        )?;
+    }
+    if request == BoxObservationRequest::OriginalFlexAxes {
+        context.compatible(
+            has_attribute(&root.attrs, "align-items", "flex-end")
+                && has_attribute(&root.attrs, "justify-content", "space-between"),
+            "style",
+            "original Flex axes require their source alignment",
         )?;
     }
     Ok(())

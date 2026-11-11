@@ -14,6 +14,8 @@ mod horizontal_br_font_band_profile;
 mod layout;
 #[path = "bin/surgeist-layout-generate/measurement/original_block_axes_profile.rs"]
 mod original_block_axes_profile;
+#[path = "bin/surgeist-layout-generate/measurement/original_flex_axes_profile.rs"]
+mod original_flex_axes_profile;
 #[path = "bin/surgeist-layout-generate/measurement/original_flex_parent_profile.rs"]
 mod original_flex_parent_profile;
 #[path = "bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]

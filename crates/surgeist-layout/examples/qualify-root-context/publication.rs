@@ -584,6 +584,16 @@ fn require_positioned_original_inputs(owner: &Path, edition: Edition) -> Result<
                 crate::original_block_axes_profile::REQUEST,
             ),
         ],
+        Edition::Specialized(SpecializedProfile::OriginalFlexAxes) => [
+            (
+                "original_flex_axes.js",
+                crate::original_flex_axes_profile::SCRIPT.as_bytes(),
+            ),
+            (
+                "original_flex_axes_request.json",
+                crate::original_flex_axes_profile::REQUEST,
+            ),
+        ],
         _ => return Ok(()),
     };
     for (name, bytes) in inputs {
@@ -918,6 +928,7 @@ impl Origin {
                 SpecializedProfile::EmptyLineBrFontBand
                     | SpecializedProfile::OriginalPercentageFlexParent
                     | SpecializedProfile::OriginalBlockAxes
+                    | SpecializedProfile::OriginalFlexAxes
             )
         ) {
             None
@@ -1476,6 +1487,7 @@ fn specialized_cases(
                     authority::original_percentage_flex_parent_evidence()
                 }
                 SpecializedProfile::OriginalBlockAxes => authority::original_block_axes_evidence(),
+                SpecializedProfile::OriginalFlexAxes => authority::original_flex_axes_evidence(),
                 SpecializedProfile::OriginalSubgridBody => original_subgrid_body::evidence(),
                 SpecializedProfile::PreparedAtomicPercentage => {
                     authority::prepared_atomic_percentage_evidence()

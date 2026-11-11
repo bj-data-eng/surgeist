@@ -1096,3 +1096,103 @@ fn original_block_axes_admit_only_the_qualified_static_frame() {
         "viewport.rootContext.hypotheticalBlockOffset"
     );
 }
+
+#[test]
+fn original_flex_axes_require_the_qualified_static_frame() {
+    const REQUEST: &[u8] =
+        b"{\"schema_version\":1,\"original_flex_axes\":\"fixed-first-flex-v1\"}\n";
+
+    let make_box = |style, x, y, width, height, children| {
+        let rectangle = json!({"x": x, "y": y, "width": width, "height": height});
+        json!({
+            "layoutInput": "box", "tagName": "div", "style": style,
+            "unroundedLayout": rectangle, "smartRoundedLayout": rectangle,
+            "worldRoundedLayout": rectangle, "children": children,
+        })
+    };
+    let mut root = make_box(
+        json!({
+            "display": "flex", "position": "absolute", "boxSizing": "border-box",
+            "writingMode": "vertical-rl", "direction": "ltr",
+            "justifyContent": "space-between", "alignItems": "flex-end",
+            "size": {"width": {"unit": "px", "value": 180}, "height": {"unit": "px", "value": 140}},
+        }),
+        0,
+        0,
+        180,
+        140,
+        vec![
+            make_box(
+                json!({
+                    "display": "block", "writingMode": "vertical-rl", "direction": "ltr",
+                    "size": {"width": {"unit": "px", "value": 30}, "height": {"unit": "px", "value": 20}},
+                    "margin": {"top": {"unit": "px", "value": 13}, "left": {"unit": "px", "value": 11}},
+                }),
+                11,
+                13,
+                30,
+                20,
+                vec![],
+            ),
+            make_box(
+                json!({
+                    "display": "block", "writingMode": "vertical-rl", "direction": "ltr",
+                    "size": {"width": {"unit": "px", "value": 20}, "height": {"unit": "px", "value": 35}},
+                    "margin": {"bottom": {"unit": "px", "value": 7}},
+                }),
+                0,
+                98,
+                20,
+                35,
+                vec![],
+            ),
+        ],
+    );
+    root["gridAlignmentProfile"] = json!({"profile": 1, "owners": []});
+    root["useRounding"] = json!(true);
+    root["viewport"] = json!({"rootContext": {
+        "kind": "absolute-root-local",
+        "containingWidth": 800, "containingHeight": 600, "containingDirection": "ltr",
+        "hypotheticalDirection": "ltr", "hypotheticalDisplay": "flex",
+        "hypotheticalAnchor": "inline-start", "hypotheticalInlineOffset": 0,
+        "hypotheticalBlockOffset": 0,
+        "fallback": {
+            "initialContainingBlock": {"width": 800, "height": 600},
+            "nearestScrollport": "none",
+            "containingLimits": {"width": "unbounded", "height": "unbounded"},
+        },
+    }});
+    assert_eq!(
+        decode_fixture(&root).unwrap_err().field_path,
+        "viewport.rootContext.hypotheticalBlockOffset"
+    );
+    let request = BoxObservationRequest::from_input_bytes(Some(REQUEST))
+        .expect("the original Flex axis source profile must be admitted");
+    let decode_original = |value: &serde_json::Value| {
+        decode(
+            &value.to_string(),
+            "flex_axes_vertical_rl_row__border_box_ltr",
+            "border-box-ltr",
+            request,
+        )
+    };
+    assert!(matches!(
+        decode_original(&root).unwrap(),
+        DecodedMeasurement::Supported(_)
+    ));
+    for invalid_top in [Some(1), None] {
+        let mut altered = root.clone();
+        let context = altered["viewport"]["rootContext"].as_object_mut().unwrap();
+        if let Some(top) = invalid_top {
+            context.insert("hypotheticalBlockOffset".into(), json!(top));
+        } else {
+            context.remove("hypotheticalBlockOffset");
+        }
+        assert_eq!(
+            decode_original(&altered).unwrap_err().field_path,
+            "viewport.rootContext.hypotheticalBlockOffset"
+        );
+    }
+    root["style"]["alignItems"] = json!("center");
+    assert_eq!(decode_original(&root).unwrap_err().field_path, "style");
+}
