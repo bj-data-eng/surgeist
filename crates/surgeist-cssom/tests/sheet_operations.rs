@@ -42,6 +42,21 @@ fn construct(store: &mut CssomStore) -> CssomSheetId {
         .unwrap()
         .clone()
 }
+fn construct_without_parse_source(owner: &mut CssomStore) -> CssStyleSheet {
+    let mut edit = batch(owner);
+    let ticket = edit
+        .create_typed_sheet(
+            CssSheet::new(),
+            CssomSheetInputs::constructed(
+                version(CssomInputRole::Document, "d", 1),
+                "d".into(),
+                None,
+            ),
+        )
+        .unwrap();
+    let id = owner.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
+    owner.css_style_sheet(&id).unwrap()
+}
 fn captured_sheet(
     store: &CssomStore,
     snapshot: &CssomSnapshot,
@@ -1549,24 +1564,13 @@ fn utf16_rule_reaches_the_exact_canonical_source_backing_limit() {
         });
         // A native typed sheet starts without a parse source or a parsed
         // MediaList, so the inserted occurrence is its entire source backing.
-        let mut edit = batch(&owner);
-        let ticket = edit
-            .create_typed_sheet(
-                CssSheet::new(),
-                CssomSheetInputs::constructed(
-                    version(CssomInputRole::Document, "d", 1),
-                    "d".into(),
-                    None,
-                ),
-            )
-            .unwrap();
-        let id = owner.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
-        let sheet = owner.css_style_sheet(&id).unwrap();
+        let sheet = construct_without_parse_source(&mut owner);
+        let id = sheet.id();
         let before = owner.snapshot();
         let result = sheet.insert_rule(&mut owner, CssomSheetText::Utf16(original.clone()), None);
         if maximum == exact {
             assert_eq!(*result.unwrap().value(), 0);
-            assert_eq!(owner.snapshot().sheet_rules(&id).unwrap().len(), 1);
+            assert_eq!(owner.snapshot().sheet_rules(id).unwrap().len(), 1);
         } else {
             assert!(
                 matches!(
@@ -1576,7 +1580,123 @@ fn utf16_rule_reaches_the_exact_canonical_source_backing_limit() {
                 "{result:?}"
             );
             assert_eq!(owner.snapshot().revision(), before.revision());
-            assert!(owner.snapshot().sheet_rules(&id).unwrap().is_empty());
+            assert!(owner.snapshot().sheet_rules(id).unwrap().is_empty());
+        }
+    }
+}
+
+fn assert_source_free_utf8_sheet_rule(rule: &str) {
+    let mut owner = store(CssomLimits {
+        max_retained_source_bytes: 0,
+        ..Default::default()
+    });
+    let sheet = construct_without_parse_source(&mut owner);
+    let result = sheet.insert_rule(&mut owner, rule, None);
+    assert_eq!(
+        *result
+            .unwrap_or_else(|error| panic!("{rule}: {error}"))
+            .value(),
+        0
+    );
+    let snapshot = owner.snapshot();
+    let [rule] = snapshot.sheet_rules(sheet.id()).unwrap() else {
+        panic!("exactly one inserted rule");
+    };
+    assert!(snapshot.rule(rule).unwrap().insertion_origin().is_none());
+}
+
+#[test]
+fn retained_source_quota_allows_source_free_utf8_layer_at_zero() {
+    assert_source_free_utf8_sheet_rule("@layer foo;");
+}
+
+#[test]
+fn retained_source_quota_allows_source_free_utf8_namespace_at_zero() {
+    assert_source_free_utf8_sheet_rule("@namespace p 'urn:p';");
+}
+
+#[test]
+fn retained_source_quota_debits_shared_original_utf16_backing_once() {
+    use std::sync::Arc;
+    use surgeist_css::rule::CssRuleSyntax;
+    use surgeist_css::source::CssUtf16InputLimits;
+
+    let mut units = Vec::with_capacity(64);
+    units.extend("a {} /*".encode_utf16());
+    units.push(0xd800);
+    units.extend("*/".encode_utf16());
+    let mut distinct = Vec::with_capacity(units.capacity());
+    distinct.extend_from_slice(&units);
+    assert_eq!(distinct.capacity(), units.capacity());
+    let original = Arc::new(units);
+    let distinct = Arc::new(distinct);
+    let parse = CssRuleSyntax::classify_utf16(
+        &CssParser::default(),
+        original.clone(),
+        CssUtf16InputLimits::default(),
+        || Ok::<(), std::convert::Infallible>(()),
+    )
+    .unwrap();
+    let occurrence = parse
+        .syntax()
+        .as_ref()
+        .unwrap()
+        .origin()
+        .source()
+        .storage_usage()
+        .retained_bytes();
+    let original_bytes = original.capacity() * size_of::<u16>();
+    assert!(occurrence > original_bytes);
+    let exact = original_bytes + 2 * (occurrence - original_bytes);
+
+    for (maximum, second, should_fit) in [
+        (exact - 1, &original, false),
+        (exact, &distinct, false),
+        (exact, &original, true),
+    ] {
+        let mut owner = store(CssomLimits {
+            max_retained_source_bytes: maximum,
+            ..Default::default()
+        });
+        let sheet = construct_without_parse_source(&mut owner);
+        let first = sheet
+            .insert_rule(&mut owner, CssomSheetText::Utf16(original.clone()), None)
+            .unwrap();
+        assert_eq!(*first.value(), 0);
+        let before = owner.snapshot();
+        let result = sheet.insert_rule(&mut owner, CssomSheetText::Utf16(second.clone()), Some(1));
+        let after = owner.snapshot();
+        let rules = after.sheet_rules(sheet.id()).unwrap();
+        if should_fit {
+            assert_eq!(*result.unwrap().value(), 1);
+            let [first, second] = rules else {
+                panic!("two independently parsed rule occurrences");
+            };
+            let first = after
+                .rule(first)
+                .unwrap()
+                .insertion_origin()
+                .unwrap()
+                .source();
+            let second = after
+                .rule(second)
+                .unwrap()
+                .insertion_origin()
+                .unwrap()
+                .source();
+            assert!(!first.same_snapshot(second));
+            assert!(Arc::ptr_eq(first.original_utf16().unwrap(), &original));
+            assert!(Arc::ptr_eq(second.original_utf16().unwrap(), &original));
+        } else {
+            assert!(
+                matches!(
+                    result,
+                    Err(CssomError::Limit { resource: "retained parse source bytes", maximum: actual }) if actual == maximum
+                ),
+                "{result:?}"
+            );
+            assert_eq!(after.revision(), before.revision());
+            assert_eq!(rules.len(), 1);
         }
     }
 }
