@@ -1729,6 +1729,49 @@ mod pixelated_tests {
     }
 
     #[test]
+    fn atlas_refuses_a_registered_region_paired_with_an_empty_image() {
+        use super::super::image_atlas::ImageAtlasPlan;
+        use crate::{Image, PhysicalSize, Rect, Size, image::ResolvedImageRegion};
+
+        let account = Account::for_test();
+        let source = Image::from_rgba(Size::new(1.0, 1.0), vec![0, 0, 255, 255]).unwrap();
+        let empty = Image::from_rgba(Size::new(0.0, 1.0), Vec::<u8>::new()).unwrap();
+        let region =
+            ResolvedImageRegion::try_new(&source, Rect::new(0.0, 0.0, 1.0, 1.0), &account).unwrap();
+        let mut scene = VelloScene::default();
+        scene
+            .draw_image_region(&empty, region, kurbo::Affine::IDENTITY, &account)
+            .unwrap();
+        let error = ImageAtlasPlan::prepare(&scene.encoding, &scene.image_expansions, &account)
+            .err()
+            .expect("a registered region must match its source even when the image is empty");
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            "image atlas region must match its original source axes"
+        );
+
+        let mut scene = VelloScene::default();
+        scene.import_image(&empty, &account).unwrap();
+        scene
+            .draw_image(
+                &crate::encode::image_brush(&empty),
+                kurbo::Affine::IDENTITY,
+                &account,
+            )
+            .unwrap();
+        scene
+            .draw_image_region(&source, region, kurbo::Affine::IDENTITY, &account)
+            .unwrap();
+        let plan =
+            ImageAtlasPlan::prepare(&scene.encoding, &scene.image_expansions, &account).unwrap();
+        assert_eq!(plan.entries.len(), 1);
+        assert_eq!(plan.entries[0].extent(), PhysicalSize::new(1, 1));
+        assert_eq!(plan.encoding.draw_data[1], 0);
+        assert_eq!(plan.encoding.draw_data[4], (1 << 16) | 1);
+    }
+
+    #[test]
     fn pixelated_callback_error_preserves_its_cause_and_releases_the_draft() {
         use crate::accounting::{FrameFixture, RendererCpu};
         use crate::{RenderAccountingOptions, RenderAttemptStatus, RenderCpuScope, RenderResource};
