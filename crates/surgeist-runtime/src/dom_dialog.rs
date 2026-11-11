@@ -6,7 +6,7 @@
 use crate::dom_event::{
     DispatchCall, DispatchFunding, DomEventDispatchError, DomEventDispatchLimits,
     DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
-    EventInvocationOwner, NativeDomEvent, NativeEventCause,
+    DomEventTimestampUnavailable, EventInvocationOwner, NativeDomEvent, NativeEventCause,
 };
 use std::{
     cell::RefCell,
@@ -296,7 +296,7 @@ impl State {
                         request.subject(),
                         payload.old_state(),
                         payload.new_state(),
-                        None,
+                        Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
                         backing,
                     )
                 }
@@ -306,9 +306,11 @@ impl State {
                     creation,
                     backing,
                 ),
-                surgeist_dom::DomSourceEventKind::Close => {
-                    NativeDomEvent::dialog_close(request.subject(), None, backing)
-                }
+                surgeist_dom::DomSourceEventKind::Close => NativeDomEvent::dialog_close(
+                    request.subject(),
+                    Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
+                    backing,
+                ),
             },
             phase: Phase::Ready,
             _retained: retained,

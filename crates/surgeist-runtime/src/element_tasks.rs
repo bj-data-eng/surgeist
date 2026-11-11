@@ -8,7 +8,7 @@
 use crate::dom_event::{
     DispatchCall, DispatchFunding, DomEventDispatchError, DomEventDispatchLimits,
     DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
-    EventDispatchObservation, EventInvocationOwner, NativeDomEvent,
+    DomEventTimestampUnavailable, EventDispatchObservation, EventInvocationOwner, NativeDomEvent,
 };
 use crate::dom_lifecycle::NativeTaskRunning;
 use std::cell::{Cell, RefCell};
@@ -1341,10 +1341,12 @@ impl ElementTaskState {
                 .event_storage
                 .clone();
             let backing = crate::dom_event::EventBodyCustody::element(&mut retained, storage)?;
-            let creation = native_task
-                .map(|task| task.sample_event_creation(dom, cancel))
-                .transpose()
-                .map_err(DomElementTaskRuntimeError::Hosted)?;
+            let creation = match native_task {
+                Some(task) => task
+                    .sample_event_creation(dom, cancel)
+                    .map_err(DomElementTaskRuntimeError::Hosted)?,
+                None => Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
+            };
             task.event = Some(match value {
                 DomElementTask::DetailsToggle(details) => NativeDomEvent::details_toggle(
                     value.id().target(),

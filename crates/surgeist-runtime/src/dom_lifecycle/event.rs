@@ -97,24 +97,20 @@ impl HostedState {
         let origin = self
             .event_settings(dom, association, cancel)?
             .navigation_start;
-        self.sample_event_creation_at_origin(dom, association.global, origin, cancel)
+        let occurrence = self.sample_event_clock(dom, cancel)?.map_err(clock_error)?;
+        creation_observation(association.global, origin, occurrence).map(EventCreation)
     }
 
-    fn sample_event_creation_at_origin(
+    fn sample_event_clock(
         &mut self,
         dom: &DomEventDom<'_>,
-        global: DomHostedGlobalId,
-        origin: clock::CoarsenedSample,
         cancel: &AtomicBool,
-    ) -> Result<EventCreation, DomHostedRuntimeError> {
+    ) -> Result<Result<clock::Sample, clock::Error>, DomHostedRuntimeError> {
         self.step(cancel)?;
         self.source
             .admit_runtime_work(dom.raw(), 1, cancel)
             .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
-        let occurrence = self.clock.sample().map_err(clock_error)?;
-        Ok(EventCreation(creation_observation(
-            global, origin, occurrence,
-        )?))
+        Ok(self.clock.sample())
     }
 }
 
@@ -157,20 +153,25 @@ impl HostedEventClock {
                 .admit_runtime_work(dom.raw(), 1, cancel)
                 .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
         }
-        let occurrence = match state.clock.sample().and_then(|sample| sample.coarsen()) {
-            Ok(occurrence) => occurrence,
-            Err(error) => {
-                return Ok(Err(DomEventTimestampUnavailable::Provider(
-                    event_clock_failure(error),
-                )));
-            }
-        };
         let origin = clock::CoarsenedSample {
             source,
             microseconds: origin.microseconds(),
         };
-        creation_from_coarsened(global, origin, occurrence)
-            .map(|observation| Ok(EventCreation(observation)))
+        firing_creation_from_sample(global, origin, state.clock.sample())
+    }
+}
+
+fn firing_creation_from_sample(
+    global: DomHostedGlobalId,
+    origin: clock::CoarsenedSample,
+    sample: Result<clock::Sample, clock::Error>,
+) -> Result<Result<EventCreation, DomEventTimestampUnavailable>, DomHostedRuntimeError> {
+    match sample.and_then(|sample| sample.coarsen()) {
+        Ok(occurrence) => creation_from_coarsened(global, origin, occurrence)
+            .map(|observation| Ok(EventCreation(observation))),
+        Err(error) => Ok(Err(DomEventTimestampUnavailable::Provider(
+            event_clock_failure(error),
+        ))),
     }
 }
 
@@ -187,7 +188,7 @@ impl NativeTaskRunning {
         &self,
         dom: &DomEventDom<'_>,
         cancel: &AtomicBool,
-    ) -> Result<EventCreation, DomHostedRuntimeError> {
+    ) -> Result<Result<EventCreation, DomEventTimestampUnavailable>, DomHostedRuntimeError> {
         let owner = self
             .state
             .upgrade()
@@ -196,7 +197,8 @@ impl NativeTaskRunning {
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
-        state.sample_event_creation_at_origin(dom, self.global, self.time_origin, cancel)
+        let sample = state.sample_event_clock(dom, cancel)?;
+        firing_creation_from_sample(self.global, self.time_origin, sample)
     }
 }
 

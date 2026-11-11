@@ -2495,7 +2495,7 @@ impl NativeDomEvent {
     pub(crate) fn details_toggle(
         target: NodeId,
         payload: surgeist_html::elements::details::HtmlDetailsToggleEvent,
-        creation: Option<EventCreation>,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(
@@ -2504,7 +2504,7 @@ impl NativeDomEvent {
                 old_state: payload.old_state().as_str(),
                 new_state: payload.new_state().as_str(),
             }),
-            creation.ok_or(DomEventTimestampUnavailable::NoAuthenticatedClock),
+            creation,
             backing,
         )
     }
@@ -2525,15 +2525,10 @@ impl NativeDomEvent {
 
     pub(crate) fn dialog_close(
         target: NodeId,
-        creation: Option<EventCreation>,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
-        EventInvocationOwner::new(
-            target,
-            EventData::DialogClose,
-            creation.ok_or(DomEventTimestampUnavailable::NoAuthenticatedClock),
-            backing,
-        )
+        EventInvocationOwner::new(target, EventData::DialogClose, creation, backing)
     }
 
     /// Actual null-source Dialog toggle task payload, including equal states.
@@ -2541,7 +2536,7 @@ impl NativeDomEvent {
         target: NodeId,
         old: surgeist_html::elements::dialog::HtmlDialogState,
         new: surgeist_html::elements::dialog::HtmlDialogState,
-        creation: Option<EventCreation>,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(
@@ -2550,7 +2545,7 @@ impl NativeDomEvent {
                 old_state: old.as_str(),
                 new_state: new.as_str(),
             }),
-            creation.ok_or(DomEventTimestampUnavailable::NoAuthenticatedClock),
+            creation,
             backing,
         )
     }
