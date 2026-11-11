@@ -280,6 +280,14 @@ replays all twelve source-bound historical rectangle trees.
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri08-manifest-plain-box-predecessors
 ~~~
 
+The [remaining plain-box manifest edition](../../tests/layout/browser_parity/captured/fri08-manifest-plain-box-sources/qualification.json)
+covers forty variants across ten Grid, Grid Lanes, and Subgrid sources.
+Together the two plain-box editions cover all 52 active plain-box variants.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri08-manifest-plain-box-sources
+~~~
+
 ## Grid Lanes original diagnostics
 
 The [Grid Lanes diagnostic receipt](../../tests/layout/browser_parity/captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
