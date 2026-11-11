@@ -315,24 +315,32 @@ impl ClipSpan {
         work: &mut GeometryWork<'_, '_, '_>,
         (min, max): (f64, f64),
     ) -> Result<Self, PaintError> {
-        let nominal = work.coordinate(|| max - min)?;
-        let max_magnitude = work.coordinate(|| max.abs())?;
-        let min_magnitude = work.coordinate(|| min.abs())?;
-        let neg_min = work.coordinate(|| -min)?;
-        let (larger, smaller) = if work.coordinate(|| max_magnitude >= min_magnitude)? {
-            (max, neg_min)
-        } else {
-            (neg_min, max)
-        };
-        // Ordered by magnitude, the subtraction and residual form an
-        // error-free sum of the endpoints when the nominal span is finite.
-        let rounded_smaller = work.coordinate(|| nominal - larger)?;
-        let correction = work.coordinate(|| smaller - rounded_smaller)?;
+        let negative_min = work.coordinate(|| -min)?;
+        let (nominal, correction) = split_sum(work, max, negative_min)?;
         Ok(Self {
             nominal,
             correction,
         })
     }
+}
+
+fn split_sum(
+    work: &mut GeometryWork<'_, '_, '_>,
+    left: f64,
+    right: f64,
+) -> Result<(f64, f64), PaintError> {
+    let nominal = work.coordinate(|| left + right)?;
+    let left_magnitude = work.coordinate(|| left.abs())?;
+    let right_magnitude = work.coordinate(|| right.abs())?;
+    let (larger, smaller) = if work.coordinate(|| left_magnitude >= right_magnitude)? {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    // Magnitude ordering makes the residual exact for finite sums.
+    let rounded_smaller = work.coordinate(|| nominal - larger)?;
+    let correction = work.coordinate(|| smaller - rounded_smaller)?;
+    Ok((nominal, correction))
 }
 
 fn emit(
@@ -422,17 +430,35 @@ fn repeat_anchor(
     span: ClipSpan,
     tile: f64,
 ) -> Result<f64, PaintError> {
-    // Remove whole periods before centering. Reduce the low part separately
-    // so an endpoint's contribution survives a large nominal span.
     let double_tile = work.coordinate(|| tile * 2.0)?;
-    let (nominal, correction) = if work.coordinate(|| double_tile.is_finite())? {
+    let negative_tile = work.coordinate(|| -tile)?;
+    let (remainder, correction) = if work.coordinate(|| double_tile.is_finite())? {
+        // Combine both endpoint terms before choosing a periodic representative.
         let nominal = work.coordinate(|| span.nominal % double_tile)?;
         let correction = work.coordinate(|| span.correction % double_tile)?;
-        (nominal, correction)
+        let (leading, correction) = split_sum(work, nominal, correction)?;
+        let remainder = work.coordinate(|| leading % double_tile)?;
+        // Fold the leading term around zero. These differences are exact
+        // because the terms are within a factor of two.
+        let folded = if work.coordinate(|| remainder >= tile)? {
+            work.coordinate(|| remainder - double_tile)?
+        } else if work.coordinate(|| remainder < negative_tile)? {
+            work.coordinate(|| remainder + double_tile)?
+        } else {
+            remainder
+        };
+        (folded, correction)
     } else {
         (span.nominal, span.correction)
     };
-    let centered = work.coordinate(|| nominal - tile)?;
+    let negative_correction = work.coordinate(|| -correction)?;
+    let shift = if work.coordinate(|| remainder < negative_correction)? {
+        tile
+    } else {
+        negative_tile
+    };
+    let (centered, centering_correction) = split_sum(work, remainder, shift)?;
+    let correction = work.coordinate(|| correction + centering_correction)?;
     let delta = work.coordinate(|| centered + correction)?;
     let anchor = work.coordinate(|| delta * 0.5)?;
     let restored = work.coordinate(|| anchor * 2.0)?;
@@ -890,6 +916,20 @@ mod tests {
                 region.axes().height.placement()
             ],
             [expected, expected],
+        );
+    }
+
+    #[test]
+    fn repeat_centers_when_the_double_period_overflows() {
+        let tile = f64::MAX;
+        let pattern = axis(BorderImageRepeat::Repeat, tile * 0.5, tile)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            pattern.placement(),
+            BorderImageAxisPlacement::Repeat {
+                anchor: -tile * 0.25,
+            },
         );
     }
 
