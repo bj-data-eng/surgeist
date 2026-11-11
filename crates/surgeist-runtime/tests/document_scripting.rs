@@ -1524,6 +1524,9 @@ fn main() {
             "stopped-executable-frontier" => {
                 script_preparation::stopped_host_preserves_executable_frontier()
             }
+            "stopped-script-replace-child" => {
+                script_preparation::stopped_script_precedes_replacement_child_service()
+            }
             "native-retirement" => {
                 let expired = native_read_snapshot_and_explicit_queue();
                 real_retirement_revokes_and_abandons(&expired);

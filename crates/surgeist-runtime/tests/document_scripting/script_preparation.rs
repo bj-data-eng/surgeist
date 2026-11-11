@@ -623,10 +623,185 @@ pub(super) fn stopped_host_preserves_executable_frontier() {
     assert_eq!(snapshot.node(script).unwrap().parent(), None);
 }
 
+pub(super) fn stopped_script_precedes_replacement_child_service() {
+    use surgeist_html::elements::script::{HtmlScriptKind, HtmlScriptResult};
+    use surgeist_html_semantics::{
+        HtmlBaseFactsRevision, HtmlBaseParseObservation, HtmlBaseParseOutcome, HtmlBaseProducerId,
+    };
+
+    const SRC: &str = "http://[";
+    let (mut session, top) = setup();
+    let document = top.document();
+    let parent = body(&session, document);
+    let mut batch = DomBatch::new();
+    let old = batch.create_element_ns(document, Namespace::html(), "span");
+    let after = batch.create_element_ns(document, Namespace::html(), "span");
+    let wrapper = batch.create_element_ns(document, Namespace::html(), "div");
+    let script = make_script(&mut batch, document);
+    let detached = batch.create_html_document(document, None);
+    let iframe = batch.create_element_ns(&detached, Namespace::html(), "iframe");
+    batch.set_attribute(&iframe, "src", SRC);
+    batch.set_attribute(&iframe, "allow", "fullscreen *");
+    batch.insert_before(&old, parent, None);
+    batch.insert_before(&after, parent, None);
+    batch.insert_before(&script, &wrapper, None);
+    batch.insert_before(&iframe, &wrapper, None);
+    let commit = session.dom().apply(batch, &cancel()).unwrap();
+    let [old, after, wrapper, script, iframe] = [old, after, wrapper, script, iframe]
+        .map(|ticket| commit.created(&ticket).unwrap().unwrap());
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let before = host.snapshot().unwrap();
+    let read = request(
+        apply(
+            &mut host,
+            DomSourceEdit::replace_child(wrapper, parent, old),
+        ),
+        DomSourceScriptStep::ReadScripting,
+    );
+    assert_eq!(read.subject(), Some(script));
+    assert_eq!(read.relevant_global(), Some(top.global()));
+    assert_eq!(read.basis(), before.stamp());
+    let parked = host.snapshot().unwrap();
+    assert_eq!(parked.stamp(), before.stamp());
+    assert_eq!(parked.node(parent).unwrap().children(), [old, after]);
+    assert_eq!(parked.node(wrapper).unwrap().parent(), None);
+    assert_eq!(parked.node(wrapper).unwrap().children(), [script, iframe]);
+    assert_eq!(
+        parked.node(iframe).unwrap().owner_document(),
+        Some(document)
+    );
+
+    let mut session = host.stop().into_session().unwrap();
+    assert_eq!(session.snapshot().stamp(), read.basis());
+    let operation = read.operation();
+    let resume_without_url = |session: &mut DomSession| {
+        session.source_execution().resume(
+            &mut session.dom(),
+            operation,
+            LIMITS,
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+    };
+    let reached = resume_without_url(&mut session);
+    let Ok(DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::HostedChild(child),
+        reason: DomSourceUnavailable::Url(DomSourceUrlStage::IframeDeclaredOrigin),
+    }) = reached
+    else {
+        panic!("replacement must reach the original iframe service after stop: {reached:?}");
+    };
+    assert_eq!(child.operation(), operation);
+    assert_eq!(child.container(), iframe);
+    assert_eq!(child.parent_document().document(), document);
+    assert_eq!(child.parent_global(), top.global());
+    assert_eq!(child.parent_navigable(), top.navigable());
+    let published = session.snapshot();
+    assert_eq!(published.incomplete_source_operation(), Some(operation));
+    assert_eq!(published.node(parent).unwrap().children(), [wrapper, after]);
+    assert_eq!(published.node(old).unwrap().parent(), None);
+    assert_eq!(
+        published.node(wrapper).unwrap().children(),
+        [script, iframe]
+    );
+    let prepared = published.node(script).unwrap().as_html_script().unwrap();
+    assert!(prepared.flags().already_started());
+    assert_eq!(prepared.preparation_document(), Some(document));
+    assert_eq!(prepared.script_type(), Some(HtmlScriptKind::Classic));
+    assert_eq!(prepared.result(), HtmlScriptResult::Uninitialized);
+    assert!(matches!(resume_without_url(&mut session),
+        Ok(DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::HostedChild(again),
+            reason: DomSourceUnavailable::Url(DomSourceUrlStage::IframeDeclaredOrigin),
+        }) if again == child));
+    assert_eq!(session.snapshot().stamp(), published.stamp());
+
+    let facts = published
+        .document(document)
+        .unwrap()
+        .base_document_facts()
+        .unwrap();
+    let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 1, 1);
+    let mut stages = Vec::new();
+    let mut observe = |request: &DomSourceUrlRequest, _: &AtomicBool| {
+        assert_eq!(request.operation(), operation);
+        assert_eq!(request.embedder(), iframe);
+        assert_eq!(request.raw(), &DocumentString::from(SRC));
+        stages.push(request.stage());
+        let failure = HtmlBaseParseObservation::new(
+            SRC.into(),
+            facts.document_url().unwrap().clone(),
+            facts.encoding().unwrap().clone(),
+            revision.clone(),
+            HtmlBaseParseOutcome::Failure,
+        )
+        .unwrap();
+        Ok(Some(request.observe(failure, None).unwrap()))
+    };
+    let complete = session
+        .source_execution()
+        .resume(
+            &mut session.dom(),
+            operation,
+            LIMITS,
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: Some(DomSourceUrlService {
+                    revision: &revision,
+                    observe: &mut observe,
+                }),
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert!(
+        matches!(complete, DomSourceDriveProgress::Complete(done) if done.operation() == operation)
+    );
+    assert_eq!(
+        stages,
+        [
+            DomSourceUrlStage::IframeDeclaredOrigin,
+            DomSourceUrlStage::FrameIframeSrc
+        ]
+    );
+    assert!(session.dom().pending_source_edit().is_none());
+    let final_snapshot = session.snapshot();
+    assert_eq!(
+        final_snapshot.node(parent).unwrap().children(),
+        [wrapper, after]
+    );
+    assert_eq!(
+        final_snapshot.node(wrapper).unwrap().children(),
+        [script, iframe]
+    );
+    let navigable = final_snapshot
+        .node(iframe)
+        .unwrap()
+        .as_element()
+        .unwrap()
+        .child_navigable()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        final_snapshot.hosted_navigable(navigable).unwrap().parent(),
+        Some(top.navigable())
+    );
+}
+
 pub(super) fn run() {
     let foreign = text_and_attribute_keep_the_private_segment();
     adopted_script_uses_original_settings_and_current_browsing_context(foreign);
     published_iframe_prefix_keeps_its_script_tail_after_cancel();
     stopped_host_resumes_original_settings_read();
     stopped_host_preserves_executable_frontier();
+    stopped_script_precedes_replacement_child_service();
 }
