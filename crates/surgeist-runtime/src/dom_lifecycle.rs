@@ -29,6 +29,8 @@ use surgeist_dom::{
     DomHostedPreparedTopLevel, DomHostedSource, DomHostedTopLevelPreparation, DomOwnerId,
 };
 mod event;
+#[cfg(feature = "document-scripting")]
+pub(crate) use clock::Sample as WindowTimerMoment;
 pub(crate) use event::{EventCreation, EventTargetAssociation, HostedEventClock};
 
 /// Finite native orchestration bounds, separate from canonical DOM admission.

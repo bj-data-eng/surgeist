@@ -937,6 +937,17 @@ impl Operations for Entered<'_, '_, '_> {
         self.open_pinned_callback_object(holder)
     }
 
+    fn release_callback_object(
+        &mut self,
+        holder: &Rc<CallbackObjectIdentity>,
+    ) -> Result<(), Error> {
+        self.roots.callback_objects.release(&self.roots, holder)
+    }
+
+    fn argument_locals_storage_bytes(&self, count: usize) -> Option<usize> {
+        std::mem::size_of::<v8::Local<'_, v8::Value>>().checked_mul(count)
+    }
+
     fn native_error(&mut self) -> Result<Root, Error> {
         self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, intrinsics| {
             let error = pristine_error(scope, intrinsics)?;

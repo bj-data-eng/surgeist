@@ -36,10 +36,12 @@ pub use guest::{
 mod source;
 mod window_event;
 mod window_relations;
+mod window_timers;
 pub use source::{
     DocumentScriptEventError, DocumentScriptEventProgress, DocumentScriptEventReport,
     DocumentScriptGuestResult, SelectedDocumentScriptListener,
 };
+pub use window_timers::{WindowTimerLimits, WindowTimerProgress};
 
 /// Native adapter errors. These values can be retained as the original typed
 /// cause of a bindings host refusal.
@@ -70,6 +72,8 @@ pub enum DocumentScriptNativeError {
     ProjectionCustody,
     /// The result cannot be represented in the supported service profile.
     RepresentationExhausted,
+    /// This attachment did not enable the callable Window timer profile.
+    WindowTimersDisabled,
 }
 
 impl fmt::Display for DocumentScriptNativeError {
@@ -161,6 +165,7 @@ struct NativeOwner {
     storage_limit: usize,
     css_limits: Cell<CssNamespaceLimits>,
     dom_exception_limits: Cell<DomExceptionLimits>,
+    timer_limits: Cell<Option<WindowTimerLimits>>,
     _backing: DomHostedRuntimeRetention,
 }
 
@@ -298,6 +303,7 @@ impl PreparedDocumentScriptHost {
                 storage_limit,
                 css_limits: Cell::new(CssNamespaceLimits::default()),
                 dom_exception_limits: Cell::new(DomExceptionLimits::default()),
+                timer_limits: Cell::new(None),
                 _backing: backing,
             }),
         })
@@ -314,6 +320,16 @@ impl PreparedDocumentScriptHost {
     #[must_use]
     pub fn with_dom_exception_limits(self, limits: DomExceptionLimits) -> Self {
         self.native.dom_exception_limits.set(limits);
+        self
+    }
+
+    /// Enable the callable Window timer branch for this attachment.
+    ///
+    /// Timer progress requires explicit native task service. String handlers
+    /// and callbacks from other Window attachments are outside this profile.
+    #[must_use]
+    pub fn with_window_timer_limits(self, limits: WindowTimerLimits) -> Self {
+        self.native.timer_limits.set(Some(limits));
         self
     }
 
@@ -394,6 +410,13 @@ impl PreparedDocumentScriptHost {
         let dom_exception_bytes =
             dom_exception::constructor_storage_bytes::<DomHostedRuntimeRetention>();
         let window_event_bytes = window_event::WindowEvent::storage_bytes();
+        let timer_limits = owner.timer_limits.get();
+        let timer_bytes = match timer_limits {
+            Some(limits) => limits
+                .reserved_storage()
+                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?,
+            None => 0,
+        };
         let bytes = size_of::<NativeOwner>()
             .checked_add(hook_bytes)
             .and_then(|bytes| bytes.checked_add(failure_bytes))
@@ -404,6 +427,7 @@ impl PreparedDocumentScriptHost {
             .and_then(|bytes| bytes.checked_add(dom_exception_bytes))
             .and_then(|bytes| bytes.checked_add(window_relations::storage_bytes()))
             .and_then(|bytes| bytes.checked_add(window_event_bytes))
+            .and_then(|bytes| bytes.checked_add(timer_bytes))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         if bytes > owner.storage_limit {
             return Err(DocumentScriptNativeError::StorageLimit.into());
@@ -418,6 +442,7 @@ impl PreparedDocumentScriptHost {
             dom_exception_backing,
             window_relations_backing,
             window_event_backing,
+            timer_backing,
         ) = {
             let mut session = owner
                 .session
@@ -454,6 +479,19 @@ impl PreparedDocumentScriptHost {
             let window_event = hosted
                 .retain_script_payload(&mut dom, window_event_bytes, cancel)
                 .map_err(DocumentScriptNativeError::from)?;
+            let timer = timer_limits
+                .map(|limits| {
+                    hosted.admit_script_work(&dom, 2, cancel)?;
+                    hosted
+                        .retain_script_payload(
+                            &mut dom,
+                            window_timers::WindowTimers::fixed_bytes(),
+                            cancel,
+                        )
+                        .map(|backing| (limits, backing))
+                })
+                .transpose()
+                .map_err(DocumentScriptNativeError::from)?;
             (
                 hook,
                 failure,
@@ -464,11 +502,14 @@ impl PreparedDocumentScriptHost {
                 dom_exception,
                 window_relations,
                 window_event,
+                timer,
             )
         };
         let failures = FailureSlot::new(&authority, failure_backing)?;
         let source_failures = SourceFailureSlot::new(&authority, source_failure_backing)?;
         let window_event = window_event::WindowEvent::new(window_event_backing);
+        let window_timers = timer_backing
+            .map(|(limits, backing)| window_timers::WindowTimers::new(limits, backing));
 
         // Drop Process before releasing the installed hook's debit on failure.
         let mut process = process;
@@ -518,7 +559,11 @@ impl PreparedDocumentScriptHost {
                 owner.dom_exception_limits.get(),
                 dom_exception_backing,
             )?;
-            window_event.install(scope)
+            window_event.install(scope)?;
+            if let Some(timers) = &window_timers {
+                timers.install(owner, scope)?;
+            }
+            Ok(())
         })?;
 
         Ok(UnpublishedScriptEngine {
@@ -529,6 +574,7 @@ impl PreparedDocumentScriptHost {
             failures,
             source_failures,
             window_event,
+            window_timers,
             liveness_backing,
             retained_bytes: bytes,
             _hook_backing: hook_backing,
@@ -544,6 +590,7 @@ struct UnpublishedScriptEngine {
     failures: FailureSlot,
     source_failures: SourceFailureSlot,
     window_event: Rc<window_event::WindowEvent>,
+    window_timers: Option<Rc<window_timers::WindowTimers>>,
     liveness_backing: DomHostedRuntimeRetention,
     retained_bytes: usize,
     _hook_backing: DomHostedRuntimeRetention,
@@ -564,6 +611,7 @@ impl UnpublishedScriptEngine {
             failures,
             source_failures,
             window_event,
+            window_timers,
             liveness_backing,
             retained_bytes,
             _hook_backing,
@@ -604,6 +652,7 @@ impl UnpublishedScriptEngine {
             registration,
             guest_events: None,
             window_event,
+            window_timers,
             process,
             realm,
             comments: projection::ProjectedComments::default(),
@@ -670,6 +719,7 @@ struct ScriptEngine {
     registration: DomDocumentScriptRegistration,
     guest_events: Option<Rc<guest::GuestEvents>>,
     window_event: Rc<window_event::WindowEvent>,
+    window_timers: Option<Rc<window_timers::WindowTimers>>,
     process: Process,
     realm: Realm,
     comments: projection::ProjectedComments,
@@ -688,13 +738,16 @@ impl ScriptEngine {
             .checked_add(additional)
     }
 
-    fn finish_projection_cleanup(&mut self, realm: &RealmAuthority) {
+    fn settle_engine_cleanup(&mut self, realm: &RealmAuthority) {
         self.comments.drain_retirements(&mut self.process);
         if let Some(events) = &self.guest_events {
             events.reap_retired_targets();
         }
         if realm.check_owner_active().is_err() {
             self.comments.release_all(&mut self.process);
+            if let Some(timers) = &self.window_timers {
+                timers.discard(&mut self.process);
+            }
         }
     }
 }
@@ -726,7 +779,7 @@ impl Drop for NativeLoanExit<'_> {
         if let Some(engine) = self.host.engine.as_mut()
             && let Some(attachment) = self.host.native.attachment.get()
         {
-            engine.finish_projection_cleanup(&attachment.realm);
+            engine.settle_engine_cleanup(&attachment.realm);
         }
     }
 }
@@ -978,7 +1031,7 @@ impl DocumentScriptHost {
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let result = engine.process.execution().in_realm(&engine.realm, action);
-        engine.finish_projection_cleanup(&attachment.realm);
+        engine.settle_engine_cleanup(&attachment.realm);
         Ok(result?)
     }
 
@@ -1006,7 +1059,7 @@ impl DocumentScriptHost {
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let result = engine.process.execution().checkpoint();
-        engine.finish_projection_cleanup(&attachment.realm);
+        engine.settle_engine_cleanup(&attachment.realm);
         Ok(result?)
     }
 

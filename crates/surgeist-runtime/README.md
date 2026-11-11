@@ -289,6 +289,15 @@ Host and guest initialization clear the same native target and guest reference.
 Node and Window EventTarget projections and AbortSignal integration have
 separate native prerequisites.
 
+An attachment can enable callable Window timers with `WindowTimerLimits`.
+`setTimeout` keeps the callable and arguments in the attached Window's realm.
+`clearTimeout` releases the registration. Runtime orders admitted timers by
+native monotonic deadline and registration order. The host calls
+`DocumentScriptHost::service_window_timer` to run one due task and its
+microtask checkpoint. The result carries an ordinary thrown value when one
+occurs. Terminal refusal retires queued registrations. String handlers and
+callbacks created in another attachment require a broader execution profile.
+
 Native HTML Script preparation
 can pause for the original relevant Global's live scripting settings.
 `DocumentScriptHost::service_script_settings` supplies that fact through the

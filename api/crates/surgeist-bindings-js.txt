@@ -607,6 +607,7 @@ pub fn surgeist_bindings_js::RetainedCallbackObject::associated_realm(&self) -> 
 pub struct surgeist_bindings_js::Root(_)
 pub struct surgeist_bindings_js::Scope<'scope>
 impl<'scope> surgeist_bindings_js::Scope<'scope>
+pub fn surgeist_bindings_js::Scope<'scope>::argument_copy_storage_bytes(&self, count: usize) -> core::result::Result<usize, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::array(&mut self, values: &[surgeist_bindings_js::Value<'scope>]) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::boolean(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<bool, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::bounded_function(&mut self, callback: &surgeist_bindings_js::Callback, metadata: surgeist_bindings_js::FunctionMetadata<'_>, maximum_arguments: u32) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
@@ -652,6 +653,7 @@ impl<'scope> surgeist_bindings_js::Scope<'scope>
 pub fn surgeist_bindings_js::Scope<'scope>::call_object_operation(&mut self, object: &surgeist_bindings_js::Value<'scope>, operation: &[u16], arguments: &[surgeist_bindings_js::Value<'scope>]) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::callback_object(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<surgeist_bindings_js::CallbackObject<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::open_callback_object(&mut self, callback: &surgeist_bindings_js::RetainedCallbackObject) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::release_callback_object(&mut self, callback: surgeist_bindings_js::RetainedCallbackObject) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::retain_callback_object<Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, callback: surgeist_bindings_js::CallbackObject<'scope>, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<Storage, E>) -> core::result::Result<surgeist_bindings_js::RetainedCallbackObject, E>
 impl<'scope> surgeist_bindings_js::Scope<'scope>
 pub fn surgeist_bindings_js::Scope<'scope>::native_object<T: 'static>(&mut self, object: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<core::option::Option<alloc::rc::Rc<surgeist_bindings_js::NativeObject<T>>>, surgeist_bindings_js::Error>

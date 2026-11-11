@@ -96,6 +96,15 @@ impl<'scope> Scope<'scope> {
         Ok(self.value(root))
     }
 
+    /// Release this managed callback handle and its backing from within a
+    /// callback. Any separately opened scoped value remains valid.
+    pub fn release_callback_object(
+        &mut self,
+        callback: RetainedCallbackObject,
+    ) -> Result<(), Error> {
+        self.operations.release_callback_object(&callback.holder)
+    }
+
     /// Read one Web IDL callback-interface operation and call it with the
     /// original object as receiver. A noncallable result produces the entered
     /// Realm's intrinsic TypeError. The host qualifies and enters the callback

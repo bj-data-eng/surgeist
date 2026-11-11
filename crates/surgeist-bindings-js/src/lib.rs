@@ -1009,6 +1009,17 @@ impl<'scope> Scope<'scope> {
         Ok(self.value(root))
     }
 
+    /// Temporary Rust vector backing used by `array` or `call` for this
+    /// many values, excluding the caller's values, allocator and engine storage.
+    pub fn argument_copy_storage_bytes(&self, count: usize) -> Result<usize, Error> {
+        count
+            .checked_mul(size_of::<Root>())
+            .and_then(|bytes| {
+                bytes.checked_add(self.operations.argument_locals_storage_bytes(count)?)
+            })
+            .ok_or(Error::Allocation)
+    }
+
     /// Calls a function with an explicit receiver and arguments. Callability,
     /// ownership and argument bounds are checked before engine invocation.
     pub fn call(
