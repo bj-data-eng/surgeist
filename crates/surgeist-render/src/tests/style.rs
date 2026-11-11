@@ -361,6 +361,48 @@ fn image_repeat_does_not_need_the_full_distance_between_origins() {
 }
 
 #[test]
+fn image_repeat_restores_a_finite_origin_after_phase_rounding() {
+    let high = 2.0_f64.powi(1023);
+    let step = 2.0_f64.powi(971);
+    let period = 1.5 * high;
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(-high + 2.5 * step, 0.0, 0.25 * high, 1.0),
+        Rect::new(-0.5 * high + step, 0.0, period, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let repeated = repeat
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .unwrap();
+    assert_eq!(
+        repeated.tile_rects(),
+        [Rect::new(-f64::MAX, 0.0, period, 1.0)]
+    );
+}
+
+#[test]
+fn image_repeat_keeps_a_subnormal_correction_at_the_overflow_boundary() {
+    let origin = (-f64::MAX).next_up();
+    let step = f64::MAX - f64::MAX.next_down();
+    let period = 1.5 * step;
+    // The clip is a multiple of the period. The positive anchor shifts the
+    // preceding tile just inside the finite-rounding boundary at -MAX.
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(origin, 0.0, step, 1.0),
+        Rect::new(f64::from_bits(1), 0.0, period, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let repeated = repeat
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .unwrap();
+    // The preceding tile's represented end is the clip start.
+    assert_eq!(repeated.tile_rects(), [Rect::new(origin, 0.0, period, 1.0)]);
+}
+
+#[test]
 fn image_repeat_resolves_an_odd_subnormal_period() {
     let unit = f64::from_bits(1);
     let placement = ResolvedImagePlacement::from_parts(
