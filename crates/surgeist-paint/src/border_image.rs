@@ -329,9 +329,12 @@ struct SourceSlice {
     fraction: Option<f64>,
 }
 
+#[derive(Clone, Copy)]
 struct AxisFit {
     factor: f64,
+    correction: f64,
     fills: bool,
+    overlaps: bool,
 }
 
 fn resolve(
@@ -414,17 +417,35 @@ fn resolve(
     );
     let fx = fit_factor(work, width, widths.left, widths.right)?;
     let fy = fit_factor(work, height, widths.top, widths.bottom)?;
-    let factor = work.coordinate(|| fx.factor.min(fy.factor))?;
-    let collapse_x = work.coordinate(|| width == 0.0)?
-        || (fx.fills && work.coordinate(|| factor == fx.factor)?);
-    let collapse_y = work.coordinate(|| height == 0.0)?
-        || (fy.fills && work.coordinate(|| factor == fy.factor)?);
-    let used_widths = Edges::new(
-        fitted_width(work, widths.top, widths.bottom, factor, height, collapse_y)?,
-        fitted_width(work, widths.right, widths.left, factor, width, collapse_x)?,
-        fitted_width(work, widths.bottom, widths.top, factor, height, collapse_y)?,
-        fitted_width(work, widths.left, widths.right, factor, width, collapse_x)?,
-    );
+    let comparison = compare_fits(work, fx, fy)?;
+    let selected = if comparison == Ordering::Greater {
+        fy
+    } else {
+        fx
+    };
+    let collapse_x =
+        work.coordinate(|| width == 0.0)? || (fx.fills && comparison != Ordering::Greater);
+    let collapse_y =
+        work.coordinate(|| height == 0.0)? || (fy.fills && comparison != Ordering::Less);
+    let extent = Size::new(width, height);
+    let collapse = Size::new(collapse_x, collapse_y);
+    let mut factor = selected.factor;
+    if selected.overlaps && work.coordinate(|| factor == 1.0)? {
+        factor = work.coordinate(|| factor.next_down())?;
+    }
+    let mut used_widths = scale_widths(work, widths, factor, extent, collapse)?;
+    if widths_overlap(work, used_widths, extent)? {
+        // Multiplying the two sides rounds them independently. Use the next
+        // smaller common factor if the published widths still overlap.
+        factor = work.coordinate(|| factor.next_down())?;
+        if work.coordinate(|| factor <= 0.0)? {
+            return Err(geometry_error());
+        }
+        used_widths = scale_widths(work, widths, factor, extent, collapse)?;
+        if widths_overlap(work, used_widths, extent)? {
+            return Err(geometry_error());
+        }
+    }
     let source_x = source_axis(work, source.width, slices.left, slices.right)?;
     let source_y = source_axis(work, source.height, slices.top, slices.bottom)?;
     let dest_x = destination_axis(
@@ -596,35 +617,132 @@ fn fit_factor(
         Ordering::Less => {
             return Ok(AxisFit {
                 factor: 1.0,
+                correction: 0.0,
                 fills: false,
+                overlaps: false,
             });
         }
         Ordering::Equal => {
             return Ok(AxisFit {
                 factor: 1.0,
+                correction: 0.0,
                 fills: true,
+                overlaps: false,
             });
         }
         Ordering::Greater => {}
     }
     let sum = work.coordinate(|| first + last)?;
-    let factor = if work.coordinate(|| sum.is_finite())? {
-        work.coordinate(|| extent / sum)?
+    let (scaled_extent, first, last, sum) = if work.coordinate(|| sum.is_finite())? {
+        (extent, first, last, sum)
     } else {
         // Halving both terms avoids overflow in a finite opposing pair.
+        let half_extent = work.coordinate(|| extent * 0.5)?;
         let half_first = work.coordinate(|| first * 0.5)?;
         let half_last = work.coordinate(|| last * 0.5)?;
         let half_sum = work.coordinate(|| half_first + half_last)?;
-        let ratio = work.coordinate(|| extent / half_sum)?;
-        work.coordinate(|| ratio * 0.5)?
+        (half_extent, half_first, half_last, half_sum)
     };
+    // Keep the rounding residual of the opposing sum and the quotient. Two
+    // ratios that round to the same factor can limit different axes.
+    let (larger, smaller) = if work.coordinate(|| first >= last)? {
+        (first, last)
+    } else {
+        (last, first)
+    };
+    let rounded_smaller = work.coordinate(|| sum - larger)?;
+    let sum_tail = work.coordinate(|| smaller - rounded_smaller)?;
+    let quotient = work.coordinate(|| scaled_extent / sum)?;
+    let residual = work.coordinate(|| (-quotient).mul_add(sum, scaled_extent))?;
+    let residual = work.coordinate(|| (-quotient).mul_add(sum_tail, residual))?;
+    let adjustment = work.coordinate(|| residual / sum)?;
+    let factor = work.coordinate(|| quotient + adjustment)?;
+    let lost_adjustment = work.coordinate(|| quotient - factor)?;
+    let correction = work.coordinate(|| lost_adjustment + adjustment)?;
     if work.coordinate(|| factor == 0.0)? && work.coordinate(|| extent > 0.0)? {
         return Err(geometry_error());
     }
     Ok(AxisFit {
         factor,
+        correction,
         fills: true,
+        overlaps: true,
     })
+}
+
+fn compare_fits(
+    work: &mut GeometryWork<'_, '_, '_>,
+    x: AxisFit,
+    y: AxisFit,
+) -> Result<Ordering, PaintError> {
+    let factor = work
+        .coordinate(|| x.factor.partial_cmp(&y.factor))?
+        .ok_or_else(geometry_error)?;
+    if factor != Ordering::Equal {
+        return Ok(factor);
+    }
+    let correction = work
+        .coordinate(|| x.correction.partial_cmp(&y.correction))?
+        .ok_or_else(geometry_error)?;
+    if correction != Ordering::Equal {
+        return Ok(correction);
+    }
+    work.coordinate(|| y.overlaps.cmp(&x.overlaps))
+}
+
+fn scale_widths(
+    work: &mut GeometryWork<'_, '_, '_>,
+    widths: Edges<f64>,
+    factor: f64,
+    extent: Size<f64>,
+    collapse: Size<bool>,
+) -> Result<Edges<f64>, PaintError> {
+    Ok(Edges::new(
+        fitted_width(
+            work,
+            widths.top,
+            widths.bottom,
+            factor,
+            extent.height,
+            collapse.height,
+        )?,
+        fitted_width(
+            work,
+            widths.right,
+            widths.left,
+            factor,
+            extent.width,
+            collapse.width,
+        )?,
+        fitted_width(
+            work,
+            widths.bottom,
+            widths.top,
+            factor,
+            extent.height,
+            collapse.height,
+        )?,
+        fitted_width(
+            work,
+            widths.left,
+            widths.right,
+            factor,
+            extent.width,
+            collapse.width,
+        )?,
+    ))
+}
+
+fn widths_overlap(
+    work: &mut GeometryWork<'_, '_, '_>,
+    widths: Edges<f64>,
+    extent: Size<f64>,
+) -> Result<bool, PaintError> {
+    Ok(
+        compare_opposing(work, extent.width, widths.left, widths.right)? == Ordering::Greater
+            || compare_opposing(work, extent.height, widths.top, widths.bottom)?
+                == Ordering::Greater,
+    )
 }
 
 fn fitted_width(
