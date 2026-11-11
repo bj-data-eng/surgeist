@@ -23,7 +23,10 @@ use crate::horizontal_br_font_band_profile::SOURCE as HORIZONTAL_BR_SOURCE;
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, OBSERVATION_REQUEST_INPUT,
 };
-use crate::original_flex_parent_profile::SOURCES as ORIGINAL_FLEX_PARENT_SOURCES;
+use crate::original_flex_parent_profile::{
+    SOURCES as ORIGINAL_FLEX_PARENT_SOURCES,
+    percentage::SOURCE as ORIGINAL_PERCENTAGE_FLEX_PARENT_SOURCE,
+};
 use crate::original_subgrid_body_profile::SOURCE as ORIGINAL_SUBGRID_BODY_SOURCE;
 use crate::parity_support::capture_authority::{self, SpecializedProfile};
 use crate::parity_support::exact_differences::flex_composition_qualification;
@@ -56,6 +59,7 @@ pub(super) enum QualificationMode {
     PreparedRangeCapture,
     FlexCompositionCapture,
     OriginalFlexParentCapture,
+    OriginalPercentageFlexParentCapture,
     OriginalSubgridBodyCapture,
     PreparedAtomicPercentageCapture,
     HorizontalBrFontBandCapture,
@@ -93,6 +97,7 @@ impl Serialize for QualificationMode {
             Self::PreparedRangeCapture => "prepared-range-capture",
             Self::FlexCompositionCapture => "flex-composition-capture",
             Self::OriginalFlexParentCapture => "original-flex-parent-capture",
+            Self::OriginalPercentageFlexParentCapture => "original-percentage-flex-parent-capture",
             Self::OriginalSubgridBodyCapture => "original-subgrid-body-capture",
             Self::PreparedAtomicPercentageCapture => "prepared-atomic-percentage-capture",
             Self::HorizontalBrFontBandCapture => "horizontal-br-font-band-capture",
@@ -162,6 +167,9 @@ impl QualificationMode {
             | Self::CheckPublishedSpecialized(SpecializedProfile::OriginalFlexParent)
             | Self::DeriveSpecialized(SpecializedProfile::OriginalFlexParent) => {
                 BoxObservationRequest::OriginalFlexParent
+            }
+            Self::OriginalPercentageFlexParentCapture => {
+                BoxObservationRequest::OriginalPercentageFlexParent
             }
             Self::OriginalSubgridBodyCapture
             | Self::PublishSpecialized(SpecializedProfile::OriginalSubgridBody)
@@ -243,6 +251,17 @@ fn select_records(
         declaration
             .records
             .retain(|record| !ORIGINAL_FLEX_PARENT_SOURCES.contains(&record.source.as_str()));
+    }
+    if mode == QualificationMode::OriginalPercentageFlexParentCapture {
+        if fixture != Some(ORIGINAL_PERCENTAGE_FLEX_PARENT_SOURCE) {
+            return Err(
+                "original percentage Flex parent capture requires its declared fixture".into(),
+            );
+        }
+    } else {
+        declaration
+            .records
+            .retain(|record| record.source.as_str() != ORIGINAL_PERCENTAGE_FLEX_PARENT_SOURCE);
     }
     if mode == QualificationMode::OriginalSubgridBodyCapture {
         if fixture != Some(ORIGINAL_SUBGRID_BODY_SOURCE) {
@@ -343,6 +362,7 @@ fn select_records(
                 QualificationMode::PreparedRangeCapture
                 | QualificationMode::FlexCompositionCapture
                 | QualificationMode::OriginalFlexParentCapture
+                | QualificationMode::OriginalPercentageFlexParentCapture
                 | QualificationMode::OriginalSubgridBodyCapture
                 | QualificationMode::PreparedAtomicPercentageCapture
                 | QualificationMode::HorizontalBrFontBandCapture
@@ -793,6 +813,9 @@ fn effective_mode(mode: QualificationMode, fixture: Option<&str>) -> Qualificati
         {
             QualificationMode::OriginalFlexParentCapture
         }
+        (QualificationMode::Regular, Some(ORIGINAL_PERCENTAGE_FLEX_PARENT_SOURCE)) => {
+            QualificationMode::OriginalPercentageFlexParentCapture
+        }
         (QualificationMode::Regular, Some(ORIGINAL_SUBGRID_BODY_SOURCE)) => {
             QualificationMode::OriginalSubgridBodyCapture
         }
@@ -1172,7 +1195,11 @@ fn validate_corpus(
         {
             let historical = fs::read_to_string(root.join(historical.as_str()))?;
             let current = std::str::from_utf8(&bytes)?;
-            if mode.box_observations() == BoxObservationRequest::OriginalFlexParent {
+            if matches!(
+                mode.box_observations(),
+                BoxObservationRequest::OriginalFlexParent
+                    | BoxObservationRequest::OriginalPercentageFlexParent
+            ) {
                 use crate::parity_support::{Golden, original_flex_parent};
                 original_flex_parent::verify_historical(
                     &Golden::parse(current)?,
@@ -1343,7 +1370,11 @@ fn validate_corpus(
             if let Err(error) = verdict {
                 native_errors.push(format!("{}: {error}", case.case.id()));
             }
-        } else if observation == BoxObservationRequest::OriginalFlexParent {
+        } else if matches!(
+            observation,
+            BoxObservationRequest::OriginalFlexParent
+                | BoxObservationRequest::OriginalPercentageFlexParent
+        ) {
             let (raw, verdict) = crate::parity_support::original_flex_parent::compare(&golden)?;
             for difference in raw {
                 eprintln!("qualify-root-context: {}: {difference}", case.case.id());
@@ -1510,6 +1541,7 @@ fn validate_corpus(
         | QualificationMode::PreparedRangeCapture
         | QualificationMode::FlexCompositionCapture
         | QualificationMode::OriginalFlexParentCapture
+        | QualificationMode::OriginalPercentageFlexParentCapture
         | QualificationMode::OriginalSubgridBodyCapture
         | QualificationMode::PreparedAtomicPercentageCapture
         | QualificationMode::HorizontalBrFontBandCapture
@@ -1743,6 +1775,7 @@ fn inventory_with_retained_helper(
         | QualificationMode::PreparedRangeCapture
         | QualificationMode::FlexCompositionCapture
         | QualificationMode::OriginalFlexParentCapture
+        | QualificationMode::OriginalPercentageFlexParentCapture
         | QualificationMode::OriginalSubgridBodyCapture
         | QualificationMode::PreparedAtomicPercentageCapture
         | QualificationMode::HorizontalBrFontBandCapture
@@ -1768,7 +1801,11 @@ fn inventory_with_retained_helper(
         .chain(std::iter::once((input.declaration_path(), input.bytes())))
     {
         if name == "fonts/Ahem.ttf"
-            && mode.box_observations() == BoxObservationRequest::EmptyLineBrFontBand
+            && matches!(
+                mode.box_observations(),
+                BoxObservationRequest::EmptyLineBrFontBand
+                    | BoxObservationRequest::OriginalPercentageFlexParent
+            )
         {
             continue;
         }
