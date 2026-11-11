@@ -103,7 +103,8 @@ the first and final boundaries to avoid accumulating rounding in the nominal
 tile extent. Finite counts retain distinguishable binary64 indices and an
 exactly representable extra gap count. Unrepresentable arithmetic returns
 the typed border-image geometry error. Space refuses a rounded gap that
-would clip the last tile or erase the trailing gap.
+would clip the last tile or erase the trailing gap. Subnormal spacing
+requires exact equality across the outer and inner gaps.
 
 Ledger admits coordinate actions and emitted region records in
 `BorderImageTiling` and accounts for the fixed plan at publication. Source

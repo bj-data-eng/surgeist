@@ -352,7 +352,8 @@ fn axis_pattern(
             };
             let delta = work.coordinate(|| reduced_extent - tile)?;
             let anchor = work.coordinate(|| delta * 0.5)?;
-            if work.coordinate(|| anchor == 0.0)? && work.coordinate(|| delta != 0.0)? {
+            let restored = work.coordinate(|| anchor * 2.0)?;
+            if work.coordinate(|| restored != delta)? {
                 return Err(geometry_error());
             }
             Ok(Some(BorderImageAxisPattern {
@@ -384,14 +385,22 @@ fn axis_pattern(
                 return Err(geometry_error());
             }
             if work.coordinate(|| gap > 0.0)? {
-                // The rounded gap must leave every tile whole and preserve
-                // a trailing gap. Compare the last end without rounding the
-                // pitch or allowing its accumulated error to hide clipping.
+                // With subnormal spacing, the gap's rounding quantum can
+                // change its size substantially. Require equal outer gaps in
+                // that range. For normal spacing, prove the last tile fits
+                // with a trailing gap despite nominal rounding.
+                let exact_gap = work.coordinate(|| gap.is_subnormal())?;
+                let used_gaps = if exact_gap { gaps } else { whole };
                 let tiles = ExactProduct::new(work, whole, tile)?;
-                let gaps = ExactProduct::new(work, whole, gap)?;
+                let gaps = ExactProduct::new(work, used_gaps, gap)?;
                 let clip = ExactProduct::new(work, extent, 1.0)?;
+                let expected = if exact_gap {
+                    Ordering::Equal
+                } else {
+                    Ordering::Less
+                };
                 if compare_product_sums(work, [tiles, gaps], [clip, ExactProduct::ZERO])?
-                    != Ordering::Less
+                    != expected
                 {
                     return Err(geometry_error());
                 }
@@ -705,6 +714,10 @@ mod tests {
         );
         // The ideal anchor is negative 1.5 minimum-subnormal units.
         assert_eq!(outcome.result, Err(geometry_error()));
+
+        let exact = tiling(center_only(f64::from_bits(6), f64::from_bits(2)), repeat);
+        let axis = exact.regions()[1][1].unwrap().axes().width;
+        assert_eq!(axis.anchor(), 0.0);
     }
 
     #[test]
@@ -718,6 +731,14 @@ mod tests {
         );
         // Rounding the ideal 5/3-unit gap to two leaves only one unit at the end.
         assert_eq!(outcome.result, Err(geometry_error()));
+
+        let exact = tiling(
+            center_only(f64::from_bits(206), f64::from_bits(100)),
+            repeat,
+        );
+        let axis = exact.regions()[1][1].unwrap().axes().width;
+        assert_eq!(axis.count().unwrap().get(), 2);
+        assert_eq!(axis.gap(), f64::from_bits(2));
     }
 
     #[test]
