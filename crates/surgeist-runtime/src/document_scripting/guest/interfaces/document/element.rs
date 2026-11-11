@@ -348,18 +348,27 @@ impl PublicEventBindings {
         let projection = self.callbacks.with_native(owner, |session, attached| {
             let snapshot = session.snapshot();
             let node = snapshot.node_with(node, || events.step())?;
-            if let Some(document) = node.as_document() {
-                return Ok(NativeProjection::Document(document.id()));
+            if !matches!(
+                node.kind(),
+                DomNodeKind::Document(_) | DomNodeKind::Element(_)
+            ) {
+                return Err(DocumentScriptNativeError::ProjectionCustody.into());
             }
-            let element = node
-                .as_element()
-                .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
             events.step()?;
             let origin = node
                 .relevant_global()
                 .map_err(DomHostedRuntimeError::Dom)
                 .map_err(DocumentScriptNativeError::from)?
                 .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
+            if let Some(document) = node.as_document() {
+                if origin != attached {
+                    return Err(DocumentScriptNativeError::CreationGlobalUnavailable.into());
+                }
+                return Ok(NativeProjection::Document(document.id()));
+            }
+            let element = node
+                .as_element()
+                .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
             Ok(NativeProjection::Element {
                 origin,
                 attached,
@@ -368,7 +377,7 @@ impl PublicEventBindings {
         })?;
         let (origin, attached, interface) = match projection {
             NativeProjection::Document(document) => {
-                return self.project_document(scope, owner, events, document);
+                return self.project_unpinned_document(scope, owner, events, document);
             }
             NativeProjection::Element {
                 origin,

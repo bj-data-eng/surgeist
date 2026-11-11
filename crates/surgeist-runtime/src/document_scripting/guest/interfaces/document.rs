@@ -100,7 +100,6 @@ enum Observation {
     TagName(DomTagName),
     Boolean(bool),
     Node(Option<NodeId>),
-    Document(Option<DocumentId>),
 }
 
 impl DocumentBindings {
@@ -242,7 +241,7 @@ impl DocumentBindings {
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        prototype: &Value<'scope>,
+        prototype: ordinary::NodePrototype<'_, 'scope>,
         resolve: impl FnOnce() -> Result<DocumentId, DocumentGuestEventError>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let mut pins = self
@@ -250,15 +249,28 @@ impl DocumentBindings {
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let backing = events.reserve(owner, size_of::<DocumentPin>())?;
-        let holder = events.project(
-            owner,
-            scope,
-            ObjectPrototype::Object(prototype),
-            GuestNodeProjection {
-                node: Cell::new(None),
-                lifetime: None,
-            },
-        )?;
+        let payload = GuestNodeProjection {
+            node: Cell::new(None),
+            lifetime: None,
+        };
+        let holder = match prototype {
+            ordinary::NodePrototype::Selected(prototype) => {
+                events.project(owner, scope, ObjectPrototype::Object(prototype), payload)?
+            }
+            ordinary::NodePrototype::Creation(prototype) => {
+                events.step()?;
+                scope.project_retained_native_object_in_prototype_realm(
+                    prototype,
+                    payload,
+                    |payload, holder| {
+                        Ok::<_, DocumentGuestEventError>((
+                            events.reserve(owner, payload)?,
+                            events.reserve(owner, holder)?,
+                        ))
+                    },
+                )?
+            }
+        };
         let value = scope.open_callback_object(&holder)?;
         let projection = scope
             .native_object::<GuestNodeProjection>(&value)?
@@ -478,7 +490,7 @@ fn install_getter<'scope>(
 }
 
 impl PublicEventBindings {
-    fn project_document<'scope>(
+    fn project_unpinned_document<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
@@ -486,13 +498,15 @@ impl PublicEventBindings {
         document: DocumentId,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let bindings = &self.document;
-        if let Some(value) = bindings.open_document(scope, events, document.node())? {
-            return Ok(value);
-        }
-        let prototype = scope.open_callback_object(&bindings.prototype)?;
         // Published Document nodes survive for the native owner lifetime.
-        // Their guest pins belong to this attachment, like new Document().
-        bindings.publish_document(scope, owner, events, &prototype, || Ok(document))
+        // Qualification established this Document's own attached realm.
+        bindings.publish_document(
+            scope,
+            owner,
+            events,
+            ordinary::NodePrototype::Creation(&bindings.prototype),
+            || Ok(document),
+        )
     }
 }
 
@@ -558,7 +572,9 @@ impl Capture {
                         Some(name) => Observation::TagName(name),
                         None => Observation::String(node.node_name()),
                     },
-                    NodeMember::OwnerDocument => Observation::Document(node.owner_document()),
+                    NodeMember::OwnerDocument => {
+                        Observation::Node(node.owner_document().map(DocumentId::node))
+                    }
                     NodeMember::Parent => Observation::Node(node.parent()),
                     NodeMember::Connected => Observation::Boolean(
                         node.root_with(true, || events.step())?
@@ -578,19 +594,12 @@ impl Capture {
                     })
                     .map_err(Error::from)?),
                 Observation::TagName(name) => self.copy_tag_name(scope, &owner, &events, &name),
-                Observation::Node(None) | Observation::Document(None) => {
-                    Ok(scope.primitive(Primitive::Null)?)
-                }
+                Observation::Node(None) => Ok(scope.primitive(Primitive::Null)?),
                 Observation::Node(Some(node)) => events
                     .public
                     .as_ref()
                     .ok_or(Error::ExpiredIdentity)?
                     .project_node(scope, &owner, &events, node),
-                Observation::Document(Some(document)) => events
-                    .public
-                    .as_ref()
-                    .ok_or(Error::ExpiredIdentity)?
-                    .project_document(scope, &owner, &events, document),
             }
         })();
         complete(scope, &events, result)
@@ -669,36 +678,42 @@ impl Capture {
                 .get()
                 .ok_or(DocumentScriptNativeError::Revoked)?
                 .target;
-            bindings.publish_document(scope, &owner, &events, selected.prototype(), || {
-                self.with_native(&owner, |session, global| {
-                    let hosted = session.hosted_execution();
-                    let mut dom = session.dom();
-                    let context = hosted
-                        .with_current_top_level(
-                            &mut dom,
-                            attached,
-                            &owner.cancellation,
-                            |source, dom| {
-                                source
-                                    .document_constructor_context(
-                                        dom.raw(),
-                                        global,
-                                        &owner.cancellation,
-                                    )
-                                    .map_err(DomHostedRuntimeError::Dom)
-                            },
-                        )
-                        .map_err(DocumentScriptNativeError::from)?;
-                    let mut batch = DomBatch::new();
-                    let ticket = batch.construct_document(context);
-                    let commit = dom
-                        .apply(batch, &owner.cancellation)
-                        .map_err(DocumentScriptNativeError::from)?;
-                    commit
-                        .document(&ticket)
-                        .map_err(|error| DocumentScriptNativeError::from(error).into())
-                })
-            })
+            bindings.publish_document(
+                scope,
+                &owner,
+                &events,
+                ordinary::NodePrototype::Selected(selected.prototype()),
+                || {
+                    self.with_native(&owner, |session, global| {
+                        let hosted = session.hosted_execution();
+                        let mut dom = session.dom();
+                        let context = hosted
+                            .with_current_top_level(
+                                &mut dom,
+                                attached,
+                                &owner.cancellation,
+                                |source, dom| {
+                                    source
+                                        .document_constructor_context(
+                                            dom.raw(),
+                                            global,
+                                            &owner.cancellation,
+                                        )
+                                        .map_err(DomHostedRuntimeError::Dom)
+                                },
+                            )
+                            .map_err(DocumentScriptNativeError::from)?;
+                        let mut batch = DomBatch::new();
+                        let ticket = batch.construct_document(context);
+                        let commit = dom
+                            .apply(batch, &owner.cancellation)
+                            .map_err(DocumentScriptNativeError::from)?;
+                        commit
+                            .document(&ticket)
+                            .map_err(|error| DocumentScriptNativeError::from(error).into())
+                    })
+                },
+            )
         })();
         match result {
             Ok(value) => Ok(ConstructorCompletion::Return(value)),
