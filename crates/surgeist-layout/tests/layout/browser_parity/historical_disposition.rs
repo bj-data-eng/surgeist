@@ -486,6 +486,35 @@ mod tests {
     }
 
     #[test]
+    fn historical_producer_inputs_remain_available_at_reported_digests() {
+        let root = owner();
+        let historical = HistoricalInputs::read(&root).unwrap();
+        let inputs = &historical.report.metadata.inputs;
+        assert_eq!(inputs.len(), 1457);
+        for (path, expected) in inputs {
+            let retained = match path.as_str() {
+                "scripts/gentest/test_helper.js" => {
+                    "historical-inputs/scripts/gentest/test_helper.js"
+                }
+                other => other,
+            };
+            let bytes =
+                read_file(&root, retained).unwrap_or_else(|error| panic!("{path}: {error}"));
+            assert_eq!(&sha256(&bytes), expected, "{path}");
+        }
+        for artifact in &historical.report.generated {
+            for (path, expected) in &artifact.linked_resources {
+                assert_eq!(
+                    inputs.get(path),
+                    Some(expected),
+                    "{}: {path}",
+                    artifact.output
+                );
+            }
+        }
+    }
+
+    #[test]
     fn historical_disposition_rejects_unaccounted_and_unvisited_xml() {
         let root = owner();
         let mut accounting = sample(Disposition::Retired);
