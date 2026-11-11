@@ -217,13 +217,13 @@ const MSAA8_ENDPOINT_REPLACEMENTS: [ShaderSourceReplacement; 2] = [
     ShaderSourceReplacement {
         from: "round(8.0 * (xy0.y - f32(y)))",
         to: "round(8.0 * (xy0.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
-        count: 2,
+        matches: ShaderMatchCount::Twice,
         failure: "internal Vello MSAA shader no longer has both checked endpoint quantizers",
     },
     ShaderSourceReplacement {
         from: "round(8.0 * (xy1.y - f32(y)))",
         to: "round(8.0 * (xy1.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
-        count: 2,
+        matches: ShaderMatchCount::Twice,
         failure: "internal Vello MSAA shader no longer has both checked endpoint quantizers",
     },
 ];
@@ -231,7 +231,7 @@ const MSAA8_ENDPOINT_REPLACEMENTS: [ShaderSourceReplacement; 2] = [
 const SET_LUM_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
     from: "fn set_lum(c: vec3<f32>, l: f32) -> vec3<f32> {\n    return clip_color(c + (l - lum(c)));\n}",
     to: "fn set_lum(c: vec3<f32>, l: f32) -> vec3<f32> {\n    let exact = vec3<bool>(surgeist_blend_luminosity_identity(c, l));\n    let shifted = select(c + (l - lum(c)), vec3<f32>(0.0), exact);\n    let clipped = surgeist_blend_clip_color(shifted, lum(shifted));\n    return select(clipped, vec3<f32>(l), exact);\n}",
-    count: 1,
+    matches: ShaderMatchCount::Once,
     failure: "internal Vello fine shader no longer has the checked SetLum helper",
 };
 
@@ -242,31 +242,31 @@ const BLEND_MATH_REPLACEMENTS: [ShaderSourceReplacement; 5] = [
             include_str!("../shaders/blend_math.wgsl"),
             "\nfn blend_mix("
         ),
-        count: 1,
+        matches: ShaderMatchCount::Once,
         failure: "internal Vello fine shader no longer has the checked blend entry point",
     },
     ShaderSourceReplacement {
         from: "b = vec3(color_dodge(cb.x, cs.x), color_dodge(cb.y, cs.y), color_dodge(cb.z, cs.z));",
         to: "b = surgeist_blend_color_dodge(cb, cs);",
-        count: 1,
+        matches: ShaderMatchCount::Once,
         failure: "internal Vello fine shader no longer has the checked color dodge call",
     },
     ShaderSourceReplacement {
         from: "b = vec3(color_burn(cb.x, cs.x), color_burn(cb.y, cs.y), color_burn(cb.z, cs.z));",
         to: "b = surgeist_blend_color_burn(cb, cs);",
-        count: 1,
+        matches: ShaderMatchCount::Once,
         failure: "internal Vello fine shader no longer has the checked color burn call",
     },
     ShaderSourceReplacement {
         from: "b = soft_light(cb, cs);",
         to: "b = surgeist_blend_soft_light(cb, cs);",
-        count: 1,
+        matches: ShaderMatchCount::Once,
         failure: "internal Vello fine shader no longer has the checked soft light call",
     },
     ShaderSourceReplacement {
         from: "set_lum(set_sat(",
         to: "set_lum(surgeist_blend_set_sat(",
-        count: 2,
+        matches: ShaderMatchCount::Twice,
         failure: "internal Vello fine shader no longer has both checked SetSat calls",
     },
 ];
@@ -277,7 +277,7 @@ const BLEND_MATH_REPLACEMENTS: [ShaderSourceReplacement; 5] = [
 const BLEND_RESULT_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
     from: "let mixed = blend_mix(cb, cs, mix_mode);",
     to: "var mixed = blend_mix(cb, cs, mix_mode);\n    if ((mode & 0xffu) != COMPOSE_PLUS) {\n        mixed = clamp(mixed, vec3<f32>(0.0), vec3<f32>(1.0));\n    }",
-    count: 1,
+    matches: ShaderMatchCount::Once,
     failure: "internal Vello fine shader no longer has the checked blend-result boundary",
 };
 
@@ -287,7 +287,7 @@ const BLEND_RESULT_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacemen
 const NORMAL_BLEND_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
     from: "return backdrop * (1.0 - src.a) + src;",
     to: "if ((mode >> 8u) == MIX_CLIP) {\n            return backdrop * (1.0 - src.a) + src;\n        }\n        let bounded_source = clamp(src.rgb, vec3<f32>(0.0), vec3<f32>(src.a));\n        let rgb = (1.0 - backdrop.a) * src.rgb\n            + backdrop.a * bounded_source\n            + (1.0 - src.a) * backdrop.rgb;\n        return vec4<f32>(rgb, src.a + backdrop.a * (1.0 - src.a));",
-    count: 1,
+    matches: ShaderMatchCount::Once,
     failure: "internal Vello fine shader no longer has the checked Normal blend boundary",
 };
 
@@ -298,7 +298,7 @@ const NORMAL_BLEND_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacemen
 const CIRCULAR_NORM_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
     from: "t = sqrt(xx + yy) - x * r1_recip;",
     to: "var radial_distance = 0.0;\n                        if (is_circular) {\n                            let squared_radius = xx + yy;\n                            radial_distance = select(sqrt(max(squared_radius, 0x1p-126f)), 0.0, squared_radius <= 0x1p-126f);\n                        } else {\n                            radial_distance = sqrt(xx + yy);\n                        }\n                        t = radial_distance - x * r1_recip;",
-    count: 1,
+    matches: ShaderMatchCount::Once,
     failure: "internal Vello fine shader no longer has the checked circular norm boundary",
 };
 
@@ -309,25 +309,25 @@ const GRADIENT_ENDPOINT_REPLACEMENTS: [ShaderSourceReplacement; 4] = [
     ShaderSourceReplacement {
         from: "const EXTEND_PAD: u32 = 0u;",
         to: include_str!("shaders/gradient_endpoints.wgsl"),
-        count: 1,
+        matches: ShaderMatchCount::Once,
         failure: "internal Vello fine shader no longer has the checked gradient helper boundary",
     },
     ShaderSourceReplacement {
         from: "let x = i32(round(extend_mode_normalized(my_d, lin.extend_mode) * f32(GRADIENT_WIDTH - 1)));\n                    let fg_rgba = textureLoad(gradients, vec2(x, i32(lin.index)), 0);",
         to: "var fg_rgba: vec4<f32>;\n                    if (lin.extend_mode == 3u) {\n                        fg_rgba = ordinary_gradient_color(my_d, lin.index);\n                    } else {\n                        let x = i32(round(extend_mode_normalized(my_d, lin.extend_mode) * f32(GRADIENT_WIDTH - 1)));\n                        fg_rgba = textureLoad(gradients, vec2(x, i32(lin.index)), 0);\n                    }",
-        count: 1,
+        matches: ShaderMatchCount::Once,
         failure: "internal Vello fine shader no longer has the checked linear gradient lookup",
     },
     ShaderSourceReplacement {
         from: "t = extend_mode_normalized(focal_x + t_sign * t, rad.extend_mode);\n                        t = select(t, 1.0 - t, is_swapped);\n                        let x = i32(round(t * f32(GRADIENT_WIDTH - 1)));\n                        let fg_rgba = textureLoad(gradients, vec2(x, i32(rad.index)), 0);",
         to: "var fg_rgba: vec4<f32>;\n                        if (rad.extend_mode == 3u) {\n                            let raw_t = focal_x + t_sign * t;\n                            fg_rgba = ordinary_gradient_color(select(raw_t, 1.0 - raw_t, is_swapped), rad.index);\n                        } else {\n                            t = extend_mode_normalized(focal_x + t_sign * t, rad.extend_mode);\n                            t = select(t, 1.0 - t, is_swapped);\n                            let x = i32(round(t * f32(GRADIENT_WIDTH - 1)));\n                            fg_rgba = textureLoad(gradients, vec2(x, i32(rad.index)), 0);\n                        }",
-        count: 1,
+        matches: ShaderMatchCount::Once,
         failure: "internal Vello fine shader no longer has the checked radial gradient lookup",
     },
     ShaderSourceReplacement {
         from: "let t = extend_mode_normalized(phi, sweep.extend_mode);\n                    let ramp_x = i32(round(t * f32(GRADIENT_WIDTH - 1)));\n                    let fg_rgba = textureLoad(gradients, vec2(ramp_x, i32(sweep.index)), 0);",
         to: "var fg_rgba: vec4<f32>;\n                    if (sweep.extend_mode == 3u) {\n                        fg_rgba = ordinary_gradient_color(phi, sweep.index);\n                    } else {\n                        let t = extend_mode_normalized(phi, sweep.extend_mode);\n                        let ramp_x = i32(round(t * f32(GRADIENT_WIDTH - 1)));\n                        fg_rgba = textureLoad(gradients, vec2(ramp_x, i32(sweep.index)), 0);\n                    }",
-        count: 1,
+        matches: ShaderMatchCount::Once,
         failure: "internal Vello fine shader no longer has the checked sweep gradient lookup",
     },
 ];
@@ -336,7 +336,7 @@ const GRADIENT_ENDPOINT_REPLACEMENTS: [ShaderSourceReplacement; 4] = [
 struct ShaderSourceReplacement {
     from: &'static str,
     to: &'static str,
-    count: usize,
+    matches: ShaderMatchCount,
     failure: &'static str,
 }
 
@@ -363,62 +363,104 @@ fn fine_shader_source(
         MSAA8_ENDPOINT_REPLACEMENTS[1],
     ];
     let [common @ .., _, _] = &replacements;
-    let replacements: &[_] = if adapt_msaa8_endpoints {
-        replacements.as_slice()
+    let source = shader.wgsl.code.as_ref();
+    if adapt_msaa8_endpoints {
+        replace_shader_code(cpu, source, &replacements)
     } else {
-        common
-    };
-    replace_shader_code(cpu, shader.wgsl.code.as_ref(), replacements)
+        replace_shader_code(cpu, source, common)
+    }
 }
 
-fn replace_shader_code(
+#[derive(Clone, Copy)]
+enum ShaderMatchCount {
+    Once,
+    Twice,
+}
+
+#[derive(Clone, Copy)]
+struct ShaderSourceEdit {
+    start: usize,
+    end: usize,
+    output: &'static str,
+}
+
+impl ShaderSourceEdit {
+    fn from_match((start, matched): (usize, &str), output: &'static str) -> Result<Self> {
+        let end = start
+            .checked_add(matched.len())
+            .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
+        Ok(Self { start, end, output })
+    }
+}
+
+fn replace_shader_code<const N: usize>(
     cpu: &CpuAccount,
     source: &str,
-    replacements: &[ShaderSourceReplacement],
+    replacements: &[ShaderSourceReplacement; N],
 ) -> Result<AccountedVec<u8>> {
     cpu.phase(|| {
-        let mut len = source.len();
-        for replacement in replacements {
-            if replacement.from.is_empty()
-                || source.match_indices(replacement.from).count() != replacement.count
-            {
+        let mut edits = [[None; 2]; N];
+        for (replacement, slots) in replacements.iter().zip(&mut edits) {
+            if replacement.from.is_empty() {
                 return Err(render_failed(replacement.failure));
             }
-            len = len
-                .checked_sub(
-                    replacement
-                        .count
-                        .checked_mul(replacement.from.len())
-                        .ok_or(crate::accounting::RenderAccountingError::Invariant)?,
-                )
-                .and_then(|len| {
-                    len.checked_add(replacement.count.checked_mul(replacement.to.len())?)
-                })
-                .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
+            cpu.work(RenderWork::ShaderSourceScanBytes, source.len())?;
+            let mut matches = source.match_indices(replacement.from);
+            let first = matches.next();
+            let second = matches.next();
+            *slots = match (replacement.matches, first, second, matches.count()) {
+                (ShaderMatchCount::Once, Some(first), None, 0) => [
+                    Some(ShaderSourceEdit::from_match(first, replacement.to)?),
+                    None,
+                ],
+                (ShaderMatchCount::Twice, Some(first), Some(second), 0) => [
+                    Some(ShaderSourceEdit::from_match(first, replacement.to)?),
+                    Some(ShaderSourceEdit::from_match(second, replacement.to)?),
+                ],
+                _ => return Err(render_failed(replacement.failure)),
+            };
         }
+        let edits = edits.as_flattened_mut();
+        edits.sort_unstable_by_key(|edit| edit.map_or(usize::MAX, |edit| edit.start));
+
+        let mut previous_end = 0;
+        let mut len = source.len();
+        for edit in edits.iter().flatten() {
+            if edit.start < previous_end {
+                return Err(render_failed("internal Vello shader replacements overlap"));
+            }
+            let matched = source
+                .get(edit.start..edit.end)
+                .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
+            len = len
+                .checked_sub(matched.len())
+                .and_then(|len| len.checked_add(edit.output.len()))
+                .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
+            previous_end = edit.end;
+        }
+
         let mut code = AccountedVec::new_in(
             &StorageAccount::Renderer(cpu.clone()),
             len,
             RenderResource::ScratchCpuBytes,
         )?;
+        let source = source.as_bytes();
         let mut start = 0;
-        while let Some((offset, replacement)) = replacements
-            .iter()
-            .filter_map(|replacement| {
-                source[start..]
-                    .find(replacement.from)
-                    .map(|offset| (start + offset, replacement))
-            })
-            .min_by_key(|(offset, _)| *offset)
-        {
-            append_shader_code(cpu, &mut code, &source.as_bytes()[start..offset])?;
-            append_shader_code(cpu, &mut code, replacement.to.as_bytes())?;
-            start = offset + replacement.from.len();
+        for edit in edits.iter().flatten() {
+            let unchanged = source
+                .get(start..edit.start)
+                .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
+            append_shader_code(cpu, &mut code, unchanged)?;
+            append_shader_code(cpu, &mut code, edit.output.as_bytes())?;
+            start = edit.end;
         }
-        append_shader_code(cpu, &mut code, &source.as_bytes()[start..])?;
+        let tail = source
+            .get(start..)
+            .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
+        append_shader_code(cpu, &mut code, tail)?;
         if code.len() != len {
             return Err(render_failed(
-                "internal Vello shader replacements overlap or changed checked output length",
+                "internal Vello shader replacements changed checked output length",
             ));
         }
         Ok(code)
@@ -452,12 +494,7 @@ fn shader_work(
     if let Some(observer) = observer {
         observer.work(work, amount)
     } else {
-        cpu.maintenance(
-            work,
-            u64::try_from(amount)
-                .map_err(|_| crate::accounting::RenderAccountingError::Invariant)?,
-        );
-        Ok(())
+        cpu.work(work, amount)
     }
 }
 
@@ -874,6 +911,7 @@ mod cpu_tests {
         let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
         let cpu = owner.at(RenderCpuScope::DeviceBacking);
         let mut total_emitted = 0;
+        let mut total_scanned = 0;
         let mut largest_capacity = 0;
         for (shader, msaa8) in [
             (&SHADERS.fine_area, false),
@@ -909,9 +947,11 @@ mod cpu_tests {
             }
             assert_eq!(std::str::from_utf8(&source).unwrap(), expected);
             total_emitted += source.len() as u64;
+            total_scanned += shader.wgsl.code.len() as u64 * if msaa8 { 15 } else { 13 };
             largest_capacity = largest_capacity.max(source.capacity() as u64);
             let usage = owner.snapshot().unwrap().usage();
             assert_eq!(usage.work(RenderWork::SerializedBytes), total_emitted);
+            assert_eq!(usage.work(RenderWork::ShaderSourceScanBytes), total_scanned);
             assert_eq!(
                 usage.live(RenderResource::ScratchCpuBytes),
                 source.capacity() as u64
@@ -937,6 +977,7 @@ mod cpu_tests {
     fn fine_source_cardinality_mismatch_refuses_before_scratch_or_emission() {
         let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
         let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let mut scanned = 0;
         for replacement in [
             SET_LUM_REPLACEMENT,
             BLEND_RESULT_REPLACEMENT,
@@ -952,6 +993,7 @@ mod cpu_tests {
                 format!("{}\n{}", replacement.from, replacement.from),
             ] {
                 let error = replace_shader_code(&cpu, &changed_source, &[replacement]).unwrap_err();
+                scanned += changed_source.len() as u64;
                 assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
                 assert_eq!(error.message(), replacement.failure);
             }
@@ -968,11 +1010,121 @@ mod cpu_tests {
         .unwrap_err();
         assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
         assert_eq!(error.message(), MSAA8_ENDPOINT_REPLACEMENTS[0].failure);
+        scanned += 2 * SET_LUM_REPLACEMENT.from.len() as u64;
         let usage = owner.snapshot().unwrap().usage();
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
         assert_eq!(usage.work(RenderWork::SerializedBytes), 0);
+        assert_eq!(usage.work(RenderWork::ShaderSourceScanBytes), scanned);
         owner.ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn shader_preparation_records_work_in_device_backing() {
+        let owner = RendererCpu::new(
+            RenderAccountingOptions::default()
+                .with_profile(crate::RenderProfile::Summary { timing: false }),
+        )
+        .unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let replacement = ShaderSourceReplacement {
+            from: "old",
+            to: "new!",
+            matches: ShaderMatchCount::Once,
+            failure: "missing source marker",
+        };
+        let code = replace_shader_code(&cpu, "old.", &[replacement]).unwrap();
+        assert_eq!(code.as_slice(), b"new!.");
+        drop(code);
+        let (indices, entries) = prepare_bindings(&cpu, None, &SHADERS.bbox_clear).unwrap();
+        assert_eq!(indices.as_slice(), &[0, 1]);
+        assert_eq!(entries.len(), 2);
+        drop((indices, entries));
+
+        let snapshot = owner.snapshot().unwrap();
+        let backing = snapshot.scope_usage(RenderCpuScope::DeviceBacking).unwrap();
+        let cleanup = snapshot.scope_usage(RenderCpuScope::Cleanup).unwrap();
+        assert_eq!(
+            [
+                backing.work(RenderWork::SerializedBytes),
+                backing.work(RenderWork::ShaderBindingVisits),
+                cleanup.work(RenderWork::SerializedBytes),
+                cleanup.work(RenderWork::ShaderBindingVisits),
+            ],
+            [5, 5, 0, 0],
+        );
+        assert_eq!(backing.work(RenderWork::ShaderSourceScanBytes), 4);
+        assert_eq!(cleanup.work(RenderWork::ShaderSourceScanBytes), 0);
+
+        let frame = Account::for_test();
+        drop(prepare_bindings(&cpu, Some(&frame), &SHADERS.bbox_clear).unwrap());
+        assert_eq!(
+            frame.work_count(RenderWork::ShaderBindingVisits).unwrap(),
+            5
+        );
+        assert_eq!(
+            owner
+                .snapshot()
+                .unwrap()
+                .usage()
+                .work(RenderWork::ShaderBindingVisits),
+            5,
+        );
+    }
+
+    #[test]
+    fn overlapping_shader_edits_refuse_before_output_scratch() {
+        let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let replacements = [
+            ShaderSourceReplacement {
+                from: "aaa",
+                to: "xxx",
+                matches: ShaderMatchCount::Once,
+                failure: "missing first marker",
+            },
+            ShaderSourceReplacement {
+                from: "aab",
+                to: "yyy",
+                matches: ShaderMatchCount::Once,
+                failure: "missing second marker",
+            },
+        ];
+        let result = replace_shader_code(&cpu, "aaab", &replacements);
+        assert!(
+            matches!(result, Err(ref error) if error.code() == crate::ErrorCode::RenderFailed),
+            "overlapping equal-width edits must refuse: {result:?}",
+        );
+        let snapshot = owner.snapshot().unwrap();
+        assert_eq!(snapshot.usage().peak(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(snapshot.usage().work(RenderWork::SerializedBytes), 0);
+        assert_eq!(snapshot.usage().work(RenderWork::ShaderSourceScanBytes), 8);
+        owner.ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn shader_edit_plan_uses_original_utf8_ranges_in_source_order() {
+        let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let replacements = [
+            ShaderSourceReplacement {
+                from: "ab",
+                to: "éab",
+                matches: ShaderMatchCount::Twice,
+                failure: "missing ASCII markers",
+            },
+            ShaderSourceReplacement {
+                from: "é",
+                to: "X",
+                matches: ShaderMatchCount::Twice,
+                failure: "missing UTF-8 markers",
+            },
+        ];
+        let code = replace_shader_code(&cpu, "éab!éab", &replacements).unwrap();
+        assert_eq!(code.as_slice(), "Xéab!Xéab".as_bytes());
+        let usage = owner.snapshot().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::ShaderSourceScanBytes), 18);
+        assert_eq!(usage.work(RenderWork::SerializedBytes), 11);
     }
 
     #[test]

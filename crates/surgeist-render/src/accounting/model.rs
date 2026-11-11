@@ -160,6 +160,8 @@ dimensions! {
         SurfaceAcquisitions,
         /// Shader binding records actually inspected or converted.
         ShaderBindingVisits,
+        /// Source bytes supplied to each complete native shader replacement-pattern scan.
+        ShaderSourceScanBytes,
         /// Shader key elements actually copied into distinct owned backing.
         ShaderKeyCopies,
         /// Existing elements physically moved between replacement owned-vector
