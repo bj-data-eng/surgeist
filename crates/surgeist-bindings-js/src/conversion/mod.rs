@@ -17,7 +17,7 @@ use surgeist_ledger::Change;
 use crate::idl::string::ByteStringStep;
 use crate::{
     ByteString, DomString, Error, Exception, ExceptionPhase, IntegerKind, IntegerMode,
-    IntegerValue, Scope, UsvString, Value,
+    IntegerValue, Scope, UsvString, Value, ValueKind,
 };
 
 pub use account::{
@@ -123,8 +123,8 @@ impl IntegerType {
 /// existing core primitive implementations rather than repeating coercion.
 pub mod types {
     use super::{
-        Type, boolean, byte_string, dom_string, double, float, unrestricted_double,
-        unrestricted_float, usv_string,
+        Type, boolean, byte_string, dom_string, dom_string_null_to_empty, double, float,
+        unrestricted_double, unrestricted_float, usv_string,
     };
     use crate::{ByteString, DomString, UsvString};
     pub const BOOLEAN: Type<bool> = Type::scalar(boolean);
@@ -135,6 +135,8 @@ pub mod types {
         includes_undefined: true,
     };
     pub const DOM_STRING: Type<DomString> = Type::scalar(dom_string);
+    /// DOMString conversion with the selected LegacyNullToEmptyString annotation.
+    pub const DOM_STRING_NULL_TO_EMPTY: Type<DomString> = Type::scalar(dom_string_null_to_empty);
     pub const USV_STRING: Type<UsvString> = Type::scalar(usv_string);
     pub const BYTE_STRING: Type<ByteString> = Type::scalar(byte_string);
     pub const FLOAT: Type<f32> = Type::scalar(float);
@@ -334,6 +336,17 @@ fn dom_string<'s>(
         value: DomString::new(value),
         storage,
     })
+}
+
+fn dom_string_null_to_empty<'s>(
+    cx: &mut Conversion<'_, 's>,
+    value: &Value<'s>,
+) -> Result<Converted<DomString>, Failure> {
+    let kind = cx.scope.kind(value);
+    if cx.core(kind)? == ValueKind::Null {
+        return Ok(cx.plain(DomString::new(Vec::new())));
+    }
+    dom_string(cx, value)
 }
 
 fn usv_string<'s>(

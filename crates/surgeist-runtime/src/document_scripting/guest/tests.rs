@@ -1,6 +1,6 @@
 use super::*;
 
-fn public_fragment_host(node_work: u64) -> DocumentScriptHost {
+fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
     let cancellation = Arc::new(AtomicBool::new(false));
     let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
     let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
@@ -31,6 +31,7 @@ fn public_fragment_host(node_work: u64) -> DocumentScriptHost {
                 work: 10_000,
                 pending_exception_reports: 4,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),
+                source_edits: DomSourceLimits::new(16_000_000, 200_000, source_work, 64, 64, 64, 2),
                 dispatch: DomEventDispatchLimits {
                     path_items: 2,
                     snapshot_listeners: 8,
@@ -45,7 +46,7 @@ fn public_fragment_host(node_work: u64) -> DocumentScriptHost {
 
 pub(in crate::document_scripting) fn fragment_custody_survives_collection_and_releases_on_retirement()
  {
-    let mut host = public_fragment_host(1_000);
+    let mut host = public_node_host(1_000, 20_000);
     let permit = host.permit().unwrap();
     host.in_document(&permit, |scope| {
         scope
@@ -137,7 +138,7 @@ pub(in crate::document_scripting) fn fragment_custody_survives_collection_and_re
 }
 
 pub(in crate::document_scripting) fn fragment_watch_refusal_preserves_native_state() {
-    let mut host = public_fragment_host(2);
+    let mut host = public_node_host(2, 20_000);
     let permit = host.permit().unwrap();
     let before = host.snapshot().unwrap();
     let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = host
@@ -159,6 +160,51 @@ pub(in crate::document_scripting) fn fragment_watch_refusal_preserves_native_sta
     assert_eq!(after.stamp(), before.stamp());
     assert_eq!(after.nodes().count(), before.nodes().count());
     host.stop().into_session().unwrap();
+}
+
+pub(in crate::document_scripting) fn character_data_source_refusal_preserves_native_state() {
+    let mut host = public_node_host(1_000, 0);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units("globalThis.refusedText = new Text('original')"))
+            .map(drop)
+    })
+    .unwrap();
+    let before = host.snapshot().unwrap();
+    let original = units("original");
+    let node = before
+        .nodes()
+        .find(|id| {
+            matches!(
+                before.node(*id).unwrap().kind(),
+                surgeist_dom::DomNodeKind::Text(data) if data.code_units() == original.as_slice()
+            )
+        })
+        .unwrap();
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        host.in_document(&permit, |scope| {
+            scope
+                .evaluate(&units("refusedText.replaceData(0, 8, 'replacement')"))
+                .map(drop)
+        })
+    else {
+        panic!("the original canonical Source limit must refuse the edit");
+    };
+    assert!(matches!(
+        failure.cause::<crate::DomSourceDriveError>(),
+        Some(crate::DomSourceDriveError::Source(
+            crate::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit { limit: 0 })
+        ))
+    ));
+    let after = host.snapshot().unwrap();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(
+        after.node(node).unwrap().data(),
+        before.node(node).unwrap().data()
+    );
+    host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
+        .unwrap();
 }
 use crate::DomEventRegistryLimits;
 use surgeist_bindings_js::{ExceptionPhase, Primitive, PropertyKey};
@@ -222,6 +268,7 @@ fn attach_registry_with_limits(
             work: 1000,
             pending_exception_reports,
             node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
+            source_edits: DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2),
             dispatch: DomEventDispatchLimits {
                 path_items: 1,
                 snapshot_listeners: 8,
@@ -270,6 +317,7 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
         work: 1_000,
         pending_exception_reports: 2,
         node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
+        source_edits: DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2),
         dispatch: DomEventDispatchLimits {
             path_items: 1,
             snapshot_listeners: 2,
@@ -1008,6 +1056,7 @@ pub(in crate::document_scripting) fn full_guest_report_bank_preserves_original_r
                 work: 1000,
                 pending_exception_reports: 1,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
+                source_edits: DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2),
                 dispatch: DomEventDispatchLimits {
                     path_items: 1,
                     snapshot_listeners: 1,

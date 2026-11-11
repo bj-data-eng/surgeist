@@ -24,6 +24,8 @@ mod document_fragment;
 mod script_preparation;
 #[path = "document_scripting/source_events.rs"]
 mod source_events;
+#[path = "document_scripting/text_comment.rs"]
+mod text_comment;
 #[path = "document_scripting/window_document.rs"]
 mod window_document;
 #[path = "document_scripting/window_timers.rs"]
@@ -87,6 +89,8 @@ fn native_dom() -> Dom {
             4_000_000,
             surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
         )
+        .unwrap()
+        .with_ranges(8)
         .unwrap()
         .with_dispatch_custody(
             DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
@@ -494,6 +498,7 @@ fn attach_event_window(
                 work: 10_000,
                 pending_exception_reports: 16,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
+                source_edits: DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2),
                 dispatch: DomEventDispatchLimits {
                     path_items: 4,
                     snapshot_listeners: 16,
@@ -2252,6 +2257,9 @@ fn main() {
             "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
             "document-fragment-retirement" => document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement(),
             "document-fragment-watched-document" => document_fragment::fragment_observes_a_destination_with_an_existing_host_watch(),
+            "character-data-creation" => text_comment::creates_canonical_text_and_comments(),
+            "character-data-mutation" => text_comment::edits_canonical_character_data_and_live_ranges(),
+            "character-data-arity" => text_comment::rejects_missing_arguments_before_coercion(),
             "window-document-retirement" => window_document::native_document_retirement_releases_registered_callbacks(),
             "window-document-native-observer" => window_document::document_dispatch_preserves_native_observer_and_refusal(),
             "window-global-event-target" => window_document::window_uses_the_real_global_event_target(),
@@ -2326,6 +2334,9 @@ fn main() {
     document_fragment::creates_fragments_through_the_canonical_document();
     document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement();
     document_fragment::fragment_observes_a_destination_with_an_existing_host_watch();
+    text_comment::creates_canonical_text_and_comments();
+    text_comment::edits_canonical_character_data_and_live_ranges();
+    text_comment::rejects_missing_arguments_before_coercion();
     window_document::native_document_retirement_releases_registered_callbacks();
     window_document::document_dispatch_preserves_native_observer_and_refusal();
     window_document::window_uses_the_real_global_event_target();

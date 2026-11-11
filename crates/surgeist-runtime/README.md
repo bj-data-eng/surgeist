@@ -299,7 +299,11 @@ Their wrappers survive collection and adoption. `ownerDocument` follows the
 native destination, including a Document created by the Rust host. Native
 destruction releases the original managed wrapper and its listener registrations.
 `DocumentGuestEventLimits` includes the native watch storage and work limits.
-AbortSignal and other descendant Node projections are separate capabilities.
+The `Text` and `Comment` constructors and Document factories use the same
+creation and retirement boundary. `CharacterData` exposes UTF-16 reads and
+edits, with replacements driven by canonical Source under the caller's
+`DocumentGuestEventLimits::source_edits`. Those edits update native Ranges.
+AbortSignal and wider descendant navigation are separate capabilities.
 
 An attachment can enable callable Window timers with `WindowTimerLimits`.
 `setTimeout` keeps the callable and arguments in the attached Window's realm.

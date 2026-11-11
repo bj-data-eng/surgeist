@@ -198,6 +198,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::unpublished_window_requires_its_original_bound_registry();
     super::guest::tests::fragment_custody_survives_collection_and_releases_on_retirement();
     super::guest::tests::fragment_watch_refusal_preserves_native_state();
+    super::guest::tests::character_data_source_refusal_preserves_native_state();
     super::guest::tests::refused_first_target_releases_prototype_capture();
     super::guest::tests::refused_projection_releases_native_backing_before_retry();
     super::guest::tests::attached_registered_function_uses_the_exact_native_invocation();
