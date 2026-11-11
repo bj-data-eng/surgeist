@@ -2,6 +2,8 @@
 
 use crate::internal::microsyntax::tokens::{ascii_case_insensitive_unit, is_ascii_whitespace};
 
+pub(crate) mod native;
+
 /// Original presence/content classification; non-ASCII whitespace is content.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMediaValueClass {

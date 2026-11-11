@@ -5,6 +5,7 @@ use surgeist_html::construction::{
     HtmlAuthoredProcessingInstruction, HtmlConstructionLimits, HtmlDoctype, HtmlFragment,
     HtmlNodeKind,
 };
+use surgeist_html::elements::media::{HtmlInitialMediaState, HtmlMediaResourceEffect};
 
 fn authoring() -> HtmlConstructionLimits {
     HtmlConstructionLimits::new(1024, 2048, 1024, 131072, 512)
@@ -511,7 +512,7 @@ fn invalid_components_and_late_unadmitted_families_publish_no_partial_identities
     b.append_text(&root, "private prefix").unwrap();
     b.append_element(
         &root,
-        name(Namespace::html(), "audio"),
+        name(Namespace::html(), "track"),
         OrderedAttributes::default(),
     )
     .unwrap();
@@ -520,8 +521,48 @@ fn invalid_components_and_late_unadmitted_families_publish_no_partial_identities
     let before = dom.snapshot();
     let usage = dom.usage();
     assert!(
-        matches!(dom.install_native_html_fragment(stamp(&dom,d),parent,None,&source,limits(),&AtomicBool::new(false)),Err(DomNativeHtmlInstallError::Source { subject,error:DomError::NativeInitializationRequired(surgeist_html::elements::native::HtmlElementClass::KnownHtml(surgeist_html::vocabulary::KnownHtmlElement::Audio)) }) if subject==id)
+        matches!(dom.install_native_html_fragment(stamp(&dom,d),parent,None,&source,limits(),&AtomicBool::new(false)),Err(DomNativeHtmlInstallError::Source { subject,error:DomError::NativeInitializationRequired(surgeist_html::elements::native::HtmlElementClass::KnownHtml(surgeist_html::vocabulary::KnownHtmlElement::Track)) }) if subject==id)
     );
+    unchanged(&dom, &before, usage, parent);
+}
+
+#[test]
+fn authored_media_installation_uses_the_actual_native_initial_state() {
+    let mut dom = dom();
+    let (document, parent) = setup(&mut dom);
+    for (local, expected) in [
+        ("audio", HtmlInitialMediaState::Audio),
+        ("video", HtmlInitialMediaState::Video),
+    ] {
+        let source =
+            fragment_with_element(name(Namespace::html(), local), OrderedAttributes::default());
+        let authored = source.root().children().next().unwrap();
+        let receipt = install(&mut dom, document, parent, &source);
+        let node = receipt.node_for(&authored).unwrap();
+        let snapshot = dom.snapshot();
+        let node = snapshot.node(node).unwrap();
+        assert_eq!(node.parent(), Some(parent));
+        assert_eq!(
+            node.as_element().unwrap().initial_media_state(),
+            Some(expected)
+        );
+    }
+    let source = fragment_with_element(
+        name(Namespace::html(), "video"),
+        OrderedAttributes::new([Attribute::new(name(Namespace::none(), "src"), "")]).unwrap(),
+    );
+    let authored = source.root().children().next().unwrap();
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    assert!(matches!(
+        dom.install_native_html_fragment(
+            stamp(&dom, document), parent, None, &source, limits(), &AtomicBool::new(false),
+        ),
+        Err(DomNativeHtmlInstallError::Source {
+            subject,
+            error: DomError::MediaResourceEffectUnavailable(HtmlMediaResourceEffect::Load),
+        }) if subject == authored
+    ));
     unchanged(&dom, &before, usage, parent);
 }
 

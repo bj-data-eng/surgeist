@@ -60,6 +60,7 @@ pub(crate) enum NativeFamily {
     Img,
     Picture,
     Source,
+    Media(surgeist_html::elements::media::HtmlInitialMediaState),
     Hyperlink,
     Template,
     Form(surgeist_html::elements::form::HtmlFormNativeState),
@@ -110,6 +111,7 @@ impl NativeFamily {
             | Self::Img
             | Self::Picture
             | Self::Source
+            | Self::Media(_)
             | Self::Hyperlink
             | Self::Template
             | Self::Option(_)
@@ -139,6 +141,29 @@ impl NativeFamily {
             attributes,
             content,
         } = change;
+        if let Self::Media(state) = self {
+            let resource = if attribute_is(name, KnownHtmlAttribute::Src, budget, cancel)? {
+                Some(KnownHtmlAttribute::Src)
+            } else if attribute_is(name, KnownHtmlAttribute::Poster, budget, cancel)? {
+                Some(KnownHtmlAttribute::Poster)
+            } else {
+                None
+            };
+            if let Some(resource) = resource {
+                let mut value = None;
+                for attribute in attributes {
+                    admit()?;
+                    if attribute_is(attribute.name(), resource, budget, cancel)? {
+                        value = Some(attribute.value());
+                        break;
+                    }
+                }
+                if let Some(effect) = state.attribute_resource_effect(resource, value) {
+                    return Err(DomError::MediaResourceEffectUnavailable(effect));
+                }
+            }
+            return self.shared(budget, cancel);
+        }
         if matches!(self, Self::Frame | Self::Iframe(_)) {
             // One actual child-navigable hook boundary. The common src guard
             // checks content before Iframe's additional srcdoc-absence condition.

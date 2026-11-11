@@ -225,9 +225,10 @@ impl Draft {
         )
         .expect("actual Img/Source marker");
         if effect.check_media_parent_selection() {
-            // Audio/Video are not admitted native families. A future resource
-            // owner must provide its real src/networkState/selection operation.
-            return Err(DomError::ImageProcessingUnavailable);
+            // The admitted unloaded parent has no src and NETWORK_EMPTY.
+            return Err(DomError::MediaResourceEffectUnavailable(
+                surgeist_html::elements::media::HtmlMediaResourceEffect::SelectResource,
+            ));
         }
         match effect.targets() {
             HtmlImageMutationTargets::None => {}

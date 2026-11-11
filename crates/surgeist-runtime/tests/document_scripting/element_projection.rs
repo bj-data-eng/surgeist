@@ -80,6 +80,8 @@ pub(super) fn html_roots_select_their_exact_interfaces() {
         ("applet", "HTMLUnknownElement", "HTMLElement"),
         ("listing", "HTMLPreElement", "HTMLElement"),
         ("font", "HTMLFontElement", "HTMLElement"),
+        ("audio", "HTMLAudioElement", "HTMLMediaElement"),
+        ("video", "HTMLVideoElement", "HTMLMediaElement"),
     ] {
         let native_root = host
             .with_native(|dom, _, _| {

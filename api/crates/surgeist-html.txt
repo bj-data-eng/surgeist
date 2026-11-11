@@ -4796,10 +4796,26 @@ pub mod surgeist_html::elements::media
 pub enum surgeist_html::elements::media::HtmlCanvasBitmapDimension<'a>
 pub surgeist_html::elements::media::HtmlCanvasBitmapDimension::Default(u128)
 pub surgeist_html::elements::media::HtmlCanvasBitmapDimension::Parsed(&'a surgeist_html::microsyntax::numeric::HtmlNonNegativeInteger)
+pub enum surgeist_html::elements::media::HtmlInitialMediaState
+pub surgeist_html::elements::media::HtmlInitialMediaState::Audio
+pub surgeist_html::elements::media::HtmlInitialMediaState::Video
+impl surgeist_html::elements::media::HtmlInitialMediaState
+pub fn surgeist_html::elements::media::HtmlInitialMediaState::attribute_resource_effect(self, attribute: surgeist_html::vocabulary::KnownHtmlAttribute, value: core::option::Option<&surgeist_html::values::DocumentString>) -> core::option::Option<surgeist_html::elements::media::HtmlMediaResourceEffect>
+pub const fn surgeist_html::elements::media::HtmlInitialMediaState::current_src(self) -> &'static [u16]
+pub const fn surgeist_html::elements::media::HtmlInitialMediaState::current_time(self) -> f64
+pub const fn surgeist_html::elements::media::HtmlInitialMediaState::element(self) -> surgeist_html::vocabulary::KnownHtmlElement
+pub const fn surgeist_html::elements::media::HtmlInitialMediaState::has_media_data(self) -> bool
+pub const fn surgeist_html::elements::media::HtmlInitialMediaState::network_is_empty(self) -> bool
+pub const fn surgeist_html::elements::media::HtmlInitialMediaState::paused(self) -> bool
+pub const fn surgeist_html::elements::media::HtmlInitialMediaState::show_poster(self) -> bool
 pub enum surgeist_html::elements::media::HtmlMediaCursorAction
 pub surgeist_html::elements::media::HtmlMediaCursorAction::Complete
 pub surgeist_html::elements::media::HtmlMediaCursorAction::Finish
 pub surgeist_html::elements::media::HtmlMediaCursorAction::InspectUnit(usize)
+pub enum surgeist_html::elements::media::HtmlMediaResourceEffect
+pub surgeist_html::elements::media::HtmlMediaResourceEffect::DeterminePoster
+pub surgeist_html::elements::media::HtmlMediaResourceEffect::Load
+pub surgeist_html::elements::media::HtmlMediaResourceEffect::SelectResource
 pub enum surgeist_html::elements::media::HtmlMediaValueClass
 pub surgeist_html::elements::media::HtmlMediaValueClass::Absent
 pub surgeist_html::elements::media::HtmlMediaValueClass::AsciiWhitespaceOnly
