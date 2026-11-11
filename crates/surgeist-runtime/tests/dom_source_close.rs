@@ -277,6 +277,7 @@ struct EventObservation {
     target: Option<NodeId>,
     current: Option<DomEventTarget>,
     payload: Option<DomToggleEvent>,
+    creation: Option<DomEventCreationObservation>,
     path: Vec<DomEventTarget>,
     bubbles: bool,
     cancelable: bool,
@@ -288,6 +289,7 @@ fn observe(event: &NativeDomEvent) -> EventObservation {
         target: event.target().and_then(|target| target.node()),
         current: event.current_target(),
         payload: event.toggle_event().copied(),
+        creation: event.creation().copied(),
         path: event.composed_path().collect(),
         bubbles: event.bubbles(),
         cancelable: event.cancelable(),
@@ -701,6 +703,210 @@ fn close_result_matrix_and_user_interaction_first_delivery_preserve_toggle_track
             ));
         }
         assert_eq!(context.delivered.len(), 2);
+    }
+}
+
+#[test]
+fn hosted_dialog_toggle_and_close_keep_original_creation_across_retained_delivery() {
+    let (mut session, original, _, subject) = fixture();
+    let mut hosted = session.hosted_execution();
+    let destination = hosted
+        .create_top_level(&mut session.dom(), original.host(), &cancel())
+        .unwrap();
+    let snapshot = session.snapshot();
+    let destination_root = snapshot
+        .document(destination.document())
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let destination_body = snapshot.node(destination_root).unwrap().children()[1];
+
+    let mut context = context(&session);
+    let mut registry = listeners(&mut session, subject, destination_body);
+    open(&mut session, subject);
+    let close = start_close(&mut session, subject, None);
+    finish_close(&mut session, &close, &mut registry, &mut context);
+    assert_eq!(context.before.len(), 1);
+
+    let sources = [
+        (
+            DomElementTaskSourceKind::DomManipulation,
+            DomEventType::TOGGLE,
+        ),
+        (
+            DomElementTaskSourceKind::UserInteraction,
+            DomEventType::CLOSE,
+        ),
+    ];
+    let mut queued = Vec::new();
+    for (source, kind) in &sources {
+        let task = context.owner.pending_task(*source, 0).unwrap().unwrap();
+        let association = task.queue_association().unwrap();
+        assert_eq!(association.global(), original.global());
+        assert_eq!(association.document(), original.document());
+        assert_eq!(task.id().target(), subject);
+        queued.push(task);
+        registry
+            .add_listener(
+                &mut session.dom(),
+                destination.document().node(),
+                kind.clone(),
+                DomEventCallback::new(|_, _, context: &mut Context, event| {
+                    context.delivered.push(observe(event));
+                    Ok(())
+                }),
+                DomEventListenerOptions {
+                    capture: true,
+                    ..DomEventListenerOptions::default()
+                },
+            )
+            .unwrap();
+    }
+    assert!(queued[0].dialog_toggle().is_some());
+    assert!(queued[1].dialog_close().is_some());
+
+    drop(complete(apply(
+        &mut session,
+        DomSourceEdit::insert_before(subject, destination_body, None),
+    )));
+    let snapshot = session.snapshot();
+    let node = snapshot.node(subject).unwrap();
+    assert_eq!(node.owner_document(), Some(destination.document()));
+    assert_eq!(node.parent(), Some(destination_body));
+    assert_eq!(
+        snapshot.relevant_global(subject).unwrap(),
+        Some(original.global())
+    );
+    let settings = hosted
+        .settings(&session.dom(), original.global(), &cancel())
+        .unwrap();
+    let mut clock = |session: &mut DomSession| {
+        hosted
+            .create_event(
+                &mut session.dom(),
+                original.global(),
+                &[],
+                DomEventInit::default(),
+                &cancel(),
+            )
+            .unwrap()
+            .creation()
+            .unwrap()
+            .occurrence_microseconds()
+    };
+
+    let mut clock_bounds = vec![clock(&mut session)];
+    for (index, ((source, kind), expected)) in sources.into_iter().zip(queued).enumerate() {
+        let progress = DomElementTaskRuntime::run_next(
+            &mut session.dom(),
+            source,
+            &mut registry,
+            &mut context,
+            DomElementTaskRunLimits {
+                dispatch: DomEventDispatchLimits {
+                    callbacks: 1,
+                    ..dispatch_limits()
+                },
+                ..run_limits()
+            },
+            &cancel(),
+        )
+        .unwrap();
+        assert!(matches!(
+            progress,
+            DomElementTaskProgress::Retained {
+                task,
+                dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks),
+                displaced_owner: None,
+            } if task == expected
+        ));
+        assert_eq!(context.delivered.len(), index * 2 + 1);
+        assert_eq!(
+            context.owner.pending_task(source, 0).unwrap(),
+            Some(expected)
+        );
+        let DomElementTaskProgress::Complete {
+            task,
+            receipt,
+            dialog_toggle_disposition,
+            displaced_owner: None,
+        } = DomElementTaskRuntime::run_next(
+            &mut session.dom(),
+            source,
+            &mut registry,
+            &mut context,
+            run_limits(),
+            &cancel(),
+        )
+        .unwrap()
+        else {
+            panic!("the retained Dialog task must deliver its original receipt");
+        };
+        assert_eq!(task, expected);
+        assert_eq!(receipt.original_target(), subject.into());
+        assert_eq!(receipt.event_type(), kind);
+        assert_eq!(receipt.callbacks(), 2);
+        assert!(receipt.failures().is_empty());
+        assert_eq!(
+            dialog_toggle_disposition,
+            expected
+                .dialog_toggle()
+                .map(|_| DomDialogToggleTaskDisposition::TrackerCleared)
+        );
+        assert_eq!(context.delivered.len(), index * 2 + 2);
+        assert_eq!(context.owner.pending_task(source, 0).unwrap(), None);
+        clock_bounds.push(clock(&mut session));
+    }
+
+    assert!(context.edits.iter().all(Result::is_ok));
+    let path = [
+        subject.into(),
+        destination_body.into(),
+        destination_root.into(),
+        destination.document().node().into(),
+        destination.global().into(),
+    ];
+    for pair in context.delivered.chunks_exact(2) {
+        assert_eq!(pair[0].current, Some(destination.document().node().into()));
+        assert_eq!(pair[1].current, Some(subject.into()));
+        for observation in pair {
+            assert_eq!(observation.target, Some(subject));
+            assert_eq!(observation.path, path);
+        }
+    }
+    let [toggle_capture, toggle_target, close_capture, close_target] = context.delivered.as_slice()
+    else {
+        panic!("expected both actual callback pairs");
+    };
+    assert_eq!(toggle_capture.kind, DomEventType::TOGGLE);
+    assert_eq!(toggle_target.kind, DomEventType::TOGGLE);
+    assert_eq!(toggle_target.payload.unwrap().old_state(), "open");
+    assert_eq!(toggle_target.payload.unwrap().new_state(), "closed");
+    assert_eq!(close_capture.kind, DomEventType::CLOSE);
+    assert_eq!(close_target.kind, DomEventType::CLOSE);
+    assert_eq!(close_target.payload, None);
+
+    let [
+        Some(toggle),
+        Some(toggle_after_resume),
+        Some(close),
+        Some(close_after_resume),
+    ] = [toggle_capture, toggle_target, close_capture, close_target].map(|event| event.creation)
+    else {
+        panic!("queued hosted Dialog toggle and close must both carry authenticated creation");
+    };
+    assert_eq!(toggle, toggle_after_resume);
+    assert_eq!(close, close_after_resume);
+    for (index, creation) in [toggle, close].into_iter().enumerate() {
+        assert_eq!(creation.global(), original.global());
+        assert_eq!(creation.clock_source(), settings.clock_source());
+        assert_eq!(
+            creation.time_origin_microseconds(),
+            settings.time_origin_microseconds()
+        );
+        let occurrence = creation.occurrence_microseconds();
+        assert!((clock_bounds[index]..=clock_bounds[index + 1]).contains(&occurrence));
+        assert_eq!(occurrence % 100, 0);
     }
 }
 
