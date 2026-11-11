@@ -1,0 +1,46 @@
+<test name="subgrid_axes_vertical_parent_orthogonal_child__content_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="block" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" hypothetical-block-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="block" box-sizing="content-box" direction="ltr" position="absolute" font-family="ahem" font-size="10px" line-height="10px">
+      <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="10px" row-gap="7px" column-gap="11px" grid-template-rows="50px 60px" grid-template-columns="30px 40px">
+        <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" writing-mode="horizontal-tb" font-family="ahem" font-size="10px" line-height="10px" row-gap="7px" column-gap="11px" grid-template-rows="50px 60px" grid-template-columns="subgrid" grid-row-start="1" grid-row-end="3" grid-column-start="1" grid-column-end="3">
+          <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" grid-row-start="1" grid-row-end="2" grid-column-start="1" grid-column-end="2"/>
+          <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" grid-row-start="2" grid-row-end="3" grid-column-start="2" grid-column-end="3"/>
+        </div>
+      </div>
+      <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" font-family="ahem" font-size="10px" line-height="10px" row-gap="7px" column-gap="11px" grid-template-rows="50px 60px" grid-template-columns="30px 40px">
+        <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" writing-mode="horizontal-tb" font-family="ahem" font-size="10px" line-height="10px" row-gap="7px" column-gap="11px" grid-template-rows="subgrid" grid-template-columns="30px 40px" grid-row-start="1" grid-row-end="3" grid-column-start="1" grid-column-end="3">
+          <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" grid-row-start="1" grid-row-end="2" grid-column-start="1" grid-column-end="2"/>
+          <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" grid-row-start="2" grid-row-end="3" grid-column-start="2" grid-column-end="3"/>
+        </div>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="117" height="162">
+      <node x="0" y="0" width="117" height="81">
+        <node x="0" y="0" width="117" height="81">
+          <node x="0" y="0" width="58" height="50"/>
+          <node x="69" y="57" width="48" height="60"/>
+        </node>
+      </node>
+      <node x="0" y="81" width="117" height="81">
+        <node x="0" y="0" width="117" height="81">
+          <node x="0" y="0" width="30" height="32"/>
+          <node x="41" y="39" width="40" height="42"/>
+        </node>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="117" height="162" scroll-width="117" scroll-height="162" client-width="117" client-height="162"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="117" height="81" scroll-width="117" scroll-height="117" client-width="117" client-height="81"/>
+    <world-rounded-layout node-path="0.0.0" x="0" y="0" width="117" height="81" scroll-width="117" scroll-height="117" client-width="117" client-height="81"/>
+    <world-rounded-layout node-path="0.0.0.0" x="0" y="0" width="58" height="50" scroll-width="58" scroll-height="50" client-width="58" client-height="50"/>
+    <world-rounded-layout node-path="0.0.0.1" x="69" y="57" width="48" height="60" scroll-width="48" scroll-height="60" client-width="48" client-height="60"/>
+    <world-rounded-layout node-path="0.1" x="0" y="81" width="117" height="81" scroll-width="117" scroll-height="81" client-width="117" client-height="81"/>
+    <world-rounded-layout node-path="0.1.0" x="0" y="0" width="117" height="81" scroll-width="117" scroll-height="81" client-width="117" client-height="81"/>
+    <world-rounded-layout node-path="0.1.0.0" x="0" y="0" width="30" height="32" scroll-width="30" scroll-height="32" client-width="30" client-height="32"/>
+    <world-rounded-layout node-path="0.1.0.1" x="41" y="39" width="40" height="42" scroll-width="40" scroll-height="42" client-width="40" client-height="42"/>
+  </diagnostics>
+</test>

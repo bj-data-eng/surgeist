@@ -4145,3 +4145,264 @@ height = 70
 [[specialized_publications]]
 source = "html/grid/grid_axes_vertical_rl_parallel.html"
 profile = "original-grid-axes"
+
+[[records]]
+source = "html/subgrid/subgrid_axes_horizontal_parent_orthogonal_child.html"
+source_sha256 = "d818a00e9c3b4992bae806b9ee0c412de2f8d78aa09710d0ddecfb3f4d3dc2dd"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "8e58c35e7ebe2e13336d9e949d3927c9fae1154bbf555343e672e214ee3f9d86"
+content_box_ltr = "de175df49453c2ab7252c2ef3a027cb69bad15739380137aed63c64d3c22aefc"
+border_box_rtl = "e4ef1abedd7b8f28e7d942203eb6732746eed5ddde72aa5bc390c764946105a0"
+content_box_rtl = "f331e2110893fdcc6fa8540a1acd05bf287e7447f0f43675ec1570ad163423de"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 81
+height = 234
+
+[[specialized_publications]]
+source = "html/subgrid/subgrid_axes_horizontal_parent_orthogonal_child.html"
+profile = "original-subgrid-axes"
+
+[[records]]
+source = "html/subgrid/subgrid_axes_horizontal_tb_parallel.html"
+source_sha256 = "4ba62fbfd85bc039302566656f5e71d42aa6253a7821d487366703c8a95460b7"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "162dacbd3ca995ff343f6f0a36259a9ab62bd82cfe2532ebd7d60f42bb0dc6cf"
+content_box_ltr = "89271324e656050fadaaf5ee39d8b3c2f4b783bd995e8de7eeb2d25e101d016b"
+border_box_rtl = "d0542135c64e99af2e534a1357731946553a2427f6918aac9586eb1b018d9e9d"
+content_box_rtl = "3bfcf6d31074ff6eda812f445bc29e61f076a36215799129c1d920fca54dc8a1"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 81
+height = 234
+
+[[specialized_publications]]
+source = "html/subgrid/subgrid_axes_horizontal_tb_parallel.html"
+profile = "original-subgrid-axes"
+
+[[records]]
+source = "html/subgrid/subgrid_axes_sideways_lr_parallel.html"
+source_sha256 = "a2328653fdcbb11e9f18b7460af532c360c812032519147e3a5318304a864112"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "d166425d94a8b7bd5d6163d19eda83e62cd54c5359373c5acd38f9a7a2fea887"
+content_box_ltr = "66aa1bdde59220fca1b5d93f6190842a08e357b7e996af00e8224df8fbc76a94"
+border_box_rtl = "218e1385e6f1ae94089725f44f10ef11b3fdfa5771ab0df270e8ec605ad10bf5"
+content_box_rtl = "0a4087021f1d95cdf11947f91420461c324e2e93f8924c39839013bd9cc35be6"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 117
+height = 162
+
+[[specialized_publications]]
+source = "html/subgrid/subgrid_axes_sideways_lr_parallel.html"
+profile = "original-subgrid-axes"
+
+[[records]]
+source = "html/subgrid/subgrid_axes_sideways_opposing.html"
+source_sha256 = "2e2993ad939905d0d8a4299d9674e77e478766952524531887e1bcce18c984bf"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "da168dd87d871b08055051686a22903e8b363cb39d1704ad24caf16373620ae1"
+content_box_ltr = "bf24ea552f587297c3793333105d34e6147513c205f99d4db23137a3b75163e3"
+border_box_rtl = "030143cd26b8b7a801967db37ef28c5f746ab4c5f48a1d8a4e8a290634758a13"
+content_box_rtl = "504d7f270adcb0e481b100da6aa593bddc51ebbbb1bf73b08cd2d8eea9fd3141"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 117
+height = 162
+
+[[specialized_publications]]
+source = "html/subgrid/subgrid_axes_sideways_opposing.html"
+profile = "original-subgrid-axes"
+
+[[records]]
+source = "html/subgrid/subgrid_axes_sideways_rl_parallel.html"
+source_sha256 = "67044201046bcc52eb21d4e78afe927620cfd7e636fb6f595b6ac33871515685"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "aff86503529f54572ea98fab224dd9e7c41a58bb711294605c233fc45d6818b6"
+content_box_ltr = "f5cb021d648980b14fd11dff21a996d6e61492e90a6516d472d6a1b39c0c9126"
+border_box_rtl = "432c190e4062829167baa01ddad16d2f9c68d4530a58c195ae0c45cde8244c86"
+content_box_rtl = "0114a80a583912f11490203ac89ff27aa55c9430aa776f20a571a24879210eff"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 117
+height = 162
+
+[[specialized_publications]]
+source = "html/subgrid/subgrid_axes_sideways_rl_parallel.html"
+profile = "original-subgrid-axes"
+
+[[records]]
+source = "html/subgrid/subgrid_axes_vertical_lr_parallel.html"
+source_sha256 = "1f4d87ba0d4de4c07b9c429e00925411f2589c99d237faa0c414ab92b7570fef"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "90af354ff9d3120f57ccd9d6432ff80b7a6662d0ddfed8f9657234282f7f2f07"
+content_box_ltr = "c6d77b48ceabe1b8f204d64f6725f4fdb57b323455bbaf83dd9d1a3d3a83debc"
+border_box_rtl = "10a18c83569a0940f94228644900595a86b1c49f5c6c33ee92f37a6883f61fbe"
+content_box_rtl = "d11eb043752c91976b3d25829ffc43283ed308b6321cd38a4fe8634110c86ef2"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 117
+height = 162
+
+[[specialized_publications]]
+source = "html/subgrid/subgrid_axes_vertical_lr_parallel.html"
+profile = "original-subgrid-axes"
+
+[[records]]
+source = "html/subgrid/subgrid_axes_vertical_opposing.html"
+source_sha256 = "6ba0ba9d22e80125c753e544404cc99d8b36ee73d6a8094b11da0054949be03f"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "546bd0f731e5002a62710a4591f6feb1e99ee48b0c59bc8e591da10794b9fbdf"
+content_box_ltr = "6c2d9777fdaf1ead4f02eee85a088f256e5c6ba702d8474abd817d14a6d008aa"
+border_box_rtl = "1f395b37642fd1980e1a69597504fcec01025aade81c3702037724317e6e5a00"
+content_box_rtl = "b5ec89506eeb409cc40953e86ef77a669c994e7d0bceb81ef9f4ad17ac586b85"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 117
+height = 162
+
+[[specialized_publications]]
+source = "html/subgrid/subgrid_axes_vertical_opposing.html"
+profile = "original-subgrid-axes"
+
+[[records]]
+source = "html/subgrid/subgrid_axes_vertical_parent_orthogonal_child.html"
+source_sha256 = "d891897d16e21ff2624a1a1a35adccb8a38128b4e9e83ccca9a182cd91e04c1c"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "fb1926fcdf16e692bfa03c9c075ebf434ce291724043271488121b99d07bba3f"
+content_box_ltr = "ad7c052b989746bfc7b993be2cd7151eb8d58a3e91e930c1f8abb6717c9cf969"
+border_box_rtl = "e2a9c73cc066b82ba5bfc239c8b2f8d4622aff91368acfd797340e5a4221c785"
+content_box_rtl = "a25ec828b40a0116dd8f8a13c04e6b663268af0b47c856e707cb88a2e6aef753"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 117
+height = 162
+
+[[specialized_publications]]
+source = "html/subgrid/subgrid_axes_vertical_parent_orthogonal_child.html"
+profile = "original-subgrid-axes"
+
+[[records]]
+source = "html/subgrid/subgrid_axes_vertical_rl_parallel.html"
+source_sha256 = "4c764e6c42e41ebfff1148ae07dfa1af75f35465af5d05f69aa85cb0fa698c7b"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "2ce386dc6f8156cd3deb985543f110ab4165ec31934d77624ad3197019814820"
+content_box_ltr = "14f7c74952976733af9da7f6c782358bf38b53f05def9065e88999a4aa492230"
+border_box_rtl = "9cd21bb83eac0e80cf8732192d829641b1691a1e7119b6076970f310bd5eb302"
+content_box_rtl = "9c3d336e1d3e769380ae60380e09b7aa3cb241c50b34485125a2e4dd4f888d4e"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 117
+height = 162
+
+[[specialized_publications]]
+source = "html/subgrid/subgrid_axes_vertical_rl_parallel.html"
+profile = "original-subgrid-axes"

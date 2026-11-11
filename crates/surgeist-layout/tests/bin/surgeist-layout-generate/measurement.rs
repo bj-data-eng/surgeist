@@ -22,7 +22,7 @@ use crate::prepared_atomic_percentage_profile;
 use crate::{empty_line_br_font_band_profile, vertical_br_font_band_profile};
 use crate::{
     original_block_axes_profile, original_flex_axes_profile, original_flex_parent_profile,
-    original_grid_axes_profile,
+    original_grid_axes_profile, original_subgrid_axes_profile,
 };
 pub(super) use flex_content_text::FlexContentText;
 
@@ -39,6 +39,7 @@ pub(super) enum BoxObservationRequest {
     OriginalBlockAxes,
     OriginalFlexAxes,
     OriginalGridAxes,
+    OriginalSubgridAxes,
     OriginalSubgridBody,
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
@@ -87,6 +88,9 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::OriginalGridAxes.input_bytes() => {
                 Ok(Self::OriginalGridAxes)
             }
+            Some(bytes) if Some(bytes) == Self::OriginalSubgridAxes.input_bytes() => {
+                Ok(Self::OriginalSubgridAxes)
+            }
             Some(bytes) if Some(bytes) == Self::OriginalSubgridBody.input_bytes() => {
                 Ok(Self::OriginalSubgridBody)
             }
@@ -132,6 +136,10 @@ impl BoxObservationRequest {
             Self::OriginalGridAxes => Some((
                 original_grid_axes_profile::SCRIPT_PATH,
                 original_grid_axes_profile::SCRIPT,
+            )),
+            Self::OriginalSubgridAxes => Some((
+                original_subgrid_axes_profile::SCRIPT_PATH,
+                original_subgrid_axes_profile::SCRIPT,
             )),
             Self::OriginalSubgridBody => Some((
                 original_subgrid_body_profile::SCRIPT_PATH,
@@ -181,6 +189,7 @@ impl BoxObservationRequest {
             Self::OriginalBlockAxes => Some(original_block_axes_profile::REQUEST),
             Self::OriginalFlexAxes => Some(original_flex_axes_profile::REQUEST),
             Self::OriginalGridAxes => Some(original_grid_axes_profile::REQUEST),
+            Self::OriginalSubgridAxes => Some(original_subgrid_axes_profile::REQUEST),
             Self::OriginalSubgridBody => Some(original_subgrid_body_profile::REQUEST),
             Self::PreparedAtomicPercentage => Some(prepared_atomic_percentage_profile::REQUEST),
             Self::HorizontalBrFontBand => Some(horizontal_br_font_band_profile::REQUEST),
@@ -745,6 +754,7 @@ pub(super) fn decode(
             | BoxObservationRequest::OriginalBlockAxes
             | BoxObservationRequest::OriginalFlexAxes
             | BoxObservationRequest::OriginalGridAxes
+            | BoxObservationRequest::OriginalSubgridAxes
     ) || (request == BoxObservationRequest::EmptyLineBrFontBand
         && wire
             .style
@@ -843,6 +853,7 @@ pub(super) fn decode(
         | BoxObservationRequest::OriginalBlockAxes
         | BoxObservationRequest::OriginalFlexAxes
         | BoxObservationRequest::OriginalGridAxes
+        | BoxObservationRequest::OriginalSubgridAxes
         | BoxObservationRequest::OriginalSubgridBody
         | BoxObservationRequest::PreparedAtomicPercentage
         | BoxObservationRequest::HorizontalBrFontBand
@@ -888,6 +899,7 @@ pub(super) fn decode(
         BoxObservationRequest::OriginalBlockAxes
             | BoxObservationRequest::OriginalFlexAxes
             | BoxObservationRequest::OriginalGridAxes
+            | BoxObservationRequest::OriginalSubgridAxes
     ) {
         context.compatible(
             root_local_positioned
@@ -899,10 +911,14 @@ pub(super) fn decode(
             "viewport",
             "original axes require their first-block root-local frame",
         )?;
-        if request == BoxObservationRequest::OriginalGridAxes {
-            validate_original_grid_axes(&root, &context)?;
-        } else {
-            validate_original_axes(&root, &context, request)?;
+        match request {
+            BoxObservationRequest::OriginalGridAxes => {
+                validate_original_grid_axes(&root, &context)?
+            }
+            BoxObservationRequest::OriginalSubgridAxes => {
+                validate_original_subgrid_axes(&root, &context)?
+            }
+            _ => validate_original_axes(&root, &context, request)?,
         }
     }
     if root_local_positioned {
@@ -1007,17 +1023,8 @@ fn validate_original_grid_axes(root: &Node, context: &Context<'_>) -> Result<(),
             "original Grid axes require two source children",
         ));
     };
-    let auto_box = |node: &Node| {
-        matches!(node.kind, NodeKind::Box)
-            && node.text.is_none()
-            && has_attribute(&node.attrs, "source-tag", "div")
-            && node
-                .attrs
-                .iter()
-                .all(|(name, value)| !matches!(*name, "width" | "height") || value == "auto")
-    };
     context.compatible(
-        auto_box(root)
+        auto_source_div(root)
             && has_attribute(&root.attrs, "display", "grid")
             && has_attribute(&root.attrs, "position", "absolute")
             && has_attribute(&root.attrs, "grid-template-columns", "30px 40px")
@@ -1031,21 +1038,122 @@ fn validate_original_grid_axes(root: &Node, context: &Context<'_>) -> Result<(),
     {
         let place = context.child(index);
         place.compatible(
-            auto_box(child)
+            relative_auto_axis_box(child, "flex")
                 && child.children.is_empty()
-                && has_attribute(&child.attrs, "display", "flex")
-                && child.attrs.iter().all(|(name, _)| *name != "position")
-                && [
-                    ("grid-column-start", start),
-                    ("grid-column-end", end),
-                    ("grid-row-start", start),
-                    ("grid-row-end", end),
-                ]
-                .into_iter()
-                .all(|(key, value)| has_attribute(&child.attrs, key, value)),
+                && diagonal_grid_placement(child, start, end),
             "style",
             "original Grid axes require authored diagonal child placement",
         )?;
+    }
+    Ok(())
+}
+
+fn auto_source_div(node: &Node) -> bool {
+    matches!(node.kind, NodeKind::Box)
+        && node.text.is_none()
+        && has_attribute(&node.attrs, "source-tag", "div")
+        && node
+            .attrs
+            .iter()
+            .all(|(name, value)| !matches!(*name, "width" | "height") || value == "auto")
+}
+
+fn relative_auto_axis_box(node: &Node, display: &str) -> bool {
+    // The normalized attributes omit the base relative position.
+    auto_source_div(node)
+        && has_attribute(&node.attrs, "display", display)
+        && node.attrs.iter().all(|(name, _)| *name != "position")
+}
+
+fn diagonal_grid_placement(node: &Node, start: &str, end: &str) -> bool {
+    [
+        ("grid-column-start", start),
+        ("grid-column-end", end),
+        ("grid-row-start", start),
+        ("grid-row-end", end),
+    ]
+    .into_iter()
+    .all(|(key, value)| has_attribute(&node.attrs, key, value))
+}
+
+fn validate_original_subgrid_axes(
+    root: &Node,
+    context: &Context<'_>,
+) -> Result<(), MeasurementError> {
+    let [columns, rows] = root.children.as_slice() else {
+        return Err(context.error(
+            "children",
+            MeasurementErrorKind::ContradictoryFields,
+            "original Subgrid axes require two parent grids",
+        ));
+    };
+    context.compatible(
+        auto_source_div(root)
+            && has_attribute(&root.attrs, "display", "block")
+            && has_attribute(&root.attrs, "position", "absolute")
+            && root
+                .attrs
+                .iter()
+                .all(|(name, value)| *name != "writing-mode" || value == "horizontal-tb"),
+        "style",
+        "original Subgrid axes require a horizontal absolute Auto Block",
+    )?;
+    let authored_grid = |node: &Node, columns, rows| {
+        relative_auto_axis_box(node, "grid")
+            && [
+                ("grid-template-columns", columns),
+                ("grid-template-rows", rows),
+                ("row-gap", "7px"),
+                ("column-gap", "11px"),
+            ]
+            .into_iter()
+            .all(|(key, value)| has_attribute(&node.attrs, key, value))
+    };
+    for (index, (parent, columns, rows)) in [
+        (columns, "subgrid", "50px 60px"),
+        (rows, "30px 40px", "subgrid"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let parent_context = context.child(index);
+        parent_context.compatible(
+            authored_grid(parent, "30px 40px", "50px 60px"),
+            "style",
+            "original Subgrid axes require fixed parent tracks and gaps",
+        )?;
+        let [subgrid] = parent.children.as_slice() else {
+            return Err(parent_context.error(
+                "children",
+                MeasurementErrorKind::ContradictoryFields,
+                "original Subgrid parent requires one subgrid",
+            ));
+        };
+        let subgrid_context = parent_context.child(0);
+        subgrid_context.compatible(
+            authored_grid(subgrid, columns, rows) && diagonal_grid_placement(subgrid, "1", "3"),
+            "style",
+            "original Subgrid requires its authored inherited axis and full span",
+        )?;
+        let [first, second] = subgrid.children.as_slice() else {
+            return Err(subgrid_context.error(
+                "children",
+                MeasurementErrorKind::ContradictoryFields,
+                "original Subgrid requires two source cells",
+            ));
+        };
+        for (index, (cell, start, end)) in [(first, "1", "2"), (second, "2", "3")]
+            .into_iter()
+            .enumerate()
+        {
+            subgrid_context.child(index).compatible(
+                relative_auto_axis_box(cell, "flex")
+                    && cell.children.is_empty()
+                    && diagonal_grid_placement(cell, start, end),
+                "style",
+                "original Subgrid requires authored diagonal cells",
+            )?;
+        }
     }
     Ok(())
 }
