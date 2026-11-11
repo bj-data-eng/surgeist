@@ -274,6 +274,109 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
     ));
 }
 
+pub(in crate::document_scripting) fn element_projection_admits_exact_work_and_backing() {
+    const ROOT: &str = "window.document.documentElement";
+    // Entry, bank lookup, one radix page, first index formation and custody
+    // admission, followed by the prepaid worst-case exact disarm.
+    let native_work = 5 + 2 * u64::from(usize::BITS) + 1;
+    let read = |scope: &mut Scope<'_>| {
+        let root = scope.evaluate(&units(ROOT))?;
+        assert_eq!(scope.kind(&root)?, surgeist_bindings_js::ValueKind::Object);
+        Ok(())
+    };
+    let mut control = public_node_host(native_work, 20_000);
+    let permit = control.permit().unwrap();
+    let events = control.guest_events().unwrap();
+    let before = (events.budget.work.get(), events.budget.used.get());
+    control.in_document(&permit, read).unwrap();
+    let binding_work = events.budget.work.get() - before.0;
+    let bytes = events.budget.used.get() - before.1;
+    assert!(binding_work > 0 && bytes > 0);
+    drop((control, events));
+
+    for (work, bytes, accepted) in [
+        (binding_work, bytes, true),
+        (binding_work - 1, bytes, false),
+        (binding_work, bytes - 1, false),
+    ] {
+        let mut host = public_node_host(native_work, 20_000);
+        let permit = host.permit().unwrap();
+        let events = host.guest_events().unwrap();
+        let spare = events.limits.storage_bytes - events.budget.used.get() - bytes;
+        let backing = events.reserve(&host.native, spare).unwrap();
+        events.budget.work.set(events.limits.work - work);
+        let stamp = host.snapshot().unwrap().stamp();
+        let before = events.budget.used.get();
+        let result = host.in_document(&permit, read);
+        assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+        if accepted {
+            result.unwrap();
+            assert_eq!(events.budget.work.get(), events.limits.work);
+            assert_eq!(events.budget.used.get(), events.limits.storage_bytes);
+        } else {
+            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+                panic!("one-short Element projection must refuse");
+            };
+            assert!(matches!(
+                (
+                    work < binding_work,
+                    failure.cause::<DocumentGuestEventError>()
+                ),
+                (true, Some(DocumentGuestEventError::WorkLimit))
+                    | (
+                        false,
+                        Some(DocumentGuestEventError::Document(
+                            DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+                        ))
+                    )
+            ));
+            assert_eq!(events.budget.used.get(), before);
+        }
+        drop(backing);
+    }
+
+    let mut host = public_node_host(native_work - 1, 20_000);
+    let permit = host.permit().unwrap();
+    let events = host.guest_events().unwrap();
+    let before = events.budget.used.get();
+    let stamp = host.snapshot().unwrap().stamp();
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        host.in_document(&permit, read)
+    else {
+        panic!("one-short canonical watch must refuse Element publication");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(DocumentScriptError::Native(
+            DocumentScriptNativeError::Dom(DomError::NodeRetirementWorkLimit { limit })
+        ))) if *limit == native_work - 1
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+    assert_eq!(
+        events.budget.used.get(),
+        before,
+        "watch refusal must release all wrapper backing"
+    );
+
+    let mut host = public_node_host(native_work, 20_000);
+    let permit = host.permit().unwrap();
+    let events = host.guest_events().unwrap();
+    let before = (events.budget.work.get(), events.budget.used.get());
+    let stamp = host.snapshot().unwrap().stamp();
+    let cancel = host.native.cancellation.clone();
+    cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(matches!(
+        host.in_document(&permit, read),
+        Err(DocumentScriptError::Native(
+            DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Cancelled)
+        ))
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+    assert_eq!((events.budget.work.get(), events.budget.used.get()), before);
+    cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+    host.in_document(&permit, read).unwrap();
+}
+
 pub(in crate::document_scripting) fn fragment_custody_survives_collection_and_releases_on_retirement()
  {
     let mut host = public_node_host(1_000, 20_000);
