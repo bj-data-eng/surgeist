@@ -1530,6 +1530,10 @@ fn main() {
             "html-script-before-svg" => {
                 script_preparation::enabled_html_script_precedes_unavailable_svg_processing()
             }
+            "svg-script-before-html" => script_preparation::svg_settings_order_control(true),
+            "disabled-html-script-before-svg" => {
+                script_preparation::svg_settings_order_control(false)
+            }
             "native-retirement" => {
                 let expired = native_read_snapshot_and_explicit_queue();
                 real_retirement_revokes_and_abandons(&expired);

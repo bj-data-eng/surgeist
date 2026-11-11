@@ -889,6 +889,114 @@ pub(super) fn enabled_html_script_precedes_unavailable_svg_processing() {
     check_private(&host.snapshot().unwrap());
 }
 
+pub(super) fn svg_settings_order_control(svg_first: bool) {
+    let (mut session, top) = setup();
+    let document = top.document();
+    let parent = body(&session, document);
+    let mut batch = DomBatch::new();
+    let detached = batch.create_html_document(document, None);
+    let wrapper = batch.create_element_ns(document, Namespace::html(), "div");
+    let html = make_script(&mut batch, document);
+    let svg = batch.create_element_ns(&detached, Namespace::svg(), "script");
+    let children = if svg_first {
+        [&svg, &html]
+    } else {
+        [&html, &svg]
+    };
+    for child in children {
+        batch.insert_before(child, &wrapper, None);
+    }
+    let commit = session.dom().apply(batch, &cancel()).unwrap();
+    let [wrapper, html, svg] =
+        [wrapper, html, svg].map(|ticket| commit.created(&ticket).unwrap().unwrap());
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let before = host.snapshot().unwrap();
+    let check_private = |snapshot: &DomSnapshot| {
+        assert_eq!(snapshot.stamp(), before.stamp());
+        assert_eq!(snapshot.node(wrapper).unwrap().parent(), None);
+        let children = if svg_first { [svg, html] } else { [html, svg] };
+        assert_eq!(snapshot.node(wrapper).unwrap().children(), children);
+        assert!(
+            !snapshot
+                .node(svg)
+                .unwrap()
+                .as_svg_script()
+                .unwrap()
+                .flags()
+                .already_processed()
+        );
+    };
+    let read = host
+        .with_native(|dom, _, mut source| {
+            let result = source.apply(
+                dom,
+                DomSourceEdit::insert_before(wrapper, parent, None),
+                LIMITS,
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                },
+                &cancel(),
+            );
+            if svg_first {
+                assert!(
+                    matches!(
+                        result,
+                        Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+                            DomError::SvgScriptProcessingUnavailable
+                        )))
+                    ),
+                    "the first SVG requirement must be reported directly: {result:?}"
+                );
+                assert!(dom.pending_source_edit().is_none());
+                None
+            } else {
+                Some(request(result.unwrap(), DomSourceScriptStep::ReadScripting))
+            }
+        })
+        .unwrap();
+    check_private(&host.snapshot().unwrap());
+
+    if let Some(read) = read {
+        assert_eq!(read.subject(), Some(html));
+        assert_eq!(read.relevant_global(), Some(top.global()));
+        assert_eq!(read.basis(), before.stamp());
+        let mut session = host.stop().into_session().unwrap();
+        let mut source = session.source_execution();
+        let reached = source.resume(
+            &mut session.dom(),
+            read.operation(),
+            LIMITS,
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        );
+        assert!(
+            matches!(
+                reached,
+                Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+                    DomError::SvgScriptProcessingUnavailable
+                )))
+            ),
+            "the real Disabled answer must reach the later SVG refusal: {reached:?}"
+        );
+        check_private(&session.snapshot());
+        let pending = session.dom().pending_source_edit();
+        assert!(
+            pending.is_none(),
+            "a private Source must finish after its real SVG refusal: {pending:?}"
+        );
+    }
+}
+
 pub(super) fn run() {
     let foreign = text_and_attribute_keep_the_private_segment();
     adopted_script_uses_original_settings_and_current_browsing_context(foreign);
