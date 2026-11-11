@@ -618,22 +618,40 @@ impl Capture {
             };
             scope.check_active()?;
             events.step()?;
-            let root = self.with_native(&owner, |session, _| {
+            let (root, document) = self.with_native(&owner, |session, _| {
                 let snapshot = session.snapshot();
                 let node = snapshot
                     .node(id.node())
                     .map_err(DocumentScriptNativeError::from)?;
-                Ok(if options.composed {
+                let root = if options.composed {
                     node.shadow_including_root()
                 } else {
                     node.root()
-                })
+                };
+                if root == id.node() {
+                    return Ok((root, None));
+                }
+                events.step()?;
+                let document = snapshot
+                    .node(root)
+                    .map_err(DocumentScriptNativeError::from)?
+                    .as_document()
+                    .map(|document| document.id());
+                Ok((root, document))
             })?;
-            if root != id.node() {
-                return Err(DocumentScriptNativeError::ProjectionCustody.into());
+            if let Some(document) = document {
+                return self.project_document(scope, &owner, &events, document);
             }
-            let receiver = scope.retain(arguments.receiver());
-            Ok(scope.import(&receiver)?)
+            if root == id.node() {
+                let receiver = scope.retain(arguments.receiver());
+                return Ok(scope.import(&receiver)?);
+            }
+            events
+                .public
+                .as_ref()
+                .ok_or(Error::ExpiredIdentity)?
+                .document
+                .open(scope, &events, root)
         })();
         complete(scope, &events, result)
     }
