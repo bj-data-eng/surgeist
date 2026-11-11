@@ -1195,32 +1195,36 @@ fn preferred_main_max_content_uses_the_authored_cross_operation_in_nested_probes
     }
 
     let mut differences = Vec::new();
-    for (outer_inline, outer_width) in [
-        (PreferredSizeOf::px(100.0), 100.0),
-        (PreferredSizeOf::MAX_CONTENT, 70.0),
-    ] {
-        let tree = PublicLayoutTreeOf::<f64>::new()
-            .children(0, [1])
-            .children(1, [2])
-            .children(2, [])
-            .style(
-                0,
-                NodeInputOf {
-                    display: Display::Flex,
-                    size: Size::new(outer_inline, PreferredSizeOf::AUTO),
-                    align_items: Some(AlignItems::Start),
-                    ..NodeInputOf::default()
-                },
-            )
-            .style(1, child.clone())
-            .style(2, leaf.clone())
-            .measure_with(2, measure);
-        let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
-        for phase in [Phase::Unrounded, Phase::Final] {
-            let outer = readback::single_box_output(&batch, 0, phase).size;
-            let inner = readback::single_box_output(&batch, 1, phase).size;
-            if outer.width != outer_width || inner != expected {
-                differences.push((outer_width, outer, inner));
+    for basis in [FlexBasisOf::AUTO, FlexBasisOf::CONTENT] {
+        let mut child = child.clone();
+        child.flex_basis = basis.clone();
+        for (outer_inline, outer_width) in [
+            (PreferredSizeOf::px(100.0), 100.0),
+            (PreferredSizeOf::MAX_CONTENT, 70.0),
+        ] {
+            let tree = PublicLayoutTreeOf::<f64>::new()
+                .children(0, [1])
+                .children(1, [2])
+                .children(2, [])
+                .style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        size: Size::new(outer_inline, PreferredSizeOf::AUTO),
+                        align_items: Some(AlignItems::Start),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(1, child.clone())
+                .style(2, leaf.clone())
+                .measure_with(2, measure);
+            let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
+            for phase in [Phase::Unrounded, Phase::Final] {
+                let outer = readback::single_box_output(&batch, 0, phase).size;
+                let inner = readback::single_box_output(&batch, 1, phase).size;
+                if outer.width != outer_width || inner != expected {
+                    differences.push((basis.clone(), outer_width, outer, inner));
+                }
             }
         }
     }
