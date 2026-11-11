@@ -822,14 +822,11 @@ fn runs_fri_03_box_participation_against_surgeist_layout() {
         .unwrap_or_else(|error| panic!("FRI-03 fixture matrix is incomplete: {error}"));
     let corpus_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
 
-    for relative in paths {
-        let fixture = corpus_root.join(relative);
-        let golden = support::Golden::parse_file(&fixture)
-            .unwrap_or_else(|error| panic!("{} failed to parse: {error}", fixture.display()));
-        support::assert_surgeist_matches(&golden).unwrap_or_else(|error| {
-            panic!("{} failed layout comparison: {error}", fixture.display())
-        });
-    }
+    let originals: Vec<_> = paths
+        .into_iter()
+        .map(|path| corpus_root.join(path))
+        .collect();
+    assert_registered_originals_match(&originals);
 }
 
 #[test]
