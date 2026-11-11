@@ -1522,6 +1522,62 @@ mod command_contribution_tests {
         )
     }
 
+    #[test]
+    fn layer_bounds_composition_admits_coordinates_before_contributing() {
+        use crate::{
+            RenderAccountingError, RenderAccountingOptions, RenderAttemptKind, RenderLimits,
+            RenderPhase, RenderQuantity,
+        };
+
+        let mut scene = Scene::new();
+        scene.layer(
+            Layer::new().with_transform(Transform::translation(4.0, 6.0).unwrap()),
+            |scene| {
+                scene.fill(Rect::new(1.0, 2.0, 2.0, 3.0), Color::BLACK);
+            },
+        );
+        let commands = scene
+            .normalize(Capabilities::CURRENT, &Account::for_test())
+            .unwrap();
+        for (cap, amount) in [(0, 12), (31, 1), (32, 1), (37, 1)] {
+            let limits = RenderLimits::new()
+                .with_work_limit(RenderWork::CoordinateVisits, cap)
+                .unwrap();
+            let mut accounting =
+                RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+            let error = accounting
+                .run(RenderAttemptKind::Frame, RenderPhase::Plan, |account| {
+                    contribute(commands.clone(), account).map(drop)
+                })
+                .expect_err("the layer product must refuse before contributing its bounds");
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("expected coordinate refusal: {error:?}");
+            };
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::CoordinateVisits)
+            );
+            assert_eq!((refusal.current(), refusal.amount()), (cap, amount));
+            let report = accounting.last_attempt().unwrap().attempt().unwrap();
+            assert_eq!(
+                report
+                    .phase_usage(RenderPhase::Plan)
+                    .work(RenderWork::CoordinateVisits),
+                cap
+            );
+        }
+        let result = contribute(commands, &Account::for_test()).unwrap();
+        assert_eq!(
+            result
+                .source_bounds
+                .known_non_empty_extent()
+                .unwrap()
+                .rect(),
+            Rect::new(5.0, 8.0, 2.0, 3.0)
+        );
+    }
+
     fn add_text(scene: &mut Scene, bounds: TextRunBounds, glyphs: &[TextGlyph]) {
         scene.text_run(
             TextRun::try_new(

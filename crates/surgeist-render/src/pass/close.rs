@@ -3619,6 +3619,47 @@ mod repeated_proof_accounting_tests {
         lower_capture_proof_fixture, lower_filter_proof_fixture, measure_proof_work,
     };
 
+    #[test]
+    fn graph_close_preserves_transform_refusal_as_an_accounting_error() {
+        use crate::{RenderAttemptStatus, RenderPhase, RenderQuantity};
+
+        let plan = lower_capture_proof_fixture(
+            1,
+            true,
+            &crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096),
+        );
+        for (cap, amount) in [(0, 12), (31, 1), (32, 1), (37, 1), (38, 12)] {
+            let (result, report) =
+                measure_proof_work(RenderWork::CoordinateVisits, cap, |account| {
+                    ClosedExecutableGraph::try_from_lowered(
+                        plan.clone(),
+                        &account.at(RenderPhase::FramePrepare),
+                    )
+                    .map(|closed| closed.is_ok())
+                });
+            let error = result.expect_err("coordinate refusal must escape the graph proof");
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("expected coordinate refusal: {error:?}");
+            };
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::CoordinateVisits)
+            );
+            assert_eq!((refusal.current(), refusal.amount()), (cap, amount));
+            let attempt = report.attempt().unwrap();
+            assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
+            let usage = attempt.phase_usage(RenderPhase::FramePrepare);
+            assert_eq!(usage.work(RenderWork::CoordinateVisits), cap);
+            assert_eq!(attempt.usage().live(RenderResource::ScratchCpuBytes), 0);
+        }
+        let closed = ClosedExecutableGraph::try_from_lowered(plan, &Account::for_test()).unwrap();
+        assert!(
+            closed.is_ok(),
+            "the same authored graph must close with sufficient budget"
+        );
+    }
+
     fn shared<T: Clone>(values: &[T]) -> SharedValue<Vec<T>> {
         let account = Account::for_test();
         let mut backing = account.retained(values.len()).unwrap();

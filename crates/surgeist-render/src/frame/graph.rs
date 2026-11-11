@@ -2627,6 +2627,79 @@ mod diagnostic_tests {
     use super::*;
 
     #[test]
+    fn graph_planning_admits_span_and_external_layer_products() {
+        use crate::{
+            Capabilities, Color, Layer, RenderAccountingContext, RenderAccountingError,
+            RenderAccountingOptions, RenderAttemptKind, RenderLimits, RenderPhase, RenderQuantity,
+            Scene, Size,
+        };
+
+        let mut scene = Scene::new();
+        scene.layer(
+            Layer::new()
+                .isolated()
+                .with_transform(Transform::translation(1.0, 0.0).unwrap()),
+            |scene| {
+                scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+            },
+        );
+        let setup = Account::for_test();
+        let commands = scene.normalize(Capabilities::CURRENT, &setup).unwrap();
+        let context = FrameContext::try_new(
+            Size::new(8.0, 8.0),
+            1.0,
+            Antialiasing::Area,
+            Color::TRANSPARENT,
+        )
+        .unwrap();
+        let FrameSpatialPlan::NonEmpty(spatial) = context.output_spatial_plan().unwrap() else {
+            panic!("the fixture has a positive output extent");
+        };
+        let plan = |account: &Account| {
+            let mut requirements = account.retained(1)?;
+            requirements.push(GraphSelectionRequirement::ExplicitIsolation)?;
+            SemanticFrameGraphPlanner::build(
+                commands.clone(),
+                context,
+                spatial,
+                requirements,
+                account,
+            )
+        };
+        // The initial span, two external-layer products and the isolated
+        // source span each start with twelve coefficient reads.
+        for (cap, amount) in [(0, 12), (37, 1), (38, 12), (76, 12), (114, 12)] {
+            let limits = RenderLimits::new()
+                .with_work_limit(RenderWork::CoordinateVisits, cap)
+                .unwrap();
+            let mut accounting =
+                RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+            let error = accounting
+                .run(RenderAttemptKind::Frame, RenderPhase::Plan, |account| {
+                    plan(account).map(drop)
+                })
+                .expect_err("the next graph transform must exceed the coordinate budget");
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("expected coordinate refusal: {error:?}");
+            };
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::CoordinateVisits)
+            );
+            assert_eq!((refusal.current(), refusal.amount()), (cap, amount));
+            let report = accounting.last_attempt().unwrap().attempt().unwrap();
+            assert_eq!(
+                report
+                    .phase_usage(RenderPhase::Plan)
+                    .work(RenderWork::CoordinateVisits),
+                cap
+            );
+        }
+        assert!(!plan(&setup).unwrap().vello_spans.is_empty());
+    }
+
+    #[test]
     fn graph_failure_preserves_dependency_identities_in_the_returned_error() {
         let error = graph_build::<()>(Err(GraphValidationError::MissingProducerDependency {
             resource: SemanticResourceId::new(GraphGeneration(7), ResourceIndex(3)),
