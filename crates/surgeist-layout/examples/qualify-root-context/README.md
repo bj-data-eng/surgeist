@@ -205,7 +205,9 @@ covers eleven original sources in both box modes and directions. The matching
 comparison includes every recorded scroll-span pair. Its catalogue records use
 `case_identity = "source-path"` to distinguish sources with shared basenames.
 Current case names use the source path without `html/` and `.html`, followed by
-the variant. Historical XML retains the basename and variant.
+the variant. Historical XML retains the basename and variant. See the
+[canonical Ahem provenance](../../tests/layout/browser_parity/fonts/PROVENANCE.md)
+for the retained font's resource and license information.
 
 ~~~sh
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri05-computed-overflow
