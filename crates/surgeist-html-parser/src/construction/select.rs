@@ -582,7 +582,7 @@ impl SessionStorage {
         };
         let attribute = element
             .attributes()
-            .get(position)
+            .at(c, position)?
             .ok_or(SessionError::WrongToken)?;
         let selected = exact_ascii(c, Some(attribute.name().local_name()), "selected")?;
         let disabled = exact_ascii(c, Some(attribute.name().local_name()), "disabled")?;
@@ -738,7 +738,7 @@ impl SessionStorage {
         payload_write::<surgeist_html::bounded::numeric::HtmlIntegerPrefixScanner>(c, 1)?;
         payload_write::<usize>(c, 1)?;
         let mut scanner = surgeist_html::bounded::numeric::HtmlIntegerPrefixScanner::new(true);
-        for &unit in value.code_units() {
+        for &unit in value {
             c.charge_unit_inspection()?;
             payload_write::<surgeist_html::bounded::numeric::HtmlIntegerPrefixScanner>(c, 1)?;
             if !scanner.feed(unit) {
@@ -752,7 +752,6 @@ impl SessionStorage {
         payload_write::<(usize, usize)>(c, 2)?;
         let mut result = 0usize;
         let digits = value
-            .code_units()
             .get(prefix.start()..prefix.end())
             .ok_or_else(|| latch_registry_row(c))?;
         for &unit in digits {

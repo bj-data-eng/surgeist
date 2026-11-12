@@ -136,17 +136,60 @@ Each retention of an attribute value or of the saved `is` value either lists or 
 | `add_element_from_inputs` values and saved `is`, the hyperlink snapshot raw value, the captured frozen Base href | Copy into an exact owner. The hyperlink snapshot offers the length of the copy to the caller's retention before it reserves the backing, and refuses a reserved capacity larger than the length with `HtmlBaseFactsError::AllocationFailed`. The captured Base href charges the work of its copy before it allocates, and the Base facts admit its units afterwards: the allocation is bounded by the source value and by the work charged for the copies of the capture. `add_element_from_inputs` charges the work of each copy before it runs. A failed allocation is a typed allocation failure. |
 
 The input raw value, image source and dialog return value that parsed installation reads are
-owners of a parsed document and keep the capacity charge.
+parser-held registry strings, each an exact owner copied from the units of the parse's attribute
+value. Parsed installation prices each as an owner and lists no block for it.
 
 A value a caller passes in keeps the capacity price at the points where no transaction has listed
 its block, for example the value of a `DomBatch` command during a source operation, or an
 observation a host builds for a facts bank. A copy shares an owner instead of copying it.
 
-`OrderedAttributes::shared_attributes(&self) -> &Arc<Vec<Attribute>>` lends the
-actual immutable backing and retained capacity without a clone or validation
-pass. Consuming `into_shared_attributes(self) -> Arc<Vec<Attribute>>` returns
-that same backing. These observations let the consuming parser qualify its
-existing allocation tickets; mutable construction backing remains private.
+`OrderedAttributes::capacity()` reports the capacity of the actual immutable backing, and
+`as_slice()` lends its attributes without a clone or validation pass. `HtmlAttributes::to_ordered`
+returns a collection whose capacity is the number of attributes of the element, so a holder that
+charges the capacity charges no spare rows. Consuming
+`into_shared_attributes(self) -> Arc<Vec<Attribute>>` returns that same backing. Mutable
+construction backing of an element is not an `OrderedAttributes`: the attributes of every element of
+a construction storage are rows of the storage's attribute table.
+
+### Attribute table
+
+The attributes of the elements of one construction storage are the rows of one table. A row holds
+the interned name of an attribute and a range of the storage's text arena that is its value; a run
+holds the first row, the length and the room of the rows of one element, and an element record
+holds the index of its run. An append that finds the run full extends it in place when it ends at
+the tail of the table and otherwise moves it once to a region of twice its new size, so the rows
+that `n` appends copy are linear in the rows the runs hold. A value no longer than the one it
+replaces is written over its units; a longer one is written at the tail of the arena, and removed
+or replaced units stay written as spare until publication.
+
+An edit grows three banks, admitted before any is recorded and recorded before it is reserved:
+`AttributeRows`, `AttributeRuns` and the text arena (`TextArena`). The consumer's
+`HtmlRecordAdmission` admits the usage the edit leaves (`admit_change`) and records it
+(`record_change`) with the banks. `append_attribute` and `replace_attribute` intern the name by
+content; `append_named_attribute` and `replace_named_attribute` take a `NameId` the storage issued.
+`replace_attribute` and `remove_attribute` return nothing. The name of an attribute is identified by
+its namespace and local name, not by its prefix.
+
+A native `create_element` copies the values of its `OrderedAttributes` into the arena. The element
+and its attributes are one admitted change: the admission is asked once for the usage of all of
+them, every bank the creation needs (the records, the text arena, the attribute rows and runs) is
+admitted and reserved before the change is recorded, and the names of the attributes are interned
+before anything is admitted, as the name of the element is. The temporary vector that holds those
+interned names is admitted as an `AtomicLayoutBytes` layout of its pointers before it is reserved.
+A refusal at any step leaves the storage as it was and records no usage; the interned names stay
+interned, and the capacity of a bank that grew before the refusal follows the residue rule of
+"Direct record operations". A reader of a storage that builds sees an element through
+`ConstructionElementView`: its attributes are `BuildAttributes`, whose reads report
+`InvalidAttributeReference` when the element names a run the table does not hold and
+`BuildText::Invalid` when a row names a value the arena does not hold.
+
+Publication copies the live rows of every run, in record order, into one table of exactly that many
+rows (`PublishedAttributes`, 24 bytes a row), packs the values of the rows with the text into the
+one block of the result when more than a quarter of the arena is spare, and gives each element a
+slice of the table, checked against the finished vector when it is made. A published attribute is an
+`HtmlAttribute`, a view of the row's name and its value, which is a borrower of the result's block.
+`HtmlAttributes::{get, iter, find}` return it. A publication admits and records five banks and takes
+each back when it refuses.
 
 `OrderedAttributes::from_parser_storage`, `parser_backing_mut` and
 `into_parser_storage` must not expose `ParseControl` or mutable shared storage in
@@ -548,20 +591,29 @@ four calls, made in this order. `admit_change` receives the usage before and aft
 limits, once, before anything changes or is reserved; the operation has already recorded the depth
 and the layout it reaches as the largest of their resources, and the charge of its writes follows
 the admission, before any bank grows. `admit_growth` receives the growth of
-a bank (the records, the child order of one record, the text arena, one string of a processing
-instruction or doctype, the shared arena, the contents, the text block and the published records
-of a publication, and the three banks of a new name) and returns the capacity to reserve, at least the minimum the operation needs; every
-growth of an operation is admitted before the first is recorded. `record_growth` records the capacity
-chosen before the bank is reserved, and a second time with the capacity reached when it differs,
-which includes the unchanged capacity of a reservation the allocator refused. `record_change`
-records the usage and is the last step that can refuse. The writes that follow reserve and allocate
-nothing, except that the shared arena and the text block of a publication allocate their handles:
-stable Rust has no fallible constructor for them, so an allocator failure there aborts, as any
-infallible allocation does. The text of a text or comment leaf is copied into the text arena, whose
-room is reserved before `record_change`, and the strings of a processing instruction or doctype
-are built where they are reserved, before it. A write that
-names a record qualification read cannot fail to find it; were one missing, the unknown-node defect
-is returned and no write is skipped.
+a bank and returns the capacity to reserve, at least the minimum the operation needs. The banks
+are:
+- the records;
+- the child order of one record;
+- the text arena;
+- one string of a processing instruction or doctype;
+- the shared arena;
+- the contents;
+- the text block, the published attributes and the published records of a publication;
+- the three banks of a new name.
+
+Every growth of an operation is admitted before the first is recorded. `record_growth` records the
+capacity chosen before the bank is reserved, and a second time with the capacity reached when it
+differs, which includes the unchanged capacity of a reservation the allocator refused.
+`record_change` records the usage and is the last step that can refuse. The writes that follow
+reserve and allocate nothing, except that the shared arena, the table of published attributes and
+the text block of a publication allocate their handles, and a filler name that an attribute table
+makes when it first needs one: stable Rust has no fallible constructor for them, so an allocator
+failure there aborts, as any infallible allocation does. The text of a text or comment leaf is
+copied into the text arena, whose room is reserved before `record_change`, and the strings of a
+processing instruction or doctype are built where they are reserved, before it. A write that names
+a record qualification read cannot fail to find it; were one missing, the unknown-node defect is
+returned and no write is skipped.
 
 A refusal at any step before the writes leaves the records, the order of the children, the cached
 depths and the usage as they were. Three residues remain. A bank that grew keeps the room it
@@ -915,10 +967,11 @@ AsciiCaseInsensitive}` and `bounded::parsing::HtmlIntegrationPointRule::{Never, 
 EncodingAttribute}`, matching the private `integration_points.rs` policy.
 `bounded::parsing::html_integration_point_rule` takes optional namespace URI, local name
 and the fallible comparator
-`FnMut(&DocumentString, &'static str, HtmlIntegrationPointComparison) ->
-Result<bool, E>`, returning `Result<HtmlIntegrationPointRule, E>`.
+`FnMut(&[u16], &'static str, HtmlIntegrationPointComparison) ->
+Result<bool, E>`, which receives the exact UTF-16 code units it compares, and returns
+`Result<HtmlIntegrationPointRule, E>`.
 `bounded::parsing::html_integration_point_encoding_attribute` additionally takes the
-attribute value and returns `Result<Option<bool>, E>`: `None` is an unrelated
+attribute value as its code units and returns `Result<Option<bool>, E>`: `None` is an unrelated
 expanded name; `Some(false)` is the actual encoding attribute with a rejected
 MIME value and stops further attribute reads. Semantics' ordinary borrowed
 adapter and parser's charged field/iteration adapter use those same operations.
@@ -948,6 +1001,14 @@ action through the caller's `surgeist_ledger::Charge` before it runs; callers
 retain their controller, admission and cancellation. Preparation-only JavaScript whitespace handling is not
 applied to current-content classification or module/import-map keywords. The
 literal matcher remains private, and ordinary reports use this same classifier.
+
+The local rules that read one attribute value take its exact UTF-16 code units, as `Option<&[u16]>`
+where the attribute may be absent: `nonce_attribute_change`, `nonce_insertion_effect`,
+`crossorigin_processing_with`, `referrerpolicy_processing_with`, `details_attribute_effect`,
+`style_type_allows_css_with`, `HtmlLinkFlags::disabled_attribute_changed`,
+`HtmlInputTypeCursor`, `HtmlInputColorSpaceCursor`, `HtmlInputImageUpdateGuard::for_source` and
+`HtmlScriptTypeCursor`. A caller that holds the value in a construction storage lends the units of
+its row and copies nothing. `HtmlNonceAttributeEffect::CopyValue` carries the units it was given.
 
 `HtmlInputType::missing_value_default` selects the authoritative missing-value
 row without an attribute read. It is distinct from inspecting an optional

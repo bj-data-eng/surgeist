@@ -812,16 +812,7 @@ pub(super) mod tests {
             .expect("retained construction position")
             .kind()
         {
-            ConstructionNodeKind::Element(element) => element
-                .attributes()
-                .iter()
-                .map(|a| {
-                    (
-                        a.name().local_name().code_units().to_vec(),
-                        a.value().code_units().to_vec(),
-                    )
-                })
-                .collect::<Vec<_>>(),
+            ConstructionNodeKind::Element(element) => test_support::attribute_units(element),
             _ => unreachable!(),
         };
         let stop = c.stop();
@@ -1562,16 +1553,7 @@ pub(super) mod tests {
             .expect("retained construction position")
             .kind()
         {
-            ConstructionNodeKind::Element(element) => element
-                .attributes()
-                .iter()
-                .map(|a| {
-                    (
-                        a.name().local_name().code_units().to_vec(),
-                        a.value().code_units().to_vec(),
-                    )
-                })
-                .collect::<Vec<_>>(),
+            ConstructionNodeKind::Element(element) => test_support::attribute_units(element),
             _ => unreachable!(),
         };
         let stop = c.stop();

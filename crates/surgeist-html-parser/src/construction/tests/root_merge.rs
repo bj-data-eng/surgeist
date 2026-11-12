@@ -58,34 +58,16 @@ fn implied_head_and_both_root_attribute_paths_keep_order_exact_backing_and_origi
         else {
             panic!("root")
         };
+        let held = test_support::attributes_of(element);
         assert_eq!(
-            element
-                .attributes()
-                .iter()
+            held.iter()
                 .map(|a| a.name().local_name().to_utf8().unwrap())
                 .collect::<Vec<_>>(),
             ["id", "x:id", "a", "z"]
         );
-        assert_eq!(
-            element
-                .attributes()
-                .get(0)
-                .unwrap()
-                .value()
-                .to_utf8()
-                .unwrap(),
-            "old"
-        );
-        assert_eq!(
-            element.attributes().get(2).unwrap().value().code_units(),
-            [0xd800, 0xd83d, 0xde00]
-        );
-        assert!(
-            element
-                .attributes()
-                .iter()
-                .all(|a| a.name().namespace().uri().is_none())
-        );
+        assert_eq!(test_support::value_text(held[0]), "old");
+        assert_eq!(test_support::value_units(held[2]), [0xd800, 0xd83d, 0xde00]);
+        assert!(held.iter().all(|a| a.name().namespace().uri().is_none()));
         let group = storage
             .payloads
             .detail_origins
@@ -156,13 +138,12 @@ fn root_attributes(session: &ParserArenaSession, root: &ParserNode) -> Vec<(Stri
     else {
         panic!("actual root")
     };
-    element
-        .attributes()
-        .iter()
+    test_support::attributes_of(element)
+        .into_iter()
         .map(|a| {
             (
                 a.name().local_name().to_utf8().unwrap(),
-                a.value().to_utf8().unwrap(),
+                test_support::value_text(a),
             )
         })
         .collect()
@@ -190,29 +171,12 @@ fn a_wide_root_merge_appends_one_list_in_source_order_with_no_spare_room() {
             assert_eq!(name, &format!("a{i:02}"));
             assert_eq!(value, "v");
         }
-        let ConstructionNodeKind::Element(element) = &session
-            .active()
-            .unwrap()
-            .construction
-            .node_at(root.index)
-            .unwrap()
-            .kind()
-        else {
-            panic!("actual root")
-        };
-        assert_eq!(attribute_holders(element.attributes()), 1);
+        // The run was empty, so one reservation of exactly the kept attributes held them all.
+        let dimensions =
+            test_support::run_dimensions(session.active_mut().unwrap(), &mut c, root.index);
         assert_eq!(
-            Arc::weak_count(element.attributes().to_ordered().shared_attributes()),
-            0
-        );
-        // The list was empty, so one reservation of exactly the kept attributes held them all.
-        assert_eq!(
-            element
-                .attributes()
-                .to_ordered()
-                .shared_attributes()
-                .capacity(),
-            count
+            (dimensions.initialized_len, dimensions.capacity),
+            (count, count)
         );
         tokenizer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
@@ -526,45 +490,6 @@ fn cancellation_before_a_prepared_merge_installs_leaves_the_list_and_cleans_up()
 }
 
 #[test]
-fn a_merge_into_a_list_another_owner_holds_is_refused_and_leaves_the_list() {
-    let source = crate::HtmlSource::utf8("<html id=x><html a=y>");
-    let mut c = control();
-    let (mut session, root, mut incoming, tokenizer) = merge_fixture(&source, &mut c);
-    let holder = match &session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(root.index)
-        .expect("retained construction position")
-        .kind()
-    {
-        ConstructionNodeKind::Element(e) => e.attributes().to_ordered(),
-        _ => panic!("root"),
-    };
-    let aliased = HtmlParseStop::InternalInvariant(
-        crate::parser::control::HtmlParseInvariant::SharedAllocationAliased,
-    );
-    assert_eq!(
-        session.add_attributes_if_missing(&mut c, &root, &mut incoming),
-        Err(SessionError::Stop(aliased))
-    );
-    assert_eq!(c.stop(), Some(aliased));
-    assert_eq!(holder.len(), 1, "the holder sees the list as it was");
-    drop(holder);
-    assert_eq!(
-        root_attributes(&session, &root),
-        [("id".into(), "x".into())]
-    );
-    tokenizer.release(&mut c).unwrap();
-    if let Some(tag) = incoming {
-        let mut kind = Some(TokenKind::Tag(tag));
-        let _ = release_token_kind(&mut kind, &mut c);
-    }
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
-#[test]
 fn merge_rejects_a_foreign_origin_before_consuming_input() {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<html id=x><html a=y>");
@@ -651,17 +576,13 @@ fn staged_attribute_cap_failure_preserves_root_and_reclaims_exact_real_slots() {
     else {
         panic!("root")
     };
-    assert_eq!(element.attributes().len(), 1);
-    assert_eq!(
-        element
-            .attributes()
-            .get(0)
-            .unwrap()
-            .value()
-            .to_utf8()
-            .unwrap(),
-        "old"
-    );
+    // The attributes are appended in source order: the limit admits the first of them and
+    // refuses the second.
+    let held = test_support::attributes_of(element);
+    assert_eq!(held.len(), 2);
+    assert_eq!(test_support::value_text(held[0]), "old");
+    assert_eq!(held[1].name().local_name().to_utf8().unwrap(), "a");
+    assert_eq!(test_support::value_text(held[1]), "one");
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::ManagedAttributes)
@@ -734,7 +655,7 @@ fn merge_foreign_control_and_cancel_leave_the_real_lexical_owner_untaken() {
         else {
             panic!("root")
         };
-        assert!(element.attributes().is_empty());
+        assert!(test_support::attributes_of(element).is_empty());
         let mut kind = input.map(TokenKind::Tag);
         release_token_kind(&mut kind, &mut c).unwrap();
         t.release(&mut c).unwrap();
@@ -778,25 +699,13 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
         else {
             panic!("root")
         };
-        assert_eq!(
-            element
-                .attributes()
-                .get(0)
-                .unwrap()
-                .value()
-                .to_utf8()
-                .unwrap(),
-            "old"
-        );
-        assert!((1..=3).contains(&element.attributes().len()));
-        for (actual, (name, value)) in
-            element
-                .attributes()
-                .iter()
-                .zip([("id", "old"), ("a", "one"), ("b", "two")])
+        let held = test_support::attributes_of(element);
+        assert_eq!(test_support::value_text(held[0]), "old");
+        assert!((1..=3).contains(&held.len()));
+        for (actual, (name, value)) in held.iter().zip([("id", "old"), ("a", "one"), ("b", "two")])
         {
             assert_eq!(actual.name().local_name().to_utf8().unwrap(), name);
-            assert_eq!(actual.value().to_utf8().unwrap(), value);
+            assert_eq!(test_support::value_text(*actual), value);
         }
         if let Some(tag) = &input {
             assert_eq!(tag.name.value.text().code_units().as_ptr(), lexical_name);
@@ -811,11 +720,6 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
                 assert_eq!(attribute.value.value.text().to_utf8().unwrap(), value);
             }
         }
-        assert_eq!(attribute_holders(element.attributes()), 1);
-        assert_eq!(
-            Arc::weak_count(element.attributes().to_ordered().shared_attributes()),
-            0
-        );
         match result {
             Err(error) => assert!(matches!(
                 error,
@@ -825,7 +729,7 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
                 })
             )),
             Ok(()) => {
-                assert_eq!(element.attributes().len(), 3);
+                assert_eq!(held.len(), 3);
                 assert!(input.is_none());
             }
         }

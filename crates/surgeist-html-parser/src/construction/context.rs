@@ -1249,16 +1249,17 @@ impl ParserArenaSession {
         let mut serializable = false;
         let mut manual = false;
         let mut keep_null = false;
-        for attr in element.attributes().iter() {
+        for attr in element.attributes().each(c)? {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if attr.name().namespace().uri().is_some() {
                 continue;
             }
             let name = attr.name().local_name();
+            let value = attr.value().units(c)?;
             if exact_ascii(c, Some(name), "shadowrootmode")? {
-                if c.ascii_case_insensitive_literal_matches(attr.value(), "open")? {
+                if c.ascii_case_insensitive_units_match(value, "open")? {
                     mode = Some(surgeist_html::construction::HtmlShadowRootMode::Open);
-                } else if c.ascii_case_insensitive_literal_matches(attr.value(), "closed")? {
+                } else if c.ascii_case_insensitive_units_match(value, "closed")? {
                     mode = Some(surgeist_html::construction::HtmlShadowRootMode::Closed);
                 }
             } else if exact_ascii(c, Some(name), "shadowrootdelegatesfocus")? {
@@ -1268,7 +1269,7 @@ impl ParserArenaSession {
             } else if exact_ascii(c, Some(name), "shadowrootserializable")? {
                 serializable = true;
             } else if exact_ascii(c, Some(name), "shadowrootslotassignment")? {
-                manual = c.ascii_case_insensitive_literal_matches(attr.value(), "manual")?;
+                manual = c.ascii_case_insensitive_units_match(value, "manual")?;
             } else if exact_ascii(c, Some(name), "shadowrootcustomelementregistry")? {
                 keep_null = true;
             }
@@ -3430,16 +3431,49 @@ mod tests {
     }
     #[test]
     fn saved_is_copy_has_source_derived_map_and_managed_coexistence_caps() {
-        for (maps, units, resource, success, taken) in [
-            (33, 1000, HtmlParseResource::SourceMapEntries, false, false),
-            (34, 1000, HtmlParseResource::SourceMapEntries, false, true),
-            (43, 1000, HtmlParseResource::SourceMapEntries, false, true),
-            (44, 1000, HtmlParseResource::SourceMapEntries, true, true),
-            (1000, 34, HtmlParseResource::ManagedUtf16Units, false, false),
-            (1000, 35, HtmlParseResource::ManagedUtf16Units, false, true),
-            (1000, 70, HtmlParseResource::ManagedUtf16Units, false, true),
-            (1000, 71, HtmlParseResource::ManagedUtf16Units, true, true),
+        // The fourth column is the construction length a refusal leaves: 3 (the records the
+        // session holds before the element) while the element's record is not yet made, 4 once it
+        // is.
+        // The record is made after the saved copy and after the name and namespace
+        // registrations, and before the attributes are appended. A limit one under the
+        // coexistence at the take refuses the name registration, before the record. The
+        // last acquisition of the run is the value of the `is` attribute (units) or the nonce
+        // group that follows its append (entries), both after the record.
+        for (maps, units, resource, refused_length, taken) in [
+            (
+                33,
+                1000,
+                HtmlParseResource::SourceMapEntries,
+                Some(3),
+                false,
+            ),
+            (34, 1000, HtmlParseResource::SourceMapEntries, Some(3), true),
+            (43, 1000, HtmlParseResource::SourceMapEntries, Some(4), true),
+            (44, 1000, HtmlParseResource::SourceMapEntries, None, true),
+            (
+                1000,
+                34,
+                HtmlParseResource::ManagedUtf16Units,
+                Some(3),
+                false,
+            ),
+            (
+                1000,
+                35,
+                HtmlParseResource::ManagedUtf16Units,
+                Some(3),
+                true,
+            ),
+            (
+                1000,
+                70,
+                HtmlParseResource::ManagedUtf16Units,
+                Some(4),
+                true,
+            ),
+            (1000, 71, HtmlParseResource::ManagedUtf16Units, None, true),
         ] {
+            let success = refused_length.is_none();
             let mut builder = HtmlCaptureBuilder::new(
                 HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
                 HtmlHostFactsRevision::fresh(),
@@ -3545,7 +3579,10 @@ mod tests {
                 assert!(
                     matches!(first,HtmlParseStop::LimitExceeded {resource:actual,..} if actual==resource)
                 );
-                assert_eq!(session.active().unwrap().construction.len(), 3);
+                assert_eq!(
+                    Some(session.active().unwrap().construction.len()),
+                    refused_length
+                );
                 assert_eq!(
                     session.freeze(&mut c).err(),
                     Some(SessionError::Stop(first))

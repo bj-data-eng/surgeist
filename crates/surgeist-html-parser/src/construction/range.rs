@@ -143,7 +143,7 @@ impl Machine {
 pub(super) struct RangeScratch {
     buffers: ScratchTable<OwnedVec<u8>>,
     output: Option<Utf16Buffer>,
-    source: usize,
+    source: InputSource,
 }
 /// A staged Range computation: idle until the first numeric machine starts,
 /// then running the machine that last started.
@@ -183,7 +183,7 @@ impl RangeScratch {
         let buffer = self.buffers.get(HtmlRangeScratchRole::Right);
         (buffer.len(), buffer.capacity())
     }
-    fn new(c: &mut ParseControl, source: usize) -> Result<Self, SessionError> {
+    fn new(c: &mut ParseControl, source: InputSource) -> Result<Self, SessionError> {
         Ok(Self {
             buffers: ScratchTable::new([
                 OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
@@ -241,7 +241,7 @@ impl RangeScratch {
     }
 }
 impl RangeStaging {
-    fn new(c: &mut ParseControl, source: usize) -> Result<Self, SessionError> {
+    fn new(c: &mut ParseControl, source: InputSource) -> Result<Self, SessionError> {
         RangeScratch::new(c, source).map(Self::Idle)
     }
     pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
@@ -280,7 +280,7 @@ impl RangeStaging {
     pub(super) fn ingress_fixture_state(
         &self,
     ) -> (
-        usize,
+        InputSource,
         &[u8],
         usize,
         usize,
@@ -371,8 +371,8 @@ impl SessionStorage {
                         let source = stage.source;
                         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         c.charge_unit_inspection()?;
-                        let unit = admitted_input_string(&self.payloads, c, source)?
-                            .code_units()
+                        let unit = self
+                            .source_units(c, source)?
                             .get(index)
                             .copied()
                             .ok_or_else(|| integrity(c))?;
@@ -552,10 +552,10 @@ impl SessionStorage {
                         let coefficient = stage.buffers.get(HtmlRangeScratchRole::Coefficient);
                         coefficient.require_disposal_owner(c)?;
                         let one_cell = coefficient.len() == 1;
-                        let raw = admitted_input_string(&self.payloads, c, source)?;
+                        let raw = self.source_units(c, source)?;
                         let dot_one = if raw.len() == 2 {
                             c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
-                            raw.code_units() == [46, 49]
+                            raw == [46, 49]
                         } else {
                             false
                         };
@@ -609,14 +609,14 @@ impl SessionStorage {
     fn range_parse(
         &mut self,
         c: &mut ParseControl,
-        source: usize,
+        source: InputSource,
         mode: HtmlFloatingPointParseMode,
     ) -> Result<(bool, Option<u64>), SessionError> {
         let parts = {
-            let raw = admitted_input_string(&self.payloads, c, source)?;
+            let raw = self.source_units(c, source)?;
             c.admit_atomic_layout(mem::size_of::<HtmlFloatingPointGrammarCursor<'_>>())?;
             payload_write::<HtmlFloatingPointGrammarCursor<'_>>(c, 1)?;
-            let mut grammar = HtmlFloatingPointGrammarCursor::new(raw.code_units(), mode);
+            let mut grammar = HtmlFloatingPointGrammarCursor::new(raw, mode);
             while !grammar.is_finished() {
                 c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                 if grammar.inspects_unit() {
@@ -634,7 +634,7 @@ impl SessionStorage {
             payload_write::<surgeist_html::bounded::numeric::HtmlRangeDecimalParts>(c, 1)?;
             grammar.range_decimal_parts().map_err(|_| integrity(c))?
         };
-        let source_len = admitted_input_string(&self.payloads, c, source)?.len();
+        let source_len = self.source_units(c, source)?.len();
         let stage = self.range_stage(c)?;
         stage.scratch_empty(c)?;
         let headers = stage.headers(c)?;
@@ -655,12 +655,13 @@ impl SessionStorage {
             Err(_) => Err(integrity(c)),
         }
     }
-    fn range_attribute_slot(
+    /// The value of the attribute `name`, which the computation reads from the element.
+    fn range_attribute(
         &self,
         c: &mut ParseControl,
         node: usize,
         name: &str,
-    ) -> Result<Option<usize>, SessionError> {
+    ) -> Result<Option<InputSource>, SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let ConstructionNodeKind::Element(element) = &self
             .construction
@@ -670,12 +671,12 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        for (position, attribute) in element.attributes().iter().enumerate() {
+        for (position, attribute) in element.attributes().each(c)?.enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), name)?
             {
-                return self.attribute_value_slot(c, node, position).map(Some);
+                return Ok(Some(InputSource::Attribute { node, position }));
             }
         }
         Ok(None)
@@ -686,11 +687,11 @@ impl SessionStorage {
         node: usize,
         name: &str,
     ) -> Result<(HtmlInputNumericContent, RangeOperand), SessionError> {
-        let Some(slot) = self.range_attribute_slot(c, node, name)? else {
+        let Some(source) = self.range_attribute(c, node, name)? else {
             return Ok((HtmlInputNumericContent::Absent, RangeOperand::Absent));
         };
-        let edge = self.range_payload_edge(c, slot)?;
-        let (_, value) = self.range_parse(c, slot, HtmlFloatingPointParseMode::Recovery)?;
+        let edge = self.range_payload_edge(c, source)?;
+        let (_, value) = self.range_parse(c, source, HtmlFloatingPointParseMode::Recovery)?;
         match value {
             Some(bits) => Ok((
                 HtmlInputNumericContent::Value(
@@ -712,7 +713,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
         slot: usize,
-        source: usize,
+        source: InputSource,
     ) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
         let previous = self.input_raw_slot(c, slot)?;
@@ -759,7 +760,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
         slot: usize,
-        source: usize,
+        source: InputSource,
     ) -> Result<(), SessionError> {
         use surgeist_html::bounded::input::{
             HtmlInputRangeNumber, HtmlInputRangeReplacement as B,
@@ -775,8 +776,8 @@ impl SessionStorage {
         };
         let fresh_empty = !*complete
             && !state.flags.dirty_value()
-            && source == current
-            && admitted_input_string(&self.payloads, c, source)?.is_empty();
+            && source == InputSource::Row(current)
+            && self.source_units(c, source)?.is_empty();
         let mut original = if fresh_empty {
             RangeOriginal::FreshEmpty
         } else {
@@ -874,23 +875,25 @@ impl SessionStorage {
                     )?;
                     if !step {
                         let current = self.input_raw_slot(c, slot)?;
-                        original = RangeOriginal::Group(self.range_payload_edge(c, current)?);
+                        original = RangeOriginal::Group(
+                            self.range_payload_edge(c, InputSource::Row(current))?,
+                        );
                     }
                     R::Applied
                 }
                 A::ReadStep => {
-                    let step_slot = self.range_attribute_slot(c, node, "step")?;
-                    let step = if let Some(step_slot) = step_slot {
-                        let edge = self.range_payload_edge(c, step_slot)?;
+                    let step_source = self.range_attribute(c, node, "step")?;
+                    let step = if let Some(step_source) = step_source {
+                        let edge = self.range_payload_edge(c, step_source)?;
                         let any = {
-                            let raw = admitted_input_string(&self.payloads, c, step_slot)?;
+                            let raw = self.source_units(c, step_source)?;
                             let keyword_len = HtmlInputNumericStep::ANY_KEYWORD.len();
                             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                             let mut any = raw.len() == keyword_len;
                             if any {
                                 // The lengths are equal, so the enumeration covers
                                 // the keyword exactly.
-                                for (index, &unit) in raw.code_units().iter().enumerate() {
+                                for (index, &unit) in raw.iter().enumerate() {
                                     c.charge_unit_inspection()?;
                                     c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                                     if !HtmlInputNumericStep::any_keyword_unit_matches(index, unit)
@@ -909,7 +912,7 @@ impl SessionStorage {
                         } else {
                             let (_, result) = self.range_parse(
                                 c,
-                                step_slot,
+                                step_source,
                                 HtmlFloatingPointParseMode::Recovery,
                             )?;
                             match result {
@@ -985,12 +988,8 @@ impl SessionStorage {
             policy.reply(reply).map_err(|_| integrity(c))?;
         }
         if !policy.replaced() {
-            let field = provenance::copy_generated_input_value(
-                &self.payloads,
-                self.evidence.as_ref(),
-                c,
-                source,
-            )?;
+            let value = self.value_source(c, source)?;
+            let field = provenance::copy_generated_input_value(self.evidence.as_ref(), c, value)?;
             self.replace_input_raw(c, slot, field)?;
         }
         Ok(())
@@ -1102,9 +1101,9 @@ mod absent_owner_tests {
             .unwrap();
         let raw = storage.input_raw_slot(&mut c, slot).unwrap();
         assert!(storage.effects.range.is_none(), "installation released it");
-        storage.effects.range = Some(RangeStaging::new(&mut c, raw).unwrap());
+        storage.effects.range = Some(RangeStaging::new(&mut c, InputSource::Row(raw)).unwrap());
         assert_eq!(
-            storage.install_range_input_value(&mut c, input, slot, raw),
+            storage.install_range_input_value(&mut c, input, slot, InputSource::Row(raw)),
             Err(SessionError::Stop(pending))
         );
         assert_eq!(c.stop(), Some(pending));
@@ -1151,7 +1150,7 @@ mod absent_owner_tests {
         let raw = storage.input_raw_slot(&mut c, slot).unwrap();
         // Record 0 is the document, which has no attributes to read.
         assert_eq!(
-            storage.install_range_input_value(&mut c, 0, slot, raw),
+            storage.install_range_input_value(&mut c, 0, slot, InputSource::Row(raw)),
             Err(SessionError::Stop(registry_row))
         );
         assert_eq!(c.stop(), Some(registry_row));
@@ -1174,7 +1173,7 @@ mod absent_owner_tests {
         let mut c = crate::construction::tests::control();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let storage = session.active_mut().unwrap();
-        storage.effects.range = Some(RangeStaging::new(&mut c, 0).unwrap());
+        storage.effects.range = Some(RangeStaging::new(&mut c, InputSource::Row(0)).unwrap());
         assert!(storage.effects.range.as_ref().unwrap().machine().is_none());
         assert_eq!(
             storage.execute_range(&mut c),

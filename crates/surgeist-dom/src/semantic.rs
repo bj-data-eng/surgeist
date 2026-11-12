@@ -1194,7 +1194,7 @@ mod tests {
         // the immutable input backing capacities, not a DOM-bank layout or the
         // producer's cached receipt. Source/snapshot storage stays retained.
         let bytes = size_of::<Vec<Attribute>>()
-            + output.attributes().shared_attributes().capacity() * size_of::<Attribute>()
+            + output.attributes().capacity() * size_of::<Attribute>()
             + name_bytes(source.name())
             + source_attributes
                 .iter()

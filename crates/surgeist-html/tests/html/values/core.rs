@@ -13,11 +13,11 @@ fn validated_attribute_backing_keeps_identity_capacity_and_exact_units() {
     ));
     let capacity = raw.capacity();
     let attributes = OrderedAttributes::new(raw).unwrap();
-    assert_eq!(attributes.shared_attributes().capacity(), capacity);
-    assert_eq!(Arc::strong_count(attributes.shared_attributes()), 1);
+    assert_eq!(attributes.capacity(), capacity);
     let alias = attributes.clone();
+    assert_eq!(alias.capacity(), capacity);
     let backing = attributes.into_shared_attributes();
-    assert!(Arc::ptr_eq(&backing, alias.shared_attributes()));
+    assert!(std::ptr::eq(backing.as_slice(), alias.as_slice()));
     assert_eq!(backing.capacity(), capacity);
     assert_eq!(
         backing[0].name().local_name().code_units(),

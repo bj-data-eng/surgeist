@@ -1,10 +1,11 @@
 //! Managed string registration, text insertion and merging, and string disposal.
 
+use super::string_storage::AttributeString;
 use super::*;
 use surgeist_html::{
     bounded::construction::NameId,
     construction::ConstructionNodeKind,
-    values::{DocumentString, Namespace, QualifiedName},
+    values::{DocumentString, Namespace},
 };
 
 /// A string of a non-element field that a record is about to be created with, and the group of its
@@ -15,6 +16,11 @@ pub(super) struct FieldString {
     pub(super) group: Option<OriginGroupRef>,
 }
 impl FieldString {
+    /// Gives the string back, for a creation that did not use it. The group of its origins stays
+    /// in the evidence.
+    pub(super) fn release(self, control: &mut ParseControl) -> Result<(), HtmlParseStop> {
+        self.value.release(control)
+    }
     /// The units the record is created with.
     pub(super) fn units(&self) -> &[u16] {
         self.value.text().code_units()
@@ -113,6 +119,42 @@ impl SessionStorage {
             None
         };
         self.register_shared_occurrence(control, first, group)
+    }
+    /// An occurrence of `literal` as the namespace or prefix of an attribute: the string of the
+    /// parse's first registration of it, and the group of this occurrence's origins when the parse
+    /// records them. The first one of a parse creates the string and charges its storage.
+    pub(super) fn literal_field(
+        &mut self,
+        control: &mut ParseControl,
+        literal: Literal,
+    ) -> Result<storage_attributes::LiteralField, SessionError> {
+        self.require(control)?;
+        let (first, counted) = match self.first_literal(control, literal)? {
+            Some(first) => (first, false),
+            None => {
+                let frozen = literal_string(control, literal.bytes())?;
+                let (value, slot) = self.register_string_owned(control, frozen, None)?;
+                drop(value);
+                self.cache_literal(control, literal, slot)?;
+                (slot, true)
+            }
+        };
+        let units = self.literal_len(control, first)?;
+        let group = if !control.detail().records_graph() {
+            None
+        } else if let Some(evidence) = &mut self.evidence {
+            Some(evidence.rule_group(control, units)?)
+        } else {
+            None
+        };
+        let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(first) else {
+            return Err(latch_registry_row(control));
+        };
+        Ok(storage_attributes::LiteralField {
+            string: value.clone(),
+            group,
+            counted,
+        })
     }
     /// As [`Self::register_literal`] for a copy of a registered field whose value is `literal`,
     /// which keeps the origin group the copy made of the field's own.
@@ -284,6 +326,32 @@ impl SessionStorage {
         origins: Option<OriginGroupRef>,
         buffered: bool,
     ) -> Result<(DocumentString, usize), SessionError> {
+        let index =
+            self.push_unbound_row(control, prepared, value, allocation, origins, buffered)?;
+        let Some(RetainedPayload::String { value, origins, .. }) =
+            self.payloads.values.get_mut(index)
+        else {
+            return Err(latch_registry_row(control));
+        };
+        if let Some(origins) = origins {
+            self.evidence
+                .as_mut()
+                .ok_or(SessionError::WrongToken)?
+                .bind_leaf_value(control, origins, index)?;
+        }
+        Ok((value.clone(), index))
+    }
+    /// Appends the row of a string whose ticket is made, leaving its origin group unbound, and
+    /// returns its slot.
+    fn push_unbound_row(
+        &mut self,
+        control: &mut ParseControl,
+        prepared: PreparedSlot,
+        value: DocumentString,
+        allocation: DocumentStringAllocation,
+        origins: Option<OriginGroupRef>,
+        buffered: bool,
+    ) -> Result<usize, SessionError> {
         let index = self
             .payloads
             .push_row(
@@ -296,30 +364,91 @@ impl SessionStorage {
                 },
             )
             .map_err(|_| latch_registry_row(control))?;
-        let Some(RetainedPayload::String {
-            value,
-            allocation,
-            origins,
-            ..
-        }) = self.payloads.values.get_mut(index)
-        else {
-            return Err(latch_registry_row(control));
-        };
         if buffered {
+            let Some(RetainedPayload::String {
+                value, allocation, ..
+            }) = self.payloads.values.get_mut(index)
+            else {
+                return Err(latch_registry_row(control));
+            };
             control.move_document_string_to_managed(allocation, value)?;
-        }
-        if let Some(origins) = origins {
-            self.evidence
-                .as_mut()
-                .ok_or(SessionError::WrongToken)?
-                .bind_leaf_value(control, origins, index)?;
         }
         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         control.charge(
             HtmlParseWorkCategory::CopyByte,
             mem::size_of::<DocumentString>() as u64,
         )?;
-        Ok((value.clone(), index))
+        Ok(index)
+    }
+    /// Retires the groups of the `strings` of the attribute at `position` of `node` before the
+    /// attribute is replaced or removed, when the parse records the origin graph: each group
+    /// leaves the table of origins and is retired in the evidence by a cause that names its
+    /// field. A group whose leaf names the attribute's string keeps its history: the leaf is
+    /// rebound to a copy of the units in a row of the registry, which the edit does not change.
+    pub(super) fn retire_attribute_strings(
+        &mut self,
+        control: &mut ParseControl,
+        node: usize,
+        position: usize,
+        strings: &[AttributeString],
+    ) -> Result<(), SessionError> {
+        for &string in strings {
+            let field = FieldRef::of_attribute(node, position, string);
+            let Some(group) = self.payloads.detail_origins.take(control, field)? else {
+                continue;
+            };
+            self.retire_attribute_group(control, field, group)?;
+        }
+        Ok(())
+    }
+    /// Retires `group`, the group of the string of the attribute field `field`, as
+    /// [`Self::retire_attribute_strings`] does.
+    fn retire_attribute_group(
+        &mut self,
+        control: &mut ParseControl,
+        field: FieldRef,
+        group: OriginGroupRef,
+    ) -> Result<(), SessionError> {
+        let evidence = self.evidence.as_mut().ok_or(SessionError::WrongToken)?;
+        evidence.retire_group(control, &group, field)?;
+        if !evidence.names_attribute_string(control, &group)? {
+            return Ok(());
+        }
+        let mut buffer = Utf16Buffer::new(control)?;
+        let copied = (|| {
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let Some(units) = field.units(ConstructionView::Active(&self.construction)) else {
+                return Err(latch_registry_row(control));
+            };
+            buffer.extend_units(units, control)?;
+            Ok::<_, SessionError>(())
+        })();
+        if let Err(error) = copied {
+            buffer.release(control)?;
+            return Err(error);
+        }
+        let frozen = buffer.freeze(control)?;
+        let prepared = match self.prepare_payload_slot_owned(control) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                frozen.release(control)?;
+                return Err(error);
+            }
+        };
+        let (value, allocation) = frozen.into_parts();
+        let slot =
+            self.push_unbound_row(control, prepared, value, allocation, Some(group), true)?;
+        let Some(RetainedPayload::String {
+            origins: Some(group),
+            ..
+        }) = self.payloads.values.get(slot)
+        else {
+            return Err(latch_registry_row(control));
+        };
+        self.evidence
+            .as_mut()
+            .ok_or(SessionError::WrongToken)?
+            .rebind_attribute_leaf(control, group, slot)
     }
     pub(super) fn register_text(
         &mut self,
@@ -361,21 +490,6 @@ impl SessionStorage {
         };
         control.rebind_document_string_to_shared(allocation, value, &local)?;
         Ok((id, local))
-    }
-    /// Registers an attribute name token as one occurrence of an interned name with no namespace
-    /// and no prefix. Returns the interned name and the row.
-    pub(super) fn register_attribute_name(
-        &mut self,
-        control: &mut ParseControl,
-        text: Text,
-    ) -> Result<(QualifiedName, usize), SessionError> {
-        let (local, slot) = self.register_text(control, text)?;
-        drop(local);
-        let (id, _) = self.intern_row_name(control, slot, &Namespace::none())?;
-        match self.construction.name(&id) {
-            Ok(name) => Ok((name.clone(), slot)),
-            Err(_) => Err(latch_registry_row(control)),
-        }
     }
     /// Implements the pinned character-insertion operation at an already
     /// selected insertion location. Foster-parent selection belongs to the
@@ -559,6 +673,16 @@ impl SessionStorage {
             }
             return Err(error);
         }
+        self.field_string_owned(control, value, origins)
+    }
+    /// As [`Self::field_string`] for a caller that is already inside an operation of the storage
+    /// and owns its phase, such as the change of a nonce during an insertion's effects.
+    pub(super) fn field_string_owned(
+        &mut self,
+        control: &mut ParseControl,
+        value: FrozenUtf16,
+        origins: Option<OwnedVec<HtmlParseTextOrigin>>,
+    ) -> Result<FieldString, SessionError> {
         let group = match self.origin_group(control, origins, value.text().len()) {
             Ok(group) => group,
             Err(error) => {
@@ -686,80 +810,11 @@ impl SessionStorage {
         else {
             return Err(SessionError::registry_row());
         };
-        // The string of a non-element field is held by its record alone.
-        if location.is_record_string() {
+        // The string of a field of a record is held by its record alone.
+        if location.is_held_by_record() {
             return Err(SessionError::registry_row());
         }
         *current = location;
-        Ok(())
-    }
-
-    /// Moves the origin groups of the strings that rows from `first_row` on hold for attribute
-    /// fields into the table of attribute origins. The rows are walked backward: attribute
-    /// strings are registered last attribute first, so the groups enter the table in field
-    /// order.
-    pub(super) fn flush_attribute_origins(
-        &mut self,
-        control: &mut ParseControl,
-        first_row: usize,
-    ) -> Result<(), SessionError> {
-        if !control.detail().records_graph() {
-            return Ok(());
-        }
-        let mut slot = self.payloads.values.len();
-        while slot > first_row {
-            slot = slot
-                .checked_sub(1)
-                .ok_or_else(|| latch_registry_row(control))?;
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let Some(RetainedPayload::String {
-                origins, location, ..
-            }) = self.payloads.values.get_mut(slot)
-            else {
-                continue;
-            };
-            let field = *location;
-            if field.attribute().is_none() {
-                continue;
-            }
-            let Some(group) = origins.take() else {
-                continue;
-            };
-            self.payloads.detail_origins.insert(control, field, group)?;
-        }
-        Ok(())
-    }
-
-    /// Detaches the string row at `slot` from the attribute field it holds the string of. The
-    /// field's origin group goes back to the row, which keeps it as the history of a string no
-    /// attribute holds.
-    pub(super) fn detach_attribute_string(
-        &mut self,
-        control: &mut ParseControl,
-        slot: usize,
-    ) -> Result<(), SessionError> {
-        let Some(RetainedPayload::String {
-            origins, location, ..
-        }) = self.payloads.values.get(slot)
-        else {
-            return Err(latch_registry_row(control));
-        };
-        let field = *location;
-        let group = if field.attribute().is_some() && origins.is_none() {
-            self.payloads.detail_origins.take(control, field)?
-        } else {
-            None
-        };
-        let Some(RetainedPayload::String {
-            origins, location, ..
-        }) = self.payloads.values.get_mut(slot)
-        else {
-            return Err(latch_registry_row(control));
-        };
-        if group.is_some() {
-            *origins = group;
-        }
-        *location = FieldRef::Detached;
         Ok(())
     }
 }

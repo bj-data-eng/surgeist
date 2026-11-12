@@ -1,13 +1,15 @@
 //! Bounded native authoring and immutable, result-local construction output.
 
+mod attribute_table;
 pub(crate) mod bounded;
 pub(crate) mod names;
 mod text;
 mod views;
 
 pub use views::{
-    BuildStr, BuildText, ConstructionDoctype, ConstructionNodeKind,
-    ConstructionProcessingInstruction, HtmlAttributes, HtmlElementView, HtmlNodeKind,
+    BuildAttribute, BuildAttributeIter, BuildAttributes, BuildStr, BuildText, ConstructionDoctype,
+    ConstructionElementView, ConstructionNodeKind, ConstructionProcessingInstruction,
+    HtmlAttribute, HtmlAttributes, HtmlElementView, HtmlNodeKind,
 };
 
 use crate::internal::accounting::{
@@ -20,6 +22,7 @@ use crate::{
     internal::values::DocumentString, internal::values::OrderedAttributes,
     internal::values::QualifiedName, internal::values::TextBlock,
 };
+use attribute_table::{AttributeTable, RowSlice, RunIx};
 use names::{NameEntry, NameTable};
 use std::{collections::VecDeque, error::Error, fmt, num::NonZeroU32, sync::Arc};
 use surgeist_ledger::{
@@ -209,13 +212,17 @@ pub enum HtmlConstructionCause {
     CapacityMismatch,
     /// A name index lent to an attribute edit could not serve a step.
     IndexUnavailable,
-    /// An attribute list or a string that the operation edits in place is held by another owner.
+    /// A string of the text block that publication takes back is held by another owner.
     SharedAllocationAliased,
     /// The builder's own arithmetic released more than it admitted. A release that the ledger
     /// refuses is [`Self::Accounting`].
     ReleaseUnderflow,
     /// A text or comment record names a range that its storage's text arena does not hold.
     InvalidTextReference,
+    /// An element or an attribute row names a run, a row or a value that its storage's attribute
+    /// table or text arena does not hold, or a published element names rows its result does not
+    /// hold.
+    InvalidAttributeReference,
     /// A record was read through a view of a storage that has not published it, where the
     /// operation needs the published result.
     NotPublished,
@@ -321,7 +328,7 @@ impl fmt::Display for HtmlConstructionError {
                 f.write_str("the attribute name index lent to the edit could not serve a step")
             }
             Cause::SharedAllocationAliased => {
-                f.write_str("an attribute list or string edited in place is held by another owner")
+                f.write_str("a string of the text block taken back is held by another owner")
             }
             Cause::ReleaseUnderflow => f.write_str("released usage exceeds the admitted usage"),
             Cause::RepresentationExhausted => {
@@ -331,6 +338,9 @@ impl fmt::Display for HtmlConstructionError {
             Cause::InvalidTextReference => {
                 f.write_str("a text record names a range its text arena does not hold")
             }
+            Cause::InvalidAttributeReference => f.write_str(
+                "an element or attribute row names a run, row or value its storage does not hold",
+            ),
             Cause::NotPublished => {
                 f.write_str("the record is read through a storage that has not published it")
             }
@@ -622,22 +632,37 @@ impl fmt::Display for HtmlProcessingInstructionError {
 }
 impl Error for HtmlProcessingInstructionError {}
 
+/// How a record holds what it keeps in the arenas of its storage: `Self` is the cell that holds
+/// the units of a text or comment, and [`Self::Attrs`] the cell that holds the attributes of an
+/// element.
+///
+/// A [`TextRun`] and an optional run of the attribute table while the storage builds; a
+/// [`DocumentString`] of the published block and an optional slice of the published table once
+/// it is published. A record of one form cannot hold the other.
+trait Cell {
+    /// The attributes of an element in this form.
+    type Attrs: Clone + fmt::Debug + Eq;
+}
+impl Cell for TextRun {
+    type Attrs = Option<RunIx>;
+}
+impl Cell for DocumentString {
+    type Attrs = Option<RowSlice>;
+}
+
 /// The stored name, attributes and link history of an element record.
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct ElementContent {
+struct ElementContent<T: Cell> {
     link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
     name: Arc<NameEntry>,
-    attributes: OrderedAttributes,
+    attrs: T::Attrs,
 }
-impl ElementContent {
+impl<T: Cell> ElementContent<T> {
     fn name(&self) -> &QualifiedName {
         self.name.name()
     }
     fn key(&self) -> crate::internal::values::element_key::ElementKey {
         self.name.key()
-    }
-    fn attributes(&self) -> &OrderedAttributes {
-        &self.attributes
     }
 }
 
@@ -648,13 +673,13 @@ impl ElementContent {
 /// text arena while the storage builds, and a [`DocumentString`] of the published block once it
 /// is published. A record of one form cannot hold the other.
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum NodeContent<T> {
+enum NodeContent<T: Cell> {
     /// The Document node, carrying the compatibility mode selected when it was built.
     Document(HtmlDocumentMode),
     /// A document-fragment root.
     Fragment,
     /// An element with its exact qualified name and ordered raw attributes.
-    Element(ElementContent),
+    Element(ElementContent<T>),
     /// A text node; the payload preserves the exact UTF-16 code units.
     Text(T),
     /// A comment node; the payload preserves the exact UTF-16 code units.
@@ -810,7 +835,7 @@ pub enum HtmlFocusedAreaDesignation {
 }
 
 #[derive(Debug)]
-struct Record<T> {
+struct Record<T: Cell> {
     kind: NodeContent<T>,
     document_focused_area_designation: Option<HtmlFocusedAreaDesignation>,
     parent: Option<NodeIx>,
@@ -877,7 +902,7 @@ impl Record<TextRun> {
         }
     }
 }
-impl<T> Record<T> {
+impl<T: Cell> Record<T> {
     fn new(kind: NodeContent<T>, parent: Option<NodeIx>, depth: usize) -> Self {
         let document_focused_area_designation = matches!(kind, NodeContent::Document(_))
             .then_some(HtmlFocusedAreaDesignation::Unavailable);
@@ -899,7 +924,7 @@ impl<T> Record<T> {
     }
 }
 #[derive(Debug)]
-struct Arena<T> {
+struct Arena<T: Cell> {
     records: Vec<Record<T>>,
     /// The names of the elements and attributes of the records.
     names: NameTable,
@@ -928,7 +953,7 @@ type BuildArena = Arena<TextRun>;
 /// The arena of a published result.
 type PublishedArena = Arena<DocumentString>;
 
-impl<T> Arena<T> {
+impl<T: Cell> Arena<T> {
     /// How many records have exactly this depth.
     fn population(&self, depth: usize) -> usize {
         self.records
@@ -1238,7 +1263,13 @@ impl Creation {
             } => {
                 let mut units = bounded::records::name_units(name)?;
                 for attribute in attributes.iter() {
-                    units = sum(units, bounded::records::attribute_units(attribute)?)?;
+                    units = sum(
+                        units,
+                        bounded::records::attribute_units(
+                            attribute.name(),
+                            attribute.value().len(),
+                        )?,
+                    )?;
                 }
                 Ok((attributes.len(), units))
             }
@@ -2504,7 +2535,11 @@ mod cause_tests {
             ),
             (
                 HtmlConstructionCause::SharedAllocationAliased,
-                "an attribute list or string edited in place is held by another owner",
+                "a string of the text block taken back is held by another owner",
+            ),
+            (
+                HtmlConstructionCause::InvalidAttributeReference,
+                "an element or attribute row names a run, row or value its storage does not hold",
             ),
             (
                 HtmlConstructionCause::ReleaseUnderflow,

@@ -568,8 +568,17 @@ fn exact_and_one_short_domain_insert_work_admit_eligibility_only_with_topology()
         .current;
     session.release(&mut baseline).unwrap();
     storage_zero(&baseline);
-    // Postcommit nonce traversal: fixed inspection125 plus eight actual visits.
-    let atomic = exact - 133;
+    // The post-commit nonce traversal covers the inserted tree: the div, which holds the script as
+    // its only child. Every category weighs one credit per unit.
+    //   Visits, 8: the div (1); the step from the div to its first child (1); the script (1) and
+    //   its one attribute (1); the step from the script, which has no child: the step (1), the
+    //   climb from the script (1), the hinted ordinal in the div (1) and the climb from the div,
+    //   which is the root (1).
+    //   Inspection, 125: the nonce inspection bound, 3 * 40 + 5, for the one attribute `src`.
+    //   The nonce rule reads the attribute value `x` as its code units, borrowed from the row, so
+    //   the traversal charges no copy of the value.
+    const TRAVERSAL: u64 = 8 + 125;
+    let atomic = exact - TRAVERSAL;
     for cap in [atomic - 1, atomic, exact] {
         let limits = limits().into_builder().work_credits(cap).finish().unwrap();
         let request =
@@ -1082,8 +1091,10 @@ fn script_classification_cursor_admission_refuses_before_the_next_read() {
         c: &mut ParseControl,
         value: &DocumentString,
     ) -> Result<Option<surgeist_html::elements::script::HtmlScriptKind>, SessionError> {
-        let mut cursor =
-            surgeist_html::bounded::script::HtmlScriptTypeCursor::preparation(Some(value), None);
+        let mut cursor = surgeist_html::bounded::script::HtmlScriptTypeCursor::preparation(
+            Some(value.code_units()),
+            None,
+        );
         while cursor.result().is_none() {
             cursor.advance(c)?;
         }
@@ -1155,43 +1166,46 @@ fn script_type_classification_preserves_preexisting_charge_totals() {
         (Some("unknown"), Some("javascript"), None, 86, 40),
         (Some("application/json"), None, None, 82, 19),
     ] {
-        let mut builder = surgeist_html::construction::HtmlFragment::builder(
-            surgeist_html::construction::HtmlConstructionLimits::new(8, 8, 8, 4096, 8),
-        )
-        .unwrap();
-        let root = builder.root();
-        builder
-            .append_element(
-                &root,
-                QualifiedName::new(Namespace::html(), None, "script"),
-                OrderedAttributes::new(
-                    explicit
-                        .map(|v| {
-                            Attribute::new(
-                                surgeist_html::vocabulary::KnownHtmlAttribute::Type
-                                    .qualified_name(),
-                                v,
-                            )
-                        })
-                        .into_iter()
-                        .chain(language.map(|v| {
-                            Attribute::new(
-                                QualifiedName::new(Namespace::none(), None, "language"),
-                                v,
-                            )
-                        })),
-                )
-                .unwrap(),
+        let mut c = control();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let node = session
+            .allocate_element(
+                &mut c,
+                PreexistingElement::new(
+                    QualifiedName::new(Namespace::html(), None, "script"),
+                    OrderedAttributes::new(
+                        explicit
+                            .map(|v| {
+                                Attribute::new(
+                                    surgeist_html::vocabulary::KnownHtmlAttribute::Type
+                                        .qualified_name(),
+                                    v,
+                                )
+                            })
+                            .into_iter()
+                            .chain(language.map(|v| {
+                                Attribute::new(
+                                    QualifiedName::new(Namespace::none(), None, "language"),
+                                    v,
+                                )
+                            })),
+                    )
+                    .unwrap(),
+                ),
             )
             .unwrap();
-        let fragment = builder.finish().unwrap();
-        let child = fragment.root().children().next().unwrap();
-        let surgeist_html::construction::HtmlNodeKind::Element(element) =
-            fragment.node(&child).unwrap().kind()
+        let ConstructionNodeKind::Element(element) = session
+            .active()
+            .unwrap()
+            .construction
+            .node_at(node.index)
+            .expect("retained construction position")
+            .kind()
         else {
             panic!("script")
         };
-        let mut c = control();
         let before = c.usage().clone();
         assert_eq!(classify_script(&mut c, element).unwrap(), expected);
         let visits = c.usage().work(HtmlParseWorkCategory::RecordVisit)
@@ -1214,6 +1228,7 @@ fn script_type_classification_preserves_preexisting_charge_totals() {
             assert!(classify_script(&mut short, element).is_err());
             assert!(short.stop().is_some());
         }
+        session.release(&mut c).unwrap();
     }
 }
 

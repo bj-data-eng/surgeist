@@ -83,6 +83,8 @@ impl ParseControl {
         match growth.bank() {
             HtmlConstructionBank::Records
             | HtmlConstructionBank::Children { .. }
+            | HtmlConstructionBank::AttributeRows
+            | HtmlConstructionBank::AttributeRuns
             | HtmlConstructionBank::Names => {
                 self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let before = growth.before();
@@ -115,6 +117,7 @@ impl ParseControl {
             | HtmlConstructionBank::TextBlock
             | HtmlConstructionBank::PublishedRecords
             | HtmlConstructionBank::PublishedContents
+            | HtmlConstructionBank::PublishedAttributes
             | HtmlConstructionBank::Wrapper
             | HtmlConstructionBank::NameSlots
             | HtmlConstructionBank::NameEntry => Ok(minimum),

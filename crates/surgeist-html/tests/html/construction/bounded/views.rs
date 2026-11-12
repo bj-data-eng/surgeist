@@ -104,11 +104,20 @@ fn element_document_and_fragment_views_report_the_created_records() {
         panic!("expected an element");
     };
     assert_eq!(shown.name(), &name);
-    assert_eq!(shown.attributes().to_ordered(), attributes);
+    let shown_attributes = shown.attributes();
+    assert_eq!(shown_attributes.len().unwrap(), attributes.len());
+    for (view, authored) in shown_attributes.iter().unwrap().zip(attributes.iter()) {
+        assert_eq!(view.name(), authored.name());
+        assert_eq!(
+            view.value().code_units().unwrap(),
+            authored.value().code_units()
+        );
+    }
     assert!(
         shown
             .attributes()
             .iter()
+            .unwrap()
             .map(|a| a.name().local_name().to_utf8().unwrap())
             .eq(["b", "a"].map(String::from))
     );

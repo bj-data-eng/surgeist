@@ -42,6 +42,7 @@
 
 use super::*;
 use crate::internal::accounting::{HtmlChargedError, HtmlResource, HtmlWork, wide};
+use crate::internal::construction::attribute_table::{AttrRow, AttrRun, RowAppend};
 use crate::internal::construction::names::NameKey;
 use crate::internal::values::{DocumentString, OrderedAttributes, QualifiedName};
 use surgeist_ledger::{Change, Charge};
@@ -71,6 +72,12 @@ pub type HtmlConstructionRecordError<S> = HtmlChargedError<S, HtmlConstructionEr
 pub enum HtmlConstructionBank {
     /// The vector of retained records.
     Records,
+    /// The rows of the attribute table, which hold the attributes of every element of the
+    /// storage. It grows with an attribute that finds its element's run full, and with a run
+    /// that an element reserves.
+    AttributeRows,
+    /// The runs of the attribute table, one for each element that has attributes.
+    AttributeRuns,
     /// The child order of the record at `position`.
     Children {
         /// The ordinal of the record whose child order grows.
@@ -93,6 +100,9 @@ pub enum HtmlConstructionBank {
     /// The vector of contents that publication makes for the published records, which it frees
     /// when the records are moved.
     PublishedContents,
+    /// The table of the attributes of the published elements, which publication makes from the
+    /// live rows of the storage's attribute table and which the elements of the result share.
+    PublishedAttributes,
     /// The shared arena that publication creates, with the wrapper that shares the block of the
     /// result.
     Wrapper,
@@ -192,8 +202,8 @@ impl HtmlConstructionGrowthRecord {
 /// The usage an operation leaves, beside the usage before it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlConstructionChange {
-    before: HtmlConstructionUsage,
-    after: HtmlConstructionUsage,
+    pub(super) before: HtmlConstructionUsage,
+    pub(super) after: HtmlConstructionUsage,
 }
 impl HtmlConstructionChange {
     /// The usage before the operation.
@@ -340,6 +350,7 @@ impl HtmlConstructionStorage {
                 attribute_revision: 0,
             },
             text: TextArena::default(),
+            attrs: AttributeTable::default(),
         })
     }
 
@@ -381,7 +392,7 @@ impl HtmlConstructionStorage {
     }
 
     /// Admits `growth`: the layout it chooses must be representable and at least the minimum.
-    fn admit_bank<A: HtmlRecordAdmission>(
+    pub(super) fn admit_bank<A: HtmlRecordAdmission>(
         growth: HtmlConstructionBankGrowth,
         admission: &mut A,
     ) -> Result<usize, HtmlConstructionRecordError<A::Stop>> {
@@ -641,6 +652,38 @@ enum Admitted<'a> {
     Shared(DocumentString),
 }
 
+/// The attributes an element creation gives its element: their interned names, which the creation
+/// found before it admitted anything, and the validated attributes whose values it copies.
+#[derive(Clone, Copy)]
+pub(super) struct Authored<'a> {
+    entries: &'a [Arc<NameEntry>],
+    attributes: Option<&'a OrderedAttributes>,
+}
+impl<'a> Authored<'a> {
+    pub(super) const NONE: Authored<'static> = Authored {
+        entries: &[],
+        attributes: None,
+    };
+    fn new(entries: &'a [Arc<NameEntry>], attributes: &'a OrderedAttributes) -> Self {
+        Self {
+            entries,
+            attributes: Some(attributes),
+        }
+    }
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+    /// The interned name and the value units of each attribute, in order.
+    fn iter(&self) -> impl Iterator<Item = (&'a Arc<NameEntry>, &'a [u16])> + use<'a> {
+        let entries = self.entries;
+        self.attributes
+            .into_iter()
+            .flat_map(|attributes| attributes.iter())
+            .zip(entries)
+            .map(|(attribute, entry)| (entry, attribute.value().code_units()))
+    }
+}
+
 /// The values of a record a creation makes, before it is stored. A processing instruction or a
 /// doctype holds its strings as `S`, so that each stage of the creation (the units given, the
 /// capacity admitted for each, the string built) is a mapping of the same shape, and no stage
@@ -652,7 +695,6 @@ enum Created<S, L> {
     ShadowContents(HtmlShadowRootProperties),
     Element {
         name: Arc<NameEntry>,
-        attributes: OrderedAttributes,
         link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
         template: bool,
     },
@@ -690,12 +732,10 @@ impl<S, L> Created<S, L> {
             Self::ShadowContents(properties) => Created::ShadowContents(properties),
             Self::Element {
                 name,
-                attributes,
                 link_flags,
                 template,
             } => Created::Element {
                 name,
-                attributes,
                 link_flags,
                 template,
             },
@@ -736,6 +776,121 @@ impl HtmlConstructionStorage {
         )
     }
 
+    /// The growths of the runs and the rows that `plan` writes, each when its bank has no room.
+    fn attribute_row_growths(
+        &self,
+        plan: RowAppend,
+    ) -> Result<
+        (
+            Option<HtmlConstructionBankGrowth>,
+            Option<HtmlConstructionBankGrowth>,
+        ),
+        HtmlConstructionError,
+    > {
+        let table = &self.attrs;
+        let rows_required = plus(table.rows_len(), plan.written())?;
+        let runs_required = plus(table.runs_len(), plan.runs())?;
+        let rows = (rows_required > table.rows_capacity()).then_some(HtmlConstructionBankGrowth {
+            bank: HtmlConstructionBank::AttributeRows,
+            before: HtmlConstructionBankCapacity {
+                initialized_len: table.rows_len(),
+                capacity: table.rows_capacity(),
+            },
+            minimum_capacity: rows_required,
+            element_size: size_of::<AttrRow>(),
+            wrapper_bytes: 0,
+        });
+        let runs = (runs_required > table.runs_capacity()).then_some(HtmlConstructionBankGrowth {
+            bank: HtmlConstructionBank::AttributeRuns,
+            before: HtmlConstructionBankCapacity {
+                initialized_len: table.runs_len(),
+                capacity: table.runs_capacity(),
+            },
+            minimum_capacity: runs_required,
+            element_size: size_of::<AttrRun>(),
+            wrapper_bytes: 0,
+        });
+        Ok((runs, rows))
+    }
+
+    /// Admits and grows the banks an attribute edit needs: the runs and the rows that `plan`
+    /// writes and the text arena for `text_added` units. Every growth is admitted before the
+    /// first is recorded, and each is recorded before it is reserved, as every bank growth is.
+    pub(super) fn grow_attribute_banks<A: HtmlRecordAdmission>(
+        &mut self,
+        plan: RowAppend,
+        text_added: usize,
+        admission: &mut A,
+    ) -> Result<(), HtmlConstructionRecordError<A::Stop>> {
+        let (runs, rows) = self.attribute_row_growths(plan).map_err(faulted)?;
+        let text = self.text_growth(text_added).map_err(faulted)?;
+        let growths = plus(
+            plus(usize::from(rows.is_some()), usize::from(runs.is_some())).map_err(faulted)?,
+            usize::from(text.is_some()),
+        )
+        .map_err(faulted)?;
+        for growth in [runs, rows, text].into_iter().flatten() {
+            admission
+                .record_largest(
+                    HtmlResource::AtomicLayoutBytes,
+                    wide(times(growth.minimum_capacity, growth.element_size).map_err(faulted)?),
+                )
+                .map_err(stopped)?;
+        }
+        Work {
+            provider_calls: growths,
+            ..Work::default()
+        }
+        .charge(admission)?;
+        let chosen_runs = runs
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        let chosen_rows = rows
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        let chosen_text = text
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        if let (Some(growth), Some(chosen)) = (runs, chosen_runs) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_attribute_runs(additional)
+            })?;
+        }
+        if let (Some(growth), Some(chosen)) = (rows, chosen_rows) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_attribute_rows(additional)
+            })?;
+        }
+        if let (Some(growth), Some(chosen)) = (text, chosen_text) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_text_bank(additional)
+            })?;
+        }
+        Ok(())
+    }
+
+    fn reserve_attribute_rows(&mut self, additional: usize) -> Reserved {
+        let ok = self.attrs.reserve_rows(additional).is_ok();
+        Reserved {
+            ok,
+            reached: HtmlConstructionBankCapacity {
+                initialized_len: self.attrs.rows_len(),
+                capacity: self.attrs.rows_capacity(),
+            },
+        }
+    }
+
+    fn reserve_attribute_runs(&mut self, additional: usize) -> Reserved {
+        let ok = self.attrs.reserve_runs(additional).is_ok();
+        Reserved {
+            ok,
+            reached: HtmlConstructionBankCapacity {
+                initialized_len: self.attrs.runs_len(),
+                capacity: self.attrs.runs_capacity(),
+            },
+        }
+    }
+
     fn reserve_text_bank(&mut self, additional: usize) -> Reserved {
         let ok = self.text.reserve_exact(additional).is_ok();
         Reserved {
@@ -750,6 +905,19 @@ impl HtmlConstructionStorage {
     fn create<A: HtmlRecordAdmission>(
         &mut self,
         created: Created<Units<'_>, &[u16]>,
+        admission: &mut A,
+    ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
+        self.create_with(created, Authored::NONE, admission)
+    }
+
+    /// Creates the record `created` names. An element takes the attributes `authored` gives it
+    /// in the same operation: the whole creation is one admitted change, every bank it needs is
+    /// reserved before that change is recorded, and the writes after it allocate nothing and
+    /// admit nothing.
+    fn create_with<A: HtmlRecordAdmission>(
+        &mut self,
+        created: Created<Units<'_>, &[u16]>,
+        authored: Authored<'_>,
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
         let before = self.arena.usage;
@@ -770,30 +938,11 @@ impl HtmlConstructionStorage {
         } else {
             None
         };
-        // The values the record counts, and the work of reading them: one visit for each attribute
-        // of an element, charged before the attributes are read.
+        // The values the record counts.
         let strings = created.strings();
         let leaf = created.leaf().copied();
-        let attribute_count = match &created {
-            Created::Element { attributes, .. } => attributes.len(),
-            _ => 0,
-        };
-        Work {
-            record_visits: attribute_count,
-            ..Work::default()
-        }
-        .charge(admission)?;
         let units = match &created {
-            Created::Element {
-                name, attributes, ..
-            } => {
-                let mut units = name_units(name.name()).map_err(faulted)?;
-                for attribute in attributes.iter() {
-                    units = plus(units, attribute_units(attribute).map_err(faulted)?)
-                        .map_err(faulted)?;
-                }
-                units
-            }
+            Created::Element { name, .. } => name_units(name.name()).map_err(faulted)?,
             _ => {
                 let mut units = leaf.map_or(0, <[u16]>::len);
                 for string in strings.iter().flatten() {
@@ -809,18 +958,39 @@ impl HtmlConstructionStorage {
                 .ok_or_else(|| fault(HtmlConstructionCause::RepresentationExhausted))?;
         }
         // The arena holds the units of a text or a comment, and a range of it is a handle of the
-        // block it becomes, so it holds no more than a block holds.
+        // block it becomes, so it holds no more than a block holds. The values of the attributes
+        // of an element are written to it as well.
+        let mut units = units;
+        let mut value_units = 0usize;
+        for (entry, value) in authored.iter() {
+            units = plus(
+                units,
+                attribute_units(entry.name(), value.len()).map_err(faulted)?,
+            )
+            .map_err(faulted)?;
+            value_units = plus(value_units, value.len()).map_err(faulted)?;
+        }
         let leaf_units = leaf.map_or(0, <[u16]>::len);
-        self.text.check_add(leaf_units).map_err(faulted)?;
+        let text_units = plus(leaf_units, value_units).map_err(faulted)?;
+        self.text.check_add(text_units).map_err(faulted)?;
+        let attribute_plan = if authored.len() == 0 {
+            None
+        } else {
+            Some(self.attrs.plan(None, authored.len()).map_err(faulted)?)
+        };
         let mut after = before;
         after.nodes = plus(after.nodes, count).map_err(faulted)?;
         after.edges = plus(after.edges, usize::from(template)).map_err(faulted)?;
-        after.attributes = plus(after.attributes, attribute_count).map_err(faulted)?;
+        after.attributes = plus(after.attributes, authored.len()).map_err(faulted)?;
         after.utf16_units = plus(after.utf16_units, units).map_err(faulted)?;
         after.depth = after.depth.max(usize::from(template));
         let change = HtmlConstructionChange { before, after };
         let records_growth = self.records_growth(required);
-        let text_growth = self.text_growth(leaf_units).map_err(faulted)?;
+        let text_growth = self.text_growth(text_units).map_err(faulted)?;
+        let (runs_growth, rows_growth) = match attribute_plan {
+            Some(plan) => self.attribute_row_growths(plan).map_err(faulted)?,
+            None => (None, None),
+        };
         // Only a string that is copied is a bank the creation grows.
         let string_count = strings
             .iter()
@@ -829,8 +999,16 @@ impl HtmlConstructionStorage {
             .count();
         let growths = plus(
             plus(
-                usize::from(records_growth.is_some()),
-                usize::from(text_growth.is_some()),
+                plus(
+                    usize::from(records_growth.is_some()),
+                    usize::from(text_growth.is_some()),
+                )
+                .map_err(faulted)?,
+                plus(
+                    usize::from(runs_growth.is_some()),
+                    usize::from(rows_growth.is_some()),
+                )
+                .map_err(faulted)?,
             )
             .map_err(faulted)?,
             string_count,
@@ -842,6 +1020,14 @@ impl HtmlConstructionStorage {
                 wide(times(count, size_of::<Record<TextRun>>()).map_err(faulted)?),
             )
             .map_err(stopped)?;
+        for growth in [runs_growth, rows_growth].into_iter().flatten() {
+            admission
+                .record_largest(
+                    HtmlResource::AtomicLayoutBytes,
+                    wide(times(growth.minimum_capacity, growth.element_size).map_err(faulted)?),
+                )
+                .map_err(stopped)?;
+        }
         admission
             .record_largest(HtmlResource::TreeDepth, wide(after.depth))
             .map_err(stopped)?;
@@ -877,11 +1063,38 @@ impl HtmlConstructionStorage {
                 .charge(admission)?;
             }
         }
+        // The rows the attributes are written to, then their values, and the run that names them.
+        if let Some(plan) = attribute_plan {
+            Self::charge_filled_rows(admission, plan)?;
+            Work {
+                record_visits: 1,
+                copied_bytes: size_of::<AttrRun>(),
+                record_writes: 2,
+                ..Work::default()
+            }
+            .charge(admission)?;
+            for (_, value) in authored.iter() {
+                Self::charge_value(admission, value)?;
+                Work {
+                    record_visits: 2,
+                    copied_bytes: size_of::<AttrRow>(),
+                    record_writes: 3,
+                    ..Work::default()
+                }
+                .charge(admission)?;
+            }
+        }
         // Every growth is admitted before the first is recorded.
         let records_chosen = records_growth
             .map(|growth| Self::admit_bank(growth, admission))
             .transpose()?;
         let text_chosen = text_growth
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        let runs_chosen = runs_growth
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        let rows_chosen = rows_growth
             .map(|growth| Self::admit_bank(growth, admission))
             .transpose()?;
         let admitted = created.try_map(|units| match units {
@@ -911,6 +1124,16 @@ impl HtmlConstructionStorage {
         if let (Some(growth), Some(chosen)) = (text_growth, text_chosen) {
             self.grow(growth, chosen, admission, |storage, additional| {
                 storage.reserve_text_bank(additional)
+            })?;
+        }
+        if let (Some(growth), Some(chosen)) = (runs_growth, runs_chosen) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_attribute_runs(additional)
+            })?;
+        }
+        if let (Some(growth), Some(chosen)) = (rows_growth, rows_chosen) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_attribute_rows(additional)
             })?;
         }
         // Each string is built where it is reserved, so every allocation of a leaf, its units and
@@ -953,15 +1176,12 @@ impl HtmlConstructionStorage {
             Created::Fragment => (NodeContent::Fragment, None, false),
             Created::ShadowContents(properties) => (NodeContent::Fragment, Some(properties), false),
             Created::Element {
-                name,
-                attributes,
-                link_flags,
-                ..
+                name, link_flags, ..
             } => (
                 NodeContent::Element(ElementContent {
                     link_flags,
                     name,
-                    attributes,
+                    attrs: None,
                 }),
                 None,
                 false,
@@ -1004,6 +1224,18 @@ impl HtmlConstructionStorage {
             self.arena.records.push(fragment);
             self.arena.populate(1).map_err(faulted)?;
         }
+        if let Some(plan) = attribute_plan {
+            // The banks have room for every row and every value: the writes allocate nothing.
+            let run = self.attrs.make_room(None, plan).map_err(faulted)?;
+            self.set_element_run(len, run).map_err(faulted)?;
+            for (entry, value) in authored.iter() {
+                let text = self.text.push(value).map_err(faulted)?.text();
+                self.attrs
+                    .push(run, AttrRow::new(entry.clone(), text))
+                    .map_err(faulted)?;
+            }
+            self.arena.attribute_revision = self.arena.attribute_revision.wrapping_add(1);
+        }
         self.arena.usage = after;
         Ok(HtmlBuilderNode {
             tree: serial,
@@ -1041,12 +1273,20 @@ impl HtmlConstructionStorage {
     /// Creates a detached element with the name and the ordered attributes given. The name is
     /// interned first, as [`intern_name`](Self::intern_name) does, and is held by the storage
     /// once for every element that has it; a name the storage did not hold has the strings of
-    /// `name` as its own. An HTML `template` element also creates its owned contents fragment,
-    /// which follows it among the records. The name is stored as given; the attributes were
-    /// validated by their owner. Link construction flags may be given only for an element named
-    /// `link` in the HTML namespace, or the creation is refused with the wrong-node-kind cause,
-    /// after the name is interned and its work is charged. A name that a refused creation
-    /// interned stays interned.
+    /// `name` as its own. The names of the attributes are interned the same way, and the values
+    /// are copied to the storage's text arena. An HTML `template` element also creates its owned
+    /// contents fragment, which follows it among the records. The name is stored as given; the
+    /// attributes were validated by their owner. Link construction flags may be given only for an
+    /// element named `link` in the HTML namespace, or the creation is refused with the
+    /// wrong-node-kind cause, after the name is interned and its work is charged. A name that a
+    /// refused creation interned stays interned. The element and its attributes are one change: the
+    /// admission is asked once, for the usage of the element and all its attributes, and every bank
+    /// the creation needs is admitted and reserved before the change is recorded, so a refusal at
+    /// any step leaves the storage as it was and records no usage. The bank growths recorded before
+    /// a later refusal stay recorded, and the capacity of a bank follows the residue rule of the
+    /// contracts document. The temporary vector that holds the interned names of the attributes is
+    /// admitted as an atomic layout of its pointers before it is reserved, so a refusal of that
+    /// layout reports it.
     pub fn create_element<A: HtmlRecordAdmission>(
         &mut self,
         name: &QualifiedName,
@@ -1055,7 +1295,40 @@ impl HtmlConstructionStorage {
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
         let (_, entry) = self.intern(NameKey::of(name), Some(name), admission)?;
-        self.create_element_of(entry, attributes, link_flags, admission)
+        // The names of the attributes are interned before anything is admitted, as the name of the
+        // element is, so that the creation is one change: the entries are held in a vector of
+        // exactly their number, which is reserved here and dropped before the creation returns. Its
+        // layout is admitted first, so that a refusal reports it.
+        admission
+            .record_largest(
+                HtmlResource::AtomicLayoutBytes,
+                wide(times(attributes.len(), size_of::<Arc<NameEntry>>()).map_err(faulted)?),
+            )
+            .map_err(stopped)?;
+        // A test arms a refusal of the allocator for this reservation, counted as one request,
+        // only when the vector is not empty and so reaches the allocator.
+        #[cfg(test)]
+        if !attributes.is_empty() && crate::internal::amortized::fault::refuses_next_reservation() {
+            return Err(fault(HtmlConstructionCause::AllocationFailed));
+        }
+        let mut entries = Vec::new();
+        entries
+            .try_reserve_exact(attributes.len())
+            .map_err(|_| fault(HtmlConstructionCause::AllocationFailed))?;
+        for attribute in attributes.iter() {
+            let (_, entry) = self.intern(
+                NameKey::of(attribute.name()),
+                Some(attribute.name()),
+                admission,
+            )?;
+            entries.push(entry);
+        }
+        self.create_element_of(
+            entry,
+            link_flags,
+            Authored::new(&entries, &attributes),
+            admission,
+        )
     }
 
     /// Creates a detached text record whose units are a copy of `units` in the storage's text arena.

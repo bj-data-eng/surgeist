@@ -88,7 +88,7 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let count = element.attributes().len();
+        let count = element.attributes().count(c)?;
         // A fused installed backing is safe here: only the unique exact open
         // attribute invokes this rule; it reads no other or later attribute.
         // Source-created nodes are still detached, with their real Document.
@@ -245,7 +245,7 @@ impl SessionStorage {
         };
         let attr = element
             .attributes()
-            .get(position)
+            .at(c, position)?
             .ok_or(SessionError::WrongToken)?;
         if attr.name().namespace().uri().is_some()
             || !exact_ascii(c, Some(attr.name().local_name()), "open")?
@@ -298,10 +298,7 @@ impl SessionStorage {
 mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
-    use surgeist_html::{
-        elements::dialog::HtmlDialogOutcome,
-        values::{Attribute, Namespace, QualifiedName},
-    };
+    use surgeist_html::elements::dialog::HtmlDialogOutcome;
 
     fn next_tag(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> Tag {
         loop {
@@ -424,16 +421,11 @@ mod tests {
         tag.name.release(&mut c).unwrap();
         let attribute = attribute.take().unwrap();
         let storage = session.active_mut().unwrap();
-        let (name, name_slot) = storage.register_text(&mut c, attribute.name).unwrap();
-        let (value, value_slot) = storage.register_text(&mut c, attribute.value).unwrap();
+        let name = storage.text_field(&mut c, attribute.name).unwrap();
+        let value = storage.text_field(&mut c, attribute.value).unwrap();
         watch();
         storage
-            .append_registered_attribute(
-                &mut c,
-                node.index,
-                Attribute::new(QualifiedName::new(Namespace::none(), None, name), value),
-                [name_slot, value_slot],
-            )
+            .append_registered_attribute(&mut c, node.index, name, value)
             .unwrap();
         assert!(
             actions().is_empty(),

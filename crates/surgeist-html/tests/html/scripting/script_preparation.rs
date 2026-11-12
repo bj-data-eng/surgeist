@@ -85,8 +85,8 @@ impl Fixture {
             A::ReadConnected => R::Connected(self.connected),
             A::ClassifyType => {
                 let mut kind = HtmlScriptTypeCursor::preparation(
-                    self.explicit_type.as_ref(),
-                    self.language.as_ref(),
+                    self.explicit_type.as_ref().map(DocumentString::code_units),
+                    self.language.as_ref().map(DocumentString::code_units),
                 );
                 let mut meter = Recorder::default();
                 while kind.result().is_none() {

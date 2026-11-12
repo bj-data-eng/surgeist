@@ -166,7 +166,13 @@ fn type_and_actual_trigger_rules_do_not_parse_parameters_or_use_type_mutation_as
     ] {
         let value = value.map(DocumentString::from);
         assert_eq!(
-            style_type_allows_css_with(value.as_ref(), || Ok::<_, ()>(())).unwrap(),
+            style_type_allows_css_with(value.as_ref().map(DocumentString::code_units), || Ok::<
+                _,
+                (),
+            >(
+                ()
+            ))
+            .unwrap(),
             expected
         );
     }

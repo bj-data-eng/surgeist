@@ -6,7 +6,9 @@ use surgeist_html::{
     construction::{HtmlDocumentMode, HtmlNode, HtmlNodeKind},
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
-use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlSource};
+use surgeist_html_parser::{
+    HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseResource, HtmlSource,
+};
 use surgeist_html_semantics::{
     HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue,
     HtmlDocumentClass, HtmlFragmentContext, HtmlHostFactsRevision, HtmlScriptingStatus,
@@ -16,6 +18,7 @@ use surgeist_html_semantics::{
 const HTML_NAMESPACE: &str = "http://www.w3.org/1999/xhtml";
 const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 const MATHML_NAMESPACE: &str = "http://www.w3.org/1998/Math/MathML";
+const XLINK_NAMESPACE: &str = "http://www.w3.org/1999/xlink";
 
 /// Visits every node below `root` in document order.
 fn visit<'a>(
@@ -246,5 +249,37 @@ fn foreign_attributes_cloned_into_selectedcontent_share_their_strings() {
                 "{text} is more than one allocation"
             );
         }
+    }
+}
+
+/// The UTF-16 units the parse of `raw` holds when it completes.
+fn managed_units(raw: &str) -> u64 {
+    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw.to_owned()), limits())
+        .parse()
+        .unwrap_or_else(|_| panic!("the document parses: {raw:.80}"));
+    report
+        .usage()
+        .resource(HtmlParseResource::ManagedUtf16Units)
+        .high_water()
+}
+
+#[test]
+fn each_occurrence_of_an_attribute_namespace_and_prefix_counts_its_units_once() {
+    // An element of the SVG namespace holds its local name and the namespace URI. Its attribute
+    // `xlink:href` holds the local name `href`, the namespace URI and the prefix of the name,
+    // the value, and the token's own name, which the adjustment keeps as history. Every
+    // occurrence counts all of them, the first one of the parse included.
+    let element = "g".len() + SVG_NAMESPACE.len();
+    let attribute =
+        "href".len() + XLINK_NAMESPACE.len() + "xlink".len() + "x".len() + "xlink:href".len();
+    let occurrence = (element + attribute) as u64;
+    let document = |count: usize| format!("<svg>{}</svg>", "<g xlink:href=x></g>".repeat(count));
+    let none = managed_units(&document(0));
+    for count in 1..=3 {
+        assert_eq!(
+            managed_units(&document(count)) - none,
+            count as u64 * occurrence,
+            "{count} occurrences of the attribute"
+        );
     }
 }

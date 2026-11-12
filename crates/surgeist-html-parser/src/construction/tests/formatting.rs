@@ -360,11 +360,11 @@ fn formatting_replay_copies_exact_utf16_attributes_and_original_origins_into_dis
             original_pointer
         );
         assert_eq!(element.name().namespace(), &Namespace::html());
-        let attributes: Vec<_> = element.attributes().iter().collect();
+        let attributes = test_support::attributes_of(element);
         assert_eq!(attributes[0].name().local_name().code_units(), [122]);
         assert_eq!(attributes[0].name().namespace(), &Namespace::none());
         assert_eq!(
-            attributes[0].value().code_units(),
+            test_support::value_units(attributes[0]),
             [65, 0xd83d, 0xde00, 10, 0xd800]
         );
         assert_eq!(attributes[1].name().local_name().code_units(), [97]);
@@ -933,9 +933,10 @@ fn formatting_wide_replay_source_map_coexistence_exact_and_one_short_reclaims_pa
                     .current,
                 515
             );
+            // The copy of the element was made before its attributes were appended.
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
-                1
+                2
             );
             assert_freeze_reports_first_stop(&mut session, &mut c, first);
         } else {

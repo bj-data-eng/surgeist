@@ -492,7 +492,10 @@ fn select_clones_managed_hidden_textarea_and_exact_comment_pi_text_backing_indep
             }
             (ConstructionNodeKind::Element(a), ConstructionNodeKind::Element(b)) => {
                 assert_eq!(a.name(), b.name());
-                assert_eq!(a.attributes().to_ordered(), b.attributes().to_ordered());
+                assert_eq!(
+                    test_support::owned_attributes(a),
+                    test_support::owned_attributes(b)
+                );
                 // A copy is an element of the same interned name, so both borrow one entry.
                 assert!(std::ptr::eq(a.name(), b.name()));
             }
@@ -1922,6 +1925,13 @@ fn lookup_work_of_element(unrelated: usize, element: &str) -> u64 {
     measure(&format!("{prefix}{element}")) - measure(&prefix)
 }
 
+/// The record visits the growth of one bank charges: one to choose its capacity and two to admit
+/// it. The growth that an element's own appends cause depends on how full the banks the unrelated
+/// subtrees filled are, so the measures of two documents differ by at most the growth steps that
+/// fall in one and not in the other; a lookup that visited the unrelated payloads would differ by
+/// the 24 more subtrees of the larger document.
+const BANK_GROWTH_VISITS: u64 = 3;
+
 #[test]
 fn per_element_lookup_work_stays_constant_as_unrelated_payloads_grow() {
     // Each element exercises the payload lookups its kind performs while it is
@@ -1954,7 +1964,7 @@ fn per_element_lookup_work_stays_constant_as_unrelated_payloads_grow() {
     for element in elements {
         let small = lookup_work_of_element(8, element);
         let large = lookup_work_of_element(32, element);
-        if small != large {
+        if small.abs_diff(large) > BANK_GROWTH_VISITS {
             failures.push(format!(
                 "{element}: {small} with 8 unrelated, {large} with 32"
             ));
@@ -2137,94 +2147,6 @@ fn captured_parent_and_child_transfer_remain_owned_when_parent_clone_or_push_sto
 }
 
 #[test]
-fn attribute_value_lookup_uses_the_creation_hint_then_falls_back_after_edits() {
-    use super::super::mutation::ManagedFamily;
-    let request = request("<body><i>a</i><i>b</i><dialog open id=e class=k data-x=y>");
-    let (mut c, mut session, _proof, nodes) = graph(&request);
-    let dialog = named(&nodes, "dialog", 0);
-    // The row a front-to-back scan finds for each current attribute value,
-    // computed independently of the lookup under test.
-    let expected = |session: &ParserArenaSession| -> Vec<usize> {
-        let storage = session.active().unwrap();
-        let ConstructionNodeKind::Element(element) =
-            storage.construction.node_at(dialog.index).unwrap().kind()
-        else {
-            panic!("dialog element")
-        };
-        element
-            .attributes()
-            .iter()
-            .map(|attribute| {
-                storage
-                    .payloads
-                    .values
-                    .iter()
-                    .position(|row| {
-                        matches!(row, RetainedPayload::String { value, .. }
-                            if value.shares_storage_with(attribute.value()))
-                    })
-                    .unwrap()
-            })
-            .collect()
-    };
-    let lookups = |session: &ParserArenaSession, c: &mut ParseControl, count: usize| {
-        let storage = session.active().unwrap();
-        (0..count)
-            .map(|position| {
-                let before = lookup_work(c);
-                let slot = storage
-                    .attribute_value_slot(c, dialog.index, position)
-                    .unwrap();
-                (slot, lookup_work(c) - before)
-            })
-            .collect::<Vec<_>>()
-    };
-    // As created: the hint is present and every lookup is a bounded hit.
-    assert!(
-        session.active().unwrap().payloads.node_joins[dialog.index]
-            .attribute_strings
-            .is_some()
-    );
-    let found = lookups(&session, &mut c, 4);
-    assert_eq!(
-        found.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
-        expected(&session)
-    );
-    assert!(found.iter().all(|(_, work)| *work <= 4), "{found:?}");
-    // A real attribute removal shifts the later attributes and drops the hint;
-    // the fallback scan still finds each remaining value's row.
-    session
-        .remove_managed_attribute(&mut c, &dialog, "open", ManagedFamily::Dialog)
-        .unwrap();
-    assert!(
-        session.active().unwrap().payloads.node_joins[dialog.index]
-            .attribute_strings
-            .is_none()
-    );
-    let after = lookups(&session, &mut c, 3);
-    assert_eq!(
-        after.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
-        expected(&session)
-    );
-    // Restoring the stale creation hint by hand cannot make a lookup return a
-    // row whose identity differs: every candidate is verified before use.
-    let stale = found[0].0 - 1;
-    session
-        .active_mut()
-        .unwrap()
-        .payloads
-        .record_attribute_strings(dialog.index, stale)
-        .unwrap();
-    let verified = lookups(&session, &mut c, 3);
-    assert_eq!(
-        verified.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
-        expected(&session)
-    );
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
-#[test]
 fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
     let request = request("<body><img src=a>");
     let (mut c, mut session, _proof, nodes) = graph(&request);
@@ -2263,29 +2185,29 @@ fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
 }
 
 #[test]
-fn a_refused_attribute_replacement_leaves_the_attributes_and_the_incoming_value_with_the_caller() {
-    use surgeist_html::values::{Attribute, Namespace, QualifiedName};
+fn a_refused_attribute_replacement_leaves_the_attributes_as_they_were() {
+    use surgeist_html::values::Namespace;
     let request = request("<body><div id=a>");
     let (mut c, mut session, _proof, nodes) = graph(&request);
     let div = named(&nodes, "div", 0).index;
     let storage = session.active_mut().unwrap();
-    let incoming = || Attribute::new(QualifiedName::new(Namespace::none(), None, "title"), "t");
+    let title: Vec<u16> = "title".encode_utf16().collect();
+    let id = storage
+        .intern_name(&mut c, &Namespace::none(), &title)
+        .unwrap();
     // A position past the list: the storage refuses it as a request the parser's own
     // sequencing never makes, and nothing about the element changes.
-    let mut value = Some(incoming());
-    let refused = storage.replace_attribute(&mut c, div, 5, &mut value);
-    let invariant = HtmlParseStop::InternalInvariant(
-        crate::parser::control::HtmlParseInvariant::ConstructionOwnerRefusal,
-    );
+    let refused = storage.replace_named_attribute(&mut c, div, 5, &id, &[u16::from(b't')]);
+    let invariant =
+        HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow);
     assert_eq!(refused.err(), Some(SessionError::Stop(invariant)));
     assert_eq!(c.stop(), Some(invariant));
-    assert!(value.is_some(), "the incoming attribute is not taken");
     assert_eq!(
-        element_record(&storage.construction, &mut c, div)
-            .unwrap()
-            .attributes()
-            .len(),
-        1
+        test_support::attribute_units(element_record(&storage.construction, &mut c, div).unwrap()),
+        vec![(
+            "id".encode_utf16().collect::<Vec<_>>(),
+            "a".encode_utf16().collect::<Vec<_>>()
+        )]
     );
     session.release(&mut c).unwrap();
     storage_zero(&c);
@@ -2293,12 +2215,17 @@ fn a_refused_attribute_replacement_leaves_the_attributes_and_the_incoming_value_
 
 #[test]
 fn a_replacement_on_a_non_element_is_refused_with_the_element_attributes_untouched() {
+    use surgeist_html::values::Namespace;
     let request = request("<body><div id=a>");
     let (mut c, mut session, _proof, nodes) = graph(&request);
     let div = named(&nodes, "div", 0).index;
     let storage = session.active_mut().unwrap();
+    let title: Vec<u16> = "title".encode_utf16().collect();
+    let id = storage
+        .intern_name(&mut c, &Namespace::none(), &title)
+        .unwrap();
     // Node 0 is the document, not an element: the edit cannot be about it.
-    let refused = storage.replace_attribute(&mut c, 0, 0, &mut None);
+    let refused = storage.replace_named_attribute(&mut c, 0, 0, &id, &[]);
     assert_eq!(refused.err(), Some(SessionError::WrongToken));
     assert_eq!(
         c.stop(),
@@ -2306,9 +2233,7 @@ fn a_replacement_on_a_non_element_is_refused_with_the_element_attributes_untouch
         "a wrong kind of node is the caller's mistake"
     );
     assert_eq!(
-        element_record(&storage.construction, &mut c, div)
-            .unwrap()
-            .attributes()
+        test_support::attributes_of(element_record(&storage.construction, &mut c, div).unwrap())
             .len(),
         1
     );

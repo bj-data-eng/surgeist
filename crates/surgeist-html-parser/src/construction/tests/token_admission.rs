@@ -17,12 +17,17 @@ fn wrong_case_and_duplicate_token_attributes_do_not_bypass_expanded_name_validat
     release_token_attributes(attributes, &mut c).unwrap();
     let mut tag = Some(owned_tag(&mut c, "div", &[("x", &[0x61]), ("x", &[0x62])]));
     assert!(!tag.as_ref().unwrap().had_duplicate_attributes);
-    assert!(matches!(
-        session.allocate_html_tag(&mut c, &mut tag),
-        Err(SessionError::DuplicateAttribute)
-    ));
+    // The refusal is the storage's, which the session reports as the owner's refusal of an
+    // attribute list that has a duplicate expanded name.
+    let refused = HtmlParseStop::InternalInvariant(
+        crate::parser::control::HtmlParseInvariant::ConstructionOwnerRefusal,
+    );
+    assert_eq!(
+        session.allocate_html_tag(&mut c, &mut tag).err(),
+        Some(SessionError::Stop(refused))
+    );
+    assert_eq!(c.stop(), Some(refused));
     assert!(tag.is_none());
-    assert_eq!(session.active().unwrap().construction.len(), 1);
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }

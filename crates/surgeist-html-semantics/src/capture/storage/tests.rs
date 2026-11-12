@@ -76,7 +76,7 @@ fn real_capture_counts_spare_banks_edges_attributes_and_every_string_occurrence(
         strings[4].clone(),
     ));
     let attributes = OrderedAttributes::new(attribute_bank).unwrap();
-    let attribute_capacity = attributes.shared_attributes().capacity();
+    let attribute_capacity = attributes.capacity();
     let element = builder
         .add_element(
             &document,
@@ -238,8 +238,7 @@ fn shared_attribute_payload_is_priced_for_each_retained_element_occurrence() {
         bank_growth
             + payload(&local).0
             + size_of::<Vec<surgeist_html::values::Attribute>>()
-            + attributes.shared_attributes().capacity()
-                * size_of::<surgeist_html::values::Attribute>()
+            + attributes.capacity() * size_of::<surgeist_html::values::Attribute>()
             + payload(&attribute_name).0
             + payload(&value).0
     );

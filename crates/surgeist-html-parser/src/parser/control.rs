@@ -24,7 +24,6 @@ mod accounts;
 use accounts::{Accounts, Readings};
 mod admission;
 use admission::Site;
-mod attributes;
 mod construction;
 mod css_value;
 pub(crate) use css_value::CssSchemeValue;
@@ -390,9 +389,6 @@ pub(crate) struct ParseControl {
     owned_spans: OwnedSpanObservation,
     #[cfg(test)]
     css_scheme_fault: Option<css_value::SchemeFault>,
-    /// Refuses the next `release_shared` as if its payload were aliased.
-    #[cfg(test)]
-    shared_release_fault: bool,
     /// Makes the next construction-owner retirement report a refusal after it
     /// has retired everything the owner holds.
     #[cfg(test)]
@@ -555,8 +551,6 @@ impl ParseControl {
             owned_spans: OwnedSpanObservation::default(),
             #[cfg(test)]
             css_scheme_fault: None,
-            #[cfg(test)]
-            shared_release_fault: false,
             #[cfg(test)]
             construction_retire_fault: false,
             #[cfg(test)]
@@ -782,18 +776,6 @@ impl ParseControl {
         }
         Ok(())
     }
-    /// Whether a refusal armed by [`Self::refuse_next_shared_release`] is still waiting for the
-    /// release of a shared allocation.
-    #[cfg(test)]
-    pub(crate) fn shared_release_refusal_pending(&self) -> bool {
-        self.shared_release_fault
-    }
-    /// Forces the next `release_shared` to refuse, returning the payload and
-    /// its ticket unchanged, as an aliased payload would.
-    #[cfg(test)]
-    pub(crate) fn refuse_next_shared_release(&mut self) {
-        self.shared_release_fault = true;
-    }
     /// Forces the next construction-owner retirement to report a refusal once
     /// its releases are done.
     #[cfg(test)]
@@ -973,12 +955,20 @@ impl ParseControl {
         value: &surgeist_html::values::DocumentString,
         literal: &str,
     ) -> Result<bool, HtmlParseStop> {
+        self.ascii_case_insensitive_units_match(value.code_units(), literal)
+    }
+    /// As [`Self::ascii_case_insensitive_literal_matches`] for the units of a value.
+    pub(crate) fn ascii_case_insensitive_units_match(
+        &mut self,
+        value: &[u16],
+        literal: &str,
+    ) -> Result<bool, HtmlParseStop> {
         self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if value.len() != literal.len() {
             return Ok(false);
         }
         // The lengths are equal, so the pairs are exactly the literal's indices.
-        for (&unit, byte) in value.code_units().iter().zip(literal.bytes()) {
+        for (&unit, byte) in value.iter().zip(literal.bytes()) {
             self.charge_unit_literal_comparison()?;
             if !surgeist_html::bounded::lexical::ascii_case_insensitive_unit(unit, byte) {
                 return Ok(false);
@@ -1522,6 +1512,7 @@ impl ParseControl {
     }
     /// Checks that `bytes` of retained capacity can be credited; nothing
     /// changes.
+    #[cfg(test)]
     fn check_capacity_release(&mut self, bytes: u64) -> Result<(), HtmlParseStop> {
         self.check_resources(&Self::capacity_release(bytes), Site::PLAIN)
     }
@@ -1596,22 +1587,14 @@ impl ParseControl {
     /// Recovers the unique payload and releases only its known shared layout.
     /// Aliased/foreign failures return the actual Arc and ticket unchanged, so
     /// the original owner may retry cleanup after outstanding handles are gone.
+    /// The parse shares only zero-sized values, which [`Self::release_zero_sized_shared`]
+    /// releases, so the control's tests exercise the release of a payload that has a layout.
+    #[cfg(test)]
     pub(crate) fn release_shared<T>(
         &mut self,
         shared: Arc<T>,
         allocation: SharedAllocation<T>,
     ) -> Result<T, SharedReleaseError<T>> {
-        #[cfg(test)]
-        if std::mem::take(&mut self.shared_release_fault) {
-            let stop = self.latch_stop(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::SharedAllocationAliased,
-            ));
-            return Err(SharedReleaseError {
-                stop,
-                shared,
-                allocation,
-            });
-        }
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
             let stop = self.latch_stop(HtmlParseStop::InternalInvariant(
                 HtmlParseInvariant::ForeignControl,

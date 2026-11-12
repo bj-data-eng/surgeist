@@ -103,7 +103,7 @@ fn hidden_input_ordered_initialization_reset_and_frozen_values_are_independent()
             unreachable!()
         };
         if let Some(native) = storage.form_attribute(&mut c, node.index, "value").unwrap() {
-            assert!(!native.shares_storage_with(internal));
+            assert_ne!(native.as_ptr(), internal.code_units().as_ptr());
         }
         assert!(storage.payloads.values.iter().any(|p| matches!(
             p,
@@ -1044,9 +1044,16 @@ fn checkbox_clone_copies_actual_dirty_current_and_four_flags_but_not_user_validi
     // attribute field and its complete tokenizer origins, not a fabricated
     // originless literal accepted only by a test adapter.
     let storage = session.active().unwrap();
-    let current_source = storage.attribute_value_slot(&mut c, node.index, 3).unwrap();
+    let current_source = storage
+        .value_source(
+            &mut c,
+            InputSource::Attribute {
+                node: node.index,
+                position: 3,
+            },
+        )
+        .unwrap();
     let current = copy_input_value(
-        &storage.payloads,
         storage.evidence.as_ref(),
         &mut c,
         current_source,
@@ -1377,9 +1384,8 @@ fn default_button_input_clone_retains_exact_native_default_raw_and_fresh_flags()
         else {
             panic!("native copy")
         };
-        let names: Vec<_> = element
-            .attributes()
-            .iter()
+        let names: Vec<_> = test_support::attributes_of(element)
+            .into_iter()
             .map(|a| a.name().local_name().code_units().to_vec())
             .collect();
         assert_eq!(
@@ -1691,8 +1697,7 @@ fn color_invalid_authored_value_installs_black_and_preserves_native_default() {
             .unwrap()
             .form_attribute(&mut c, node.index, "value")
             .unwrap()
-            .unwrap()
-            .code_units(),
+            .unwrap(),
         [120]
     );
     output.release(&mut c).unwrap();
@@ -2244,24 +2249,21 @@ fn hidden_input_sanitization_preserves_exact_utf16_origin_groups_and_original_ev
         token.coordinates(),
         crate::HtmlSourceCoordinates::Utf16CodeUnits
     );
-    let source_slot = session
-        .active()
-        .unwrap()
-        .attribute_value_slot(&mut c, node.index, 0)
-        .unwrap();
-    let RetainedPayload::String { value, .. } =
-        &session.active().unwrap().payloads.values[source_slot]
-    else {
-        unreachable!()
-    };
+    let value_field = FieldRef::AttributeValue(node.index, 0);
+    let value = value_field
+        .units(ConstructionView::Active(
+            &session.active().unwrap().construction,
+        ))
+        .expect("the attribute holds its value");
     let origins = session
         .active()
         .unwrap()
         .payloads
-        .row_group(&mut c, source_slot)
+        .detail_origins
+        .get(&mut c, value_field)
         .unwrap()
         .expect("the attribute value has an origin group");
-    assert_eq!(value.code_units(), expected);
+    assert_eq!(value, expected);
     assert_eq!(
         session
             .active()

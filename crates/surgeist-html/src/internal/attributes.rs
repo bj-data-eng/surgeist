@@ -2115,7 +2115,7 @@ fn enum_value_selection<T: Copy + 'static>(
 }
 
 fn enum_keyword_matches_with<T, E>(
-    value: &DocumentString,
+    value: &[u16],
     keyword: &Keyword<T>,
     exact: bool,
     admit: &mut impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
@@ -2124,7 +2124,7 @@ fn enum_keyword_matches_with<T, E>(
     admit(Read::KeywordHeader)?;
     let spelling = keyword.spelling;
     if exact {
-        let mut actual = value.code_units().iter();
+        let mut actual = value.iter();
         let mut expected = spelling.encode_utf16();
         loop {
             admit(Read::KeywordPair)?;
@@ -2135,7 +2135,7 @@ fn enum_keyword_matches_with<T, E>(
             }
         }
     }
-    let units = value.code_units();
+    let units = value;
     let bytes = spelling.as_bytes();
     if units.len() != bytes.len() {
         return Ok(false);
@@ -2160,7 +2160,7 @@ enum EnumRecognition<'rule, T> {
 /// Admits the value header, then each keyword's header and pairs until one matches.
 fn enum_recognition_with<'rule, T, E>(
     rule: &'rule EnumRule<T>,
-    raw: Option<&DocumentString>,
+    raw: Option<&[u16]>,
     mut admit: impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
 ) -> Result<EnumRecognition<'rule, T>, E> {
     admit(bounded_rules::HtmlAttributeKeywordRead::ValueHeader)?;
@@ -2189,7 +2189,7 @@ fn enum_value_selection_with<T: Copy + 'static, E>(
         author: HtmlAttributeAuthorState::Unapplied,
         intrinsic: None,
     };
-    match enum_recognition_with(rule, raw, admit)? {
+    match enum_recognition_with(rule, raw.map(DocumentString::code_units), admit)? {
         EnumRecognition::Missing => {
             selection.recognition = HtmlAttributeRecognition::Missing;
             selection.author = HtmlAttributeAuthorState::Missing;
@@ -2236,7 +2236,7 @@ fn enum_value_selection_with<T: Copy + 'static, E>(
 fn total_enum_value_with<T: Copy + 'static, E>(
     rule: &EnumRule<T>,
     defaults: &TotalEnumDefaults<T>,
-    raw: Option<&DocumentString>,
+    raw: Option<&[u16]>,
     admit: impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
 ) -> Result<T, E> {
     Ok(match enum_recognition_with(rule, raw, admit)? {
@@ -2885,23 +2885,25 @@ pub(crate) mod bounded_rules {
 
     /// CORS settings content-state processing for an already qualified caller.
     /// Missing, empty and invalid defaults use the same rule as the ordinary
-    /// interpreter. This grants no element applicability or resource authority.
+    /// interpreter. This grants no element applicability or resource authority. `raw` is the
+    /// attribute's exact UTF-16 code units, or `None` when it is absent.
     /// Each header/pair is admitted before its operand read; refusal stops
     /// immediately, without allocation or mutation.
     pub fn crossorigin_processing_with<E>(
-        raw: Option<&DocumentString>,
+        raw: Option<&[u16]>,
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<HtmlCrossOriginState, E> {
         total_enum_value_with(&CROSSORIGIN, &CROSSORIGIN_DEFAULTS, raw, admit)
     }
 
     /// Referrer policy content-state processing, independently of element,
-    /// hyperlink or script applicability. The empty policy remains unresolved;
+    /// hyperlink or script applicability. `raw` is the attribute's exact UTF-16 code units, or
+    /// `None` when it is absent. The empty policy remains unresolved;
     /// this does not choose a Document policy or parse an HTTP header.
     /// Uses the shared vocabulary/defaults and admits each header/pair before
     /// its operand read. No name or attribute record is constructed or scanned.
     pub fn referrerpolicy_processing_with<E>(
-        raw: Option<&DocumentString>,
+        raw: Option<&[u16]>,
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<HtmlReferrerPolicy, E> {
         total_enum_value_with(&REFERRERPOLICY, &REFERRERPOLICY_DEFAULTS, raw, admit)
@@ -3244,7 +3246,9 @@ mod total_enum_tests {
         for raw in RAW {
             assert_eq!(
                 bounded_rules::crossorigin_processing_with(
-                    raw.map(DocumentString::from).as_ref(),
+                    raw.map(DocumentString::from)
+                        .as_ref()
+                        .map(DocumentString::code_units),
                     |_| Ok::<(), std::convert::Infallible>(())
                 )
                 .unwrap_or_else(|never| match never {}),
@@ -3285,7 +3289,9 @@ mod total_enum_tests {
         for raw in RAW {
             assert_eq!(
                 bounded_rules::referrerpolicy_processing_with(
-                    raw.map(DocumentString::from).as_ref(),
+                    raw.map(DocumentString::from)
+                        .as_ref()
+                        .map(DocumentString::code_units),
                     |_| Ok::<(), std::convert::Infallible>(())
                 )
                 .unwrap_or_else(|never| match never {}),

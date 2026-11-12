@@ -33,30 +33,33 @@ pub enum HtmlIntegrationPointRule {
 }
 
 /// Adapters own field access and comparison costs. Only the selected branch
-/// requests comparisons; the encoding branch alone requires attribute access.
+/// requests comparisons; the encoding branch alone requires attribute access. The comparator
+/// receives the exact UTF-16 code units of the name it compares.
 pub fn html_integration_point_rule<E>(
     namespace: Option<&DocumentString>,
     local: &DocumentString,
-    mut compare: impl FnMut(
-        &DocumentString,
-        &'static str,
-        HtmlIntegrationPointComparison,
-    ) -> Result<bool, E>,
+    mut compare: impl FnMut(&[u16], &'static str, HtmlIntegrationPointComparison) -> Result<bool, E>,
 ) -> Result<HtmlIntegrationPointRule, E> {
     use HtmlIntegrationPointComparison::Exact;
     use HtmlIntegrationPointRule::{Always, EncodingAttribute, Never};
     let Some(namespace) = namespace else {
         return Ok(Never);
     };
-    if compare(namespace, "http://www.w3.org/2000/svg", Exact)? {
+    if compare(namespace.code_units(), "http://www.w3.org/2000/svg", Exact)? {
         for known in SVG_HTML_INTEGRATION_POINTS {
-            if compare(local, known.local_name(), Exact)? {
+            if compare(local.code_units(), known.local_name(), Exact)? {
                 return Ok(Always);
             }
         }
-    } else if compare(namespace, "http://www.w3.org/1998/Math/MathML", Exact)?
-        && compare(local, KnownMathmlElement::AnnotationXml.local_name(), Exact)?
-    {
+    } else if compare(
+        namespace.code_units(),
+        "http://www.w3.org/1998/Math/MathML",
+        Exact,
+    )? && compare(
+        local.code_units(),
+        KnownMathmlElement::AnnotationXml.local_name(),
+        Exact,
+    )? {
         return Ok(EncodingAttribute);
     }
     Ok(Never)
@@ -64,18 +67,16 @@ pub fn html_integration_point_rule<E>(
 
 /// `Some` identifies the unique encoding attribute, including a rejected MIME
 /// value. Adapters can stop there without reading unrelated later attributes.
+/// `value` is the attribute's exact UTF-16 code units; the comparator receives the units of
+/// the name or of the value it compares.
 pub fn html_integration_point_encoding_attribute<E>(
     namespace: Option<&DocumentString>,
     local: &DocumentString,
-    value: &DocumentString,
-    mut compare: impl FnMut(
-        &DocumentString,
-        &'static str,
-        HtmlIntegrationPointComparison,
-    ) -> Result<bool, E>,
+    value: &[u16],
+    mut compare: impl FnMut(&[u16], &'static str, HtmlIntegrationPointComparison) -> Result<bool, E>,
 ) -> Result<Option<bool>, E> {
     use HtmlIntegrationPointComparison::{AsciiCaseInsensitive, Exact};
-    if namespace.is_some() || !compare(local, "encoding", Exact)? {
+    if namespace.is_some() || !compare(local.code_units(), "encoding", Exact)? {
         return Ok(None);
     }
     Ok(Some(
@@ -85,13 +86,12 @@ pub fn html_integration_point_encoding_attribute<E>(
 }
 
 fn borrowed_comparison(
-    value: &DocumentString,
+    value: &[u16],
     literal: &'static str,
     comparison: HtmlIntegrationPointComparison,
 ) -> Result<bool, Infallible> {
     Ok(value.len() == literal.len()
         && value
-            .code_units()
             .iter()
             .zip(literal.bytes())
             .all(|(&unit, byte)| match comparison {
@@ -121,7 +121,7 @@ pub fn is_html_integration_point(
                     html_integration_point_encoding_attribute(
                         name.namespace_uri(),
                         name.local_name(),
-                        attribute.value(),
+                        attribute.value().code_units(),
                         borrowed_comparison,
                     )
                     .unwrap_or_else(|never| match never {})

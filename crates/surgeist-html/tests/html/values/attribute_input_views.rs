@@ -121,9 +121,16 @@ fn a_published_element_returns_each_row_by_view_and_none_at_and_past_its_length(
     };
     let attributes = element.attributes();
     observe(&attributes, &rows);
-    let stored: Vec<&Attribute> = attributes.iter().collect();
-    lends(&attributes, &stored);
-    for (view, expected) in stored.iter().zip(&rows) {
-        assert!(view.value().shares_storage_with(expected.value()));
-    }
+    // The values are copies in the one block of the result, which every value borrows.
+    let blocks: Vec<usize> = attributes
+        .iter()
+        .map(|view| {
+            view.value()
+                .borrowed_block()
+                .map(|block| block.address())
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(blocks.len(), rows.len());
+    assert!(blocks.iter().all(|block| *block == blocks[0]));
 }

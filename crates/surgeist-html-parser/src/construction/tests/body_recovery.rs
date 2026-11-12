@@ -306,23 +306,12 @@ fn body_merge_actual_attribute_cap_preserves_old_order_and_reclaims_staged_paylo
         else {
             panic!("body")
         };
-        assert_eq!(
-            element
-                .attributes()
-                .get(0)
-                .unwrap()
-                .name()
-                .local_name()
-                .code_units(),
-            [105, 100]
-        );
-        assert_eq!(
-            element.attributes().get(0).unwrap().value().code_units(),
-            [111, 108, 100]
-        );
+        let held = test_support::attributes_of(element);
+        assert_eq!(held[0].name().local_name().code_units(), [105, 100]);
+        assert_eq!(test_support::value_units(held[0]), [111, 108, 100]);
         if cap == 3 {
             result.unwrap();
-            assert_eq!(element.attributes().len(), 3);
+            assert_eq!(held.len(), 3);
             assert!(input.is_none());
         } else {
             assert!(matches!(
@@ -332,7 +321,11 @@ fn body_merge_actual_attribute_cap_preserves_old_order_and_reclaims_staged_paylo
                     ..
                 }))
             ));
-            assert_eq!(element.attributes().len(), 1);
+            // The attributes are appended in source order, so the ones the limit admits are kept
+            // and the first one it refuses stops the parse.
+            assert_eq!(held.len(), 2);
+            assert_eq!(held[1].name().local_name().to_utf8().unwrap(), "a");
+            assert_eq!(test_support::value_text(held[1]), "one");
             let stop = c.stop().unwrap();
             assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
         }
@@ -1206,13 +1199,13 @@ fn body_and_p_literals_and_both_body_merge_paths_freeze_same_native_arena() {
         else {
             panic!("body")
         };
-        let attributes: Vec<_> = element.attributes().iter().collect();
+        let attributes = test_support::attributes_of(element);
         assert_eq!(
             attributes
                 .iter()
                 .map(|a| (
                     a.name().local_name().to_utf8().unwrap(),
-                    a.value().to_utf8().unwrap()
+                    test_support::value_text(*a)
                 ))
                 .collect::<Vec<_>>(),
             [("id", "old"), ("x:id", "p"), ("a", "one"), ("z", "end")]

@@ -53,11 +53,23 @@ fn an_element_view_reports_the_authored_name_and_attributes_in_order() {
     assert_eq!(view.len(), 4);
     assert!(!view.is_empty());
     let authored = authored();
-    assert!(view.iter().eq(authored.iter()));
-    assert!(view.iter().rev().eq(authored.iter().rev()));
+    let pair = |a: &Attribute| (a.name().clone(), a.value().clone());
+    let seen =
+        |a: surgeist_html::construction::HtmlAttribute<'_>| (a.name().clone(), a.value().clone());
+    assert!(view.iter().map(seen).eq(authored.iter().map(pair)));
+    assert!(
+        view.iter()
+            .rev()
+            .map(seen)
+            .eq(authored.iter().rev().map(pair))
+    );
     assert_eq!(view.iter().len(), 4);
     for (index, expected) in authored.iter().enumerate() {
-        assert_eq!(view.get(index), Some(expected), "index {index}");
+        assert_eq!(
+            view.get(index).map(seen),
+            Some(pair(expected)),
+            "index {index}"
+        );
     }
     assert_eq!(view.get(4), None);
     assert_eq!(view.get(usize::MAX), None);
@@ -123,6 +135,24 @@ fn to_ordered_returns_the_authored_collection() {
     assert_eq!(ordered.as_slice(), authored().as_slice());
     // The owned collection takes the same attributes in the same order a second time.
     assert_eq!(element.attributes().to_ordered(), ordered);
+}
+
+#[test]
+fn to_ordered_holds_exactly_the_attributes_of_the_element() {
+    let attributes = OrderedAttributes::new(authored().into_iter().take(2)).unwrap();
+    let fragment = one_element(
+        QualifiedName::new(Namespace::html(), None, "a"),
+        attributes.clone(),
+    );
+    let child = fragment.root().children().next().unwrap();
+    let HtmlNodeKind::Element(element) = fragment.node(&child).unwrap().kind() else {
+        panic!("expected an element");
+    };
+    // A holder of the collection charges its capacity, so a list with room for more rows than the
+    // element has attributes would charge rows that nothing holds.
+    let ordered = element.attributes().to_ordered();
+    assert_eq!(ordered.len(), attributes.len());
+    assert_eq!(ordered.capacity(), attributes.len());
 }
 
 #[test]

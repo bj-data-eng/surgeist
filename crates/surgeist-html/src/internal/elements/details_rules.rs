@@ -98,13 +98,13 @@ pub enum HtmlDetailsAttributeEffect {
     },
 }
 /// Fixed attribute-change decision. Values' presence is the actual DOM change
-/// input; their contents are irrelevant to the open transition. This operation
+/// input; their UTF-16 code units are irrelevant to the open transition. This operation
 /// does not dispatch an event, certify a closed recipient domain or mutate a tree.
 pub fn details_attribute_effect(
     namespace: &crate::internal::values::Namespace,
     attribute: HtmlDetailsAttribute,
-    old: Option<&crate::internal::values::DocumentString>,
-    new: Option<&crate::internal::values::DocumentString>,
+    old: Option<&[u16]>,
+    new: Option<&[u16]>,
 ) -> HtmlDetailsAttributeEffect {
     if namespace.uri().is_some() {
         return HtmlDetailsAttributeEffect::None;

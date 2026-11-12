@@ -8,7 +8,7 @@ use surgeist_html::{
         form::HtmlTextareaFlags,
         script::{HtmlScriptFlags, HtmlScriptResult},
     },
-    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+    values::{DocumentString, Namespace},
 };
 
 #[derive(Clone, Copy, Default)]
@@ -118,30 +118,10 @@ impl SessionStorage {
                             let namespace = self.field_slot(c, FieldRef::Namespace(node))?;
                             control_field_owner(&self.payloads, c, namespace)?;
                         }
-                        for (position, attr) in element.attributes().iter().enumerate() {
-                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-                            for location in [
-                                attr.name()
-                                    .namespace()
-                                    .uri()
-                                    .map(|_| FieldRef::AttributeNamespace(node, position)),
-                                attr.name()
-                                    .prefix()
-                                    .map(|_| FieldRef::AttributePrefix(node, position)),
-                            ]
-                            .into_iter()
-                            .flatten()
-                            {
-                                let slot = self.field_slot(c, location)?;
-                                control_field_owner(&self.payloads, c, slot)?;
-                            }
-                            let name =
-                                self.field_slot(c, FieldRef::AttributeName(node, position))?;
-                            control_field_owner(&self.payloads, c, name)?;
-                            let value =
-                                self.field_slot(c, FieldRef::AttributeValue(node, position))?;
-                            control_field_owner(&self.payloads, c, value)?;
+                        for _ in element.attributes().each(c)? {
+                            // The strings of an attribute are fields of its element: the name
+                            // is interned in the storage, and the value is a range of its arena.
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
                         }
                         for name in ["select", "option", "selectedcontent"] {
                             if self.html_local(c, node, name)? {
@@ -419,39 +399,7 @@ impl SessionStorage {
         drop(name);
         let (name_id, _) = self.intern_row_name(c, name_slot, &namespace)?;
         // The element is created without attributes; they are appended one at a time below.
-        let stage = StagedAttributes::new(c)?;
-        let (values, allocation) = stage.into_parts();
-        let (backing, shared) = match c.share_owned(values) {
-            Ok(value) => value,
-            Err((stop, values)) => {
-                release_vector(c, values, allocation)?;
-                return Err(stop.into());
-            }
-        };
-        let ordered = match validate_parser_attributes(backing, c) {
-            Ok(value) => value,
-            Err((error, backing)) => {
-                // The backing here is the empty vector just created, and validating fewer than
-                // two attributes has no comparison to charge or refuse, so no limit or
-                // cancellation reaches this arm and no test can force it with a work cut.
-                return match c.release_shared(backing, shared) {
-                    Ok(values) => {
-                        release_vector(c, values, allocation)?;
-                        Err(error)
-                    }
-                    Err(refused) => {
-                        let (_, backing, shared) = refused.into_parts();
-                        drop(backing);
-                        self.holds.absorb_attribute_list(c, allocation, shared)?;
-                        Err(latch_registry_row(c))
-                    }
-                };
-            }
-        };
-        self.holds.absorb_attribute_list(c, allocation, shared)?;
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        payload_write::<OrderedAttributes>(c, 1)?;
-        let attributes = ordered;
         // Native installation and all payload alias locations are one fixed
         // commit. A terminal stop may precede allocation, never strand an
         // installed native backing with a detached/unbound registry location.
@@ -462,7 +410,7 @@ impl SessionStorage {
             .then(surgeist_html::elements::link::HtmlLinkFlags::fresh);
         let node = self.allocate_prepared_owned(
             c,
-            NewRecord::NamedElement(name_id, attributes, link_flags),
+            NewRecord::NamedElement(name_id, link_flags),
             template,
             0,
             0,
@@ -497,72 +445,55 @@ impl SessionStorage {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let count = element_record(&self.construction, c, source)?
             .attributes()
-            .len();
-        // The clone's attributes are appended in one list, grown once to the source's length.
+            .count(c)?;
+        // The clone's attributes are appended in one run, grown once to the source's length.
         self.reserve_attributes(c, node.index, count)?;
         for position in 0..count {
-            let name_slot = self.field_slot(c, FieldRef::AttributeName(source, position))?;
-            let (name, name_slot) = self.copy_registered_field(c, name_slot)?;
-            let value_slot = self.field_slot(c, FieldRef::AttributeValue(source, position))?;
-            let (value, value_slot) = self.copy_registered_field(c, value_slot)?;
-            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-            let attribute = element_attribute(&self.construction, c, source, position)?;
-            let has_namespace = attribute.name().namespace().uri().is_some();
-            let has_prefix = attribute.name().prefix().is_some();
-            let (namespace, namespace_slot) = if has_namespace {
-                let slot = self.field_slot(c, FieldRef::AttributeNamespace(source, position))?;
-                let (value, slot) = self.copy_registered_literal_field(c, slot, false)?;
-                (Namespace::from_uri(value), Some(slot))
-            } else {
-                (Namespace::none(), None)
+            let name = self.copy_record_field(c, FieldRef::AttributeName(source, position))?;
+            let value = match self.copy_record_field(c, FieldRef::AttributeValue(source, position))
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    name.release(c)?;
+                    return Err(error);
+                }
             };
-            let (prefix, prefix_slot) = if has_prefix {
-                let slot = self.field_slot(c, FieldRef::AttributePrefix(source, position))?;
-                let (value, slot) = self.copy_registered_literal_field(c, slot, true)?;
-                (Some(value), Some(slot))
-            } else {
-                (None, None)
+            let prepared = (|| {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+                let attribute = element_attribute(&self.construction, c, source, position)?;
+                let namespace = attribute.name().namespace().uri().cloned();
+                let prefix = attribute.name().prefix().cloned();
+                let mut qualified = storage_attributes::QualifiedFields::default();
+                if let Some(string) = namespace {
+                    let group =
+                        self.copied_field_group(c, FieldRef::AttributeNamespace(source, position))?;
+                    qualified.namespace = Some(storage_attributes::LiteralField {
+                        string,
+                        group,
+                        counted: false,
+                    });
+                }
+                if let Some(string) = prefix {
+                    let group =
+                        self.copied_field_group(c, FieldRef::AttributePrefix(source, position))?;
+                    qualified.prefix = Some(storage_attributes::LiteralField {
+                        string,
+                        group,
+                        counted: false,
+                    });
+                }
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                Ok::<_, SessionError>(qualified)
+            })();
+            let qualified = match prepared {
+                Ok(qualified) => qualified,
+                Err(error) => {
+                    name.release(c)?;
+                    value.release(c)?;
+                    return Err(error);
+                }
             };
-            let first_row = name_slot.min(value_slot);
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            payload_write::<Attribute>(c, 1)?;
-            payload_write::<[FieldRef; 2]>(c, 2)?;
-            if namespace_slot.is_some() {
-                payload_write::<FieldRef>(c, 1)?;
-            }
-            if prefix_slot.is_some() {
-                payload_write::<FieldRef>(c, 1)?;
-            }
-            self.holds.acquire_attribute(c)?;
-            self.bind_string(name_slot, FieldRef::AttributeName(node.index, position))
-                .map_err(|_| latch_registry_row(c))?;
-            self.bind_string(value_slot, FieldRef::AttributeValue(node.index, position))
-                .map_err(|_| latch_registry_row(c))?;
-            if let Some(slot) = namespace_slot {
-                self.bind_string(slot, FieldRef::AttributeNamespace(node.index, position))
-                    .map_err(|_| latch_registry_row(c))?;
-            }
-            if let Some(slot) = prefix_slot {
-                self.bind_string(slot, FieldRef::AttributePrefix(node.index, position))
-                    .map_err(|_| latch_registry_row(c))?;
-            }
-            let mut incoming = Some(Attribute::new(
-                QualifiedName::new(namespace, prefix, name),
-                value,
-            ));
-            self.payloads.forget_attribute_strings(node.index);
-            self.append_attribute_with_effects(c, node.index, &mut incoming, None)?;
-            let first_row = [
-                Some(name_slot),
-                Some(value_slot),
-                namespace_slot,
-                prefix_slot,
-            ]
-            .into_iter()
-            .flatten()
-            .min()
-            .unwrap_or(first_row);
-            self.flush_attribute_origins(c, first_row)?;
+            self.append_qualified_fields(c, node.index, qualified, name, value, false, true)?;
             self.clone_attribute_hook(c, node.index, bindings, position)?;
         }
         self.finish_clone_metadata(c, source, node.index, bindings)?;
@@ -938,19 +869,15 @@ impl SessionStorage {
         }
         if let Some(slot) = bindings.input {
             let (_, original_raw, original) = self.input_clone_slot(c, source)?;
+            let value = self.value_source(c, InputSource::Row(original_raw))?;
             let text = if matches!(
                 original.flags.input_type(),
                 surgeist_html::attributes::HtmlInputType::Range
                     | surgeist_html::attributes::HtmlInputType::Color
             ) {
-                provenance::copy_generated_input_value(
-                    &self.payloads,
-                    self.evidence.as_ref(),
-                    c,
-                    original_raw,
-                )?
+                provenance::copy_generated_input_value(self.evidence.as_ref(), c, value)?
             } else {
-                copy_preserved_input_value(&self.payloads, self.evidence.as_ref(), c, original_raw)?
+                copy_preserved_input_value(self.evidence.as_ref(), c, value)?
             };
             self.replace_input_raw(c, slot, text)?;
             let mut state = self.read_input_state(c, slot)?;
@@ -1060,7 +987,7 @@ impl SessionStorage {
         )?;
         let origins = self
             .payloads
-            .row_group(c, source)?
+            .row_group(source)?
             .map(|origins| {
                 self.evidence
                     .as_mut()
@@ -1100,6 +1027,20 @@ impl SessionStorage {
             group,
         })
     }
+    /// Copies the value of the attribute at `position` of `node` into a registered string of its
+    /// own, with a copy of the group of the value's origins, and returns its slot.
+    pub(super) fn copy_attribute_value(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+        position: usize,
+    ) -> Result<usize, SessionError> {
+        let field = self.copy_record_field(c, FieldRef::AttributeValue(node, position))?;
+        let FieldString { value, group } = field;
+        let (copy, slot) = self.register_group_string_owned(c, value, group)?;
+        drop(copy);
+        Ok(slot)
+    }
     /// Copies a registered field without aliasing its native backing or ticket.
     pub(super) fn copy_registered_field(
         &mut self,
@@ -1116,7 +1057,7 @@ impl SessionStorage {
             };
             buffer.extend_units(value.code_units(), c)?;
             self.payloads
-                .row_group(c, source)?
+                .row_group(source)?
                 .map(|origins| {
                     self.evidence
                         .as_mut()
@@ -1140,8 +1081,8 @@ impl SessionStorage {
         c: &mut ParseControl,
         location: FieldRef,
     ) -> Result<usize, SessionError> {
-        // The string of a non-element field is the record's own: no registry row holds it.
-        if location.is_record_string() {
+        // The string of a field of a record is the record's own: no registry row holds it.
+        if location.is_held_by_record() {
             return Err(latch_registry_row(c));
         }
         // Deliberately a registry scan: every other location is looked up on
@@ -1173,7 +1114,7 @@ fn control_field_owner(
         return Err(SessionError::WrongToken);
     };
     c.require_document_string(allocation, value)?;
-    if let Some(maps) = payloads.row_group(c, slot)? {
+    if let Some(maps) = payloads.row_group(slot)? {
         maps.require_disposal_owner(c)?;
     }
     Ok(())
@@ -1189,10 +1130,6 @@ pub(super) fn same_location(a: FieldRef, b: FieldRef) -> bool {
         | (FieldRef::ProcessingInstructionData(a), FieldRef::ProcessingInstructionData(b)) => {
             a == b
         }
-        (FieldRef::AttributeName(a, x), FieldRef::AttributeName(b, y))
-        | (FieldRef::AttributeValue(a, x), FieldRef::AttributeValue(b, y))
-        | (FieldRef::AttributeNamespace(a, x), FieldRef::AttributeNamespace(b, y))
-        | (FieldRef::AttributePrefix(a, x), FieldRef::AttributePrefix(b, y)) => a == b && x == y,
         _ => false,
     }
 }

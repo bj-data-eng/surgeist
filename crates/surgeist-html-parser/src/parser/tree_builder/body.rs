@@ -1622,8 +1622,8 @@ impl HeadState<'_> {
         };
         let tag = input.as_ref().ok_or(HeadError::MissingInput)?;
         Ok(tag_sets::equal_units(
-            q.local_name(),
-            tag.name.value.text(),
+            q.local_name().code_units(),
+            tag.name.value.text().code_units(),
             c,
         )?)
     }

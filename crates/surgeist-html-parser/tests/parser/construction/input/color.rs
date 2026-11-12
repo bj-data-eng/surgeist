@@ -9,7 +9,7 @@ use surgeist_html::{
         HtmlInputColorEffect, HtmlInputColorSerialization, HtmlInputValueMode,
         HtmlInputValueSanitization,
     },
-    values::{Attribute, DocumentString},
+    values::DocumentString,
 };
 use surgeist_html_parser::{
     HtmlColorProcessingError, HtmlParseColorOperandRole, HtmlParseColorValueSource,
@@ -246,7 +246,7 @@ fn color_independent_literals_preserve_defaults_and_source_ordered_alpha_colorsp
             .attributes()
             .iter()
             .find(|a| a.name().local_name() == &DocumentString::from("value"))
-            .map(Attribute::value);
+            .map(|attribute| attribute.value());
         assert_eq!(
             default,
             expected_default.map(DocumentString::from).as_ref(),

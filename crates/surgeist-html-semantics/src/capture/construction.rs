@@ -1370,7 +1370,7 @@ mod tests {
         rows.try_reserve_exact(2).unwrap();
         rows.extend([attribute("a", a), attribute("b", b)]);
         let attributes = OrderedAttributes::new(rows).unwrap();
-        let capacity = attributes.shared_attributes().capacity();
+        let capacity = attributes.capacity();
         let mut source = HtmlFragment::builder(
             surgeist_html::construction::HtmlConstructionLimits::new(20, 40, 10, 100, 20),
         )
@@ -1486,8 +1486,10 @@ mod tests {
             Err(failure) => panic!("the allowance of the owners refused: {:?}", failure.reason),
         };
         assert_eq!(import.builder.usage().element_value_bytes(), bytes);
-        // Each value is counted by its length, and the block is listed once for all of them.
-        assert_eq!(import.builder.data.blocks.len(), 1);
+        // Each value is counted by its length. The source copies the attribute values into the one
+        // block of its parse, which the capture lists once for both attributes, and the saved `is`
+        // borrows the block of the test, which it lists once more.
+        assert_eq!(import.builder.data.blocks.len(), 2);
     }
     #[test]
     fn every_work_cutoff_rolls_back_new_records_and_retains_input_allocations() {

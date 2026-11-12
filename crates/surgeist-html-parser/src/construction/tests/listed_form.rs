@@ -369,9 +369,8 @@ fn listed_late_body_id_merge_resets_exact_target_before_next_attribute_and_freez
         panic!("body")
     };
     assert_eq!(
-        body_record
-            .attributes()
-            .iter()
+        test_support::attributes_of(body_record)
+            .into_iter()
             .map(|a| a.name().local_name().code_units().to_vec())
             .collect::<Vec<_>>(),
         vec![vec![105, 100], vec![116, 105, 116, 108, 101]]
@@ -815,11 +814,11 @@ fn listed_id_slot_fixture(
         .unwrap()
         .unwrap();
     lexer.release(c).unwrap();
-    let candidate = prepared.kept.as_slice()[0].name.clone().unwrap();
+    let attribute = prepared.attributes.try_pop(c).unwrap().unwrap();
     session
         .active_mut()
         .unwrap()
-        .append_staged_attribute(c, prepared.target, &mut prepared.stage, Some(&candidate))
+        .append_token_attribute(c, prepared.target, attribute, true, true)
         .unwrap();
     // This is the actual append of the first kept attribute, not an invented phase. It
     // retains the installed attribute and the staged one until drain.
@@ -828,7 +827,7 @@ fn listed_id_slot_fixture(
         storage.effects.form.unwrap().stage,
         FormEffectStage::IdChange
     );
-    assert_eq!(prepared.stage.staged(), 1);
+    assert_eq!(prepared.attributes.len(), 1);
     let ConstructionNodeKind::Element(element) = &storage
         .construction
         .node_at(body.index)
@@ -837,17 +836,9 @@ fn listed_id_slot_fixture(
     else {
         panic!("body")
     };
-    assert_eq!(element.attributes().len(), 1);
-    assert_eq!(
-        element
-            .attributes()
-            .get(0)
-            .unwrap()
-            .name()
-            .local_name()
-            .code_units(),
-        [105, 100]
-    );
+    let held = test_support::attributes_of(element);
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].name().local_name().code_units(), [105, 100]);
     (session, body, button, prepared)
 }
 
@@ -875,8 +866,8 @@ fn listed_id_append_blocks_observation_before_rebind_and_keeps_cleanup_redirect(
     else {
         panic!("body")
     };
-    assert_eq!(element.attributes().len(), 1);
-    assert_eq!(prepared.stage.staged(), 1);
+    assert_eq!(test_support::attributes_of(element).len(), 1);
+    assert_eq!(prepared.attributes.len(), 1);
     prepared.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
@@ -931,7 +922,7 @@ fn listed_id_global_drain_exact_and_one_short_keeps_real_slot_owners_and_metadat
         assert_eq!(state.owner, None);
         assert_eq!(state.evidence, HtmlParseFormEvidence::Reset);
         assert!(!state.parser_inserted);
-        assert_eq!(prepared.stage.staged(), 1);
+        assert_eq!(prepared.attributes.len(), 1);
         let ConstructionNodeKind::Element(element) = &storage
             .construction
             .node_at(body.index)
@@ -940,7 +931,7 @@ fn listed_id_global_drain_exact_and_one_short_keeps_real_slot_owners_and_metadat
         else {
             panic!("body")
         };
-        assert_eq!(element.attributes().len(), 1);
+        assert_eq!(test_support::attributes_of(element).len(), 1);
         if short {
             let stop = c.stop().unwrap();
             assert_eq!(result, Err(SessionError::Stop(stop)));
@@ -987,7 +978,7 @@ fn listed_id_cancel_after_real_slot_append_retains_owner_and_reclaims_all_partia
         Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert!(session.active().unwrap().effects.form.is_some());
-    assert_eq!(prepared.stage.staged(), 1);
+    assert_eq!(prepared.attributes.len(), 1);
     let ConstructionNodeKind::Element(element) = &session
         .active()
         .unwrap()
@@ -998,7 +989,7 @@ fn listed_id_cancel_after_real_slot_append_retains_owner_and_reclaims_all_partia
     else {
         panic!("body")
     };
-    assert_eq!(element.attributes().len(), 1);
+    assert_eq!(test_support::attributes_of(element).len(), 1);
     assert_eq!(
         session.freeze(&mut c).err(),
         Some(SessionError::Stop(HtmlParseStop::Cancelled))
@@ -1175,8 +1166,8 @@ fn listed_empty_and_ignored_duplicate_late_id_do_not_replace_existing_form_owner
     else {
         panic!("body")
     };
-    assert_eq!(element.attributes().len(), 1);
-    assert!(element.attributes().get(0).unwrap().value().is_empty());
+    assert_eq!(test_support::attributes_of(element).len(), 1);
+    assert!(test_support::value_units(test_support::attributes_of(element)[0]).is_empty());
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);

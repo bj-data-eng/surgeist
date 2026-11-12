@@ -793,7 +793,7 @@ fn context_admission_refuses_each_attribute_the_rules_read_with_its_length() {
                 .unwrap()
                 .1;
             let replaced = |attributes: &OrderedAttributes| {
-                OrderedAttributes::new(attributes.shared_attributes().iter().map(|attribute| {
+                OrderedAttributes::new(attributes.as_slice().iter().map(|attribute| {
                     if attribute.name().local_name() == &DocumentString::from(*name) {
                         attr(name, large.as_str())
                     } else {

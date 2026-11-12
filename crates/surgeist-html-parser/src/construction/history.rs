@@ -530,6 +530,23 @@ impl<'a> HistoryView<'a> {
                 };
                 units
             }
+            LeafValue::Attribute {
+                node,
+                position,
+                part,
+                offset,
+            } => {
+                let Some(units) = FieldRef::of_attribute(node as usize, position as usize, part)
+                    .units(ConstructionView::Frozen(&self.storage.view))
+                    .and_then(|string| {
+                        let end = offset.checked_add(group_units)?;
+                        string.get(offset..end)
+                    })
+                else {
+                    return Err(unresolved(read::HtmlParseUnresolvedKind::Fact));
+                };
+                units
+            }
             // A pending leaf cannot freeze into a history.
             LeafValue::Pending => return Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
         };

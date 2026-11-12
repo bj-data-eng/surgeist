@@ -7,7 +7,9 @@ use surgeist_html::{
     construction::{HtmlNode, HtmlNodeKind},
     values::DocumentString,
 };
-use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseLimits, HtmlSource};
+use surgeist_html_parser::{
+    HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseWorkCategory, HtmlSource,
+};
 
 /// Limits that no document here reaches.
 fn large() -> HtmlParseLimits {
@@ -110,7 +112,7 @@ fn every_attribute_value_of_a_parse_borrows_the_one_block_that_holds_its_text() 
             "<!DOCTYPE html><html a=\"1\"><body b=\"2\"><p c=\"3\">t</p><svg viewBox=\"0 0 1 1\"></svg>\
              <template><i d=\"4\"></i></template><!--x--></body></html>"
                 .to_owned(),
-            6,
+            5,
         ),
     ];
     for (html, expected) in documents {
@@ -139,4 +141,79 @@ fn the_values_of_a_merged_and_a_repeated_attribute_keep_their_exact_units() {
         .collect();
     assert_eq!(units, ["1", "3", "4"]);
     assert_eq!(blocks(&values).map(|blocks| blocks.len()), Some(1));
+}
+
+/// What one category of work a parse charged.
+fn work(html: String, category: HtmlParseWorkCategory) -> u64 {
+    parse(html).usage().work(category)
+}
+
+/// An element start tag `tag` with `attributes` attributes whose values are `length` units long,
+/// in a body that the end of the input closes.
+fn element_of(tag: &str, attributes: usize, length: usize) -> String {
+    let mut html = format!("<!DOCTYPE html><html><body><{tag}");
+    for attribute in 0..attributes {
+        let value = "x".repeat(length);
+        html.push_str(&format!(" data-a{attribute}=\"{value}\""));
+    }
+    html.push('>');
+    html
+}
+
+#[test]
+fn creating_a_foreign_element_copies_no_attribute_value_for_its_checks() {
+    // An SVG element and an HTML element take the same attribute values from the same tokens, and
+    // each value is appended once, so the bytes the foreign element copies beyond the HTML
+    // element's are those of its own steps. Its namespace checks read the values where they are
+    // and copy nothing, so the difference does not depend on the number of attributes or the length
+    // of their values. A copy of every attribute for each of the two checks would add two bytes
+    // per unit of every value for each check.
+    let added = |attributes: usize, length: usize| {
+        i128::from(work(
+            element_of("svg", attributes, length),
+            HtmlParseWorkCategory::CopyByte,
+        )) - i128::from(work(
+            element_of("div", attributes, length),
+            HtmlParseWorkCategory::CopyByte,
+        ))
+    };
+    let base = added(4, 3);
+    assert_eq!(added(16, 3), base, "sixteen attributes");
+    assert_eq!(added(4, 60), base, "values of sixty units");
+}
+
+/// A MathML `annotation-xml` element that is an HTML integration point and holds `attributes`
+/// further attributes after its encoding, then `tokens` start tags that each close at once.
+fn annotation_xml_with(attributes: usize, tokens: usize) -> String {
+    let mut html =
+        String::from("<!DOCTYPE html><html><body><math><annotation-xml encoding=\"text/html\"");
+    for attribute in 0..attributes {
+        html.push_str(&format!(" data-a{attribute}=\"value {attribute}\""));
+    }
+    html.push('>');
+    for _ in 0..tokens {
+        html.push_str("<b></b>");
+    }
+    html
+}
+
+#[test]
+fn a_token_inside_an_annotation_xml_reads_its_encoding_without_copying_its_attributes() {
+    // The first start tag of each pair is read while the annotation-xml is the current node, and
+    // the integration-point rule reads its attributes up to the encoding, which is the first. The
+    // work of those tokens is the same whatever follows the encoding. A copy of every attribute for
+    // each token would add the attributes' allocations and units to each.
+    for category in [
+        HtmlParseWorkCategory::ProviderCall,
+        HtmlParseWorkCategory::CopyByte,
+    ] {
+        let tokens = |attributes: usize| {
+            i128::from(work(annotation_xml_with(attributes, 5), category))
+                - i128::from(work(annotation_xml_with(attributes, 0), category))
+        };
+        // The counts are ones at which no bank of the parse grows between the two documents.
+        let base = tokens(4);
+        assert_eq!(tokens(16), base, "{category:?}: sixteen attributes");
+        assert_eq!(tokens(32), base, "{category:?}: thirty-two attributes");
+    }
 }

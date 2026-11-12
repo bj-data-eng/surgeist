@@ -19,7 +19,7 @@ use surgeist_css::color::{
     CssColorError, CssColorFactIdentity, CssColorFacts, CssColorPropertyFacts, CssColorSchemeFact,
     CssColorStandardFailure, CssDeviceColorFact,
 };
-use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
+use surgeist_html::construction::ConstructionNodeKind;
 
 use surgeist_color::{
     Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace, Serialization,
@@ -254,7 +254,7 @@ impl SessionStorage {
         else {
             return Err(integrity(c));
         };
-        for (position, attribute) in element.attributes().iter().enumerate() {
+        for (position, attribute) in element.attributes().each(c)?.enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), name)?
@@ -277,24 +277,22 @@ impl SessionStorage {
         }
         let previous = self.input_raw_slot(c, slot)?;
         let dispose_previous = self.releasable_string(c, previous, false)?;
-        let alpha_position = self.color_attribute(c, node, "alpha")?;
-        let colorspace_position = self.color_attribute(c, node, "colorspace")?;
-        let alpha_slot = alpha_position
-            .map(|position| self.attribute_value_slot(c, node, position))
-            .transpose()?;
-        let colorspace_slot = colorspace_position
-            .map(|position| self.attribute_value_slot(c, node, position))
-            .transpose()?;
-        let value_slot = match surgeist_html::elements::input::input_color_value_source(
+        // The computation reads the attributes from the element and the current value from its
+        // row, and copies none of them.
+        let attribute_source = |position: Option<usize>| {
+            position.map(|position| InputSource::Attribute { node, position })
+        };
+        let alpha_source = attribute_source(self.color_attribute(c, node, "alpha")?);
+        let colorspace_source = attribute_source(self.color_attribute(c, node, "colorspace")?);
+        let value_source = match surgeist_html::elements::input::input_color_value_source(
             state.flags.dirty_value(),
         ) {
             surgeist_html::elements::input::HtmlInputColorValueSource::CurrentValue => {
-                Some(previous)
+                Some(InputSource::Row(previous))
             }
-            surgeist_html::elements::input::HtmlInputColorValueSource::ValueAttribute => self
-                .color_attribute(c, node, "value")?
-                .map(|position| self.attribute_value_slot(c, node, position))
-                .transpose()?,
+            surgeist_html::elements::input::HtmlInputColorValueSource::ValueAttribute => {
+                attribute_source(self.color_attribute(c, node, "value")?)
+            }
         };
         let source = match surgeist_html::elements::input::input_color_value_source(
             state.flags.dirty_value(),
@@ -303,7 +301,7 @@ impl SessionStorage {
                 HtmlParseColorValueSource::CurrentValue
             }
             surgeist_html::elements::input::HtmlInputColorValueSource::ValueAttribute
-                if value_slot.is_some() =>
+                if value_source.is_some() =>
             {
                 HtmlParseColorValueSource::InstalledValue
             }
@@ -311,19 +309,20 @@ impl SessionStorage {
                 HtmlParseColorValueSource::MissingInstalledValue
             }
         };
-        let original = value_slot
-            .map(|slot| self.range_payload_edge(c, slot))
+        let original = value_source
+            .map(|source| self.range_payload_edge(c, source))
             .transpose()?;
-        let alpha_edge = alpha_slot
-            .map(|slot| self.range_payload_edge(c, slot))
+        let alpha_edge = alpha_source
+            .map(|source| self.range_payload_edge(c, source))
             .transpose()?;
-        let space_edge = colorspace_slot
-            .map(|slot| self.range_payload_edge(c, slot))
+        let space_edge = colorspace_source
+            .map(|source| self.range_payload_edge(c, source))
             .transpose()?;
         let space = {
-            let value = colorspace_slot
-                .map(|slot| admitted_input_string(&self.payloads, c, slot))
-                .transpose()?;
+            let value = match colorspace_source {
+                Some(source) => Some(self.source_units(c, source)?),
+                None => None,
+            };
             let mut cursor = surgeist_html::elements::input::HtmlInputColorSpaceCursor::new(value);
             while cursor.result().is_none() {
                 c.charge(HtmlParseWorkCategory::StateStep, 1)?;
@@ -339,15 +338,11 @@ impl SessionStorage {
             }
             cursor.result().ok_or_else(|| integrity(c))?
         };
-        let input = value_slot
-            .map(|slot| admitted_input_string(&self.payloads, c, slot))
+        let input = value_source
+            .map(|source| self.source_units(c, source))
             .transpose()?;
-        let (output, value, failure) = execute(
-            c,
-            input.map_or(&[], DocumentString::code_units),
-            alpha_slot.is_some(),
-            space,
-        )?;
+        let (output, value, failure) =
+            execute(c, input.unwrap_or(&[]), alpha_source.is_some(), space)?;
         let units = output.len();
         let computation = InputValueComputation::Color(ColorComputation {
             source,
@@ -799,11 +794,15 @@ mod tests {
                     else {
                         panic!("actual element");
                     };
-                    assert_eq!(element.attributes().len(), 2);
-                    let value = &element.attributes().get(1).unwrap();
+                    let attributes = test_support::attributes_of(element);
+                    assert_eq!(attributes.len(), 2);
+                    let value = attributes[1];
                     assert_eq!(value.name().namespace().uri(), None);
                     assert_eq!(value.name().local_name(), &DocumentString::from("value"));
-                    assert_eq!(value.value(), &DocumentString::from(expected));
+                    assert_eq!(
+                        test_support::value_units(value),
+                        DocumentString::from(expected).code_units()
+                    );
                     assert_eq!(
                         current(&session, &mut c, &node),
                         expected.encode_utf16().collect::<Vec<_>>()
@@ -907,7 +906,7 @@ mod tests {
                     else {
                         panic!("actual element");
                     };
-                    assert_eq!(element.attributes().len(), 1);
+                    assert_eq!(test_support::attributes_of(element).len(), 1);
                     if let Some(attr) = attr.take() {
                         attr.name.release(&mut c).unwrap();
                         attr.value.release(&mut c).unwrap();

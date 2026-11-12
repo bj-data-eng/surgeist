@@ -83,11 +83,11 @@ fn source_guards_precede_policy_and_disabled_never_means_failed_fetch() {
     let disabled = HtmlInputImagesDisabled::ExplicitlyDisabled;
     assert_eq!(Guard::for_source(None), Guard::NoSource);
     assert_eq!(
-        Guard::for_source(Some(&DocumentString::from(""))),
+        Guard::for_source(Some(DocumentString::from("").code_units())),
         Guard::EmptySource
     );
     let nonempty = DocumentString::from("not a URL\u{0} with spaces");
-    let guard = Guard::for_source(Some(&nonempty));
+    let guard = Guard::for_source(Some(nonempty.code_units()));
     assert_eq!(guard, Guard::NeedsImageEnvironment);
     assert_eq!(guard.with_disabled_images(disabled), Guard::ImagesDisabled);
     assert_eq!(

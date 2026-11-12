@@ -191,7 +191,7 @@ fn source_implied_html_owns_literal_backing_and_real_empty_attributes_at_exact_u
                 [0x68, 0x74, 0x6d, 0x6c]
             );
             assert_eq!(value.name().namespace(), &Namespace::html());
-            assert!(value.attributes().is_empty());
+            assert!(test_support::attributes_of(value).is_empty());
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::ManagedUtf16Units)

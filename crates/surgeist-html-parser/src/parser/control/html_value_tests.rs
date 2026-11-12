@@ -43,7 +43,7 @@ fn type_exact_sixteen_and_one_short_stop_before_final_pair_and_keep_original() {
     let raw = DocumentString::from("TeXt");
     for cap in [15, 16] {
         let mut c = control(cap, HtmlParseCancellation::new());
-        let mut cursor = HtmlInputTypeCursor::new(Some(&raw));
+        let mut cursor = HtmlInputTypeCursor::new(Some(raw.code_units()));
         while cursor.result().is_none() {
             if cursor.advance(&mut c).is_err() {
                 break;

@@ -359,7 +359,7 @@ impl ParserArenaSession {
             Ok(previous) => previous,
             Err(error) => {
                 copied.name.release(control)?;
-                copied.attributes.release(control)?;
+                release_token_attributes(copied.attributes, control)?;
                 return Err(error);
             }
         };

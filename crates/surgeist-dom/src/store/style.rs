@@ -341,7 +341,8 @@ impl Draft {
                         frame.key,
                         surgeist_html::vocabulary::KnownHtmlAttribute::Type,
                         cancel,
-                    )?,
+                    )?
+                    .map(DocumentString::code_units),
                     || self.effect_step(cancel),
                 )?)
             }

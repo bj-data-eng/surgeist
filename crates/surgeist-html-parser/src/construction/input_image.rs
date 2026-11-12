@@ -4,13 +4,14 @@
 //! construction establishes empty File resources and initial Image coordinates;
 //! images-disabled is explicit operation evidence, independent of scripting.
 use super::*;
-use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
+use surgeist_html::construction::ConstructionNodeKind;
 
 // A parser-phase specialization: source values are actual managed raw slots.
 // HTML owns the observation/history rules; this owner still qualifies, admits,
 // compares, copies and retires their backing strings.
 pub(super) type ImageState = surgeist_html::elements::input::HtmlInputImageHistory<usize>;
 impl SessionStorage {
+    /// The position of the `src` attribute, whose value the computation reads from the element.
     fn image_source(
         &self,
         c: &mut ParseControl,
@@ -25,30 +26,15 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        for (position, attribute) in element.attributes().iter().enumerate() {
+        for (position, attribute) in element.attributes().each(c)?.enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), "src")?
             {
-                return self.attribute_value_slot(c, node, position).map(Some);
+                return Ok(Some(position));
             }
         }
         Ok(None)
-    }
-    fn image_source_value(
-        &self,
-        c: &mut ParseControl,
-        source: usize,
-    ) -> Result<&DocumentString, SessionError> {
-        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let Some(RetainedPayload::String {
-            value, allocation, ..
-        }) = self.payloads.values.get(source)
-        else {
-            return Err(SessionError::InputMetadataUnavailable);
-        };
-        c.require_document_string(allocation, value)?;
-        Ok(value)
     }
     fn input_images_supported(
         &self,
@@ -102,9 +88,10 @@ impl SessionStorage {
         // the actual creation-qualified environment lookup and URL/resource work.
         let guard = match source {
             None => Guard::for_source(None),
-            Some(source) => {
+            Some(position) => {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                Guard::for_source(Some(self.image_source_value(c, source)?))
+                let units = self.source_units(c, InputSource::Attribute { node, position })?;
+                Guard::for_source(Some(units))
             }
         };
         match guard {
@@ -130,16 +117,19 @@ impl SessionStorage {
             )),
         }
     }
+    /// Keeps a copy of the `src` value at `source`, the position of the attribute, as the source
+    /// the history last observed.
     fn store_image_source(
         &mut self,
         c: &mut ParseControl,
+        node: usize,
         slot: usize,
         source: Option<usize>,
     ) -> Result<(), SessionError> {
         let mut state = self.read_input_state(c, slot)?;
         let retired = state.image.observed_source().flatten().copied();
         let retained = source
-            .map(|source| self.copy_raw_field(c, source))
+            .map(|position| self.copy_attribute_value(c, node, position))
             .transpose()?;
         state.image = state.image.with_observed_source(retained);
         self.write_input_state(c, slot, state)?;
@@ -156,17 +146,25 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         let state = self.read_input_state(c, slot)?;
         let source = self.image_source(c, node)?;
+        // The history names its last source by the row that holds a copy of it, and the source
+        // now by the position of the attribute, which the comparison reads from the element.
         let changed =
             state
                 .image
-                .entering_requires_observation(source.as_ref(), |old, current| {
+                .entering_requires_observation(source.as_ref(), |old, position| {
                     let old = textarea_raw(&self.payloads, c, *old)?;
-                    let current = self.image_source_value(c, *current)?;
+                    let current = self.source_units(
+                        c,
+                        InputSource::Attribute {
+                            node,
+                            position: *position,
+                        },
+                    )?;
                     exact_string_equal(c, old, current)
                 })?;
         if changed {
             self.image_update(c, node, source)?;
-            self.store_image_source(c, slot, source)?;
+            self.store_image_source(c, node, slot, source)?;
         }
         Ok(())
     }
@@ -180,7 +178,7 @@ impl SessionStorage {
         // Do not use the type-reentry comparison shortcut here.
         let source = self.image_source(c, node)?;
         self.image_update(c, node, source)?;
-        self.store_image_source(c, slot, source)
+        self.store_image_source(c, node, slot, source)
     }
 }
 
@@ -209,12 +207,12 @@ pub(super) fn append_native_input_value(
         surgeist_html::elements::input::HtmlInputValueMode::Default
             | surgeist_html::elements::input::HtmlInputValueMode::DefaultOn
     ) {
-        for attribute in element.attributes().iter() {
+        for attribute in element.attributes().each(c)? {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), "value")?
             {
-                content = Some(attribute.value().code_units());
+                content = Some(attribute.value().units(c)?);
                 break;
             }
         }
@@ -305,16 +303,24 @@ mod tests {
             .image_source(&mut c, node.index)
             .unwrap()
             .unwrap();
-        assert!(
-            !textarea_raw(&session.active().unwrap().payloads, &mut c, old)
+        let current = session
+            .active()
+            .unwrap()
+            .source_units(
+                &mut c,
+                InputSource::Attribute {
+                    node: node.index,
+                    position: native,
+                },
+            )
+            .unwrap();
+        assert_ne!(
+            textarea_raw(&session.active().unwrap().payloads, &mut c, old)
                 .unwrap()
-                .shares_storage_with(
-                    session
-                        .active()
-                        .unwrap()
-                        .image_source_value(&mut c, native)
-                        .unwrap()
-                )
+                .code_units()
+                .as_ptr(),
+            current.as_ptr(),
+            "the history keeps a copy of the source of its own"
         );
         for expected in [
             [66].as_slice(),

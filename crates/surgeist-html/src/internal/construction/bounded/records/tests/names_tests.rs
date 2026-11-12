@@ -162,12 +162,7 @@ fn an_id_of_another_storage_is_refused_with_the_foreign_cause() {
         HtmlConstructionCause::ForeignBuilder
     );
     assert_eq!(
-        cause(first.create_element_named(
-            &foreign,
-            OrderedAttributes::default(),
-            None,
-            &mut Meter::default(),
-        )),
+        cause(first.create_element_named(&foreign, None, &mut Meter::default(),)),
         HtmlConstructionCause::ForeignBuilder
     );
     assert!(first.is_empty());
@@ -177,12 +172,7 @@ fn an_id_of_another_storage_is_refused_with_the_foreign_cause() {
 fn an_element_created_by_id_takes_the_entry_and_its_key_and_checks_link_flags_by_the_key() {
     let mut storage = storage();
     let template = intern(&mut storage, "template");
-    let element = ok(storage.create_element_named(
-        &template,
-        OrderedAttributes::default(),
-        None,
-        &mut Meter::default(),
-    ));
+    let element = ok(storage.create_element_named(&template, None, &mut Meter::default()));
     // The key says that this is a template, so the contents were made.
     assert_eq!(storage.len(), 2);
     assert!(
@@ -196,7 +186,6 @@ fn an_element_created_by_id_takes_the_entry_and_its_key_and_checks_link_flags_by
     assert_eq!(
         cause(storage.create_element_named(
             &template,
-            OrderedAttributes::default(),
             Some(crate::internal::elements::rel::HtmlLinkFlags::fresh()),
             &mut Meter::default(),
         )),
@@ -211,7 +200,6 @@ fn an_element_created_by_id_takes_the_entry_and_its_key_and_checks_link_flags_by
     assert_eq!(
         cause(storage.create_element_named(
             &svg_link,
-            OrderedAttributes::default(),
             Some(crate::internal::elements::rel::HtmlLinkFlags::fresh()),
             &mut Meter::default(),
         )),
@@ -220,7 +208,6 @@ fn an_element_created_by_id_takes_the_entry_and_its_key_and_checks_link_flags_by
     let link = intern(&mut storage, "link");
     ok(storage.create_element_named(
         &link,
-        OrderedAttributes::default(),
         Some(crate::internal::elements::rel::HtmlLinkFlags::fresh()),
         &mut Meter::default(),
     ));
@@ -233,12 +220,7 @@ fn key_of(
     local: &[u16],
 ) -> ElementKey {
     let id = ok(storage.intern_name(&namespace, None, local, &mut Meter::default()));
-    let element = ok(storage.create_element_named(
-        &id,
-        OrderedAttributes::default(),
-        None,
-        &mut Meter::default(),
-    ));
+    let element = ok(storage.create_element_named(&id, None, &mut Meter::default()));
     let node = storage.node(&element).unwrap();
     let crate::internal::construction::ConstructionNodeKind::Element(view) = node.kind() else {
         panic!("an element record");
@@ -716,12 +698,7 @@ fn link_flags_on_another_element_created_by_id_are_refused_after_the_id_is_charg
         let mut storage = storage();
         let id = intern(&mut storage, "figure");
         let mut meter = Meter::refusing_at(index);
-        let outcome = storage.create_element_named(
-            &id,
-            OrderedAttributes::default(),
-            link_flags(),
-            &mut meter,
-        );
+        let outcome = storage.create_element_named(&id, link_flags(), &mut meter);
         match outcome {
             Err(HtmlChargedError::Stopped(Refused)) => {
                 assert!(storage.is_empty(), "call {index}");

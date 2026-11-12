@@ -4998,10 +4998,9 @@ fn parsed_values_keep_the_reports_backing_beside_equal_native_values_without_rew
             surgeist_html::construction::HtmlNodeKind::Element(element)
                 if element.name().local_name() == &DocumentString::from("input") =>
             {
-                let owned = element.attributes().to_ordered();
-                let bank = owned.shared_attributes();
-                assert_eq!(bank.len(), 3);
-                let fields: Vec<_> = bank
+                let attributes = element.attributes();
+                assert_eq!(attributes.len(), 3);
+                let fields: Vec<_> = attributes
                     .iter()
                     .map(|attribute| {
                         (
@@ -5010,13 +5009,7 @@ fn parsed_values_keep_the_reports_backing_beside_equal_native_values_without_rew
                         )
                     })
                     .collect();
-                source_inputs.push((
-                    node.id(),
-                    Arc::as_ptr(bank),
-                    bank.capacity(),
-                    bank.as_slice().as_ptr() as usize,
-                    fields,
-                ));
+                source_inputs.push((node.id(), fields));
             }
             surgeist_html::construction::HtmlNodeKind::Text(text) => {
                 assert_eq!(text.code_units(), [114, 101, 112, 101, 97, 116]);
@@ -5060,11 +5053,11 @@ fn parsed_values_keep_the_reports_backing_beside_equal_native_values_without_rew
             assert_eq!(attribute.owner_document(), result.document());
             assert_eq!(
                 attribute.value().block().address(),
-                source_inputs[index].4[position].0
+                source_inputs[index].1[position].0
             );
             assert_eq!(
                 attribute.value().retained_units(),
-                source_inputs[index].4[position].1
+                source_inputs[index].1[position].1
             );
             assert!(attribute.name().namespace_uri().is_none());
             assert!(attribute.name().prefix().is_none());
@@ -5186,18 +5179,15 @@ fn parsed_values_keep_the_reports_backing_beside_equal_native_values_without_rew
             .copied()
             .eq(markup.encode_utf16())
     );
-    for (id, pointer, capacity, buffer, fields) in source_inputs {
+    for (id, fields) in source_inputs {
         let surgeist_html::construction::HtmlNodeKind::Element(element) =
             report.document().unwrap().node(&id).unwrap().kind()
         else {
             panic!("same report Input");
         };
-        let owned = element.attributes().to_ordered();
-        let bank = owned.shared_attributes();
-        assert_eq!(Arc::as_ptr(bank), pointer);
-        assert_eq!(bank.capacity(), capacity);
-        assert_eq!(bank.as_slice().as_ptr() as usize, buffer);
-        for (attribute, (pointer, capacity)) in bank.iter().zip(fields) {
+        let attributes = element.attributes();
+        assert_eq!(attributes.len(), fields.len());
+        for (attribute, (pointer, capacity)) in attributes.iter().zip(fields) {
             assert_eq!(attribute.value().block().address(), pointer);
             assert_eq!(attribute.value().retained_units(), capacity);
         }

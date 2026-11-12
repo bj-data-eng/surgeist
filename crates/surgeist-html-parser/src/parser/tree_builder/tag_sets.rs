@@ -36,12 +36,21 @@ pub(super) fn ascii_eq(
     expected: &'static str,
     control: &mut ParseControl,
 ) -> Result<bool, HtmlParseStop> {
+    ascii_units_eq(value.code_units(), expected, control)
+}
+
+/// [`ascii_eq`] for the code units of a value that no string holds.
+pub(super) fn ascii_units_eq(
+    value: &[u16],
+    expected: &'static str,
+    control: &mut ParseControl,
+) -> Result<bool, HtmlParseStop> {
     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     if value.len() != expected.len() {
         return Ok(false);
     }
     // The lengths are equal, so the pairs are exactly the literal's indices.
-    for (&unit, byte) in value.code_units().iter().zip(expected.bytes()) {
+    for (&unit, byte) in value.iter().zip(expected.bytes()) {
         // Two stored UTF-16 bytes and one defining literal byte are inspected.
         control.charge_unit_literal_comparison()?;
         if unit != u16::from(byte) {
@@ -156,8 +165,8 @@ pub(super) fn scope_boundary(
 }
 
 pub(super) fn equal_units(
-    left: &DocumentString,
-    right: &DocumentString,
+    left: &[u16],
+    right: &[u16],
     c: &mut ParseControl,
 ) -> Result<bool, HtmlParseStop> {
     c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
@@ -165,7 +174,7 @@ pub(super) fn equal_units(
         return Ok(false);
     }
     // The lengths are equal, so the pairs are exactly the shared indices.
-    for (left, right) in left.code_units().iter().zip(right.code_units()) {
+    for (left, right) in left.iter().zip(right) {
         c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
         if left != right {
             return Ok(false);

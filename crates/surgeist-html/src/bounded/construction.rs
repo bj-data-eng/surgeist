@@ -1,8 +1,7 @@
 //! The sole mutable owner of shared HTML construction records, and its direct operations.
 
 pub use crate::internal::construction::bounded::attribute_list::{
-    HtmlAttributeAdmission, HtmlAttributeMerge, HtmlConstructionAttributeCapacity,
-    HtmlConstructionAttributeError, HtmlConstructionAttributeGrowth,
+    HtmlAttributeMerge, HtmlConstructionAttributeCapacity, HtmlConstructionAttributeError,
 };
 pub use crate::internal::construction::bounded::records::{
     HtmlConstructionBank, HtmlConstructionBankCapacity, HtmlConstructionBankGrowth,

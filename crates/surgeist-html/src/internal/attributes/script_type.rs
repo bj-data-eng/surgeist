@@ -215,8 +215,10 @@ impl HtmlValueInterpreter {
         if applicability != HtmlAttributeApplicability::Applicable {
             return Ok(report);
         }
-        let kind =
-            HtmlScriptTypeCursor::content(raw.map(HtmlAttributeInput::value)).finish_ordinary();
+        let kind = HtmlScriptTypeCursor::content(
+            raw.map(|raw| HtmlAttributeInput::value(raw).code_units()),
+        )
+        .finish_ordinary();
         report.meaning = Some(kind.map_or(
             HtmlScriptTypeMeaning::DataBlock,
             HtmlScriptTypeMeaning::Script,
@@ -259,8 +261,11 @@ impl HtmlValueInterpreter {
             HtmlScriptTypeClassification::Unapplied
         } else {
             HtmlScriptTypeCursor::preparation(
-                raw.as_ref().map(HtmlAttributeInput::value),
-                language.as_ref().map(HtmlAttributeInput::value),
+                raw.as_ref()
+                    .map(|raw| HtmlAttributeInput::value(raw).code_units()),
+                language
+                    .as_ref()
+                    .map(|language| HtmlAttributeInput::value(language).code_units()),
             )
             .finish_ordinary()
             .map_or(

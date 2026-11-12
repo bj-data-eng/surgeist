@@ -4,7 +4,7 @@
 use super::*;
 use surgeist_html::{
     construction::ConstructionNodeKind,
-    values::{Attribute, DocumentString},
+    values::{DocumentString, Namespace, QualifiedName},
 };
 
 #[derive(Clone, Copy)]
@@ -22,121 +22,42 @@ impl AttributeMergeName {
     }
 }
 
-/// Attributes the parse has built and means to install in an element. They are installed from
-/// the last to the first, so a list staged in reverse source order is installed in source order.
-/// The staging list is the parse's own vector, accounted through its ticket, and is released
-/// with [`Self::release`].
-pub(super) struct StagedAttributes {
-    values: Vec<Attribute>,
-    allocation: VectorCapacity<Attribute>,
-}
-
-impl StagedAttributes {
-    pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
-        let (values, allocation) = control.new_vector()?;
-        Ok(Self { values, allocation })
-    }
-
-    /// Stages `attribute`. The caller has registered its strings and acquired its logical slot.
-    /// `final_len` is the number of attributes the staging list is known to reach.
-    pub(super) fn push(
-        &mut self,
-        control: &mut ParseControl,
-        attribute: Attribute,
-        final_len: usize,
-    ) -> Result<(), SessionError> {
-        control.reserve_vector_geometric_toward(
-            &mut self.values,
-            &mut self.allocation,
-            1,
-            final_len,
-        )?;
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            (const { mem::size_of::<Attribute>() + 2 * mem::size_of::<FieldRef>() }) as u64,
-        )?;
-        control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
-        self.values.push(attribute);
-        Ok(())
-    }
-
-    /// How many attributes are staged.
-    #[cfg(test)]
-    pub(super) fn staged(&self) -> usize {
-        self.values.len()
-    }
-
-    /// Stages `attribute` as [`Self::push`] does, charging only the copy of the attribute: its
-    /// strings are not bound to fields until its element exists.
-    pub(super) fn push_plain(
-        &mut self,
-        control: &mut ParseControl,
-        attribute: Attribute,
-        final_len: usize,
-    ) -> Result<(), SessionError> {
-        control.reserve_vector_geometric_toward(
-            &mut self.values,
-            &mut self.allocation,
-            1,
-            final_len,
-        )?;
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            mem::size_of::<Attribute>() as u64,
-        )?;
-        control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
-        self.values.push(attribute);
-        Ok(())
-    }
-
-    /// Reverses the staged order, as the pairs swapped one at a time: each swap is charged
-    /// before it is made.
-    pub(super) fn reverse(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
-        let len = self.values.len();
-        for left in 0..len / 2 {
-            let right = len
-                .checked_sub(1)
-                .and_then(|last| last.checked_sub(left))
-                .ok_or_else(|| latch_registry_row(control))?;
-            control.admit_atomic_layout(const { mem::size_of::<Attribute>() * 2 })?;
-            control.charge(
-                HtmlParseWorkCategory::CopyByte,
-                (const { mem::size_of::<Attribute>() * 2 }) as u64,
-            )?;
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
-            self.values.swap(left, right);
-        }
-        Ok(())
-    }
-
-    /// Hands the staged list to the owner of its record as a vector with its ticket.
-    pub(super) fn into_parts(self) -> (Vec<Attribute>, VectorCapacity<Attribute>) {
-        (self.values, self.allocation)
-    }
-
-    pub(super) fn release(self, control: &mut ParseControl) -> Result<(), SessionError> {
-        release_vector(control, self.values, self.allocation)
-    }
-}
-
 /// A candidate of a merge that the element keeps: its place among the candidates and its name
 /// as the plan saw it.
 pub(super) struct KeptCandidate {
     pub(super) index: usize,
-    /// The name, which shares the block of the token's name. It is lent back to the token while
-    /// the token's strings are registered, because a string whose block has another holder
-    /// cannot be released if its registration is refused.
+    /// The name, which shares the block of the token's name. The merge drops it before the
+    /// token's strings are released, because a string whose block has another holder cannot be
+    /// released.
     pub(super) name: Option<DocumentString>,
+}
+
+/// A merge the plan decided: the token attributes in source order, which the merge appends or
+/// ignores one at a time, and the candidates it keeps.
+/// A constant string of an attribute's namespace or prefix, with the group of the origins of this
+/// occurrence of it when the parse records them.
+pub(super) struct LiteralField {
+    pub(super) string: DocumentString,
+    pub(super) group: Option<OriginGroupRef>,
+    /// Whether the units of this occurrence are the ones its string's first registration counted:
+    /// the first use of a literal in a parse creates the string and counts its units, as the
+    /// occurrence that made it, so the attribute it goes to does not count them again.
+    pub(super) counted: bool,
+}
+
+/// The namespace and the prefix of the name of an attribute that has them.
+#[derive(Default)]
+pub(super) struct QualifiedFields {
+    pub(super) namespace: Option<LiteralField>,
+    pub(super) prefix: Option<LiteralField>,
 }
 
 pub(super) struct PreparedAttributeMerge {
     pub(super) target: usize,
-    pub(super) stage: StagedAttributes,
+    /// The attributes of the token, last first, so that they pop in source order.
+    pub(super) attributes: OwnedVec<crate::parser::tokenizer::token::Attribute>,
     /// The kept candidates in source order, with the names the plan decided on.
     pub(super) kept: OwnedVec<KeptCandidate>,
-    /// The registry slot of the first row that staging registered.
-    first_row: usize,
     /// The length of the element's attribute list before the merge.
     pub(super) start: usize,
     pub(super) count: usize,
@@ -145,8 +66,13 @@ pub(super) struct PreparedAttributeMerge {
 impl PreparedAttributeMerge {
     pub(super) fn release(self, control: &mut ParseControl) -> Result<(), SessionError> {
         let mut refused = None;
-        keep_first(&mut refused, self.stage.release(control));
+        // The names the plan kept hold the token strings' blocks, which their release requires
+        // to be unheld: the plan goes first.
         keep_first(&mut refused, self.kept.release(control));
+        keep_first(
+            &mut refused,
+            release_token_attributes(self.attributes, control),
+        );
         refused.map_or(Ok(()), Err)
     }
 }
@@ -222,7 +148,7 @@ impl SessionStorage {
             check_text_source(control, &a.value)?;
             control.require_source_range(&a.source)?;
         }
-        let start = element.attributes().len();
+        let start = element.attributes().count(control)?;
         let entries = start.saturating_add(tag.attributes.len());
         if entries >= NAME_INDEX_MIN_ENTRIES {
             // The table also serves the effects of the attributes the merge installs, and stays
@@ -246,72 +172,36 @@ impl SessionStorage {
             return Err(error);
         }
         let Some(Tag {
-            name,
-            mut attributes,
-            ..
+            name, attributes, ..
         }) = input.take()
         else {
             // Nothing was taken: only the plan begun above needs ending.
             kept.release(control)?;
             return Err(SessionError::Consumed);
         };
-        let staged = (|| {
-            name.release(control)?;
-            let mut stage = StagedAttributes::new(control)?;
-            let first_row = self.payloads.values.len();
-            let result = self.stage_merged_attributes(
-                control,
-                target,
-                start,
-                count,
-                &mut attributes,
-                &mut stage,
-                &mut kept,
-            );
-            match result {
-                Ok(()) => Ok((stage, first_row)),
-                Err(error) => {
-                    stage.release(control)?;
-                    Err(error)
-                }
-            }
-        })();
-        let (stage, first_row) = match staged {
-            Ok((stage, first_row)) => {
-                // The token's strings are held by the plan until its names are released, and by
-                // nothing else once they are registered, so they go with the rest of the token.
-                if let Err(error) = release_token_attributes(attributes, control) {
-                    let staging = stage.release(control);
-                    let planned = kept.release(control);
-                    staging?;
-                    planned?;
-                    return Err(error);
-                }
-                (stage, first_row)
-            }
-            Err(error) => {
-                // The names the plan kept hold the token strings' blocks, which their release
-                // requires to be unheld: the plan goes first.
-                let planned = kept.release(control);
-                let cleanup = release_token_attributes(attributes, control);
-                planned?;
-                cleanup?;
-                return Err(error);
-            }
-        };
-        if count == 0 {
-            stage.release(control)?;
-            kept.release(control)?;
-            return Ok(None);
-        }
         let prepared = PreparedAttributeMerge {
             target,
-            stage,
+            attributes,
             kept,
-            first_row,
             start,
             count,
         };
+        let mut prepared = prepared;
+        let named = (|| {
+            for candidate in prepared.kept.as_mut_slice_prepaid(control)? {
+                candidate.name = None;
+            }
+            name.release(control)?;
+            self.reverse_attributes(control, &mut prepared.attributes)
+        })();
+        if let Err(error) = named {
+            prepared.release(control)?;
+            return Err(error);
+        }
+        if count == 0 {
+            self.discard_merge_attributes(control, prepared)?;
+            return Ok(None);
+        }
         if let Err(error) = payload_write::<PreparedAttributeMerge>(control, 1) {
             prepared.release(control)?;
             return Err(error);
@@ -319,80 +209,63 @@ impl SessionStorage {
         Ok(Some(prepared))
     }
 
-    /// Registers and stages the kept candidates, last first, so that the staging list pops in
-    /// source order. A candidate the plan dropped is released, its lexical origins noted.
-    #[allow(clippy::too_many_arguments)]
-    fn stage_merged_attributes(
+    /// Reverses the attributes of a token, as the pairs swapped one at a time, each swap charged
+    /// before it is made, so that they pop in source order.
+    pub(super) fn reverse_attributes(
         &mut self,
         control: &mut ParseControl,
-        target: usize,
-        start: usize,
-        count: usize,
         attributes: &mut OwnedVec<crate::parser::tokenizer::token::Attribute>,
-        stage: &mut StagedAttributes,
-        kept: &mut OwnedVec<KeptCandidate>,
     ) -> Result<(), SessionError> {
-        let mut rank = count;
-        while !attributes.as_slice().is_empty() {
-            let index = attributes
-                .len()
+        let len = attributes.len();
+        for left in 0..len / 2 {
+            let right = len
                 .checked_sub(1)
+                .and_then(|last| last.checked_sub(left))
                 .ok_or_else(|| latch_registry_row(control))?;
-            let keep = rank
-                .checked_sub(1)
-                .and_then(|last| kept.as_slice().get(last))
-                .is_some_and(|candidate| candidate.index == index);
-            // A kept candidate also visits its entry twice, to lend its name and to take it back.
-            // Both visits are charged before the attribute is taken: once the name is lent, a
-            // refusal could leave the plan holding the block of a string that must be released.
-            control.charge(HtmlParseWorkCategory::RecordVisit, if keep { 3 } else { 1 })?;
-            let Some(attribute) = attributes.try_pop(control)? else {
+            if !attributes.swap_slots(left, right, control)? {
                 return Err(latch_registry_row(control));
-            };
-            if !keep {
-                let retained = (|| {
-                    if let Some(evidence) = self.evidence.as_mut() {
-                        evidence.lexical_attribute_ignored(control, attribute.lexical.as_ref())?;
-                    }
-                    Ok::<_, SessionError>(())
-                })();
-                // Both strings are released whatever the first release reports.
-                let name = attribute.name.release(control);
-                let value = attribute.value.release(control);
-                retained?;
-                name?;
-                value?;
-                continue;
             }
-            rank = rank
-                .checked_sub(1)
-                .ok_or_else(|| latch_registry_row(control))?;
-            let position = start
-                .checked_add(rank)
-                .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedAttributes))?;
-            // The token's name is the only holder of its block while it is registered.
-            kept.as_mut_slice_prepaid(control)?
-                .get_mut(rank)
-                .ok_or_else(|| latch_registry_row(control))?
-                .name = None;
-            let (local, name_ticket) = match self.register_attribute_name(control, attribute.name) {
-                Ok(value) => value,
-                Err(error) => {
-                    attribute.value.release(control)?;
-                    return Err(error);
-                }
-            };
-            if let Some(candidate) = kept.as_mut_slice_prepaid(control)?.get_mut(rank) {
-                candidate.name = Some(local.local_name().clone());
-            }
-            let (value, value_ticket) = self.register_text(control, attribute.value)?;
-            self.holds.acquire_attribute(control)?;
-            stage.push(control, Attribute::new(local, value), count)?;
-            self.bind_string(name_ticket, FieldRef::AttributeName(target, position))
-                .map_err(|_| latch_registry_row(control))?;
-            self.bind_string(value_ticket, FieldRef::AttributeValue(target, position))
-                .map_err(|_| latch_registry_row(control))?;
         }
+        Ok(())
+    }
+
+    /// Ignores every attribute of a merge that keeps none, noting each as already present, and
+    /// releases the merge.
+    fn discard_merge_attributes(
+        &mut self,
+        control: &mut ParseControl,
+        mut prepared: PreparedAttributeMerge,
+    ) -> Result<(), SessionError> {
+        let ignored = (|| {
+            while let Some(attribute) = prepared.attributes.try_pop(control)? {
+                self.ignore_merge_attribute(control, attribute)?;
+            }
+            Ok::<_, SessionError>(())
+        })();
+        let released = prepared.release(control);
+        ignored?;
+        released
+    }
+
+    /// An attribute the merge does not keep: its lexical origin is noted and both its strings are
+    /// released.
+    fn ignore_merge_attribute(
+        &mut self,
+        control: &mut ParseControl,
+        attribute: crate::parser::tokenizer::token::Attribute,
+    ) -> Result<(), SessionError> {
+        let retained = (|| {
+            if let Some(evidence) = self.evidence.as_mut() {
+                evidence.lexical_attribute_ignored(control, attribute.lexical.as_ref())?;
+            }
+            Ok::<_, SessionError>(())
+        })();
+        // Both strings are released whatever the first release reports.
+        let name = attribute.name.release(control);
+        let value = attribute.value.release(control);
+        retained?;
+        name?;
+        value?;
         Ok(())
     }
 
@@ -413,35 +286,45 @@ impl SessionStorage {
         self.attributes_installed(control, target, start, count)
     }
 
-    /// Appends the staged attributes in source order. The index of each decision is the one the
-    /// plan made, so the storage finds the plan's entries for them in its table of names.
+    /// Appends the kept attributes in source order, ignoring the others. The index of each
+    /// decision is the one the plan made, so the storage finds the plan's entries for them in its
+    /// table of names.
     fn install_merged_attributes(
         &mut self,
         control: &mut ParseControl,
         prepared: &mut PreparedAttributeMerge,
     ) -> Result<(), SessionError> {
-        self.payloads.forget_attribute_strings(prepared.target);
-        // The list reserves room for every kept candidate once, so that no append of the merge
+        // The run reserves room for every kept candidate once, so that no append of the merge
         // grows it and one wide merge leaves it with no spare room.
         self.reserve_attributes(control, prepared.target, prepared.count)?;
-        for rank in 0..prepared.count {
-            let candidate = prepared
+        let mut rank = 0usize;
+        let mut source = 0usize;
+        loop {
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let keep = prepared
                 .kept
                 .as_slice()
                 .get(rank)
-                .and_then(|candidate| candidate.name.clone())
+                .is_some_and(|candidate| candidate.index == source);
+            let Some(attribute) = prepared.attributes.try_pop(control)? else {
+                break;
+            };
+            source = source
+                .checked_add(1)
                 .ok_or_else(|| latch_registry_row(control))?;
-            self.append_staged_attribute(
-                control,
-                prepared.target,
-                &mut prepared.stage,
-                Some(&candidate),
-            )?;
+            if !keep {
+                self.ignore_merge_attribute(control, attribute)?;
+                continue;
+            }
+            rank = rank
+                .checked_add(1)
+                .ok_or_else(|| latch_registry_row(control))?;
+            self.append_token_attribute(control, prepared.target, attribute, true, true)?;
             if self.effects.form.is_some() {
                 self.drain_form_effects(control)?;
             }
         }
-        self.flush_attribute_origins(control, prepared.first_row)
+        Ok(())
     }
 
     /// The effects of attributes that were appended to an element: the hooks of the families
@@ -485,69 +368,190 @@ impl SessionStorage {
         Ok(())
     }
 
-    /// Appends the last staged attribute to the element at `target`, with the effects of an `id`
-    /// among the form controls. A refusal leaves the attribute staged. Returns the position it
-    /// took.
-    pub(super) fn append_staged_attribute(
+    /// Appends the attribute of a token to the element at `node`; see [`Self::append_fields`].
+    pub(super) fn append_token_attribute(
         &mut self,
         control: &mut ParseControl,
-        target: usize,
-        stage: &mut StagedAttributes,
-        planned: Option<&DocumentString>,
+        node: usize,
+        attribute: crate::parser::tokenizer::token::Attribute,
+        planned: bool,
+        effects: bool,
     ) -> Result<usize, SessionError> {
-        let Some(attribute) = stage.values.pop() else {
-            return Err(latch_registry_row(control));
+        let crate::parser::tokenizer::token::Attribute {
+            name,
+            value,
+            lexical: _,
+            source: _,
+        } = attribute;
+        let name = match self.text_field(control, name) {
+            Ok(name) => name,
+            Err(error) => {
+                value.release(control)?;
+                return Err(error);
+            }
         };
-        let mut incoming = Some(attribute);
-        let appended = self.append_attribute_with_effects(control, target, &mut incoming, planned);
-        if let Some(attribute) = incoming {
-            // The slot that held the attribute is still there, so this allocates nothing.
-            stage.values.push(attribute);
-        }
-        appended
+        let value = match self.text_field(control, value) {
+            Ok(value) => value,
+            Err(error) => {
+                name.value.release(control)?;
+                return Err(error);
+            }
+        };
+        self.append_fields(control, node, name, value, planned, effects)
     }
 
-    /// Appends the attribute in `incoming` to the element at `target`. An `id` that a form
-    /// control may resolve a `form` attribute through leaves the effects its change needs, which
-    /// the caller drains. A refusal leaves `incoming` with the caller.
-    pub(super) fn append_attribute_with_effects(
+    /// Appends an attribute to the element at `node`: the name is interned, the value is copied
+    /// into the storage, both strings are released, and the groups of their origins become the
+    /// groups of the attribute's fields. `planned` says that the attribute is the next one a
+    /// merge plan kept. With `effects`, an `id` among form controls leaves the effects its change
+    /// needs, which the caller drains. A refusal releases the strings. Returns the position the
+    /// attribute took.
+    pub(super) fn append_fields(
         &mut self,
         control: &mut ParseControl,
-        target: usize,
-        incoming: &mut Option<Attribute>,
-        planned: Option<&DocumentString>,
+        node: usize,
+        name: FieldString,
+        value: FieldString,
+        planned: bool,
+        effects: bool,
     ) -> Result<usize, SessionError> {
-        let Some(attribute) = incoming.as_ref() else {
-            return Err(latch_registry_row(control));
+        self.append_qualified_fields(
+            control,
+            node,
+            QualifiedFields::default(),
+            name,
+            value,
+            planned,
+            effects,
+        )
+    }
+
+    /// As [`Self::append_fields`] for an attribute whose name has a namespace or a prefix: their
+    /// strings are shared with the interned name, and the groups of their origins become the
+    /// groups of the attribute's namespace and prefix fields.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn append_qualified_fields(
+        &mut self,
+        control: &mut ParseControl,
+        node: usize,
+        qualified: QualifiedFields,
+        name: FieldString,
+        value: FieldString,
+        planned: bool,
+        effects: bool,
+    ) -> Result<usize, SessionError> {
+        let QualifiedFields { namespace, prefix } = qualified;
+        let mut counted = 0usize;
+        let (namespace, namespace_group) = match namespace {
+            Some(LiteralField {
+                string,
+                group,
+                counted: first,
+            }) => {
+                if first {
+                    counted = counted
+                        .checked_add(string.len())
+                        .ok_or_else(|| latch_registry_row(control))?;
+                }
+                (Namespace::from_uri(string), group)
+            }
+            None => (Namespace::none(), None),
         };
-        let form_effects = self.prepare_id_attribute_effects(control, target, attribute)?;
-        if form_effects.is_some() {
-            payload_write::<Option<FormEffects>>(control, 1)?;
-        }
-        let position = self.append_attribute(control, target, incoming, planned)?;
-        if form_effects.is_some() {
-            self.effects.form = form_effects;
-        }
+        let (prefix, prefix_group) = match prefix {
+            Some(LiteralField {
+                string,
+                group,
+                counted: first,
+            }) => {
+                if first {
+                    counted = counted
+                        .checked_add(string.len())
+                        .ok_or_else(|| latch_registry_row(control))?;
+                }
+                (Some(string), group)
+            }
+            None => (None, None),
+        };
+        let appended = (|| {
+            let id =
+                self.intern_qualified_name(control, &namespace, prefix.as_ref(), name.units())?;
+            let local = self
+                .construction
+                .name(&id)
+                .map_err(|_| latch_registry_row(control))?
+                .clone();
+            let form_effects = if effects {
+                self.prepare_id_attribute_effects(control, node, &local, value.units().is_empty())?
+            } else {
+                None
+            };
+            if form_effects.is_some() {
+                payload_write::<Option<FormEffects>>(control, 1)?;
+            }
+            let candidate = planned.then(|| local.local_name().clone());
+            let position = self.append_named_attribute(
+                control,
+                node,
+                &id,
+                value.units(),
+                candidate.as_ref(),
+                counted,
+            )?;
+            if form_effects.is_some() {
+                self.effects.form = form_effects;
+            }
+            Ok::<usize, SessionError>(position)
+        })();
+        let released_name = name.value.release(control);
+        let released_value = value.value.release(control);
+        let position = appended?;
+        released_name?;
+        released_value?;
+        self.bind_field(
+            control,
+            FieldRef::AttributeName(node, position),
+            name.group,
+            0,
+        )?;
+        self.bind_field(
+            control,
+            FieldRef::AttributeValue(node, position),
+            value.group,
+            0,
+        )?;
+        self.bind_field(
+            control,
+            FieldRef::AttributeNamespace(node, position),
+            namespace_group,
+            0,
+        )?;
+        self.bind_field(
+            control,
+            FieldRef::AttributePrefix(node, position),
+            prefix_group,
+            0,
+        )?;
         Ok(position)
     }
 
-    /// The effects of an `id` attribute that `attribute`, about to be appended to the element at
-    /// `target`, makes among the listed form controls that have a `form` attribute.
+    /// The effects of an `id` attribute of the name `name`, about to be appended to the element at
+    /// `target` with a value that is empty or not, among the listed form controls that have a
+    /// `form` attribute.
     pub(super) fn prepare_id_attribute_effects(
         &self,
         control: &mut ParseControl,
         target: usize,
-        attribute: &Attribute,
+        name: &QualifiedName,
+        empty_value: bool,
     ) -> Result<Option<FormEffects>, SessionError> {
         control.require_identity(&self.control)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-        if attribute.name().namespace().uri().is_some()
-            || !exact_ascii(control, Some(attribute.name().local_name()), "id")?
+        if name.namespace().uri().is_some() || !exact_ascii(control, Some(name.local_name()), "id")?
         {
             return Ok(None);
         }
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if attribute.value().is_empty() {
+        if empty_value {
             return Ok(None);
         }
         #[cfg(test)]

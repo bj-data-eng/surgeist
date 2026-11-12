@@ -3,7 +3,71 @@
 use super::*;
 #[cfg(test)]
 use surgeist_html::construction::ConstructionNodeKind;
-use surgeist_html::values::DocumentString;
+
+/// Where an input reads a string that it derives another from: a row of the registry, such as
+/// the input's current value, or the value of an attribute of an element. The value of an
+/// attribute is read from the element's attributes, so deriving from it adds no row.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum InputSource {
+    Row(usize),
+    Attribute { node: usize, position: usize },
+}
+
+/// A string that a value is derived from: its units, the group of their origins, and the readers
+/// of the leaves of that group.
+#[derive(Clone, Copy)]
+pub(super) struct ValueSource<'a> {
+    pub(super) units: &'a [u16],
+    pub(super) group: Option<&'a OriginGroupRef>,
+    pub(super) strings: provenance::LeafStrings<'a>,
+}
+
+impl SessionStorage {
+    /// The units of the string `source` names. A row's string is checked against its ticket.
+    pub(super) fn source_units(
+        &self,
+        c: &mut ParseControl,
+        source: InputSource,
+    ) -> Result<&[u16], SessionError> {
+        match source {
+            InputSource::Row(slot) => {
+                Ok(admitted_input_string(&self.payloads, c, slot)?.code_units())
+            }
+            InputSource::Attribute { node, position } => {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                FieldRef::AttributeValue(node, position)
+                    .units(ConstructionView::Active(&self.construction))
+                    .ok_or_else(|| latch_registry_row(c))
+            }
+        }
+    }
+    /// The group of the origins of the string `source` names, when it has one.
+    pub(super) fn source_group(
+        &self,
+        c: &mut ParseControl,
+        source: InputSource,
+    ) -> Result<Option<&OriginGroupRef>, SessionError> {
+        match source {
+            InputSource::Row(slot) => self.payloads.row_group(slot),
+            InputSource::Attribute { node, position } => self
+                .payloads
+                .detail_origins
+                .get(c, FieldRef::AttributeValue(node, position)),
+        }
+    }
+    /// The string `source` names with its group.
+    pub(super) fn value_source(
+        &self,
+        c: &mut ParseControl,
+        source: InputSource,
+    ) -> Result<ValueSource<'_>, SessionError> {
+        Ok(ValueSource {
+            units: self.source_units(c, source)?,
+            group: self.source_group(c, source)?,
+            strings: self.leaf_strings(),
+        })
+    }
+}
 
 pub(crate) fn input_tag_state(
     control: &mut ParseControl,
@@ -16,7 +80,7 @@ pub(crate) fn input_tag_state(
         if exact_ascii(control, Some(attribute.name.value.text()), "type")? {
             let value = attribute.value.value.text();
             control.require_document_string(attribute.value.value.allocation(), value)?;
-            return input_type_state(control, value);
+            return input_type_state(control, value.code_units());
         }
     }
     Ok(surgeist_html::attributes::HtmlInputType::missing_value_default())
@@ -24,7 +88,7 @@ pub(crate) fn input_tag_state(
 
 pub(super) fn input_type_state(
     control: &mut ParseControl,
-    value: &DocumentString,
+    value: &[u16],
 ) -> Result<surgeist_html::attributes::HtmlInputType, SessionError> {
     let mut cursor = surgeist_html::elements::input::HtmlInputTypeCursor::new(Some(value));
     while cursor.result().is_none() {
@@ -44,7 +108,8 @@ pub(super) fn validate_initial_input_origins(
     for attribute in tag.attributes.as_slice() {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if exact_ascii(control, Some(attribute.name.value.text()), "type")? {
-            policy = input_type_state(control, attribute.value.value.text())?.sanitization();
+            policy = input_type_state(control, attribute.value.value.text().code_units())?
+                .sanitization();
         }
         if !exact_ascii(control, Some(attribute.name.value.text()), "value")? {
             continue;
@@ -164,12 +229,12 @@ pub(super) fn append_input_content(
     else {
         return Err(SessionError::InputMetadataUnavailable);
     };
-    for attribute in element.attributes().iter() {
+    for attribute in element.attributes().each(control)? {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if attribute.name().namespace().uri().is_none()
             && exact_ascii(control, Some(attribute.name().local_name()), "value")?
         {
-            destination.extend_units(attribute.value().code_units(), control)?;
+            destination.extend_units(attribute.value().units(control)?, control)?;
             return Ok(());
         }
     }
@@ -182,17 +247,15 @@ pub(super) fn append_input_content(
 /// Copy actual surviving origin groups. A mixed aggregate cannot be split by
 /// guessing source offsets; per-codepoint tokenizer origins establish the cut.
 pub(super) fn copy_input_value(
-    payloads: &PayloadStorage,
     evidence: Option<&ParseEvidence>,
     control: &mut ParseControl,
-    slot: usize,
+    source: ValueSource<'_>,
     policy: surgeist_html::elements::input::HtmlInputSanitization,
 ) -> Result<FieldCopy, SessionError> {
     Ok(copy_input_value_core(
-        payloads,
         evidence,
         control,
-        slot,
+        source,
         policy,
         None,
         surgeist_html::elements::input::HtmlInputEmailMode::Single,
@@ -204,16 +267,14 @@ pub(super) fn copy_input_value(
 /// lexical path keeps its original charges; only incomplete lexical coverage
 /// reaches the existing owner that requires qualified input-computation proof.
 pub(super) fn copy_preserved_input_value(
-    payloads: &PayloadStorage,
     evidence: Option<&ParseEvidence>,
     control: &mut ParseControl,
-    slot: usize,
+    source: ValueSource<'_>,
 ) -> Result<FieldCopy, SessionError> {
     Ok(copy_input_value_core(
-        payloads,
         evidence,
         control,
-        slot,
+        source,
         surgeist_html::elements::input::HtmlInputSanitization::Preserve,
         None,
         surgeist_html::elements::input::HtmlInputEmailMode::Single,
@@ -222,59 +283,38 @@ pub(super) fn copy_preserved_input_value(
 }
 
 pub(super) fn copy_selected_input_value(
-    payloads: &PayloadStorage,
     evidence: Option<&ParseEvidence>,
     control: &mut ParseControl,
-    slot: usize,
+    source: ValueSource<'_>,
     policy: surgeist_html::elements::input::HtmlInputSanitization,
     mode: surgeist_html::elements::input::HtmlInputEmailMode,
 ) -> Result<(FieldCopy, Option<usize>), SessionError> {
-    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    let Some(RetainedPayload::String {
-        value, allocation, ..
-    }) = payloads.values.get(slot)
-    else {
-        return Err(SessionError::InputMetadataUnavailable);
-    };
-    control.require_document_string(allocation, value)?;
     payload_write::<surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>>(control, 1)?;
     let cursor = surgeist_html::elements::input::HtmlInputSanitizationCursor::new(
         policy,
-        value.code_units(),
+        source.units,
         mode,
     );
-    copy_input_value_core(
-        payloads,
-        evidence,
-        control,
-        slot,
-        policy,
-        Some(cursor),
-        mode,
-    )
+    copy_input_value_core(evidence, control, source, policy, Some(cursor), mode)
 }
 
 /// Whole retention or omission of a real generated field. This is reached
 /// only after incomplete lexical coverage, then requires actual computation
 /// lineage; lexical, storage and terminal errors do not select this path.
 fn copy_whole_generated_input_value(
-    payloads: &PayloadStorage,
     evidence: Option<&ParseEvidence>,
     c: &mut ParseControl,
-    source: usize,
+    source: ValueSource<'_>,
     policy: surgeist_html::elements::input::HtmlInputSanitization,
     mode: surgeist_html::elements::input::HtmlInputEmailMode,
 ) -> Result<(FieldCopy, Option<usize>), SessionError> {
-    let value = admitted_input_string(payloads, c, source)?;
+    let value = source.units;
     payload_write::<surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>>(c, 1)?;
-    let mut cursor = surgeist_html::elements::input::HtmlInputSanitizationCursor::new(
-        policy,
-        value.code_units(),
-        mode,
-    );
+    let mut cursor =
+        surgeist_html::elements::input::HtmlInputSanitizationCursor::new(policy, value, mode);
     let mut range = next_input_range(c, &mut cursor)?;
     let mut retained = 0usize;
-    for (position, &unit) in value.code_units().iter().enumerate() {
+    for (position, &unit) in value.iter().enumerate() {
         while range.is_some_and(|range| range.end() <= position) {
             payload_write::<Option<surgeist_html::elements::input::HtmlInputRetainedRange>>(c, 1)?;
             range = next_input_range(c, &mut cursor)?;
@@ -296,23 +336,18 @@ fn copy_whole_generated_input_value(
     }
     let count = cursor.email_value_count();
     if retained == value.len() {
-        return provenance::copy_generated_input_value(payloads, evidence, c, source)
+        return provenance::copy_generated_input_value(evidence, c, source)
             .map(|field| (field, count));
     }
     if retained != 0 {
         return Err(SessionError::OriginSplitUnavailable);
     }
     let original = if c.detail().records_graph() {
-        let Some(group) = payloads.row_group(c, source)? else {
+        let Some(group) = source.group else {
             return Err(latch_registry_row(c));
         };
         let evidence = evidence.ok_or(SessionError::WrongToken)?;
-        evidence.qualify_generated_copy(
-            c,
-            provenance::LeafStrings::rows(payloads),
-            group,
-            value.code_units(),
-        )?;
+        evidence.qualify_generated_copy(c, source.strings, group, value)?;
         Some(evidence.copy_group_reference(c, group)?)
     } else {
         None
@@ -348,23 +383,15 @@ fn next_input_range(
 }
 
 fn copy_input_value_core(
-    payloads: &PayloadStorage,
     evidence: Option<&ParseEvidence>,
     control: &mut ParseControl,
-    slot: usize,
+    source: ValueSource<'_>,
     policy: surgeist_html::elements::input::HtmlInputSanitization,
     mut selection: Option<surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>>,
     generated_mode: surgeist_html::elements::input::HtmlInputEmailMode,
 ) -> Result<(FieldCopy, Option<usize>), SessionError> {
-    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    let Some(RetainedPayload::String {
-        value, allocation, ..
-    }) = payloads.values.get(slot)
-    else {
-        return Err(SessionError::InputMetadataUnavailable);
-    };
-    control.require_document_string(allocation, value)?;
-    let origins = payloads.row_group(control, slot)?;
+    let value = source.units;
+    let origins = source.group;
     let mut buffer = Utf16Buffer::new(control)?;
     let mut copied = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
     let result = (|| {
@@ -381,7 +408,7 @@ fn copy_input_value_core(
                 policy,
                 surgeist_html::elements::input::HtmlInputSanitization::Temporal(_)
             );
-            for (position, &unit) in value.code_units().iter().enumerate() {
+            for (position, &unit) in value.iter().enumerate() {
                 control.charge_unit_inspection()?;
                 let keep = if let Some(cursor) = &mut selection {
                     while range.is_some_and(|range| range.end() <= position) {
@@ -422,8 +449,7 @@ fn copy_input_value_core(
                     {
                         return Err(SessionError::OriginSplitUnavailable);
                     }
-                    let Some(origin_units) = value.code_units().get(origin.start..origin.end)
-                    else {
+                    let Some(origin_units) = value.get(origin.start..origin.end) else {
                         return Err(latch_registry_row(control));
                     };
                     let mut omitted = 0usize;
@@ -512,14 +538,7 @@ fn copy_input_value_core(
     if incomplete {
         buffer.release(control)?;
         copied.release(control)?;
-        return copy_whole_generated_input_value(
-            payloads,
-            evidence,
-            control,
-            slot,
-            policy,
-            generated_mode,
-        );
+        return copy_whole_generated_input_value(evidence, control, source, policy, generated_mode);
     }
     let original = match origins
         .map(|group| {

@@ -1,15 +1,9 @@
 //! Creation of elements for the tree builder, including implied and profiled elements.
 
 use super::*;
-use surgeist_html::accounting::HtmlChargedError;
 use surgeist_html::{
-    bounded::values::{
-        HtmlAttributeNameIndex, HtmlAttributeStorage, HtmlAttributeValidationError,
-        HtmlNameIndexSlot,
-    },
     construction::HtmlDocumentMode,
     elements::form::{HtmlNativeFormAssociationKind, HtmlTextareaFlags},
-    values::{Attribute, OrderedAttributes},
     vocabulary::KnownHtmlElement,
 };
 
@@ -59,82 +53,6 @@ pub(super) enum OrderedCreation {
     Select {
         metadata: Option<usize>,
     },
-}
-
-pub(super) fn validate_parser_attributes(
-    backing: Arc<Vec<Attribute>>,
-    control: &mut ParseControl,
-) -> Result<OrderedAttributes, (SessionError, Arc<Vec<Attribute>>)> {
-    // The validation owner holds the only other count on `backing`; keeping one
-    // here hands the allocation back on every refusal without recovering it
-    // from the owner. On success the spare is simply dropped when this
-    // function exits.
-    let spare = Arc::clone(&backing);
-    let count = backing.len();
-    let storage = HtmlAttributeStorage::from_shared_attributes(backing);
-    // A long list is validated through a table of its names, so that the work is linear in the
-    // list; a short one compares every pair, which is cheaper than building the table.
-    let mut slots = None;
-    let mut validation = if count >= super::storage_holds::NAME_INDEX_MIN_ENTRIES
-        && let Some(required) = HtmlAttributeNameIndex::slots_required(count)
-    {
-        let reserved = (|| {
-            let (mut vector, mut ticket) = control.new_vector::<HtmlNameIndexSlot>()?;
-            match control.reserve_vector(&mut vector, &mut ticket, required) {
-                Ok(()) => Ok((vector, ticket)),
-                Err(stop) => {
-                    // The reserve may have changed the capacity before it stopped.
-                    release_vector(control, vector, ticket)?;
-                    Err(SessionError::from(stop))
-                }
-            }
-        })();
-        match reserved {
-            Ok((vector, ticket)) => {
-                slots = Some(ticket);
-                storage.validate_indexed(HtmlAttributeNameIndex::new(vector))
-            }
-            Err(error) => return Err((error, spare)),
-        }
-    } else {
-        storage.validate()
-    };
-    let validation_error = |error| match error {
-        HtmlAttributeValidationError::Duplicate { .. } => SessionError::DuplicateAttribute,
-        _ => SessionError::AttributeStorageUnavailable,
-    };
-    let outcome = (|| {
-        while let Some(action) = validation.next_action().map_err(validation_error)? {
-            action.advance(control).map_err(|error| match error {
-                HtmlChargedError::Stopped(stop) => SessionError::from(stop),
-                HtmlChargedError::Faulted(fault) => validation_error(fault),
-            })?;
-        }
-        Ok(())
-    })();
-    // The table goes back whatever the outcome: finishing consumes the cursor that holds it, so
-    // it is taken out first.
-    let table = validation.take_index();
-    let result = match outcome {
-        Ok(()) => validation
-            .finish()
-            .map(|validated| validated.into_attributes())
-            .map_err(|failure| validation_error(*failure.cause())),
-        Err(error) => {
-            drop(validation);
-            Err(error)
-        }
-    };
-    let released = match (table, slots) {
-        (Some(table), Some(ticket)) => release_vector(control, table.into_storage(), ticket),
-        _ => Ok(()),
-    };
-    match result {
-        Ok(attributes) => released
-            .map(|()| attributes)
-            .map_err(|error| (error, spare)),
-        Err(error) => Err((error, spare)),
-    }
 }
 
 impl ParserArenaSession {

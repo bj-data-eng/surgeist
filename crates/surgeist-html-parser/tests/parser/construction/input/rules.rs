@@ -45,7 +45,7 @@ impl Meter {
 }
 
 fn recognize(raw: Option<&DocumentString>) -> HtmlInputType {
-    let mut cursor = HtmlInputTypeCursor::new(raw);
+    let mut cursor = HtmlInputTypeCursor::new(raw.map(DocumentString::code_units));
     let mut meter = Meter::new();
     while cursor.result().is_none() {
         cursor.advance(&mut meter.charge()).unwrap();

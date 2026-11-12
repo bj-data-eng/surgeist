@@ -2,7 +2,6 @@
 //! an association and of a publication, and the walk of a subtree.
 
 use super::*;
-use crate::internal::values::Attribute;
 
 /// The UTF-16 units a name counts: its local name, prefix and namespace URI.
 pub(in crate::internal::construction) fn name_units(
@@ -17,11 +16,12 @@ pub(in crate::internal::construction) fn name_units(
     )
 }
 
-/// The UTF-16 units an attribute counts: its name and its value.
+/// The UTF-16 units an attribute counts: its name and its value of `value_len` units.
 pub(in crate::internal::construction) fn attribute_units(
-    attribute: &Attribute,
+    name: &QualifiedName,
+    value_len: usize,
 ) -> Result<usize, HtmlConstructionError> {
-    plus(name_units(attribute.name())?, attribute.value().len())
+    plus(name_units(name)?, value_len)
 }
 
 /// The most steps a walk of an arena of `records` can take: each record is entered and left once,

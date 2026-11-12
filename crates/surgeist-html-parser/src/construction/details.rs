@@ -70,7 +70,7 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let Some(attr) = element.attributes().get(position) else {
+        let Some(attr) = element.attributes().at(c, position)? else {
             return Err(latch_registry_row(c));
         };
         if attr.name().namespace().uri().is_some() {
@@ -85,11 +85,12 @@ impl SessionStorage {
         };
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<surgeist_html::elements::details::HtmlDetailsAttributeEffect>(c, 1)?;
+        let value = attr.value().units(c)?;
         let effect = surgeist_html::elements::details::details_attribute_effect(
             attr.name().namespace(),
             attribute,
             None,
-            Some(attr.value()),
+            Some(value),
         );
         self.details_change(c, node, effect)
     }
@@ -322,16 +323,7 @@ mod tests {
         else {
             unreachable!()
         };
-        element
-            .attributes()
-            .iter()
-            .map(|a| {
-                (
-                    a.name().local_name().code_units().to_vec(),
-                    a.value().code_units().to_vec(),
-                )
-            })
-            .collect()
+        test_support::attribute_units(element)
     }
     fn attribute(
         lexer: &mut LexerFixture<'_>,
@@ -661,7 +653,6 @@ mod tests {
         // removing their current destination must not retire a surviving b/2.
         let storage = session.active().unwrap();
         let mut removed = Vec::new();
-        let mut current = Vec::new();
         for (slot, payload) in storage.payloads.values.iter().enumerate() {
             if let RetainedPayload::String {
                 value, location, ..
@@ -669,7 +660,7 @@ mod tests {
             {
                 let group = storage
                     .payloads
-                    .row_group(&mut c, slot)
+                    .row_group(slot)
                     .unwrap()
                     .expect("every string of the details element has an origin group");
                 let evidence = storage.evidence.as_ref().unwrap();
@@ -679,11 +670,39 @@ mod tests {
                     assert!(header.retirement.is_some());
                     removed.push(value.code_units().to_vec());
                 }
-                if let FieldRef::AttributeName(_, position) = location
-                    && value.code_units() == [98]
-                {
-                    current.push(*position);
-                }
+            }
+        }
+        // The surviving attributes hold their groups at the places they have now, and the leaf of
+        // each names that place.
+        let records = ConstructionView::Active(&storage.construction);
+        let mut current = Vec::new();
+        for position in 0..4 {
+            let field = FieldRef::AttributeName(node.index, position);
+            let group = storage
+                .payloads
+                .detail_origins
+                .get(&mut c, field)
+                .unwrap()
+                .expect("every attribute of the details element has an origin group");
+            let header = storage
+                .evidence
+                .as_ref()
+                .unwrap()
+                .require_group(group)
+                .unwrap();
+            assert!(header.retirement.is_none());
+            let provenance::GroupBody::Leaf { value, .. } = header.body else {
+                panic!("the name of an attribute is a leaf of tokenizer origins")
+            };
+            let provenance::LeafValue::Attribute {
+                position: named, ..
+            } = value
+            else {
+                panic!("a live attribute string is read from the attributes")
+            };
+            assert_eq!(named as usize, position);
+            if field.units(records) == Some(&[98]) {
+                current.push(position);
             }
         }
         assert_eq!(removed, vec![vec![111, 112, 101, 110], vec![118]]);

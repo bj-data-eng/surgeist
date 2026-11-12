@@ -5,7 +5,6 @@
 
 use crate::internal::accounting::{HtmlChange, HtmlResource, HtmlWork};
 use crate::internal::microsyntax::tokens::{ascii_case_insensitive_unit, is_ascii_whitespace};
-use crate::internal::values::DocumentString;
 use surgeist_ledger::{Change, Charge};
 
 /// A script kind selected by HTML's type/language classification step.
@@ -77,7 +76,7 @@ impl HtmlScriptTypeWork {
 #[derive(Debug)]
 pub(crate) struct ScriptTypeMatchCursor<'a> {
     prefix: &'static [u8],
-    value: &'a DocumentString,
+    value: &'a [u16],
     start: usize,
     end: usize,
     expected: &'static [u8],
@@ -88,7 +87,7 @@ pub(crate) struct ScriptTypeMatchCursor<'a> {
 impl<'a> ScriptTypeMatchCursor<'a> {
     pub(crate) fn new(
         prefix: &'static [u8],
-        value: &'a DocumentString,
+        value: &'a [u16],
         start: usize,
         end: usize,
         expected: &'static [u8],
@@ -132,7 +131,7 @@ impl<'a> ScriptTypeMatchCursor<'a> {
             let actual = if self.position < self.prefix.len() {
                 u16::from(self.prefix[self.position])
             } else {
-                self.value.code_units()[self.start + self.position - self.prefix.len()]
+                self.value[self.start + self.position - self.prefix.len()]
             };
             if !ascii_case_insensitive_unit(actual, self.expected[self.position]) {
                 self.result = Some(false);
@@ -168,7 +167,7 @@ enum Stage<'a> {
 /// A classification over one established nonempty input.
 #[derive(Debug)]
 struct Scan<'a> {
-    value: &'a DocumentString,
+    value: &'a [u16],
     prefix: &'static [u8],
     /// Preparation of an explicit type retries essences after JS whitespace trim.
     trims: bool,
@@ -250,14 +249,14 @@ impl<'a> Scan<'a> {
             }
             Stage::Match(matcher) => matcher.advance(),
             Stage::TrimStart => {
-                if is_ascii_whitespace(self.value.code_units()[self.start]) {
+                if is_ascii_whitespace(self.value[self.start]) {
                     self.start += 1;
                 } else {
                     self.stage = Stage::TrimEnd;
                 }
             }
             Stage::TrimEnd => {
-                if is_ascii_whitespace(self.value.code_units()[self.end - 1]) {
+                if is_ascii_whitespace(self.value[self.end - 1]) {
                     self.end -= 1;
                 } else {
                     self.pass = Pass::TrimmedEssences;
@@ -272,8 +271,8 @@ impl<'a> Scan<'a> {
 #[derive(Debug)]
 enum State<'a> {
     Initial {
-        explicit: Option<&'a DocumentString>,
-        language: Option<&'a DocumentString>,
+        explicit: Option<&'a [u16]>,
+        language: Option<&'a [u16]>,
         mode: Mode,
     },
     Scan(Scan<'a>),
@@ -292,21 +291,14 @@ pub struct HtmlScriptTypeCursor<'a> {
 }
 impl<'a> HtmlScriptTypeCursor<'a> {
     /// Classifies the current content type without preparation-only trimming.
-    pub fn content(explicit: Option<&'a DocumentString>) -> Self {
+    pub fn content(explicit: Option<&'a [u16]>) -> Self {
         Self::new(explicit, None, Mode::Content)
     }
     /// Classifies explicit type or the virtual language prefix for preparation.
-    pub fn preparation(
-        explicit: Option<&'a DocumentString>,
-        language: Option<&'a DocumentString>,
-    ) -> Self {
+    pub fn preparation(explicit: Option<&'a [u16]>, language: Option<&'a [u16]>) -> Self {
         Self::new(explicit, language, Mode::Preparation)
     }
-    fn new(
-        explicit: Option<&'a DocumentString>,
-        language: Option<&'a DocumentString>,
-        mode: Mode,
-    ) -> Self {
+    fn new(explicit: Option<&'a [u16]>, language: Option<&'a [u16]>, mode: Mode) -> Self {
         Self {
             state: State::Initial {
                 explicit,
@@ -397,12 +389,16 @@ impl<'a> HtmlScriptTypeCursor<'a> {
 mod tests {
     use super::*;
 
+    fn utf16(text: &str) -> Vec<u16> {
+        text.encode_utf16().collect()
+    }
+
     #[test]
     fn literal_matcher_admits_length_and_only_reached_utf16_comparisons() {
         let mut records = 0;
         let mut units = 0;
         for (raw, expected) in [("HiDdEn", true), ("hiddEX", false), ("other", false)] {
-            let value = DocumentString::from(raw);
+            let value = utf16(raw);
             let mut cursor = ScriptTypeMatchCursor::new(b"", &value, 0, value.len(), b"hidden");
             let result = loop {
                 match cursor.pending() {
@@ -420,7 +416,7 @@ mod tests {
 
     #[test]
     fn borrowed_modes_preserve_only_the_explicit_js_whitespace_exception() {
-        let js = DocumentString::from(" \tTEXT/JAVASCRIPT\r\n\x0c ");
+        let js = utf16(" \tTEXT/JAVASCRIPT\r\n\x0c ");
         assert_eq!(
             HtmlScriptTypeCursor::content(Some(&js)).finish_ordinary(),
             None
@@ -436,7 +432,7 @@ mod tests {
             "   ",
             "\u{a0}text/javascript\u{a0}",
         ] {
-            let value = DocumentString::from(value);
+            let value = utf16(value);
             assert_eq!(
                 HtmlScriptTypeCursor::preparation(Some(&value), None).finish_ordinary(),
                 None
@@ -445,8 +441,8 @@ mod tests {
     }
     #[test]
     fn virtual_language_and_type_override_are_exact_without_allocating_prefix() {
-        let js = DocumentString::from("javascript");
-        let bad = DocumentString::from("unknown");
+        let js = utf16("javascript");
+        let bad = utf16("unknown");
         assert_eq!(
             HtmlScriptTypeCursor::preparation(None, Some(&js)).finish_ordinary(),
             Some(HtmlScriptKind::Classic)
@@ -455,7 +451,7 @@ mod tests {
             HtmlScriptTypeCursor::preparation(Some(&bad), Some(&js)).finish_ordinary(),
             None
         );
-        let empty = DocumentString::from("");
+        let empty = utf16("");
         assert_eq!(
             HtmlScriptTypeCursor::preparation(Some(&empty), Some(&bad)).finish_ordinary(),
             Some(HtmlScriptKind::Classic)

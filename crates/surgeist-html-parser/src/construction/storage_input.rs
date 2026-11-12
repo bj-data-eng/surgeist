@@ -6,7 +6,6 @@ use surgeist_html::{
         HtmlFormOwnerResetDecision, HtmlFormOwnerResetTrigger, form_owner_reset_trigger,
     },
     construction::ConstructionNodeKind,
-    values::{Attribute, Namespace, QualifiedName},
 };
 
 /// Creation/mutation initializes from installed attributes. A Color clone
@@ -98,71 +97,12 @@ impl SessionStorage {
         }
         Ok(())
     }
-    pub(super) fn attribute_value_slot(
-        &self,
-        control: &mut ParseControl,
-        node: usize,
-        position: usize,
-    ) -> Result<usize, SessionError> {
-        control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-        let ConstructionNodeKind::Element(element) = &self
-            .construction
-            .node_at(node)
-            .ok_or_else(|| latch_registry_row(control))?
-            .kind()
-        else {
-            return Err(SessionError::WrongToken);
-        };
-        let attributes = element.attributes();
-        let value = attributes
-            .get(position)
-            .ok_or(SessionError::AttributeStorageUnavailable)?
-            .value();
-        // Valid-or-fallback hint: creation registered this element's attribute
-        // names and values as adjacent registry rows, last attribute first. The
-        // candidate row is used only after its identity matches the attribute
-        // value; any mismatch, or a hint cleared by an attribute edit, falls
-        // back to the scan below, which returns the same row.
-        if let Some(candidate) =
-            self.payloads
-                .attribute_value_candidate(node, attributes.len(), position)
-        {
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let Some(RetainedPayload::String { value: stored, .. }) =
-                self.payloads.values.get(candidate)
-            {
-                control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                if value.shares_storage_with(stored) {
-                    #[cfg(test)]
-                    assert_eq!(
-                        self.payloads.first_string_sharing(value),
-                        Some(candidate),
-                        "a verified hint names the row a scan finds"
-                    );
-                    return Ok(candidate);
-                }
-            }
-        }
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::String {
-                value: candidate, ..
-            } = payload
-            {
-                control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                if value.shares_storage_with(candidate) {
-                    return Ok(slot);
-                }
-            }
-        }
-        Err(SessionError::AttributeStorageUnavailable)
-    }
     fn install_sanitized_input_value(
         &mut self,
         control: &mut ParseControl,
         node: usize,
         slot: usize,
-        source: usize,
+        source: InputSource,
         policy: surgeist_html::elements::input::HtmlInputValueSanitization,
     ) -> Result<(), SessionError> {
         let policy = match policy {
@@ -188,30 +128,20 @@ impl SessionStorage {
             } else {
                 surgeist_html::elements::input::HtmlInputEmailMode::Single
             };
-            let (field, count) = copy_selected_input_value(
-                &self.payloads,
-                self.evidence.as_ref(),
-                control,
-                source,
-                policy,
-                mode,
-            )?;
+            let value = self.value_source(control, source)?;
+            let (field, count) =
+                copy_selected_input_value(self.evidence.as_ref(), control, value, policy, mode)?;
             self.replace_input_raw(control, slot, field)?;
             let mut state = self.read_input_state(control, slot)?;
             state.email_value_count = count;
             self.write_input_state(control, slot, state)?;
         } else {
+            let value = self.value_source(control, source)?;
             let field = if policy == surgeist_html::elements::input::HtmlInputSanitization::Preserve
             {
-                copy_preserved_input_value(&self.payloads, self.evidence.as_ref(), control, source)?
+                copy_preserved_input_value(self.evidence.as_ref(), control, value)?
             } else {
-                copy_input_value(
-                    &self.payloads,
-                    self.evidence.as_ref(),
-                    control,
-                    source,
-                    policy,
-                )?
+                copy_input_value(self.evidence.as_ref(), control, value, policy)?
             };
             self.replace_input_raw(control, slot, field)?;
         }
@@ -247,8 +177,13 @@ impl SessionStorage {
             && let surgeist_html::elements::input::HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(policy) =
                 state.flags.value_attribute_changed()
         {
-            let source = self.attribute_value_slot(control, node, position)?;
-            self.install_sanitized_input_value(control, node, slot, source, policy)?;
+            self.install_sanitized_input_value(
+                control,
+                node,
+                slot,
+                InputSource::Attribute { node, position },
+                policy,
+            )?;
         }
         if checked_attr
             && let Some(flags) = state.flags.checked_attribute_changed(
@@ -266,7 +201,8 @@ impl SessionStorage {
         }
         if type_attr {
             let attribute = element_attribute(&self.construction, control, node, position)?;
-            let next_kind = input_type_state(control, attribute.value())?;
+            let units = attribute.value().units(control)?;
+            let next_kind = input_type_state(control, units)?;
             self.change_input_type(control, node, slot, state, next_kind)?;
         }
         if src_attr {
@@ -287,7 +223,7 @@ impl SessionStorage {
                 control,
                 node,
                 slot,
-                raw,
+                InputSource::Row(raw),
                 surgeist_html::elements::input::HtmlInputValueSanitization::String(
                     surgeist_html::elements::input::HtmlInputSanitization::Email,
                 ),
@@ -301,7 +237,7 @@ impl SessionStorage {
                     || exact_ascii(control, Some(attribute.name().local_name()), "step")?);
             if relevant {
                 let raw = self.input_raw_slot(control, slot)?;
-                self.install_range_input_value(control, node, slot, raw)?;
+                self.install_range_input_value(control, node, slot, InputSource::Row(raw))?;
             }
         }
         if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Color
@@ -358,7 +294,7 @@ impl SessionStorage {
                     let mut value_position = None;
                     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let element = element_record(&self.construction, control, node)?;
-                    for (index, attribute) in element.attributes().iter().enumerate() {
+                    for (index, attribute) in element.attributes().each(control)?.enumerate() {
                         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if exact_ascii(control, Some(attribute.name().local_name()), "value")? {
                             value_position = Some(index);
@@ -379,20 +315,19 @@ impl SessionStorage {
                     };
                     // Nested dirty=false value change in Default or DefaultOn:
                     // copy the actual replaced native field without a sanitizer.
-                    let source = self.attribute_value_slot(control, node, position)?;
+                    let value =
+                        self.value_source(control, InputSource::Attribute { node, position })?;
                     let text = if generated {
                         provenance::copy_generated_input_value(
-                            &self.payloads,
                             self.evidence.as_ref(),
                             control,
-                            source,
+                            value,
                         )?
                     } else {
                         copy_input_value(
-                            &self.payloads,
                             self.evidence.as_ref(),
                             control,
-                            source,
+                            value,
                             surgeist_html::elements::input::HtmlInputSanitization::Preserve,
                         )?
                     };
@@ -402,23 +337,22 @@ impl SessionStorage {
                     let mut source = None;
                     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let element = element_record(&self.construction, control, node)?;
-                    for (position, attribute) in element.attributes().iter().enumerate()
+                    for (position, attribute) in element.attributes().each(control)?.enumerate()
                     {
                         control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                         if attribute.name().namespace().uri().is_none()
                             && exact_ascii(control, Some(attribute.name().local_name()), "value")?
                         {
-                            source = Some(self.attribute_value_slot(control, node, position)?);
+                            source = Some(position);
                             break;
                         }
                     }
                     let field = match source {
-                        Some(source) => copy_preserved_input_value(
-                            &self.payloads,
-                            self.evidence.as_ref(),
-                            control,
-                            source,
-                        )?,
+                        Some(position) => {
+                            let value = self
+                                .value_source(control, InputSource::Attribute { node, position })?;
+                            copy_preserved_input_value(self.evidence.as_ref(), control, value)?
+                        }
                         None => FieldCopy {
                             value: literal_string(control, b"")?,
                             origins: OwnedVec::new(HtmlParseResource::SourceMapEntries)?,
@@ -446,7 +380,13 @@ impl SessionStorage {
                         )
                 {
                     let raw = self.input_raw_slot(control, slot)?;
-                    self.install_sanitized_input_value(control, node, slot, raw, policy)?;
+                    self.install_sanitized_input_value(
+                        control,
+                        node,
+                        slot,
+                        InputSource::Row(raw),
+                        policy,
+                    )?;
                 }
                 if effect == surgeist_html::elements::input::HtmlInputTypeEffect::SignalTypeChange
                     && next_kind == surgeist_html::attributes::HtmlInputType::Radio
@@ -478,40 +418,52 @@ impl SessionStorage {
             origins: OwnedVec::new(HtmlParseResource::SourceMapEntries)?,
             original: None,
         };
-        let (name, name_slot) = self.register_field_copy(control, name)?;
-        let value = if generated {
-            provenance::copy_generated_input_value(
-                &self.payloads,
-                self.evidence.as_ref(),
-                control,
-                raw,
-            )?
-        } else {
-            copy_input_value(
-                &self.payloads,
-                self.evidence.as_ref(),
-                control,
-                raw,
-                surgeist_html::elements::input::HtmlInputSanitization::Preserve,
-            )?
+        let name = self.field_copy_string(control, name)?;
+        let value = match (|| {
+            let source = self.value_source(control, InputSource::Row(raw))?;
+            let value = if generated {
+                provenance::copy_generated_input_value(self.evidence.as_ref(), control, source)?
+            } else {
+                copy_input_value(
+                    self.evidence.as_ref(),
+                    control,
+                    source,
+                    surgeist_html::elements::input::HtmlInputSanitization::Preserve,
+                )?
+            };
+            self.field_copy_string(control, value)
+        })() {
+            Ok(value) => value,
+            Err(error) => {
+                name.release(control)?;
+                return Err(error);
+            }
         };
-        let (value, value_slot) = self.register_field_copy(control, value)?;
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let ConstructionNodeKind::Element(element) = &self
-            .construction
-            .node_at(node)
-            .ok_or_else(|| latch_registry_row(control))?
-            .kind()
-        else {
-            return Err(SessionError::WrongToken);
+        let prepared = (|| {
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let ConstructionNodeKind::Element(element) = &self
+                .construction
+                .node_at(node)
+                .ok_or_else(|| latch_registry_row(control))?
+                .kind()
+            else {
+                return Err(SessionError::WrongToken);
+            };
+            let position = element.attributes().count(control)?;
+            let mut state = self.read_input_state(control, slot)?;
+            state.value_rewritten_during_creation = true;
+            payload_write::<InputState>(control, 1)?;
+            Ok((position, state))
+        })();
+        let (position, state) = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                name.release(control)?;
+                value.release(control)?;
+                return Err(error);
+            }
         };
-        let position = element.attributes().len();
-        let mut state = self.read_input_state(control, slot)?;
-        state.value_rewritten_during_creation = true;
-        payload_write::<InputState>(control, 1)?;
-        payload_write::<Attribute>(control, 1)?;
-        let incoming = Attribute::new(QualifiedName::new(Namespace::none(), None, name), value);
-        self.append_registered_attribute(control, node, incoming, [name_slot, value_slot])?;
+        self.append_registered_attribute(control, node, name, value)?;
         let Some(RetainedPayload::Input {
             state: destination, ..
         }) = self.payloads.values.get_mut(slot)
@@ -529,49 +481,29 @@ impl SessionStorage {
         position: usize,
         raw: usize,
     ) -> Result<(), SessionError> {
-        let old_slot = self.attribute_value_slot(control, node, position)?;
-        let text =
-            copy_preserved_input_value(&self.payloads, self.evidence.as_ref(), control, raw)?;
-        let (value, new_slot) = self.register_field_copy(control, text)?;
-        (|| {
-            control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-            control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-            payload_write::<QualifiedName>(control, 1)?;
-            let attribute = element_attribute(&self.construction, control, node, position)?;
-            payload_write::<Attribute>(control, 1)?;
-            payload_write::<Option<Attribute>>(control, 1)?;
-            let mut incoming = Some(Attribute::new(attribute.name().clone(), value));
-            // The registry rebinding and the native commit are preadmitted. The storage's
-            // replacement commits all or none.
-            payload_write::<[FieldRef; 2]>(control, 2)?;
+        let value = self.value_source(control, InputSource::Row(raw))?;
+        let text = copy_preserved_input_value(self.evidence.as_ref(), control, value)?;
+        let value = self.field_copy_string(control, text)?;
+        let prepared = (|| {
             let mut next_state = self.read_input_state(control, slot)?;
             next_state.value_rewritten_during_creation = true;
             payload_write::<InputState>(control, 1)?;
             control.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
-            self.retire_field_group(control, old_slot)?;
-            self.payloads.forget_attribute_strings(node);
-            let result = self.replace_attribute(control, node, position, &mut incoming);
-            match result {
-                Ok(old) => {
-                    self.detach_attribute_string(control, old_slot)?;
-                    self.bind_string(new_slot, FieldRef::AttributeValue(node, position))
-                        .map_err(|_| latch_registry_row(control))?;
-                    self.flush_attribute_origins(control, new_slot)?;
-                    let Some(RetainedPayload::Input { state, .. }) =
-                        self.payloads.values.get_mut(slot)
-                    else {
-                        return Err(latch_registry_row(control));
-                    };
-                    *state = next_state;
-                    drop(old);
-                    Ok(())
-                }
-                Err(stop) => {
-                    drop(incoming);
-                    Err(stop)
-                }
+            Ok::<_, SessionError>(next_state)
+        })();
+        let next_state = match prepared {
+            Ok(next_state) => next_state,
+            Err(error) => {
+                value.release(control)?;
+                return Err(error);
             }
-        })()
+        };
+        self.replace_registered_attribute_value(control, node, position, value)?;
+        let Some(RetainedPayload::Input { state, .. }) = self.payloads.values.get_mut(slot) else {
+            return Err(latch_registry_row(control));
+        };
+        *state = next_state;
+        Ok(())
     }
     pub(super) fn reset_input(
         &mut self,
@@ -590,7 +522,7 @@ impl SessionStorage {
         let mut value = None;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let element = element_record(&self.construction, control, node)?;
-        for (position, attribute) in element.attributes().iter().enumerate() {
+        for (position, attribute) in element.attributes().each(control)?.enumerate() {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if exact_ascii(control, Some(attribute.name().local_name()), "checked")? {
                 checked = true;
@@ -600,12 +532,11 @@ impl SessionStorage {
             }
         }
         if let Some(position) = value {
-            let source = self.attribute_value_slot(control, node, position)?;
             self.install_sanitized_input_value(
                 control,
                 node,
                 slot,
-                source,
+                InputSource::Attribute { node, position },
                 state.flags.input_type().sanitization(),
             )?;
         } else {
@@ -617,7 +548,7 @@ impl SessionStorage {
             self.replace_input_raw(control, slot, field)?;
             if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Range {
                 let raw = self.input_raw_slot(control, slot)?;
-                self.install_range_input_value(control, node, slot, raw)?;
+                self.install_range_input_value(control, node, slot, InputSource::Row(raw))?;
             }
             if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Color {
                 self.update_input_color(control, node, slot)?;

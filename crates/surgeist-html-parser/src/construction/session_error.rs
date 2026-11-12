@@ -26,7 +26,6 @@ pub(crate) enum SessionError {
     TemplateInsertionStateUnavailable,
     NotDocument,
     OriginSplitUnavailable,
-    AttributeStorageUnavailable,
     ScriptMetadataUnavailable,
     SvgScriptMetadataUnavailable,
     ImageFormMetadataUnavailable,
@@ -195,7 +194,6 @@ pub(crate) fn session_class(error: &SessionError) -> SessionClass {
         | SessionError::TemplateInsertionStateUnavailable
         | SessionError::NotDocument
         | SessionError::OriginSplitUnavailable
-        | SessionError::AttributeStorageUnavailable
         | SessionError::ImageFormMetadataUnavailable
         | SessionError::FormAssociationMetadataUnavailable
         | SessionError::TextareaMetadataUnavailable
@@ -364,6 +362,7 @@ fn disposition(cause: HtmlConstructionCause) -> Disposition {
         | Cause::InvalidOutputRoot
         | Cause::OperandMissing
         | Cause::InvalidTextReference
+        | Cause::InvalidAttributeReference
         | Cause::NotPublished
         | Cause::IndexUnavailable => Class(SessionClass::Fault(
             HtmlParseInvariant::ConstructionOwnerRefusal,

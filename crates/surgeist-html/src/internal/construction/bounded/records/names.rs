@@ -59,7 +59,10 @@ enum Found {
 
 impl HtmlConstructionStorage {
     /// The entry `id` names, or the foreign-builder cause for another storage's id.
-    fn name_entry(&self, id: &NameId) -> Result<&Arc<NameEntry>, HtmlConstructionError> {
+    pub(in crate::internal::construction::bounded) fn name_entry(
+        &self,
+        id: &NameId,
+    ) -> Result<&Arc<NameEntry>, HtmlConstructionError> {
         if id.tree != self.arena.serial {
             return Err(HtmlConstructionCause::ForeignBuilder.into());
         }
@@ -169,7 +172,7 @@ impl HtmlConstructionStorage {
     /// The number and the entry of the name `key` spells, made when the table has none. A new
     /// entry holds `given` when it is supplied, and otherwise a name built from a copy of the
     /// local name of `key` with its namespace and prefix.
-    pub(super) fn intern<A: HtmlRecordAdmission>(
+    pub(in crate::internal::construction::bounded) fn intern<A: HtmlRecordAdmission>(
         &mut self,
         key: NameKey<'_>,
         given: Option<&QualifiedName>,
@@ -472,27 +475,28 @@ impl HtmlConstructionStorage {
         }
     }
 
-    /// Creates a detached element named by `name`, an id this storage issued, with the ordered
-    /// attributes given. As [`create_element`](Self::create_element), without interning the name
-    /// again. The foreign-builder cause for the id of another storage.
+    /// Creates a detached element named by `name`, an id this storage issued, with no
+    /// attributes. As [`create_element`](Self::create_element), without interning the name again
+    /// and without attributes, which the element receives from
+    /// [`append_named_attribute`](Self::append_named_attribute). The foreign-builder cause for the
+    /// id of another storage.
     pub fn create_element_named<A: HtmlRecordAdmission>(
         &mut self,
         name: &NameId,
-        attributes: OrderedAttributes,
         link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
         Work::visit(admission)?;
         let entry = self.name_entry(name).map_err(faulted)?.clone();
-        self.create_element_of(entry, attributes, link_flags, admission)
+        self.create_element_of(entry, link_flags, super::Authored::NONE, admission)
     }
 
     /// Creates the element of the interned `name`.
     pub(super) fn create_element_of<A: HtmlRecordAdmission>(
         &mut self,
         name: Arc<NameEntry>,
-        attributes: OrderedAttributes,
         link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
+        authored: super::Authored<'_>,
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
         let known = name.key().html();
@@ -500,13 +504,13 @@ impl HtmlConstructionStorage {
         if link_flags.is_some() && known != Some(crate::vocabulary::KnownHtmlElement::Link) {
             return Err(fault(HtmlConstructionCause::WrongNodeKind));
         }
-        self.create(
+        self.create_with(
             Created::Element {
                 name,
-                attributes,
                 link_flags,
                 template,
             },
+            authored,
             admission,
         )
     }
