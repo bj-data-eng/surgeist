@@ -457,6 +457,7 @@ pub use scroll::{
     ScrollAnchorPriority, ScrollAnchorRequest, ScrollAnchorRequestOf, ScrollAnchorSelectionError,
     ScrollAnchorSubject, ScrollAnchorSubjectOf, ScrollCoordinateError, ScrollCoordinateErrorOf,
     ScrollGeometry, ScrollGeometryOf, ScrollRect, ScrollRectError, ScrollRectErrorOf, ScrollRectOf,
+    ScrollSnapContext, ScrollSnapContextOf, ScrollSnapGeometry, ScrollSnapGeometryOf,
     ScrollTargetGeometry, ScrollTargetGeometryOf, ScrollbarGutterRects, ScrollbarGutterRectsOf,
     select_scroll_anchor,
 };

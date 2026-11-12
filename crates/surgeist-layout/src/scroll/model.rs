@@ -69,18 +69,7 @@ pub type ScrollRect = ScrollRectOf<DefaultScalar>;
 
 impl<S: LayoutScalar> ScrollRectOf<S> {
     pub fn try_new(origin: Point<S>, size: Size<S>) -> Result<Self, ScrollRectErrorOf<S>> {
-        if !origin.x.is_finite() {
-            return Err(ScrollRectErrorOf::NonFiniteOrigin {
-                axis: PhysicalAxis::Horizontal,
-                value: origin.x,
-            });
-        }
-        if !origin.y.is_finite() {
-            return Err(ScrollRectErrorOf::NonFiniteOrigin {
-                axis: PhysicalAxis::Vertical,
-                value: origin.y,
-            });
-        }
+        Self::validate_origin(origin)?;
         if !size.width.is_finite() {
             return Err(ScrollRectErrorOf::NonFiniteSize {
                 axis: PhysicalAxis::Horizontal,
@@ -129,6 +118,22 @@ impl<S: LayoutScalar> ScrollRectOf<S> {
             origin: Point::new(canonical_zero(origin.x), canonical_zero(origin.y)),
             size: Size::new(canonical_zero(size.width), canonical_zero(size.height)),
         })
+    }
+
+    pub(super) fn validate_origin(origin: Point<S>) -> Result<(), ScrollRectErrorOf<S>> {
+        if !origin.x.is_finite() {
+            return Err(ScrollRectErrorOf::NonFiniteOrigin {
+                axis: PhysicalAxis::Horizontal,
+                value: origin.x,
+            });
+        }
+        if !origin.y.is_finite() {
+            return Err(ScrollRectErrorOf::NonFiniteOrigin {
+                axis: PhysicalAxis::Vertical,
+                value: origin.y,
+            });
+        }
+        Ok(())
     }
 
     #[must_use]
@@ -247,9 +252,10 @@ impl<S: LayoutScalar> PartialEq<Option<ScrollRectOf<S>>> for OverflowClipOf<S> {
 /// Immutable layout-produced geometry and metadata for one scroll target.
 ///
 /// The nested value preserves local physical border geometry and scroll margin
-/// together with the target's flow axes and semantic snap metadata. Root owns
-/// retained association, transformed coordinates, oversized-target rules and
-/// live snap selection.
+/// together with the target's flow axes and semantic snap metadata. The
+/// composition layer supplies retained association and transformed bounds in
+/// the scroll container's frame. Layout derives snap geometry from those
+/// inputs and the scrolling consumer selects the live destination.
 ///
 /// ```compile_fail
 /// use surgeist_layout::ScrollTargetGeometry;
@@ -532,7 +538,7 @@ impl<S: LayoutScalar> PhysicalScrollAxisRangeOf<S> {
     }
 
     #[must_use]
-    fn clamp(self, value: S) -> S {
+    pub(super) fn clamp(self, value: S) -> S {
         value.max(self.minimum).min(self.maximum)
     }
 }
@@ -857,9 +863,9 @@ impl FlowAxes {
 /// independent clips, gutters, the zero-anchored signed range, optimal viewing
 /// region and nested target metadata are one canonical result.
 ///
-/// This value deliberately carries no retained identity, transform, current
-/// offset, snap selection, CSSOM state, host scrollbar UI or events. Root owns
-/// those live concerns and consumes this geometry rather than recomputing it.
+/// Composition associates these facts with retained identity and transforms.
+/// Scrolling consumers use them for live offsets, destination selection, and
+/// host interaction. Runtime coordinates coherent publication.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollGeometryOf<S: LayoutScalar = DefaultScalar> {
     pub(super) source: CanonicalScrollGeometrySourceOf<S>,

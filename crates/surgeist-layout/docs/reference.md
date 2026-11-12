@@ -1027,6 +1027,8 @@ Sources: [geometry](../src/geometry.rs) and [scroll](../src/scroll/mod.rs).
 - Physical geometry and flow mapping: `Point`, `Size`, `Edges`, and `FlowAxes`.
 - Canonical scroll geometry: `ScrollGeometryOf`, `ScrollRectOf`, `PhysicalScrollRangeOf`, and `FlowRelativeScrollRangeOf`.
 - Read-only scroll details: `OverflowClipOf`, `ScrollbarGutterRectsOf`, and `ScrollTargetGeometryOf`.
+- [Snap geometry](explanation.md#scroll-snap-geometry) uses `ScrollSnapContextOf`
+  and `ScrollSnapGeometryOf`.
 
 ### Output
 

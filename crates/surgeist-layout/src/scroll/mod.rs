@@ -14,6 +14,11 @@ mod contribution;
 mod input;
 mod model;
 pub(crate) mod rounding;
+mod snap;
+mod snap_distance;
+
+#[cfg(test)]
+mod snap_tests;
 
 use box_geometry::{AutoScrollbarOverflowObservation, scroll_rect_axis_interval, used_overflow_at};
 pub(crate) use box_geometry::{
@@ -60,3 +65,5 @@ pub use model::{
     ScrollGeometryOf, ScrollRect, ScrollRectError, ScrollRectErrorOf, ScrollRectOf,
     ScrollTargetGeometry, ScrollTargetGeometryOf, ScrollbarGutterRects, ScrollbarGutterRectsOf,
 };
+
+pub use snap::{ScrollSnapContext, ScrollSnapContextOf, ScrollSnapGeometry, ScrollSnapGeometryOf};
