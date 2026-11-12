@@ -319,10 +319,12 @@ mode, focus delegation, slot assignment, clonability and serializability.
 Element.shadowRoot exposes open roots. Node root reads and event paths use
 canonical identities and preserve closed-root visibility and retargeting.
 `Element.attachShadow` converts its options before revalidating the live host.
-It publishes through native Source and returns the exact ShadowRoot in the
-host's current node Document's creation realm with an admitted retirement watch.
-Both open and closed modes are supported. Declarative reuse and native custom
-element registry objects are unavailable in this profile.
+Native Source attaches a new open or closed root or reuses a declarative root
+of the same mode. The wrapper uses the root's creation realm and keeps its
+exact retirement watch. Reuse returns the existing wrapper when available
+and preserves the root's settings while removing its ordinary children.
+The synchronous binding requires one complete Source publication. Native
+custom element registry objects are unavailable in this profile.
 `DocumentGuestEventLimits` includes the native watch storage and work limits.
 The `Text` and `Comment` constructors and Document factories use the same
 creation and retirement boundary. The factories use the receiver Document's

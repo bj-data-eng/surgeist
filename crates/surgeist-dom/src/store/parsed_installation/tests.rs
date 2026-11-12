@@ -2,6 +2,8 @@ use super::*;
 use surgeist_html::values::DocumentString;
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseLimits, HtmlSource};
 
+mod shadow_reuse;
+
 fn report() -> Arc<HtmlParseReport> {
     report_for("<!doctype html><p>private</p>")
 }

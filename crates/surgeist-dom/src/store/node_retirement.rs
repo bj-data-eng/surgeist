@@ -792,7 +792,7 @@ impl Dom {
         result
     }
 
-    pub(super) fn watch_prepared_source_creation(
+    pub(super) fn watch_prepared_source_node(
         &mut self,
         publication: &super::PreparedPublication,
         node: NodeId,

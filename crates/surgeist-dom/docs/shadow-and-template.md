@@ -4,8 +4,8 @@ ShadowRoot and Template contents are distinct owned relations alongside ordinary
 
 ## Shadow attachment and tree relations
 
-`attach_shadow` creates an actual eighth node kind through the same batch tickets,
-node admission, owner/slot/generation identity and immutable snapshots. It requires
+`attach_shadow` returns a batch-local attachment ticket for the exact root,
+resolved through `DomCommit::attached_shadow_root`. It requires
 an admitted HTML-namespace Element with a selected DOM valid-shadow-host name,
 using HTML's actual custom-name grammar. `DomShadowRootInit::new(mode)` requires
 open or closed mode and selects named assignment plus false delegates-focus,
@@ -14,10 +14,15 @@ all five values. The native root stores false declarative/available-to-internals
 keep-registry-null flags. Its registry defaults to the host's node Document's
 canonical registry, including after hosted teardown. An explicit null registry
 applies at creation. A clonable root retains a null registry when copied.
-`attach_shadow_with_node_retirement_watch` admits the watch on the same Source
-publication as the new root. Duplicate attachment rejects. Custom definitions
-and execution, declarative reuse, focus execution and serialization remain
-unavailable.
+
+A declarative root with a matching mode keeps its identity, registry and
+settings. Native removal runs for its ordinary children in tree order before
+the declarative flag clears. A mode mismatch or a nondeclarative root refuses
+the attachment. `DomSourceEdit::attach_shadow` carries any removal service
+requests on its original lease. The synchronous attachment methods admit only
+a complete Source publication, with the retirement watch admitted in that
+publication when requested. Custom definitions and execution, focus execution
+and serialization remain unavailable.
 
 A root has a non-null reciprocal host relation and no ordinary parent. Its
 children are the ordinary children of its own separate tree. `hosted_shadow_root`
@@ -43,7 +48,8 @@ identities. Old snapshots retain the previous complete state.
 ## Shadow change coverage
 
 `ShadowRoot(host)` changes report a hosted link on an existing Element. Creation
-and destruction cover their full new/retired state. `ShadowRelations` explicitly
+and destruction cover their full new/retired state. `Data(root)` reports the
+declarative flag change on the reused ShadowRoot. `ShadowRelations` explicitly
 requests conservative recomputation of all derived shadow/tree-scope/connectedness
 relations after a structural change in a store with a shadow tree. Ordinary
 Parent/Children remain precise ordinary-tree changes; ordinary-only stores keep

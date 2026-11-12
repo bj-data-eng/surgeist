@@ -152,12 +152,49 @@ impl Capture {
                 native = native.with_null_registry();
             }
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-            let document = self.with_native(&owner, |session, _| {
+            let (document, existing) = self.with_native(&owner, |session, _| {
                 let snapshot = session.snapshot();
                 let node = snapshot.node_with(host, || events.step())?;
-                node.owner_document()
-                    .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
+                let document = node
+                    .owner_document()
+                    .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+                Ok((document, node.hosted_shadow_root()))
             })?;
+            if let Some(root) = existing
+                && let Some(projected) = public
+                    .document
+                    .ordinary
+                    .open_with(scope, root, || events.step())?
+            {
+                self.with_native(&owner, |session, _| {
+                    let (_, attached) = session.dom().raw_mut().attach_shadow_synchronously(
+                        host,
+                        native,
+                        events.limits.source_edits,
+                        &owner.cancellation,
+                    )?;
+                    if root != attached {
+                        return Err(DocumentScriptNativeError::ProjectionCustody.into());
+                    }
+                    Ok(())
+                })?;
+                return Ok(projected);
+            }
+            let origin = if let Some(root) = existing {
+                self.with_native(&owner, |session, attached| {
+                    let snapshot = session.snapshot();
+                    let root = snapshot.node_with(root, || events.step())?;
+                    events.step()?;
+                    let global = root
+                        .relevant_global()
+                        .map_err(DomHostedRuntimeError::Dom)
+                        .map_err(DocumentScriptNativeError::from)?
+                        .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
+                    Ok((global != attached).then_some(global))
+                })?
+            } else {
+                public.other_document_origin(&owner, &events, document)?
+            };
             let mut publish = |prototypes: &DocumentPrototypes| {
                 public.document.ordinary.create(
                     scope,
@@ -183,7 +220,7 @@ impl Capture {
                     },
                 )
             };
-            if let Some(origin) = public.other_document_origin(&owner, &events, document)? {
+            if let Some(origin) = origin {
                 public.with_origin(&events, origin, |origin| publish(&origin.documents))
             } else {
                 publish(&public.document.prototypes)

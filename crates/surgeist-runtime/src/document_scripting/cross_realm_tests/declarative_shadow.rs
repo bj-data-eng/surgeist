@@ -192,6 +192,18 @@ pub(super) fn verify_declarative_shadow_reuse() {
             host.snapshot().unwrap().node(child),
             Err(DomError::StaleNode)
         ));
+        let retired = host.in_document(&permit, |scope| {
+            evaluate(scope, "shadowChild.parentNode").map(drop)
+        });
+        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = retired else {
+            panic!("the detached child's original wrapper must observe retirement: {retired:?}");
+        };
+        assert!(matches!(
+            failure.cause::<DocumentGuestEventError>(),
+            Some(DocumentGuestEventError::Document(
+                DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
+            ))
+        ));
         assert_eq!(
             host.snapshot().unwrap().shadow_root(root).unwrap().host(),
             element
