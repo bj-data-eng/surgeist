@@ -374,3 +374,67 @@ fn deep_positioned_block_layout_returns_on_bounded_stack() {
         },
     );
 }
+
+fn assert_shared_float_block_chain<S: LayoutScalar>(depth: u32) {
+    let px = S::from_f64;
+    let preferred =
+        |value| crate::PreferredSizeOf::value(crate::LengthPercentageOf::px(px(value)).unwrap());
+    let floated = |width, height| NodeInputOf {
+        display: Display::Block,
+        float: crate::Float::Left,
+        size: Size::new(preferred(width), preferred(height)),
+        ..NodeInputOf::default()
+    };
+    let tree = chain::<S>(Display::Block, depth + 1)
+        .children(0, [depth, 1])
+        .children(depth - 1, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                size: Size::new(preferred(100.0), preferred(80.0)),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(depth, floated(80.0, 20.0))
+        .style(depth - 1, floated(30.0, 10.0));
+    let batch = compute_layout(&tree, 0, standalone()).expect("shared float Block chain");
+    assert_eq!(batch.node_layouts().len(), (depth + 1) as usize);
+    let output = |node| {
+        batch
+            .node_layout(node)
+            .unwrap()
+            .single_box()
+            .unwrap()
+            .final_output()
+    };
+    assert_eq!(output(depth).location, crate::Point::new(S::ZERO, S::ZERO));
+    assert_eq!(output(1).source_index, crate::SourceIndex::new(1));
+    assert_eq!(output(depth - 1).size, Size::new(px(30.0), px(10.0)));
+    assert_eq!(
+        output(depth - 1).location,
+        crate::Point::new(S::ZERO, px(20.0))
+    );
+}
+
+#[test]
+fn shallow_shared_float_block_layout_publishes_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_shared_float_block_layout_publishes_geometry",
+        || {
+            assert_shared_float_block_chain::<f32>(4);
+            assert_shared_float_block_chain::<f64>(4);
+        },
+    );
+}
+
+#[test]
+fn deep_shared_float_block_layout_returns_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_shared_float_block_layout_returns_on_bounded_stack",
+        || {
+            assert_shared_float_block_chain::<f32>(128);
+            assert_shared_float_block_chain::<f64>(128);
+        },
+    );
+}
