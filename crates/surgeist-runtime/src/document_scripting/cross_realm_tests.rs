@@ -196,6 +196,11 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     rejected_comment_requires_each_diagnostic_utf16_work_unit();
     window_binding_storage_admits_exact_and_refuses_one_byte_short();
     super::guest::tests::adopted_element_uses_its_registered_creation_realm();
+    super::guest::tests::registered_origin::native_document_and_fragment_use_their_registered_realm(
+    );
+    super::guest::tests::registered_origin::registered_origin_refusals_preserve_state();
+    super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
+    );
     super::guest::tests::element_projection_admits_exact_work_and_backing();
     super::guest::tests::refused_element_realm_installation_releases_guest_backing();
     super::guest::tests::native_element_ancestors_are_projected_and_metered();

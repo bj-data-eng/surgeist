@@ -67,12 +67,73 @@ struct DocumentPin {
 pub(super) struct DocumentBindings {
     attached_id: DocumentId,
     attached: RetainedCallbackObject,
-    prototype: RetainedCallbackObject,
     documents: RefCell<Option<Box<DocumentPin>>>,
-    fragment: fragment::FragmentBindings,
+    prototypes: DocumentPrototypes,
     character_data: character_data::CharacterBindings,
     element: element::ElementBindings,
     ordinary: ordinary::OrdinaryBindings,
+}
+
+pub(super) struct DocumentPrototypes {
+    document: RetainedCallbackObject,
+    fragment: RetainedCallbackObject,
+}
+
+impl DocumentPrototypes {
+    pub(super) fn install_origin<'scope>(
+        scope: &mut Scope<'scope>,
+        node: &Value<'scope>,
+        constructor: &Value<'scope>,
+        funding: &OriginInterfaceFunding<'_>,
+    ) -> Result<Self, DocumentGuestEventError> {
+        let unavailable = ConstructorCallback::bounded(
+            0,
+            |_| Err(Error::BackendUnavailable),
+            |scope, _| {
+                Ok(ConstructorCompletion::Throw(
+                    scope.type_error(&ascii(b"Illegal constructor"))?,
+                ))
+            },
+        );
+        let (prototypes, _) = Self::install(
+            scope,
+            node,
+            constructor,
+            (&unavailable, &unavailable),
+            funding,
+        )?;
+        Ok(prototypes)
+    }
+
+    fn install<'scope>(
+        scope: &mut Scope<'scope>,
+        node: &Value<'scope>,
+        constructor: &Value<'scope>,
+        (document_callback, fragment_callback): (&ConstructorCallback, &ConstructorCallback),
+        funding: &OriginInterfaceFunding<'_>,
+    ) -> Result<(Self, Value<'scope>), DocumentGuestEventError> {
+        let document = install_derived_node(scope, node, constructor, DOCUMENT, document_callback)?;
+        let fragment = install_derived_node(
+            scope,
+            node,
+            constructor,
+            fragment::FRAGMENT,
+            fragment_callback,
+        )?;
+        fragment::install_factory(scope, &document, &funding.capture)?;
+        element::install_document_root(scope, &document, &funding.capture)?;
+        let observed = scope.callback_object(&document)?;
+        let retained_document = scope.retain_callback_object(observed, funding.retain)?;
+        let observed = scope.callback_object(&fragment)?;
+        let retained_fragment = scope.retain_callback_object(observed, funding.retain)?;
+        Ok((
+            Self {
+                document: retained_document,
+                fragment: retained_fragment,
+            },
+            document,
+        ))
+    }
 }
 
 impl Drop for DocumentBindings {
@@ -113,7 +174,6 @@ impl DocumentBindings {
         origin: OriginInterfaceFunding<'_>,
     ) -> Result<Self, DocumentGuestEventError> {
         let (node_constructor, node) = install_node(scope, target_prototype, &origin.capture)?;
-        let prototype = scope.object(ObjectPrototype::Object(&node))?;
         let fallback = capture(size_of::<Capture>())?;
         let construct = capture(size_of::<Capture>())?;
         let callback = ConstructorCallback::bounded(
@@ -121,37 +181,19 @@ impl DocumentBindings {
             move |scope| {
                 let (_, events) = fallback.active(scope)?;
                 let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-                scope.open_callback_object(&public.document.prototype)
+                scope.open_callback_object(&public.document.prototypes.document)
             },
             move |scope, arguments| construct.construct_document(scope, arguments),
         );
-        let document_constructor = scope.constructor(
-            &callback,
-            FunctionMetadata {
-                name: DOCUMENT,
-                length: 0,
-            },
+        let fragment = fragment::constructor(capture)?;
+        let (prototypes, prototype) = DocumentPrototypes::install(
+            scope,
+            &node,
+            &node_constructor,
+            (&callback, &fragment),
+            &origin,
         )?;
-        scope.set_prototype(
-            &document_constructor,
-            ObjectPrototype::Object(&node_constructor),
-        )?;
-
-        scope.define_property(
-            &document_constructor,
-            PropertyKey::String(PROTOTYPE),
-            PropertyDescriptor::Data {
-                value: &prototype,
-                writable: false,
-                enumerable: false,
-                configurable: false,
-            },
-        )?;
-        fragment::install_factory(scope, &prototype, capture)?;
         let global = scope.global()?;
-        install_interface(scope, &global, DOCUMENT, &document_constructor, &prototype)?;
-        let fragment =
-            fragment::FragmentBindings::install(scope, &node, &node_constructor, capture, fund)?;
         let character_data = character_data::CharacterBindings::install(
             scope,
             &node,
@@ -167,7 +209,6 @@ impl DocumentBindings {
             &origin.capture,
             &origin.retain,
         )?;
-        element::install_document_root(scope, &prototype, capture)?;
         let getter = capture(size_of::<Capture>())?;
         install_getter(
             scope,
@@ -185,14 +226,11 @@ impl DocumentBindings {
             },
             fund,
         )?;
-        let observed = scope.callback_object(&prototype)?;
-        let prototype = scope.retain_callback_object(observed, fund)?;
         Ok(Self {
             attached_id: document,
             attached,
-            prototype,
             documents: RefCell::new(None),
-            fragment,
+            prototypes,
             character_data,
             element,
             ordinary: ordinary::OrdinaryBindings::new(inbox),
@@ -468,6 +506,31 @@ pub(super) fn install_interface<'scope>(
     )
 }
 
+fn install_derived_node<'scope>(
+    scope: &mut Scope<'scope>,
+    node: &Value<'scope>,
+    node_constructor: &Value<'scope>,
+    name: &[u16],
+    callback: &ConstructorCallback,
+) -> Result<Value<'scope>, Error> {
+    let prototype = scope.object(ObjectPrototype::Object(node))?;
+    let constructor = scope.constructor(callback, FunctionMetadata { name, length: 0 })?;
+    scope.set_prototype(&constructor, ObjectPrototype::Object(node_constructor))?;
+    scope.define_property(
+        &constructor,
+        PropertyKey::String(PROTOTYPE),
+        PropertyDescriptor::Data {
+            value: &prototype,
+            writable: false,
+            enumerable: false,
+            configurable: false,
+        },
+    )?;
+    let global = scope.global()?;
+    install_interface(scope, &global, name, &constructor, &prototype)?;
+    Ok(prototype)
+}
+
 fn install_getter<'scope>(
     scope: &mut Scope<'scope>,
     object: &Value<'scope>,
@@ -490,23 +553,27 @@ fn install_getter<'scope>(
 }
 
 impl PublicEventBindings {
-    fn project_unpinned_document<'scope>(
+    #[cfg(test)]
+    pub(in crate::document_scripting::guest) fn refuse_next_ordinary_wrapper_validation(&self) {
+        self.document.ordinary.refuse_next_validation.set(true);
+    }
+
+    fn other_document_origin(
         &self,
-        scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
         document: DocumentId,
-    ) -> Result<Value<'scope>, DocumentGuestEventError> {
-        let bindings = &self.document;
-        // Published Document nodes survive for the native owner lifetime.
-        // Qualification established this Document's own attached realm.
-        bindings.publish_document(
-            scope,
-            owner,
-            events,
-            ordinary::NodePrototype::Creation(&bindings.prototype),
-            || Ok(document),
-        )
+    ) -> Result<Option<DomHostedGlobalId>, DocumentGuestEventError> {
+        self.callbacks.with_native(owner, |session, attached| {
+            let snapshot = session.snapshot();
+            let node = snapshot.node_with(document.node(), || events.step())?;
+            events.step()?;
+            let origin = node
+                .relevant_global()
+                .map_err(DomHostedRuntimeError::Dom)
+                .map_err(DocumentScriptNativeError::from)?;
+            Ok(origin.filter(|origin| *origin != attached))
+        })
     }
 }
 

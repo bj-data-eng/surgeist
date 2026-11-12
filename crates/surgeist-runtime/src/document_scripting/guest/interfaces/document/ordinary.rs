@@ -6,6 +6,8 @@ use surgeist_dom::DomNodeRetirementWatch;
 pub(super) struct OrdinaryBindings {
     inbox: RefCell<DomNodeRetirementInbox>,
     pins: RefCell<OrdinaryPins>,
+    #[cfg(test)]
+    pub(super) refuse_next_validation: Cell<bool>,
 }
 
 pub(super) enum NodePrototype<'value, 'scope> {
@@ -16,6 +18,11 @@ pub(super) enum NodePrototype<'value, 'scope> {
 enum Publication<Publish> {
     Pending(Publish),
     Watched(GuestNode, DomNodeRetirementWatch),
+}
+
+enum Projection<'prototype, 'scope, Publish> {
+    Create(NodePrototype<'prototype, 'scope>, Publish),
+    Watch(&'prototype RetainedCallbackObject, Publish),
 }
 
 #[derive(Default)]
@@ -169,21 +176,72 @@ impl OrdinaryBindings {
         Self {
             inbox: RefCell::new(inbox),
             pins: RefCell::new(OrdinaryPins::default()),
+            #[cfg(test)]
+            refuse_next_validation: Cell::new(false),
         }
     }
 
-    pub(super) fn project<'scope>(
+    pub(super) fn create<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
         prototype: NodePrototype<'_, 'scope>,
-        publish: impl FnOnce(
+        create: impl FnOnce(
             &DomNodeRetirementInbox,
             usize,
         )
             -> Result<(GuestNode, DomNodeRetirementWatch), DocumentGuestEventError>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        self.project(scope, owner, events, Projection::Create(prototype, create))
+    }
+
+    pub(super) fn watch<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        callbacks: &Callbacks,
+        node: GuestNode,
+        prototype: &RetainedCallbackObject,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        self.project(
+            scope,
+            owner,
+            events,
+            Projection::Watch(prototype, |inbox: &DomNodeRetirementInbox, key| {
+                let watch = callbacks.with_native(owner, |session, _| {
+                    session
+                        .dom()
+                        .raw_mut()
+                        .watch_node_retirement(
+                            node.node(),
+                            inbox,
+                            key,
+                            events.limits.node_retirement,
+                            &owner.cancellation,
+                        )
+                        .map_err(Into::into)
+                })?;
+                Ok((node, watch))
+            }),
+        )
+    }
+
+    fn project<'scope, Publish>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        projection: Projection<'_, 'scope, Publish>,
+    ) -> Result<Value<'scope>, DocumentGuestEventError>
+    where
+        Publish: FnOnce(
+            &DomNodeRetirementInbox,
+            usize,
+        )
+            -> Result<(GuestNode, DomNodeRetirementWatch), DocumentGuestEventError>,
+    {
         let mut pins = self
             .pins
             .try_borrow_mut()
@@ -204,32 +262,50 @@ impl OrdinaryBindings {
             node: Cell::new(None),
             lifetime: Some(lifetime.clone()),
         };
-        let (holder, publication) = match prototype {
-            NodePrototype::Selected(prototype) => (
+        let (holder, publication) = match projection {
+            Projection::Create(NodePrototype::Selected(prototype), create) => (
                 events.project(owner, scope, ObjectPrototype::Object(prototype), payload)?,
-                Publication::Pending(publish),
+                Publication::Pending(create),
             ),
-            NodePrototype::Creation(prototype) => {
-                events.step()?;
+            Projection::Create(NodePrototype::Creation(prototype), create) => (
+                Self::form_in_prototype_realm(scope, owner, events, prototype, payload, || Ok(()))?,
+                Publication::Pending(create),
+            ),
+            Projection::Watch(prototype, watch) => {
                 let mut watched = None;
-                let holder = scope.project_retained_native_object_in_prototype_realm(
+                let holder = Self::form_in_prototype_realm(
+                    scope,
+                    owner,
+                    events,
                     prototype,
                     payload,
-                    |payload, holder| {
-                        let payload = events.reserve(owner, payload)?;
-                        let holder = events.reserve(owner, holder)?;
-                        watched = Some(publish(&inbox, key)?);
-                        Ok::<_, DocumentGuestEventError>((payload, holder))
+                    || {
+                        watched = Some(watch(&inbox, key)?);
+                        Ok(())
                     },
                 )?;
                 let (node, watch) = watched.ok_or(DocumentScriptNativeError::ProjectionCustody)?;
                 (holder, Publication::Watched(node, watch))
             }
         };
-        let value = scope.open_callback_object(&holder)?;
-        let projection = scope
-            .native_object::<GuestNodeProjection>(&value)?
-            .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+        let validated = (|| {
+            #[cfg(test)]
+            if self.refuse_next_validation.replace(false) {
+                return Err(Error::BackendUnavailable.into());
+            }
+            let value = scope.open_callback_object(&holder)?;
+            let projection = scope
+                .native_object::<GuestNodeProjection>(&value)?
+                .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+            Ok::<_, DocumentGuestEventError>((value, projection))
+        })();
+        let (value, projection) = match validated {
+            Ok(validated) => validated,
+            Err(error) => {
+                let _ = scope.release_callback_object(holder);
+                return Err(error);
+            }
+        };
         let mut pin = Box::new(Pin {
             holder,
             live: None,
@@ -258,6 +334,27 @@ impl OrdinaryBindings {
         });
         reserved.publish(pin);
         Ok(value)
+    }
+
+    fn form_in_prototype_realm(
+        scope: &mut Scope<'_>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        prototype: &RetainedCallbackObject,
+        payload: GuestNodeProjection,
+        admit_watch: impl FnOnce() -> Result<(), DocumentGuestEventError>,
+    ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
+        events.step()?;
+        scope.project_retained_native_object_in_prototype_realm(
+            prototype,
+            payload,
+            |payload, holder| {
+                let payload = events.reserve(owner, payload)?;
+                let holder = events.reserve(owner, holder)?;
+                admit_watch()?;
+                Ok((payload, holder))
+            },
+        )
     }
 
     pub(super) fn open<'scope>(
