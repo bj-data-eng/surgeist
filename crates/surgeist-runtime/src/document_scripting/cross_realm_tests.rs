@@ -221,6 +221,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     attached_registry_preserves_the_original_terminal_refusal();
     attached_beforetoggle_uses_the_original_toggle_event();
     element_tasks::verify_attached_element_tasks();
+    attached_source_listener_dispatches_an_authored_event();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
     );
@@ -813,6 +814,10 @@ fn insert_hosted_element(
 }
 
 fn attached_cancel_host(cancel: Arc<AtomicBool>) -> AttachedCancel {
+    attached_cancel_host_with_reports(cancel, 4)
+}
+
+fn attached_cancel_host_with_reports(cancel: Arc<AtomicBool>, reports: usize) -> AttachedCancel {
     let (mut session, target, dialog) = hosted_element(&cancel, "dialog");
     let document = target.document();
     let registry_limits = DomEventRegistryLimits {
@@ -845,13 +850,14 @@ fn attached_cancel_host(cancel: Arc<AtomicBool>) -> AttachedCancel {
         )
         .unwrap();
     let mut registry = Some(registry);
-    let mut host = super::guest::tests::attach_public_nodes_with_registry(
+    let mut host = super::guest::tests::attach_public_nodes_with_registry_and_reports(
         session,
         target,
         cancel.clone(),
         1_000,
         20_000,
         &mut registry,
+        reports,
     );
     assert!(registry.is_none());
     let mut competing = DomEventDispatcher::<()>::new(registry_limits).unwrap();
@@ -1288,6 +1294,115 @@ fn attached_beforetoggle_uses_the_original_toggle_event() {
             .is_none()
     );
     assert!(host.stop().into_session().is_ok());
+}
+
+fn attached_source_listener_dispatches_an_authored_event() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let AttachedCancel {
+        mut host,
+        dialog,
+        observations,
+    } = attached_cancel_host_with_reports(cancel.clone(), 8);
+    let permit = host.permit().unwrap();
+    super::guest::tests::expose_public_node_for_source_test(&mut host, &permit, dialog, "dialog");
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"
+            const inner = new Event("inner", {cancelable: true});
+            globalThis.innerSentinel = {};
+            globalThis.order = [];
+            globalThis.innerChecks = false;
+            globalThis.outerRestored = false;
+            dialog.addEventListener("inner", function (event) {
+                order.push("inner-first");
+                innerChecks = event === inner && event === globalThis.event && this === dialog
+                    && event.target === dialog && event.currentTarget === dialog
+                    && !event.isTrusted;
+                event.preventDefault();
+                throw innerSentinel;
+            }, {once: true});
+            dialog.addEventListener("inner", event => {
+                order.push("inner-next");
+                innerChecks &&= event === inner && event.defaultPrevented
+                    && event === globalThis.event;
+            }, {once: true});
+            dialog.addEventListener("cancel", function (event) {
+                globalThis.originalOuter = event;
+                order.push("outer-start");
+                const canceled = !dialog.dispatchEvent(inner);
+                let rejectsActiveEvent = false;
+                try {
+                    dialog.dispatchEvent(event);
+                } catch (error) {
+                    rejectsActiveEvent = error.name === "InvalidStateError";
+                }
+                outerRestored = canceled && rejectsActiveEvent && this === dialog
+                    && event === globalThis.event && event.currentTarget === dialog
+                    && inner.currentTarget === null && event.isTrusted;
+                event.preventDefault();
+                order.push("outer-end");
+            }, {once: true});
+        "#,
+        )
+        .map(drop)
+    })
+    .unwrap();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let request = start_attached_cancel(&mut host, dialog, &mut services, &cancel);
+    let mut outer_limits = EVENT;
+    outer_limits.dispatch.callbacks = 2;
+    let progress = host
+        .service_attached_source_event(&permit, &request, outer_limits)
+        .unwrap_or_else(|error| {
+            if let DocumentScriptEventError::Access(DocumentScriptError::Script(
+                Error::HostFailure(failure),
+            )) = &error
+            {
+                panic!(
+                    "nested authored dispatch refused: {:?}",
+                    failure.cause::<DocumentGuestEventError>()
+                );
+            }
+            panic!("nested authored dispatch refused: {error:?}");
+        });
+    let DomSourceEventServiceProgress::Serviced { receipt } = progress else {
+        panic!("nested delivery must complete the original outer callback: {progress:?}");
+    };
+    assert_eq!(observations.borrow().len(), 1);
+    assert_eq!(receipt.callbacks(), 2);
+    assert!(receipt.failures().is_empty());
+    assert!(receipt.default_prevented());
+    host.with_native(|dom, _, mut source| {
+        assert!(matches!(
+            source.resume(dom, request.operation(), SOURCE, &mut services, &cancel).unwrap(),
+            DomSourceDriveProgress::Complete(done) if done.operation() == request.operation()
+        ));
+    })
+    .unwrap();
+    let exception = host
+        .take_guest_listener_exception(&permit)
+        .unwrap()
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        let actual = scope.import(exception.exception.value())?;
+        let expected = evaluate(scope, "innerSentinel")?;
+        assert!(scope.strict_equals(&actual, &expected)?);
+        let actual = evaluate(scope, "innerChecks && outerRestored && order.join(',') === 'outer-start,inner-first,inner-next,outer-end' && originalOuter.currentTarget === null && globalThis.event === undefined")?;
+        let expected = scope.primitive(Primitive::Boolean(true))?;
+        assert!(scope.strict_equals(&actual, &expected)?);
+        Ok(())
+    }).unwrap();
+    assert!(
+        host.take_guest_listener_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
 }
 
 fn start_attached_cancel(

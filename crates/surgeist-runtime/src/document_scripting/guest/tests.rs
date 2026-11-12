@@ -44,6 +44,26 @@ pub(in crate::document_scripting) fn attach_public_nodes_with_registry(
     source_work: u64,
     registry: &mut Option<DomEventDispatcher<()>>,
 ) -> DocumentScriptHost {
+    attach_public_nodes_with_registry_and_reports(
+        session,
+        target,
+        cancellation,
+        node_work,
+        source_work,
+        registry,
+        4,
+    )
+}
+
+pub(in crate::document_scripting) fn attach_public_nodes_with_registry_and_reports(
+    session: DomSession,
+    target: DomHostedTopLevel,
+    cancellation: Arc<AtomicBool>,
+    node_work: u64,
+    source_work: u64,
+    registry: &mut Option<DomEventDispatcher<()>>,
+    pending_exception_reports: usize,
+) -> DocumentScriptHost {
     PreparedDocumentScriptHost::prepare(session, 2_000_000, cancellation)
         .unwrap()
         .enable_with_guest_event_registry(
@@ -60,7 +80,7 @@ pub(in crate::document_scripting) fn attach_public_nodes_with_registry(
             DocumentGuestEventLimits {
                 storage_bytes: 64_000,
                 work: 10_000,
-                pending_exception_reports: 4,
+                pending_exception_reports,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),
                 source_edits: DomSourceLimits::new(16_000_000, 200_000, source_work, 64, 64, 64, 2),
                 dispatch: DomEventDispatchLimits {
