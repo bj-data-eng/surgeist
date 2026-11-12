@@ -8,6 +8,10 @@ use super::*;
 use crate::inline::InlineSourcePositionOf;
 use crate::{AxisSizingRequestOf, FlowAxes};
 
+mod fit;
+
+use fit::{NumericRunContext, fit_numeric_run};
+
 #[cfg(test)]
 mod baseline_offset_tests;
 
@@ -511,7 +515,7 @@ where
     // binds its actual candidate disposition to entry geometry in the fitter.
     let uncollapsed_cursor_block = cursor_block;
     let mut cursor_block = cursor_block + adjoining_margin;
-    let mut margin = InlineRunMargin::Separates;
+    let margin;
     let logical_node_inner_size = constants.flow_axes.logical_size(node_inner_size);
     let provider_enabled = available_inline_extent.operation() == crate::SizingOperation::Normal;
     let child_run_mode = if provider_enabled {
@@ -1335,151 +1339,29 @@ where
         text_output = Some(output);
         report
     } else {
-        let wrapping = {
-            tree.wrapping_context()
-                .map(|(context, graph)| {
-                    // Wrapping cuts index emitted participants, not native slots
-                    // omitted for hidden or out-of-flow children.
-                    let nodes: Vec<_> = participants
-                        .iter()
-                        .map(|participant| {
-                            let source_index = match participant {
-                                MixedInlineParticipantOf::Atomic { item, .. } => item.source_index,
-                                MixedInlineParticipantOf::ForcedLineBreak(control) => {
-                                    control.source_index()
-                                }
-                                MixedInlineParticipantOf::Boundary(control) => {
-                                    control.source_index()
-                                }
-                            };
-                            run[source_index - source_index_start]
-                        })
-                        .collect();
-                    context
-                        .numeric_projection(
-                            graph,
-                            container,
-                            crate::inline_wrapping::NativeRunSource {
-                                nodes: run,
-                                start: source_index_start,
-                            },
-                            &nodes,
-                        )
-                        .map(|projection| {
-                            if available_inline_extent.operation()
-                                == crate::SizingOperation::MinContent
-                            {
-                                projection.without_avoidance()
-                            } else {
-                                projection
-                            }
-                        })
-                })
-                .transpose()
-                .map_err(|error| crate::inline_wrapping::wrapping_error(container, error))?
-        };
-        if !crate::inline::numeric_run_has_formatted_line(&participants, wrapping.as_ref()) {
-            margin = InlineRunMargin::Adjoins;
-            cursor_block = uncollapsed_cursor_block;
-        }
-        let observe_formatted =
-            matches!(
-                constants.wrap_style,
-                crate::TextWrapStyle::Balance
-                    | crate::TextWrapStyle::AvoidShortLastLine
-                    | crate::TextWrapStyle::Pretty
-            ) && crate::layout_math::normal_available_size(available_inline_extent).is_some()
-                || tree
-                    .text_computation()
-                    .is_some_and(|state| state.formatted_active());
-        let numeric_input = MixedInlineRunInputOf {
-            inline_baseline_context: constants.inline_baseline_context,
-            groups: tree
-                .group_computation()
-                .map(|groups| groups.snapshot())
-                .unwrap_or_default(),
-            wrapping,
-            text_wrap_style: constants.wrap_style,
-            line_box_context,
-            observe_tail: tail != crate::text_layout::fit::TailContext::Unrestricted,
-            available_inline_extent,
-            flow_axes: constants.flow_axes,
-            text_align: constants.text_align,
-            text_align_last: constants.text_align_last,
-            indent: resolve_text_indent(container, constants.text_indent, available_inline_extent)?,
-            indent_state,
-            participants,
-        };
-        // The callbacks are sequential. A receiving fact is resolved before
-        // any candidate band query, without aliasing the mutable child owner.
-        let numeric_tree = std::cell::RefCell::new(&mut *tree);
-        let result = layout_mixed_inline_run_with_formatted_observation(
-            numeric_input,
-            |block_start, block_end| {
-                if let Some(error) = provider_error.borrow_mut().take() {
-                    return Err(error);
-                }
-                let query_block_start = cursor_block + block_start;
-                let query_block_end = cursor_block + block_end;
-                let query = if !provider_enabled {
-                    float_exclusions
-                        .query_rectangular_line_band(query_block_start, query_block_end)
-                        .map_err(|error| text_run_error(container, error.into()))
-                } else {
-                    float_exclusions.query_provider_band(
-                        &**numeric_tree.borrow(),
-                        container,
-                        query_block_start,
-                        query_block_end,
-                    )
-                };
-                let band = query?;
-                Ok(LogicalLineBandQueryResultOf {
-                    inline_start: band.inline_start - logical_content_box_inset.inline_start,
-                    inline_end: band.inline_end - logical_content_box_inset.inline_start,
-                    next_transition: band
-                        .next_transition
-                        .map(|transition| transition - cursor_block),
-                })
+        let fit = fit_numeric_run(
+            tree,
+            NumericRunContext {
+                container,
+                run,
+                source_index_start,
+                available_inline_extent,
+                cursor_block,
+                uncollapsed_cursor_block,
+                constants,
+                provider_enabled,
+                line_box_context,
+                tail,
+                indent_state,
+                participants,
             },
-            |block, clear| {
-                float_exclusions.clearance_for_line_intent(cursor_block + block, clear)
-                    - cursor_block
-            },
-            observe_formatted,
-            |source_index, expected| {
-                if provider_error.borrow().is_some() {
-                    return Err(
-                        crate::inline_wrapping::NumericWrappingError::InvalidAtomicReceiverBasis,
-                    );
-                }
-                match resolve_atomic_receiver(
-                    &mut **numeric_tree.borrow_mut(),
-                    container,
-                    &mut atomic_children,
-                    source_index,
-                    expected,
-                    constants.flow_axes,
-                ) {
-                    Ok(strut) => Ok(strut),
-                    Err(error) => {
-                        *provider_error.borrow_mut() = Some(error);
-                        Err(crate::inline_wrapping::NumericWrappingError::InvalidAtomicReceiverBasis)
-                    }
-                }
-            },
-        );
-        // Child/provider errors retain their exact context even if provisional
-        // geometry makes a rejected quality trial fail its private replay proof.
-        if let Some(error) = provider_error.borrow_mut().take() {
-            return Err(error);
-        }
-        result.map_err(|error| match error {
-            crate::inline::NumericRunError::Numeric(error) => {
-                crate::inline_wrapping::numeric_wrapping_error(container, error)
-            }
-            crate::inline::NumericRunError::Band(error) => error,
-        })?
+            float_exclusions,
+            &mut atomic_children,
+            &provider_error,
+        )?;
+        margin = fit.margin;
+        cursor_block = fit.cursor_block;
+        fit.report
     };
     // Native outflows without a Text occurrence use the accepted run entry.
     // Their static position consumes adjoining displacement only with an actual
