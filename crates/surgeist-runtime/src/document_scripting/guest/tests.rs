@@ -3,6 +3,7 @@ use super::*;
 pub(in crate::document_scripting) mod move_before;
 pub(in crate::document_scripting) mod registered_origin;
 pub(in crate::document_scripting) mod shadow_root;
+pub(in crate::document_scripting) mod trusted_policy;
 
 fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
     let cancellation = Arc::new(AtomicBool::new(false));
