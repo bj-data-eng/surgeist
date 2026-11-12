@@ -221,6 +221,274 @@ struct ClearanceSettlement<S: LayoutScalar> {
     border: S,
 }
 
+struct InFlowChildMargins<'a, 'input, Node, S: LayoutScalar> {
+    node: Node,
+    child: Node,
+    index: usize,
+    child_style: &'a BlockChildProjection<'input, S>,
+    output: &'a ComputeOutputOf<S>,
+    child_margin: Edges<S>,
+    constants: &'a Constants<S>,
+    float_exclusions: &'a FloatExclusions<S, Node>,
+    clearance_funding: &'a mut Option<crate::text_layout::scope_alignment::EntryFunding<S>>,
+    introduced_cut: Option<entry::canonical::Separation<Node, S>>,
+}
+
+struct InFlowMarginPlacement<S: LayoutScalar> {
+    base_block: S,
+    prior_internal: S,
+    clearance: Option<ClearanceSettlement<S>>,
+    margin_groups: Option<(Option<usize>, Option<usize>)>,
+    top_margin_set: CollapsibleMarginOf<S>,
+    bottom_margin_set: CollapsibleMarginOf<S>,
+    collapses_through: bool,
+    child_margin_can_collapse_with_parent: bool,
+}
+
+fn begin_in_flow_child_margins<'input, Tree, S, M>(
+    tree: &mut Tree,
+    placement: InFlowChildMargins<'_, 'input, Tree::Node, S>,
+    adjoining: &mut entry::AdjoiningFlow<S>,
+    remaining_cut: &mut Option<entry::canonical::Separation<Tree::Node, S>>,
+    fragment_margins: &mut Option<super::fragment_margins::Flow>,
+) -> LayoutResultOf<Tree::Node, InFlowMarginPlacement<S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let InFlowChildMargins {
+        node,
+        child,
+        index,
+        child_style,
+        output,
+        child_margin,
+        constants,
+        float_exclusions,
+        clearance_funding,
+        mut introduced_cut,
+    } = placement;
+    let top_margin_set = output
+        .block_margin_collapse
+        .at(constants.flow_axes.block_start())
+        .collapse_with_margin(child_margin.at_physical_side(constants.flow_axes.block_start()));
+    let bottom_margin_set = output
+        .block_margin_collapse
+        .at(constants.flow_axes.block_end())
+        .collapse_with_margin(child_margin.at_physical_side(constants.flow_axes.block_end()));
+    let child_margin_can_collapse_with_parent = child_margin_can_collapse_with_parent(child_style);
+    let collapses_through = output
+        .block_margin_collapse
+        .can_collapse_through(constants.flow_axes);
+    if child_style.clear != Clear::None
+        && !float_exclusions.is_empty()
+        && clearance_funding.is_none()
+        && let Some(state) = tree.text_computation()
+    {
+        state
+            .prepare_entry()
+            .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
+        *clearance_funding = state
+            .entry_funding()
+            .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
+    }
+    if introduced_cut.is_none() && child_style.clear != Clear::None {
+        let hypothetical = float_exclusions
+            .common_border(
+                adjoining.cursor
+                    + adjoining
+                        .reduce_start(
+                            constants.collapse_top_margin,
+                            child_margin_can_collapse_with_parent,
+                            top_margin_set,
+                        )
+                        .offset,
+            )
+            .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
+        if let Some(bound) = float_exclusions.entry_relevant_bound(
+            child,
+            child_style.clear,
+            constants.flow_axes,
+            clearance_funding.as_ref(),
+        )? && hypothetical < bound
+        {
+            introduced_cut = Some(entry::canonical::Separation::own(
+                node,
+                child,
+                index,
+                hypothetical,
+                bound,
+            ));
+        }
+    }
+    let base_block = adjoining.cursor;
+    let prior_internal = if adjoining.start_open {
+        S::ZERO
+    } else {
+        adjoining.active.resolve()
+    };
+    let clearance = if let Some(cut) = introduced_cut {
+        let uncollapsed = float_exclusions
+            .common_border(base_block + prior_internal + top_margin_set.resolve())
+            .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
+        let current = float_exclusions
+            .entry_relevant_bound(
+                child,
+                child_style.clear,
+                constants.flow_axes,
+                clearance_funding.as_ref(),
+            )?
+            .ok_or_else(|| float_context::missing(child))?;
+        let origin = float_exclusions
+            .common_border(S::ZERO)
+            .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
+        Some(ClearanceSettlement {
+            amount: (current.get() - uncollapsed.get())
+                .max(cut.hypothetical.get() - uncollapsed.get()),
+            border: current.get().max(cut.hypothetical.get()) - origin.get(),
+        })
+    } else {
+        None
+    };
+    let margin_error =
+        |error: surgeist_text::Error| super::inline_run::text_run_error(child, error.into());
+    let margin_groups = tree
+        .fragment_margin_state()
+        .map(|state| {
+            Ok::<_, surgeist_text::Error>((
+                state.child(child, constants.flow_axes.block_start())?,
+                state.child(child, constants.flow_axes.block_end())?,
+            ))
+        })
+        .transpose()
+        .map_err(margin_error)?;
+    if let Some(settlement) = clearance {
+        if let Some(previous) = *remaining_cut
+            && introduced_cut.is_some_and(|cut| cut.same_cut(previous))
+        {
+            *remaining_cut = None;
+        }
+        adjoining.begin_clearance(settlement.border);
+        if let Some(flow) = fragment_margins.as_mut() {
+            flow.started = true;
+            flow.active = None;
+        }
+    }
+    if let (Some(flow), Some((top, bottom)), Some(state)) = (
+        fragment_margins.as_mut(),
+        margin_groups,
+        tree.fragment_margin_state(),
+    ) && !flow.started
+    {
+        flow.initial = state.join(flow.initial, top).map_err(margin_error)?;
+        if collapses_through {
+            flow.initial = state.join(flow.initial, bottom).map_err(margin_error)?;
+        } else {
+            flow.started = true;
+        }
+    }
+    let start = adjoining.reduce_start(
+        constants.collapse_top_margin,
+        child_margin_can_collapse_with_parent,
+        top_margin_set,
+    );
+    if let (Some(flow), Some((top, _)), Some(state)) = (
+        fragment_margins.as_ref(),
+        margin_groups,
+        tree.fragment_margin_state(),
+    ) {
+        let group = if start.exposes_child {
+            flow.active
+        } else {
+            state.join(flow.active, top).map_err(margin_error)?
+        };
+        state
+            .record_entry(child, constants.flow_axes, group)
+            .map_err(margin_error)?;
+    }
+    if adjoining.start_open
+        && start.exposes_child
+        && let (Some(flow), Some((top, bottom)), Some(state)) = (
+            fragment_margins.as_mut(),
+            margin_groups,
+            tree.fragment_margin_state(),
+        )
+    {
+        flow.top = state.join(flow.top, top).map_err(margin_error)?;
+        if collapses_through {
+            flow.top = state.join(flow.top, bottom).map_err(margin_error)?;
+        }
+    }
+    if clearance.is_none() {
+        adjoining.begin_child(&start, top_margin_set, bottom_margin_set, collapses_through);
+    }
+    Ok(InFlowMarginPlacement {
+        base_block,
+        prior_internal,
+        clearance,
+        margin_groups,
+        top_margin_set,
+        bottom_margin_set,
+        collapses_through,
+        child_margin_can_collapse_with_parent,
+    })
+}
+
+impl<S: LayoutScalar> InFlowMarginPlacement<S> {
+    fn finish<'input, Tree, M>(
+        self,
+        tree: &mut Tree,
+        child: Tree::Node,
+        adjoining: &mut entry::AdjoiningFlow<S>,
+        fragment_margins: &mut Option<super::fragment_margins::Flow>,
+        child_block_size: S,
+        child_block_end: S,
+    ) -> LayoutResultOf<Tree::Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+    {
+        let Self {
+            base_block,
+            prior_internal,
+            clearance,
+            margin_groups,
+            top_margin_set,
+            bottom_margin_set,
+            collapses_through,
+            child_margin_can_collapse_with_parent,
+        } = self;
+        let margin_error =
+            |error: surgeist_text::Error| super::inline_run::text_run_error(child, error.into());
+        if collapses_through {
+            if let (Some(flow), Some((top, bottom)), Some(state)) = (
+                fragment_margins.as_mut(),
+                margin_groups,
+                tree.fragment_margin_state(),
+            ) {
+                let joined = state.join(flow.active, top).map_err(margin_error)?;
+                flow.active = state.join(joined, bottom).map_err(margin_error)?;
+            }
+        } else if let (Some(flow), Some((_, bottom))) = (fragment_margins.as_mut(), margin_groups) {
+            flow.active = bottom;
+        }
+        let next_cursor = if collapses_through {
+            base_block
+                + clearance.map_or(S::ZERO, |settlement| prior_internal + settlement.amount)
+                + child_block_size
+        } else {
+            child_block_end
+        };
+        adjoining.finish_child(
+            next_cursor,
+            top_margin_set,
+            bottom_margin_set,
+            collapses_through,
+            child_margin_can_collapse_with_parent,
+        );
+        Ok(())
+    }
+}
+
 pub(super) fn layout_in_flow_children<'input, Tree, S, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
@@ -767,165 +1035,24 @@ where
                 constants.flow_axes,
             )?
         };
-        let top_margin_set = output
-            .block_margin_collapse
-            .at(constants.flow_axes.block_start())
-            .collapse_with_margin(child_margin.at_physical_side(constants.flow_axes.block_start()));
-        let bottom_margin_set = output
-            .block_margin_collapse
-            .at(constants.flow_axes.block_end())
-            .collapse_with_margin(child_margin.at_physical_side(constants.flow_axes.block_end()));
-        let child_margin_can_collapse_with_parent =
-            child_margin_can_collapse_with_parent(&child_style);
-        let collapses_through = output
-            .block_margin_collapse
-            .can_collapse_through(constants.flow_axes);
-        let bound_frame = &float_exclusions;
-        if child_style.clear != Clear::None
-            && !float_exclusions.is_empty()
-            && clearance_funding.is_none()
-            && let Some(state) = tree.text_computation()
-        {
-            state
-                .prepare_entry()
-                .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
-            clearance_funding = state
-                .entry_funding()
-                .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
-        }
-        if introduced_cut.is_none() && child_style.clear != Clear::None {
-            let hypothetical = bound_frame
-                .common_border(
-                    adjoining.cursor
-                        + adjoining
-                            .reduce_start(
-                                constants.collapse_top_margin,
-                                child_margin_can_collapse_with_parent,
-                                top_margin_set,
-                            )
-                            .offset,
-                )
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-            if let Some(bound) = bound_frame.entry_relevant_bound(
+        let margin_placement = begin_in_flow_child_margins(
+            tree,
+            InFlowChildMargins {
+                node,
                 child,
-                child_style.clear,
-                constants.flow_axes,
-                clearance_funding.as_ref(),
-            )? && hypothetical < bound
-            {
-                introduced_cut = Some(entry::canonical::Separation::own(
-                    node,
-                    child,
-                    index,
-                    hypothetical,
-                    bound,
-                ));
-            }
-        }
-        let base_block = adjoining.cursor;
-        let prior_internal = if adjoining.start_open {
-            S::ZERO
-        } else {
-            adjoining.active.resolve()
-        };
-        let clearance = if let Some(cut) = introduced_cut {
-            let uncollapsed = bound_frame
-                .common_border(base_block + prior_internal + top_margin_set.resolve())
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-            let current = bound_frame
-                .entry_relevant_bound(
-                    child,
-                    child_style.clear,
-                    constants.flow_axes,
-                    clearance_funding.as_ref(),
-                )?
-                .ok_or_else(|| float_context::missing(child))?;
-            let origin = bound_frame
-                .common_border(S::ZERO)
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-            Some(ClearanceSettlement {
-                amount: (current.get() - uncollapsed.get())
-                    .max(cut.hypothetical.get() - uncollapsed.get()),
-                border: current.get().max(cut.hypothetical.get()) - origin.get(),
-            })
-        } else {
-            None
-        };
-        let margin_error =
-            |error: surgeist_text::Error| super::inline_run::text_run_error(child, error.into());
-        let margin_groups = tree
-            .fragment_margin_state()
-            .map(|state| {
-                Ok::<_, surgeist_text::Error>((
-                    state.child(child, constants.flow_axes.block_start())?,
-                    state.child(child, constants.flow_axes.block_end())?,
-                ))
-            })
-            .transpose()
-            .map_err(margin_error)?;
-        if let Some(settlement) = clearance {
-            if let Some(previous) = remaining_cut
-                && introduced_cut.is_some_and(|cut| cut.same_cut(previous))
-            {
-                remaining_cut = None;
-            }
-            adjoining.begin_clearance(settlement.border);
-            if let Some(flow) = &mut fragment_margins {
-                flow.started = true;
-                flow.active = None;
-            }
-        }
-        if let (Some(flow), Some((top, bottom)), Some(state)) = (
+                index,
+                child_style: &child_style,
+                output: &output,
+                child_margin,
+                constants,
+                float_exclusions: &float_exclusions,
+                clearance_funding: &mut clearance_funding,
+                introduced_cut,
+            },
+            &mut adjoining,
+            &mut remaining_cut,
             &mut fragment_margins,
-            margin_groups,
-            tree.fragment_margin_state(),
-        ) && !flow.started
-        {
-            flow.initial = state.join(flow.initial, top).map_err(margin_error)?;
-            if output
-                .block_margin_collapse
-                .can_collapse_through(constants.flow_axes)
-            {
-                flow.initial = state.join(flow.initial, bottom).map_err(margin_error)?;
-            } else {
-                flow.started = true;
-            }
-        }
-        let start = adjoining.reduce_start(
-            constants.collapse_top_margin,
-            child_margin_can_collapse_with_parent,
-            top_margin_set,
-        );
-        if let (Some(flow), Some((top, _)), Some(state)) = (
-            &fragment_margins,
-            margin_groups,
-            tree.fragment_margin_state(),
-        ) {
-            let group = if start.exposes_child {
-                flow.active
-            } else {
-                state.join(flow.active, top).map_err(margin_error)?
-            };
-            state
-                .record_entry(child, constants.flow_axes, group)
-                .map_err(margin_error)?;
-        }
-        if adjoining.start_open
-            && start.exposes_child
-            && let (Some(flow), Some((top, bottom)), Some(state)) = (
-                &mut fragment_margins,
-                margin_groups,
-                tree.fragment_margin_state(),
-            )
-        {
-            flow.top = state.join(flow.top, top).map_err(margin_error)?;
-            if collapses_through {
-                flow.top = state.join(flow.top, bottom).map_err(margin_error)?;
-            }
-        }
-        if clearance.is_none() {
-            adjoining.begin_child(&start, top_margin_set, bottom_margin_set, collapses_through);
-        }
+        )?;
         let logical_location = LogicalPointOf::new(
             in_flow_child_inline_offset(logical_child_size.inline, logical_child_margin, constants),
             adjoining.cursor,
@@ -1061,32 +1188,14 @@ where
                     },
                 )
             })?;
-        if collapses_through {
-            if let (Some(flow), Some((top, bottom)), Some(state)) = (
-                &mut fragment_margins,
-                margin_groups,
-                tree.fragment_margin_state(),
-            ) {
-                let joined = state.join(flow.active, top).map_err(margin_error)?;
-                flow.active = state.join(joined, bottom).map_err(margin_error)?;
-            }
-        } else if let (Some(flow), Some((_, bottom))) = (&mut fragment_margins, margin_groups) {
-            flow.active = bottom;
-        }
-        let next_cursor = if collapses_through {
-            base_block
-                + clearance.map_or(S::ZERO, |settlement| prior_internal + settlement.amount)
-                + logical_child_size.block
-        } else {
-            child_block_end
-        };
-        adjoining.finish_child(
-            next_cursor,
-            top_margin_set,
-            bottom_margin_set,
-            collapses_through,
-            child_margin_can_collapse_with_parent,
-        );
+        margin_placement.finish(
+            tree,
+            child,
+            &mut adjoining,
+            &mut fragment_margins,
+            logical_child_size.block,
+            child_block_end,
+        )?;
         index += 1;
     }
 
