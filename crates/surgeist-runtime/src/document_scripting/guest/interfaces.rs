@@ -4,6 +4,7 @@ mod document;
 mod listener_methods;
 mod operations;
 mod toggle_event;
+mod trusted_policy;
 
 use super::*;
 pub(super) use document::{GuestNodeProjection, NodeLifetime};
@@ -136,6 +137,7 @@ struct OriginInterfaceFunding<'a> {
 pub(super) struct PublicEventBindings {
     callbacks: Rc<Callbacks>,
     window: RetainedCallbackObject,
+    trusted_types: RetainedCallbackObject,
     event: RetainedCallbackObject,
     toggle_event: RetainedCallbackObject,
     target: RetainedCallbackObject,
@@ -350,6 +352,7 @@ impl PublicEventBindings {
         let observed = scope.callback_object(&trusted)?;
         let trusted = scope.retain_callback_object(observed, fund)?;
         let window = scope.global()?;
+        let trusted_types = trusted_policy::install(scope, &window, &capture, &fund)?;
         let window = scope.callback_object(&window)?;
         let window = scope.retain_callback_object(window, fund)?;
         let dispatch = capture(size_of::<Capture>())?;
@@ -379,6 +382,7 @@ impl PublicEventBindings {
         Ok(Self {
             callbacks,
             window,
+            trusted_types,
             event,
             toggle_event,
             target,

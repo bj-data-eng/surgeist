@@ -76,6 +76,8 @@ pub enum DocumentScriptNativeError {
     RepresentationExhausted,
     /// This attachment did not enable the callable Window timer profile.
     WindowTimersDisabled,
+    /// The registered Window's current CSP requires an unavailable Trusted Types reader.
+    TrustedTypesPolicyUnavailable,
 }
 
 impl fmt::Display for DocumentScriptNativeError {
