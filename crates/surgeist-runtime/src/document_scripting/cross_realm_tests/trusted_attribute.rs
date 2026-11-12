@@ -32,9 +32,8 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
         "receiver",
     );
     batch.insert_before(&receiver, destination, None);
-    for owner in [accepted, rejected] {
-        batch.set_attribute(owner, "onclick", "old");
-    }
+    let accepted_attr = batch.create_attribute(other.document(), "onclick");
+    batch.set_attribute(rejected, "onclick", "old");
     let meta = batch.create_element_ns(target.document(), Namespace::html(), "meta");
     batch.set_attribute(&meta, "http-equiv", "content-security-policy");
     batch.set_attribute(&meta, "content", "require-trusted-types-for 'script'");
@@ -42,24 +41,45 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
     let receiver = commit.created(&receiver).unwrap().unwrap();
     let meta = commit.created(&meta).unwrap().unwrap();
     let snapshot = session.snapshot();
-    let [accepted_attr, rejected_attr] = [accepted, rejected].map(|owner| {
-        snapshot
-            .node(owner)
-            .unwrap()
-            .get_attribute_node(&"onclick".into())
-            .unwrap()
-            .id()
-            .node()
-    });
+    let accepted_attr = commit.created(&accepted_attr).unwrap().unwrap();
+    let accepted_identity = snapshot.attr(accepted_attr).unwrap().id();
+    assert_eq!(
+        snapshot.relevant_global(accepted_attr).unwrap(),
+        Some(other.global())
+    );
+    let rejected_attr = snapshot
+        .node(rejected)
+        .unwrap()
+        .get_attribute_node(&"onclick".into())
+        .unwrap()
+        .id()
+        .node();
     // The sink's initial policy comes from its owner Element even when the
     // Attr already belongs to a different node document.
     let mut adopt = DomBatch::new();
+    adopt.attach_native_attribute(accepted, accepted_identity);
     adopt.adopt(accepted_attr, other.document());
     session.dom().apply(adopt, &cancel).unwrap();
     session.enable_trusted_types_csp(&cancel).unwrap();
     let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
     let permit = host.permit().unwrap();
     host.register_node_creation_realm(&permit, other).unwrap();
+    let origin_prototype = {
+        let engine = host.engine.as_mut().unwrap();
+        let realm = engine
+            .creations
+            .find(other.global(), || Ok::<(), Error>(()))
+            .unwrap()
+            .unwrap();
+        engine
+            .process
+            .execution()
+            .in_realm(realm, |scope| {
+                let prototype = evaluate(scope, "Attr.prototype")?;
+                Ok(scope.retain(&prototype))
+            })
+            .unwrap()
+    };
     for (node, name) in [
         (head, "adoptionHead"),
         (meta, "adoptionMeta"),
@@ -73,6 +93,9 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
         expose_public_node_for_source_test(&mut host, &permit, node, name);
     }
     let result = host.in_document(&permit, |scope| {
+        let prototype = scope.import(&origin_prototype)?;
+        let global = scope.global()?;
+        scope.set(&global, PropertyKey::String(&"originAttrPrototype".encode_utf16().collect::<Vec<_>>()), &prototype)?;
         evaluate(scope, r#"
             (() => {
                 const check = (ok, label) => { if (!ok) throw new Error(label); };
@@ -82,6 +105,10 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
                 check(originalDocument !== destinationDocument, 'distinct hosted documents');
                 check(acceptedAttr.ownerDocument === destinationDocument && acceptedAttr.ownerElement === acceptedOwner,
                     'distinct initial Attr and owner documents');
+                const creationPrototype = Object.getPrototypeOf(acceptedAttr);
+                check(creationPrototype === originAttrPrototype && creationPrototype !== Attr.prototype
+                    && Object.getPrototypeOf(rejectedAttr) === Attr.prototype,
+                    'distinct creation realms');
                 const calls = [];
                 trustedTypes.createPolicy('default', {createScript(value, type, sink) {
                     calls.push(value);
@@ -99,7 +126,8 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
                 }});
                 acceptedAttr.value = 'move\ud800';
                 check(acceptedAttr.value === 'move\ud800!' && replacementOwner.getAttributeNode('onclick') === acceptedAttr
-                    && acceptedOwner.getAttributeNode('onclick') === null, 'verified write uses new owner');
+                    && acceptedOwner.getAttributeNode('onclick') === null && Object.getPrototypeOf(acceptedAttr) === creationPrototype,
+                    'verified write uses new owner and preserves creation prototype');
                 let blocked = false;
                 try { rejectedAttr.value = 'reject'; }
                 catch (error) { blocked = error instanceof TypeError; }
