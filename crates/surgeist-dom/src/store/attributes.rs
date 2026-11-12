@@ -18,6 +18,21 @@ pub(super) enum AttributeChange {
     Removed,
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum AttributeRemoval {
+    IgnoreMissing,
+    ReturnIdentity,
+}
+
+#[derive(Clone, Copy)]
+enum AttributeLookup<'a> {
+    Qualified(&'a DocumentString),
+    Expanded {
+        namespace: Option<&'a DocumentString>,
+        local_name: &'a DocumentString,
+    },
+}
+
 // The validated name and its admission remain one argument across every
 // fallible candidate step. Its backing drops before its formation on failure.
 struct AttributeWrite<'a> {
@@ -270,24 +285,29 @@ impl Draft {
     fn attribute_position(
         &self,
         attributes: transaction::AttributeRead<'_>,
-        namespace: Option<&Namespace>,
-        name: &DocumentString,
+        lookup: AttributeLookup<'_>,
         cancel: &AtomicBool,
     ) -> Result<Option<usize>, DomError> {
         for (position, attribute) in attributes.iter().enumerate() {
             self.source_step(cancel)?;
-            let matched = if let Some(namespace) = namespace {
-                self.attribute_namespace_equal(
-                    attribute.name().namespace_uri(),
-                    namespace.uri(),
-                    cancel,
-                )? && self.attribute_string_equal(
-                    attribute.name().local_name().code_units(),
-                    name.code_units(),
-                    cancel,
-                )?
-            } else {
-                self.attribute_qualified_equal(attribute.name(), name, cancel)?
+            let matched = match lookup {
+                AttributeLookup::Expanded {
+                    namespace,
+                    local_name,
+                } => {
+                    self.attribute_namespace_equal(
+                        attribute.name().namespace_uri(),
+                        namespace,
+                        cancel,
+                    )? && self.attribute_string_equal(
+                        attribute.name().local_name().code_units(),
+                        local_name.code_units(),
+                        cancel,
+                    )?
+                }
+                AttributeLookup::Qualified(name) => {
+                    self.attribute_qualified_equal(attribute.name(), name, cancel)?
+                }
             };
             if matched {
                 return Ok(Some(position));
@@ -363,8 +383,10 @@ impl Draft {
             )?;
             let position = self.attribute_position(
                 element.attributes(),
-                Some(name.namespace()),
-                name.local_name(),
+                AttributeLookup::Expanded {
+                    namespace: name.namespace().uri(),
+                    local_name: name.local_name(),
+                },
                 cancelled,
             )?;
             (position, name)
@@ -384,7 +406,11 @@ impl Draft {
             } else {
                 retain_string(name, name_formation.as_ref(), cancelled)?
             };
-            let position = self.attribute_position(element.attributes(), None, &name, cancelled)?;
+            let position = self.attribute_position(
+                element.attributes(),
+                AttributeLookup::Qualified(&name),
+                cancelled,
+            )?;
             (
                 position,
                 surgeist_html::values::QualifiedName::new(Namespace::none(), None, name),
@@ -601,8 +627,7 @@ impl Draft {
             if self.is_private(node) {
                 self.mark_source_private(attr, cancel)?;
             }
-            self.set_attr_owner(attr, Some(node), cancel)?;
-            self.edit_attribute_order(node, index, None, Some(attr), cancel)?;
+            self.attach_attribute_identity(node, index, None, attr, cancel)?;
         }
         if let Some((formed, formation)) = deferred_element {
             self.publish_element(node, old_units, formed, formation, limits, cancel)?;
@@ -619,6 +644,132 @@ impl Draft {
             limits,
             cancel,
         )
+    }
+
+    pub(super) fn attach_native_attribute(
+        &mut self,
+        node: Key,
+        attr: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let node = self.live_key(node);
+        let attr = self.live_key(attr);
+        let read = self.element(node)?;
+        let incoming = self.node(attr)?;
+        let transaction::KindRead::Attr(replacement) = incoming.kind() else {
+            return Err(DomError::WrongNodeKind);
+        };
+        if incoming
+            .attr_owner()
+            .is_some_and(|owner| self.live_key(owner) != node)
+        {
+            return Err(DomError::InUseAttribute);
+        }
+        let previous = read.attributes();
+        let position = self.attribute_position(
+            previous,
+            AttributeLookup::Expanded {
+                namespace: replacement.name().namespace_uri(),
+                local_name: replacement.name().local_name(),
+            },
+            cancel,
+        )?;
+        let previous_id = position
+            .map(|index| {
+                self.node(node)?
+                    .attribute_ids()
+                    .get(index)
+                    .ok_or(DomError::StaleNode)
+            })
+            .transpose()?;
+        if previous_id.is_some_and(|previous| self.live_key(previous) == attr) {
+            return self.register_node_ticket(
+                NodeTicket::AttributeAttachment(attr, AttachmentKind::Unchanged),
+                cancel,
+            );
+        }
+        let previous_value = position
+            .map(|index| previous.get(index).ok_or(DomError::StaleNode))
+            .transpose()?;
+        let hook = source::formation::Formation::new(self, cancel)?;
+        let changed = retain_name(
+            previous_value.map_or(replacement.name(), Attribute::name),
+            hook.as_ref(),
+            cancel,
+        )?;
+        let old_value = previous_value
+            .map(|value| retain_string(value.value(), hook.as_ref(), cancel))
+            .transpose()?;
+        let new_value = retain_string(replacement.value(), hook.as_ref(), cancel)?;
+        let element = read.language();
+        let old_units = element.units().ok_or(DomError::RepresentationExhausted)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
+        for _ in 0..surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND {
+            self.source_step(cancel)?;
+        }
+        let nonce = nonce_after_effect(
+            surgeist_html::security::nonce::nonce_attribute_change(
+                element.name(),
+                &changed,
+                Some(replacement.value()),
+            ),
+            formation.as_ref(),
+            cancel,
+        )?;
+        let index = position.unwrap_or(previous.len());
+        let next = previous.edited(index, position.is_some(), Some(replacement))?;
+        let formed = {
+            let mut admit = |usage| self.admit_custody_usage(usage, cancel);
+            let context = ElementFormation::new(
+                self.custody_registry(),
+                formation.as_ref(),
+                cancel,
+                &mut admit,
+            );
+            element.with_attribute_effect(&previous, &next, &changed, nonce, context)?
+        };
+        self.attach_attribute_identity(node, index, previous_id, attr, cancel)?;
+        self.publish_element(node, old_units, formed, formation, limits, cancel)?;
+        let (result, kind) = previous_id.map_or((attr, AttachmentKind::Appended), |old| {
+            (old, AttachmentKind::Replaced)
+        });
+        // Native hooks can park the Source before this command returns.
+        self.register_node_ticket(NodeTicket::AttributeAttachment(result, kind), cancel)?;
+        self.attribute_hooks(
+            AttributeSuffix {
+                subject: node,
+                changed,
+                old_value,
+                new_value: Some(new_value),
+                cause: AttributeCause::Change,
+            },
+            hook.map(source::formation::Formation::into_charge),
+            limits,
+            cancel,
+        )
+    }
+
+    fn attach_attribute_identity(
+        &mut self,
+        node: Key,
+        position: usize,
+        previous: Option<Key>,
+        attr: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.edit_attribute_order(node, position, previous, Some(attr), cancel)?;
+        self.set_attr_owner(attr, Some(node), cancel)?;
+        let document = self.node(node)?.document();
+        if self.node(attr)?.document() != document {
+            let mut common = self.common_fields_mut(attr, cancel)?;
+            common.document = document;
+            common.commit(cancel)?;
+        }
+        if let Some(previous) = previous {
+            self.set_attr_owner(previous, None, cancel)?;
+        }
+        Ok(())
     }
 
     fn edit_attribute_order(
@@ -774,9 +925,10 @@ impl Draft {
         node: Key,
         namespace: Option<&Namespace>,
         name: &DocumentString,
+        removal: AttributeRemoval,
         limits: DomLimits,
         cancelled: &AtomicBool,
-    ) -> Result<Option<Key>, DomError> {
+    ) -> Result<(), DomError> {
         #[cfg(test)]
         transaction::queues::admission_observation::before_payload(self);
         let previous = self.element(node)?.attributes();
@@ -794,15 +946,24 @@ impl Draft {
         } else {
             retain_string(name, name_formation.as_ref(), cancelled)?
         };
-        let position = self.attribute_position(previous, namespace, &name, cancelled)?;
+        let lookup = match namespace {
+            Some(namespace) => AttributeLookup::Expanded {
+                namespace: namespace.uri(),
+                local_name: &name,
+            },
+            None => AttributeLookup::Qualified(&name),
+        };
+        let position = self.attribute_position(previous, lookup, cancelled)?;
         drop(name);
         drop(normalized);
         drop(name_formation);
         let Some(position) = position else {
-            return Ok(None);
+            return match removal {
+                AttributeRemoval::IgnoreMissing => Ok(()),
+                AttributeRemoval::ReturnIdentity => Err(DomError::NotFound),
+            };
         };
-        self.remove_attribute_at(node, position, limits, cancelled)
-            .map(Some)
+        self.remove_attribute_at(node, position, removal, limits, cancelled)
     }
 
     pub(super) fn remove_attribute_node(
@@ -811,7 +972,7 @@ impl Draft {
         attr: Key,
         limits: DomLimits,
         cancel: &AtomicBool,
-    ) -> Result<Key, DomError> {
+    ) -> Result<(), DomError> {
         self.element(node)?;
         let attr = self.live_key(attr);
         let attribute = self.node(attr)?;
@@ -824,7 +985,13 @@ impl Draft {
         for (index, entry) in self.node(node)?.attribute_ids().iter().enumerate() {
             self.source_step(cancel)?;
             if self.live_key(entry) == attr {
-                return self.remove_attribute_at(node, index, limits, cancel);
+                return self.remove_attribute_at(
+                    node,
+                    index,
+                    AttributeRemoval::ReturnIdentity,
+                    limits,
+                    cancel,
+                );
             }
         }
         Err(DomError::StaleNode)
@@ -834,9 +1001,10 @@ impl Draft {
         &mut self,
         node: Key,
         position: usize,
+        removal: AttributeRemoval,
         limits: DomLimits,
         cancelled: &AtomicBool,
-    ) -> Result<Key, DomError> {
+    ) -> Result<(), DomError> {
         let read = self.element(node)?;
         let element = read.language();
         let previous = read.attributes();
@@ -872,6 +1040,9 @@ impl Draft {
         self.set_attr_owner(attr, None, cancelled)?;
         self.edit_attribute_order(node, position, Some(attr), None, cancelled)?;
         self.publish_element(node, old_units, staged, candidate, limits, cancelled)?;
+        if matches!(removal, AttributeRemoval::ReturnIdentity) {
+            self.register_node_ticket(NodeTicket::RemovedAttribute(attr), cancelled)?;
+        }
         self.attribute_hooks(
             AttributeSuffix {
                 subject: node,
@@ -883,8 +1054,7 @@ impl Draft {
             hook.map(source::formation::Formation::into_charge),
             limits,
             cancelled,
-        )?;
-        Ok(attr)
+        )
     }
     fn publish_element(
         &mut self,

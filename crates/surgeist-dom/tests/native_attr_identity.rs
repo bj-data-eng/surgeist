@@ -288,8 +288,20 @@ fn native_attr_attachment_distinguishes_replace_unchanged_in_use_and_append() {
 
     let before = dom.snapshot();
     let incoming = before.attr(incoming).unwrap().id();
+    let previous = before
+        .node(target)
+        .unwrap()
+        .attributes()
+        .unwrap()
+        .item(1)
+        .unwrap()
+        .id();
+    let mut adopt = DomBatch::new();
+    adopt.adopt(previous.node(), source);
+    dom.apply(adopt, &cancel).unwrap();
+    let before = dom.snapshot();
     let map = before.node(target).unwrap().attributes().unwrap();
-    let previous = map.item(1).unwrap().id();
+    assert_eq!(map.item(1).unwrap().owner_document(), source);
     let mut attach = DomBatch::new();
     let replacement = attach.attach_native_attribute(target, incoming);
     let commit = dom.apply(attach, &cancel).unwrap();
@@ -317,7 +329,7 @@ fn native_attr_attachment_distinguishes_replace_unchanged_in_use_and_append() {
     assert_eq!(after.attr(previous.node()).unwrap().owner_element(), None);
     assert_eq!(
         after.attr(previous.node()).unwrap().owner_document(),
-        destination
+        source
     );
     assert_eq!(
         before.attr(incoming.node()).unwrap().owner_document(),
@@ -382,6 +394,18 @@ fn native_attr_source_replacement_runs_the_original_nonce_hook() {
     let commit = dom.apply(setup, &cancel).unwrap();
     let target = commit.created(&target).unwrap().unwrap();
     let incoming = commit.created(&incoming).unwrap().unwrap();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_text_content(incoming, "new-value!"),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
     let before = dom.snapshot();
     let target_before = before.node(target).unwrap();
     let previous = target_before
@@ -393,6 +417,51 @@ fn native_attr_source_replacement_runs_the_original_nonce_hook() {
         target_before.as_element().unwrap().nonce(),
         Some(&"original".into())
     );
+
+    // Document and Element use 62 units. The attached Attr and native slot
+    // use 21 units, and the detached incoming Attr uses 15.
+    const EXACT_BEFORE: usize = 98;
+    assert_eq!(dom.usage().string_code_units(), EXACT_BEFORE);
+    let ordinary_limits = dom.limits();
+    dom.set_limits(
+        DomLimits::new(
+            64,
+            EXACT_BEFORE,
+            128,
+            0,
+            0,
+            64,
+            1_000_000,
+            ordinary_limits.names(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut refused = DomBatch::new();
+    refused.attach_native_attribute(target, incoming);
+    assert!(matches!(
+        dom.apply(refused, &cancel),
+        Err(DomError::ResourceLimit {
+            resource: surgeist_dom::DomResource::StringCodeUnits,
+            limit: EXACT_BEFORE,
+        })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        dom.snapshot()
+            .attr(previous.node())
+            .unwrap()
+            .owner_element(),
+        Some(target)
+    );
+    assert_eq!(
+        dom.snapshot()
+            .attr(incoming.node())
+            .unwrap()
+            .owner_element(),
+        None
+    );
+    dom.set_limits(ordinary_limits).unwrap();
 
     let mut lease = dom
         .begin_source_edit(
@@ -417,7 +486,10 @@ fn native_attr_source_replacement_runs_the_original_nonce_hook() {
         node.get_attribute_node(&"nonce".into()).unwrap().id(),
         incoming
     );
-    assert_eq!(node.as_element().unwrap().nonce(), Some(&"".into()));
+    assert_eq!(
+        node.as_element().unwrap().nonce(),
+        Some(&"new-value!".into())
+    );
     assert_eq!(
         now.attr(previous.node()).unwrap().value(),
         &"original".into()

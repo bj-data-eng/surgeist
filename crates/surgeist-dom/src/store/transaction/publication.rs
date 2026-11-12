@@ -686,6 +686,9 @@ impl Draft {
             let live = self.node(key).ok();
             let kind = match ticket {
                 NodeTicket::RemovedAttribute(_) => NodeOutputKind::RemovedAttribute,
+                NodeTicket::AttributeAttachment(_, kind) => {
+                    NodeOutputKind::AttributeAttachment(*kind)
+                }
                 NodeTicket::Node(_)
                     if live.is_some_and(|n| matches!(n.kind(), super::KindRead::Document(_))) =>
                 {
@@ -697,8 +700,13 @@ impl Draft {
                 Key::Created(index) => allocated_ids.get(index),
                 Key::Existing(node) => Some(node),
             };
-            node_outputs
-                .push(id.filter(|_| live.is_some() || kind == NodeOutputKind::RemovedAttribute));
+            node_outputs.push(id.filter(|_| {
+                live.is_some()
+                    || matches!(
+                        kind,
+                        NodeOutputKind::RemovedAttribute | NodeOutputKind::AttributeAttachment(_)
+                    )
+            }));
             #[cfg(test)]
             tickets_written.pushed::<Option<NodeId>>();
             node_output_kinds.push(kind);

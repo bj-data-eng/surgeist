@@ -112,6 +112,13 @@ the identity in its completed output. These operations
 report `NotFound` when the requested Attr does not belong to the Element or the
 requested name is absent.
 
+Native attachment takes an existing Attr identity. It selects the current
+position by namespace and local name, detaches any previous occupant, and
+assigns the incoming Attr the Element's document. The result distinguishes
+append, replacement and same-identity reuse. The original native attribute
+hooks observe the change. Web-facing setters perform their policy checks
+before invoking canonical mutation.
+
 Snapshot and transaction aliases can retain the same immutable Attr payload.
 Cloning or importing an Element allocates fresh Attr identities and can share
 immutable name or UTF-16 backing. Direct parsed installation keeps the parser's

@@ -2578,6 +2578,7 @@ mod tests {
                             Key::Existing(details),
                             None,
                             &"open".into(),
+                            crate::store::attributes::AttributeRemoval::IgnoreMissing,
                             limits,
                             &cancel,
                         )

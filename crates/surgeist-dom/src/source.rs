@@ -251,6 +251,7 @@ pub enum DomSourceOutput {
     Node(NodeId),
     Document(crate::DocumentId),
     RemovedAttribute(crate::DomAttrId),
+    AttributeAttachment(crate::DomAttributeAttachment),
     ViewTransition(DomViewTransitionId),
     ViewTransitionRecord(DomViewTransitionRecordId),
 }
@@ -1129,6 +1130,16 @@ impl DomSourceEdit {
     pub fn remove_attribute_node(node: NodeId, attribute: crate::DomAttrId) -> Self {
         Self {
             command: Command::RemoveAttributeNode {
+                node: node.into(),
+                attribute,
+            },
+        }
+    }
+    /// Attach an already authored native Attr and return the canonical result.
+    /// Web-facing setters supply their own preceding verification step.
+    pub fn attach_native_attribute(node: NodeId, attribute: crate::DomAttrId) -> Self {
+        Self {
+            command: Command::AttachNativeAttribute {
                 node: node.into(),
                 attribute,
             },

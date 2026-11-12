@@ -3,6 +3,17 @@ use crate::{
     NodeId,
 };
 
+/// Result of a canonical native Attr attachment.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomAttributeAttachment {
+    /// The incoming Attr was appended.
+    Appended(DomAttrId),
+    /// This Attr already occupied the selected position.
+    Unchanged(DomAttrId),
+    /// The previous Attr was detached and the incoming Attr took its position.
+    Replaced(DomAttrId),
+}
+
 /// The exact Attr identity and value in an immutable DOM snapshot.
 #[derive(Clone, Copy, Debug)]
 pub struct DomAttr<'a> {

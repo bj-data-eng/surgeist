@@ -71,6 +71,7 @@ impl Draft {
                         node,
                         Some(&surgeist_html::values::Namespace::none()),
                         &name,
+                        attributes::AttributeRemoval::IgnoreMissing,
                         limits,
                         cancel,
                     )?;

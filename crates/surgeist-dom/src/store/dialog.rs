@@ -215,6 +215,7 @@ impl Draft {
                         key,
                         Some(&surgeist_html::values::Namespace::none()),
                         &name,
+                        attributes::AttributeRemoval::IgnoreMissing,
                         limits,
                         cancel,
                     )?;
@@ -1020,7 +1021,14 @@ mod tests {
             );
             draft.source_limits = Some(generous);
             draft
-                .remove_attribute(first, None, &"open".into(), dom.limits, &cancel)
+                .remove_attribute(
+                    first,
+                    None,
+                    &"open".into(),
+                    attributes::AttributeRemoval::IgnoreMissing,
+                    dom.limits,
+                    &cancel,
+                )
                 .unwrap();
             assert_eq!(
                 draft.staged_dialog_list(doc, DialogList::Open).unwrap(),

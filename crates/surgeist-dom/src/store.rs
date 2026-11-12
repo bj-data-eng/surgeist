@@ -6,7 +6,9 @@ use std::{
     },
 };
 
-use crate::batch::{AttachedShadowRoot, BatchIdentity, Command, Creation, RemovedAttribute};
+use crate::batch::{
+    AttachedAttribute, AttachedShadowRoot, BatchIdentity, Command, Creation, RemovedAttribute,
+};
 use crate::document::{DomDocumentMetadata, NATIVE_DOCUMENT_STRING_UNITS};
 use crate::{
     CreatedNode, DocumentId, DomBatch, DomDocumentType, DomElement, DomNodeKind, DomOwnerId,
@@ -458,6 +460,7 @@ pub enum DomError {
     SlotInapplicable,
     NonceEnvironmentUnavailable(surgeist_html::security::nonce::HtmlNonceMissing),
     NotFound,
+    InUseAttribute,
     InvalidDestruction,
     IndexSize,
     Cancelled,
@@ -1176,18 +1179,41 @@ enum NodeOutputKind {
     Node,
     Document,
     RemovedAttribute,
+    AttributeAttachment(AttachmentKind),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AttachmentKind {
+    Appended,
+    Unchanged,
+    Replaced,
+}
+
+impl AttachmentKind {
+    fn published(self, node: NodeId) -> crate::DomAttributeAttachment {
+        use crate::DomAttributeAttachment;
+        let id = crate::DomAttrId(node);
+        match self {
+            Self::Appended => DomAttributeAttachment::Appended(id),
+            Self::Unchanged => DomAttributeAttachment::Unchanged(id),
+            Self::Replaced => DomAttributeAttachment::Replaced(id),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NodeTicket {
     Node(Key),
     RemovedAttribute(Key),
+    AttributeAttachment(Key, AttachmentKind),
 }
 
 impl NodeTicket {
     fn key(self) -> Key {
         match self {
-            Self::Node(key) | Self::RemovedAttribute(key) => key,
+            Self::Node(key) | Self::RemovedAttribute(key) | Self::AttributeAttachment(key, _) => {
+                key
+            }
         }
     }
 }
@@ -1229,6 +1255,9 @@ impl DomCommit {
                 NodeOutputKind::Node => crate::DomSourceOutput::Node(*node),
                 NodeOutputKind::RemovedAttribute => {
                     crate::DomSourceOutput::RemovedAttribute(crate::DomAttrId(*node))
+                }
+                NodeOutputKind::AttributeAttachment(kind) => {
+                    crate::DomSourceOutput::AttributeAttachment(kind.published(*node))
                 }
             });
         }
@@ -1290,6 +1319,20 @@ impl DomCommit {
             return Err(DomError::WrongNodeKind);
         }
         Ok(crate::DomAttrId(id))
+    }
+    /// Resolve this batch's exact native attachment result.
+    pub fn attribute_attachment(
+        &self,
+        ticket: &AttachedAttribute,
+    ) -> Result<crate::DomAttributeAttachment, DomError> {
+        let id = resolve_node_output(&self.owner, &self.node_outputs, &ticket.owner, ticket.index)?
+            .ok_or(DomError::UnavailableCreation)?;
+        let Some(NodeOutputKind::AttributeAttachment(kind)) =
+            self.node_output_kinds.get(ticket.index)
+        else {
+            return Err(DomError::WrongNodeKind);
+        };
+        Ok(kind.published(id))
     }
     pub fn document(&self, ticket: &CreatedNode) -> Result<DocumentId, DomError> {
         let id = self.created(ticket)?.ok_or(DomError::UnavailableCreation)?;
@@ -3759,18 +3802,22 @@ impl Draft {
                 return_identity,
             } => {
                 let node = self.resolve(node.clone())?;
-                let removed =
-                    self.remove_attribute(node, namespace.as_ref(), name, limits, cancelled)?;
-                if *return_identity {
-                    let attr = removed.ok_or(DomError::NotFound)?;
-                    self.register_node_ticket(NodeTicket::RemovedAttribute(attr), cancelled)?;
-                }
+                let removal = if *return_identity {
+                    attributes::AttributeRemoval::ReturnIdentity
+                } else {
+                    attributes::AttributeRemoval::IgnoreMissing
+                };
+                self.remove_attribute(node, namespace.as_ref(), name, removal, limits, cancelled)?;
             }
             Command::RemoveAttributeNode { node, attribute } => {
                 let node = self.resolve(node.clone())?;
                 let attr = self.resolve(attribute.node().into())?;
-                let attr = self.remove_attribute_node(node, attr, limits, cancelled)?;
-                self.register_node_ticket(NodeTicket::RemovedAttribute(attr), cancelled)?;
+                self.remove_attribute_node(node, attr, limits, cancelled)?;
+            }
+            Command::AttachNativeAttribute { node, attribute } => {
+                let node = self.resolve(node.clone())?;
+                let attr = self.resolve(attribute.node().into())?;
+                self.attach_native_attribute(node, attr, limits, cancelled)?;
             }
             Command::Destroy(node) => {
                 let node = self.resolve(node.clone())?;

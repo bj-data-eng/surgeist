@@ -177,19 +177,23 @@ fn actual_window_manager_shares_group_and_releases_each_removed_member_once() {
     let cancel = AtomicBool::new(false);
     let mut batch = DomBatch::new();
     let second = batch.create_element_ns(top.document(), Namespace::html(), "dialog");
+    let open = batch.create_attribute(top.document(), "open");
     batch.insert_before(&second, body, None);
-    let second = session
-        .dom()
-        .apply(batch, &cancel)
-        .unwrap()
-        .created(&second)
-        .unwrap()
-        .unwrap();
+    let created = session.dom().apply(batch, &cancel).unwrap();
+    let second = created.created(&second).unwrap().unwrap();
+    let open = created.created(&open).unwrap().unwrap();
+    let open = session.snapshot().attr(open).unwrap().id();
     let hosted = session.hosted_execution();
     assert_eq!(counts(&hosted), (1, 0, 0));
-    apply(
+    let attachment = apply(
         &mut session,
-        DomSourceEdit::set_attribute(first, "open", ""),
+        DomSourceEdit::attach_native_attribute(first, open),
+    );
+    assert_eq!(
+        attachment.output(),
+        Some(surgeist_dom::DomSourceOutput::AttributeAttachment(
+            surgeist_dom::DomAttributeAttachment::Appended(open)
+        ))
     );
     let first_id = session
         .snapshot()
@@ -223,7 +227,14 @@ fn actual_window_manager_shares_group_and_releases_each_removed_member_once() {
     );
     assert_eq!(session.snapshot().stamp(), before.stamp());
     assert_eq!(counts(&hosted), (1, 1, 2));
-    apply(&mut session, DomSourceEdit::remove_attribute(first, "open"));
+    let removal = apply(
+        &mut session,
+        DomSourceEdit::remove_attribute_node(first, open),
+    );
+    assert_eq!(
+        removal.output(),
+        Some(surgeist_dom::DomSourceOutput::RemovedAttribute(open))
+    );
     assert_eq!(counts(&hosted), (1, 1, 1));
     apply(
         &mut session,

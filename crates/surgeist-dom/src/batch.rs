@@ -33,6 +33,13 @@ pub struct RemovedAttribute {
     pub(crate) index: usize,
 }
 
+/// A native attachment result that can be resolved only by this batch's commit.
+#[derive(Clone, Debug)]
+pub struct AttachedAttribute {
+    pub(crate) owner: Arc<BatchIdentity>,
+    pub(crate) index: usize,
+}
+
 /// A published node or a node returned by an earlier operation in the batch.
 #[derive(Clone, Debug)]
 pub enum NodeOperand {
@@ -282,6 +289,10 @@ pub(crate) enum Command {
         return_identity: bool,
     },
     RemoveAttributeNode {
+        node: NodeOperand,
+        attribute: DomAttrId,
+    },
+    AttachNativeAttribute {
         node: NodeOperand,
         attribute: DomAttrId,
     },
@@ -1103,6 +1114,25 @@ impl DomBatch {
             node: node.into(),
             attribute,
         })
+    }
+    /// Attach an already authored native Attr by expanded name. This operation
+    /// changes canonical state and runs native hooks. Web-facing setters use
+    /// their separate policy verification boundary before canonical attachment.
+    pub fn attach_native_attribute(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        attribute: DomAttrId,
+    ) -> AttachedAttribute {
+        let attached = AttachedAttribute {
+            owner: self.owner.clone(),
+            index: self.node_outputs,
+        };
+        self.node_outputs += 1;
+        self.commands.push(Command::AttachNativeAttribute {
+            node: node.into(),
+            attribute,
+        });
+        attached
     }
     /// Remove the current NamedNodeMap item by qualified name or refuse with
     /// NotFound when the name is absent.
