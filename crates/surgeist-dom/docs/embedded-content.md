@@ -148,6 +148,12 @@ show-poster and autoplay eligibility flags are set. The initial playback time
 is zero, the current resource address is empty, and media does not delay the
 Document load event. The canonical node owns this state and its lifetime.
 
+The unloaded profile has a private, empty shadow boundary with no slots.
+Fallback descendants keep their ordinary DOM identity and parentage, and the
+CSS flat tree excludes them. The boundary creates no author-visible ShadowRoot.
+[Pinned Video shadow tree](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L37209)
+· [Pinned Audio shadow tree](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L37718).
+
 Setting a null-namespace `src` reaches the load algorithm. A Source inserted
 under unloaded media reaches resource selection. A nonempty Video `poster`
 reaches poster determination. Each operation returns
