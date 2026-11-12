@@ -569,6 +569,14 @@ where
         let mut accepted_float_position = None;
         let places_against_float_exclusions =
             physical_float_context && avoids_float_exclusions && !float_exclusions.is_empty();
+        let parent_entry = || scope::ParentEntry {
+            reference: containing_size,
+            cursor: adjoining.cursor,
+            occupied: occupied_block_end,
+            active: adjoining.active,
+            top: adjoining.top,
+            first: adjoining.start_open,
+        };
         let child_request = scope::Ordinary {
             node: child,
             entry: None,
@@ -589,14 +597,7 @@ where
                 &child_style,
                 constants,
                 &prepared,
-                scope::ParentEntry {
-                    reference: containing_size,
-                    cursor: adjoining.cursor,
-                    occupied: occupied_block_end,
-                    active: adjoining.active,
-                    top: adjoining.top,
-                    first: adjoining.start_open,
-                },
+                parent_entry(),
             )?;
             if tree.block_scope_child(child) {
                 scope::ChildRequest::Scope(pending)
@@ -611,135 +612,27 @@ where
             scope::ChildRequest::Ordinary(child_request)
         };
         let mut output = if inherits_float_exclusions {
-            // Resolve the complete counterfactual component before committing
-            // this child's origin or producing its actual body.
-            let pending = scope::prepare(
+            let computed = compute_shared_in_flow_child(
                 tree,
-                node,
-                scope::Ordinary {
-                    node: child,
-                    input: child_input,
-                    entry: None,
-                },
-                &child_style,
-                constants,
-                &prepared,
-                scope::ParentEntry {
-                    reference: containing_size,
-                    cursor: adjoining.cursor,
-                    occupied: occupied_block_end,
-                    active: adjoining.active,
-                    top: adjoining.top,
-                    first: adjoining.start_open,
-                },
-            )?;
-            let entry_input = child_input
-                .with_run_mode(RunMode::ComputeSize)
-                .with_settled_auto_scrollbars(crate::scroll::SettledAutoScrollbarState::INITIAL);
-            clearance_funding = match tree.text_computation() {
-                Some(state) => {
-                    state
-                        .prepare_entry()
-                        .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
-                    state
-                        .entry_funding()
-                        .map_err(|error| super::inline_run::text_run_error(child, error.into()))?
-                }
-                None => None,
-            };
-            let funding = clearance_funding.as_ref();
-            let frame = std::sync::Arc::new(
-                float_exclusions
-                    .for_entry_child(LogicalPointOf::new(S::ZERO, S::ZERO), funding)
-                    .map_err(|error| super::inline_run::text_run_error(child, error.into()))?,
-            );
-            let position = entry::canonical::EntryPosition {
-                cursor: adjoining.cursor,
-                active: adjoining.active,
-                start_open: adjoining.start_open,
-                collapses_start: constants.collapse_top_margin,
-                child_adjoins_parent: pending.child_collapses,
-                own_start: CollapsibleMarginOf::ZERO
-                    .collapse_with_margin(pending.margin.block_start),
-                inline_offset: pending.inline_offset,
-            };
-            let summary = match tree.qualify_entry(entry::EntryQuery {
-                node: child,
-                input: entry_input,
-                reporting_side: constants.flow_axes.block_start(),
-                purpose: entry::EntryPurpose::Component,
-                incoming: Some(float_context::Incoming {
-                    node: child,
-                    request: entry_input,
-                    frame: frame.clone(),
-                    cut: resident_cut,
-                }),
-                position: Some(position),
-            })? {
-                entry::EntryObservation::Summary(summary) => summary,
-                entry::EntryObservation::Demand(demand) => {
-                    return Err(float_context::missing(demand.node).into());
-                }
-            };
-            let hypothetical = frame
-                .common_border(position.hypothetical(summary.start_fact().margin))
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-            let bound = frame.entry_relevant_bound(
-                child,
-                child_style.clear,
-                constants.flow_axes,
-                funding,
-            )?;
-            introduced_cut = resident_cut
-                .filter(|cut| cut.container == node && cut.node == child && cut.index == index);
-            if introduced_cut.is_none()
-                && let Some(bound) = bound
-                && hypothetical < bound
-            {
-                introduced_cut = Some(entry::canonical::Separation::own(
+                SharedInFlowChild {
                     node,
                     child,
                     index,
-                    hypothetical,
-                    bound,
-                ));
-            }
-            let location = if let Some(cut) = introduced_cut {
-                let current = bound.ok_or_else(|| float_context::missing(child))?;
-                let origin = frame
-                    .common_border(S::ZERO)
-                    .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-                LogicalPointOf::new(
-                    pending.inline_offset,
-                    current.get().max(cut.hypothetical.get()) - origin.get(),
-                )
-            } else {
-                pending.resolve::<M>(summary.start_fact())?.location
-            };
-            let child_cut = if introduced_cut.is_some() {
-                None
-            } else {
-                summary.separation.or(resident_cut)
-            };
-            let accepted = tree.compute_child_with_float_context(
-                child,
-                child_input.with_settled_auto_scrollbars(
-                    crate::scroll::SettledAutoScrollbarState::INITIAL,
-                ),
-                float_exclusions
-                    .for_entry_child(location, funding)
-                    .map_err(|error| super::inline_run::text_run_error(child, error.into()))?,
-                child_cut,
+                    child_input,
+                    child_style: &child_style,
+                    constants,
+                    prepared: &prepared,
+                    parent_entry: parent_entry(),
+                    resident_cut,
+                    float_exclusions: &float_exclusions,
+                },
             )?;
-            if let Some(previous) = remaining_cut
-                && child_cut.is_some_and(|cut| cut.same_cut(previous))
-                && accepted.floats.remaining_cut.is_none()
-            {
-                remaining_cut = None;
-            }
-            accepted_shared_origin = Some(location);
-            shared_child = Some(accepted.floats);
-            accepted.output
+            clearance_funding = computed.clearance_funding;
+            introduced_cut = computed.introduced_cut;
+            remaining_cut = computed.remaining_cut;
+            accepted_shared_origin = Some(computed.location);
+            shared_child = Some(computed.accepted.floats);
+            computed.accepted.output
         } else {
             tree.compute_block_child(child_request)?
         };
@@ -1343,6 +1236,174 @@ where
         active_margin_at_start: adjoining.start_open,
         active_margin_can_collapse_with_parent: adjoining.end_adjoins_parent,
         all_in_flow_children_can_collapse_through: adjoining.all_through,
+    })
+}
+
+struct SharedInFlowChild<'input, 'a, Node, S: LayoutScalar> {
+    node: Node,
+    child: Node,
+    index: usize,
+    child_input: ComputeInputOf<S>,
+    child_style: &'a BlockChildProjection<'input, S>,
+    constants: &'a Constants<S>,
+    prepared: &'a PreparedChild<S>,
+    parent_entry: scope::ParentEntry<S>,
+    resident_cut: Option<entry::canonical::Separation<Node, S>>,
+    float_exclusions: &'a FloatExclusions<S, Node>,
+}
+
+struct SharedInFlowComputation<Node, S: LayoutScalar> {
+    accepted: float_context::ChildOutput<Node, S>,
+    location: LogicalPointOf<S>,
+    clearance_funding: Option<crate::text_layout::scope_alignment::EntryFunding<S>>,
+    introduced_cut: Option<entry::canonical::Separation<Node, S>>,
+    remaining_cut: Option<entry::canonical::Separation<Node, S>>,
+}
+
+type SharedInFlowResult<Node, S, M> = LayoutResultOf<Node, SharedInFlowComputation<Node, S>, S, M>;
+
+fn compute_shared_in_flow_child<'input, Tree, S, M>(
+    tree: &mut Tree,
+    request: SharedInFlowChild<'input, '_, Tree::Node, S>,
+) -> SharedInFlowResult<Tree::Node, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let SharedInFlowChild {
+        node,
+        child,
+        index,
+        child_input,
+        child_style,
+        constants,
+        prepared,
+        parent_entry,
+        resident_cut,
+        float_exclusions,
+    } = request;
+    let cursor = parent_entry.cursor;
+    let active = parent_entry.active;
+    let start_open = parent_entry.first;
+    // Resolve the complete counterfactual component before committing
+    // this child's origin or producing its actual body.
+    let pending = scope::prepare(
+        tree,
+        node,
+        scope::Ordinary {
+            node: child,
+            input: child_input,
+            entry: None,
+        },
+        child_style,
+        constants,
+        prepared,
+        parent_entry,
+    )?;
+    let entry_input = child_input
+        .with_run_mode(RunMode::ComputeSize)
+        .with_settled_auto_scrollbars(crate::scroll::SettledAutoScrollbarState::INITIAL);
+    let clearance_funding = match tree.text_computation() {
+        Some(state) => {
+            state
+                .prepare_entry()
+                .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
+            state
+                .entry_funding()
+                .map_err(|error| super::inline_run::text_run_error(child, error.into()))?
+        }
+        None => None,
+    };
+    let funding = clearance_funding.as_ref();
+    let frame = std::sync::Arc::new(
+        float_exclusions
+            .for_entry_child(LogicalPointOf::new(S::ZERO, S::ZERO), funding)
+            .map_err(|error| super::inline_run::text_run_error(child, error.into()))?,
+    );
+    let position = entry::canonical::EntryPosition {
+        cursor,
+        active,
+        start_open,
+        collapses_start: constants.collapse_top_margin,
+        child_adjoins_parent: pending.child_collapses,
+        own_start: CollapsibleMarginOf::ZERO.collapse_with_margin(pending.margin.block_start),
+        inline_offset: pending.inline_offset,
+    };
+    let summary = match tree.qualify_entry(entry::EntryQuery {
+        node: child,
+        input: entry_input,
+        reporting_side: constants.flow_axes.block_start(),
+        purpose: entry::EntryPurpose::Component,
+        incoming: Some(float_context::Incoming {
+            node: child,
+            request: entry_input,
+            frame: frame.clone(),
+            cut: resident_cut,
+        }),
+        position: Some(position),
+    })? {
+        entry::EntryObservation::Summary(summary) => summary,
+        entry::EntryObservation::Demand(demand) => {
+            return Err(float_context::missing(demand.node));
+        }
+    };
+    let hypothetical = frame
+        .common_border(position.hypothetical(summary.start_fact().margin))
+        .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
+    let bound =
+        frame.entry_relevant_bound(child, child_style.clear, constants.flow_axes, funding)?;
+    let mut introduced_cut =
+        resident_cut.filter(|cut| cut.container == node && cut.node == child && cut.index == index);
+    if introduced_cut.is_none()
+        && let Some(bound) = bound
+        && hypothetical < bound
+    {
+        introduced_cut = Some(entry::canonical::Separation::own(
+            node,
+            child,
+            index,
+            hypothetical,
+            bound,
+        ));
+    }
+    let location = if let Some(cut) = introduced_cut {
+        let current = bound.ok_or_else(|| float_context::missing(child))?;
+        let origin = frame
+            .common_border(S::ZERO)
+            .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
+        LogicalPointOf::new(
+            pending.inline_offset,
+            current.get().max(cut.hypothetical.get()) - origin.get(),
+        )
+    } else {
+        pending.resolve::<M>(summary.start_fact())?.location
+    };
+    let child_cut = if introduced_cut.is_some() {
+        None
+    } else {
+        summary.separation.or(resident_cut)
+    };
+    let accepted = tree.compute_child_with_float_context(
+        child,
+        child_input.with_settled_auto_scrollbars(crate::scroll::SettledAutoScrollbarState::INITIAL),
+        float_exclusions
+            .for_entry_child(location, funding)
+            .map_err(|error| super::inline_run::text_run_error(child, error.into()))?,
+        child_cut,
+    )?;
+    let mut remaining_cut = resident_cut;
+    if let Some(previous) = remaining_cut
+        && child_cut.is_some_and(|cut| cut.same_cut(previous))
+        && accepted.floats.remaining_cut.is_none()
+    {
+        remaining_cut = None;
+    }
+    Ok(SharedInFlowComputation {
+        accepted,
+        location,
+        clearance_funding,
+        introduced_cut,
+        remaining_cut,
     })
 }
 
