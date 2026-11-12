@@ -26,9 +26,9 @@ pub(in crate::store) struct Invocation {
     pub global: crate::DomHostedGlobalId,
     pub host: crate::DomHostedHostId,
     pub work: Arc<AtomicU64>,
-    pub ancestors: Option<Arc<crate::source::event::EventWork>>,
+    pub ancestors: Option<Arc<crate::source::callback::CallbackWork>>,
     pub work_custody: source::formation::SourceWorkCustody,
-    pub retained_ancestors: Option<Arc<source::formation::EventWorkCustody>>,
+    pub retained_ancestors: Option<Arc<source::formation::CallbackWorkCustody>>,
     pub limits: crate::DomSourceLimits,
     pub closing_credit: u64,
 }
@@ -46,7 +46,7 @@ impl Invocation {
             });
         }
         self.work.store(next, Ordering::Relaxed);
-        crate::source::event::step_ancestors(self.ancestors.as_ref(), cancel)?;
+        crate::source::callback::step_ancestors(self.ancestors.as_ref(), cancel)?;
         Ok(())
     }
     pub(in crate::store) fn status(&self) -> DomFullscreenExitStatus {

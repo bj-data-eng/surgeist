@@ -55,12 +55,12 @@ impl SourceStorage {
     }
 }
 
-/// Affine owner-side custody of an explicitly retained Source event payload.
+/// Affine owner-side custody of an explicitly retained Source callback payload.
 /// This lives in the retention capability, never in an immutable request.
 #[derive(Debug)]
 pub(crate) struct SourceRetention {
     debit: custody::Debit,
-    _event: Arc<EventWorkCustody>,
+    _callback: Arc<CallbackWorkCustody>,
 }
 impl SourceRetention {
     pub(crate) fn into_payload_debit(self) -> custody::Debit {
@@ -70,18 +70,18 @@ impl SourceRetention {
     pub(crate) fn split(&mut self, usage: custody::Usage) -> Result<Self, DomError> {
         Ok(Self {
             debit: self.debit.split(usage)?,
-            _event: self._event.clone(),
+            _callback: self._callback.clone(),
         })
     }
     pub(in crate::store) fn retain(
-        event: Arc<EventWorkCustody>,
+        callback: Arc<CallbackWorkCustody>,
         usage: custody::Usage,
         admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
     ) -> Result<Self, DomError> {
-        let debit = event.work().storage.ledger().retain(usage, admit)?;
+        let debit = callback.work().storage.ledger().retain(usage, admit)?;
         Ok(Self {
             debit,
-            _event: event,
+            _callback: callback,
         })
     }
     pub(crate) fn absorb(&mut self, other: Self) -> Result<(), DomError> {
@@ -166,42 +166,40 @@ impl SourceWorkCustody {
     }
 }
 
-/// Controlled dependency capsule for an original event's fixed atoms. External
-/// EventWork/request values intentionally hold no copy of this owner authority.
+/// Controlled dependency capsule for an original callback's fixed atoms.
+/// Immutable requests hold no copy of this owner authority.
 #[derive(Debug)]
-pub(in crate::store) struct EventWorkCustody {
+pub(in crate::store) struct CallbackWorkCustody {
     // Destroy represented targets/dependencies before their own debit.
-    work: Arc<crate::source::event::EventWork>,
+    work: Arc<crate::source::callback::CallbackWork>,
     source: SourceWorkCustody,
-    ancestor: Option<Arc<EventWorkCustody>>,
+    ancestor: Option<Arc<CallbackWorkCustody>>,
     _debit: custody::SharedDebit,
 }
-pub(in crate::store) struct PreparedEventWorkCustody {
+pub(in crate::store) struct PreparedCallbackWorkCustody {
     source: SourceWorkCustody,
-    ancestor: Option<Arc<EventWorkCustody>>,
+    ancestor: Option<Arc<CallbackWorkCustody>>,
     debit: custody::SharedDebit,
 }
-impl EventWorkCustody {
+impl CallbackWorkCustody {
     pub(in crate::store) fn prepare(
         ledger: &custody::Ledger,
         source: SourceWorkCustody,
         ancestor: Option<Arc<Self>>,
         admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
-    ) -> Result<PreparedEventWorkCustody, DomError> {
-        let bytes = size_of::<crate::source::event::EventWork>()
+    ) -> Result<PreparedCallbackWorkCustody, DomError> {
+        let bytes = size_of::<crate::source::callback::CallbackWork>()
             .checked_add(2 * size_of::<AtomicUsize>())
             .and_then(|bytes| bytes.checked_add(size_of::<Self>()))
             .ok_or(DomError::RepresentationExhausted)?;
         let debit = ledger.retain_shared(custody::Usage::new(bytes, 0), admit)?;
-        // The executor is held only weakly by EventWork. Its external target is
-        // not a controlled allocation; the Weak holder is in EventWork's size.
-        Ok(PreparedEventWorkCustody {
+        Ok(PreparedCallbackWorkCustody {
             source,
             ancestor,
             debit,
         })
     }
-    pub(in crate::store) fn work(&self) -> &Arc<crate::source::event::EventWork> {
+    pub(in crate::store) fn work(&self) -> &Arc<crate::source::callback::CallbackWork> {
         &self.work
     }
     pub(in crate::store) fn source(&self) -> SourceWorkCustody {
@@ -211,12 +209,12 @@ impl EventWorkCustody {
         self.ancestor.clone()
     }
 }
-impl PreparedEventWorkCustody {
+impl PreparedCallbackWorkCustody {
     pub(in crate::store) fn finish(
         self,
-        work: Arc<crate::source::event::EventWork>,
-    ) -> Arc<EventWorkCustody> {
-        allocated_arc(EventWorkCustody {
+        work: Arc<crate::source::callback::CallbackWork>,
+    ) -> Arc<CallbackWorkCustody> {
+        allocated_arc(CallbackWorkCustody {
             work,
             source: self.source,
             ancestor: self.ancestor,
@@ -351,7 +349,7 @@ impl WorkOwner {
 pub(super) struct WorkDependencies {
     _source: Option<SourceWorkCustody>,
     _parsed: Option<crate::store::pending_associations::control::Admission>,
-    _event: Option<Arc<EventWorkCustody>>,
+    _callback: Option<Arc<CallbackWorkCustody>>,
     _mirrors: Option<SourceMirrors>,
 }
 impl WorkDependencies {
@@ -369,15 +367,15 @@ impl WorkDependencies {
                 .is_none()
                 .then(|| draft.source_work_custody()),
             _parsed: draft.source_work.parsed().cloned(),
-            _event: draft.source_ancestor_custody(),
+            _callback: draft.source_ancestor_custody(),
             _mirrors: Some(draft.source_mirrors()),
         }
     }
-    fn from_event(event: Arc<EventWorkCustody>) -> Self {
+    fn from_callback(callback: Arc<CallbackWorkCustody>) -> Self {
         Self {
-            _source: Some(event.source()),
+            _source: Some(callback.source()),
             _parsed: None,
-            _event: Some(event),
+            _callback: Some(callback),
             _mirrors: None,
         }
     }
@@ -397,11 +395,11 @@ pub(crate) struct Formation {
     live_units: Arc<AtomicUsize>,
     own_units: Cell<usize>,
     work: WorkOwner,
-    ancestors: Option<Arc<crate::source::event::EventWork>>,
+    ancestors: Option<Arc<crate::source::callback::CallbackWork>>,
     work_limit: u64,
     dependencies: WorkDependencies,
     /// The transaction's list of blocks to charge, when the formation belongs to one. A
-    /// formation of an event retains payload outside any transaction and charges no block.
+    /// formation of a callback retains payload outside any transaction and charges no block.
     blocks: Option<Arc<super::super::block_custody::BlockAdoptions>>,
 }
 impl Drop for Formation {
@@ -459,12 +457,12 @@ impl Formation {
             blocks: Some(draft.blocks.clone()),
         }))
     }
-    pub(in crate::store) fn from_event(
-        event_custody: Arc<EventWorkCustody>,
+    pub(in crate::store) fn from_callback(
+        callback_custody: Arc<CallbackWorkCustody>,
         external: storage::Payload,
         limits: crate::DomSourceLimits,
     ) -> Self {
-        let work = event_custody.work();
+        let work = callback_custody.work();
         Self {
             base: external.bytes,
             base_units: external.units,
@@ -478,11 +476,11 @@ impl Formation {
             own_units: Cell::new(0),
             work: WorkOwner::Source {
                 work: work.work.clone(),
-                custody: event_custody.source(),
+                custody: callback_custody.source(),
             },
             work_limit: limits.work,
             ancestors: work.ancestors.clone(),
-            dependencies: WorkDependencies::from_event(event_custody),
+            dependencies: WorkDependencies::from_callback(callback_custody),
             blocks: None,
         }
     }
@@ -554,7 +552,7 @@ impl Formation {
         }
         self.work.store(next, Ordering::Relaxed);
         SourceStorage::record_step();
-        crate::source::event::step_ancestors(self.ancestors.as_ref(), cancel)
+        crate::source::callback::step_ancestors(self.ancestors.as_ref(), cancel)
     }
     fn admit_total(&self, prospective: custody::Usage) -> Result<(), DomError> {
         if let Some(parsed) = self.work.parsed() {

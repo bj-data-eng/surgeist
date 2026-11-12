@@ -136,7 +136,7 @@ fn carried_output_keeps_original_counter_and_mirrors_controlled_after_source_dro
         WorkDependencies {
             _source: Some(original.clone()),
             _parsed: None,
-            _event: None,
+            _callback: None,
             _mirrors: Some(mirrors.clone()),
         },
     );
@@ -186,7 +186,7 @@ fn selected_payload_transfer_ends_mirrors_without_releasing_its_occurrence() {
         WorkDependencies {
             _source: Some(work.clone()),
             _parsed: None,
-            _event: None,
+            _callback: None,
             _mirrors: Some(mirrors.clone()),
         },
     );

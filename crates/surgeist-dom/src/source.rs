@@ -1,4 +1,5 @@
 //! One requested canonical edit and its retained source continuation.
+pub(crate) mod callback;
 mod design_mode;
 pub(crate) mod event;
 pub use design_mode::{

@@ -2433,7 +2433,7 @@ struct Draft {
     // owner. Relaxed numerical loads/stores need no publication ordering; Arc
     // and atomics allow the complete parked owner to move between threads.
     source_work: source::formation::WorkOwner,
-    source_ancestors: Option<Arc<crate::source::event::EventWork>>,
+    source_ancestors: Option<Arc<crate::source::callback::CallbackWork>>,
     source_formation_bytes: Arc<AtomicUsize>,
     source_temporary_units: Arc<AtomicUsize>,
     source_other_bytes: usize,
@@ -2504,7 +2504,7 @@ struct Draft {
     #[cfg(test)]
     svg_processing_trace: Option<svg_script::ProcessingTrace>,
     source_mirrors: source::formation::SourceMirrors,
-    source_ancestor_custody: Option<Arc<source::formation::EventWorkCustody>>,
+    source_ancestor_custody: Option<Arc<source::formation::CallbackWorkCustody>>,
     names: name_registry::Operation,
     _header_custody: custody::Debit,
 }
@@ -2595,7 +2595,7 @@ impl Draft {
     }
     pub(in crate::store) fn source_ancestor_custody(
         &self,
-    ) -> Option<Arc<source::formation::EventWorkCustody>> {
+    ) -> Option<Arc<source::formation::CallbackWorkCustody>> {
         self.source_ancestor_custody.clone()
     }
     pub(in crate::store) fn source_mirrors(&self) -> source::formation::SourceMirrors {

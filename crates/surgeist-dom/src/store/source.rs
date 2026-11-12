@@ -117,7 +117,7 @@ impl Draft {
             }
             self.source_work.store(next, Ordering::Relaxed);
             source::formation::SourceStorage::record_step();
-            crate::source::event::step_ancestors(self.source_ancestors.as_ref(), cancel)?;
+            crate::source::callback::step_ancestors(self.source_ancestors.as_ref(), cancel)?;
         }
         Ok(())
     }

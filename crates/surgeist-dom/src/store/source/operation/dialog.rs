@@ -1,17 +1,18 @@
 //! Initial Show event observation without an old canonical Draft.
 use super::*;
-use crate::source::event::{EventWork, ExecutorBinding};
+use crate::source::callback::CallbackWork;
+use crate::source::event::ExecutorBinding;
 use crate::source::*;
-use std::sync::{Mutex, Weak, atomic::AtomicU8};
+use std::sync::Weak;
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogOutcome, HtmlDialogReply};
 
 pub(super) struct ResumeWorkPolicy {
-    work: Arc<EventWork>,
+    work: Arc<CallbackWork>,
     old: u64,
     committed: bool,
 }
 impl ResumeWorkPolicy {
-    pub(super) fn new(work: Arc<EventWork>, proposed: u64) -> Result<Self, DomError> {
+    pub(super) fn new(work: Arc<CallbackWork>, proposed: u64) -> Result<Self, DomError> {
         if work.work.load(Ordering::Relaxed) > proposed {
             return Err(DomError::SourceWorkLimit { limit: proposed });
         }
@@ -204,7 +205,7 @@ impl Operation {
             OperationDraft::Observed(_) => Ok(None),
         }
     }
-    pub(super) fn observed_event_work(&self) -> Option<Arc<EventWork>> {
+    pub(super) fn observed_event_work(&self) -> Option<Arc<CallbackWork>> {
         self.observation()
             .map(|observation| observation.request.work.clone())
     }
@@ -427,7 +428,7 @@ impl Operation {
             .filter(|binding| binding.live.load(Ordering::Relaxed))
             .ok_or(DomError::SourceEventExecutorUnavailable)?;
         let formation = formation::Formation::new(&self.draft, cancel)?;
-        let event_custody = formation::EventWorkCustody::prepare(
+        let event_custody = formation::CallbackWorkCustody::prepare(
             self.draft.custody_ledger(),
             self.draft.source_work_custody(),
             self.draft.source_ancestor_custody(),
@@ -442,26 +443,22 @@ impl Operation {
             0
         };
         let request = DomSourceEventRequest {
-            work: formation::allocated_arc(EventWork {
-                executor: Arc::downgrade(&executor),
-                identity: DomSourceEventId {
-                    operation: self.id,
-                    occurrence,
-                },
-                parent: dom.source_parents.last().map(|parent| parent.id),
-                subject,
-                kind,
-                payload,
-                cancelable,
-                stage: AtomicU8::new(0),
-                work: self.draft.source_work.source_arc().clone(),
-                work_limit: AtomicU64::new(self.limits.work),
-                scope: Mutex::new(Weak::new()),
-                ancestors: self.draft.source_ancestors.clone(),
-                bytes: formation::allocated_arc(AtomicUsize::new(0)),
-                units: formation::allocated_arc(AtomicUsize::new(0)),
-                storage: formation::SourceStorage::new(self.draft.custody_ledger().clone()),
-            }),
+            executor: Arc::downgrade(&executor),
+            identity: DomSourceEventId {
+                operation: self.id,
+                occurrence,
+            },
+            parent: dom.source_parents.last().map(|parent| parent.id),
+            subject,
+            kind,
+            payload,
+            cancelable,
+            work: formation::allocated_arc(CallbackWork::new(
+                self.draft.source_work.source_arc().clone(),
+                self.limits.work,
+                self.draft.source_ancestors.clone(),
+                formation::SourceStorage::new(self.draft.custody_ledger().clone()),
+            )),
         };
         let event_custody = event_custody.finish(request.work.clone());
         let limits = self.limits;
@@ -560,7 +557,7 @@ impl Operation {
 pub struct DomSourceEventFiringLoan<'a> {
     observation: &'a mut DialogObservation,
     event_exposed: &'a mut bool,
-    event_work: &'a mut Weak<EventWork>,
+    event_work: &'a mut Weak<CallbackWork>,
     source: &'a crate::DomHostedSource,
     origin: crate::DomHostedMoment,
     global: crate::DomHostedGlobalId,
@@ -702,7 +699,7 @@ impl Dom {
     pub(in crate::store) fn dispatch_hosted_read_work(
         &self,
         cancel: &AtomicBool,
-    ) -> Result<Option<Arc<EventWork>>, DomError> {
+    ) -> Result<Option<Arc<CallbackWork>>, DomError> {
         check_cancel(cancel)?;
         if self.state.incomplete_hosted.is_some() {
             return Err(DomError::IncompleteSourceOperation);
@@ -718,22 +715,15 @@ impl Dom {
             .observation()
             .filter(|_| operation.permits_reentry())
             .ok_or(DomError::IncompleteSourceOperation)?;
-        self.qualify_source_event(&observation.request, 1)?;
         let work = &observation.request.work;
+        self.qualify_source_event(work, 1)?;
         let executor = self
             .source_event_executor
             .as_ref()
             .and_then(Weak::upgrade)
             .filter(|binding| binding.live.load(Ordering::Relaxed))
             .ok_or(DomError::InvalidSourceEvent)?;
-        if executor.owner != self.owner
-            || !work
-                .executor
-                .upgrade()
-                .is_some_and(|issuer| Arc::ptr_eq(&issuer, &executor))
-        {
-            return Err(DomError::InvalidSourceEvent);
-        }
+        observation.request.validate_executor(&executor)?;
         work.step(cancel)?;
         if let Some(incomplete) = self.state.incomplete_source {
             let mut qualified = operation.published && operation.id == incomplete;
@@ -775,7 +765,7 @@ impl Dom {
     pub(in crate::store) fn source_work_ancestors(
         &self,
         excluding: Option<&Arc<AtomicU64>>,
-    ) -> Option<Arc<EventWork>> {
+    ) -> Option<Arc<CallbackWork>> {
         self.source_operation
             .iter()
             .map(Box::as_ref)
@@ -789,7 +779,7 @@ impl Dom {
     pub(in crate::store) fn source_work_ancestor_custody(
         &self,
         excluding: Option<&Arc<AtomicU64>>,
-    ) -> Option<Arc<formation::EventWorkCustody>> {
+    ) -> Option<Arc<formation::CallbackWorkCustody>> {
         self.source_operation
             .iter()
             .map(Box::as_ref)
@@ -844,7 +834,7 @@ impl Dom {
             limits.retained_bytes = limits.retained_bytes.min(ancestor.limits.retained_bytes);
             limits.retained_units = limits.retained_units.min(ancestor.limits.retained_units);
         }
-        Ok(Some(formation::Formation::from_event(
+        Ok(Some(formation::Formation::from_callback(
             operation
                 .event_custody
                 .as_ref()
@@ -1079,25 +1069,26 @@ impl Dom {
     }
     pub(crate) fn qualify_source_event(
         &self,
-        request: &DomSourceEventRequest,
+        work: &Arc<CallbackWork>,
         stage: u8,
-    ) -> Result<(), DomError> {
+    ) -> Result<&DomSourceEventRequest, DomError> {
         let operation = self
             .source_operation
             .as_ref()
-            .filter(|operation| operation.id == request.operation())
             .ok_or(DomError::InvalidSourceEvent)?;
         let observation = operation
             .observation()
             .ok_or(DomError::InvalidSourceEvent)?;
+        let request = &observation.request;
         if request.subject().owner() != self.owner
+            || request.operation() != operation.id
             || matches!(observation.time, FiringTime::Pending { .. })
-            || !Arc::ptr_eq(&observation.request.work, &request.work)
-            || request.work.stage.load(Ordering::Relaxed) != stage
+            || !Arc::ptr_eq(&request.work, work)
+            || work.stage.load(Ordering::Relaxed) != stage
         {
             return Err(DomError::InvalidSourceEvent);
         }
-        Ok(())
+        Ok(request)
     }
     /// Read the original retained firing observation for the exact real request
     /// before its executor starts dispatch. Unhosted requests can lack timing.
@@ -1105,7 +1096,7 @@ impl Dom {
         &self,
         request: &DomSourceEventRequest,
     ) -> Result<Option<Result<DomSourceEventTime, DomSourceEventClockFailure>>, DomError> {
-        self.qualify_source_event(request, 0)?;
+        self.qualify_source_event(&request.work, 0)?;
         let observation = self
             .source_operation
             .as_ref()

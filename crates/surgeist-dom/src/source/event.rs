@@ -2,11 +2,12 @@
 //!
 //! The executor attests actual dispatch. DOM validates association and one-time
 //! consumption; it cannot independently prove an external host ran callbacks.
+use super::callback::{CallbackWork, DispatchScope};
 use super::*;
 use crate::{Dom, DomError, DomOwnerId};
 use std::sync::{
-    Mutex, Weak,
-    atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering},
+    Weak,
+    atomic::{AtomicBool, Ordering},
 };
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogState};
 
@@ -95,69 +96,6 @@ pub(crate) struct ExecutorBinding {
     pub(crate) owner: DomOwnerId,
     pub(crate) live: AtomicBool,
 }
-#[derive(Debug)]
-pub(crate) struct DispatchScope;
-#[derive(Debug)]
-pub(crate) struct EventWork {
-    pub(crate) executor: Weak<ExecutorBinding>,
-    pub(crate) identity: DomSourceEventId,
-    pub(crate) parent: Option<DomSourceOperationId>,
-    pub(crate) subject: NodeId,
-    pub(crate) kind: DomSourceEventKind,
-    pub(crate) payload: DomSourceEventPayload,
-    pub(crate) cancelable: bool,
-    pub(crate) stage: AtomicU8,
-    pub(crate) work: Arc<AtomicU64>,
-    pub(crate) work_limit: AtomicU64,
-    pub(crate) scope: Mutex<Weak<DispatchScope>>,
-    pub(crate) ancestors: Option<Arc<EventWork>>,
-    pub(crate) bytes: Arc<AtomicUsize>,
-    pub(crate) units: Arc<AtomicUsize>,
-    pub(crate) storage: crate::store::SourceStorage,
-}
-impl EventWork {
-    pub(crate) fn step_own(&self, cancel: &AtomicBool) -> Result<(), DomError> {
-        if cancel.load(Ordering::Relaxed) {
-            return Err(DomError::Cancelled);
-        }
-        let next = self
-            .work
-            .load(Ordering::Relaxed)
-            .checked_add(1)
-            .ok_or(DomError::RepresentationExhausted)?;
-        let limit = self.work_limit.load(Ordering::Relaxed);
-        if next > limit {
-            return Err(DomError::SourceWorkLimit { limit });
-        }
-        self.work.store(next, Ordering::Relaxed);
-        crate::store::SourceStorage::record_step();
-        Ok(())
-    }
-
-    pub(crate) fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
-        self.step_own(cancel)?;
-        step_ancestors(self.ancestors.as_ref(), cancel)
-    }
-    pub(crate) fn active(&self) -> bool {
-        self.stage.load(Ordering::Relaxed) == 1
-            && self
-                .scope
-                .lock()
-                .is_ok_and(|scope| scope.upgrade().is_some())
-    }
-    fn validate_executor(&self, executor: &Arc<ExecutorBinding>) -> Result<(), DomError> {
-        if !executor.live.load(Ordering::Relaxed)
-            || self.subject.owner() != executor.owner
-            || !self
-                .executor
-                .upgrade()
-                .is_some_and(|actual| Arc::ptr_eq(&actual, executor))
-        {
-            return Err(DomError::InvalidSourceEvent);
-        }
-        Ok(())
-    }
-}
 /// Actual ToggleEvent data; plain events have no invented state strings.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomSourceToggleEvent {
@@ -188,34 +126,56 @@ pub(crate) enum DomSourceEventPayload {
 /// ToggleEvent data exists only for beforetoggle and toggle; Close is plain.
 #[derive(Clone, Debug)]
 pub struct DomSourceEventRequest {
-    pub(crate) work: Arc<EventWork>,
+    pub(crate) work: Arc<CallbackWork>,
+    pub(crate) executor: Weak<ExecutorBinding>,
+    pub(crate) identity: DomSourceEventId,
+    pub(crate) parent: Option<DomSourceOperationId>,
+    pub(crate) subject: NodeId,
+    pub(crate) kind: DomSourceEventKind,
+    pub(crate) payload: DomSourceEventPayload,
+    pub(crate) cancelable: bool,
 }
 impl DomSourceEventRequest {
+    pub(crate) fn validate_executor(
+        &self,
+        executor: &Arc<ExecutorBinding>,
+    ) -> Result<(), DomError> {
+        if !executor.live.load(Ordering::Relaxed)
+            || self.subject.owner() != executor.owner
+            || !self
+                .executor
+                .upgrade()
+                .is_some_and(|actual| Arc::ptr_eq(&actual, executor))
+        {
+            return Err(DomError::InvalidSourceEvent);
+        }
+        Ok(())
+    }
     /// Actual producer firing clause, independent of payload state spellings.
     pub fn kind(&self) -> DomSourceEventKind {
-        self.work.kind
+        self.kind
     }
     pub fn operation(&self) -> DomSourceOperationId {
-        self.work.identity.operation
+        self.identity.operation
     }
     pub fn parent_operation(&self) -> Option<DomSourceOperationId> {
-        self.work.parent
+        self.parent
     }
     pub fn identity(&self) -> DomSourceEventId {
-        self.work.identity
+        self.identity
     }
     pub fn subject(&self) -> NodeId {
-        self.work.subject
+        self.subject
     }
     /// Actual ToggleEvent data, absent for a plain Close notification.
     pub fn toggle_event(&self) -> Option<DomSourceToggleEvent> {
-        match self.work.payload {
+        match self.payload {
             DomSourceEventPayload::Toggle(payload) => Some(payload),
             DomSourceEventPayload::Close | DomSourceEventPayload::Cancel => None,
         }
     }
     pub fn cancelable(&self) -> bool {
-        self.work.cancelable
+        self.cancelable
     }
 }
 /// Actual Dialog service occurrence reached by the original Source engine.
@@ -264,7 +224,7 @@ impl Drop for DomSourceEventExecutor {
 /// Affine permission for exactly one request's actual retained dispatch.
 #[derive(Debug)]
 pub struct DomSourceEventDispatchPermit {
-    work: Arc<EventWork>,
+    work: Arc<CallbackWork>,
 }
 /// The exact actual invocation's reentry scope. Drop/unwind closes reentry;
 /// retaining an event job alone does not leave unrelated edits enabled.
@@ -276,14 +236,14 @@ pub struct DomSourceEventDispatchGuard {
 /// A completed trusted dispatch attestation, consumed only after DOM admission.
 #[derive(Debug)]
 pub struct DomSourceEventPublication {
-    pub(crate) work: Arc<EventWork>,
+    pub(crate) work: Arc<CallbackWork>,
     pub(crate) outcome: DomSourceEventOutcome,
 }
 /// Continuous charge for actual external job/event/receipt storage. Backing
 /// owners must drop before this guard; acquire both guards across replacement.
 #[derive(Debug)]
 pub struct DomSourceEventRetention {
-    pub(crate) work: Arc<EventWork>,
+    pub(crate) work: Arc<CallbackWork>,
     pub(crate) custody: Option<crate::store::SourceRetention>,
     pub(crate) bytes: usize,
     pub(crate) units: usize,
@@ -426,8 +386,8 @@ impl DomSourceEventExecutor {
         request: &DomSourceEventRequest,
         cancel: &AtomicBool,
     ) -> Result<DomSourceEventDispatchPermit, DomError> {
-        dom.qualify_source_event(request, 0)?;
-        request.work.validate_executor(&self.binding)?;
+        let request = dom.qualify_source_event(&request.work, 0)?;
+        request.validate_executor(&self.binding)?;
         request.work.step(cancel)?;
         request
             .work
@@ -444,28 +404,19 @@ impl DomSourceEventExecutor {
         permit: &DomSourceEventDispatchPermit,
         cancel: &AtomicBool,
     ) -> Result<DomSourceEventDispatchGuard, DomError> {
-        let request = DomSourceEventRequest {
-            work: permit.work.clone(),
-        };
-        dom.qualify_source_event(&request, 1)?;
-        permit.work.validate_executor(&self.binding)?;
+        let request = dom.qualify_source_event(&permit.work, 1)?;
+        request.validate_executor(&self.binding)?;
         permit.work.step(cancel)?;
         let retained = dom.retain_source_event_payload(
-            &request,
+            request,
             std::mem::size_of::<DispatchScope>(),
             0,
             cancel,
         )?;
-        let mut slot = permit
+        let scope = permit
             .work
-            .scope
-            .lock()
-            .map_err(|_| DomError::InvalidSourceEvent)?;
-        if slot.upgrade().is_some() {
-            return Err(DomError::InvalidSourceEvent);
-        }
-        let scope = Arc::new(DispatchScope);
-        *slot = Arc::downgrade(&scope);
+            .open_scope()
+            .ok_or(DomError::InvalidSourceEvent)?;
         Ok(DomSourceEventDispatchGuard {
             _scope: scope,
             _retained: retained,
@@ -484,22 +435,10 @@ impl DomSourceEventExecutor {
             return Err(DomError::Cancelled);
         }
         let actual = permit.as_ref().ok_or(DomError::InvalidSourceEvent)?;
-        dom.qualify_source_event(
-            &DomSourceEventRequest {
-                work: actual.work.clone(),
-            },
-            1,
-        )?;
-        actual.work.validate_executor(&self.binding)?;
+        let request = dom.qualify_source_event(&actual.work, 1)?;
+        request.validate_executor(&self.binding)?;
         actual.work.step(cancel)?;
-        if actual
-            .work
-            .scope
-            .lock()
-            .map_err(|_| DomError::InvalidSourceEvent)?
-            .upgrade()
-            .is_some()
-        {
+        if !actual.work.scope_closed() {
             return Err(DomError::InvalidSourceEvent);
         }
         actual
@@ -512,51 +451,4 @@ impl DomSourceEventExecutor {
             outcome,
         })
     }
-}
-
-/// Charge each actual retained owner, without resetting or replacing its meter.
-pub(crate) fn step_ancestors(
-    mut ancestor: Option<&Arc<EventWork>>,
-    cancel: &AtomicBool,
-) -> Result<(), DomError> {
-    while let Some(work) = ancestor {
-        work.step_own(cancel)?;
-        ancestor = work.ancestors.as_ref();
-    }
-    Ok(())
-}
-
-pub(crate) fn remaining_ancestor_work(
-    mut ancestor: Option<&Arc<EventWork>>,
-    mut remaining: u64,
-) -> Result<u64, DomError> {
-    while let Some(work) = ancestor {
-        let limit = work.work_limit.load(Ordering::Relaxed);
-        remaining = remaining.min(
-            limit
-                .checked_sub(work.work.load(Ordering::Relaxed))
-                .ok_or(DomError::SourceWorkLimit { limit })?,
-        );
-        ancestor = work.ancestors.as_ref();
-    }
-    Ok(remaining)
-}
-pub(crate) fn retain_ancestor_work(
-    mut ancestor: Option<&Arc<EventWork>>,
-    delta: u64,
-) -> Result<(), DomError> {
-    while let Some(work) = ancestor {
-        let next = work
-            .work
-            .load(Ordering::Relaxed)
-            .checked_add(delta)
-            .ok_or(DomError::RepresentationExhausted)?;
-        let limit = work.work_limit.load(Ordering::Relaxed);
-        if next > limit {
-            return Err(DomError::SourceWorkLimit { limit });
-        }
-        work.work.store(next, Ordering::Relaxed);
-        ancestor = work.ancestors.as_ref();
-    }
-    Ok(())
 }

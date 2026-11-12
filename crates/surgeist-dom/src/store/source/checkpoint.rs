@@ -200,7 +200,7 @@ impl<'a> Admission<'a> {
         }
         self.original.source_work.store(next, Ordering::Relaxed);
         super::formation::SourceStorage::record_step();
-        crate::source::event::retain_ancestor_work(self.original.source_ancestors.as_ref(), 1)?;
+        crate::source::callback::retain_ancestor_work(self.original.source_ancestors.as_ref(), 1)?;
         Ok(())
     }
     /// Lists the block `value` borrows in the original transaction, so that a retention that

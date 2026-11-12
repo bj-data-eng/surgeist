@@ -41,9 +41,9 @@ fn owner_dependency_keeps_original_event_atoms_once_after_source_finishes() {
     drop(event); // An external request owns no record/page/fixed-atom debit.
     assert_eq!(ledger.total(), after_source);
 
-    let fixed_event = size_of::<EventWork>()
+    let fixed_event = size_of::<CallbackWork>()
         + 2 * size_of::<AtomicUsize>()
-        + size_of::<formation::EventWorkCustody>()
+        + size_of::<formation::CallbackWorkCustody>()
         + custody::SharedDebit::administration_usage().bytes();
     drop(dependency);
     assert_eq!(after_source.bytes() - ledger.total().bytes(), fixed_event);
