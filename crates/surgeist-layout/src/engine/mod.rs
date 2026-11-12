@@ -695,3 +695,6 @@ fn run_session<Tree: LayoutTree>(
 
 #[cfg(test)]
 mod atomic_size_tests;
+
+#[cfg(test)]
+mod depth_tests;
