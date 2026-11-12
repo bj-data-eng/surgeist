@@ -461,11 +461,6 @@ where
             remaining_cut: None,
         });
     }
-    let logical_inner_size = constants.logical_node_inner_size();
-    let inherited_inline_request = constants
-        .flow_axes
-        .logical_size(constants.sizing_request.axes())
-        .inline;
     let normal_block_fill = intrinsic::normal_fill(&style, input, tree.node_input(node).float);
     let accepted_inline_outer =
         intrinsic::accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
@@ -488,157 +483,39 @@ where
             ))?;
             Ok(measured.intrinsic_inline_demand)
         })?;
-    let accepted_inline_inner = constants.accepted_inline_inner(node, accepted_inline_outer)?;
-    let definite_child_inner = constants
-        .flow_axes
-        .logical_size(constants.definite_child_containing_block_size());
-    let ratio_block_outer = if constants.ratio_dependent_block
-        && definite_child_inner.block.is_none()
-        && normal_block_fill
-        && inherited_inline_request.operation() == crate::SizingOperation::Normal
-        && (logical_inner_size.inline.is_some()
-            || inherited_inline_request.space().definite_size().is_some())
-    {
-        let adjustment = if style.common.box_sizing == BoxSizing::ContentBox {
-            constants.padding_border_size
-        } else {
-            Size::ZERO
-        };
-        let size = constants
-            .flow_axes
-            .physical_size(LogicalSizeOf::new(Some(accepted_inline_outer), None))
-            .sub_optional_clamped_to_zero(adjustment)
-            .apply_aspect_ratio(*style.common.aspect_ratio)
-            .add_optional(adjustment);
-        let block = constants.flow_axes.logical_size(size).block;
-        if let Some(block) = block
-            && !block.is_finite()
-        {
-            return Err(crate::error::sizing_resolution_error(
-                node,
-                crate::LengthResolutionStatus::InvalidNumeric { value: block }.into(),
-            )
-            .into());
-        }
-        block.map(|block| {
-            block
-                .clamp_max_before_min_optional(
-                    constants.logical_node_min_size().block,
-                    constants.logical_node_max_size().block,
-                )
-                .max(constants.logical_padding_border_size().block)
-        })
-    } else {
-        None
-    };
-    let block_minimum = match constants.flow_axes.block_axis() {
-        PhysicalAxis::Horizontal => &style.common.min_size.width,
-        PhysicalAxis::Vertical => &style.common.min_size.height,
-    };
-    let ratio_needs_content_minimum = constants
-        .flow_axes
-        .logical_size(contained_size)
-        .block
-        .is_none()
-        && ratio_block_outer.is_some()
-        && block_minimum.is_auto()
-        && !style
-            .common
-            .overflow
-            .establishes_independent_formatting_context()
-        && (!children.is_empty() || semantic_work);
-    // Collect the automatic minimum before using the settled ratio height
-    // as a containing basis for child percentages.
-    let definite_ratio_inner = ratio_block_outer
-        .filter(|_| !ratio_needs_content_minimum)
-        .map(|outer| {
-            logical_inner_size.block.unwrap_or_else(|| {
-                (outer - constants.logical_content_box_inset().block_sum()).max(S::ZERO)
-            })
-        });
-    let sizes_float_context = float_context::sizes_float_context(
-        float_role,
-        input,
-        Some(accepted_inline_inner),
-        inherited.is_some(),
-        tree.block_float_work(node),
-    );
-    let needs_final_pass = (input.run_mode().is_perform_layout() || sizes_float_context)
-        && (logical_inner_size.inline.is_none()
-            || input.run_mode().is_perform_layout() && ratio_needs_content_minimum
-            || constants
-                .flow_axes
-                .logical_axis_progression(crate::LogicalAxis::Block)
-                .is_decreasing()
-                && logical_inner_size.block.is_none());
-    crate::layout_math::checked_available_space(accepted_inline_inner)
-        .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?;
-    let normal_constants = constants.with_logical_node_inner_size(
-        LogicalSizeOf::new(
-            Some(accepted_inline_inner),
-            definite_ratio_inner.or(logical_inner_size.block),
-        ),
-        definite_ratio_inner.is_some(),
-    );
-    // Actual Normal traversal owns height, Shape encounters and normal facts
-    // at the accepted width. RunMode does not turn a size query intrinsic.
-    let measured_inset_demand = input.run_mode().is_perform_layout()
-        && relative::has_pending_children::<Tree, M>(tree, &children, normal_constants.flow_axes);
-    let normal_pass_input = if ratio_needs_content_minimum {
-        input.with_run_mode(RunMode::ComputeSize)
-    } else {
-        input
-    };
+    let sizing = BlockFlowSizing::prepare(
+        tree,
+        &style,
+        &constants,
+        &children,
+        BlockFlowRequest {
+            node,
+            input,
+            contained_size,
+            inherited: inherited.is_some(),
+            semantic_work,
+            float_role,
+            normal_block_fill,
+            accepted_inline_outer,
+        },
+    )?;
     let normal_pass = layout_in_flow_children(
         tree,
         node,
         &children,
-        &normal_constants,
-        normal_pass_input,
+        &sizing.normal_constants,
+        sizing.normal_input,
         InFlowPassContext {
             inline_operation: crate::SizingOperation::Normal,
-            inner_inline: Some(accepted_inline_inner),
-            set_layout: normal_pass_input.run_mode().is_perform_layout()
-                && (!needs_final_pass || measured_inset_demand),
+            inner_inline: Some(sizing.accepted_inline_inner),
+            set_layout: sizing.set_normal_layout,
             inherited,
             projection: None,
         },
     )?;
-    let auto_block = normal_pass.auto_block(&normal_constants, float_role);
-    let block = ratio_block_outer.map_or(auto_block, |ratio_block| {
-        if ratio_needs_content_minimum {
-            ratio_block.max(auto_block)
-        } else {
-            ratio_block
-        }
-    });
-    let logical_intrinsic_outer_size = LogicalSizeOf::new(accepted_inline_outer, block);
-    let logical_intrinsic_outer_size = LogicalSizeOf::new(
-        logical_intrinsic_outer_size
-            .inline
-            .clamp_max_before_min_optional(
-                constants.logical_node_min_size().inline,
-                constants.logical_node_max_size().inline,
-            ),
-        logical_intrinsic_outer_size
-            .block
-            .clamp_max_before_min_optional(
-                constants.logical_node_min_size().block,
-                constants.logical_node_max_size().block,
-            ),
-    )
-    .max_optional(constants.logical_padding_border_size().map(Some));
-    let logical_outer_size = constants
-        .logical_node_outer_size()
-        .unwrap_or(logical_intrinsic_outer_size)
-        .max_optional(constants.logical_padding_border_size().map(Some));
-    let provisional_logical_output_size = constants
-        .flow_axes
-        .logical_size(input.known())
-        .or(constants.logical_node_outer_size())
-        .unwrap_or(logical_outer_size)
-        .max_optional(constants.logical_padding_border_size().map(Some));
-    let (final_constants, final_pass) = if needs_final_pass {
+    let provisional_logical_output_size =
+        sizing.provisional_output_size(&constants, input, &normal_pass, float_role);
+    let (final_constants, final_pass) = if sizing.needs_final_pass {
         let logical_inner_size = LogicalSizeOf::new(
             Some(
                 (provisional_logical_output_size.inline
@@ -651,8 +528,8 @@ where
                 .max(S::ZERO),
             ),
         );
-        let final_constants =
-            constants.with_logical_node_inner_size(logical_inner_size, ratio_block_outer.is_some());
+        let final_constants = constants
+            .with_logical_node_inner_size(logical_inner_size, sizing.ratio_block_outer.is_some());
         let final_pass = layout_in_flow_children(
             tree,
             node,
@@ -669,7 +546,7 @@ where
         )?;
         (final_constants, final_pass)
     } else {
-        (normal_constants, normal_pass)
+        (sizing.normal_constants, normal_pass)
     };
     if let Some(text) = tree.text_computation() {
         text.formatted_record_flow(&final_pass.formatted)
@@ -688,7 +565,9 @@ where
             // extent and adding back its inset would round it differently.
             .or(constants.logical_node_outer_size().block)
             .or(final_constants.logical_node_outer_size().block)
-            .or(ratio_block_outer.map(|_| provisional_logical_output_size.block))
+            .or(sizing
+                .ratio_block_outer
+                .map(|_| provisional_logical_output_size.block))
             .unwrap_or_else(|| final_pass.auto_block(&final_constants, float_role))
             .clamp_max_before_min_optional(
                 final_constants.logical_node_min_size().block,
@@ -709,6 +588,217 @@ where
             flow: final_pass,
         },
     )
+}
+
+struct BlockFlowRequest<Node, S: LayoutScalar> {
+    node: Node,
+    input: ComputeInputOf<S>,
+    contained_size: Size<Option<S>>,
+    inherited: bool,
+    semantic_work: bool,
+    float_role: float_context::Role,
+    normal_block_fill: bool,
+    accepted_inline_outer: S,
+}
+
+struct BlockFlowSizing<S: LayoutScalar> {
+    accepted_inline_outer: S,
+    accepted_inline_inner: S,
+    ratio_block_outer: Option<S>,
+    ratio_needs_content_minimum: bool,
+    normal_constants: Constants<S>,
+    normal_input: ComputeInputOf<S>,
+    set_normal_layout: bool,
+    needs_final_pass: bool,
+}
+
+impl<S: LayoutScalar> BlockFlowSizing<S> {
+    fn prepare<'input, Tree, M>(
+        tree: &Tree,
+        style: &BlockContainerProjection<'input, S>,
+        constants: &Constants<S>,
+        children: &[Tree::Node],
+        request: BlockFlowRequest<Tree::Node, S>,
+    ) -> ComputeResult<Tree::Node, Self, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+    {
+        let BlockFlowRequest {
+            node,
+            input,
+            contained_size,
+            inherited,
+            semantic_work,
+            float_role,
+            normal_block_fill,
+            accepted_inline_outer,
+        } = request;
+        let logical_inner_size = constants.logical_node_inner_size();
+        let inherited_inline_request = constants
+            .flow_axes
+            .logical_size(constants.sizing_request.axes())
+            .inline;
+        let accepted_inline_inner = constants.accepted_inline_inner(node, accepted_inline_outer)?;
+        let definite_child_inner = constants
+            .flow_axes
+            .logical_size(constants.definite_child_containing_block_size());
+        let ratio_block_outer = if constants.ratio_dependent_block
+            && definite_child_inner.block.is_none()
+            && normal_block_fill
+            && inherited_inline_request.operation() == crate::SizingOperation::Normal
+            && (logical_inner_size.inline.is_some()
+                || inherited_inline_request.space().definite_size().is_some())
+        {
+            let adjustment = if style.common.box_sizing == BoxSizing::ContentBox {
+                constants.padding_border_size
+            } else {
+                Size::ZERO
+            };
+            let size = constants
+                .flow_axes
+                .physical_size(LogicalSizeOf::new(Some(accepted_inline_outer), None))
+                .sub_optional_clamped_to_zero(adjustment)
+                .apply_aspect_ratio(*style.common.aspect_ratio)
+                .add_optional(adjustment);
+            let block = constants.flow_axes.logical_size(size).block;
+            if let Some(block) = block
+                && !block.is_finite()
+            {
+                return Err(crate::error::sizing_resolution_error(
+                    node,
+                    crate::LengthResolutionStatus::InvalidNumeric { value: block }.into(),
+                )
+                .into());
+            }
+            block.map(|block| {
+                block
+                    .clamp_max_before_min_optional(
+                        constants.logical_node_min_size().block,
+                        constants.logical_node_max_size().block,
+                    )
+                    .max(constants.logical_padding_border_size().block)
+            })
+        } else {
+            None
+        };
+        let block_minimum = match constants.flow_axes.block_axis() {
+            PhysicalAxis::Horizontal => &style.common.min_size.width,
+            PhysicalAxis::Vertical => &style.common.min_size.height,
+        };
+        let ratio_needs_content_minimum = constants
+            .flow_axes
+            .logical_size(contained_size)
+            .block
+            .is_none()
+            && ratio_block_outer.is_some()
+            && block_minimum.is_auto()
+            && !style
+                .common
+                .overflow
+                .establishes_independent_formatting_context()
+            && (!children.is_empty() || semantic_work);
+        // Collect the automatic minimum before using the settled ratio height
+        // as a containing basis for child percentages.
+        let definite_ratio_inner = ratio_block_outer
+            .filter(|_| !ratio_needs_content_minimum)
+            .map(|outer| {
+                logical_inner_size.block.unwrap_or_else(|| {
+                    (outer - constants.logical_content_box_inset().block_sum()).max(S::ZERO)
+                })
+            });
+        let sizes_float_context = float_context::sizes_float_context(
+            float_role,
+            input,
+            Some(accepted_inline_inner),
+            inherited,
+            tree.block_float_work(node),
+        );
+        let needs_final_pass = (input.run_mode().is_perform_layout() || sizes_float_context)
+            && (logical_inner_size.inline.is_none()
+                || input.run_mode().is_perform_layout() && ratio_needs_content_minimum
+                || constants
+                    .flow_axes
+                    .logical_axis_progression(crate::LogicalAxis::Block)
+                    .is_decreasing()
+                    && logical_inner_size.block.is_none());
+        crate::layout_math::checked_available_space(accepted_inline_inner)
+            .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?;
+        let normal_constants = constants.with_logical_node_inner_size(
+            LogicalSizeOf::new(
+                Some(accepted_inline_inner),
+                definite_ratio_inner.or(logical_inner_size.block),
+            ),
+            definite_ratio_inner.is_some(),
+        );
+        // Actual Normal traversal owns height, Shape encounters and normal facts
+        // at the accepted width. RunMode does not turn a size query intrinsic.
+        let measured_inset_demand = input.run_mode().is_perform_layout()
+            && relative::has_pending_children::<Tree, M>(
+                tree,
+                children,
+                normal_constants.flow_axes,
+            );
+        let normal_pass_input = if ratio_needs_content_minimum {
+            input.with_run_mode(RunMode::ComputeSize)
+        } else {
+            input
+        };
+        let set_normal_layout = normal_pass_input.run_mode().is_perform_layout()
+            && (!needs_final_pass || measured_inset_demand);
+        Ok(Self {
+            accepted_inline_outer,
+            accepted_inline_inner,
+            ratio_block_outer,
+            ratio_needs_content_minimum,
+            normal_constants,
+            normal_input: normal_pass_input,
+            set_normal_layout,
+            needs_final_pass,
+        })
+    }
+
+    fn provisional_output_size<Node>(
+        &self,
+        constants: &Constants<S>,
+        input: ComputeInputOf<S>,
+        normal_pass: &in_flow::InFlowResult<Node, S>,
+        float_role: float_context::Role,
+    ) -> LogicalSizeOf<S> {
+        let auto_block = normal_pass.auto_block(&self.normal_constants, float_role);
+        let block = self.ratio_block_outer.map_or(auto_block, |ratio_block| {
+            if self.ratio_needs_content_minimum {
+                ratio_block.max(auto_block)
+            } else {
+                ratio_block
+            }
+        });
+        let logical_intrinsic_outer_size = LogicalSizeOf::new(self.accepted_inline_outer, block);
+        let logical_intrinsic_outer_size = LogicalSizeOf::new(
+            logical_intrinsic_outer_size
+                .inline
+                .clamp_max_before_min_optional(
+                    constants.logical_node_min_size().inline,
+                    constants.logical_node_max_size().inline,
+                ),
+            logical_intrinsic_outer_size
+                .block
+                .clamp_max_before_min_optional(
+                    constants.logical_node_min_size().block,
+                    constants.logical_node_max_size().block,
+                ),
+        )
+        .max_optional(constants.logical_padding_border_size().map(Some));
+        let logical_outer_size = constants
+            .logical_node_outer_size()
+            .unwrap_or(logical_intrinsic_outer_size)
+            .max_optional(constants.logical_padding_border_size().map(Some));
+        constants
+            .flow_axes
+            .logical_size(input.known())
+            .or(constants.logical_node_outer_size())
+            .unwrap_or(logical_outer_size)
+            .max_optional(constants.logical_padding_border_size().map(Some))
+    }
 }
 
 /// Final box extent paired with the actual descendant production it sizes.
