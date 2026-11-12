@@ -137,15 +137,59 @@ fn deep_hidden_layout_clears_descendants_on_bounded_stack() {
     );
 }
 
+fn assert_block_chain<S: LayoutScalar>(depth: u32) {
+    let block = |height| NodeInputOf {
+        display: Display::Block,
+        size: Size::new(
+            crate::PreferredSizeOf::AUTO,
+            crate::PreferredSizeOf::px(S::from_f64(height)),
+        ),
+        ..NodeInputOf::default()
+    };
+    let tree = chain::<S>(Display::Block, depth + 1)
+        .children(0, [1, depth])
+        .children(depth - 1, [])
+        .style(depth - 1, block(12.0))
+        .style(depth, block(7.0));
+    let batch = compute_layout(&tree, 0, standalone()).expect("Block chain must lay out");
+    assert_eq!(batch.node_layouts().len(), (depth + 1) as usize);
+    for (node, view) in batch.node_layouts() {
+        let output = view
+            .single_box()
+            .expect("Block box must publish")
+            .final_output();
+        let (height, top, source_index) = match node {
+            0 => (19.0, 0.0, 0),
+            node if node == depth => (7.0, 12.0, 1),
+            _ => (12.0, 0.0, 0),
+        };
+        assert_eq!(
+            output.size,
+            Size::new(S::from_f64(100.0), S::from_f64(height)),
+            "node {node}"
+        );
+        assert_eq!(
+            output.location,
+            crate::Point::new(S::ZERO, S::from_f64(top)),
+            "node {node}"
+        );
+        assert_eq!(
+            output.source_index,
+            crate::SourceIndex::new(source_index),
+            "node {node}"
+        );
+    }
+}
+
 #[test]
 fn deep_block_layout_returns_on_bounded_stack() {
     on_bounded_stack(
         "engine::depth_tests::deep_block_layout_returns_on_bounded_stack",
         || {
-            let control = chain::<f64>(Display::Block, 3);
-            compute_layout(&control, 0, standalone()).expect("shallow control must lay out");
-            let deep = chain::<f64>(Display::Block, 1024);
-            let _ = compute_layout(&deep, 0, standalone());
+            assert_block_chain::<f32>(3);
+            assert_block_chain::<f64>(3);
+            assert_block_chain::<f32>(1024);
+            assert_block_chain::<f64>(1024);
         },
     );
 }
