@@ -156,6 +156,8 @@ pub(in crate::document_scripting) fn native_document_and_fragment_use_their_regi
                     }, { once: true });
                     return originChild.getRootNode() === root && root.nodeType === 11
                         && root.ownerDocument === originChild.ownerDocument
+                        && root.moveBefore(originChild, originChild) === undefined
+                        && originChild.parentNode === root
                         && originChild.dispatchEvent(new Event("origin", { bubbles: true }))
                         && observed;
                 })()"#,

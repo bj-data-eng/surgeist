@@ -11,6 +11,7 @@ mod character_data;
 pub(super) mod element;
 mod fragment;
 mod ordinary;
+mod parent_node;
 mod shadow;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
 
@@ -137,6 +138,18 @@ impl DocumentPrototypes {
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
         fragment::install_factory(scope, &document, &funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
+        parent_node::install(
+            scope,
+            &document,
+            parent_node::Receiver::Document,
+            funding.capture,
+        )?;
+        parent_node::install(
+            scope,
+            &fragment,
+            parent_node::Receiver::Fragment,
+            funding.capture,
+        )?;
         let character_data = character_data::CharacterBindings::install(
             scope,
             node,

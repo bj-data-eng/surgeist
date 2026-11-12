@@ -231,6 +231,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
     );
     super::guest::tests::shadow_root::native_open_shadow_root_uses_the_canonical_interface();
+    super::guest::tests::move_before::parent_node_move_uses_the_live_native_identities();
     super::guest::tests::shadow_root::scripted_attach_publishes_the_exact_native_shadow_root();
     super::guest::tests::shadow_root::scripted_shadow_conversion_preserves_order_and_identity();
     super::guest::tests::shadow_root::scripted_shadow_revalidates_after_reentry();

@@ -4449,15 +4449,11 @@
     "ParentNode.moveBefore:0/call": {
       "kind": "native",
       "adapter": "parentnode.movebefore.call",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "The named moveBefore compound operation, original operands, publication and mandatory Source tails.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-parentnode",
-          "issue": 2276
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "move_before"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/parent_node.rs", "symbol": "move_before"}
+      ],
+      "requirements": []
     },
     "ParentNode.querySelector:0/call": {
       "kind": "native",
