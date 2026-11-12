@@ -1,4 +1,4 @@
-use super::super::{baseline_frame, inline_run};
+use super::super::{baseline_frame, flow_root, inline_run};
 use super::*;
 
 pub(super) struct InFlowBoxComputation<'a, 'input, Node, S: LayoutScalar> {
@@ -250,6 +250,48 @@ where
         clearance_funding,
         introduced_cut,
     })
+}
+
+fn block_child_avoids_float_exclusions<S: LayoutScalar>(
+    style: &BlockChildProjection<'_, S>,
+    parent_writing_mode: crate::WritingMode,
+) -> bool {
+    style.display != crate::Display::None
+        && !style.display.is_inline_level()
+        && style.common.position != Position::Absolute
+        && style.float.is_none()
+        && flow_root::establishes_flow_root(
+            style.display,
+            style.float,
+            style.block_flow_context,
+            &style.common,
+            parent_writing_mode,
+        )
+}
+
+fn parent_inline_size_can_shrink<S: LayoutScalar>(
+    style: &BlockChildProjection<'_, S>,
+    parent_flow_axes: crate::geometry::FlowAxes,
+) -> bool {
+    !style.common.item_is_replaced
+        && match parent_flow_axes.inline_axis() {
+            PhysicalAxis::Horizontal => style.common.size.width.is_auto(),
+            PhysicalAxis::Vertical => style.common.size.height.is_auto(),
+        }
+}
+
+fn set_parent_inline_space<S: LayoutScalar>(
+    requests: &mut Size<AxisSizingRequestOf<S>>,
+    parent_flow_axes: crate::geometry::FlowAxes,
+    value: S,
+) -> Result<(), crate::LengthResolutionStatus<S>> {
+    let space = crate::layout_math::checked_available_space(value)?;
+    let request = match parent_flow_axes.inline_axis() {
+        PhysicalAxis::Horizontal => &mut requests.width,
+        PhysicalAxis::Vertical => &mut requests.height,
+    };
+    *request = request.with_space(space);
+    Ok(())
 }
 
 struct FloatAvoidingChild<'input, 'a, Node, S: LayoutScalar> {
