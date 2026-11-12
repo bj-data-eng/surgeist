@@ -207,6 +207,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     attached_registry_delivers_the_original_native_cancel_event();
     attached_registry_keeps_preparation_refusal_on_retry();
     attached_registry_preserves_the_original_terminal_refusal();
+    attached_beforetoggle_uses_the_original_toggle_event();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
     );
@@ -765,8 +766,8 @@ struct AttachedCancel {
     observations: Rc<RefCell<Vec<NativeDomEvent>>>,
 }
 
-fn attached_cancel_host(cancel: Arc<AtomicBool>) -> AttachedCancel {
-    let (mut session, target) = hosted_session(&cancel, 8);
+fn hosted_dialog(cancel: &AtomicBool) -> (DomSession, DomHostedTopLevel, NodeId) {
+    let (mut session, target) = hosted_session(cancel, 8);
     let document = target.document();
     let html = session
         .snapshot()
@@ -780,11 +781,17 @@ fn attached_cancel_host(cancel: Arc<AtomicBool>) -> AttachedCancel {
     create.insert_before(&dialog, body, None);
     let dialog = session
         .dom()
-        .apply(create, &cancel)
+        .apply(create, cancel)
         .unwrap()
         .created(&dialog)
         .unwrap()
         .unwrap();
+    (session, target, dialog)
+}
+
+fn attached_cancel_host(cancel: Arc<AtomicBool>) -> AttachedCancel {
+    let (mut session, target, dialog) = hosted_dialog(&cancel);
+    let document = target.document();
     let registry_limits = DomEventRegistryLimits {
         registrations: 8,
         pending_events: 4,
@@ -1105,6 +1112,159 @@ fn attached_registry_preserves_the_original_terminal_refusal() {
             .attribute(&"open".into())
             .is_some()
     );
+}
+
+fn attached_beforetoggle_uses_the_original_toggle_event() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target, dialog) = hosted_dialog(&cancel);
+    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 4,
+        nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancel).unwrap();
+    let mut registry = Some(registry);
+    let mut host = super::guest::tests::attach_public_nodes_with_registry(
+        session,
+        target,
+        cancel.clone(),
+        1_000,
+        20_000,
+        &mut registry,
+    );
+    let permit = host.permit().unwrap();
+    super::guest::tests::expose_public_node_for_source_test(&mut host, &permit, dialog, "dialog");
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"
+            const ordinary = new Event("ordinary");
+            globalThis.toggleSentinel = {};
+            globalThis.toggleChecks = false;
+            dialog.addEventListener("beforetoggle", event => {
+                globalThis.originalToggle = event;
+                throw toggleSentinel;
+            }, {once: true});
+            dialog.addEventListener("beforetoggle", function (event) {
+                const oldState = Object.getOwnPropertyDescriptor(ToggleEvent.prototype, "oldState");
+                const newState = Object.getOwnPropertyDescriptor(ToggleEvent.prototype, "newState");
+                const source = Object.getOwnPropertyDescriptor(ToggleEvent.prototype, "source");
+                let rejectsOrdinary = false;
+                try {
+                    Reflect.apply(oldState.get, ordinary, []);
+                } catch (error) {
+                    rejectsOrdinary = error instanceof TypeError;
+                }
+                toggleChecks = event === originalToggle && event === globalThis.event
+                    && this === dialog && event.target === dialog && event.currentTarget === dialog
+                    && event.type === "beforetoggle" && event.isTrusted && event.cancelable
+                    && event instanceof ToggleEvent && event instanceof Event
+                    && Object.getPrototypeOf(event) === ToggleEvent.prototype
+                    && Object.getPrototypeOf(ToggleEvent.prototype) === Event.prototype
+                    && Object.getPrototypeOf(ToggleEvent) === Event
+                    && ToggleEvent.length === 1
+                    && Object.prototype.toString.call(event) === "[object ToggleEvent]"
+                    && event.oldState === "closed" && event.newState === "open"
+                    && event.source === null && event.oldState === "closed" && event.source === null
+                    && [oldState, newState, source].every(attribute => attribute.enumerable
+                        && attribute.configurable && attribute.set === undefined)
+                    && rejectsOrdinary;
+                event.preventDefault();
+            }, {once: true});
+        "#,
+        )
+        .map(drop)
+    })
+    .unwrap();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let request = host
+        .with_native(|dom, _, mut source| {
+            let progress = source
+                .apply(
+                    dom,
+                    DomSourceEdit::show_dialog(dialog),
+                    SOURCE,
+                    &mut services,
+                    &cancel,
+                )
+                .unwrap();
+            let DomSourceDriveProgress::Pending {
+                request: DomSourceRequest::Event(request),
+                reason: DomSourceUnavailable::Event,
+            } = progress
+            else {
+                panic!("native Dialog Show must reach beforetoggle: {progress:?}");
+            };
+            assert_eq!(
+                request.kind(),
+                surgeist_dom::DomSourceEventKind::BeforeToggle
+            );
+            let toggle = request.toggle_event().unwrap();
+            assert_eq!(
+                toggle.old_state(),
+                surgeist_html::elements::dialog::HtmlDialogState::Closed
+            );
+            assert_eq!(
+                toggle.new_state(),
+                surgeist_html::elements::dialog::HtmlDialogState::Open
+            );
+            request
+        })
+        .unwrap();
+    let result = host
+        .service_attached_source_event(&permit, &request, EVENT)
+        .unwrap();
+    let DomSourceEventServiceProgress::Serviced { receipt } = result else {
+        panic!(
+            "native beforetoggle must reach the exact attached ToggleEvent listeners: {result:?}"
+        );
+    };
+    assert_eq!(receipt.callbacks(), 2);
+    assert_eq!(receipt.failures().len(), 1);
+    assert!(receipt.default_prevented());
+    host.with_native(|dom, _, mut source| {
+        assert!(matches!(
+            source.resume(dom, request.operation(), SOURCE, &mut services, &cancel).unwrap(),
+            DomSourceDriveProgress::Complete(done) if done.operation() == request.operation()
+        ));
+    })
+    .unwrap();
+    assert!(
+        host.snapshot()
+            .unwrap()
+            .node(dialog)
+            .unwrap()
+            .attribute(&"open".into())
+            .is_none()
+    );
+    let reported = host
+        .take_guest_listener_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(reported.realm, permit.realm);
+    host.in_document(&permit, |scope| {
+        let exact = scope.import(reported.exception.value())?;
+        let sentinel = evaluate(scope, "toggleSentinel")?;
+        assert!(scope.strict_equals(&exact, &sentinel)?);
+        let actual = evaluate(scope, "toggleChecks && originalToggle.currentTarget === null && originalToggle.defaultPrevented && originalToggle.source === null")?;
+        let expected = scope.primitive(Primitive::Boolean(true))?;
+        assert!(scope.strict_equals(&actual, &expected)?);
+        Ok(())
+    }).unwrap();
+    assert!(
+        host.take_guest_listener_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    assert!(host.stop().into_session().is_ok());
 }
 
 fn start_attached_cancel(

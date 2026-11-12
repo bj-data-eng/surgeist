@@ -82,12 +82,15 @@ impl CharacterBindings {
         funding: &OriginInterfaceFunding<'_>,
         constructors: Option<CaptureFunding<'_>>,
     ) -> Result<Self, DocumentGuestEventError> {
-        let (interface, prototype) = install_derived_node(
+        let (interface, prototype) = install_derived_interface(
             scope,
             node,
             node_constructor,
-            CHARACTER_DATA,
-            &illegal_node_constructor(),
+            FunctionMetadata {
+                name: CHARACTER_DATA,
+                length: 0,
+            },
+            &illegal_constructor(),
         )?;
         for (length, key, name) in [
             (false, &ascii(b"data")[..], &ascii(b"get data")[..]),
@@ -162,13 +165,16 @@ impl CharacterBindings {
                 move |scope, arguments| construct.construct_character(scope, arguments, kind),
             )
         } else {
-            illegal_node_constructor()
+            illegal_constructor()
         };
-        let (_, prototype) = install_derived_node(
+        let (_, prototype) = install_derived_interface(
             scope,
             parent_prototype,
             parent_constructor,
-            kind.name(),
+            FunctionMetadata {
+                name: kind.name(),
+                length: 0,
+            },
             &callback,
         )?;
         let (name, _) = kind.factory();

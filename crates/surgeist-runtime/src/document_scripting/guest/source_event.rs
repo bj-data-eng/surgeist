@@ -177,7 +177,7 @@ impl GuestEvents {
             .public
             .as_ref()
             .ok_or(DocumentGuestEventError::RegistryState)?;
-        let prototype = public.event_prototype(scope)?;
+        let prototype = public.native_event_prototype(scope, native)?;
         let trusted = public.trusted_getter(scope)?;
         let target = native.target().ok_or(Error::RegistryConflict)?;
         let target = wrapper::project_native_event_target(owner, self, scope, &target)?;
