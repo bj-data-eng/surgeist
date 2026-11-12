@@ -17,7 +17,7 @@ pub(crate) fn round_layout<Tree, M>(
 where
     Tree: Round<M>,
 {
-    round_layout_inner(
+    round_subtree(
         tree,
         root,
         RoundingFrames {
@@ -92,14 +92,55 @@ pub(crate) fn round_fragment_subtree<Tree, M>(
 where
     Tree: Round<M>,
 {
-    round_layout_inner(tree, root, anchor.0)
+    round_subtree(tree, root, anchor.0)
 }
 
-fn round_layout_inner<Tree, M>(
+fn round_subtree<Tree, M>(
     tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
+    root: Tree::Node,
     ancestors: RoundingFrames<Tree::Scalar>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, (), <Tree as Traverse>::Scalar, M>
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Round<M>,
+{
+    let mut siblings = Vec::new();
+    let mut next = Some((root, ancestors));
+    while let Some((node, ancestors)) = next {
+        if let Some(frames) = round_node(tree, node, ancestors)? {
+            let count = tree.child_count(node);
+            if count != 0 {
+                if count > 1 {
+                    siblings.try_reserve(1).map_err(|_| {
+                        LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(node),
+                            LayoutOperation::RoundingFinalization,
+                            LayoutErrorKindOf::Allocation,
+                        )
+                    })?;
+                    siblings.push((node, 1..count, frames));
+                }
+                next = Some((tree.child(node, 0), frames));
+                continue;
+            }
+        }
+        next = loop {
+            let Some((parent, remaining, frames)) = siblings.last_mut() else {
+                break None;
+            };
+            if let Some(index) = remaining.next() {
+                break Some((tree.child(*parent, index), *frames));
+            }
+            siblings.pop();
+        };
+    }
+    Ok(())
+}
+
+fn round_node<Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    ancestors: RoundingFrames<Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, Option<RoundingFrames<Tree::Scalar>>, Tree::Scalar, M>
 where
     Tree: Round<M>,
 {
@@ -173,10 +214,7 @@ where
             fragment_coordinates: ancestors.fragment_coordinates,
         };
         tree.record_fragment_anchor(node, FragmentAnchor(child_frame));
-        for index in 0..tree.child_count(node) {
-            round_layout_inner(tree, tree.child(node, index), child_frame)?;
-        }
-        return Ok(());
+        return Ok(Some(child_frame));
     }
     let GeometryStateOf::OrdinaryUnrounded { measured_normal } = entry.geometry_state() else {
         return Err(LayoutErrorOf::new(
@@ -200,7 +238,7 @@ where
             unrounded,
         ));
         tree.set_final_inline_fragments(node, fragments.clone(), fragments);
-        return Ok(());
+        return Ok(None);
     }
     let mut layout = unrounded;
     let cumulative_x = ancestors.visual.x + unrounded.location.x;
@@ -307,10 +345,7 @@ where
         fragment_coordinates: ancestors.fragment_coordinates,
     };
     tree.record_fragment_anchor(node, FragmentAnchor(child_frame));
-    for index in 0..tree.child_count(node) {
-        round_layout_inner(tree, tree.child(node, index), child_frame)?;
-    }
-    Ok(())
+    Ok(Some(child_frame))
 }
 
 fn round_normal_geometry<S: LayoutScalar>(
