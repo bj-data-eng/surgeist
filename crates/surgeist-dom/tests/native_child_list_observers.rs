@@ -3,7 +3,8 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DocumentId, Dom, DomBatch, DomChildListObservationLimits, DomChildListObserverId,
-    DomChildListRecord, DomLimits, DomNameLimits, DomSourceEdit, DomSourceLimits,
+    DomChildListRecord, DomError, DomLimits, DomNameLimits, DomNativeCheckpoint,
+    DomNativeCheckpointLimits, DomSlotQueryLimits, DomSourceEdit, DomSourceLimits,
     DomSourceProgress, Namespace, NodeId,
 };
 
@@ -258,5 +259,142 @@ fn text_content_replacement_records_all_removed_and_added_nodes_once() {
         &[first, branch, last],
         None,
         None,
+    );
+}
+
+fn checkpoint_limits(work: u64) -> DomNativeCheckpointLimits {
+    DomNativeCheckpointLimits::new(16_000_000, work, DomSlotQueryLimits::new(64, 64).unwrap())
+        .unwrap()
+}
+
+#[test]
+fn notification_reads_each_observers_queue_when_reached_after_earlier_callback_edits() {
+    let Tree {
+        mut dom,
+        root,
+        first,
+        branch,
+        last,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let one = observe(&mut dom, root, false);
+    let two = observe(&mut dom, root, false);
+    let mut detach = DomBatch::new();
+    detach.detach(branch);
+    dom.apply(detach, &cancel).unwrap();
+    let checkpoint = checkpoint_limits(1_000_000);
+    let DomNativeCheckpoint::ChildList(delivery) =
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+    else {
+        panic!("first observer must be reached");
+    };
+    assert_eq!(delivery.observer(), one);
+    assert_eq!(delivery.records().len(), 1);
+    assert_record(
+        &delivery.records()[0],
+        root,
+        &[],
+        &[branch],
+        Some(first),
+        Some(last),
+    );
+
+    let mut insert = DomBatch::new();
+    insert.insert_before(branch, root, None);
+    dom.apply(insert, &cancel).unwrap();
+    assert_eq!(
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap_err(),
+        DomError::ChildListDeliveryActive
+    );
+    drop(delivery);
+
+    let DomNativeCheckpoint::ChildList(delivery) =
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+    else {
+        panic!("second observer belongs to the original notification");
+    };
+    assert_eq!(delivery.observer(), two);
+    assert_eq!(delivery.records().len(), 2);
+    assert_record(
+        &delivery.records()[0],
+        root,
+        &[],
+        &[branch],
+        Some(first),
+        Some(last),
+    );
+    assert_record(
+        &delivery.records()[1],
+        root,
+        &[branch],
+        &[],
+        Some(last),
+        None,
+    );
+    drop(delivery);
+
+    let DomNativeCheckpoint::ChildList(delivery) =
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+    else {
+        panic!("first observer is pending in the next notification");
+    };
+    assert_eq!(delivery.observer(), one);
+    assert_eq!(delivery.records().len(), 1);
+    assert_record(
+        &delivery.records()[0],
+        root,
+        &[branch],
+        &[],
+        Some(last),
+        None,
+    );
+    drop(delivery);
+    assert!(matches!(
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap(),
+        DomNativeCheckpoint::Idle
+    ));
+}
+
+#[test]
+fn a_notification_without_records_still_removes_transient_registrations() {
+    let Tree {
+        mut dom,
+        document,
+        root,
+        branch,
+        nested,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let observer = observe(&mut dom, root, true);
+    let mut detach = DomBatch::new();
+    detach.detach(branch);
+    dom.apply(detach, &cancel).unwrap();
+    assert_eq!(
+        dom.take_child_list_records(observer, &cancel)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        dom.native_checkpoint_step(checkpoint_limits(0), &cancel)
+            .unwrap_err(),
+        DomError::ChildListWorkLimit { limit: 0 }
+    );
+    assert!(matches!(
+        dom.native_checkpoint_step(checkpoint_limits(1_000_000), &cancel)
+            .unwrap(),
+        DomNativeCheckpoint::Idle
+    ));
+
+    let mut insert = DomBatch::new();
+    let text = insert.create_text(document, "after cleanup");
+    insert.insert_before(&text, nested, None);
+    dom.apply(insert, &cancel).unwrap();
+    assert!(
+        dom.take_child_list_records(observer, &cancel)
+            .unwrap()
+            .is_empty()
     );
 }
