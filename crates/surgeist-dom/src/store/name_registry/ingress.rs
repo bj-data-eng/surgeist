@@ -17,12 +17,21 @@ pub(in crate::store) struct Normalized<'a> {
     extents: [Option<NormalizedExtent>; 3],
     len: usize,
 }
+pub(in crate::store) struct NormalizedCustody {
+    _extents: [Option<NormalizedExtent>; 3],
+}
 impl<'a> Normalized<'a> {
     pub(in crate::store) fn new(operation: &'a name_registry::Operation) -> Self {
         Self {
             operation,
             extents: [None, None, None],
             len: 0,
+        }
+    }
+    /// Keep the actual normalized text extent after the name operation borrow ends.
+    pub(in crate::store) fn into_custody(self) -> NormalizedCustody {
+        NormalizedCustody {
+            _extents: self.extents,
         }
     }
     fn before(

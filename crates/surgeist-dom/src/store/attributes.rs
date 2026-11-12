@@ -43,6 +43,26 @@ struct AttributeSetter<'a> {
     mode: AttributeSetterMode,
 }
 
+struct PreparedAttributeName {
+    raw_name: surgeist_html::values::QualifiedName,
+    formation: Option<source::formation::Formation>,
+    normalized: name_registry::NormalizedCustody,
+    expanded: bool,
+}
+impl PreparedAttributeName {
+    fn discard_name(self) -> name_registry::NormalizedCustody {
+        let Self {
+            raw_name,
+            formation,
+            normalized,
+            ..
+        } = self;
+        drop(raw_name);
+        drop(formation);
+        normalized
+    }
+}
+
 fn ascii_spelling(units: &[u16], literal: &str) -> bool {
     units.len() == literal.len() && units.iter().copied().eq(literal.bytes().map(u16::from))
 }
@@ -476,17 +496,37 @@ impl Draft {
             mode,
         } = input;
         let element = self.element(node)?;
-        let mut name_formation = source::formation::Formation::new(self, cancelled)?;
+        let prepared = self.prepare_attribute_name(node, namespace, name, cancelled)?;
+        if mode == AttributeSetterMode::Standard {
+            // The sink table uses bounded vocabulary and literal comparisons.
+            self.source_step(cancelled)?;
+            if is_trusted_attribute_sink(element.language().name(), &prepared.raw_name) {
+                let document = self.node(node)?.document();
+                return Err(if self.node(document)?.relevant_global().is_some() {
+                    DomError::SourceAttributeExecutorUnavailable
+                } else {
+                    DomError::SourceAttributeGlobalUnavailable
+                });
+            }
+        }
+        self.apply_attribute_name(node, prepared, value, limits, cancelled)
+    }
+    fn prepare_attribute_name(
+        &self,
+        node: Key,
+        namespace: Option<&Namespace>,
+        name: &DocumentString,
+        cancelled: &AtomicBool,
+    ) -> Result<PreparedAttributeName, DomError> {
+        let formation = source::formation::Formation::new(self, cancelled)?;
         let mut normalized = name_registry::Normalized::new(&self.names);
         let raw_name = if let Some(namespace) = namespace {
             attribute_name(
                 namespace,
                 name,
                 &mut || self.name_step(cancelled),
-                &mut |input, lower| {
-                    normalized.units(input, lower, name_formation.as_ref(), cancelled)
-                },
-                &mut |value| retain_string(value, name_formation.as_ref(), cancelled),
+                &mut |input, lower| normalized.units(input, lower, formation.as_ref(), cancelled),
+                &mut |value| retain_string(value, formation.as_ref(), cancelled),
             )?
         } else {
             if !valid_attribute_local_name(name, &mut || self.name_step(cancelled))? {
@@ -497,28 +537,33 @@ impl Draft {
                     name,
                     &mut || self.name_step(cancelled),
                     &mut |input, lower| {
-                        normalized.units(input, lower, name_formation.as_ref(), cancelled)
+                        normalized.units(input, lower, formation.as_ref(), cancelled)
                     },
-                    &mut |value| retain_string(value, name_formation.as_ref(), cancelled),
+                    &mut |value| retain_string(value, formation.as_ref(), cancelled),
                 )?
             } else {
-                retain_string(name, name_formation.as_ref(), cancelled)?
+                retain_string(name, formation.as_ref(), cancelled)?
             };
             surgeist_html::values::QualifiedName::new(Namespace::none(), None, name)
         };
-        if mode == AttributeSetterMode::Standard {
-            // The sink table uses bounded vocabulary and literal comparisons.
-            self.source_step(cancelled)?;
-            if is_trusted_attribute_sink(element.language().name(), &raw_name) {
-                let document = self.node(node)?.document();
-                return Err(if self.node(document)?.relevant_global().is_some() {
-                    DomError::SourceAttributeExecutorUnavailable
-                } else {
-                    DomError::SourceAttributeGlobalUnavailable
-                });
-            }
-        }
-        let lookup = if namespace.is_some() {
+        Ok(PreparedAttributeName {
+            raw_name,
+            formation,
+            normalized: normalized.into_custody(),
+            expanded: namespace.is_some(),
+        })
+    }
+    fn apply_attribute_name(
+        &mut self,
+        node: Key,
+        prepared: PreparedAttributeName,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let element = self.element(node)?;
+        let raw_name = &prepared.raw_name;
+        let lookup = if prepared.expanded {
             AttributeLookup::Expanded {
                 namespace: raw_name.namespace().uri(),
                 local_name: raw_name.local_name(),
@@ -529,28 +574,26 @@ impl Draft {
         let position = self.attribute_position(element.attributes(), lookup, cancelled)?;
         // Existing set-value preserves its exact canonical prefix and order.
         // Discard lookup spelling before admitting the selected occurrence.
-        let name = if let Some(position) = position {
-            drop(raw_name);
-            drop(name_formation);
-            name_formation = source::formation::Formation::new(self, cancelled)?;
-            self.bind_canonical_name(
+        let (name, name_formation) = if let Some(position) = position {
+            let normalized = prepared.discard_name();
+            let formation = source::formation::Formation::new(self, cancelled)?;
+            let name = self.bind_canonical_name(
                 element
                     .attributes()
                     .get(position)
                     .ok_or(DomError::StaleNode)?
                     .name(),
-                name_formation.as_ref(),
+                formation.as_ref(),
                 cancelled,
-            )?
+            )?;
+            drop(normalized);
+            (name, formation)
         } else {
-            let canonical = source::formation::Formation::new(self, cancelled)?;
-            let name = self.bind_name(&raw_name, canonical.as_ref(), cancelled)?;
-            drop(raw_name);
-            drop(name_formation);
-            name_formation = canonical;
-            name
+            let formation = source::formation::Formation::new(self, cancelled)?;
+            let name = self.bind_name(raw_name, formation.as_ref(), cancelled)?;
+            drop(prepared);
+            (name, formation)
         };
-        drop(normalized);
         self.write_attribute(
             AttributeWrite {
                 node,
