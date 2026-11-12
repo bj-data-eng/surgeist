@@ -11,6 +11,94 @@ use crate::sizing::resolve::{
     SizeResultExt, resolve_child_preferred_size, resolve_maximum_optional, resolve_minimum_optional,
 };
 
+pub(in crate::grid) type PendingAbsoluteGridItem<Node> =
+    (usize, Node, GridPlacement, GridPlacement);
+
+pub(in crate::grid) enum PositionedGridBounds<S: LayoutScalar> {
+    Ordinary(GridTrackScrollBounds<S>),
+    Lanes { start: S, end: S },
+}
+
+pub(in crate::grid) struct PositionedGridPlacement<'input, 'a, Node, S: LayoutScalar> {
+    pub(in crate::grid) node: Node,
+    pub(in crate::grid) style: &'a GridContainerProjection<'a, S>,
+    pub(in crate::grid) constants: &'a Constants<S>,
+    pub(in crate::grid) containing_size: Size<S>,
+    pub(in crate::grid) scroll_box: CanonicalScrollBoxOf<S>,
+    pub(in crate::grid) placements: &'a GridPlacementContext<'input, Node, S>,
+    pub(in crate::grid) column_geometry: &'a UsedGridAxisGeometryOf<S>,
+    pub(in crate::grid) row_geometry: &'a UsedGridAxisGeometryOf<S>,
+    pub(in crate::grid) lines: GridLines,
+    pub(in crate::grid) containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
+    pub(in crate::grid) bounds: PositionedGridBounds<S>,
+}
+
+pub(in crate::grid) fn layout_positioned_grid_items<'input, Tree, M>(
+    tree: &mut Tree,
+    placement: PositionedGridPlacement<'input, '_, Tree::Node, Tree::Scalar>,
+    pending: Vec<PendingAbsoluteGridItem<Tree::Node>>,
+    contributions: &mut Vec<GridChildContribution<Tree::Scalar>>,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    if pending.is_empty() {
+        return Ok(());
+    }
+    let PositionedGridPlacement {
+        node,
+        style,
+        constants,
+        containing_size,
+        scroll_box,
+        placements,
+        column_geometry,
+        row_geometry,
+        lines,
+        containing_auto_scrollbar_pass,
+        bounds,
+    } = placement;
+    let (track_bounds, stacking_range) = match bounds {
+        PositionedGridBounds::Ordinary(tracks) => (Some(tracks), None),
+        PositionedGridBounds::Lanes { start, end } => (None, Some((start, end))),
+    };
+    let in_flow_contributions = grid_scroll_contributions(
+        contributions.clone(),
+        track_bounds,
+        constants.flow_axes,
+        constants.padding,
+    )
+    .map_err(|error| layout_child_geometry_error(node, node, error))?;
+    let auto_area = grid_absolute_auto_area(in_flow_contributions, scroll_box)
+        .map_err(|error| layout_child_geometry_error(node, node, error))?;
+    for (source_index, child, column, row) in pending {
+        let child_style = placements.item_input(source_index);
+        let source = AbsoluteGridContextInput {
+            container_style: style,
+            constants,
+            containing_size,
+            auto_area,
+            column,
+            row,
+            column_geometry,
+            row_geometry,
+            lines,
+        };
+        let context = match stacking_range {
+            Some((start, end)) => AbsoluteGridContext::for_lanes(source, start, end),
+            None => AbsoluteGridContext::new(source),
+        };
+        contributions.push(layout_absolute_grid_child(
+            tree,
+            child,
+            source_index,
+            child_style,
+            context.with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass),
+        )?);
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy)]
 pub(in crate::grid) struct AbsoluteGridContext<'a, S: LayoutScalar> {
     source: AbsoluteGridContextInput<'a, S>,

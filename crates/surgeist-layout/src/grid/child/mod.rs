@@ -20,6 +20,7 @@ mod absolute;
 mod baseline;
 mod minimum;
 mod scroll;
+mod settlement;
 mod subgrid_context;
 
 pub(super) use absolute::*;
@@ -27,6 +28,8 @@ pub(super) use baseline::*;
 pub(super) use minimum::*;
 pub(super) use scroll::*;
 pub(super) use subgrid_context::*;
+
+use settlement::{OrdinaryGridItemPlacement, stage_ordinary_grid_items};
 
 pub(super) struct GridChildrenLayout<Node, S: LayoutScalar = Scalar> {
     pub(super) executed_baselines: Option<ExecutedBaselineInventory<Node, S>>,
@@ -175,7 +178,7 @@ pub(super) struct GridChildItemsInput<'input, 'a, Node, S: LayoutScalar> {
 
 pub(super) struct PendingGridItems<'input, Node, S: LayoutScalar> {
     pub(super) in_flow: Vec<PendingGridItem<'input, Node, S>>,
-    pub(super) absolute: Vec<(usize, Node, GridPlacement, GridPlacement)>,
+    pub(super) absolute: Vec<PendingAbsoluteGridItem<Node>>,
 }
 
 type PendingGridItemsResult<'input, Node, S, M> =
@@ -687,129 +690,25 @@ where
         constants.flow_axes,
     );
 
-    let mut prepared_item_placements = Vec::with_capacity(pending_items.len());
-    for item in &pending_items {
-        let area_origin =
-            grid_area_logical_origin(&logical_column_offsets, &logical_row_offsets, item.area);
-        let child_style = &item.style;
-        let subgrid_item = subgrid_report.items.get(item.source_index).copied();
-        let inherited_columns =
-            ancestor_baseline_groups.inherited_targets_for_axis(GridAxisKind::Column);
-        let column_group = ancestor_baseline_groups.for_axis(GridAxisKind::Column);
-        let inline_axis_offset = baseline_aligned_axis_offset(BaselineAlignedAxisInput {
-            item,
-            child_style,
-            container_style: style,
-            group: column_group,
-            axis: GridAxisKind::Column,
-            geometry: &column_geometry,
+    stage_ordinary_grid_items(
+        tree,
+        OrdinaryGridItemPlacement {
+            node,
+            style,
+            flow_axes: constants.flow_axes,
+            containing_size,
+            logical_column_offsets: &logical_column_offsets,
+            logical_row_offsets: &logical_row_offsets,
+            column_geometry: &column_geometry,
+            row_geometry: &row_geometry,
             row_tracks,
             track_basis,
-            subgrid_item,
-            container_flow_axes: constants.flow_axes,
-            inherited_owner_targets: inherited_columns,
-            current_grid: node,
-        })
-        .map_err(|error| {
-            subgrid_child_context_container_error(
-                node,
-                item.node,
-                SubgridChildContextError::BaselineInheritance(error),
-            )
-        })?
-        .unwrap_or(item.horizontal_axis.offset);
-        let inherited_rows = ancestor_baseline_groups.inherited_targets_for_axis(GridAxisKind::Row);
-        let row_baseline_group = ancestor_baseline_groups.for_axis(GridAxisKind::Row);
-        let block_axis_offset = baseline_aligned_axis_offset(BaselineAlignedAxisInput {
-            item,
-            child_style,
-            container_style: style,
-            group: row_baseline_group,
-            axis: GridAxisKind::Row,
-            geometry: &row_geometry,
-            row_tracks,
-            track_basis,
-            subgrid_item,
-            container_flow_axes: constants.flow_axes,
-            inherited_owner_targets: inherited_rows,
-            current_grid: node,
-        })
-        .map_err(|error| {
-            subgrid_child_context_container_error(
-                node,
-                item.node,
-                SubgridChildContextError::BaselineInheritance(error),
-            )
-        })?
-        .unwrap_or(item.vertical_axis.offset);
-        let normal_location = constants.flow_axes.physical_point(
-            LogicalPointOf::new(
-                area_origin.inline + inline_axis_offset,
-                area_origin.block + block_axis_offset,
-            ),
-            constants.flow_axes.logical_size(item.output.size),
-            containing_size,
-        );
-        let logical_location = LogicalPointOf::new(
-            area_origin.inline + inline_axis_offset + item.logical_relative_offset.inline,
-            area_origin.block + block_axis_offset + item.logical_relative_offset.block,
-        );
-        let location = constants.flow_axes.physical_point(
-            logical_location,
-            constants.flow_axes.logical_size(item.output.size),
-            containing_size,
-        );
-        let scroll_geometry = item
-            .output
-            .scroll_geometry
-            .expect("pending grid item retains canonical geometry");
-        debug_assert_eq!(scroll_geometry.used_overflow_x(), item.overflow.x().value());
-        debug_assert_eq!(scroll_geometry.used_overflow_y(), item.overflow.y().value());
-        let (horizontal, vertical) = subgrid_parent_propagation_axes(
-            subgrid_report.items[item.source_index],
-            constants.flow_axes,
-            item.child_flow_axes,
-        );
-        let contribution = GridChildContribution {
-            source_index: crate::SourceIndex::new(item.source_index),
-            location,
-            margin: item.margin,
-            geometry: scroll_geometry,
-            descendants: scroll_geometry
-                .propagatable_descendant_intervals()
-                .retain_physical_axes(horizontal, vertical),
-            in_flow: true,
-        };
-
-        prepared_item_placements.push((block_axis_offset, normal_location, location, contribution));
-    }
-
-    for (item, (block_axis_offset, normal_location, location, contribution)) in
-        pending_items.iter_mut().zip(prepared_item_placements)
-    {
-        item.block_offset = block_axis_offset;
-        item.location = normal_location;
-        child_contributions.push(contribution);
-        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-            item.node,
-            crate::output::NormalGeometryOf::box_geometry(
-                normal_location,
-                item.output.size,
-                contribution.geometry.content_box(),
-            ),
-            NodeOutputOf {
-                source_index: crate::SourceIndex::new(item.source_index),
-                location,
-                size: item.output.size,
-                named_baselines: item.output.named_baselines,
-                content_size: item.output.content_size,
-                scroll_geometry: Some(contribution.geometry),
-                border: item.border,
-                padding: item.padding,
-                margin: item.margin,
-            },
-        ));
-    }
+            subgrid_report,
+            ancestor_baseline_groups: &ancestor_baseline_groups,
+        },
+        &mut pending_items,
+        &mut child_contributions,
+    )?;
     let baselines = if parent_context.has_inherited_axis() {
         grid_container_baselines(
             &pending_items,
@@ -829,40 +728,18 @@ where
         )
     };
 
-    let inline_start = logical_column_offsets
-        .iter()
-        .copied()
-        .reduce(Tree::Scalar::min)
-        .unwrap_or(logical_content_box_inset.inline_start);
-    let inline_end = logical_column_offsets
-        .iter()
-        .copied()
-        .zip(columns.iter().copied())
-        .map(|(offset, size)| offset + size)
-        .reduce(Tree::Scalar::max)
-        .unwrap_or(inline_start);
-    let block_start = logical_row_offsets
-        .iter()
-        .copied()
-        .reduce(Tree::Scalar::min)
-        .unwrap_or(logical_content_box_inset.block_start);
-    let block_end = logical_row_offsets
-        .iter()
-        .copied()
-        .zip(rows.iter().copied())
-        .map(|(offset, size)| offset + size)
-        .reduce(Tree::Scalar::max)
-        .unwrap_or(block_start);
-    let logical_subject_size =
-        LogicalSizeOf::new(inline_end - inline_start, block_end - block_start);
-    let subject_size = constants.flow_axes.physical_size(logical_subject_size);
-    let subject_origin = constants.flow_axes.physical_point(
-        LogicalPointOf::new(inline_start, block_start),
-        logical_subject_size,
+    let track_subject = grid_track_alignment_subject(GridTrackAlignmentGeometry {
+        sizes: LogicalSizeOf::new(columns, rows),
+        offsets: LogicalSizeOf::new(&logical_column_offsets, &logical_row_offsets),
+        fallback_origin: LogicalPointOf::new(
+            logical_content_box_inset.inline_start,
+            logical_content_box_inset.block_start,
+        ),
+        flow_axes: constants.flow_axes,
         containing_size,
-    );
-    let track_subject = crate::ScrollRectOf::try_new(subject_origin, subject_size)
-        .map_err(|error| layout_child_geometry_error(node, node, error))?;
+        stacking_range: None,
+    })
+    .map_err(|error| layout_child_geometry_error(node, node, error))?;
     // A bounded probe can carry an estimate for an unissued axis.
     let resolved_axes = LogicalSizeOf::new(
         sizing_stage.has_resolved_axis(GridAxisKind::Column),
@@ -875,66 +752,47 @@ where
             resolved_axes.block && !rows.is_empty(),
         ),
     };
-    if !pending_absolute.is_empty() {
-        let in_flow_contributions = grid_scroll_contributions(
-            child_contributions.clone(),
-            Some(track_scroll_bounds()),
-            constants.flow_axes,
-            constants.padding,
-        )
-        .map_err(|error| layout_child_geometry_error(node, node, error))?;
-        let auto_area = grid_absolute_auto_area(in_flow_contributions, scroll_box)
-            .map_err(|error| layout_child_geometry_error(node, node, error))?;
-        for (source_index, child, column, row) in pending_absolute {
-            let child_style = placements.item_input(source_index);
-            child_contributions.push(layout_absolute_grid_child(
-                tree,
-                child,
-                source_index,
-                child_style,
-                AbsoluteGridContext::new(AbsoluteGridContextInput {
-                    container_style: style,
-                    constants,
-                    containing_size,
-                    auto_area,
-                    column,
-                    row,
-                    column_geometry: &logical_column_geometry,
-                    row_geometry: &logical_row_geometry,
-                    lines,
-                })
-                .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass),
-            )?);
-        }
-    }
-    let mut contributions = grid_scroll_contributions(
+    layout_positioned_grid_items(
+        tree,
+        PositionedGridPlacement {
+            node,
+            style,
+            constants,
+            containing_size,
+            scroll_box,
+            placements,
+            column_geometry: &logical_column_geometry,
+            row_geometry: &logical_row_geometry,
+            lines,
+            containing_auto_scrollbar_pass,
+            bounds: PositionedGridBounds::Ordinary(track_scroll_bounds()),
+        },
+        pending_absolute,
+        &mut child_contributions,
+    )?;
+    let contributions = grid_scroll_contributions(
         child_contributions,
         Some(track_scroll_bounds()),
         constants.flow_axes,
         constants.padding,
     )
     .map_err(|error| layout_child_geometry_error(node, node, error))?;
-    if resolved_axes.inline && style.justify_content.is_some() {
-        contributions
-            .set_active_alignment_subject(constants.flow_axes.inline_axis(), track_subject);
-    }
-    if resolved_axes.block && style.align_content.is_some() {
-        contributions.set_active_alignment_subject(constants.flow_axes.block_axis(), track_subject);
-    }
-    let visible_content_size = contributions
-        .content_size_from_anchor(Point::ZERO)
-        .map_err(|error| layout_child_geometry_error(node, node, error))?;
-
-    let layout = GridChildrenLayout {
-        visible_content_size,
+    let layout = report_grid_children(
+        node,
         contributions,
-        baselines: baselines.baselines,
-        baseline_groups: published_group_set,
-        executed_baselines: execution_input
-            .run_mode()
-            .is_perform_layout()
-            .then_some(executed_inventory),
-    };
+        GridLayoutReporting {
+            track_subject,
+            active_alignment_axes: LogicalSizeOf::new(
+                resolved_axes.inline && style.justify_content.is_some(),
+                resolved_axes.block && style.align_content.is_some(),
+            ),
+            flow_axes: constants.flow_axes,
+            baselines: baselines.baselines,
+            baseline_groups: published_group_set,
+            execution_input,
+            executed_inventory,
+        },
+    )?;
     debug_assert_eq!(
         layout
             .contributions

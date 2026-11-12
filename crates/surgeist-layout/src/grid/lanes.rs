@@ -15,7 +15,9 @@ use std::num::NonZeroUsize;
 use std::ops::Range;
 
 mod packed;
+mod settlement;
 use packed::{PackedLaneItem, PackedLanePlacement};
+use settlement::{LaneItemPlacement, stage_lane_items};
 
 /// Inputs for sparse placement over a finite number of equal-size tracks.
 ///
@@ -3129,131 +3131,27 @@ where
         },
     )?;
 
-    for item in &mut pending_items {
-        let baseline_offset = baseline_aligned_axis_offset(BaselineAlignedAxisInput {
-            item,
-            child_style: &item.style,
-            container_style: style,
-            group: ancestor_baseline_groups.for_axis(grid_axis),
-            axis: grid_axis,
-            geometry: match grid_axis {
-                GridAxisKind::Column => &column_geometry,
-                GridAxisKind::Row => &row_geometry,
-            },
+    stage_lane_items(
+        tree,
+        LaneItemPlacement {
+            node,
+            style,
+            flow_axes,
+            containing_size,
+            lane_report: &lane_report,
+            lane_axis_alignment_start,
+            column_offsets: &column_offsets,
+            row_offsets: &row_offsets,
+            column_geometry: &column_geometry,
+            row_geometry: &row_geometry,
             row_tracks,
             track_basis,
-            subgrid_item: subgrid_report.items.get(item.source_index).copied(),
-            container_flow_axes: flow_axes,
-            inherited_owner_targets: ancestor_baseline_groups.inherited_targets_for_axis(grid_axis),
-            current_grid: node,
-        })
-        .map_err(|error| {
-            subgrid_child_context_container_error(
-                node,
-                item.node,
-                SubgridChildContextError::BaselineInheritance(error),
-            )
-        })?;
-        let inline_offset = if grid_axis == GridAxisKind::Column {
-            baseline_offset.unwrap_or(item.horizontal_axis.offset)
-        } else {
-            item.horizontal_axis.offset
-        };
-        let block_offset = if grid_axis == GridAxisKind::Row {
-            baseline_offset.unwrap_or(item.vertical_axis.offset)
-        } else {
-            item.vertical_axis.offset
-        };
-        let lane_offset = lane_report
-            .item(item.source_index)
-            .expect("pending lane item retains its packed cell")
-            .offset;
-        let selected_inline_lane_offset = lane_axis_alignment_start;
-        let selected_block_track_offset =
-            grid_area_track_offset(&row_offsets, item.area.row, item.area.row_end);
-        let normal_logical_location = match lane_axis.logical_axis() {
-            LogicalAxis::Inline => LogicalPointOf::new(
-                selected_inline_lane_offset + lane_offset + inline_offset,
-                selected_block_track_offset + block_offset,
-            ),
-            LogicalAxis::Block => LogicalPointOf::new(
-                grid_area_inline_offset(&column_offsets, item.area) + inline_offset,
-                lane_axis_alignment_start + lane_offset + block_offset,
-            ),
-        };
-        let normal_location = flow_axes.physical_point(
-            normal_logical_location,
-            flow_axes.logical_size(item.output.size),
-            containing_size,
-        );
-        let logical_location = LogicalPointOf::new(
-            normal_logical_location.inline + item.logical_relative_offset.inline,
-            normal_logical_location.block + item.logical_relative_offset.block,
-        );
-        let location = flow_axes.physical_point(
-            logical_location,
-            flow_axes.logical_size(item.output.size),
-            containing_size,
-        );
-        let baseline_location = match lane_axis.logical_axis() {
-            LogicalAxis::Inline => flow_axes.physical_point(
-                LogicalPointOf::new(
-                    lane_axis_alignment_start + lane_offset + inline_offset,
-                    grid_area_track_offset(&row_offsets, item.area.row, item.area.row_end)
-                        + block_offset,
-                ),
-                flow_axes.logical_size(item.output.size),
-                containing_size,
-            ),
-            LogicalAxis::Block => normal_location,
-        };
-        let area_origin = LogicalPointOf::new(
-            grid_area_inline_offset(&column_offsets, item.area),
-            grid_area_track_offset(&row_offsets, item.area.row, item.area.row_end),
-        );
-        item.block_offset = normal_logical_location.block - area_origin.block;
-        item.location = baseline_location;
-        let scroll_geometry = item
-            .output
-            .scroll_geometry
-            .expect("pending grid-lanes item retains canonical geometry");
-        let subgrid_item = subgrid_report
-            .items
-            .get(item.source_index)
-            .copied()
-            .expect("grid-lanes subgrid report preserves source identity");
-        let (horizontal, vertical) =
-            subgrid_parent_propagation_axes(subgrid_item, flow_axes, item.child_flow_axes);
-        child_contributions.push(GridChildContribution {
-            source_index: crate::SourceIndex::new(item.source_index),
-            location,
-            margin: item.margin,
-            geometry: scroll_geometry,
-            descendants: scroll_geometry
-                .propagatable_descendant_intervals()
-                .retain_physical_axes(horizontal, vertical),
-            in_flow: true,
-        });
-        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-            item.node,
-            crate::output::NormalGeometryOf::box_geometry(
-                normal_location,
-                item.output.size,
-                scroll_geometry.content_box(),
-            ),
-            NodeOutputOf {
-                source_index: crate::SourceIndex::new(item.source_index),
-                location,
-                size: item.output.size,
-                named_baselines: item.output.named_baselines,
-                content_size: item.output.content_size,
-                scroll_geometry: Some(scroll_geometry),
-                border: item.border,
-                padding: item.padding,
-                margin: item.margin,
-            },
-        ));
-    }
+            subgrid_report,
+            ancestor_baseline_groups: &ancestor_baseline_groups,
+        },
+        &mut pending_items,
+        &mut child_contributions,
+    )?;
     let mut baselines = logical_grid_container_baselines(
         &pending_items,
         &current_grid_baseline_groups,
@@ -3263,114 +3161,62 @@ where
         containing_size,
     );
     lane_report.replace_stacking_baselines(&pending_items, flow_axes, &mut baselines.baselines);
-    if !pending_absolute.is_empty() {
-        let in_flow_contributions = grid_scroll_contributions(
-            child_contributions.clone(),
-            None,
-            flow_axes,
-            constants.padding,
-        )
-        .map_err(|error| layout_child_geometry_error(node, node, error))?;
-        let auto_area = grid_absolute_auto_area(in_flow_contributions, scroll_box)
-            .map_err(|error| layout_child_geometry_error(node, node, error))?;
-        for (source_index, child, column, row) in pending_absolute {
-            let child_style = placements.item_input(source_index);
-            child_contributions.push(layout_absolute_grid_child(
-                tree,
-                child,
-                source_index,
-                child_style,
-                AbsoluteGridContext::for_lanes(
-                    AbsoluteGridContextInput {
-                        container_style: style,
-                        constants,
-                        containing_size,
-                        auto_area,
-                        column,
-                        row,
-                        column_geometry: &column_geometry,
-                        row_geometry: &row_geometry,
-                        lines: context.lines,
-                    },
-                    lane_axis_alignment_start + lane_report.range_start,
-                    lane_axis_alignment_start + lane_report.range_end,
-                )
-                .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass),
-            )?);
-        }
-    }
-    let mut contributions =
+    layout_positioned_grid_items(
+        tree,
+        PositionedGridPlacement {
+            node,
+            style,
+            constants,
+            containing_size,
+            scroll_box,
+            placements,
+            column_geometry: &column_geometry,
+            row_geometry: &row_geometry,
+            lines: context.lines,
+            containing_auto_scrollbar_pass,
+            bounds: PositionedGridBounds::Lanes {
+                start: lane_axis_alignment_start + lane_report.range_start,
+                end: lane_axis_alignment_start + lane_report.range_end,
+            },
+        },
+        pending_absolute,
+        &mut child_contributions,
+    )?;
+    let contributions =
         grid_scroll_contributions(child_contributions, None, flow_axes, constants.padding)
             .map_err(|error| layout_child_geometry_error(node, node, error))?;
-    let inline_start = column_offsets
-        .iter()
-        .copied()
-        .reduce(Tree::Scalar::min)
-        .unwrap_or(logical_content_box_inset.inline_start);
-    let inline_end = column_offsets
-        .iter()
-        .copied()
-        .zip(columns.iter().copied())
-        .map(|(offset, size)| offset + size)
-        .reduce(Tree::Scalar::max)
-        .unwrap_or(inline_start);
-    let block_start = row_offsets
-        .iter()
-        .copied()
-        .reduce(Tree::Scalar::min)
-        .unwrap_or(logical_content_box_inset.block_start);
-    let block_end = row_offsets
-        .iter()
-        .copied()
-        .zip(rows.iter().copied())
-        .map(|(offset, size)| offset + size)
-        .reduce(Tree::Scalar::max)
-        .unwrap_or(block_start);
-    let mut logical_subject_size =
-        LogicalSizeOf::new(inline_end - inline_start, block_end - block_start);
-    let mut logical_subject_origin = LogicalPointOf::new(inline_start, block_start);
-    let stacking_start = lane_axis_alignment_start + lane_report.range_start;
-    let stacking_end = lane_axis_alignment_start + lane_report.range_end;
-    let stacking_origin = stacking_start.min(stacking_end);
-    let stacking_extent = stacking_start.max(stacking_end) - stacking_origin;
-    match lane_axis.logical_axis() {
-        LogicalAxis::Inline => {
-            logical_subject_origin.inline = stacking_origin;
-            logical_subject_size.inline = stacking_extent;
-        }
-        LogicalAxis::Block => {
-            logical_subject_origin.block = stacking_origin;
-            logical_subject_size.block = stacking_extent;
-        }
-    }
-    let subject_size = flow_axes.physical_size(logical_subject_size);
-    let subject_origin = flow_axes.physical_point(
-        logical_subject_origin,
-        logical_subject_size,
+    let track_subject = grid_track_alignment_subject(GridTrackAlignmentGeometry {
+        sizes: LogicalSizeOf::new(columns, rows),
+        offsets: LogicalSizeOf::new(&column_offsets, &row_offsets),
+        fallback_origin: LogicalPointOf::new(
+            logical_content_box_inset.inline_start,
+            logical_content_box_inset.block_start,
+        ),
+        flow_axes,
         containing_size,
-    );
-    let track_subject = crate::ScrollRectOf::try_new(subject_origin, subject_size)
-        .map_err(|error| layout_child_geometry_error(node, node, error))?;
-    if style.justify_content.is_some() {
-        contributions.set_active_alignment_subject(flow_axes.inline_axis(), track_subject);
-    }
-    if style.align_content.is_some() {
-        contributions.set_active_alignment_subject(flow_axes.block_axis(), track_subject);
-    }
-    let visible_content_size = contributions
-        .content_size_from_anchor(Point::ZERO)
-        .map_err(|error| layout_child_geometry_error(node, node, error))?;
-
-    Ok(GridChildrenLayout {
-        visible_content_size,
-        contributions,
-        baselines: baselines.baselines,
-        baseline_groups: current_grid_baseline_groups,
-        executed_baselines: execution_input
-            .run_mode()
-            .is_perform_layout()
-            .then_some(executed_inventory),
+        stacking_range: Some((
+            lane_axis.logical_axis(),
+            lane_axis_alignment_start + lane_report.range_start,
+            lane_axis_alignment_start + lane_report.range_end,
+        )),
     })
+    .map_err(|error| layout_child_geometry_error(node, node, error))?;
+    report_grid_children(
+        node,
+        contributions,
+        GridLayoutReporting {
+            track_subject,
+            active_alignment_axes: LogicalSizeOf::new(
+                style.justify_content.is_some(),
+                style.align_content.is_some(),
+            ),
+            flow_axes,
+            baselines: baselines.baselines,
+            baseline_groups: current_grid_baseline_groups,
+            execution_input,
+            executed_inventory,
+        },
+    )
 }
 
 pub(super) fn normalize_grid_lanes_stacking_axis_sizing<'input, S: LayoutScalar>(
