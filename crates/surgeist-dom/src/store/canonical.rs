@@ -193,11 +193,18 @@ pub(crate) struct DocumentTypeNode<K> {
     pub common: Common<K>,
     pub data: Arc<Payload<crate::DomDocumentType>>,
 }
+#[derive(Clone, Debug)]
+pub(crate) struct AttrNode<K> {
+    pub common: Common<K>,
+    pub data: Arc<Payload<crate::DomAttribute>>,
+    pub owner: Option<K>,
+}
 #[cfg_attr(test, derive(Clone))]
 #[derive(Debug)]
 pub(crate) enum Node {
     Document(Arc<Payload<DocumentNode<NodeId>>>),
     Element(Arc<Payload<ElementNode<NodeId>>>),
+    Attr(Arc<Payload<AttrNode<NodeId>>>),
     DocumentFragment(Arc<Payload<FragmentNode<NodeId>>>),
     ShadowRoot(Arc<Payload<ShadowNode<NodeId>>>),
     Text(Arc<Payload<TextNode<NodeId>>>),
@@ -210,6 +217,7 @@ macro_rules! common {
         match $node {
             Node::Document($n) => $body,
             Node::Element($n) => $body,
+            Node::Attr($n) => $body,
             Node::DocumentFragment($n) => $body,
             Node::ShadowRoot($n) => $body,
             Node::Text($n) => $body,
@@ -243,6 +251,7 @@ impl Node {
         match self {
             Self::Document(n) => DomNodeKind::Document(&n.value.metadata.value),
             Self::Element(n) => DomNodeKind::Element(&n.value.element.value),
+            Self::Attr(n) => DomNodeKind::Attr(&n.value.data.value),
             Self::DocumentFragment(_) => DomNodeKind::DocumentFragment,
             Self::ShadowRoot(n) => DomNodeKind::ShadowRoot(&n.value.state.value),
             Self::Text(n) => DomNodeKind::Text(&n.value.data.value.value),
@@ -256,6 +265,12 @@ impl Node {
     pub(crate) fn element(&self) -> Option<&DomElement> {
         match self {
             Self::Element(n) => Some(&n.value.element.value),
+            _ => None,
+        }
+    }
+    pub(crate) fn attribute_node(&self) -> Option<(&crate::DomAttribute, Option<NodeId>)> {
+        match self {
+            Self::Attr(node) => Some((&node.value.data.value, node.value.owner)),
             _ => None,
         }
     }
@@ -714,11 +729,19 @@ impl<K: PartialEq> PartialEq for DocumentTypeNode<K> {
         self.common == other.common && same_payload(&self.data, &other.data)
     }
 }
+impl<K: PartialEq> PartialEq for AttrNode<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.common == other.common
+            && self.owner == other.owner
+            && same_payload(&self.data, &other.data)
+    }
+}
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Document(a), Self::Document(b)) => same_payload(a, b),
             (Self::Element(a), Self::Element(b)) => same_payload(a, b),
+            (Self::Attr(a), Self::Attr(b)) => same_payload(a, b),
             (Self::DocumentFragment(a), Self::DocumentFragment(b)) => same_payload(a, b),
             (Self::ShadowRoot(a), Self::ShadowRoot(b)) => same_payload(a, b),
             (Self::Text(a), Self::Text(b)) => same_payload(a, b),

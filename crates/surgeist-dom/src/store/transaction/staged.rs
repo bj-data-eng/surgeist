@@ -172,9 +172,15 @@ pub(in crate::store) struct DocumentTypeFields {
     pub common: Common<Key>,
     pub data: Controlled<crate::DomDocumentType>,
 }
+pub(in crate::store) struct AttrFields {
+    pub common: Common<Key>,
+    pub data: Controlled<crate::DomAttribute>,
+    pub owner: Option<Key>,
+}
 pub(in crate::store) enum DraftNode {
     Document(custody::Held<Box<DocumentFields>>),
     Element(custody::Held<Box<ElementFields>>),
+    Attr(custody::Held<Box<AttrFields>>),
     DocumentFragment(custody::Held<Box<FragmentFields>>),
     ShadowRoot(custody::Held<Box<ShadowFields>>),
     Text(custody::Held<Box<TextFields>>),
@@ -187,6 +193,7 @@ macro_rules! common {
         match $self {
             DraftNode::Document($n) => $e,
             DraftNode::Element($n) => $e,
+            DraftNode::Attr($n) => $e,
             DraftNode::DocumentFragment($n) => $e,
             DraftNode::ShadowRoot($n) => $e,
             DraftNode::Text($n) => $e,
@@ -617,6 +624,16 @@ impl DraftNode {
                     })
                 })?)
             }
+            Node::Attr(n) => {
+                let data = controlled(&n.value.data, registry, &mut admit)?;
+                Self::Attr(boxed(registry, &mut admit, || {
+                    Ok(AttrFields {
+                        common: common(&n.value.common),
+                        data,
+                        owner: n.value.owner.map(Key::Existing),
+                    })
+                })?)
+            }
         })
     }
 }
@@ -968,6 +985,27 @@ impl DraftNode {
                 )?;
                 Self::DocumentType(boxed(registry, &mut admit, || {
                     Ok(DocumentTypeFields { common, data })
+                })?)
+            }
+            NewNode::Attr(value) => {
+                let children = payload::attr_dependency(value, registry, Some(names), &mut admit)?;
+                let usage = storage::attr(value)?;
+                let value = value.clone();
+                let data = fresh_language(
+                    input,
+                    retained_occurrence,
+                    usage,
+                    registry,
+                    &mut admit,
+                    children,
+                    |_| value,
+                )?;
+                Self::Attr(boxed(registry, &mut admit, || {
+                    Ok(AttrFields {
+                        common,
+                        data,
+                        owner: None,
+                    })
                 })?)
             }
         })

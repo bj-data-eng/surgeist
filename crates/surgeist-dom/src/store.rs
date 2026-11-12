@@ -1122,6 +1122,7 @@ pub enum DomChange {
     Created(NodeId),
     Destroyed(NodeId),
     Data(NodeId),
+    AttrValue(crate::DomAttrId),
     Attributes(NodeId),
     ElementState(NodeId),
     NodeDocument(NodeId),
@@ -1301,6 +1302,7 @@ pub(crate) use canonical::Node;
 pub(in crate::store) enum NewNode {
     Document(DomDocumentMetadata),
     Element(DomElement),
+    Attr(crate::DomAttribute),
     DocumentFragment,
     ShadowRoot(crate::DomShadowRootState),
     Text(DocumentString),
@@ -3588,6 +3590,17 @@ impl Draft {
                         .len()
                         .saturating_sub(1)
                         .checked_add(namespace.uri().map_or(0, DocumentString::len)),
+                    Creation::Attr {
+                        namespace: None,
+                        name,
+                    } => Some(name.len()),
+                    Creation::Attr {
+                        namespace: Some(namespace),
+                        name,
+                    } => name
+                        .len()
+                        .saturating_sub(1)
+                        .checked_add(namespace.uri().map_or(0, DocumentString::len)),
                     Creation::Text(data) | Creation::Comment(data) => Some(data.len()),
                     Creation::ProcessingInstruction { target, data } => {
                         target.len().checked_add(data.len())
@@ -3665,6 +3678,13 @@ impl Draft {
                         },
                     )?),
                     Creation::Fragment => NewNode::DocumentFragment,
+                    Creation::Attr { namespace, name } => NewNode::Attr(self.form_detached_attr(
+                        document,
+                        namespace.as_ref(),
+                        name,
+                        metadata_formation.as_ref(),
+                        cancelled,
+                    )?),
                     Creation::Element(_) | Creation::ElementNs { .. } => {
                         unreachable!("Element was allocated through formed ingress")
                     }

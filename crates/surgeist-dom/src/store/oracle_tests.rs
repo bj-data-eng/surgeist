@@ -305,6 +305,12 @@ fn full_usage(dom: &Dom) -> DomUsage {
                 full_document_units(metadata)
             }
             DomNodeKind::Element(element) => full_element_units(element),
+            DomNodeKind::Attr(attr) => {
+                attr.name().namespace_uri().map_or(0, DocumentString::len)
+                    + attr.name().prefix().map_or(0, DocumentString::len)
+                    + attr.name().local_name().len()
+                    + attr.value().len()
+            }
             DomNodeKind::Text(value) | DomNodeKind::Comment(value) => value.len(),
             DomNodeKind::ProcessingInstruction(pi) => pi.units().unwrap(),
             DomNodeKind::DocumentType(doctype) => doctype.units().unwrap(),

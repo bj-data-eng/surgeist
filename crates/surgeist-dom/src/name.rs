@@ -153,6 +153,21 @@ impl DomQualifiedName {
     pub fn local_name_atom(&self) -> &DomNameAtom {
         &self.local
     }
+    pub(crate) fn qualified_spelling(&self) -> DocumentString {
+        let local = self.local_name();
+        match self.prefix() {
+            Some(prefix) => DocumentString::from_utf16(
+                prefix
+                    .code_units()
+                    .iter()
+                    .copied()
+                    .chain(std::iter::once(u16::from(b':')))
+                    .chain(local.code_units().iter().copied())
+                    .collect::<Vec<_>>(),
+            ),
+            None => local.clone(),
+        }
+    }
     /// Compare namespace/local identity in the same owner; prefixes do not
     /// participate in expanded-name identity.
     pub fn same_expanded_identity(&self, other: &Self) -> Result<bool, DomError> {

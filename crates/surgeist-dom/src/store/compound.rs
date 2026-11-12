@@ -112,6 +112,9 @@ impl Draft {
         let receiver = self.resolve(edit.receiver().into())?;
         match edit {
             Edit::TextContent { value, .. } => match self.node(receiver)?.kind() {
+                transaction::KindRead::Attr(_) => {
+                    self.set_detached_attr_value(receiver, value, limits, cancel)
+                }
                 transaction::KindRead::Element(_)
                 | transaction::KindRead::DocumentFragment
                 | transaction::KindRead::ShadowRoot(_) => {

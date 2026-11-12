@@ -11,6 +11,7 @@ pub(in crate::store) enum FieldUndo {
     Common(Common<Key>),
     Focus(FocusVersion),
     Element(Controlled<DomElement>, FocusVersion),
+    Attr(Controlled<crate::DomAttribute>),
     ImageOwner(Option<Key>),
     ImageState(Group<crate::image::ImageState<NodeId>, crate::image::ImageState<Key>>),
     Metadata(Controlled<DomDocumentMetadata>),
@@ -88,6 +89,12 @@ impl FieldUndo {
                     std::mem::replace(&mut target.focus, focus),
                 )
             }
+            Self::Attr(value) => match node {
+                DraftNode::Attr(node) => {
+                    Self::Attr(std::mem::replace(&mut node.value_mut().data, value))
+                }
+                _ => Self::Attr(value),
+            },
             Self::Metadata(value) => Self::Metadata(std::mem::replace(
                 &mut node.document_fields_mut().expect("Document").metadata,
                 value,
@@ -334,6 +341,45 @@ pub(super) fn seal_language<T>(
         .map(Controlled::from)
 }
 impl Draft {
+    pub(in crate::store) fn replace_attr_value_formed(
+        &mut self,
+        key: Key,
+        value: crate::DomAttribute,
+        formation: Option<source::formation::Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.materialize_node(key, cancel)?;
+        if !matches!(self.node(key)?.kind(), super::KindRead::Attr(_)) {
+            return Err(DomError::WrongNodeKind);
+        }
+        let undo = self.prepare_undo(cancel)?;
+        let mut admit = |usage| self.admit_custody_usage(usage, cancel);
+        let registry = self.custody_registry();
+        let children = payload::attr_dependency(&value, registry, Some(&self.names), &mut admit)?;
+        let usage = source::storage::attr(&value)?;
+        let debit = match formation.and_then(source::formation::Formation::into_debit) {
+            Some(debit) => debit,
+            None => registry.ledger().retain(custody::Usage::ZERO, &mut admit)?,
+        };
+        let value = payload::Reserved::new()?
+            .materialize(custody::Held::new(value, debit), usage, &mut admit)?
+            .seal_with_children(registry, children, &mut admit)?
+            .into();
+        let debit = registry.ledger().retain(custody::Usage::ZERO, &mut admit)?;
+        self.commit_selected(
+            key,
+            custody::Held::new(value, debit),
+            |value: &Controlled<crate::DomAttribute>| Overlay::Attr(&value.value.value),
+            |_, _, incoming, _| {
+                let (value, debit) = incoming.into_parts();
+                drop(debit);
+                Ok(FieldUndo::Attr(value))
+            },
+            undo,
+            cancel,
+        )
+    }
+
     pub(super) fn selected_fields<T>(
         &mut self,
         key: Key,

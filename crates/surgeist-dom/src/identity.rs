@@ -74,6 +74,16 @@ impl DocumentId {
     }
 }
 
+/// A checked identity of an Attr node.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct DomAttrId(pub(crate) NodeId);
+
+impl DomAttrId {
+    pub fn node(self) -> NodeId {
+        self.0
+    }
+}
+
 /// Checked store revision, advancing once per observably changed batch.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct DomRevision(pub(crate) u64);

@@ -2,8 +2,9 @@
 //! receipts; controlled owners keep the matching custody separately.
 mod children;
 pub(in crate::store) use children::{
-    data_dependency, document_dependency, element_node_dependency, form_dependency,
-    fragment_dependency, image_association_dependency, shadow_dependency, text_dependency,
+    attr_data_dependency, data_dependency, document_dependency, element_node_dependency,
+    form_dependency, fragment_dependency, image_association_dependency, shadow_dependency,
+    text_dependency,
 };
 #[cfg(test)]
 pub(in crate::store) use children::{form_dependency_refusal, inspect_slot_typed_custody};
@@ -522,11 +523,28 @@ pub(in crate::store) fn element_name_dependency(
     value: &crate::element::ElementName,
     registry: &bank::CustodyRegistry,
     names: Option<&super::name_registry::Operation>,
+    admit: impl FnMut(Usage) -> Result<(), DomError>,
+) -> Result<Option<bank::Dependency>, DomError> {
+    qualified_name_dependency::<crate::element::ElementName>(&value.value, registry, names, admit)
+}
+
+pub(in crate::store) fn attr_dependency(
+    value: &crate::DomAttribute,
+    registry: &bank::CustodyRegistry,
+    names: Option<&super::name_registry::Operation>,
+    admit: impl FnMut(Usage) -> Result<(), DomError>,
+) -> Result<Option<bank::Dependency>, DomError> {
+    qualified_name_dependency::<crate::DomAttribute>(value.name(), registry, names, admit)
+}
+
+fn qualified_name_dependency<T>(
+    name: &crate::DomQualifiedName,
+    registry: &bank::CustodyRegistry,
+    names: Option<&super::name_registry::Operation>,
     mut admit: impl FnMut(Usage) -> Result<(), DomError>,
 ) -> Result<Option<bank::Dependency>, DomError> {
-    let attribution =
-        containing_attribution::<crate::element::ElementName, ElementNameChildren>(names)?;
-    let children = NameChildren::adopt(&value.value, registry, names, &mut admit)?;
+    let attribution = containing_attribution::<T, ElementNameChildren>(names)?;
+    let children = NameChildren::adopt(name, registry, names, &mut admit)?;
     bank::Dependency::new(
         ElementNameChildren {
             _names: children,

@@ -452,7 +452,7 @@ impl Draft {
             return Err(DomError::NotFound);
         }
         let kind = self.node(node)?.kind();
-        if matches!(kind, KindRead::Document(_)) {
+        if matches!(kind, KindRead::Document(_) | KindRead::Attr(_)) {
             return Err(DomError::HierarchyRequest);
         }
         if !matches!(self.node(parent)?.kind(), KindRead::Document(_)) {

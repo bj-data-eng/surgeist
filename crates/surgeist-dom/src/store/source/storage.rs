@@ -145,6 +145,9 @@ pub(crate) fn document_type(value: &crate::DomDocumentType) -> Result<custody::U
     }
     typed::<crate::DomDocumentType>(payload)
 }
+pub(crate) fn attr(value: &crate::DomAttribute) -> Result<custody::Usage, DomError> {
+    typed::<crate::DomAttribute>(value.retained_payload()?)
+}
 
 pub(crate) fn fieldset_state(value: &crate::DomFieldsetState) -> Result<custody::Usage, DomError> {
     let mut payload = Payload::default();
@@ -268,6 +271,7 @@ pub(in crate::store) fn new_kind(
     let value = match value {
         NewNode::Document(value) => DomNodeKind::Document(value),
         NewNode::Element(value) => DomNodeKind::Element(value),
+        NewNode::Attr(value) => DomNodeKind::Attr(value),
         NewNode::DocumentFragment => DomNodeKind::DocumentFragment,
         NewNode::ShadowRoot(value) => DomNodeKind::ShadowRoot(value),
         NewNode::Text(value) => DomNodeKind::Text(value),
@@ -284,6 +288,7 @@ pub(in crate::store) fn kind_read(
     let kind = match kind {
         transaction::KindRead::Document(value) => DomNodeKind::Document(value),
         transaction::KindRead::Element(value) => DomNodeKind::Element(value.language()),
+        transaction::KindRead::Attr(value) => DomNodeKind::Attr(value),
         transaction::KindRead::DocumentFragment => DomNodeKind::DocumentFragment,
         transaction::KindRead::ShadowRoot(value) => DomNodeKind::ShadowRoot(value),
         transaction::KindRead::Text(value) => DomNodeKind::Text(value),
@@ -307,6 +312,7 @@ pub(in crate::store) fn kind(
             payload.add_units(metadata.retained_payload_units()?)?;
         }
         DomNodeKind::Element(element) => payload.append(element.retained_payload(&mut step)?)?,
+        DomNodeKind::Attr(value) => payload.append(value.retained_payload()?)?,
         DomNodeKind::Text(string) | DomNodeKind::Comment(string) => payload.string(string)?,
         DomNodeKind::ProcessingInstruction(pi) => {
             payload.append(pi.retained_payload(&mut step)?)?
@@ -462,6 +468,12 @@ pub(in crate::store) fn commands(
                 }
                 Creation::ElementNs { namespace, name } => {
                     if let Some(uri) = namespace.uri() {
+                        payload.string(uri)?;
+                    }
+                    payload.string(name)?;
+                }
+                Creation::Attr { namespace, name } => {
+                    if let Some(uri) = namespace.as_ref().and_then(|namespace| namespace.uri()) {
                         payload.string(uri)?;
                     }
                     payload.string(name)?;

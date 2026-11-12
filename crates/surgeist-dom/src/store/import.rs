@@ -475,6 +475,16 @@ impl Draft {
             )?;
             formed.children.name = Some(name.custody);
             self.allocate_element_formed(formed, document, limits, cancel, formation)?
+        } else if let transaction::KindRead::Attr(attr) = original.kind() {
+            let name = self.bind_canonical_name(attr.name(), formation.as_ref(), cancel)?;
+            let value = source::formation::share(attr.value(), formation.as_ref(), cancel)?;
+            self.allocate_formed(
+                NewNode::Attr(crate::DomAttribute::from_parts(name, value)),
+                document,
+                limits,
+                cancel,
+                formation,
+            )?
         } else {
             if matches!(original.kind(), transaction::KindRead::ShadowRoot(_)) {
                 return Err(DomError::NotSupported);
@@ -488,7 +498,8 @@ impl Draft {
             let kind = match original.kind() {
                 transaction::KindRead::Element(_)
                 | transaction::KindRead::Document(_)
-                | transaction::KindRead::ShadowRoot(_) => unreachable!("handled kind"),
+                | transaction::KindRead::Attr(_)
+                | transaction::KindRead::ShadowRoot(_) => return Err(DomError::WrongNodeKind),
                 transaction::KindRead::DocumentFragment => NewNode::DocumentFragment,
                 transaction::KindRead::Text(value) => NewNode::Text(value.clone()),
                 transaction::KindRead::Comment(value) => NewNode::Comment(value.clone()),

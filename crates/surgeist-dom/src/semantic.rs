@@ -606,7 +606,7 @@ impl DomSnapshot {
                 slot: index,
                 generation: slot.generation,
             };
-            if value.document() == document {
+            if value.document() == document && !matches!(value.kind(), DomNodeKind::Attr(_)) {
                 planned.include(&mut control, node, true)?;
             }
         }
@@ -751,6 +751,7 @@ impl DomSnapshot {
             let root = planned.subject(&mut control, node.node.document().node())?;
             control.reserve(&mut staged, 1)?;
             let subject = match node.kind() {
+                DomNodeKind::Attr(_) => continue,
                 DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_) => {
                     unreachable!("handled in document and shadow passes")
                 }
@@ -928,6 +929,7 @@ impl DomSnapshot {
                     }
                 }
                 DomNodeKind::Text(_)
+                | DomNodeKind::Attr(_)
                 | DomNodeKind::Comment(_)
                 | DomNodeKind::ProcessingInstruction(_)
                 | DomNodeKind::DocumentType(_) => {}
@@ -940,6 +942,7 @@ impl DomSnapshot {
                     | DomNodeKind::ProcessingInstruction(_)
                     | DomNodeKind::DocumentType(_) => builder.establish_root(&subject)?,
                     DomNodeKind::Document(_)
+                    | DomNodeKind::Attr(_)
                     | DomNodeKind::DocumentFragment
                     | DomNodeKind::ShadowRoot(_) => {}
                 }

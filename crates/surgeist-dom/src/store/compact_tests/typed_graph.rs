@@ -416,6 +416,14 @@ impl Walker<'_> {
                 }
                 self.association(&v.associations);
             }
+            Node::Attr(v) => {
+                self.root(v, "node.attr");
+                let mut raw = Raw::default();
+                let data = &v.value.data;
+                self.qualified(&mut raw, data.value.name());
+                self.text(&mut raw, data.value.value());
+                self.object(data, raw, "attr.data");
+            }
             Node::DocumentFragment(v) => {
                 self.root(v, "node.fragment");
                 self.container(&v.value.children);
@@ -498,6 +506,7 @@ pub(in crate::store) fn slot_payload(slot: &Slot) -> custody::Usage {
     let root = slot.node.as_ref().map_or(0, |node| match node {
         Node::Document(_) => size_of::<Target<canonical::DocumentNode<NodeId>>>(),
         Node::Element(_) => size_of::<Target<canonical::ElementNode<NodeId>>>(),
+        Node::Attr(_) => size_of::<Target<canonical::AttrNode<NodeId>>>(),
         Node::DocumentFragment(_) => size_of::<Target<canonical::FragmentNode<NodeId>>>(),
         Node::ShadowRoot(_) => size_of::<Target<canonical::ShadowNode<NodeId>>>(),
         Node::Text(_) => size_of::<Target<canonical::TextNode<NodeId>>>(),

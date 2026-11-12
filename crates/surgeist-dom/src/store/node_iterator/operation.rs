@@ -61,6 +61,7 @@ impl Tree<'_> {
             }
             let bit = match self.node(next.node)?.kind() {
                 DomNodeKind::Element(_) => 0,
+                DomNodeKind::Attr(_) => 1,
                 DomNodeKind::Text(_) => 2,
                 DomNodeKind::ProcessingInstruction(_) => 6,
                 DomNodeKind::Comment(_) => 7,

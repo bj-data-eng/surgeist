@@ -64,6 +64,10 @@ pub(crate) enum Creation {
         namespace: Namespace,
         name: DocumentString,
     },
+    Attr {
+        namespace: Option<Namespace>,
+        name: DocumentString,
+    },
     Text(DocumentString),
     Comment(DocumentString),
     ProcessingInstruction {
@@ -717,6 +721,35 @@ impl DomBatch {
         self.create(
             Creation::ElementNs {
                 namespace,
+                name: qualified_name.into(),
+            },
+            Some(document.into()),
+        )
+    }
+    /// Create an empty detached Attr in the selected Document.
+    pub fn create_attribute(
+        &mut self,
+        document: impl Into<NodeOperand>,
+        local_name: impl Into<DocumentString>,
+    ) -> CreatedNode {
+        self.create(
+            Creation::Attr {
+                namespace: None,
+                name: local_name.into(),
+            },
+            Some(document.into()),
+        )
+    }
+    /// Create an empty detached Attr with an exact namespace and qualified name.
+    pub fn create_attribute_ns(
+        &mut self,
+        document: impl Into<NodeOperand>,
+        namespace: Namespace,
+        qualified_name: impl Into<DocumentString>,
+    ) -> CreatedNode {
+        self.create(
+            Creation::Attr {
+                namespace: Some(namespace),
                 name: qualified_name.into(),
             },
             Some(document.into()),

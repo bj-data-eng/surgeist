@@ -128,6 +128,76 @@ fn retain_name(
 }
 
 impl Draft {
+    pub(super) fn form_detached_attr(
+        &mut self,
+        document: Key,
+        namespace: Option<&Namespace>,
+        name: &DocumentString,
+        formation: Option<&source::formation::Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<Attribute, DomError> {
+        let mut normalized = name_registry::Normalized::new(&self.names);
+        let raw = if let Some(namespace) = namespace {
+            attribute_name(
+                namespace,
+                name,
+                &mut || self.name_step(cancel),
+                &mut |input, lower| normalized.units(input, lower, formation, cancel),
+                &mut |value| retain_string(value, formation, cancel),
+            )?
+        } else {
+            if !valid_attribute_local_name(name, &mut || self.name_step(cancel))? {
+                return Err(DomError::InvalidCharacter);
+            }
+            let local =
+                if self.document_metadata(document)?.class() == crate::DomDocumentClass::Html {
+                    crate::names::ascii_lowercase(
+                        name,
+                        &mut || self.name_step(cancel),
+                        &mut |input, lower| normalized.units(input, lower, formation, cancel),
+                        &mut |value| retain_string(value, formation, cancel),
+                    )?
+                } else {
+                    retain_string(name, formation, cancel)?
+                };
+            surgeist_html::values::QualifiedName::new(Namespace::none(), None, local)
+        };
+        let name = self.bind_name(&raw, formation, cancel)?;
+        let value = source::formation::string("", formation, cancel)?;
+        Ok(Attribute::from_parts(name, value))
+    }
+
+    pub(super) fn set_detached_attr_value(
+        &mut self,
+        key: Key,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let node = self.node(key)?;
+        let transaction::KindRead::Attr(old) = node.kind() else {
+            return Err(DomError::WrongNodeKind);
+        };
+        if node.attr_owner().is_some() {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        if self.attribute_string_equal(old.value().code_units(), value.code_units(), cancel)? {
+            return Ok(());
+        }
+        let units = self
+            .units
+            .checked_sub(old.value().len())
+            .and_then(|units| units.checked_add(value.len()))
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(units, limits.units, DomResource::StringCodeUnits)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let value = retain_string(value, formation.as_ref(), cancel)?;
+        let replacement = Attribute::from_parts(old.name().clone(), value);
+        self.replace_attr_value_formed(key, replacement, formation, cancel)?;
+        self.units = units;
+        Ok(())
+    }
+
     fn attribute_string_equal(
         &self,
         left: &[u16],

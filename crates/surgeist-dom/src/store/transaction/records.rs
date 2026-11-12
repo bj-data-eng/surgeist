@@ -164,6 +164,7 @@ use canonical::Common;
 pub(in crate::store) enum KindRead<'a> {
     Document(&'a DomDocumentMetadata),
     Element(ElementRead<'a>),
+    Attr(&'a crate::DomAttribute),
     DocumentFragment,
     ShadowRoot(&'a crate::DomShadowRootState),
     Text(&'a DocumentString),
@@ -216,6 +217,7 @@ pub(in crate::store) enum Overlay<'a> {
     Common(&'a Common<Key>),
     Focus(&'a FocusVersion),
     Element(&'a DomElement),
+    Attr(&'a crate::DomAttribute),
     Metadata(&'a DomDocumentMetadata),
     ShadowState(&'a crate::DomShadowRootState),
     ProcessingInstruction(&'a crate::DomProcessingInstruction),
@@ -280,6 +282,13 @@ impl<'a> NodeRead<'a> {
     fn id(self, id: NodeId) -> Key {
         self.alias(Key::Existing(id))
     }
+    pub fn attr_owner(self) -> Option<Key> {
+        match self.source {
+            Source::Canonical(node) => node.attribute_node()?.1.map(|id| self.id(id)),
+            Source::Staged(DraftNode::Attr(node)) => node.value().owner.map(|key| self.alias(key)),
+            Source::Staged(_) => None,
+        }
+    }
     pub fn common(self) -> Common<Key> {
         let value = if let Some(Overlay::Common(v)) = self.overlay {
             *v
@@ -318,6 +327,7 @@ impl<'a> NodeRead<'a> {
                         aliases: self.aliases,
                     });
                 }
+                Overlay::Attr(v) => return KindRead::Attr(v),
                 Overlay::Metadata(v) => return KindRead::Document(v),
                 Overlay::ProcessingInstruction(v) => return KindRead::ProcessingInstruction(v),
                 Overlay::ShadowState(v) => return KindRead::ShadowRoot(v),
@@ -334,6 +344,7 @@ impl<'a> NodeRead<'a> {
                     focus: self.stage_focus(),
                     aliases: self.aliases,
                 }),
+                DomNodeKind::Attr(v) => KindRead::Attr(v),
                 DomNodeKind::DocumentFragment => KindRead::DocumentFragment,
                 DomNodeKind::ShadowRoot(v) => KindRead::ShadowRoot(v),
                 DomNodeKind::Text(v) => KindRead::Text(v),
@@ -348,6 +359,7 @@ impl<'a> NodeRead<'a> {
                     focus: self.stage_focus(),
                     aliases: self.aliases,
                 }),
+                DraftNode::Attr(v) => KindRead::Attr(&v.value().data.value.value),
                 DraftNode::DocumentFragment(_) => KindRead::DocumentFragment,
                 DraftNode::ShadowRoot(v) => KindRead::ShadowRoot(&v.value().state.value.value),
                 DraftNode::Text(v) => KindRead::Text(&v.value().data.value.value.value),
@@ -1091,6 +1103,7 @@ impl<'a> NodeRead<'a> {
         let mut units = match self.kind() {
             KindRead::Document(v) => v.units(),
             KindRead::Element(v) => v.language().units(),
+            KindRead::Attr(v) => v.logical_units(),
             KindRead::Text(v) | KindRead::Comment(v) => Some(v.len()),
             KindRead::ProcessingInstruction(v) => v.units(),
             KindRead::DocumentType(v) => v.units(),
@@ -1125,6 +1138,7 @@ pub(in crate::store) enum FrozenNodeInput {
         value: Controlled<DomElement>,
         focus: FocusVersion,
     },
+    Attr(Controlled<crate::DomAttribute>),
     DocumentFragment,
     ShadowRoot(Controlled<crate::DomShadowRootState>),
     Text(Controlled<canonical::CharacterData>),
@@ -1141,6 +1155,7 @@ impl FrozenNodeInput {
                 focus: Some(focus),
                 aliases: None,
             }),
+            Self::Attr(v) => KindRead::Attr(&v.value.value),
             Self::DocumentFragment => KindRead::DocumentFragment,
             Self::ShadowRoot(v) => KindRead::ShadowRoot(&v.value.value),
             Self::Text(v) => KindRead::Text(&v.value.value.value),
@@ -1174,6 +1189,7 @@ impl NodeRead<'_> {
                         .flatten()
                         .map_or(FocusVersion::Cleared, FocusVersion::Staged),
                 },
+                Node::Attr(n) => Frozen::Attr(controlled(&n.value.data, registry, &mut admit)?),
                 Node::DocumentFragment(_) => Frozen::DocumentFragment,
                 Node::ShadowRoot(n) => {
                     Frozen::ShadowRoot(controlled(&n.value.state, registry, &mut admit)?)
@@ -1197,6 +1213,7 @@ impl NodeRead<'_> {
                         .flatten()
                         .map_or(FocusVersion::Cleared, FocusVersion::Staged),
                 },
+                DraftNode::Attr(n) => Frozen::Attr(n.value().data.clone()),
                 DraftNode::DocumentFragment(_) => Frozen::DocumentFragment,
                 DraftNode::ShadowRoot(n) => Frozen::ShadowRoot(n.value().state.clone()),
                 DraftNode::Text(n) => Frozen::Text(n.value().data.clone()),

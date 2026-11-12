@@ -78,6 +78,7 @@ fn attr_creation_uses_the_actual_document_and_exact_qualified_name() {
     assert_eq!(attr.name().namespace_uri(), Some(&"urn:attribute".into()));
     assert_eq!(attr.owner_document(), html);
     assert_eq!(attr.owner_element(), None);
+    assert_eq!(snapshot.node(id).unwrap().node_name(), "p:Token".into());
 }
 
 #[test]
@@ -153,6 +154,30 @@ fn detached_attr_value_clone_adoption_and_retirement_use_exact_node_identity() {
         assert_eq!(observed.value(), &value);
     }
     assert_eq!(original.attr(attr).unwrap().owner_document(), document);
+
+    let mut foreign = owner();
+    let mut transfer = DomBatch::new();
+    let receiving_document = transfer.create_document();
+    let imported = transfer.import_node(&original, attr, &receiving_document, false);
+    let commit = foreign.apply(transfer, &cancel).unwrap();
+    let foreign_snapshot = foreign.snapshot();
+    let imported = foreign_snapshot
+        .attr(commit.created(&imported).unwrap().unwrap())
+        .unwrap();
+    assert_eq!(
+        imported.owner_document(),
+        commit.document(&receiving_document).unwrap()
+    );
+    assert_eq!(imported.value(), &value);
+    assert_eq!(imported.name(), original.attr(attr).unwrap().name());
+    assert_ne!(
+        imported.name().owner(),
+        original.attr(attr).unwrap().name().owner()
+    );
+    assert!(matches!(
+        foreign_snapshot.attr(attr),
+        Err(DomError::ForeignOwner)
+    ));
 
     let mut retire = DomBatch::new();
     retire.retire_range(range);

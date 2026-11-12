@@ -782,6 +782,33 @@ impl DomSourceEdit {
             Some(document.into()),
         )
     }
+    /// Request creation of one empty detached Attr in the selected Document.
+    pub fn create_attribute(
+        document: crate::DocumentId,
+        local_name: impl Into<DocumentString>,
+    ) -> Self {
+        Self::create(
+            Creation::Attr {
+                namespace: None,
+                name: local_name.into(),
+            },
+            Some(document.into()),
+        )
+    }
+    /// Request creation of one empty detached Attr with an exact qualified name.
+    pub fn create_attribute_ns(
+        document: crate::DocumentId,
+        namespace: Namespace,
+        qualified_name: impl Into<DocumentString>,
+    ) -> Self {
+        Self::create(
+            Creation::Attr {
+                namespace: Some(namespace),
+                name: qualified_name.into(),
+            },
+            Some(document.into()),
+        )
+    }
     /// Request one `set_command_for_element` operation on the canonical owner.
     pub fn set_command_for_element(node: NodeId, target: Option<NodeId>) -> Self {
         let target = target.map(crate::NodeOperand::Existing);

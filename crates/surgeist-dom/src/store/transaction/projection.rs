@@ -889,6 +889,24 @@ impl Draft {
                     )
                 )
             }
+            DraftNode::Attr(value) => {
+                let value = value.value();
+                root!(
+                    Attr,
+                    AttrNode<NodeId>,
+                    AttrNode {
+                        common: common(&value.common),
+                        data: value.data.value.clone(),
+                        owner: value.owner.map(map),
+                    },
+                    |value: &AttrNode<NodeId>, admit| payload::attr_data_dependency(
+                        &value.data,
+                        self.custody_registry(),
+                        Some(&self.names),
+                        admit
+                    )
+                )
+            }
         })
     }
 }

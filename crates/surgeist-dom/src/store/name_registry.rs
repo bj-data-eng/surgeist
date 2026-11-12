@@ -918,12 +918,28 @@ impl Promotions {
     }
     fn visit(&self, mut visit: impl FnMut(&DomNameAtom) -> Result<()>) -> Result<()> {
         for (index, _) in self.touched.iter() {
-            let Some(element) = self
-                .slots
-                .get(index)
-                .and_then(|slot| slot.node.as_ref())
-                .and_then(|node| node.element())
-            else {
+            let Some(node) = self.slots.get(index).and_then(|slot| slot.node.as_ref()) else {
+                continue;
+            };
+            if let Some((attr, _)) = node.attribute_node() {
+                let unchanged = self
+                    .before
+                    .get(index)
+                    .and_then(|slot| slot.node.as_ref())
+                    .and_then(|node| node.attribute_node())
+                    .is_some_and(|(old, _)| {
+                        old.name().namespace() == attr.name().namespace()
+                            && old.name().local_name_atom() == attr.name().local_name_atom()
+                    });
+                if !unchanged {
+                    if let Some(namespace) = attr.name().namespace() {
+                        visit(namespace)?;
+                    }
+                    visit(attr.name().local_name_atom())?;
+                }
+                continue;
+            }
+            let Some(element) = node.element() else {
                 continue;
             };
             let name = element.name();

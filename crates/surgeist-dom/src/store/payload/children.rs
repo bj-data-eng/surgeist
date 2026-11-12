@@ -250,6 +250,7 @@ pub(super) fn node_children(
     match node {
         Node::Document(value) => document_dependency(&value.value, registry, admit),
         Node::Element(value) => element_node_dependency(&value.value, registry, names, admit),
+        Node::Attr(value) => attr_data_dependency(&value.value.data, registry, names, admit),
         Node::DocumentFragment(value) => fragment_dependency(&value.value, registry, admit),
         Node::ShadowRoot(value) => shadow_dependency(&value.value, registry, admit),
         Node::Text(value) => text_dependency(&value.value, registry, admit),
@@ -264,6 +265,21 @@ pub(in crate::store) fn data_dependency<T>(
     admit: &mut dyn FnMut(Usage) -> Result<(), DomError>,
 ) -> Result<Option<bank::Dependency>, DomError> {
     let data = leaf(value, registry, admit)?;
+    bank::Dependency::new(DataChild { _data: data }, registry.ledger(), admit).map(Some)
+}
+
+pub(in crate::store) fn attr_data_dependency(
+    value: &Arc<Payload<crate::DomAttribute>>,
+    registry: &bank::CustodyRegistry,
+    names: Option<&super::super::name_registry::Operation>,
+    admit: &mut dyn FnMut(Usage) -> Result<(), DomError>,
+) -> Result<Option<bank::Dependency>, DomError> {
+    let data = registry.adopt_object_with_children(
+        value.identity,
+        value.own_usage,
+        |admit| super::attr_dependency(&value.value, registry, names, admit),
+        &mut *admit,
+    )?;
     bank::Dependency::new(DataChild { _data: data }, registry.ledger(), admit).map(Some)
 }
 

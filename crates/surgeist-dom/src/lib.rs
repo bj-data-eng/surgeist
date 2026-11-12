@@ -114,6 +114,7 @@
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
 
+mod attr;
 mod base;
 mod batch;
 mod button;
@@ -188,6 +189,7 @@ mod template;
 mod textarea;
 mod view_transition;
 
+pub use attr::DomAttr;
 pub use autofocus::DomDocumentAutofocus;
 pub use base::{DomBase, DomBaseFactsError, DomBaseResponse, DomFrozenBase, DomLink};
 pub use batch::{AttachedShadowRoot, CreatedNode, DomBatch, NodeOperand};
@@ -242,7 +244,7 @@ pub use hosted::{
     DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile, DomPermissionsPolicyValue,
 };
 pub use hyperlink::{DomEncodingUrlFactsError, DomHyperlink};
-pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
+pub use identity::{DocumentId, DomAttrId, DomOwnerId, DomRevision, DomStamp, NodeId};
 pub use image::{DomImageUpdate, DomImageUpdateCancellationReason, DomImageUpdateId, DomImg};
 pub use input::{DomInput, DomInputState};
 pub use installation::{
