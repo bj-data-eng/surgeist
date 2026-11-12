@@ -247,6 +247,10 @@ pub(crate) enum Command {
         parent: NodeOperand,
         child: NodeOperand,
     },
+    RemoveChild {
+        parent: NodeOperand,
+        child: NodeOperand,
+    },
     Detach(NodeOperand),
     Adopt {
         node: NodeOperand,

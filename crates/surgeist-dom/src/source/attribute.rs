@@ -20,6 +20,7 @@ pub enum DomSourceAttributeSink {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomSourceAttributeVerificationRequest {
     pub(crate) operation: DomSourceOperationId,
+    pub(crate) depth: usize,
     pub(crate) element: NodeId,
     pub(crate) global: DomHostedGlobalId,
     pub(crate) sink: DomSourceAttributeSink,

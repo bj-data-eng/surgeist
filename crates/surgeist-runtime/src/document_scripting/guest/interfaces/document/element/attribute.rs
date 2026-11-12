@@ -173,11 +173,28 @@ impl Capture {
                 Ok(retained) => retained,
                 Err(error) => {
                     let cleanup = AtomicBool::new(false);
-                    let _ = with_attribute_lease(owner, limits, request, &cleanup, |lease| {
-                        lease.request_cancel();
-                        lease.advance_for_runtime(&cleanup)?;
-                        Ok(())
-                    });
+                    if let Ok(mut session) = owner.session.try_borrow_mut() {
+                        let mut dom = session.dom();
+                        if owner
+                            .pending_attribute
+                            .try_borrow()
+                            .is_ok_and(|pending| pending.is_none())
+                            && let Some(registration) = attachment.registration.upgrade()
+                        {
+                            let _ = dom
+                                .raw_mut()
+                                .cancel_interrupted_source_attribute(request, &registration);
+                        }
+                        if dom
+                            .pending_source_edit()
+                            .is_some_and(|status| status.operation() == request.operation())
+                            && let Ok(mut lease) =
+                                dom.resume_source_edit(request.operation(), limits, &cleanup)
+                        {
+                            lease.request_cancel();
+                            let _ = lease.advance_for_runtime(&cleanup);
+                        }
+                    }
                     return Err(error);
                 }
             };

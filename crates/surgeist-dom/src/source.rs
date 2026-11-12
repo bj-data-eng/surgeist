@@ -1085,6 +1085,16 @@ impl DomSourceEdit {
             command: Command::Detach(node.into()),
         }
     }
+    /// Remove the exact ordinary child of the selected parent. A live node
+    /// without that parent fails with `DomError::NotFound`.
+    pub fn remove_child(parent: NodeId, child: NodeId) -> Self {
+        Self {
+            command: Command::RemoveChild {
+                parent: parent.into(),
+                child: child.into(),
+            },
+        }
+    }
     /// Request one `replace_child` operation on the canonical owner.
     pub fn replace_child(node: NodeId, parent: NodeId, child: NodeId) -> Self {
         Self {

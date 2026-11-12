@@ -105,7 +105,7 @@ pub(in crate::document_scripting) fn attach_public_nodes_with_registry_and_repor
                 work: 10_000,
                 pending_exception_reports,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),
-                source_edits: DomSourceLimits::new(16_000_000, 200_000, source_work, 64, 64, 64, 2),
+                source_edits: DomSourceLimits::new(16_000_000, 200_000, source_work, 64, 64, 64, 3),
                 dispatch: DomEventDispatchLimits {
                     path_items: 8,
                     snapshot_listeners: 8,

@@ -1427,6 +1427,13 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
         snapshot.node(element).unwrap().attribute(&"onclick".into()),
         None
     );
+    drop(lease);
+    dom.assert_interrupted_attribute_raises_for_child(
+        element,
+        &registration,
+        source_limits(),
+        &cancel,
+    );
 }
 
 #[test]

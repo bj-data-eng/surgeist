@@ -287,6 +287,7 @@ impl Operation {
         self.attribute_verification = Some(Pending {
             request: DomSourceAttributeVerificationRequest {
                 operation: self.id,
+                depth: dom.source_parents.len(),
                 element,
                 global,
                 sink,
@@ -770,6 +771,92 @@ impl DomSourceLease<'_> {
 }
 
 impl Dom {
+    /// Mark an interrupted verifier whose callback has closed for cancellation
+    /// when its original Source next becomes executable. The active child
+    /// retains its own phase and accepted effects.
+    pub fn cancel_interrupted_source_attribute(
+        &mut self,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &DomDocumentScriptRegistration,
+    ) -> Result<(), DomError> {
+        if request.operation.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        let operation = if request.depth == self.source_parents.len() {
+            self.source_operation.as_mut()
+        } else {
+            self.source_parents.get_mut(request.depth)
+        }
+        .filter(|operation| operation.id == request.operation)
+        .ok_or(DomError::InvalidSourceOperation)?;
+        if !operation
+            .attribute_verification
+            .as_ref()
+            .is_some_and(|pending| {
+                pending.request == request
+                    && !pending.has_outcome()
+                    && Arc::ptr_eq(&pending.registration, &registration.0)
+            })
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        let OperationDraft::AttributeObserved(observation) = &operation.draft else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        if observation.work.stage.load(Ordering::Relaxed) != 1 || !observation.work.scope_closed() {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        operation.cancelled = true;
+        Ok(())
+    }
+
+    // A child retry may raise cancelled enclosing verifiers. An active or
+    // retained guest callback still needs its own explicit recovery authority.
+    pub(super) fn raise_cancelled_attribute_parent(
+        &mut self,
+        child: DomSourceOperationId,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if self
+            .source_operation
+            .as_ref()
+            .is_none_or(|operation| operation.id != child)
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        let max_inspected = usize::try_from(limits.work).unwrap_or(usize::MAX);
+        for (inspected, index) in (0..self.source_parents.len()).rev().enumerate() {
+            check_cancel(cancel)?;
+            if inspected >= max_inspected {
+                return Err(DomError::SourceWorkLimit { limit: limits.work });
+            }
+            let parent = &self.source_parents[index];
+            let (OperationDraft::AttributeObserved(observation), Some(pending)) =
+                (&parent.draft, &parent.attribute_verification)
+            else {
+                continue;
+            };
+            if !parent.cancelled {
+                continue;
+            }
+            let old = observation.limits;
+            let raised = DomSourceLimits::new(
+                limits.retained_bytes.max(old.retained_bytes),
+                limits.retained_units.max(old.retained_units),
+                limits.work.max(old.work),
+                limits.phases.max(old.phases),
+                limits.outputs.max(old.outputs),
+                limits.identities.max(old.identities),
+                limits.nested_operations.max(old.nested_operations),
+            );
+            if raised != old {
+                self.raise_source_attribute_limits(pending.request, raised, cancel)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Raise the policy of this exact closed attribute callback, including
     /// while a child is topmost. This leaves the original work and stack
     /// intact and grants no verifier or execution authority.
@@ -917,6 +1004,80 @@ impl Dom {
 
 #[cfg(test)]
 impl Dom {
+    pub(in crate::store) fn assert_interrupted_attribute_raises_for_child(
+        &mut self,
+        element: NodeId,
+        registration: &DomDocumentScriptRegistration,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) {
+        let mut lease = self
+            .begin_source_edit(
+                DomSourceEdit::set_attribute(element, "onclick", "parent"),
+                limits,
+                cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::AttributeVerification(parent)) =
+            lease.advance(cancel).unwrap()
+        else {
+            panic!("expected a parent verification");
+        };
+        let scope = lease
+            .open_attribute_verification_callback(parent, registration, cancel)
+            .unwrap();
+        drop(lease);
+        let mut lease = self
+            .begin_source_edit(
+                DomSourceEdit::set_attribute(element, "onclick", "child"),
+                limits,
+                cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::AttributeVerification(child)) =
+            lease.advance(cancel).unwrap()
+        else {
+            panic!("expected a parked child");
+        };
+        drop(lease);
+        assert_eq!(
+            self.cancel_interrupted_source_attribute(parent, registration),
+            Err(DomError::InvalidSourceOperation)
+        );
+        drop(scope);
+        self.cancel_interrupted_source_attribute(parent, registration)
+            .unwrap();
+        let OperationDraft::AttributeObserved(observation) =
+            &mut self.source_parents.last_mut().unwrap().draft
+        else {
+            panic!("expected the closed parent observer");
+        };
+        let spent = observation.work.work.load(Ordering::Relaxed);
+        observation.limits.work = spent;
+        observation.work.work_limit.store(spent, Ordering::Relaxed);
+        let short = DomSourceLimits {
+            work: spent,
+            ..limits
+        };
+        assert!(
+            matches!(self.resume_source_edit(child.operation(), short, cancel), Err(DomError::SourceWorkLimit { limit }) if limit == spent)
+        );
+        let mut lease = self
+            .resume_source_edit(child.operation(), limits, cancel)
+            .unwrap();
+        lease.request_cancel();
+        assert!(
+            matches!(lease.advance(cancel).unwrap(), DomSourceProgress::Complete(done) if done.operation() == child.operation() && done.cancellation_requested())
+        );
+        drop(lease);
+        let mut lease = self
+            .resume_source_edit(parent.operation(), limits, cancel)
+            .unwrap();
+        assert!(
+            matches!(lease.advance(cancel).unwrap(), DomSourceProgress::Complete(done) if done.operation() == parent.operation() && done.cancellation_requested())
+        );
+    }
+
     pub(in crate::store) fn assert_attribute_callback_unit_peak(
         &mut self,
         request: DomSourceAttributeVerificationRequest,

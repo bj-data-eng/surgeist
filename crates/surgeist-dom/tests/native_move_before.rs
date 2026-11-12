@@ -1,4 +1,4 @@
-//! Pinned DOM move and ParentNode.moveBefore semantics on the native Source.
+//! Pinned DOM removal and move semantics on the native Source.
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
@@ -117,6 +117,86 @@ fn assert_record(
     assert_eq!(record.removed_nodes(), removed);
     assert_eq!(record.previous_sibling(), None);
     assert_eq!(record.next_sibling(), Some(next));
+}
+
+#[test]
+fn remove_child_checks_the_exact_parent_and_runs_canonical_removal() {
+    let cancel = AtomicBool::new(false);
+    let Tree {
+        mut dom,
+        document,
+        left,
+        right,
+        moved,
+        tail,
+        detached,
+        ..
+    } = tree(true, &cancel);
+    let foreign = tree(false, &cancel).moved;
+    let mut batch = DomBatch::new();
+    let point = batch.create_range(document);
+    batch.set_range_start(&point, moved, 0);
+    batch.set_range_end(&point, moved, 0);
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let point = commit.created_range(&point).unwrap().unwrap();
+    let observer = dom.create_child_list_observer(&cancel).unwrap();
+    dom.observe_child_list(observer, left, false, &cancel)
+        .unwrap();
+
+    let before = dom.snapshot();
+    for (parent, child, expected) in [
+        (right, moved, DomError::NotFound),
+        (left, detached, DomError::NotFound),
+        (left, foreign, DomError::ForeignOwner),
+    ] {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::remove_child(parent, child),
+                policy(),
+                &cancel,
+            )
+            .unwrap();
+        let actual = match lease.advance(&cancel) {
+            Ok(DomSourceProgress::Failed(failure)) => failure.error().clone(),
+            Err(error) => error,
+            other => panic!("expected checked removal refusal, got {other:?}"),
+        };
+        assert_eq!(actual, expected);
+        assert_eq!(lease.snapshot().stamp(), before.stamp());
+    }
+    assert!(
+        dom.take_child_list_records(observer, &cancel)
+            .unwrap()
+            .is_empty()
+    );
+
+    let mut lease = dom
+        .begin_source_edit(DomSourceEdit::remove_child(left, moved), policy(), &cancel)
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&AtomicBool::new(true)),
+        Err(DomError::Cancelled)
+    ));
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("ordinary checked removal should complete");
+    };
+    assert_eq!(done.output(), None);
+    let after = lease.snapshot();
+    drop(lease);
+    assert_eq!(before.node(moved).unwrap().parent(), Some(left));
+    assert_eq!(after.node(moved).unwrap().id(), moved);
+    assert_eq!(after.node(moved).unwrap().parent(), None);
+    assert_eq!(after.node(left).unwrap().children(), [tail]);
+    let point = after.range(point).unwrap();
+    assert_eq!(
+        (point.start().container(), point.start().offset()),
+        (left, 0)
+    );
+    assert_eq!((point.end().container(), point.end().offset()), (left, 0));
+    let records = dom.take_child_list_records(observer, &cancel).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_record(&records[0], left, &[], &[moved], tail);
 }
 
 #[test]

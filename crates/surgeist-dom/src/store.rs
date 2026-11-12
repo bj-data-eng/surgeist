@@ -3728,6 +3728,17 @@ impl Draft {
                 let node = self.resolve(node.clone())?;
                 self.remove(node, limits, cancelled)?;
             }
+            Command::RemoveChild { parent, child } => {
+                self.source_step(cancelled)?;
+                let parent = self.resolve(parent.clone())?;
+                self.source_step(cancelled)?;
+                let child = self.resolve(child.clone())?;
+                self.source_step(cancelled)?;
+                if self.node(child)?.parent() != Some(parent) {
+                    return Err(DomError::NotFound);
+                }
+                self.remove(child, limits, cancelled)?;
+            }
             Command::Adopt { node, document } => {
                 let node = self.resolve(node.clone())?;
                 let document = self.resolve(document.clone())?;

@@ -473,6 +473,7 @@ impl Dom {
         if id.owner != self.owner {
             return Err(DomError::ForeignOwner);
         }
+        self.raise_cancelled_attribute_parent(id, limits, cancel)?;
         let observed = self
             .source_operation
             .as_ref()

@@ -99,6 +99,7 @@ impl OperationRoot {
             | Command::ViewTransition { basis, .. } => Some(basis.document().node()),
             Command::Insert { parent, .. }
             | Command::MoveBefore { parent, .. }
+            | Command::RemoveChild { parent, .. }
             | Command::ReplaceChild { parent, .. } => existing(parent),
             Command::ConstructDocument(context) => Some(context.document.node()),
             Command::CloneNode { source, .. } => existing(source),

@@ -1,5 +1,112 @@
 use super::*;
 
+pub(super) fn guest_meta_without_processor_preserves_original_source() {
+    use crate::{DomSourceDriveError, DomSourceRuntimeError};
+    use surgeist_dom::{DomSourceMetaCspError, DomSourcePhase};
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
+        limits.with_meta_processing_work(1_000_000)
+    });
+    let document = target.document();
+    let snapshot = session.snapshot();
+    let html = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let head = snapshot.node(html).unwrap().children()[0];
+    let mut batch = DomBatch::new();
+    let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+    batch.set_attribute(&meta, "http-equiv", "content-security-policy");
+    batch.set_attribute(&meta, "content", "trusted-types default");
+    let meta = session
+        .dom()
+        .apply(batch, &cancel)
+        .unwrap()
+        .created(&meta)
+        .unwrap()
+        .unwrap();
+    let mut host = super::super::guest::tests::attach_public_nodes(
+        session,
+        target,
+        cancel.clone(),
+        5_000,
+        20_000,
+    );
+    let permit = host.permit().unwrap();
+    super::super::guest::tests::expose_public_node_for_source_test(
+        &mut host, &permit, head, "metaHead",
+    );
+    super::super::guest::tests::expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        meta,
+        "pendingMeta",
+    );
+    let original = host.snapshot().unwrap().stamp();
+    let failure = host.in_document(&permit, |scope| {
+        evaluate(scope, "metaHead.appendChild(pendingMeta)").map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = failure else {
+        panic!("missing policy authority must remain a host refusal: {failure:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DomSourceDriveError>(),
+        Some(DomSourceDriveError::Source(DomSourceRuntimeError::MetaCsp(
+            DomSourceMetaCspError::PolicyUnavailable
+        )))
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), original);
+    assert_eq!(host.snapshot().unwrap().node(meta).unwrap().parent(), None);
+    let status = host
+        .with_native(|dom, _, _| dom.pending_source_edit().unwrap())
+        .unwrap();
+    assert_eq!(status.phase(), DomSourcePhase::MetaCsp);
+    assert!(matches!(
+        host.in_document(&permit, |_| Ok(())),
+        Err(DocumentScriptError::Script(Error::HostFailure(_)))
+    ));
+    let mut session = host.stop().into_session().unwrap();
+    assert_eq!(
+        session.dom().pending_source_edit().unwrap().operation(),
+        status.operation()
+    );
+    session.enable_trusted_types_csp(&cancel).unwrap();
+    let mut source = session.source_execution();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::MetaCsp(request),
+        ..
+    } = source
+        .resume(
+            &mut session.dom(),
+            status.operation(),
+            SOURCE,
+            &mut services,
+            &cancel,
+        )
+        .unwrap()
+    else {
+        panic!("the original Meta request must be recoverable");
+    };
+    assert_eq!(request.operation(), status.operation());
+    assert_eq!(request.subject(), Some(meta));
+    session
+        .service_trusted_types_meta_csp(request, SOURCE, &cancel)
+        .unwrap();
+    assert!(
+        matches!(source.resume(&mut session.dom(), status.operation(), SOURCE, &mut services, &cancel).unwrap(), DomSourceDriveProgress::Complete(done) if done.operation() == status.operation())
+    );
+    assert_eq!(session.snapshot().node(meta).unwrap().parent(), Some(head));
+    assert!(session.dom().pending_source_edit().is_none());
+}
+
 pub(super) fn guest_tree_edits_deliver_original_meta_policies() {
     use crate::trusted_types_csp::PolicyDelivery;
     use surgeist_dom::DomDocumentCspState;
@@ -58,15 +165,27 @@ pub(super) fn guest_tree_edits_deliver_original_meta_policies() {
                 try { policyTarget.setAttribute('onclick', 'blocked'); }
                 catch (error) { blocked = error instanceof TypeError; }
                 check(blocked, 'the original Meta policy must already be active');
-                trustedTypes.createPolicy('default', {createScript: value => value + '!'});
+                trustedTypes.createPolicy('default', {createScript(value) {
+                    if (globalThis.insertNestedMeta) {
+                        if (value === 'abandoned') policyTarget.setAttribute('onload', 'inner');
+                        else if (value === 'inner') policyHead.appendChild(nestedMeta);
+                    }
+                    return value + '!';
+                }});
                 policyTarget.setAttribute('onclick', 'exact\ud800');
                 const text = document.createTextNode('text');
                 check(policyTarget.appendChild(text) === text, 'exact append return');
                 const replacement = document.createComment('replacement');
                 check(policyTarget.replaceChild(replacement, text) === text
                     && text.parentNode === null && replacement.parentNode === policyTarget, 'exact replace return');
-                try { policyHead.removeChild(replacement); }
-                catch (error) { check(error.name === 'NotFoundError', 'wrong parent exception'); }
+                const throws = (action, name) => {
+                    try { action(); } catch (error) { return error.name === name; }
+                    return false;
+                };
+                check(throws(() => policyHead.removeChild(replacement), 'NotFoundError')
+                    && throws(() => policyTarget.appendChild(policyTarget), 'HierarchyRequestError')
+                    && throws(() => policyTarget.insertBefore(text), 'TypeError')
+                    && throws(() => policyTarget.appendChild(new Proxy(text, {})), 'TypeError'), 'precise operation errors');
                 check(replacement.parentNode === policyTarget, 'wrong-parent removal does not detach');
                 check(policyTarget.removeChild(replacement) === replacement && replacement.parentNode === null, 'exact remove return');
             })()
@@ -99,7 +218,112 @@ pub(super) fn guest_tree_edits_deliver_original_meta_policies() {
         list.iter()
             .all(|policy| policy.delivery() == PolicyDelivery::Meta)
     );
+    drop(processor);
+    nested_meta_refusal_preserves_original_parent(host, permit, policy_owner, head, element);
 }
+
+fn nested_meta_refusal_preserves_original_parent(
+    mut host: DocumentScriptHost,
+    permit: DocumentScriptPermit,
+    policy_owner: Rc<HostedPolicyProcessor>,
+    head: NodeId,
+    element: NodeId,
+) {
+    use crate::{DomSourceDriveError, DomSourceRuntimeError};
+    use surgeist_dom::{DomSourceMetaCspError, DomSourcePhase};
+
+    let cancel = host.native.cancellation.clone();
+    let meta = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let meta = batch.create_element_ns(permit.document(), Namespace::html(), "meta");
+            batch.set_attribute(&meta, "http-equiv", "content-security-policy");
+            batch.set_attribute(&meta, "content", "trusted-types default");
+            dom.apply(batch, &cancel)
+                .unwrap()
+                .created(&meta)
+                .unwrap()
+                .unwrap()
+        })
+        .unwrap();
+    super::super::guest::tests::expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        meta,
+        "nestedMeta",
+    );
+    let before = host.snapshot().unwrap();
+    let occupied = policy_owner.processor.borrow();
+    let failure = host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            "globalThis.insertNestedMeta = true; policyTarget.setAttribute('onclick', 'abandoned')",
+        )
+        .map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = failure else {
+        panic!("expected exact nested processor refusal: {failure:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DomSourceDriveError>(),
+        Some(DomSourceDriveError::Source(DomSourceRuntimeError::MetaCsp(
+            DomSourceMetaCspError::IssuerBusy
+        )))
+    ));
+    drop(occupied);
+    assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
+    let mut session = host.stop().into_session().unwrap();
+    let child = session.dom().pending_source_edit().unwrap();
+    assert_eq!(child.phase(), DomSourcePhase::MetaCsp);
+    let parent = child.parent_operation().unwrap();
+    let mut source = session.source_execution();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::MetaCsp(request),
+        ..
+    } = source
+        .resume(
+            &mut session.dom(),
+            child.operation(),
+            SOURCE,
+            &mut services,
+            &cancel,
+        )
+        .unwrap()
+    else {
+        panic!("expected original nested Meta request");
+    };
+    session
+        .service_trusted_types_meta_csp(request, SOURCE, &cancel)
+        .unwrap();
+    assert!(
+        matches!(source.resume(&mut session.dom(), child.operation(), SOURCE, &mut services, &cancel).unwrap(), DomSourceDriveProgress::Complete(done) if done.operation() == child.operation())
+    );
+    assert!(
+        matches!(source.resume(&mut session.dom(), parent, SOURCE, &mut services, &cancel).unwrap(), DomSourceDriveProgress::Complete(done) if done.operation() == parent && done.cancellation_requested())
+    );
+    let outer = session.dom().pending_source_edit().unwrap().operation();
+    assert!(
+        matches!(source.resume(&mut session.dom(), outer, SOURCE, &mut services, &cancel).unwrap(), DomSourceDriveProgress::Complete(done) if done.operation() == outer && done.cancellation_requested())
+    );
+    let after = session.snapshot();
+    assert_eq!(after.node(meta).unwrap().parent(), Some(head));
+    assert_eq!(
+        after.node(element).unwrap().attribute(&"onclick".into()),
+        before.node(element).unwrap().attribute(&"onclick".into())
+    );
+    assert_eq!(
+        after.node(element).unwrap().attribute(&"onload".into()),
+        None
+    );
+    assert!(session.dom().pending_source_edit().is_none());
+}
+
 use crate::trusted_types_csp::{AttributePolicies, AttributePolicyError, PolicyFactory};
 use std::convert::Infallible;
 use surgeist_bindings_js::conversion::{ConversionAccount, ResourceTable, WorkTable};

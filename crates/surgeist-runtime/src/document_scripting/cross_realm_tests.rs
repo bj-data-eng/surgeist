@@ -242,6 +242,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     trusted_attribute::hosted_attribute_policy_reads_charge_the_parked_source_and_preserve_exact_input();
     trusted_attribute::hosted_meta_source_publishes_ordered_csp_for_the_registered_attribute_verifier();
     trusted_attribute::guest_tree_edits_deliver_original_meta_policies();
+    trusted_attribute::guest_meta_without_processor_preserves_original_source();
     trusted_attribute::default_factory_retains_the_real_guest_callback();
     super::guest::tests::trusted_policy::window_factory_creates_the_exact_default_policy();
     super::guest::tests::trusted_policy::guest_attribute_writes_reach_the_native_element();
