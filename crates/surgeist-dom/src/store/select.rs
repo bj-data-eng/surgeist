@@ -151,9 +151,14 @@ impl Draft {
         let key = self.live_key(key);
         let canonical = self.canonical_key(key);
         self.source_step(cancel)?;
-        if self.native_tasks.target_count(key) == 0 && self.tag(key)? != Some(Tag::Selectedcontent)
-        {
-            return Ok(());
+        if self.native_tasks.target_count(key) == 0 {
+            if key == canonical {
+                return Ok(());
+            }
+            self.source_step(cancel)?;
+            if self.native_tasks.target_count(canonical) == 0 {
+                return Ok(());
+            }
         }
         for index in 0..self.native_tasks.len() {
             self.source_step(cancel)?;

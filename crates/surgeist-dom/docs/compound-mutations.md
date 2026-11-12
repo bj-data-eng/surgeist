@@ -75,6 +75,7 @@ records. The operation skips ordinary insertion and removal hooks.
 Option moving hooks queue each reached Select update in order. Selectedcontent
 moving hooks queue a single update with the captured Select and Selectedcontent
 identities. The native checkpoint executes each task against current state.
+Each captured identity contributes an obligation in its current Document.
 Retiring either captured identity cancels that task and preserves the original
 identities in the cancellation evidence.
 
