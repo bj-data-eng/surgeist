@@ -227,12 +227,15 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         let expression: Vec<_> = r#"
             (() => {
                 const marker = {};
+                try { protectedTarget.setAttribute('onclick', 'missing'); return false; }
+                catch (error) { if (!(error instanceof TypeError)) return false; }
                 const policy = trustedTypes.createPolicy('default', {
                     createScript(value, type, sink) {
                         if (type !== 'TrustedScript' || sink !== 'Element onclick') throw new Error('incorrect sink');
                         if (protectedTarget.nodeType !== 1) throw new Error('unavailable native read');
                         protectedTarget.setAttribute('data-entered', value);
                         if (value === 'throw') throw marker;
+                        if (value === 'empty') return null;
                         return {toString() {
                             protectedTarget.setAttribute('data-coerced', 'yes');
                             return value + '!';
@@ -243,6 +246,8 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
                 protectedTarget.setAttribute('onclick', 'first\ud800');
                 try { protectedTarget.setAttributeNS(null, 'onclick', 'throw'); return false; }
                 catch (error) { if (error !== marker) return false; }
+                try { protectedTarget.setAttributeNS(null, 'onclick', 'empty'); return false; }
+                catch (error) { if (!(error instanceof TypeError)) return false; }
                 try { trustedTypes.createPolicy('denied'); }
                 catch (error) { return error instanceof TypeError; }
                 return false;
@@ -270,7 +275,7 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     );
     assert_eq!(
         target.attribute(&"data-entered".into()),
-        Some(&"throw".into())
+        Some(&"empty".into())
     );
     assert_eq!(
         target.attribute(&"data-coerced".into()),
