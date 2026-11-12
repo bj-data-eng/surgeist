@@ -598,11 +598,10 @@ impl Capture {
                 .as_ref()
                 .ok_or(Error::ExpiredIdentity)?
                 .document;
-            self.with_native(&owner, |session, _| {
-                session
-                    .snapshot()
-                    .document(bindings.attached_id)
-                    .map_err(DocumentScriptNativeError::from)?;
+            self.callbacks.with_read(&owner, &events, |read, _| {
+                read.node(bindings.attached_id.node())?
+                    .as_document()
+                    .ok_or(DomError::WrongNodeKind)?;
                 Ok(())
             })?;
             bindings
@@ -631,13 +630,12 @@ impl Capture {
                 .id()
                 .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
             events.step()?;
-            let observation = self.with_native(&owner, |session, _| {
-                let snapshot = session.snapshot();
-                let node = snapshot.node_with(id.node(), || events.step())?;
+            let observation = self.callbacks.with_read(&owner, &events, |read, _| {
+                let node = read.node(id.node())?;
                 let node_type = id.node_type(node.kind())?;
                 Ok(match member {
                     NodeMember::Type => Observation::Number(node_type),
-                    NodeMember::Name => match node.tag_name_spelling_with(|| events.step())? {
+                    NodeMember::Name => match node.tag_name_spelling_with(|| read.step())? {
                         Some(name) => Observation::TagName(name),
                         None => Observation::String(node.node_name()),
                     },
@@ -646,7 +644,7 @@ impl Capture {
                     }
                     NodeMember::Parent => Observation::Node(node.parent()),
                     NodeMember::Connected => Observation::Boolean(
-                        node.root_with(true, || events.step())?
+                        node.root_with(true, || read.step())?
                             .as_document()
                             .is_some(),
                     ),
@@ -692,8 +690,8 @@ impl Capture {
                 .id()
                 .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
             events.step()?;
-            self.with_native(&owner, |session, _| {
-                session.snapshot().node_with(id.node(), || events.step())?;
+            self.callbacks.with_read(&owner, &events, |read, _| {
+                read.node(id.node())?;
                 Ok(())
             })?;
             let options = node_get_root_node_0_options();
@@ -709,10 +707,9 @@ impl Capture {
             };
             scope.check_active()?;
             events.step()?;
-            let root = self.with_native(&owner, |session, _| {
-                let snapshot = session.snapshot();
-                let node = snapshot.node_with(id.node(), || events.step())?;
-                Ok(node.root_with(options.composed, || events.step())?.id())
+            let root = self.callbacks.with_read(&owner, &events, |read, _| {
+                let node = read.node(id.node())?;
+                Ok(node.root_with(options.composed, || read.step())?.id())
             })?;
             if root == id.node() {
                 let receiver = scope.retain(arguments.receiver());

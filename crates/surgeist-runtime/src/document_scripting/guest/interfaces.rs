@@ -595,10 +595,80 @@ fn install_event_interface<'scope>(
     Ok(())
 }
 
+struct SourceRead<'a> {
+    dom: &'a surgeist_dom::Dom,
+    request: &'a surgeist_dom::DomSourceEventRequest,
+    cancel: &'a AtomicBool,
+}
+
+struct NativeRead<'a> {
+    snapshot: DomSnapshot,
+    events: &'a GuestEvents,
+    source: Option<SourceRead<'a>>,
+}
+
+impl NativeRead<'_> {
+    fn step(&self) -> Result<(), DocumentGuestEventError> {
+        if let Some(source) = &self.source {
+            source
+                .dom
+                .source_event_step(source.request, source.cancel)?;
+        }
+        self.events.step()
+    }
+
+    fn node(
+        &self,
+        id: surgeist_dom::NodeId,
+    ) -> Result<surgeist_dom::DomNode<'_>, DocumentGuestEventError> {
+        self.snapshot.node_with(id, || self.step())
+    }
+}
+
 impl Callbacks {
     fn with_native<T>(
         &self,
         owner: &NativeOwner,
+        action: impl FnOnce(&mut DomSession, DomHostedGlobalId) -> Result<T, DocumentGuestEventError>,
+    ) -> Result<T, DocumentGuestEventError> {
+        self.with_qualified_session(owner, None, action)
+    }
+
+    fn with_read<T>(
+        &self,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        action: impl FnOnce(&NativeRead<'_>, DomHostedGlobalId) -> Result<T, DocumentGuestEventError>,
+    ) -> Result<T, DocumentGuestEventError> {
+        let request = owner.attached_event_request();
+        self.with_qualified_session(owner, request.as_ref(), |session, global| {
+            let snapshot = session.snapshot();
+            let dom = session.dom();
+            let read = NativeRead {
+                snapshot,
+                events,
+                source: request.as_ref().map(|request| SourceRead {
+                    dom: dom.raw(),
+                    request,
+                    cancel: &owner.cancellation,
+                }),
+            };
+            action(&read, global)
+        })
+    }
+
+    fn qualify_listener_registry(
+        &self,
+        owner: &NativeOwner,
+    ) -> Result<(), DocumentGuestEventError> {
+        let request = owner.attached_event_request();
+        self.with_qualified_session(owner, request.as_ref(), |_, _| Ok(()))
+    }
+
+    fn with_qualified_session<T>(
+        &self,
+        owner: &NativeOwner,
+        request: Option<&surgeist_dom::DomSourceEventRequest>,
         action: impl FnOnce(&mut DomSession, DomHostedGlobalId) -> Result<T, DocumentGuestEventError>,
     ) -> Result<T, DocumentGuestEventError> {
         let attachment = owner
@@ -614,7 +684,11 @@ impl Callbacks {
             .session
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        if owner.observe(attachment, &mut session)?.status() != HtmlScriptingStatus::Enabled {
+        let status = match request {
+            Some(request) => owner.qualify_event(attachment, &mut session, request)?,
+            None => owner.observe(attachment, &mut session)?.status(),
+        };
+        if status != HtmlScriptingStatus::Enabled {
             return Err(DocumentScriptNativeError::Revoked.into());
         }
         action(&mut session, attachment.target.global())

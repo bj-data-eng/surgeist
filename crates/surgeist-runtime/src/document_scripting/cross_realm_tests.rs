@@ -204,11 +204,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::registered_character_factory_refuses_without_publication(
     );
     public_and_source_comment_projection_share_identity();
-    let read_and_remove =
-        std::panic::catch_unwind(attached_registry_delivers_the_original_native_cancel_event);
-    let prepare_refusal =
-        std::panic::catch_unwind(attached_registry_keeps_preparation_refusal_on_retry);
-    assert!(read_and_remove.is_ok() && prepare_refusal.is_ok());
+    attached_registry_delivers_the_original_native_cancel_event();
+    attached_registry_keeps_preparation_refusal_on_retry();
     attached_registry_preserves_the_original_terminal_refusal();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(

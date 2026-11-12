@@ -151,10 +151,10 @@ impl GuestEvents {
             },
         ) {
             Ok(result) => Ok(result),
-            Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
-                Err(error.into())
-            }
-            Err(error) => refuse(scope, &self.refusal, error).map_err(Into::into),
+            Err(error) => match scope.check_active() {
+                Err(first) => Err(first.into()),
+                Ok(()) => refuse(scope, &self.refusal, error).map_err(Into::into),
+            },
         }
     }
 
