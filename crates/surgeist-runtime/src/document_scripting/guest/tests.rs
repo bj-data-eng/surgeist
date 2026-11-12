@@ -82,6 +82,15 @@ pub(in crate::document_scripting) fn move_public_registry_for_source_test(
     host.guest_events().unwrap().registry.replace(replacement)
 }
 
+pub(in crate::document_scripting) fn refuse_next_source_node_validation(host: &DocumentScriptHost) {
+    host.guest_events()
+        .unwrap()
+        .public
+        .as_ref()
+        .unwrap()
+        .refuse_next_ordinary_wrapper_validation();
+}
+
 pub(in crate::document_scripting) fn expose_public_node_for_source_test(
     host: &mut DocumentScriptHost,
     permit: &DocumentScriptPermit,

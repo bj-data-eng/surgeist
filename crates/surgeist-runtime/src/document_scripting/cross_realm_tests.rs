@@ -204,7 +204,11 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::registered_character_factory_refuses_without_publication(
     );
     public_and_source_comment_projection_share_identity();
-    attached_registry_delivers_the_original_native_cancel_event();
+    let read_and_remove =
+        std::panic::catch_unwind(attached_registry_delivers_the_original_native_cancel_event);
+    let prepare_refusal =
+        std::panic::catch_unwind(attached_registry_keeps_preparation_refusal_on_retry);
+    assert!(read_and_remove.is_ok() && prepare_refusal.is_ok());
     attached_registry_preserves_the_original_terminal_refusal();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
@@ -853,13 +857,19 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
             r#"
             globalThis.sentinel = {};
             globalThis.cancelChecks = false;
-            const attachedDocument = document;
+            let removedCalls = 0;
+            const removed = () => { removedCalls++; };
             dialog.addEventListener("cancel", function (event) {
                 globalThis.originalCancel = event;
                 throw sentinel;
             }, {once: true});
             dialog.addEventListener("cancel", function (event) {
-                cancelChecks = this === dialog && event === originalCancel
+                const attachedDocument = document;
+                cancelChecks = event.target.nodeName === "DIALOG"
+                    && event.target.localName === "dialog"
+                    && event.target.ownerDocument === attachedDocument
+                    && event.currentTarget.getRootNode() === attachedDocument
+                    && this === dialog && event === originalCancel
                     && event.target === dialog && event.currentTarget === dialog
                     && event instanceof Event && event.isTrusted
                     && event.cancelable && !event.bubbles && !event.composed
@@ -867,8 +877,10 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
                 const path = event.composedPath();
                 cancelChecks &&= path[0] === dialog
                     && path[1] instanceof HTMLBodyElement && path.includes(attachedDocument);
+                event.currentTarget.removeEventListener("cancel", removed);
                 event.preventDefault();
             }, {once: true});
+            dialog.addEventListener("cancel", removed);
         "#,
         )
         .map(drop)
@@ -933,11 +945,76 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
         let exact = scope.import(reported.exception.value())?;
         let sentinel = evaluate(scope, "sentinel")?;
         assert!(scope.strict_equals(&exact, &sentinel)?);
-        let actual = evaluate(scope, "cancelChecks && originalCancel.currentTarget === null && originalCancel.defaultPrevented")?;
+        let actual = evaluate(scope, "cancelChecks && removedCalls === 0 && originalCancel.currentTarget === null && originalCancel.defaultPrevented")?;
         let expected = scope.primitive(Primitive::Boolean(true))?;
         assert!(scope.strict_equals(&actual, &expected)?);
         Ok(())
     }).unwrap();
+}
+
+fn attached_registry_keeps_preparation_refusal_on_retry() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let AttachedCancel {
+        mut host,
+        dialog,
+        observations,
+    } = attached_cancel_host(cancel.clone());
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        evaluate(scope, "document.addEventListener('cancel', () => { throw 'unexpected'; }, {capture: true, once: true})").map(drop)
+    }).unwrap();
+    super::guest::tests::refuse_next_source_node_validation(&host);
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let request = start_attached_cancel(&mut host, dialog, &mut services, &cancel);
+    let first = host
+        .service_attached_source_event(&permit, &request, EVENT)
+        .unwrap_err();
+    let retry = host
+        .service_attached_source_event(&permit, &request, EVENT)
+        .unwrap_err();
+    match (&first, &retry) {
+        (
+            DocumentScriptEventError::Access(DocumentScriptError::Script(Error::HostFailure(
+                first,
+            ))),
+            DocumentScriptEventError::Access(DocumentScriptError::Script(Error::HostFailure(
+                retry,
+            ))),
+        ) => {
+            let first = first.cause::<DocumentGuestEventError>().unwrap();
+            assert!(matches!(
+                first,
+                DocumentGuestEventError::Document(DocumentScriptError::Script(
+                    Error::BackendUnavailable
+                ))
+            ));
+            assert!(std::ptr::eq(
+                first,
+                retry.cause::<DocumentGuestEventError>().unwrap()
+            ));
+        }
+        (
+            DocumentScriptEventError::Access(DocumentScriptError::Script(
+                Error::BackendUnavailable,
+            )),
+            DocumentScriptEventError::Access(DocumentScriptError::Script(
+                Error::BackendUnavailable,
+            )),
+        ) => (),
+        _ => panic!("preparation refusal changed on retry: first {first:?}, retry {retry:?}"),
+    }
+    assert_eq!(observations.borrow().len(), 1);
+    assert!(
+        host.take_guest_listener_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    assert!(host.native.attached_event_request().is_none());
 }
 
 fn attached_registry_preserves_the_original_terminal_refusal() {
