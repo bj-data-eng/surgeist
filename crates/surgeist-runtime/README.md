@@ -302,6 +302,10 @@ Native Documents and ordinary Fragments use their registered creation realm
 on first exposure, including after their original host retires. Ancestry and
 event paths share the same wrapper. The Fragment factory uses the receiver
 Document's realm. The attached Window supplies its own constructor authority.
+Native ShadowRoots inherit DocumentFragment and expose their canonical host,
+mode, focus delegation, slot assignment, clonability and serializability.
+Element.shadowRoot exposes open roots. Node root reads and event paths use
+canonical identities and preserve closed-root visibility and retargeting.
 `DocumentGuestEventLimits` includes the native watch storage and work limits.
 The `Text` and `Comment` constructors and Document factories use the same
 creation and retirement boundary. The factories require a Document with the

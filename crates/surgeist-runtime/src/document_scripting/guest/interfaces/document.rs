@@ -11,12 +11,14 @@ mod character_data;
 pub(super) mod element;
 mod fragment;
 mod ordinary;
+mod shadow;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
 
 #[derive(Clone, Copy)]
 pub(in crate::document_scripting::guest) enum GuestNode {
     Document(DocumentId),
     Fragment(NodeId),
+    ShadowRoot(NodeId),
     Text(NodeId),
     Comment(NodeId),
     Element(NodeId),
@@ -26,7 +28,11 @@ impl GuestNode {
     pub(in crate::document_scripting::guest) fn node(self) -> NodeId {
         match self {
             Self::Document(id) => id.node(),
-            Self::Fragment(id) | Self::Text(id) | Self::Comment(id) | Self::Element(id) => id,
+            Self::Fragment(id)
+            | Self::ShadowRoot(id)
+            | Self::Text(id)
+            | Self::Comment(id)
+            | Self::Element(id) => id,
         }
     }
 
@@ -34,6 +40,7 @@ impl GuestNode {
         match (self, kind) {
             (Self::Document(_), DomNodeKind::Document(_)) => Ok(9.0),
             (Self::Fragment(_), DomNodeKind::DocumentFragment) => Ok(11.0),
+            (Self::ShadowRoot(_), DomNodeKind::ShadowRoot(_)) => Ok(11.0),
             (Self::Text(_), DomNodeKind::Text(_)) => Ok(3.0),
             (Self::Comment(_), DomNodeKind::Comment(_)) => Ok(8.0),
             (Self::Element(_), DomNodeKind::Element(_)) => Ok(1.0),
@@ -77,6 +84,7 @@ pub(super) struct DocumentBindings {
 pub(super) struct DocumentPrototypes {
     document: RetainedCallbackObject,
     fragment: RetainedCallbackObject,
+    shadow: RetainedCallbackObject,
 }
 
 impl DocumentPrototypes {
@@ -86,15 +94,7 @@ impl DocumentPrototypes {
         constructor: &Value<'scope>,
         funding: &OriginInterfaceFunding<'_>,
     ) -> Result<Self, DocumentGuestEventError> {
-        let unavailable = ConstructorCallback::bounded(
-            0,
-            |_| Err(Error::BackendUnavailable),
-            |scope, _| {
-                Ok(ConstructorCompletion::Throw(
-                    scope.type_error(&ascii(b"Illegal constructor"))?,
-                ))
-            },
-        );
+        let unavailable = illegal_node_constructor();
         let (prototypes, _) = Self::install(
             scope,
             node,
@@ -112,24 +112,29 @@ impl DocumentPrototypes {
         (document_callback, fragment_callback): (&ConstructorCallback, &ConstructorCallback),
         funding: &OriginInterfaceFunding<'_>,
     ) -> Result<(Self, Value<'scope>), DocumentGuestEventError> {
-        let document = install_derived_node(scope, node, constructor, DOCUMENT, document_callback)?;
-        let fragment = install_derived_node(
+        let (_, document) =
+            install_derived_node(scope, node, constructor, DOCUMENT, document_callback)?;
+        let (fragment_constructor, fragment) = install_derived_node(
             scope,
             node,
             constructor,
             fragment::FRAGMENT,
             fragment_callback,
         )?;
+        let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
         fragment::install_factory(scope, &document, &funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
         let observed = scope.callback_object(&document)?;
         let retained_document = scope.retain_callback_object(observed, funding.retain)?;
         let observed = scope.callback_object(&fragment)?;
         let retained_fragment = scope.retain_callback_object(observed, funding.retain)?;
+        let observed = scope.callback_object(&shadow)?;
+        let retained_shadow = scope.retain_callback_object(observed, funding.retain)?;
         Ok((
             Self {
                 document: retained_document,
                 fragment: retained_fragment,
+                shadow: retained_shadow,
             },
             document,
         ))
@@ -512,7 +517,7 @@ fn install_derived_node<'scope>(
     node_constructor: &Value<'scope>,
     name: &[u16],
     callback: &ConstructorCallback,
-) -> Result<Value<'scope>, Error> {
+) -> Result<(Value<'scope>, Value<'scope>), Error> {
     let prototype = scope.object(ObjectPrototype::Object(node))?;
     let constructor = scope.constructor(callback, FunctionMetadata { name, length: 0 })?;
     scope.set_prototype(&constructor, ObjectPrototype::Object(node_constructor))?;
@@ -528,7 +533,19 @@ fn install_derived_node<'scope>(
     )?;
     let global = scope.global()?;
     install_interface(scope, &global, name, &constructor, &prototype)?;
-    Ok(prototype)
+    Ok((constructor, prototype))
+}
+
+fn illegal_node_constructor() -> ConstructorCallback {
+    ConstructorCallback::bounded(
+        0,
+        |_| Err(Error::BackendUnavailable),
+        |scope, _| {
+            Ok(ConstructorCompletion::Throw(
+                scope.type_error(&ascii(b"Illegal constructor"))?,
+            ))
+        },
+    )
 }
 
 fn install_getter<'scope>(
