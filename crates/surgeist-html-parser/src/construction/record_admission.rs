@@ -79,6 +79,9 @@ pub(super) struct RecordAdmission<'a> {
     /// Whether the units the operation adds are the strings of a leaf, which the parse holds.
     leaf: bool,
     insertion: Option<Insertion<'a>>,
+    /// The bytes the parse holds for the contents vector of a publication, which that
+    /// publication frees when its records move.
+    contents: u64,
 }
 
 impl Charge<HtmlWork, HtmlResource> for RecordAdmission<'_> {
@@ -127,15 +130,30 @@ impl HtmlRecordAdmission for RecordAdmission<'_> {
         let growth = record.growth();
         let first = record.recorded() == growth.before();
         let old = ParseControl::bank_record_bytes(growth, record.recorded().capacity(), first)?;
-        let actual = ParseControl::bank_record_bytes(growth, record.reached().capacity(), false)?;
+        // A bank that came back to the dimensions it had before the growth holds no allocation of
+        // it, and so no wrapper either. A first record that chooses none is not a return: an
+        // empty string owns its vector.
+        let returned = !first && record.reached() == growth.before();
+        let actual =
+            ParseControl::bank_record_bytes(growth, record.reached().capacity(), returned)?;
         let expected = ParseControl::bank_record_bytes(growth, record.chosen(), false)?;
-        self.layout = expected;
+        // A record that takes a bank back admits no layout: the layout of the last admitted growth
+        // is the one an allocation refusal reports.
+        let takes_back = returned && record.chosen() == growth.before().capacity();
+        if !takes_back {
+            self.layout = expected;
+        }
         let held = match growth.bank() {
-            HtmlConstructionBank::Text => &mut self.holds.string_bytes,
+            HtmlConstructionBank::Text
+            | HtmlConstructionBank::TextArena
+            | HtmlConstructionBank::TextBlock => &mut self.holds.string_bytes,
             _ => &mut self.holds.bank_bytes,
         };
         self.control
             .record_bank_growth(old, actual, expected, held)?;
+        if growth.bank() == HtmlConstructionBank::PublishedContents {
+            self.contents = actual;
+        }
         Ok(())
     }
 
@@ -195,6 +213,7 @@ impl<'a> RecordAdmission<'a> {
             layout: 0,
             leaf: false,
             insertion: None,
+            contents: 0,
         }
     }
 
@@ -471,8 +490,10 @@ impl Charge<HtmlWork, HtmlResource> for SessionCharge<'_> {
     }
 }
 
-/// Publishes the records and returns the result. A refusal hands the storage back with the session
-/// error, so the session keeps its records and releases them as it would after any refused step.
+/// Publishes the records and returns the result with the bytes the parse held for the contents
+/// vector of the publication, which the publication has freed. A refusal hands the storage back
+/// with the session error, so the session keeps its records and releases them as it would after
+/// any refused step.
 #[expect(clippy::result_large_err)] // Refusal hands the complete storage back without allocating after failure.
 pub(super) fn publish_records(
     control: &mut ParseControl,
@@ -480,10 +501,10 @@ pub(super) fn publish_records(
     holds: &mut StorageHolds,
     storage: HtmlConstructionStorage,
     root: &HtmlBuilderNode,
-) -> Result<HtmlConstructionResult, (HtmlConstructionStorage, SessionError)> {
+) -> Result<(HtmlConstructionResult, u64), (HtmlConstructionStorage, SessionError)> {
     let mut admission = RecordAdmission::new(control, identity, holds, &[]);
     match storage.publish(root, &mut admission) {
-        Ok(published) => Ok(published),
+        Ok(published) => Ok((published, admission.contents)),
         Err(refusal) => {
             let (storage, error) = refusal.into_parts();
             Err((storage, admission.error(error)))
@@ -532,6 +553,126 @@ pub(super) fn associated_root_of(
                 return Err(SessionError::TemplateMetadataUnavailable);
             }
             Ok(false)
+        }
+    }
+}
+
+/// A consumer of a publication that records every growth it is asked to admit and refuses the
+/// admission of one bank, for the tests of what a refused publication leaves with the parse.
+#[cfg(test)]
+pub(super) struct ObservedAdmission<'a> {
+    inner: RecordAdmission<'a>,
+    refuse: Option<HtmlConstructionBank>,
+    /// The bank whose first record this consumer accepts and then refuses.
+    refuse_after_record: Option<HtmlConstructionBank>,
+    growths: Vec<HtmlConstructionBankGrowth>,
+}
+
+#[cfg(test)]
+impl Charge<HtmlWork, HtmlResource> for ObservedAdmission<'_> {
+    type Stop = SessionError;
+
+    fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), SessionError> {
+        self.inner.charge(batch)
+    }
+
+    fn record_largest(&mut self, resource: HtmlResource, value: u64) -> Result<(), SessionError> {
+        self.inner.record_largest(resource, value)
+    }
+}
+
+#[cfg(test)]
+impl HtmlRecordAdmission for ObservedAdmission<'_> {
+    fn admit_change(
+        &mut self,
+        storage: &HtmlConstructionStorage,
+        change: HtmlConstructionChange,
+    ) -> Result<(), SessionError> {
+        self.inner.admit_change(storage, change)
+    }
+
+    fn admit_growth(&mut self, growth: HtmlConstructionBankGrowth) -> Result<usize, SessionError> {
+        self.growths.push(growth);
+        if self.refuse == Some(growth.bank()) {
+            return Err(SessionError::Consumed);
+        }
+        self.inner.admit_growth(growth)
+    }
+
+    fn record_growth(&mut self, record: HtmlConstructionGrowthRecord) -> Result<(), SessionError> {
+        self.inner.record_growth(record)?;
+        if self.refuse_after_record == Some(record.growth().bank()) {
+            return Err(SessionError::Consumed);
+        }
+        Ok(())
+    }
+
+    fn record_change(
+        &mut self,
+        storage: &HtmlConstructionStorage,
+        change: HtmlConstructionChange,
+    ) -> Result<(), SessionError> {
+        self.inner.record_change(storage, change)
+    }
+}
+
+/// What a publication through an [`ObservedAdmission`] asked and left.
+#[cfg(test)]
+pub(super) struct ObservedPublication {
+    /// The growths the publication asked to admit, in order.
+    pub(super) growths: Vec<HtmlConstructionBankGrowth>,
+    /// Whether the publication was refused.
+    pub(super) refused: bool,
+    /// What the parse reports for an allocation refusal after the publication ended, when the
+    /// caller asked for it: the report latches a stop on the control.
+    pub(super) allocation_failure: Option<SessionError>,
+}
+
+#[cfg(test)]
+impl SessionStorage {
+    /// Publishes the records rooted at `root` through an [`ObservedAdmission`] that refuses the
+    /// admission of `refuse`, or accepts the first record of `refuse_after_record` and then
+    /// refuses it. A refusal gives the records back to the storage. With `map_allocation_failure`
+    /// the publication reports the stop an allocation refusal after it would map to.
+    pub(super) fn publish_observed(
+        &mut self,
+        control: &mut ParseControl,
+        root: &HtmlBuilderNode,
+        refuse: Option<HtmlConstructionBank>,
+        refuse_after_record: Option<HtmlConstructionBank>,
+        map_allocation_failure: bool,
+    ) -> ObservedPublication {
+        let placeholder = HtmlConstructionStorage::new(&mut SessionCharge(control)).unwrap();
+        let records = std::mem::replace(&mut self.construction, placeholder);
+        let Self {
+            holds,
+            control: identity,
+            ..
+        } = self;
+        let mut admission = ObservedAdmission {
+            inner: RecordAdmission::new(control, identity, holds, &[]),
+            refuse,
+            refuse_after_record,
+            growths: Vec::new(),
+        };
+        let refused = match records.publish(root, &mut admission) {
+            Ok(_) => false,
+            Err(refusal) => {
+                let (records, _) = refusal.into_parts();
+                self.construction = records;
+                true
+            }
+        };
+        let ObservedAdmission { inner, growths, .. } = admission;
+        let allocation_failure = map_allocation_failure.then(|| {
+            inner.error(HtmlChargedError::Faulted(
+                HtmlConstructionCause::AllocationFailed.into(),
+            ))
+        });
+        ObservedPublication {
+            growths,
+            refused,
+            allocation_failure,
         }
     }
 }

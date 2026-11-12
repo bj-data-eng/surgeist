@@ -28,9 +28,11 @@
 //! room it reserved, and when a later step of the same operation refuses, the consumer holds the
 //! capacity it last recorded for that bank. A string that a leaf creation had reserved and then
 //! dropped is such a bank; the consumer holds the capacity it recorded for it. Walk scratch
-//! (cursors and level counts) is not state and may be left written. The one allocation that
-//! follows the last refusable step is the shared arena of a publication, which stable Rust gives
-//! no fallible constructor: an allocator failure there aborts, as any infallible allocation does.
+//! (cursors and level counts) is not state and may be left written. A publication takes back
+//! what it recorded when it refuses, so it leaves no residue. The one allocation that follows
+//! the last refusable step is the handle of the shared arena of a publication, for which stable
+//! Rust has no fallible constructor: an allocator failure there aborts, as any infallible
+//! allocation does.
 //!
 //! The work of these operations is counted in the records they write, the bytes of rows and units
 //! they copy, one provider call for every request to the allocator, and the records they visit. A
@@ -74,10 +76,25 @@ pub enum HtmlConstructionBank {
         /// The ordinal of the record whose child order grows.
         position: usize,
     },
-    /// The units of one string of a leaf record that a creation makes. It has no capacity before
-    /// the creation, and the consumer also holds the wrapper that shares the string.
+    /// The units of one string of a processing-instruction or doctype record that a creation
+    /// makes. It has no capacity before the creation, and the consumer also holds the wrapper
+    /// that shares the string.
     Text,
-    /// The shared arena that publication creates.
+    /// The text arena, which holds the units of every text and comment record of the storage. It
+    /// grows with a creation of a text or comment and with an append that moves or extends a text.
+    TextArena,
+    /// The block that publication packs the text arena into when more than a quarter of the
+    /// arena's units are spare. Its growth names the capacity of the arena, which the block
+    /// replaces, as the bank it grows from.
+    TextBlock,
+    /// The vector of records that publication makes, which replaces the vector of the storage.
+    /// Its growth names the capacity of the vector it replaces as the bank it grows from.
+    PublishedRecords,
+    /// The vector of contents that publication makes for the published records, which it frees
+    /// when the records are moved.
+    PublishedContents,
+    /// The shared arena that publication creates, with the wrapper that shares the block of the
+    /// result.
     Wrapper,
     /// The vector of the entries of the names the storage has interned.
     Names,
@@ -143,7 +160,9 @@ impl HtmlConstructionBankGrowth {
 /// and holds `reached` after it. The first record of a growth carries the capacity the consumer
 /// chose, before anything is reserved. A second carries the capacity the reservation reached,
 /// when that differs, which includes the unchanged capacity of a reservation the allocator
-/// refused.
+/// refused. A third takes a bank back to the dimensions it had before the growth, when a
+/// publication refuses after it recorded the bank: `reached` equals the dimensions before the
+/// growth and `chosen` their capacity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlConstructionGrowthRecord {
     growth: HtmlConstructionBankGrowth,
@@ -207,7 +226,17 @@ pub trait HtmlRecordAdmission: Charge<HtmlWork, HtmlResource> {
 
     /// Records the capacity of a bank. The first record of a growth is made with the capacity the
     /// consumer chose, before it is reserved, so a refusal there leaves the bank as it was. A
-    /// refusal of the second record leaves the bank with the capacity it reached.
+    /// refusal of the second record leaves the bank with the capacity it reached, and the
+    /// consumer holds the capacity it last accepted, the one chosen; a consumer that holds the
+    /// record it refuses, as one does for an overshoot of the layout it admitted, holds the
+    /// capacity reached, and keeps the difference `reached − recorded` after a take-back until it
+    /// releases the bank.
+    ///
+    /// A third kind of record arrives from a publication that refuses after it recorded banks: it
+    /// takes a bank back. Its `reached` is the dimensions the bank had before the growth, its
+    /// `recorded` is what the consumer holds for the bank, and its `chosen` is the capacity of
+    /// those dimensions. It credits the bank and admits no growth, so a consumer that reports a
+    /// layout for the growth under way keeps the layout of the last growth it admitted.
     fn record_growth(&mut self, record: HtmlConstructionGrowthRecord) -> Result<(), Self::Stop>;
 
     /// Records the usage the change leaves: the last step that can refuse, after every bank is
@@ -290,7 +319,7 @@ impl HtmlConstructionStorage {
     pub fn new<C: Charge<HtmlWork, HtmlResource>>(
         charge: &mut C,
     ) -> Result<Self, HtmlConstructionRecordError<C::Stop>> {
-        let layout = size_of::<Arena>();
+        let layout = size_of::<BuildArena>();
         Work {
             provider_calls: 1,
             copied_bytes: layout,
@@ -303,13 +332,14 @@ impl HtmlConstructionStorage {
             .map_err(stopped)?;
         let serial = issue_storage_serial(&NEXT_STORAGE_SERIAL).map_err(fault)?;
         Ok(Self {
-            arena: Arena {
+            arena: BuildArena {
                 records: Vec::new(),
                 names: NameTable::new(),
                 usage: HtmlConstructionUsage::default(),
                 serial,
                 attribute_revision: 0,
             },
+            text: TextArena::default(),
         })
     }
 
@@ -323,7 +353,7 @@ impl HtmlConstructionStorage {
                 capacity: records.capacity(),
             },
             minimum_capacity: required,
-            element_size: size_of::<Record>(),
+            element_size: size_of::<Record<TextRun>>(),
             wrapper_bytes: 0,
         })
     }
@@ -375,7 +405,21 @@ impl HtmlConstructionStorage {
         growth: HtmlConstructionBankGrowth,
         chosen: usize,
         admission: &mut A,
+        reserve: impl FnMut(&mut Self, usize) -> Reserved,
+    ) -> Result<(), HtmlConstructionRecordError<A::Stop>> {
+        let mut recorded = growth.before;
+        self.grow_tracked(growth, chosen, admission, reserve, &mut recorded)
+    }
+
+    /// [`Self::grow`], which also leaves in `recorded` the dimensions the consumer holds for the
+    /// bank after each record it accepted, so that an operation can take them back.
+    fn grow_tracked<A: HtmlRecordAdmission>(
+        &mut self,
+        growth: HtmlConstructionBankGrowth,
+        chosen: usize,
+        admission: &mut A,
         mut reserve: impl FnMut(&mut Self, usize) -> Reserved,
+        recorded: &mut HtmlConstructionBankCapacity,
     ) -> Result<(), HtmlConstructionRecordError<A::Stop>> {
         let len = growth.before.initialized_len;
         let planned = HtmlConstructionBankCapacity {
@@ -390,6 +434,7 @@ impl HtmlConstructionStorage {
                 reached: planned,
             })
             .map_err(stopped)?;
+        *recorded = planned;
         let needed = minus(growth.minimum_capacity, len).map_err(faulted)?;
         let spare = minus(chosen, len).map_err(faulted)?;
         // A test arms a deterministic refusal of the allocator for the spare room: every growth
@@ -432,6 +477,7 @@ impl HtmlConstructionStorage {
                     reached: outcome.reached,
                 })
                 .map_err(stopped)?;
+            *recorded = outcome.reached;
         }
         if outcome.ok {
             Ok(())
@@ -510,7 +556,7 @@ impl HtmlConstructionStorage {
     pub(super) fn record_mut(
         &mut self,
         index: NodeIx,
-    ) -> Result<&mut Record, HtmlConstructionError> {
+    ) -> Result<&mut Record<TextRun>, HtmlConstructionError> {
         self.arena
             .records
             .get_mut(index.position())
@@ -530,7 +576,7 @@ impl HtmlConstructionStorage {
             return Err(fault(HtmlConstructionCause::WrongNodeKind));
         }
         Work {
-            copied_bytes: size_of::<NodeContent>(),
+            copied_bytes: size_of::<BuildContent>(),
             record_writes: 1,
             ..Work::default()
         }
@@ -595,10 +641,12 @@ enum Admitted<'a> {
     Shared(DocumentString),
 }
 
-/// The values of a record a creation makes, before it is stored. A leaf holds its strings as `S`,
-/// so that each stage of the creation (the units given, the capacity admitted for each, the string
-/// built) is a mapping of the same shape, and no stage looks a string up by position.
-enum Created<S> {
+/// The values of a record a creation makes, before it is stored. A processing instruction or a
+/// doctype holds its strings as `S`, so that each stage of the creation (the units given, the
+/// capacity admitted for each, the string built) is a mapping of the same shape, and no stage
+/// looks a string up by position. A text or a comment holds its units as `L` in every stage: they
+/// are written to the text arena of the storage, which is one bank for all of them.
+enum Created<S, L> {
     Document(HtmlDocumentMode),
     Fragment,
     ShadowContents(HtmlShadowRootProperties),
@@ -608,20 +656,26 @@ enum Created<S> {
         link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
         template: bool,
     },
-    Text(S),
-    Comment(S),
+    Text(L),
+    Comment(L),
     ProcessingInstruction(S, S),
     Doctype(S, Option<S>, Option<S>),
 }
 
-impl<S> Created<S> {
-    /// The strings of a leaf, in the order its record holds them.
+impl<S, L> Created<S, L> {
+    /// The strings of a processing instruction or a doctype, in the order its record holds them.
     fn strings(&self) -> [Option<&S>; 3] {
         match self {
-            Self::Text(string) | Self::Comment(string) => [Some(string), None, None],
             Self::ProcessingInstruction(target, data) => [Some(target), Some(data), None],
             Self::Doctype(name, public, system) => [Some(name), public.as_ref(), system.as_ref()],
             _ => [None; 3],
+        }
+    }
+    /// The units of a text or a comment.
+    fn leaf(&self) -> Option<&L> {
+        match self {
+            Self::Text(units) | Self::Comment(units) => Some(units),
+            _ => None,
         }
     }
     fn template(&self) -> bool {
@@ -629,7 +683,7 @@ impl<S> Created<S> {
     }
     /// The same creation with each string mapped, in the order the record holds them. The first
     /// refusal ends the mapping.
-    fn try_map<T, E>(self, mut map: impl FnMut(S) -> Result<T, E>) -> Result<Created<T>, E> {
+    fn try_map<T, E>(self, mut map: impl FnMut(S) -> Result<T, E>) -> Result<Created<T, L>, E> {
         Ok(match self {
             Self::Document(mode) => Created::Document(mode),
             Self::Fragment => Created::Fragment,
@@ -645,8 +699,8 @@ impl<S> Created<S> {
                 link_flags,
                 template,
             },
-            Self::Text(string) => Created::Text(map(string)?),
-            Self::Comment(string) => Created::Comment(map(string)?),
+            Self::Text(units) => Created::Text(units),
+            Self::Comment(units) => Created::Comment(units),
             Self::ProcessingInstruction(target, data) => {
                 let target = map(target)?;
                 Created::ProcessingInstruction(target, map(data)?)
@@ -661,9 +715,41 @@ impl<S> Created<S> {
 }
 
 impl HtmlConstructionStorage {
+    /// The growth the text arena needs to hold `added` more units, or `None` when it has room for
+    /// them. The arena is one bank for every text and comment of the storage.
+    fn text_growth(
+        &self,
+        added: usize,
+    ) -> Result<Option<HtmlConstructionBankGrowth>, HtmlConstructionError> {
+        let required = plus(self.text.len(), added)?;
+        Ok(
+            (required > self.text.capacity()).then_some(HtmlConstructionBankGrowth {
+                bank: HtmlConstructionBank::TextArena,
+                before: HtmlConstructionBankCapacity {
+                    initialized_len: self.text.len(),
+                    capacity: self.text.capacity(),
+                },
+                minimum_capacity: required,
+                element_size: size_of::<u16>(),
+                wrapper_bytes: 0,
+            }),
+        )
+    }
+
+    fn reserve_text_bank(&mut self, additional: usize) -> Reserved {
+        let ok = self.text.reserve_exact(additional).is_ok();
+        Reserved {
+            ok,
+            reached: HtmlConstructionBankCapacity {
+                initialized_len: self.text.len(),
+                capacity: self.text.capacity(),
+            },
+        }
+    }
+
     fn create<A: HtmlRecordAdmission>(
         &mut self,
-        created: Created<Units<'_>>,
+        created: Created<Units<'_>, &[u16]>,
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
         let before = self.arena.usage;
@@ -687,6 +773,7 @@ impl HtmlConstructionStorage {
         // The values the record counts, and the work of reading them: one visit for each attribute
         // of an element, charged before the attributes are read.
         let strings = created.strings();
+        let leaf = created.leaf().copied();
         let attribute_count = match &created {
             Created::Element { attributes, .. } => attributes.len(),
             _ => 0,
@@ -708,7 +795,7 @@ impl HtmlConstructionStorage {
                 units
             }
             _ => {
-                let mut units = 0usize;
+                let mut units = leaf.map_or(0, <[u16]>::len);
                 for string in strings.iter().flatten() {
                     units = plus(units, string.len()).map_err(faulted)?;
                 }
@@ -721,6 +808,10 @@ impl HtmlConstructionStorage {
                 .filter(|bytes| *bytes <= isize::MAX as usize)
                 .ok_or_else(|| fault(HtmlConstructionCause::RepresentationExhausted))?;
         }
+        // The arena holds the units of a text or a comment, and a range of it is a handle of the
+        // block it becomes, so it holds no more than a block holds.
+        let leaf_units = leaf.map_or(0, <[u16]>::len);
+        self.text.check_add(leaf_units).map_err(faulted)?;
         let mut after = before;
         after.nodes = plus(after.nodes, count).map_err(faulted)?;
         after.edges = plus(after.edges, usize::from(template)).map_err(faulted)?;
@@ -729,17 +820,26 @@ impl HtmlConstructionStorage {
         after.depth = after.depth.max(usize::from(template));
         let change = HtmlConstructionChange { before, after };
         let records_growth = self.records_growth(required);
+        let text_growth = self.text_growth(leaf_units).map_err(faulted)?;
         // Only a string that is copied is a bank the creation grows.
         let string_count = strings
             .iter()
             .flatten()
             .filter(|string| matches!(string, Units::Copied(_)))
             .count();
-        let growths = plus(usize::from(records_growth.is_some()), string_count).map_err(faulted)?;
+        let growths = plus(
+            plus(
+                usize::from(records_growth.is_some()),
+                usize::from(text_growth.is_some()),
+            )
+            .map_err(faulted)?,
+            string_count,
+        )
+        .map_err(faulted)?;
         admission
             .record_largest(
                 HtmlResource::AtomicLayoutBytes,
-                wide(times(count, size_of::<Record>()).map_err(faulted)?),
+                wide(times(count, size_of::<Record<TextRun>>()).map_err(faulted)?),
             )
             .map_err(stopped)?;
         admission
@@ -751,7 +851,7 @@ impl HtmlConstructionStorage {
         Work {
             provider_calls: growths,
             copied_bytes: plus(
-                times(count, size_of::<Record>() + size_of::<usize>()).map_err(faulted)?,
+                times(count, size_of::<Record<TextRun>>() + size_of::<usize>()).map_err(faulted)?,
                 size_of::<HtmlConstructionUsage>(),
             )
             .map_err(faulted)?,
@@ -759,10 +859,15 @@ impl HtmlConstructionStorage {
             ..Work::default()
         }
         .charge(admission)?;
-        for string in strings.iter().flatten() {
-            let Units::Copied(units) = string else {
-                continue;
-            };
+        let copied = strings
+            .iter()
+            .flatten()
+            .filter_map(|string| match string {
+                Units::Copied(units) => Some(*units),
+                Units::Shared(_) => None,
+            })
+            .chain(leaf);
+        for units in copied {
             for chunk in units.chunks(CHUNK_UNITS) {
                 Work {
                     copied_bytes: size_of_val(chunk),
@@ -774,6 +879,9 @@ impl HtmlConstructionStorage {
         }
         // Every growth is admitted before the first is recorded.
         let records_chosen = records_growth
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        let text_chosen = text_growth
             .map(|growth| Self::admit_bank(growth, admission))
             .transpose()?;
         let admitted = created.try_map(|units| match units {
@@ -798,6 +906,11 @@ impl HtmlConstructionStorage {
         if let (Some(growth), Some(chosen)) = (records_growth, records_chosen) {
             self.grow(growth, chosen, admission, |storage, additional| {
                 storage.reserve_record_bank(additional)
+            })?;
+        }
+        if let (Some(growth), Some(chosen)) = (text_growth, text_chosen) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_text_bank(additional)
             })?;
         }
         // Each string is built where it is reserved, so every allocation of a leaf, its units and
@@ -826,6 +939,15 @@ impl HtmlConstructionStorage {
             reserved.extend_from_slice(units);
             Ok(DocumentString::from_utf16(reserved))
         })?;
+        let fragment = contents_ix.map(|_| {
+            let mut fragment = Record::new(NodeContent::Fragment, None, 1);
+            fragment.owner = Some(HtmlFragmentOwner::Template(self.arena.id(first)));
+            fragment
+        });
+        admission.record_change(self, change).map_err(stopped)?;
+        // The records exist and the banks have room for them: the writes below allocate nothing.
+        // The units of a text or a comment are written to the arena now, so that a refusal above
+        // leaves the arena as it was.
         let (content, properties, document) = match built {
             Created::Document(mode) => (NodeContent::Document(mode), None, true),
             Created::Fragment => (NodeContent::Fragment, None, false),
@@ -844,8 +966,16 @@ impl HtmlConstructionStorage {
                 None,
                 false,
             ),
-            Created::Text(text) => (NodeContent::Text(text), None, false),
-            Created::Comment(comment) => (NodeContent::Comment(comment), None, false),
+            Created::Text(units) => (
+                NodeContent::Text(self.text.push(units).map_err(faulted)?),
+                None,
+                false,
+            ),
+            Created::Comment(units) => (
+                NodeContent::Comment(self.text.push(units).map_err(faulted)?),
+                None,
+                false,
+            ),
             Created::ProcessingInstruction(target, data) => (
                 NodeContent::ProcessingInstruction(HtmlProcessingInstruction::new(target, data)),
                 None,
@@ -867,17 +997,10 @@ impl HtmlConstructionStorage {
         if let Some(contents) = contents_ix {
             record.template_contents = Some(TemplateContents::Owned(contents));
         }
-        let contents_record = contents_ix.map(|_| {
-            let mut fragment = Record::new(NodeContent::Fragment, None, 1);
-            fragment.owner = Some(HtmlFragmentOwner::Template(self.arena.id(first)));
-            fragment
-        });
-        admission.record_change(self, change).map_err(stopped)?;
-        // The records exist and the bank has room for them: the pushes below allocate nothing.
         let serial = self.arena.serial;
         self.arena.records.push(record);
         self.arena.populate(0).map_err(faulted)?;
-        if let Some(fragment) = contents_record {
+        if let Some(fragment) = fragment {
             self.arena.records.push(fragment);
             self.arena.populate(1).map_err(faulted)?;
         }
@@ -935,22 +1058,23 @@ impl HtmlConstructionStorage {
         self.create_element_of(entry, attributes, link_flags, admission)
     }
 
-    /// Creates a detached text record holding a copy of `units`.
+    /// Creates a detached text record whose units are a copy of `units` in the storage's text arena.
     pub fn create_text<A: HtmlRecordAdmission>(
         &mut self,
         units: &[u16],
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
-        self.create(Created::Text(Units::Copied(units)), admission)
+        self.create(Created::Text(units), admission)
     }
 
-    /// Creates a detached comment record holding a copy of `units`.
+    /// Creates a detached comment record whose units are a copy of `units` in the storage's text
+    /// arena.
     pub fn create_comment<A: HtmlRecordAdmission>(
         &mut self,
         units: &[u16],
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
-        self.create(Created::Comment(Units::Copied(units)), admission)
+        self.create(Created::Comment(units), admission)
     }
 
     /// Creates a detached processing-instruction record holding copies of `target` and `data`,
@@ -984,24 +1108,6 @@ impl HtmlConstructionStorage {
             ),
             admission,
         )
-    }
-
-    /// Creates a detached text record that holds `text` as it is, without copying its units.
-    pub(in crate::internal::construction) fn create_shared_text<A: HtmlRecordAdmission>(
-        &mut self,
-        text: DocumentString,
-        admission: &mut A,
-    ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
-        self.create(Created::Text(Units::Shared(text)), admission)
-    }
-
-    /// Creates a detached comment record that holds `comment` as it is.
-    pub(in crate::internal::construction) fn create_shared_comment<A: HtmlRecordAdmission>(
-        &mut self,
-        comment: DocumentString,
-        admission: &mut A,
-    ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
-        self.create(Created::Comment(Units::Shared(comment)), admission)
     }
 
     /// Creates a detached processing-instruction record that holds the strings of `instruction`

@@ -1,7 +1,8 @@
 //! Constructor facts survive the actual original controlled owner and its publication.
 use super::*;
 use surgeist_html::construction::{
-    HtmlConstructionLimits, HtmlDocument, HtmlFocusedAreaDesignation, HtmlFragment,
+    HtmlConstructionCause, HtmlConstructionLimits, HtmlDocument, HtmlFocusedAreaDesignation,
+    HtmlFragment,
 };
 
 #[test]
@@ -49,13 +50,16 @@ fn controlled_constructor_fact_survives_mode_edit_detachment_and_publication() {
         },
     );
     let id = owner.result_id(&document).unwrap();
+    // A record of a storage that has not published it has no published view to read the
+    // designation through; the published result below holds the fact.
     assert_eq!(
         owner
             .node(&document)
             .unwrap()
             .as_node()
-            .document_focused_area_designation(),
-        Some(HtmlFocusedAreaDesignation::KnownNull)
+            .unwrap_err()
+            .cause(),
+        HtmlConstructionCause::NotPublished
     );
     let (owner, child) = create(owner, element("div"));
     let (owner, _) = change(

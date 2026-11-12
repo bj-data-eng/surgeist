@@ -157,6 +157,7 @@ fn detached_allocations_and_ordered_moves_keep_permanent_nodes_and_exact_views()
         .node_at(b.index)
         .unwrap()
         .as_node()
+        .unwrap()
         .id();
     assert!(fragment.node(&detached_id).unwrap().parent().is_none());
     assert_eq!(
@@ -592,21 +593,25 @@ fn cross_parent_move_changes_both_orders_and_backlinks_without_new_nodes_or_edge
         .node_at(a.index)
         .unwrap()
         .as_node()
+        .unwrap()
         .id();
     let b_id = HtmlConstructionResult::Fragment(fragment.clone())
         .node_at(b.index)
         .unwrap()
         .as_node()
+        .unwrap()
         .id();
     let c_id = HtmlConstructionResult::Fragment(fragment.clone())
         .node_at(c.index)
         .unwrap()
         .as_node()
+        .unwrap()
         .id();
     let d_id = HtmlConstructionResult::Fragment(fragment.clone())
         .node_at(d.index)
         .unwrap()
         .as_node()
+        .unwrap()
         .id();
     assert_eq!(fragment.node(&a_id).unwrap().children().len(), 0);
     assert_eq!(
@@ -769,10 +774,12 @@ fn foreign_freeze_and_frozen_cleanup_preserve_the_borrowed_original_owner() {
     assert_eq!(owner.usage().actual_capacity_bytes, 0);
 }
 
-#[test]
-fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
-    let mut selected = limits();
-    // A root and one element child own two actual record slots and their child-vector tickets.
+/// The bytes a parse holds with a root and one element child, and the bytes the first bank of
+/// the publication of that tree adds: the shared arena. The size of the arena is private to HTML
+/// and no public item reports it, so it is what a successful freeze of the same tree adds to
+/// what the parse holds, since the contents vector of the publication is freed with the move and
+/// the published records replace the records of the storage at the same size.
+fn root_and_child_publication_bytes() -> (usize, usize) {
     let mut probe_control = control();
     let mut probe_session =
         ParserArenaSession::new(&mut probe_control, RootKind::Fragment).unwrap();
@@ -785,15 +792,19 @@ fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
         .unwrap();
     let root_capacity = probe_control.usage().actual_capacity_bytes as usize;
     let mut probe_output = frozen(probe_session, &mut probe_control);
-    // The publication adds the shared arena to what the parse holds, and nothing else. The size
-    // of the arena is private to HTML and no public item reports it, so the delta of a successful
-    // freeze of the same tree is the figure the stop below is compared with.
     let wrapper_bytes = probe_control.usage().actual_capacity_bytes as usize - root_capacity;
     probe_output.release(&mut probe_control).unwrap();
     storage_zero(&probe_control);
-    selected = selected
+    (root_capacity, wrapper_bytes)
+}
+
+/// Freezes a root and one element child under a limit of `managed_capacity` bytes, and checks that
+/// the refusal names the bank that exceeds it, hands the records back and leaves the parse
+/// holding `held` bytes.
+fn refused_publication_holds(managed_capacity: usize, held: usize, requested_delta: u64) {
+    let selected = limits()
         .into_builder()
-        .managed_capacity_bytes(root_capacity as u64)
+        .managed_capacity_bytes(managed_capacity as u64)
         .finish()
         .unwrap();
     let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
@@ -804,17 +815,19 @@ fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
         .insert(&mut control, &root, &node, None, None)
         .unwrap();
     let records_address = build_name_address(&session, node.index);
+    let refusal = session.freeze(&mut control);
     assert!(
-        matches!(session.freeze(&mut control), Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
-        resource: HtmlParseResource::ManagedCapacityBytes,
-        current,
-        requested_delta,
-        ..
-    })) if current == root_capacity as u64 && requested_delta == wrapper_bytes as u64)
+        matches!(&refusal, Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
+            resource: HtmlParseResource::ManagedCapacityBytes,
+            requested_delta: delta,
+            ..
+        })) if *delta == requested_delta),
+        "{:?}",
+        refusal.as_ref().err()
     );
     assert_eq!(build_name_address(&session, node.index), records_address);
     assert_eq!(session.active().unwrap().construction.len(), 2);
-    assert_eq!(control.usage().actual_capacity_bytes, root_capacity as u64);
+    assert_eq!(control.usage().actual_capacity_bytes, held as u64);
     session.release(&mut control).unwrap();
     assert_eq!(control.usage().actual_capacity_bytes, 0);
     assert_eq!(
@@ -824,6 +837,315 @@ fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
             .current,
         2
     );
+}
+
+#[test]
+fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
+    // A root and one element child own two actual record slots and their child-vector tickets.
+    // The first growth of the publication is the shared arena, so it is the one this limit
+    // refuses.
+    let (root_capacity, wrapper_bytes) = root_and_child_publication_bytes();
+    refused_publication_holds(root_capacity, root_capacity, wrapper_bytes as u64);
+}
+
+#[test]
+fn a_publication_refused_after_its_first_bank_leaves_the_parse_holding_what_it_held() {
+    // The contents vector holds one content for each of the two records and is the second bank.
+    // A limit that the arena fits and the contents exceed refuses the contents, after the arena
+    // was recorded; the refusal takes the arena back.
+    let (root_capacity, wrapper_bytes) = root_and_child_publication_bytes();
+    let contents = 2 * surgeist_html::bounded::construction::HtmlConstructionNode::CONTENT_BYTES;
+    refused_publication_holds(
+        root_capacity + wrapper_bytes + contents - 1,
+        root_capacity,
+        contents as u64,
+    );
+}
+
+/// The bytes a parse holds and the bytes it held at most, before a freeze, after it, and at its
+/// peak, for a root with `children` element children.
+fn freeze_figures(children: usize) -> (u64, u64, u64, u64, usize) {
+    let mut c = control();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let root = session.root(&mut c).unwrap();
+    for _ in 0..children {
+        let node = session.allocate_element(&mut c, html("x")).unwrap();
+        session.insert(&mut c, &root, &node, None, None).unwrap();
+    }
+    let records = session.active().unwrap().construction.len();
+    let held_before = c.usage().actual_capacity_bytes;
+    let transient_before = c
+        .usage()
+        .resource(HtmlParseResource::PeakTransientBytes)
+        .current;
+    let mut output = frozen(session, &mut c);
+    let held_after = c.usage().actual_capacity_bytes;
+    let peak = c
+        .usage()
+        .resource(HtmlParseResource::PeakTransientBytes)
+        .high_water;
+    output.release(&mut c).unwrap();
+    (held_before, held_after, transient_before, peak, records)
+}
+
+/// A fragment root with `children` element children, and the handle of the root.
+fn fragment_with_children(
+    c: &mut ParseControl,
+    children: usize,
+) -> (ParserArenaSession, HtmlBuilderNode) {
+    let mut session = ParserArenaSession::new(c, RootKind::Fragment).unwrap();
+    let root = session.root(c).unwrap();
+    for _ in 0..children {
+        let node = session.allocate_element(c, html("x")).unwrap();
+        session.insert(c, &root, &node, None, None).unwrap();
+    }
+    let handle = session
+        .active()
+        .unwrap()
+        .construction
+        .node_at(0)
+        .unwrap()
+        .handle();
+    (session, handle)
+}
+
+/// The sizes a publication of the tree asks the consumer to admit: the bytes of the shared arena
+/// with its wrapper, of one published content, of one published record, and the number of
+/// records. They come from the growths HTML asks to admit, not from what a freeze leaves.
+fn publication_sizes(children: usize) -> (usize, usize, usize, usize) {
+    use surgeist_html::bounded::construction::HtmlConstructionBank as Bank;
+    let mut c = control();
+    let (mut session, root) = fragment_with_children(&mut c, children);
+    let trace = session.active_mut().unwrap().publish_observed(
+        &mut c,
+        &root,
+        Some(Bank::PublishedRecords),
+        None,
+        false,
+    );
+    let growth = |bank: Bank| {
+        trace
+            .growths
+            .iter()
+            .find(|growth| growth.bank() == bank)
+            .copied()
+            .unwrap()
+    };
+    let wrapper = growth(Bank::Wrapper);
+    let contents = growth(Bank::PublishedContents);
+    let records = growth(Bank::PublishedRecords);
+    assert_eq!(contents.minimum_capacity(), records.minimum_capacity());
+    (
+        wrapper.minimum_capacity() * wrapper.element_size() + wrapper.wrapper_bytes(),
+        contents.element_size(),
+        records.element_size(),
+        records.minimum_capacity(),
+    )
+}
+
+#[test]
+fn the_freed_contents_of_a_publication_are_released_by_the_freeze() {
+    // Three and seven children make four and eight records, which fill their record banks, so
+    // the published records replace each bank at the same size. What a freeze then adds to what
+    // the parse holds is the shared arena alone, whatever the number of records: the contents
+    // vector, which holds one content for each record, is freed with the move.
+    let small = freeze_figures(3);
+    let large = freeze_figures(7);
+    assert_eq!((small.4, large.4), (4, 8));
+    for (children, figures) in [(3, small), (7, large)] {
+        let (arena, _, _, _) = publication_sizes(children);
+        assert_eq!(figures.1 - figures.0, arena as u64, "{children} children");
+    }
+}
+
+/// A fragment root with `comments` comment records, which have no rows beside them, so that the
+/// records and the publication are the largest banks the parse holds.
+fn fragment_with_comments(
+    c: &mut ParseControl,
+    comments: usize,
+) -> (ParserArenaSession, HtmlBuilderNode) {
+    let mut session = ParserArenaSession::new(c, RootKind::Fragment).unwrap();
+    let storage = session.active_mut().unwrap();
+    for _ in 0..comments {
+        storage
+            .create_record(c, NewRecord::Comment(&[1]), &[])
+            .unwrap();
+    }
+    let handle = session
+        .active()
+        .unwrap()
+        .construction
+        .node_at(0)
+        .unwrap()
+        .handle();
+    (session, handle)
+}
+
+#[test]
+fn the_contents_of_a_publication_stay_in_the_peak_with_the_arena_and_the_new_records() {
+    // Thirty-one and sixty-three comments make thirty-two and sixty-four records, which fill
+    // their record banks, so the published records replace each bank at the same size. The peak
+    // is reached when the published records are recorded and their old bank is not yet credited:
+    // the transient bytes before the publication, the arena, every content and the new records.
+    // Records are the largest bank of such a tree, so nothing before the publication reaches a
+    // higher peak.
+    for comments in [31usize, 63] {
+        let mut c = control();
+        let (mut session, root) = fragment_with_comments(&mut c, comments);
+        let transient_before = c
+            .usage()
+            .resource(HtmlParseResource::PeakTransientBytes)
+            .current;
+        let trace = session
+            .active_mut()
+            .unwrap()
+            .publish_observed(&mut c, &root, None, None, false);
+        assert!(!trace.refused);
+        let growth = |bank: surgeist_html::bounded::construction::HtmlConstructionBank| {
+            trace
+                .growths
+                .iter()
+                .find(|growth| growth.bank() == bank)
+                .copied()
+                .unwrap()
+        };
+        use surgeist_html::bounded::construction::HtmlConstructionBank as Bank;
+        let (wrapper, contents, records) = (
+            growth(Bank::Wrapper),
+            growth(Bank::PublishedContents),
+            growth(Bank::PublishedRecords),
+        );
+        let count = records.minimum_capacity();
+        assert_eq!(count, comments + 1);
+        assert_eq!(
+            contents.element_size(),
+            surgeist_html::bounded::construction::HtmlConstructionNode::CONTENT_BYTES
+        );
+        let arena = wrapper.minimum_capacity() * wrapper.element_size() + wrapper.wrapper_bytes();
+        let peak = c
+            .usage()
+            .resource(HtmlParseResource::PeakTransientBytes)
+            .high_water;
+        assert_eq!(
+            peak - transient_before,
+            (arena + count * (contents.element_size() + records.element_size())) as u64,
+            "{count} records"
+        );
+    }
+}
+
+#[test]
+fn an_allocation_refusal_after_a_take_back_reports_the_layout_of_the_last_admitted_bank() {
+    use surgeist_html::bounded::construction::HtmlConstructionBank as Bank;
+    let mut c = control();
+    let (mut session, root) = fragment_with_children(&mut c, 1);
+    let held = c.usage().actual_capacity_bytes;
+    let trace = session.active_mut().unwrap().publish_observed(
+        &mut c,
+        &root,
+        Some(Bank::PublishedRecords),
+        None,
+        true,
+    );
+    assert!(trace.refused);
+    let banks: Vec<_> = trace.growths.iter().map(|growth| growth.bank()).collect();
+    assert_eq!(
+        banks,
+        [
+            Bank::Wrapper,
+            Bank::PublishedContents,
+            Bank::PublishedRecords
+        ]
+    );
+    // The contents were the last bank admitted. The records of the arena and the contents were
+    // then taken back, and neither changes the layout an allocation refusal reports.
+    let contents = trace.growths[1];
+    let layout = (contents.minimum_capacity() * contents.element_size()) as u64;
+    assert!(
+        matches!(
+            trace.allocation_failure,
+            Some(SessionError::Stop(HtmlParseStop::AllocationFailed { layout_bytes, .. }))
+                if layout_bytes == layout
+        ),
+        "{:?}",
+        trace.allocation_failure
+    );
+    assert_eq!(c.usage().actual_capacity_bytes, held);
+}
+
+#[test]
+fn an_allocation_refusal_after_the_records_of_the_refused_bank_reports_that_bank_layout() {
+    use surgeist_html::bounded::construction::HtmlConstructionBank as Bank;
+    let mut c = control();
+    let (mut session, root) = fragment_with_children(&mut c, 1);
+    let held = c.usage().actual_capacity_bytes;
+    // The first record of the published records lands, and the consumer refuses it. The arena and
+    // the contents are then taken back, and neither changes the layout the refused bank was
+    // admitted to.
+    let trace = session.active_mut().unwrap().publish_observed(
+        &mut c,
+        &root,
+        None,
+        Some(Bank::PublishedRecords),
+        true,
+    );
+    assert!(trace.refused);
+    let records = trace
+        .growths
+        .iter()
+        .find(|growth| growth.bank() == Bank::PublishedRecords)
+        .copied()
+        .unwrap();
+    let layout = (records.minimum_capacity() * records.element_size()) as u64;
+    assert!(
+        matches!(
+            trace.allocation_failure,
+            Some(SessionError::Stop(HtmlParseStop::AllocationFailed { layout_bytes, .. }))
+                if layout_bytes == layout
+        ),
+        "{:?}",
+        trace.allocation_failure
+    );
+    // The consumer held the record it refused, which the trail does not note, so what it holds
+    // after the take-backs is the bytes of the published records less the bytes of the records
+    // bank they replace. Here the bank is full, so the two are the same size.
+    let replaced = (records.before().capacity() * records.element_size()) as u64;
+    assert_eq!(c.usage().actual_capacity_bytes, held + layout - replaced);
+    assert_eq!(replaced, layout);
+}
+
+#[test]
+fn a_take_back_of_the_text_block_credits_the_arena_it_replaced_byte_for_byte() {
+    use surgeist_html::bounded::construction::HtmlConstructionBank as Bank;
+    let mut c = control();
+    let (mut session, root) = fragment_with_children(&mut c, 0);
+    // Five units written one at a time leave the arena at capacity eight, so more than a quarter
+    // of it is spare and the publication packs it into a block of its own.
+    let storage = session.active_mut().unwrap();
+    let text = storage
+        .create_record(&mut c, NewRecord::Text(&[1]), &[])
+        .unwrap();
+    let position = storage.construction.position(&text).unwrap();
+    for _ in 0..4 {
+        storage.append_text(&mut c, position, &[1]).unwrap();
+    }
+    let held = c.usage().actual_capacity_bytes;
+    let (strings, banks) = (storage.holds.string_bytes, storage.holds.bank_bytes);
+    let trace = storage.publish_observed(&mut c, &root, Some(Bank::PublishedRecords), None, false);
+    assert!(trace.refused);
+    let block = trace
+        .growths
+        .iter()
+        .find(|growth| growth.bank() == Bank::TextBlock)
+        .copied()
+        .expect("the arena is packed");
+    // The block replaces an arena that holds bytes, and holds the five units.
+    assert_eq!(block.before().capacity(), 8);
+    assert_eq!(block.minimum_capacity(), 5);
+    assert_eq!(c.usage().actual_capacity_bytes, held);
+    let storage = session.active().unwrap();
+    assert_eq!(storage.holds.string_bytes, strings);
+    assert_eq!(storage.holds.bank_bytes, banks);
 }
 
 #[test]

@@ -2080,6 +2080,7 @@ impl FrozenStorage {
             .node_at(index)
             .expect("qualified retained context node")
             .as_node()
+            .map_err(|error| construction_error(c, error))?
             .id())
     }
     #[cfg(test)]
@@ -2450,9 +2451,12 @@ impl<'a> HtmlParseEffects<'a> {
         self.storage.payloads.values.len()
     }
     fn node(&self, index: usize) -> Result<HtmlNode<'a>, read::HtmlParseUnresolvedReference> {
-        self.arena.node_at(index).map(|node| node.as_node()).ok_or(
-            read::HtmlParseUnresolvedReference::new(read::HtmlParseUnresolvedKind::Node),
-        )
+        self.arena
+            .node_at(index)
+            .and_then(|node| node.as_node().ok())
+            .ok_or(read::HtmlParseUnresolvedReference::new(
+                read::HtmlParseUnresolvedKind::Node,
+            ))
     }
     /// Exactly one actual effect slot; there is no hidden ordinal scan. Past
     /// the last effect is absent. An effect the report cannot resolve, or one
@@ -2771,6 +2775,7 @@ mod tests {
                 .node_at(output)
                 .unwrap()
                 .as_node()
+                .unwrap()
                 .id()
         );
         assert!(matches!(
@@ -2806,6 +2811,7 @@ mod tests {
                 .node_at(output)
                 .unwrap()
                 .as_node()
+                .unwrap()
                 .id()
         );
         drop(alias);

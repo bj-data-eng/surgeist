@@ -75,7 +75,10 @@ impl HtmlConstructionResult {
     }
     /// Reads a retained ordinal; it never interprets an integer as a result identity.
     pub fn node_at(&self, position: usize) -> Option<HtmlConstructionNode<'_>> {
-        self.arena().record_at(position)
+        let arena = self.arena();
+        arena
+            .has_record(position)
+            .map(|index| HtmlConstructionNode::published(arena, index))
     }
     /// The number of retained records, including roots, template contents and shadow contents
     /// fragments.
@@ -102,7 +105,10 @@ impl HtmlConstructionResult {
         &self,
         id: &HtmlNodeId,
     ) -> Result<HtmlConstructionNode<'_>, ForeignHtmlResult> {
-        self.arena().construction_node(id)
+        let arena = self.arena();
+        arena
+            .lookup_index(id)
+            .map(|index| HtmlConstructionNode::published(arena, index))
     }
     /// The usage that construction admitted for this result.
     pub fn usage(&self) -> HtmlConstructionUsage {
@@ -116,7 +122,7 @@ impl HtmlConstructionResult {
         let arena = self.arena();
         Arc::strong_count(arena) > 1 || Arc::weak_count(arena) > 0
     }
-    pub(super) fn arena(&self) -> &Arc<Arena> {
+    pub(super) fn arena(&self) -> &Arc<PublishedArena> {
         match self {
             Self::Document(v) => &v.arena,
             Self::Fragment(v) => &v.arena,
@@ -124,65 +130,121 @@ impl HtmlConstructionResult {
     }
 }
 
-/// A read-only view qualified by one live storage borrow.
+/// The records a node view reads: those of a storage that builds, with the text arena its text
+/// records name, or those of a published result.
+#[derive(Clone, Copy, Debug)]
+enum Records<'a> {
+    Build {
+        arena: &'a BuildArena,
+        text: &'a TextArena,
+    },
+    Published(&'a PublishedArena),
+}
+
+/// Reads `$field`-style data of the record at `$index` from either form of the records, which
+/// differ only in how their text is held.
+macro_rules! with_records {
+    ($records:expr, $arena:ident => $body:expr) => {
+        match $records {
+            Records::Build { arena: $arena, .. } => $body,
+            Records::Published($arena) => $body,
+        }
+    };
+}
+
+/// A read-only view qualified by one live storage borrow, or by a published result.
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlConstructionNode<'a> {
-    pub(super) arena: &'a Arena,
-    pub(super) index: NodeIx,
+    records: Records<'a>,
+    index: NodeIx,
 }
 impl<'a> HtmlConstructionNode<'a> {
+    /// A view of the record at `index` of a storage that builds.
+    pub(super) fn building(arena: &'a BuildArena, text: &'a TextArena, index: NodeIx) -> Self {
+        Self {
+            records: Records::Build { arena, text },
+            index,
+        }
+    }
+    /// A view of the record at `index` of a published result.
+    pub(super) fn published(arena: &'a PublishedArena, index: NodeIx) -> Self {
+        Self {
+            records: Records::Published(arena),
+            index,
+        }
+    }
+    /// The same views of another record of the same records.
+    fn at(self, index: NodeIx) -> Self {
+        Self { index, ..self }
+    }
     /// The retained record ordinal that this view reads, in creation order.
     pub fn position(self) -> usize {
         self.index.position()
     }
-    /// Converts to the ordinary node view over the same record.
-    pub fn as_node(self) -> HtmlNode<'a> {
-        HtmlNode {
-            arena: self.arena,
-            index: self.index,
+    /// Converts to the ordinary node view over the same record. A record of a storage that has
+    /// not published it has no such view: the refusal is [`HtmlConstructionCause::NotPublished`].
+    pub fn as_node(self) -> Result<HtmlNode<'a>, HtmlConstructionError> {
+        match self.records {
+            Records::Published(arena) => Ok(HtmlNode {
+                arena,
+                index: self.index,
+            }),
+            Records::Build { .. } => Err(HtmlConstructionCause::NotPublished.error()),
         }
     }
     /// The record this view reads, or the unknown-node error when the index names none.
-    fn record(self) -> Result<&'a Record, HtmlConstructionError> {
-        self.arena
-            .records
-            .get(self.index.position())
-            .ok_or(HtmlConstructionCause::UnknownNode.error())
+    fn record_with<R>(
+        self,
+        read: impl FnOnce(RecordFields) -> R,
+    ) -> Result<R, HtmlConstructionError> {
+        with_records!(self.records, arena => {
+            arena
+                .records
+                .get(self.index.position())
+                .map(|record| read(RecordFields::of(record)))
+                .ok_or(HtmlConstructionCause::UnknownNode.error())
+        })
     }
     /// Checks only this retained record's generic container invariant.
     pub fn check_container(self) -> Result<(), HtmlConstructionError> {
-        let record = self.record()?;
-        if record.template_contents.is_some() {
+        let (has_template, container) =
+            self.record_with(|record| (record.has_template_contents, record.container))?;
+        if has_template {
             return Err(HtmlConstructionCause::TemplateContentsRequired.into());
         }
-        if !matches!(
-            record.kind,
-            NodeContent::Document(_) | NodeContent::Fragment | NodeContent::Element(_)
-        ) {
+        if !container {
             return Err(HtmlConstructionCause::ParentCannotHaveChildren.into());
         }
         Ok(())
     }
     /// Checks the fixed movable-node invariant, without scanning ancestry or order.
     pub fn check_detachment(self) -> Result<(), HtmlConstructionError> {
-        let record = self.record()?;
-        if matches!(record.kind, NodeContent::Document(_)) {
+        let (document, owned, fragment) =
+            self.record_with(|record| (record.document, record.owned, record.fragment))?;
+        if document {
             return Err(HtmlConstructionCause::RootMove.into());
         }
-        if record.owner.is_some() {
+        if owned {
             return Err(HtmlConstructionCause::AssociationMove.into());
         }
-        if matches!(record.kind, NodeContent::Fragment) {
+        if fragment {
             return Err(HtmlConstructionCause::RootMove.into());
         }
         Ok(())
     }
     /// Qualifies an actual retained reference child against the supplied parent.
     pub fn check_reference_child_of(self, parent: Self) -> Result<(), HtmlConstructionError> {
-        if !std::ptr::eq(self.arena, parent.arena) {
+        let same = match (self.records, parent.records) {
+            (Records::Build { arena: a, .. }, Records::Build { arena: b, .. }) => {
+                std::ptr::eq(a, b)
+            }
+            (Records::Published(a), Records::Published(b)) => std::ptr::eq(a, b),
+            _ => false,
+        };
+        if !same {
             return Err(HtmlConstructionCause::ForeignBuilder.into());
         }
-        if self.record()?.parent != Some(parent.index) {
+        if self.record_with(|record| record.parent)? != Some(parent.index) {
             return Err(HtmlConstructionCause::WrongSibling.into());
         }
         Ok(())
@@ -191,84 +253,70 @@ impl<'a> HtmlConstructionNode<'a> {
     /// reference to the owner.
     pub fn handle(self) -> HtmlBuilderNode {
         HtmlBuilderNode {
-            tree: self.arena.serial,
+            tree: with_records!(self.records, arena => arena.serial),
             index: self.index,
         }
     }
     /// The size in bytes of the content a record stores, which a consumer charges when it
     /// inspects a record's kind.
-    pub const CONTENT_BYTES: usize = size_of::<NodeContent>();
+    pub const CONTENT_BYTES: usize = size_of::<BuildContent>();
     /// The record's content, by value, with its text as borrowed code units.
     pub fn kind(self) -> ConstructionNodeKind<'a> {
-        self.content().building()
-    }
-    fn content(self) -> &'a NodeContent {
-        &self.arena.records[self.index.position()].kind
+        match self.records {
+            Records::Build { arena, text } => {
+                arena.records[self.index.position()].kind.building(text)
+            }
+            Records::Published(arena) => arena.records[self.index.position()]
+                .kind
+                .building_published(),
+        }
     }
     /// The number of ordinary children, excluding template contents and shadow contents.
     pub fn child_count(self) -> usize {
-        self.arena.records[self.index.position()].children.len()
+        with_records!(self.records, arena => arena.records[self.index.position()].children.len())
     }
     /// The child at `ordinal` in document order; `None` at or past `child_count`.
     pub fn child_at(self, ordinal: usize) -> Option<Self> {
-        self.arena.records[self.index.position()]
-            .children
-            .get(ordinal)
-            .copied()
-            .map(|index| Self {
-                arena: self.arena,
-                index,
-            })
+        with_records!(self.records, arena => {
+            arena.records[self.index.position()]
+                .children
+                .get(ordinal)
+                .copied()
+        })
+        .map(|index| self.at(index))
     }
     /// The ordinary parent. Records without one, such as roots and association fragments, return
     /// `None`.
     pub fn parent(self) -> Option<Self> {
-        self.arena.records[self.index.position()]
-            .parent
-            .map(|index| Self {
-                arena: self.arena,
-                index,
-            })
+        with_records!(self.records, arena => arena.records[self.index.position()].parent)
+            .map(|index| self.at(index))
     }
     /// The ordinary children in document order. The iterator knows its length and runs from both
     /// ends.
     pub fn children(self) -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator + 'a {
-        self.arena.records[self.index.position()]
-            .children
-            .iter()
-            .map(move |&index| Self {
-                arena: self.arena,
-                index,
-            })
+        let children =
+            with_records!(self.records, arena => &arena.records[self.index.position()].children);
+        children.iter().map(move |&index| self.at(index))
     }
     /// The contents fragment of a `template` element, whether owned or a shadow-contents
     /// reference. `None` for any other record.
     pub fn template_contents(self) -> Option<Self> {
-        self.arena.records[self.index.position()]
-            .template_contents
-            .map(|value| Self {
-                arena: self.arena,
-                index: value.position(),
-            })
+        with_records!(self.records, arena => arena.records[self.index.position()].template_contents)
+            .map(|value| self.at(value.position()))
     }
     /// Whether the template's contents fragment is owned or a shadow reference; `None` for a
     /// record without template contents.
     pub fn template_contents_kind(self) -> Option<HtmlTemplateContentsKind> {
-        self.arena.records[self.index.position()]
-            .template_contents
+        with_records!(self.records, arena => arena.records[self.index.position()].template_contents)
             .map(TemplateContents::kind)
     }
     /// The declarative shadow root attached to this host element, if any.
     pub fn shadow_root(self) -> Option<HtmlDeclarativeShadowRoot<'a>> {
-        HtmlNode {
-            arena: self.arena,
-            index: self.index,
-        }
-        .declarative_shadow_root()
+        with_records!(self.records, arena => arena.declarative_shadow_root(self.index))
     }
     /// The template or shadow host that owns this fragment root. `None` for ordinary records.
     pub fn fragment_owner(self) -> Option<&'a HtmlFragmentOwner> {
-        self.arena.records[self.index.position()].owner.as_ref()
+        with_records!(self.records, arena => arena.records[self.index.position()].owner.as_ref())
     }
     /// Whether this fragment was explicitly constructed as shadow contents.
     pub fn is_shadow_contents(self) -> bool {
@@ -276,14 +324,40 @@ impl<'a> HtmlConstructionNode<'a> {
     }
     /// The shadow properties of a shadow contents fragment; `None` otherwise.
     pub fn shadow_properties(self) -> Option<HtmlShadowRootProperties> {
-        self.arena.records[self.index.position()].shadow_properties
+        with_records!(self.records, arena => arena.records[self.index.position()].shadow_properties)
+    }
+}
+
+/// The fields of a record that the checks of a view read, which do not depend on how the record
+/// holds its text.
+#[derive(Clone, Copy)]
+struct RecordFields {
+    parent: Option<NodeIx>,
+    has_template_contents: bool,
+    owned: bool,
+    container: bool,
+    document: bool,
+    fragment: bool,
+}
+impl RecordFields {
+    fn of<T>(record: &Record<T>) -> Self {
+        Self {
+            parent: record.parent,
+            has_template_contents: record.template_contents.is_some(),
+            owned: record.owner.is_some(),
+            container: record.kind.is_container(),
+            document: matches!(record.kind, NodeContent::Document(_)),
+            fragment: matches!(record.kind, NodeContent::Fragment),
+        }
     }
 }
 
 /// Exclusive ownership of the actual construction arena, before publication.
 #[derive(Debug)]
 pub struct HtmlConstructionStorage {
-    arena: Arena,
+    arena: BuildArena,
+    /// The units of the text and comment records of `arena`.
+    text: TextArena,
 }
 impl HtmlConstructionStorage {
     /// The admitted usage; it is zero for a new owner.
@@ -300,7 +374,9 @@ impl HtmlConstructionStorage {
     }
     /// The record at `position`, or `None` past the last created record.
     pub fn node_at(&self, position: usize) -> Option<HtmlConstructionNode<'_>> {
-        self.arena.record_at(position)
+        self.arena
+            .has_record(position)
+            .map(|index| HtmlConstructionNode::building(&self.arena, &self.text, index))
     }
     /// Resolves a builder handle to its record view. Returns the foreign-builder error for another
     /// owner's handle and the unknown-node error for an ordinal past the created records.
@@ -309,10 +385,11 @@ impl HtmlConstructionStorage {
         handle: &HtmlBuilderNode,
     ) -> Result<HtmlConstructionNode<'_>, HtmlConstructionError> {
         let index = self.index(handle)?;
-        Ok(HtmlConstructionNode {
-            arena: &self.arena,
+        Ok(HtmlConstructionNode::building(
+            &self.arena,
+            &self.text,
             index,
-        })
+        ))
     }
     /// Resolves a result id to its record view. Returns `ForeignHtmlResult` when the id's identity
     /// is not this owner's or it is past the created records.
@@ -320,7 +397,12 @@ impl HtmlConstructionStorage {
         &self,
         id: &HtmlNodeId,
     ) -> Result<HtmlConstructionNode<'_>, ForeignHtmlResult> {
-        self.arena.construction_node(id)
+        let index = self.arena.lookup_index(id)?;
+        Ok(HtmlConstructionNode::building(
+            &self.arena,
+            &self.text,
+            index,
+        ))
     }
     /// Resolves a builder handle to its record ordinal. Errors as `node` does.
     pub fn position(&self, handle: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
@@ -350,15 +432,22 @@ impl HtmlConstructionStorage {
         len: usize,
         usage: HtmlConstructionUsage,
     ) -> Result<(), HtmlConstructionError> {
+        let mut forgotten = 0usize;
         for index in (len..self.arena.records.len()).rev() {
-            let depth = self
+            let record = self
                 .arena
                 .records
                 .get(index)
-                .map(|record| record.depth)
                 .ok_or(HtmlConstructionCause::UnknownNode.error())?;
+            if let NodeContent::Text(run) | NodeContent::Comment(run) = record.kind {
+                forgotten = forgotten
+                    .checked_add(run.len())
+                    .ok_or(HtmlConstructionCause::RepresentationExhausted.error())?;
+            }
+            let depth = record.depth;
             self.arena.unpopulate(depth)?;
         }
+        self.text.forget(forgotten)?;
         self.arena.records.truncate(len);
         // A later record may take an ordinal given up here, so a table of attribute names that
         // described one of them must not be trusted.

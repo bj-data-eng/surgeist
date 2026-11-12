@@ -758,7 +758,7 @@ impl FrozenHistory {
         self.storage
             .view
             .node_at(index)
-            .map(|node| node.as_node())
+            .and_then(|node| node.as_node().ok())
             .ok_or(read::HtmlParseUnresolvedReference::new(
                 read::HtmlParseUnresolvedKind::Node,
             ))
@@ -876,8 +876,8 @@ mod tests {
             else {
                 panic!("native text")
             };
-            let start = text.code_units().as_ptr() as usize;
-            start..start + 2 * text.len()
+            let start = text.code_units().unwrap().as_ptr() as usize;
+            start..start + 2 * text.len().unwrap()
         };
         let owner = session.freeze_history(&mut c).unwrap();
         let before = c.usage().clone();

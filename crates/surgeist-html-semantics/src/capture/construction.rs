@@ -1375,14 +1375,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        // The text borrows a block, so that an import lists it and a refused import must take it
-        // back.
-        let mut inside = Vec::with_capacity(64);
-        inside.extend("inside".encode_utf16());
-        let block = surgeist_html::values::TextBlock::from_utf16(inside);
-        source
-            .append_text(&shadow, block.string(0..6).unwrap())
-            .unwrap();
+        source.append_text(&shadow, "inside").unwrap();
         let source = source.finish().unwrap();
         let source_id = source.root().id();
         let mut ids = vec![source_id];
@@ -1395,6 +1388,15 @@ mod tests {
             }
             cursor += 1;
         }
+        // The text borrows the block of the source, so that an import lists it and a refused
+        // import must take it back.
+        let block = ids
+            .iter()
+            .find_map(|id| match source.node(id).unwrap().kind() {
+                HtmlNodeKind::Text(value) => Some(value.block().clone()),
+                _ => None,
+            })
+            .unwrap();
         let make = |work, earlier: bool| {
             let revision = HtmlHostFactsRevision::fresh();
             let mut builder = HtmlCaptureBuilder::new(

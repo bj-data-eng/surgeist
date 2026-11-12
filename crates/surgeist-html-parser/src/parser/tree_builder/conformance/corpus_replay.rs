@@ -1074,3 +1074,137 @@ fn inputs_that_take_their_own_way_without_a_graph_give_the_same_result() {
         }
     }
 }
+
+/// The text a parse publishes against the text the merge rules define: the corpus trees hold
+/// each run of adjacent characters as one text record, and the units of a published text are
+/// the text of its record, a range of the one block of the parse.
+mod text_equivalence {
+    use super::*;
+
+    /// The text and comment records of a corpus dump in order, as the characters they hold. A
+    /// record begins at a line that starts with `| `; the lines after it up to the next such
+    /// line continue its text.
+    fn expected_texts(expected: &str) -> Vec<String> {
+        let mut records: Vec<String> = Vec::new();
+        for line in expected.split('\n') {
+            match line.strip_prefix("| ") {
+                Some(record) => records.push(record.trim_start_matches(' ').to_owned()),
+                None => {
+                    if let Some(last) = records.last_mut() {
+                        last.push('\n');
+                        last.push_str(line);
+                    }
+                }
+            }
+        }
+        records
+            .iter()
+            .filter_map(|record| {
+                if let Some(rest) = record.strip_prefix('"') {
+                    return rest.strip_suffix('"').map(str::to_owned);
+                }
+                record
+                    .strip_prefix("<!-- ")
+                    .and_then(|rest| rest.strip_suffix(" -->"))
+                    .map(str::to_owned)
+            })
+            .collect()
+    }
+
+    /// The text and comment strings of a published tree in the order `render` lists them.
+    fn published_texts<T: Tree>(tree: &T) -> Vec<DocumentString> {
+        let mut found = Vec::new();
+        let mut pending: Vec<HtmlNodeId> = tree.top().children().rev().collect();
+        while let Some(id) = pending.pop() {
+            let Some(node) = tree.lookup(&id) else {
+                continue;
+            };
+            if let HtmlNodeKind::Text(value) | HtmlNodeKind::Comment(value) = node.kind() {
+                found.push(value);
+            }
+            let mut children: Vec<HtmlNodeId> = node.children().collect();
+            if let Some(contents) = node.template_contents().and_then(|id| tree.lookup(&id)) {
+                children = contents.children().chain(children).collect();
+            }
+            pending.extend(children.into_iter().rev());
+        }
+        found
+    }
+
+    /// Checks one published tree against the corpus records, and that its strings are ranges of
+    /// one block that holds exactly their units.
+    fn check_tree<T: Tree>(tree: &T, expected: &str) -> Result<(), String> {
+        let published = published_texts(tree);
+        let shown: Vec<String> = published
+            .iter()
+            .map(|string| text(string.code_units()))
+            .collect();
+        let corpus = expected_texts(expected);
+        if shown != corpus {
+            return Err(format!(
+                "published text {shown:?} differs from the corpus text {corpus:?}"
+            ));
+        }
+        let Some(first) = published.first() else {
+            return Ok(());
+        };
+        for string in &published {
+            let block = string.block();
+            if !block.shares_allocation_with(first.block()) {
+                return Err("a text of the parse is not a range of its one block".to_owned());
+            }
+            if block.get(string.range()) != Some(string.code_units()) {
+                return Err("a text differs from the units of its range of the block".to_owned());
+            }
+        }
+        Ok(())
+    }
+
+    fn check_case(file: &str, fixture: &Fixture<'_>) -> Result<(), String> {
+        for utf16 in [false, true] {
+            let outcome = match fixture.fragment {
+                None => document_request(fixture.input, utf16)
+                    .parse()
+                    .map_err(|failure| format!("{failure:?}"))
+                    .and_then(|report| {
+                        let document = report.document().ok_or("no document")?;
+                        check_tree(document, fixture.expected)
+                    }),
+                Some(context) => fragment_request(context, fixture.input, utf16)?
+                    .parse()
+                    .map_err(|failure| format!("{failure:?}"))
+                    .and_then(|report| {
+                        let fragment = report.fragment().ok_or("no fragment")?;
+                        check_tree(fragment, fixture.expected)
+                    }),
+            };
+            outcome
+                .map_err(|error| format!("{file}/{} utf16={utf16}: {error}", fixture.ordinal))?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn the_text_every_retained_case_publishes_is_the_text_of_its_corpus_records() {
+        let mut checked = 0usize;
+        let mut failures = Vec::new();
+        for (file, raw) in DATA {
+            for fixture in decode(raw).unwrap_or_else(|e| panic!("{file}: {e:?}")) {
+                let excluded = EXCLUSIONS
+                    .iter()
+                    .any(|(f, o, _)| f == file && *o == fixture.ordinal);
+                if fixture.scripting == FixtureScripting::Enabled || excluded {
+                    continue;
+                }
+                checked += 1;
+                if let Err(error) = check_case(file, &fixture) {
+                    failures.push(error);
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+        // The ordinary and fragment cases of the corpus less the scripting cases and the
+        // exclusions that the pinned edition decides otherwise: 1583 + 192 - 8 - 5.
+        assert_eq!(checked, 1762);
+    }
+}

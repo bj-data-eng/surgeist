@@ -55,7 +55,7 @@ fn text_node(units: &[u16]) -> (HtmlConstructionStorage, HtmlBuilderNode) {
 fn units(storage: &HtmlConstructionStorage, node: &HtmlBuilderNode) -> Vec<u16> {
     match storage.node(node).unwrap().kind() {
         ConstructionNodeKind::Text(text) | ConstructionNodeKind::Comment(text) => {
-            text.code_units().to_vec()
+            text.code_units().unwrap().to_vec()
         }
         _ => panic!("a text or comment record"),
     }

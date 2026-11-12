@@ -278,13 +278,19 @@ retains its existing qualified endpoint IDs, without another properties field.
 Node content is read through views returned by value. `HtmlNode::kind()` returns
 the output-only `HtmlNodeKind<'a>` (`Document(mode)`, `Fragment`,
 `Element(HtmlElementView<'a>)`, `Text`, `Comment`, `ProcessingInstruction`,
-`Doctype`), whose text payloads share the node's stored strings.
+`Doctype`), whose text and comment payloads are strings of the one `TextBlock` of the result and
+whose processing-instruction and doctype payloads share the node's stored strings.
 `HtmlElementView` reports `name()`, `attributes()` and `link_flags()`.
 `HtmlAttributes<'a>` reports `len`, `is_empty`, `get(index)`, `iter`,
 `find(namespace, local_name)` and `to_ordered()`, in producer order.
-`HtmlConstructionNode::kind()` returns `ConstructionNodeKind<'a>`, whose text is
-`BuildStr<'a>` (borrowed code units with `code_units`, `len` and `is_empty`); the view hands
-out no shared string of a non-element record.
+`HtmlConstructionNode::kind()` returns `ConstructionNodeKind<'a>`, whose text and comment are
+`BuildText<'a>` and whose processing-instruction and doctype strings are `BuildStr<'a>`. Both hold
+borrowed code units; `BuildText` reports them with `code_units`, `len` and `is_empty`, each a
+`Result` whose refusal is `InvalidTextReference` for a record that names a range its text arena
+does not hold, a state no storage makes. The view hands out no shared string of a non-element
+record. `HtmlConstructionNode::as_node()` returns `Result<HtmlNode, HtmlConstructionError>`: a
+record of a storage that has not published it has no published view, and the refusal is
+`NotPublished`.
 `HtmlDeclarativeShadowRoot<'a>` becomes a read-only borrowed view over those IDs
 and the target's properties; `host()` and `contents()` return the `Copy` IDs by
 value, and `properties()` copies the same value without allocation. This
@@ -437,34 +443,43 @@ no `DocumentString` and no record: the input is the units and the node handle, s
 storage layout. `HtmlTextAdmission` is the consumer: a `Charge` for the work, `admit_append`
 (called once for every append that adds a unit), `record_growth` and `record_units`.
 
-The append qualifies the record (a text record whose block no other string holds, or the
-shared-allocation cause refuses it), charges the work of the copy in quanta of 256 bytes, then
-admits itself once. `HtmlConstructionTextGrowth` reports the text's length and capacity, the units
-added and the least capacity that holds the result; `grows()` is true when the text is full. A
-text with room reserves nothing and records no capacity. A full text reserves the capacity the
-consumer chose, which must be at least the minimum (the parser chooses the greater of the minimum
-and double the capacity, so the units copied by any number of appends are linear in the units
-appended), records that capacity before it reserves, and records the capacity reached when the
-allocator refused the spare room and the reservation fell back to the room that is needed, or
-overshot. `record_units` follows the reservation and precedes the first written unit; the units are
-then written without a further fallible step.
+The units of every text and comment record of a storage are in one text arena, and a record holds
+a `TextRun` of it: a range of 32-bit start and length and the units reserved after it, twelve
+bytes. The append qualifies the record (a text record whose range the arena holds), charges the
+work of the copy in quanta of 256 bytes, then admits itself once. A text that has room reserved
+after it, or that ends at the tail of the arena, takes the units in place. Any other text moves
+once to a region at the tail of twice its new size, zero-filled after the text, so the units
+written by `n` appends to one text are linear in the units it holds at the end and the units no
+text holds stay within a constant factor of those that texts hold. `HtmlConstructionTextGrowth`
+reports the dimensions of the arena (`initialized_len` and `capacity`), the units added and the
+least capacity of the arena that holds the units the append writes, a relocated text's region
+included; `grows()` is true when the arena is full. An append that fits the arena reserves nothing
+and records no capacity. A full arena reserves the capacity the consumer chose, which must be at
+least the minimum (the parser chooses the greater of the minimum and double the capacity), records
+that capacity before it reserves, and records the capacity reached when the allocator refused the
+spare room and the reservation fell back to the room that is needed, or overshot. `record_units`
+follows the reservation and precedes the first written unit; the units are then written without a
+further fallible step. An append shares no string, so it has no shared-allocation refusal; a
+reference to a range the arena does not hold is `InvalidTextReference`.
 
 A refusal before the units are written leaves the text, its length and the storage's usage as
 they were. Two residues remain and nothing else: when the allocator reserves more room than was
 admitted, or refuses the admitted room and the fallback reserves the room that is needed, and the
-consumer then refuses to record the capacity the text reached, the text keeps the capacity it
+consumer then refuses to record the capacity the arena reached, the arena keeps the capacity it
 reached while the consumer holds the capacity it recorded before; and when the consumer refuses to
-record the units, the text keeps the room it reserved. No unit of the text changed.
+record the units, the arena keeps the room it reserved. No unit of any text changed. The rollback
+of records that a parse abandons takes the units of their texts out of the count the arena keeps
+of units that texts hold, and leaves the units written.
 
 The parser's admission acquires the appended units as `ManagedUtf16Units` and holds them, with
-the bytes of every non-element string, in two counters of its session storage, released once
-with the storage. The parser appends to the text of its record in place, so a text holds the units
-of its data and nothing else: the tokens it absorbed are not stored strings, and the history of
+the bytes of the text arena and of every other non-element string, in two counters of its session
+storage, released once with the storage. The parser appends to the text of its record as the
+storage does, so a text holds the units of its data and nothing else: the tokens it absorbed are not stored strings, and the history of
 the text refers to their units as ranges of the text. A refusal of the append releases the
 token's string and leaves the text, the usage and the units the parser holds as they were. Three
-residues remain: the text keeps the capacity that a growth reserved and recorded before the
+residues remain: the arena keeps the capacity that a growth reserved and recorded before the
 refusal, and the bytes counter and the ledger hold the capacity last recorded, which is the
-text's capacity unless the second record of the growth was refused (then the text holds the
+arena's capacity unless the second record of the growth was refused (then the arena holds the
 capacity it reached and they hold the capacity that was chosen); a text that had no group has the
 group of no source origins that the merge made for it; and the evidence graph keeps the groups
 the merge made and the retirement of the replaced group, which no field names. The leaf of the
@@ -488,7 +503,7 @@ the list its owner validated.
 | `create_document`, `create_fragment`, `create_shadow_contents` | Create a detached root record. |
 | `create_element`, `create_element_named` | Create a detached element of a name the storage holds: `create_element` interns the `&QualifiedName` it is given, and `create_element_named` takes the `NameId` of a name interned earlier, refusing the id of another storage with the foreign-builder cause. An HTML `template` also creates its owned contents fragment, which follows it among the records. Link construction flags may be given only for an HTML `link` element, or the creation is refused with the wrong-node-kind cause. |
 | `intern_name`, `name` | Intern the name of a namespace, an optional prefix and the units of a local name, and return its `NameId`; read a name back. |
-| `create_text`, `create_comment`, `create_processing_instruction`, `create_doctype` | Create a detached leaf holding copies of the units given; an absent doctype identifier stays absent and an empty one is kept. |
+| `create_text`, `create_comment`, `create_processing_instruction`, `create_doctype` | Create a detached leaf holding copies of the units given: a text or comment copies them into the text arena, and a processing instruction or doctype keeps strings of its own; an absent doctype identifier stays absent and an empty one is kept. |
 | `insert` | Inserts a node into the ordinary children of a parent, before a reference child or last. |
 | `detach` | Removes a node from its parent. |
 | `check_child_transfer` | Checks, without changing anything, that the children of one record can move into another. |
@@ -502,15 +517,18 @@ four calls, made in this order. `admit_change` receives the usage before and aft
 limits, once, before anything changes or is reserved; the operation has already recorded the depth
 and the layout it reaches as the largest of their resources, and the charge of its writes follows
 the admission, before any bank grows. `admit_growth` receives the growth of
-a bank (the records, the child order of one record, one string of a leaf, the shared arena of a
-publication, and the three banks of a new name) and returns the capacity to reserve, at least the minimum the operation needs; every
+a bank (the records, the child order of one record, the text arena, one string of a processing
+instruction or doctype, the shared arena, the contents, the text block and the published records
+of a publication, and the three banks of a new name) and returns the capacity to reserve, at least the minimum the operation needs; every
 growth of an operation is admitted before the first is recorded. `record_growth` records the capacity
 chosen before the bank is reserved, and a second time with the capacity reached when it differs,
 which includes the unchanged capacity of a reservation the allocator refused. `record_change`
 records the usage and is the last step that can refuse. The writes that follow reserve and allocate
-nothing, except that the shared arena of a publication allocates its handle: stable Rust has no
-fallible constructor for it, so an allocator failure there aborts, as any infallible allocation
-does. The strings of a leaf are built where they are reserved, before `record_change`. A write that
+nothing, except that the shared arena and the text block of a publication allocate their handles:
+stable Rust has no fallible constructor for them, so an allocator failure there aborts, as any
+infallible allocation does. The text of a text or comment leaf is copied into the text arena, whose
+room is reserved before `record_change`, and the strings of a processing instruction or doctype
+are built where they are reserved, before it. A write that
 names a record qualification read cannot fail to find it; were one missing, the unknown-node defect
 is returned and no write is skipped.
 
@@ -594,14 +612,14 @@ record and each child entry a constant number of times.
 
 The parser is the consumer of these operations. The session storage holds the construction
 storage itself, and beside it the bytes the parse holds for the banks of the records, the child
-orders, the interned names and the published arena, which are credited once when the storage is
-released; there is no
+orders, the interned names, the text arena and the published arena, which are credited once when
+the storage is released; there is no
 ticket for a bank, no per-record registry of banks and no custody state in which the records are
 lent. A record bank and a child order that has capacity grow to the greater of the capacity needed
 and double the capacity, within the limits; one that has none takes exactly the room needed. The
-units of a leaf record are copied from the token's string, which the parser releases once the
-record exists or its creation is refused, and the units are acquired as `ManagedUtf16Units` with
-the record, in the last admission of the creation, so a refused creation holds none. Each record
+units of a text or comment record are copied from the token's string into the text arena, which
+the parser releases once the record exists or its creation is refused, and the units are acquired
+as `ManagedUtf16Units` with the record, in the last admission of the creation, so a refused creation holds none. Each record
 holds one `AuxiliaryEntries` entry, its node-join cell. An insertion's depth, standalone-document
 and edge checks run in `admit_change` in this order: the depth observation (the library records it
 before the call), one record visit, the standalone-document revocation, and the edge check, against the lent
@@ -722,13 +740,15 @@ that classifies every cause fails to compile when a cause is added. Its variants
 `InvalidTemplateAssociation`, `DuplicateAttribute { first, duplicate }`,
 `InvalidShadowAssociation`, `InvalidContentsReference`, `ParentChildConflict`,
 `InvalidOutputRoot`, `OperandMissing`, `CapacityMismatch`, `IndexUnavailable`,
-`SharedAllocationAliased`, `ReleaseUnderflow`, `LimitExceeded { resource, limit, attempted }`,
+`SharedAllocationAliased`, `InvalidTextReference`, `NotPublished`, `ReleaseUnderflow`, `LimitExceeded { resource, limit, attempted }`,
 `RepresentationExhausted`, `AllocationFailed` and `Accounting(fault)`. `OperandMissing` is an
 operand a method requires and does not have: an attribute or a name it was to take, or an
 attribute index past the list. `CapacityMismatch` is a bank whose capacity is below what a method
 stores: the consumer chose less than the minimum, or the bank has no room where the method writes.
 `SharedAllocationAliased` is an attribute list or a string that a method edits in place and
-another owner holds. `accounting_fault` returns the payload of the `Accounting` cause. The parser
+another owner holds. `InvalidTextReference` is a text or comment record that names a range its
+text arena does not hold, or a published text the block of the result cannot share. `NotPublished`
+is the published view of a record of a storage that has not published it. `accounting_fault` returns the payload of the `Accounting` cause. The parser
 maps each structural refusal to its corresponding `SessionError`; admission and cancellation
 continue to originate in `ParseControl` and are never disguised as a structural error.
 
@@ -740,13 +760,27 @@ bank, the actual capacity and the high-water values before its cancellation or a
 limit check, and a stop leaves the grown bank with the storage. No ordinary record write follows
 such a stop. HTML stores no resource totals or parser controller identity.
 
-A publication allocates the shared arena only after its layout is admitted. The move into the
-shared arena allocates its handle and cannot refuse. The result holds the only strong owner of the
-arena the parse made; the parser's frozen arena reads the usage from the result and releases what
-the parse holds for it. Read-only storage and result node access replace `arena.records` reaches in
-the parser's metadata, history and alias preflight. Private dense joins remain local; exposed result
-identities come from the checked storage or result view, never from constructing an ID from an
-ordinal.
+A publication allocates the shared arena only after its layout is admitted. It validates every text
+range of the arena, copies the units the texts hold, in record order, into a new block when more
+than a quarter of the arena's capacity is spare (the units of a relocated text's old region, the
+room after a text, and rolled-back units) and otherwise makes the arena's own vector the block,
+builds the content of each record with the string of the block that a text or comment holds, and
+moves the records into a vector of published records. The publication allocates the published
+records and the contents vector, each at its element size times the record count; the result keeps
+the published records and the block, which is one allocation of two bytes a unit whatever the number
+of texts, and every text and comment of the result is a range of it. The publication admits and
+records the banks one at a time, the shared arena, the contents, the text block when it packs, and
+the published records. A refusal takes back, in reverse order, each record the consumer accepted,
+restores the text arena and hands the storage back, so the consumer holds what it held before the
+publication. A take-back record does not change the layout the consumer reports for an allocation
+refusal. The contents vector is freed when the records move, and the parser releases the bytes it
+recorded for it then: they count in `PeakTransientBytes` and in the high-water of
+`ManagedCapacityBytes`, not in their current value. The move into the shared arena allocates its
+handle and cannot refuse. The result holds the only strong owner of the arena the parse made; the
+parser's frozen arena reads the usage from the result and releases what the parse holds for it.
+Read-only storage and result node access replace `arena.records` reaches in the parser's metadata,
+history and alias preflight. Private dense joins remain local; exposed result identities come from
+the checked storage or result view, never from constructing an ID from an ordinal.
 
 ### Captures, fragment context and lazy facts
 

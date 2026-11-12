@@ -32,7 +32,9 @@ pub(in crate::internal::construction::bounded) fn walk_budget(records: usize) ->
 
 /// The record that owns `record` in its tree: its parent, or the host or template that owns the
 /// fragment.
-pub(in crate::internal::construction::bounded) fn owning_parent(record: &Record) -> Option<NodeIx> {
+pub(in crate::internal::construction::bounded) fn owning_parent(
+    record: &Record<TextRun>,
+) -> Option<NodeIx> {
     record.parent.or(match &record.owner {
         Some(HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) => {
             Some(owner.index)
@@ -43,7 +45,7 @@ pub(in crate::internal::construction::bounded) fn owning_parent(record: &Record)
 
 /// The owning record of `index`, when the record exists and has one.
 pub(in crate::internal::construction::bounded) fn structural_parent(
-    arena: &Arena,
+    arena: &BuildArena,
     index: NodeIx,
 ) -> Option<NodeIx> {
     arena.records.get(index.position()).and_then(owning_parent)
@@ -53,7 +55,7 @@ pub(in crate::internal::construction::bounded) fn structural_parent(
 /// the shadow contents, then the owned template contents, except `skip`. Advances the node's
 /// cursor past every edge it reports or skips, with one write.
 pub(in crate::internal::construction::bounded) fn next_edge(
-    arena: &mut Arena,
+    arena: &mut BuildArena,
     node: NodeIx,
     skip: Option<NodeIx>,
 ) -> Result<Option<NodeIx>, HtmlConstructionError> {
@@ -85,9 +87,9 @@ pub(in crate::internal::construction::bounded) fn next_edge(
     Ok(edge)
 }
 
-impl Arena {
+impl BuildArena {
     /// The record at `index`, or the unknown-node error.
-    fn record_at_index(&self, index: NodeIx) -> Result<&Record, HtmlConstructionError> {
+    fn record_at_index(&self, index: NodeIx) -> Result<&Record<TextRun>, HtmlConstructionError> {
         self.records
             .get(index.position())
             .ok_or(HtmlConstructionCause::UnknownNode.error())
@@ -178,7 +180,7 @@ impl Arena {
 
 /// The contents fragment a template owns, when the template and the fragment agree about it.
 pub(in crate::internal::construction::bounded) fn ordinary_owned_contents(
-    arena: &Arena,
+    arena: &BuildArena,
     template: NodeIx,
 ) -> Result<NodeIx, HtmlConstructionError> {
     let record = arena.record_at_index(template)?;
@@ -202,7 +204,7 @@ pub(in crate::internal::construction::bounded) fn ordinary_owned_contents(
 /// Checks that the record `index` is a fragment with no parent and no owner, shadow contents when
 /// `shadow` is set and ordinary contents otherwise.
 pub(in crate::internal::construction::bounded) fn unowned_fragment(
-    arena: &Arena,
+    arena: &BuildArena,
     index: NodeIx,
     shadow: bool,
 ) -> Result<(), HtmlConstructionError> {
@@ -225,7 +227,7 @@ pub(in crate::internal::construction::bounded) fn unowned_fragment(
 
 /// Checks that the record at `index` agrees with its parent, its children and its associations.
 pub(in crate::internal::construction::bounded) fn validate_record(
-    arena: &Arena,
+    arena: &BuildArena,
     index: NodeIx,
 ) -> Result<(), HtmlConstructionError> {
     let record = arena.record_at_index(index)?;

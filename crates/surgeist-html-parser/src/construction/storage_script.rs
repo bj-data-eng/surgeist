@@ -67,7 +67,9 @@ impl SessionStorage {
                             .ok_or(SessionError::ForeignNode)?;
                         if Some(child) != detached
                             && let ConstructionNodeKind::Text(text) = record.kind()
-                            && !text.is_empty()
+                            && !text
+                                .is_empty()
+                                .map_err(|error| construction_error(control, error))?
                         {
                             empty = false;
                             break;

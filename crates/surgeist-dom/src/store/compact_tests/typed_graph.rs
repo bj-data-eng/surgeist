@@ -22,6 +22,13 @@ impl Raw {
         self.bytes(size_of::<Vec<u16>>() + capacity * size_of::<u16>());
         self.units(capacity);
     }
+    /// A text or comment payload lists its block apart, so it counts its own length when it
+    /// borrows the block and the capacity of its block when it owns it.
+    fn listed_text(&mut self, value: &DocumentString) {
+        let units = value.occurrence_units();
+        self.bytes(size_of::<Vec<u16>>() + units * size_of::<u16>());
+        self.units(units);
+    }
     fn sequence<T>(&mut self, value: &SharedVec<T>) {
         if value.has_backing() {
             self.bytes(size_of::<Vec<T>>() + value.capacity() * size_of::<T>());
@@ -67,6 +74,12 @@ impl Walker<'_> {
     }
     fn text(&mut self, out: &mut Raw, value: &DocumentString) {
         out.text(value);
+        if let Some(graph) = &mut self.graph {
+            graph.string(value);
+        }
+    }
+    fn listed_text(&mut self, out: &mut Raw, value: &DocumentString) {
+        out.listed_text(value);
         if let Some(graph) = &mut self.graph {
             graph.string(value);
         }
@@ -415,7 +428,7 @@ impl Walker<'_> {
             Node::Text(v) => {
                 self.root(v, "node.text");
                 let mut raw = Raw::default();
-                self.text(&mut raw, &v.value.data.value.value);
+                self.listed_text(&mut raw, &v.value.data.value.value);
                 self.object(&v.value.data, raw, "character.data");
                 if let Some(v) = &v.value.slottable {
                     self.fixed(v, "node.slottable");
@@ -424,7 +437,7 @@ impl Walker<'_> {
             Node::Comment(v) => {
                 self.root(v, "node.comment");
                 let mut raw = Raw::default();
-                self.text(&mut raw, &v.value.data.value.value);
+                self.listed_text(&mut raw, &v.value.data.value.value);
                 self.object(&v.value.data, raw, "character.data");
             }
             Node::DocumentType(v) => {

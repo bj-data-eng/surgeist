@@ -177,6 +177,11 @@ fn exact_utf16_native_document_shares_backing_and_preserves_order_and_identity()
     let root = source.root().id();
     let ids: Vec<_> = source.root().children().collect();
     let text = source.node(&ids[0]).unwrap().children().next().unwrap();
+    // The builder copied the text into the block of the document; the capture shares that range.
+    let HtmlNodeKind::Text(published) = source.node(&text).unwrap().kind() else {
+        panic!("source text")
+    };
+    assert_eq!(published.code_units(), raw.code_units());
     let source = HtmlConstructionResult::Document(source);
     let (builder, revision) = new_builder();
     let facts = facts(
@@ -205,7 +210,7 @@ fn exact_utf16_native_document_shares_backing_and_preserves_order_and_identity()
         panic!("text")
     };
     assert_eq!(value.code_units(), [0xd800, 0, 13, 10, 0xdc00]);
-    assert!(value.shares_storage_with(&raw));
+    assert!(value.shares_storage_with(&published));
     assert_eq!(result.source().node(&root).unwrap().id(), root);
     assert_eq!(
         node(&result, &ids[0]).shadow_root(),

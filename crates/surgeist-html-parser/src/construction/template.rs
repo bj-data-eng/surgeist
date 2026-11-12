@@ -787,6 +787,7 @@ impl FrozenArena {
                     .node_at(document.owned()?)
                     .ok_or(SessionError::ForeignNode)?
                     .as_node()
+                    .map_err(|error| construction_error(c, error))?
                     .id());
             }
         }

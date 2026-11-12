@@ -659,7 +659,7 @@ fn increasing_whole_unicode_entity_feeds_have_linear_append_copy_and_lookup_work
                                 else {
                                     panic!("text")
                                 };
-                                let address = value.code_units().as_ptr() as usize;
+                                let address = value.code_units().unwrap().as_ptr() as usize;
                                 if old_address != 0 && address != old_address {
                                     relocations += 1;
                                 }

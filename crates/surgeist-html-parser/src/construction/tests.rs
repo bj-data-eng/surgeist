@@ -496,7 +496,7 @@ pub(super) fn native_text(session: &ParserArenaSession, node: &ParserNode) -> Ve
     else {
         panic!("text node")
     };
-    value.code_units().to_vec()
+    value.code_units().unwrap().to_vec()
 }
 pub(super) fn storage_zero(c: &ParseControl) {
     for resource in [

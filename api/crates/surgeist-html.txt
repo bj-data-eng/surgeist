@@ -2474,8 +2474,12 @@ pub surgeist_html::bounded::construction::HtmlConstructionBank::Children::positi
 pub surgeist_html::bounded::construction::HtmlConstructionBank::NameEntry
 pub surgeist_html::bounded::construction::HtmlConstructionBank::NameSlots
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Names
+pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedContents
+pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedRecords
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Records
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Text
+pub surgeist_html::bounded::construction::HtmlConstructionBank::TextArena
+pub surgeist_html::bounded::construction::HtmlConstructionBank::TextBlock
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Wrapper
 pub struct surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity
 pub surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity::capacity: usize
@@ -2511,7 +2515,7 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionGrowthRecord::recor
 pub struct surgeist_html::bounded::construction::HtmlConstructionNode<'a>
 impl<'a> surgeist_html::bounded::construction::HtmlConstructionNode<'a>
 pub const surgeist_html::bounded::construction::HtmlConstructionNode<'a>::CONTENT_BYTES: usize
-pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::as_node(self) -> surgeist_html::construction::HtmlNode<'a>
+pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::as_node(self) -> core::result::Result<surgeist_html::construction::HtmlNode<'a>, surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::check_container(self) -> core::result::Result<(), surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::check_detachment(self) -> core::result::Result<(), surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::check_reference_child_of(self, parent: Self) -> core::result::Result<(), surgeist_html::construction::HtmlConstructionError>
@@ -3680,14 +3684,21 @@ pub fn surgeist_html::bounded::values::HtmlValidatedAttributes::into_attributes(
 impl core::convert::From<surgeist_html::values::OrderedAttributes> for surgeist_html::bounded::values::HtmlValidatedAttributes
 pub fn surgeist_html::bounded::values::HtmlValidatedAttributes::from(value: surgeist_html::values::OrderedAttributes) -> Self
 pub mod surgeist_html::construction
+pub enum surgeist_html::construction::BuildText<'a>
+pub surgeist_html::construction::BuildText::Invalid
+pub surgeist_html::construction::BuildText::Units(&'a [u16])
+impl<'a> surgeist_html::construction::BuildText<'a>
+pub fn surgeist_html::construction::BuildText<'a>::code_units(self) -> core::result::Result<&'a [u16], surgeist_html::construction::HtmlConstructionError>
+pub fn surgeist_html::construction::BuildText<'a>::is_empty(self) -> core::result::Result<bool, surgeist_html::construction::HtmlConstructionError>
+pub fn surgeist_html::construction::BuildText<'a>::len(self) -> core::result::Result<usize, surgeist_html::construction::HtmlConstructionError>
 pub enum surgeist_html::construction::ConstructionNodeKind<'a>
-pub surgeist_html::construction::ConstructionNodeKind::Comment(surgeist_html::construction::BuildStr<'a>)
+pub surgeist_html::construction::ConstructionNodeKind::Comment(surgeist_html::construction::BuildText<'a>)
 pub surgeist_html::construction::ConstructionNodeKind::Doctype(surgeist_html::construction::ConstructionDoctype<'a>)
 pub surgeist_html::construction::ConstructionNodeKind::Document(surgeist_html::construction::HtmlDocumentMode)
 pub surgeist_html::construction::ConstructionNodeKind::Element(surgeist_html::construction::HtmlElementView<'a>)
 pub surgeist_html::construction::ConstructionNodeKind::Fragment
 pub surgeist_html::construction::ConstructionNodeKind::ProcessingInstruction(surgeist_html::construction::ConstructionProcessingInstruction<'a>)
-pub surgeist_html::construction::ConstructionNodeKind::Text(surgeist_html::construction::BuildStr<'a>)
+pub surgeist_html::construction::ConstructionNodeKind::Text(surgeist_html::construction::BuildText<'a>)
 pub enum surgeist_html::construction::HtmlConstructionCause
 pub surgeist_html::construction::HtmlConstructionCause::Accounting(surgeist_html::accounting::HtmlAccountingFault)
 pub surgeist_html::construction::HtmlConstructionCause::AllocationFailed
@@ -3704,10 +3715,12 @@ pub surgeist_html::construction::HtmlConstructionCause::InvalidContentsReference
 pub surgeist_html::construction::HtmlConstructionCause::InvalidOutputRoot
 pub surgeist_html::construction::HtmlConstructionCause::InvalidShadowAssociation
 pub surgeist_html::construction::HtmlConstructionCause::InvalidTemplateAssociation
+pub surgeist_html::construction::HtmlConstructionCause::InvalidTextReference
 pub surgeist_html::construction::HtmlConstructionCause::LimitExceeded
 pub surgeist_html::construction::HtmlConstructionCause::LimitExceeded::attempted: usize
 pub surgeist_html::construction::HtmlConstructionCause::LimitExceeded::limit: usize
 pub surgeist_html::construction::HtmlConstructionCause::LimitExceeded::resource: surgeist_html::construction::HtmlConstructionResource
+pub surgeist_html::construction::HtmlConstructionCause::NotPublished
 pub surgeist_html::construction::HtmlConstructionCause::OperandMissing
 pub surgeist_html::construction::HtmlConstructionCause::ParentCannotHaveChildren
 pub surgeist_html::construction::HtmlConstructionCause::ParentChildConflict

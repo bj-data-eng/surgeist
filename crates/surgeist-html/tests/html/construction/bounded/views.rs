@@ -21,15 +21,15 @@ fn text_and_comment_views_carry_the_exact_units_and_their_length() {
     let ConstructionNodeKind::Text(shown) = owner.node(&text).unwrap().kind() else {
         panic!("expected text");
     };
-    assert_eq!(shown.code_units(), units_in);
-    assert_eq!(shown.len(), 5);
-    assert!(!shown.is_empty());
+    assert_eq!(shown.code_units().unwrap(), units_in);
+    assert_eq!(shown.len().unwrap(), 5);
+    assert!(!shown.is_empty().unwrap());
     let ConstructionNodeKind::Comment(shown) = owner.node(&comment).unwrap().kind() else {
         panic!("expected a comment");
     };
-    assert_eq!(shown.code_units(), []);
-    assert_eq!(shown.len(), 0);
-    assert!(shown.is_empty());
+    assert_eq!(shown.code_units().unwrap(), []);
+    assert_eq!(shown.len().unwrap(), 0);
+    assert!(shown.is_empty().unwrap());
     // The view is `Copy` and compares by units.
     let first = owner.node(&text).unwrap().kind();
     let second = first;

@@ -48,7 +48,8 @@ impl<'a> HtmlParseFragmentParserDocument<'a> {
             .view
             .node_at(0)
             .ok_or(fault(read::HtmlParseUnresolvedKind::Node))?
-            .as_node();
+            .as_node()
+            .map_err(|_| fault(read::HtmlParseUnresolvedKind::Node))?;
         let HtmlNodeKind::Document(mode) = document.kind() else {
             return Err(fault(read::HtmlParseUnresolvedKind::Node));
         };

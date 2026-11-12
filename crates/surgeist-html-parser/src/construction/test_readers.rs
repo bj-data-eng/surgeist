@@ -474,6 +474,7 @@ impl FrozenArena {
                 .node_at(owner)
                 .expect("qualified form owner")
                 .as_node()
+                .unwrap()
                 .id(),
         ))
     }

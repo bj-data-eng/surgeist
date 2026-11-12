@@ -2,6 +2,7 @@
 //! and strings, the logical slots of its attributes, and the table of attribute names that edits
 //! of long lists look names up in. Each is credited once, when the storage is released.
 use super::*;
+use crate::HtmlParseInvariant;
 use surgeist_html::bounded::values::{HtmlAttributeNameIndex, HtmlNameIndexSlot};
 use surgeist_html::values::Attribute;
 
@@ -46,6 +47,23 @@ impl StorageHolds {
             string_units: 0,
             string_bytes: 0,
         }
+    }
+
+    /// Credits the `bytes` the parse held for a vector of a publication that the publication has
+    /// freed. They stay in the high-water marks of the bytes held, and leave what is held.
+    pub(super) fn release_contents(
+        &mut self,
+        control: &mut ParseControl,
+        bytes: u64,
+    ) -> Result<(), SessionError> {
+        let Some(rest) = self.bank_bytes.checked_sub(bytes) else {
+            return Err(SessionError::Stop(
+                control.fail_invariant(HtmlParseInvariant::CapacityMismatch),
+            ));
+        };
+        control.release_banks(bytes).map_err(SessionError::Stop)?;
+        self.bank_bytes = rest;
+        Ok(())
     }
 
     /// Makes sure the table of attribute names can hold `entries` names, reserving its slots

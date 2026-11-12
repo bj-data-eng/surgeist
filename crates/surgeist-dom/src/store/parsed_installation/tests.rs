@@ -1257,3 +1257,99 @@ fn csp_destination_authority_is_prepared_atomically_and_abandoned_ids_are_not_re
     );
     crate::store::oracle_tests::assert_full_canonical(&dom);
 }
+
+fn text_parser_limits() -> HtmlParseLimits {
+    HtmlParseLimits::builder()
+        .source_units(65_536)
+        .buffered_utf16_units(65_536)
+        .token_attributes(256)
+        .auxiliary_entries(1_000_000)
+        .active_formatting_entries(100_000)
+        .managed_nodes(4096)
+        .managed_edges(4096)
+        .managed_attributes(4096)
+        .managed_utf16_units(65_536)
+        .source_map_entries(65_536)
+        .source_map_payload_units(65_536)
+        .diagnostics(4096)
+        .diagnostic_payload_units(65_536)
+        .context_effects(256)
+        .open_elements(64)
+        .tree_depth(256)
+        .managed_capacity_bytes(64_000_000)
+        .peak_transient_bytes(64_000_000)
+        .atomic_layout_bytes(64_000_000)
+        .work_credits(1_000_000_000)
+        .finish()
+        .unwrap()
+}
+
+/// The custody units of a store that installed `html`, the text strings its Text and Comment nodes
+/// hold, and the blocks the registry lists.
+fn installed_text(html: &str) -> (usize, Vec<DocumentString>, usize) {
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(
+        DomLimits::new(
+            4096,
+            1_000_000,
+            4096,
+            4096,
+            4096,
+            32,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let environment = environment(&mut dom);
+    let report = Arc::new(
+        HtmlDocumentParseRequest::offline(HtmlSource::utf8(html), text_parser_limits())
+            .parse()
+            .unwrap(),
+    );
+    dom.install_parsed_html_document(
+        dom.snapshot().stamp(),
+        report,
+        environment,
+        crate::DomParsedHtmlInstallLimits::new(4096, 10_000_000, 16_000_000, 100_000_000),
+        &cancel,
+    )
+    .unwrap();
+    let snapshot = dom.snapshot();
+    let strings = snapshot
+        .nodes()
+        .filter_map(|id| snapshot.node(id).ok()?.data().cloned())
+        .collect();
+    let units = dom.custody_registry.ledger().total().units();
+    (units, strings, dom.custody_registry.listed_blocks())
+}
+
+#[test]
+fn a_parse_installs_its_text_by_length_and_its_one_block_once() {
+    // The same elements, with and without the text, so that the custody the text adds stands
+    // alone.
+    let count = 200;
+    let mut with = String::from("<!doctype html><body>");
+    let mut without = String::from("<!doctype html><body>");
+    for index in 0..count {
+        with.push_str(&format!("<p>text {index}</p><!--note {index}-->"));
+        without.push_str("<p></p>");
+    }
+    let (with_units, strings, listed) = installed_text(&with);
+    let (without_units, _, none) = installed_text(&without);
+    assert_eq!(strings.len(), 2 * count);
+    // Every string is a range of the block of the parse, which the registry lists once.
+    let block = strings[0]
+        .borrowed_block()
+        .expect("a text of the parse borrows its block");
+    assert!(strings.iter().all(|string| {
+        string
+            .borrowed_block()
+            .is_some_and(|other| other.shares_allocation_with(block))
+    }));
+    assert_eq!((listed, none), (1, 0));
+    // Each text counts its own length, and the block counts its capacity once.
+    let lengths: usize = strings.iter().map(DocumentString::len).sum();
+    assert_eq!(with_units - without_units, lengths + block.capacity());
+}
