@@ -22,6 +22,48 @@ fn policy() -> DomSourceLimits {
 }
 
 #[test]
+fn attr_value_comparison_uses_the_operation_budget_without_spending_name_work() {
+    let names = DomNameLimits::new(16_777_216, 16_384, 512, 1_048_576).unwrap();
+    let mut dom =
+        Dom::new(DomLimits::new(64, 8192, 128, 0, 0, 64, 1_000_000, names).unwrap()).unwrap();
+    let cancel = AtomicBool::new(false);
+    let mut units = vec![0xd800; 2048];
+    let original = DocumentString::from_utf16(units.clone());
+    units[2047] = 0xdc00;
+    let replacement = DocumentString::from_utf16(units);
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let element = setup.create_element(&document, "div");
+    setup.set_attribute(&element, "data-x", original.clone());
+    let detached = setup.create_attribute(&document, "data-y");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let detached = commit.created(&detached).unwrap().unwrap();
+
+    let mut edit = DomBatch::new();
+    edit.set_attribute(element, "data-x", replacement.clone());
+    dom.apply(edit, &cancel).unwrap();
+    let after = dom.snapshot();
+    let value = after.node(element).unwrap().attribute(&"data-x".into());
+    assert_eq!(value, Some(&replacement));
+
+    for value in [original, replacement.clone()] {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::set_text_content(detached, value),
+                policy(),
+                &cancel,
+            )
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancel).unwrap(),
+            DomSourceProgress::Complete(_)
+        ));
+    }
+    assert_eq!(dom.snapshot().attr(detached).unwrap().value(), &replacement);
+}
+
+#[test]
 fn attr_creation_uses_the_actual_document_and_exact_qualified_name() {
     let cancel = AtomicBool::new(false);
     let mut dom = owner();
