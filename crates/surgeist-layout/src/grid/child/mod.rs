@@ -47,6 +47,101 @@ pub(super) struct GridLines {
     pub(super) row_explicit_count: usize,
 }
 
+pub(super) enum FinalGridChildGeometry<'a, S: LayoutScalar> {
+    Ordinary {
+        standalone_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
+        columns: &'a UsedGridAxisGeometryOf<S>,
+        rows: &'a UsedGridAxisGeometryOf<S>,
+    },
+    Lanes,
+}
+
+pub(super) struct FinalGridChildRequest<'a, S: LayoutScalar> {
+    pub(super) input: ComputeInputOf<S>,
+    pub(super) parent_axes: FlowAxes,
+    pub(super) sizing_stage: GridSizingStage,
+    pub(super) geometry: FinalGridChildGeometry<'a, S>,
+}
+
+type FinalGridChildResult<Node, S, M> = LayoutResultOf<
+    Node,
+    (
+        ComputeOutputOf<S>,
+        Option<ExecutedBaselineInventory<Node, S>>,
+    ),
+    S,
+    M,
+>;
+
+pub(super) fn compute_final_grid_child<'input, Tree, M>(
+    tree: &mut Tree,
+    container: Tree::Node,
+    child: Tree::Node,
+    context: SubgridChildParentContextInput<'input, '_, Tree::Node, Tree::Scalar>,
+    request: FinalGridChildRequest<'_, Tree::Scalar>,
+) -> FinalGridChildResult<Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let input = request.input;
+    let (mut output, executed_baselines) = if context.item.needs_context() {
+        let (minimum, columns, rows) = match request.geometry {
+            FinalGridChildGeometry::Ordinary {
+                standalone_minimum,
+                columns,
+                rows,
+            } => (standalone_minimum, Some(columns), Some(rows)),
+            FinalGridChildGeometry::Lanes => (Size::NONE, None, None),
+        };
+        let child_axes = FlowAxes::new(
+            context.child_style.writing_mode,
+            context.child_style.direction,
+        );
+        let stage = request.sizing_stage.mapped(request.parent_axes, child_axes);
+        // The nested grid uses the current parent's track and scrollbar context.
+        let result = compute_grid_with_context_source(
+            tree,
+            child,
+            input,
+            minimum,
+            context.container(),
+            stage,
+            |constants| {
+                subgrid_child_parent_context_with_geometry(
+                    context.for_scrollbar_pass(constants),
+                    columns,
+                    rows,
+                )
+                .map_err(|error| subgrid_child_context_container_error(container, child, error))
+            },
+        )?;
+        let source = require_executed_baselines(
+            container,
+            child,
+            child_axes,
+            result.output,
+            input,
+            stage,
+            result.executed_baselines,
+        )?;
+        (result.output, Some(source))
+    } else {
+        (tree.compute_child(child, input)?, None)
+    };
+    output.scroll_geometry = Some(
+        retained_grid_child_scroll_geometry(
+            context.child_style,
+            output.size,
+            output.content_size,
+            context.padding,
+            context.border,
+            output.scroll_geometry,
+        )
+        .map_err(|error| layout_child_geometry_error(container, child, error))?,
+    );
+    Ok((output, executed_baselines))
+}
+
 pub(super) fn layout_grid_children<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
@@ -298,55 +393,22 @@ where
             padding,
             scrollbar_gutter: Edges::ZERO,
         };
-        let (mut output, executed_baselines) = if child_context_input.item.needs_context() {
-            // Subgrid layout depends on the parent grid's used tracks, so this
-            // intentionally bypasses the generic child layout cache until that
-            // cache can include context-sensitive grid keys.
-            let result = compute_grid_with_context_source(
-                tree,
-                child,
-                child_input,
-                item.standalone_intrinsic_minimum,
-                child_context_input.container(),
-                sizing_stage.mapped(
-                    constants.flow_axes,
-                    FlowAxes::new(child_style.writing_mode, child_style.direction),
-                ),
-                |constants| {
-                    subgrid_child_parent_context_with_geometry(
-                        child_context_input.for_scrollbar_pass(constants),
-                        Some(&column_geometry),
-                        Some(&row_geometry),
-                    )
-                    .map_err(|error| subgrid_child_context_container_error(node, child, error))
+        let (output, executed_baselines) = compute_final_grid_child(
+            tree,
+            node,
+            child,
+            child_context_input,
+            FinalGridChildRequest {
+                input: child_input,
+                parent_axes: constants.flow_axes,
+                sizing_stage,
+                geometry: FinalGridChildGeometry::Ordinary {
+                    standalone_minimum: item.standalone_intrinsic_minimum,
+                    columns: &column_geometry,
+                    rows: &row_geometry,
                 },
-            )?;
-            let source = require_executed_baselines(
-                node,
-                child,
-                FlowAxes::new(child_style.writing_mode, child_style.direction),
-                result.output,
-                child_input,
-                sizing_stage.mapped(
-                    constants.flow_axes,
-                    FlowAxes::new(child_style.writing_mode, child_style.direction),
-                ),
-                result.executed_baselines,
-            )?;
-            (result.output, Some(source))
-        } else {
-            (tree.compute_child(child, child_input)?, None)
-        };
-        let scroll_geometry = retained_grid_child_scroll_geometry(
-            &child_style,
-            output.size,
-            output.content_size,
-            padding,
-            border,
-            output.scroll_geometry,
-        )
-        .map_err(|error| layout_child_geometry_error(node, child, error))?;
-        output.scroll_geometry = Some(scroll_geometry);
+            },
+        )?;
         let logical_output_size = constants.flow_axes.logical_size(output.size);
         let logical_unresolved_margin = constants.flow_axes.logical_edges(item.unresolved_margin);
         let inline_axis = logical_grid_item_axis(

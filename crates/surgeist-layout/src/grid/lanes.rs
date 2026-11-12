@@ -3084,45 +3084,18 @@ where
         };
         let child_input = grid_item_baseline_demand(style, &child_style, None, child_input)
             .map_err(|error| grid_baseline_error(node, child, error))?;
-        let (mut output, executed_baselines) = if child_context_input.item.needs_context() {
-            let result = compute_grid_with_context_source(
-                tree,
-                child,
-                child_input,
-                Size::NONE,
-                child_context_input.container(),
-                sizing_stage.mapped(
-                    constants.flow_axes,
-                    crate::geometry::FlowAxes::new(child_style.writing_mode, child_style.direction),
-                ),
-                |constants| {
-                    subgrid_child_parent_context(child_context_input.for_scrollbar_pass(constants))
-                        .map_err(|error| subgrid_child_context_container_error(node, child, error))
-                },
-            )?;
-            let source = require_executed_baselines(
-                node,
-                child,
-                child_flow_axes,
-                result.output,
-                child_input,
-                sizing_stage.mapped(constants.flow_axes, child_flow_axes),
-                result.executed_baselines,
-            )?;
-            (result.output, Some(source))
-        } else {
-            (tree.compute_child(child, child_input)?, None)
-        };
-        let scroll_geometry = retained_grid_child_scroll_geometry(
-            &child_style,
-            output.size,
-            output.content_size,
-            padding,
-            border,
-            output.scroll_geometry,
-        )
-        .map_err(|error| layout_child_geometry_error(node, child, error))?;
-        output.scroll_geometry = Some(scroll_geometry);
+        let (output, executed_baselines) = compute_final_grid_child(
+            tree,
+            node,
+            child,
+            child_context_input,
+            FinalGridChildRequest {
+                input: child_input,
+                parent_axes: constants.flow_axes,
+                sizing_stage,
+                geometry: FinalGridChildGeometry::Lanes,
+            },
+        )?;
         let logical_output_size = flow_axes.logical_size(output.size);
         let logical_unresolved_margin = flow_axes.logical_edges(item.unresolved_margin);
         let inline_axis = logical_grid_item_axis(
