@@ -291,12 +291,21 @@ impl<E> core::convert::From<surgeist_runtime::trusted_types_csp::PolicyListCapac
 pub fn surgeist_runtime::trusted_types_csp::PolicyListError<E>::from(error: surgeist_runtime::trusted_types_csp::PolicyListCapacity) -> Self
 impl<E> core::fmt::Display for surgeist_runtime::trusted_types_csp::PolicyListError<E>
 pub fn surgeist_runtime::trusted_types_csp::PolicyListError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_runtime::trusted_types_csp::ReportError<E>
+pub surgeist_runtime::trusted_types_csp::ReportError::Allocation
+pub surgeist_runtime::trusted_types_csp::ReportError::RepresentationExhausted
+pub surgeist_runtime::trusted_types_csp::ReportError::Stopped(E)
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_runtime::trusted_types_csp::ReportError<E>
+pub fn surgeist_runtime::trusted_types_csp::ReportError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E> core::fmt::Display for surgeist_runtime::trusted_types_csp::ReportError<E>
+pub fn surgeist_runtime::trusted_types_csp::ReportError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::trusted_types_csp::AdmittedPolicyCreation<'factory, Payload, Backing>
 impl<Payload, Backing> surgeist_runtime::trusted_types_csp::AdmittedPolicyCreation<'_, Payload, Backing>
 pub fn surgeist_runtime::trusted_types_csp::AdmittedPolicyCreation<'_, Payload, Backing>::publish(self, policy: &alloc::rc::Rc<Payload>)
 pub struct surgeist_runtime::trusted_types_csp::AttributeMismatch<'read, 'policies>
 impl<'policies> surgeist_runtime::trusted_types_csp::AttributeMismatch<'_, 'policies>
 pub fn surgeist_runtime::trusted_types_csp::AttributeMismatch<'_, 'policies>::blocked(&self) -> core::option::Option<bool>
+pub fn surgeist_runtime::trusted_types_csp::AttributeMismatch<'_, 'policies>::next_report<Backing>(&mut self, lease: &surgeist_dom::store::source::operation::DomSourceLease<'_>, registration: &surgeist_dom::hosted::DomDocumentScriptRegistration, cancel: &core::sync::atomic::AtomicBool, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<Backing, surgeist_dom::store::DomError>) -> core::result::Result<core::option::Option<surgeist_runtime::trusted_types_csp::ViolationReport<Backing>>, surgeist_runtime::trusted_types_csp::ReportError<surgeist_dom::store::DomError>>
 pub fn surgeist_runtime::trusted_types_csp::AttributeMismatch<'_, 'policies>::next_violation(&mut self, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<surgeist_runtime::trusted_types_csp::Violation<'policies>>, surgeist_dom::store::DomError>
 pub struct surgeist_runtime::trusted_types_csp::AttributePolicies<'a>
 impl<'a> surgeist_runtime::trusted_types_csp::AttributePolicies<'a>
@@ -319,6 +328,7 @@ pub fn surgeist_runtime::trusted_types_csp::Policy::serialized(&self) -> &surgei
 pub struct surgeist_runtime::trusted_types_csp::PolicyCreation<'factory, 'policy, 'name, Payload, Backing>
 impl<'factory, 'policy, Payload, Backing> surgeist_runtime::trusted_types_csp::PolicyCreation<'factory, 'policy, '_, Payload, Backing>
 pub fn surgeist_runtime::trusted_types_csp::PolicyCreation<'factory, 'policy, '_, Payload, Backing>::admit<E>(self, admit_name: impl core::ops::function::FnOnce(usize) -> core::result::Result<Backing, E>) -> core::result::Result<surgeist_runtime::trusted_types_csp::AdmittedPolicyCreation<'factory, Payload, Backing>, surgeist_runtime::trusted_types_csp::PolicyCreationError<E>>
+pub fn surgeist_runtime::trusted_types_csp::PolicyCreation<'factory, 'policy, '_, Payload, Backing>::next_report<E, ReportBacking>(&mut self, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<ReportBacking, E>) -> core::result::Result<core::option::Option<surgeist_runtime::trusted_types_csp::ViolationReport<ReportBacking>>, surgeist_runtime::trusted_types_csp::ReportError<E>>
 pub fn surgeist_runtime::trusted_types_csp::PolicyCreation<'factory, 'policy, '_, Payload, Backing>::next_violation<E>(&mut self, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_runtime::trusted_types_csp::Violation<'policy>>, E>
 pub struct surgeist_runtime::trusted_types_csp::PolicyFactory<Payload, Backing>
 impl<Payload, Backing> surgeist_runtime::trusted_types_csp::PolicyFactory<Payload, Backing>
@@ -342,6 +352,14 @@ impl<'a> surgeist_runtime::trusted_types_csp::Violation<'a>
 pub const fn surgeist_runtime::trusted_types_csp::Violation<'a>::directive(self) -> surgeist_runtime::trusted_types_csp::Directive
 pub const fn surgeist_runtime::trusted_types_csp::Violation<'a>::policy(self) -> &'a surgeist_runtime::trusted_types_csp::Policy
 pub const fn surgeist_runtime::trusted_types_csp::Violation<'a>::policy_index(self) -> usize
+pub struct surgeist_runtime::trusted_types_csp::ViolationReport<Backing>
+impl<Backing> surgeist_runtime::trusted_types_csp::ViolationReport<Backing>
+pub const fn surgeist_runtime::trusted_types_csp::ViolationReport<Backing>::delivery(&self) -> surgeist_runtime::trusted_types_csp::PolicyDelivery
+pub const fn surgeist_runtime::trusted_types_csp::ViolationReport<Backing>::directive(&self) -> surgeist_runtime::trusted_types_csp::Directive
+pub fn surgeist_runtime::trusted_types_csp::ViolationReport<Backing>::original_policy(&self) -> &[u16]
+pub const fn surgeist_runtime::trusted_types_csp::ViolationReport<Backing>::policy_index(&self) -> usize
+pub const fn surgeist_runtime::trusted_types_csp::ViolationReport<Backing>::resource(&self) -> &'static str
+pub fn surgeist_runtime::trusted_types_csp::ViolationReport<Backing>::sample(&self) -> &[u16]
 pub fn surgeist_runtime::trusted_types_csp::requires_script_values<E>(policies: &[surgeist_runtime::trusted_types_csp::Policy], include_report_only: bool, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 pub enum surgeist_runtime::AppEffectPayload
 pub surgeist_runtime::AppEffectPayload::CallService(surgeist_runtime::CallServiceEffect)

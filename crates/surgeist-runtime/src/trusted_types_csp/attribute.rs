@@ -1,6 +1,10 @@
 //! Trusted Types CSP decisions on the parked native attribute operation.
 
-use super::{Decision, Policy, PolicyProcessor, Violation, requires_script_values};
+use super::reports::{AttributeReport, Sample};
+use super::{
+    Decision, Policy, PolicyProcessor, ReportError, Violation, ViolationReport,
+    requires_script_values,
+};
 use std::{error::Error, fmt, sync::atomic::AtomicBool};
 use surgeist_dom::{
     DocumentId, DomDocumentCspState, DomDocumentScriptRegistration, DomError,
@@ -66,6 +70,7 @@ impl From<HtmlCspError<DomError>> for AttributePolicyError {
 pub struct AttributePolicies<'a> {
     read: DomSourceAttributePolicyRead<'a>,
     policies: &'a [Policy],
+    request: DomSourceAttributeVerificationRequest,
 }
 
 impl<'a> AttributePolicies<'a> {
@@ -97,7 +102,11 @@ impl<'a> AttributePolicies<'a> {
                 }
             }
         };
-        Ok(Self { read, policies })
+        Ok(Self {
+            read,
+            policies,
+            request,
+        })
     }
 
     /// The Document associated with the original Global at this read.
@@ -118,6 +127,7 @@ impl<'a> AttributePolicies<'a> {
         AttributeMismatch {
             read: &self.read,
             decision: Decision::script_mismatch(self.policies),
+            request: self.request,
         }
     }
 }
@@ -126,6 +136,7 @@ impl<'a> AttributePolicies<'a> {
 pub struct AttributeMismatch<'read, 'policies> {
     read: &'read DomSourceAttributePolicyRead<'policies>,
     decision: Decision<'policies, 'static>,
+    request: DomSourceAttributeVerificationRequest,
 }
 
 impl<'policies> AttributeMismatch<'_, 'policies> {
@@ -136,6 +147,25 @@ impl<'policies> AttributeMismatch<'_, 'policies> {
     ) -> Result<Option<Violation<'policies>>, DomError> {
         self.read.step(cancel)?;
         self.decision.next_violation(&mut || self.read.step(cancel))
+    }
+
+    /// Prepare the next report from the original registered Source request.
+    pub fn next_report<Backing>(
+        &mut self,
+        lease: &DomSourceLease<'_>,
+        registration: &DomDocumentScriptRegistration,
+        cancel: &AtomicBool,
+        admit: impl FnOnce(usize) -> Result<Backing, DomError>,
+    ) -> Result<Option<ViolationReport<Backing>>, ReportError<DomError>> {
+        let input = lease
+            .attribute_verification_input(self.request, registration, cancel)
+            .map_err(ReportError::Stopped)?;
+        let attribute = AttributeReport::new(self.request.sink(), input.code_units());
+        self.decision.next_report(
+            Sample::Attribute(attribute),
+            &mut || self.read.step(cancel),
+            admit,
+        )
     }
 
     /// The final enforcement decision, available after the policy scan.

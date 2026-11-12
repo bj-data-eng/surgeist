@@ -15,9 +15,11 @@ use surgeist_html::{
 mod attribute;
 mod factory;
 mod provider;
+mod reports;
 pub use attribute::{AttributeMismatch, AttributePolicies, AttributePolicyError};
 pub use factory::{AdmittedPolicyCreation, PolicyCreation, PolicyCreationError, PolicyFactory};
 pub use provider::{PolicyListCapacity, PolicyListError, PolicyProcessor};
+pub use reports::{ReportError, ViolationReport};
 
 /// The source and disposition of one delivered CSP policy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -255,6 +257,17 @@ impl<'policy, 'name> Decision<'policy, 'name> {
         &mut self,
         step: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<Option<Violation<'policy>>, E> {
+        let candidate = self.pending_violation(step)?;
+        if let Some(violation) = candidate {
+            self.accept_violation(violation);
+        }
+        Ok(candidate)
+    }
+
+    fn pending_violation<E>(
+        &mut self,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<Violation<'policy>>, E> {
         while let Some(policy) = self.policies.get(self.index) {
             step()?;
             let directive = match self.check {
@@ -265,18 +278,21 @@ impl<'policy, 'name> Decision<'policy, 'name> {
                     .denies_name(name, duplicate, step)?
                     .then_some(Directive::TrustedTypes),
             };
-            let index = self.index;
-            self.index += 1;
             if let Some(directive) = directive {
-                self.blocked |= policy.delivery.enforces();
                 return Ok(Some(Violation {
-                    index,
+                    index: self.index,
                     policy,
                     directive,
                 }));
             }
+            self.index += 1;
         }
         Ok(None)
+    }
+
+    fn accept_violation(&mut self, violation: Violation<'policy>) {
+        self.index += 1;
+        self.blocked |= violation.policy.delivery.enforces();
     }
 
     /// The enforcement decision once every policy has been examined.

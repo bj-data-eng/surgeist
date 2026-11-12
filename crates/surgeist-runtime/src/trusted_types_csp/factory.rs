@@ -1,6 +1,7 @@
 //! One Global's created policy names and retained default policy.
 
-use super::{Decision, Policy, Violation};
+use super::reports::Sample;
+use super::{Decision, Policy, ReportError, Violation, ViolationReport};
 use std::{error::Error, fmt, mem::size_of, rc::Rc};
 use surgeist_html::values::DocumentString;
 
@@ -143,6 +144,16 @@ impl<'factory, 'policy, Payload, Backing> PolicyCreation<'factory, 'policy, '_, 
         step: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<Option<Violation<'policy>>, E> {
         self.decision.next_violation(step)
+    }
+
+    /// Prepare the next report using the original policy name.
+    pub fn next_report<E, ReportBacking>(
+        &mut self,
+        step: &mut impl FnMut() -> Result<(), E>,
+        admit: impl FnOnce(usize) -> Result<ReportBacking, E>,
+    ) -> Result<Option<ViolationReport<ReportBacking>>, ReportError<E>> {
+        self.decision
+            .next_report(Sample::Name(self.name.code_units()), step, admit)
     }
 
     /// Admit the name record after successful CSP and name checks. The
