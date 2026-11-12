@@ -85,14 +85,40 @@ where
         Vec<crate::inline_wrapping::family::NativeFormatterCompletion<Tree::Scalar>>,
     groups: Option<crate::group_alignment::State<Tree::Node, Tree::Scalar>>,
     text: Option<crate::text_layout::state::TextComputation<'a, Tree::Node, Tree::Scalar>>,
-    unrounded_entries: Vec<LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
-    final_entries: Vec<LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
-    unrounded_inline_fragment_groups: Vec<StagedInlineFragmentGroup<Tree::Node, Tree::Scalar>>,
-    final_inline_fragment_groups: Vec<StagedInlineFragmentGroup<Tree::Node, Tree::Scalar>>,
-    cache_store_entries: Vec<LayoutCacheStoreEntryOf<Tree::Node, Tree::Scalar>>,
-    cache_clear_entries: Vec<LayoutCacheClearEntry<Tree::Node>>,
-    invalidated_nodes: Vec<Tree::Node>,
+    outputs: OutputStaging<Tree::Node, Tree::Scalar>,
+    cache: CacheStaging<Tree::Node, Tree::Scalar>,
     entry_storage: Option<EntryStorage>,
+}
+
+struct OutputStaging<Node, S: LayoutScalar> {
+    unrounded: Vec<LayoutOutputEntryOf<Node, S>>,
+    rounded: Vec<LayoutOutputEntryOf<Node, S>>,
+    unrounded_fragments: Vec<StagedInlineFragmentGroup<Node, S>>,
+    rounded_fragments: Vec<StagedInlineFragmentGroup<Node, S>>,
+}
+
+impl<Node, S: LayoutScalar> OutputStaging<Node, S> {
+    fn new() -> Self {
+        Self {
+            unrounded: Vec::new(),
+            rounded: Vec::new(),
+            unrounded_fragments: Vec::new(),
+            rounded_fragments: Vec::new(),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.unrounded.clear();
+        self.rounded.clear();
+        self.unrounded_fragments.clear();
+        self.rounded_fragments.clear();
+    }
+}
+
+struct CacheStaging<Node, S: LayoutScalar> {
+    stores: Vec<LayoutCacheStoreEntryOf<Node, S>>,
+    clears: Vec<LayoutCacheClearEntry<Node>>,
+    invalidated: Vec<Node>,
 }
 
 struct EntryStorage {
@@ -164,18 +190,18 @@ pub(crate) fn observe_grid_probe<'input, Tree: LayoutTree>(
 > {
     let mut owner = ComputeSession::new(tree, Vec::new());
     let result = owner.observe_grid_overflow(node, probe);
-    assert!(owner.unrounded_entries.is_empty());
-    assert!(owner.final_entries.is_empty());
-    assert!(owner.unrounded_inline_fragment_groups.is_empty());
-    assert!(owner.final_inline_fragment_groups.is_empty());
+    assert!(owner.outputs.unrounded.is_empty());
+    assert!(owner.outputs.rounded.is_empty());
+    assert!(owner.outputs.unrounded_fragments.is_empty());
+    assert!(owner.outputs.rounded_fragments.is_empty());
     assert!(
         owner
             .text
             .as_ref()
             .is_none_or(|state| state.pending.is_empty())
     );
-    assert!(owner.cache_store_entries.is_empty());
-    assert!(owner.cache_clear_entries.is_empty());
+    assert!(owner.cache.stores.is_empty());
+    assert!(owner.cache.clears.is_empty());
     result
 }
 
@@ -195,7 +221,7 @@ pub(crate) fn seed_grid_leaf_requests<Tree: LayoutTree>(
         assert!(tree.has_leaf_measurement(node));
         owner.compute_child(node, input)?;
     }
-    Ok(owner.cache_store_entries)
+    Ok(owner.cache.stores)
 }
 
 impl<'a, Tree> ComputeSession<'a, Tree>
@@ -255,13 +281,12 @@ where
             native_inline_completions: Vec::new(),
             groups: None,
             text: None,
-            unrounded_entries: Vec::new(),
-            final_entries: Vec::new(),
-            unrounded_inline_fragment_groups: Vec::new(),
-            final_inline_fragment_groups: Vec::new(),
-            cache_store_entries: Vec::new(),
-            cache_clear_entries,
-            invalidated_nodes,
+            outputs: OutputStaging::new(),
+            cache: CacheStaging {
+                stores: Vec::new(),
+                clears: cache_clear_entries,
+                invalidated: invalidated_nodes,
+            },
             entry_storage: None,
         }
     }
@@ -321,7 +346,7 @@ where
             }
         }
         let mut dirty = Rows::new();
-        for &subject in &self.invalidated_nodes {
+        for &subject in &self.cache.invalidated {
             entry_staging::inspect(funding_ref, 1).map_err(error)?;
             if entry_staging::contains(&scope.values, &subject, funding_ref).map_err(error)? {
                 dirty.push(subject, funding_ref).map_err(error)?;
@@ -524,7 +549,8 @@ where
         let mut frames = Vec::new();
         while let Some((node, parent_visual, parent_normal)) = pending.pop() {
             let entry = self
-                .final_entries
+                .outputs
+                .rounded
                 .iter()
                 .find(|entry| entry.node() == node)
                 .ok_or_else(|| {
@@ -592,7 +618,8 @@ where
                 ),
             };
             let measured_inset_basis = self
-                .unrounded_entries
+                .outputs
+                .unrounded
                 .iter()
                 .find(|entry| entry.node() == node)
                 .and_then(LayoutOutputEntryOf::measured_inset_basis)
@@ -730,11 +757,8 @@ where
         self.native_inline_runs.clear();
         self.native_inline_completions.clear();
         self.block_floats.reset();
-        self.unrounded_entries.clear();
-        self.final_entries.clear();
-        self.unrounded_inline_fragment_groups.clear();
-        self.final_inline_fragment_groups.clear();
-        self.cache_store_entries.clear();
+        self.outputs.reset();
+        self.cache.stores.clear();
         Ok(())
     }
 
@@ -813,13 +837,13 @@ where
         }
         Ok(super::block_scope::Packet {
             target: self.bound.expect("scope production is bound to a target"),
-            entries: self.unrounded_entries,
+            entries: self.outputs.unrounded,
             margins: self
                 .fragment_margins
                 .expect("bound scope has margin provenance"),
             receipts,
             projections,
-            clears: self.cache_clear_entries,
+            clears: self.cache.clears,
             bodies: self.block_bodies,
         })
     }
@@ -838,10 +862,12 @@ where
 
     fn complete(self, root: Tree::Node) -> CompletedLayoutBatchOf<Tree::Node, Tree::Scalar> {
         let mut unrounded_inline_fragments: Vec<_> = self
-            .final_inline_fragment_groups
+            .outputs
+            .rounded_fragments
             .iter()
             .flat_map(|final_group| {
-                self.unrounded_inline_fragment_groups
+                self.outputs
+                    .unrounded_fragments
                     .iter()
                     .find(|group| group.node == final_group.node)
                     .and_then(|group| group.fragments.as_deref())
@@ -857,7 +883,8 @@ where
             })
             .collect();
         let mut final_inline_fragments: Vec<_> = self
-            .final_inline_fragment_groups
+            .outputs
+            .rounded_fragments
             .iter()
             .flat_map(|group| {
                 group
@@ -885,13 +912,13 @@ where
         let mut batch = CompletedLayoutBatchOf::from_entries(
             root,
             crate::output::CompletedBatchEntries {
-                unrounded: self.unrounded_entries,
-                final_entries: self.final_entries,
+                unrounded: self.outputs.unrounded,
+                final_entries: self.outputs.rounded,
                 unrounded_inline: unrounded_inline_fragments,
                 final_inline: final_inline_fragments,
-                stores: self.cache_store_entries,
-                clears: self.cache_clear_entries,
-                invalidated: self.invalidated_nodes,
+                stores: self.cache.stores,
+                clears: self.cache.clears,
+                invalidated: self.cache.invalidated,
             },
         );
         batch.target = self.bound;
@@ -934,18 +961,18 @@ where
     ) -> CompletedLayoutBatchOf<Tree::Node, Tree::Scalar> {
         let mut visited = Vec::new();
         let mut pending = vec![root];
-        let mut ordered_unrounded = Vec::with_capacity(self.unrounded_entries.len());
-        let mut ordered_final = Vec::with_capacity(self.final_entries.len());
+        let mut ordered_unrounded = Vec::with_capacity(self.outputs.unrounded.len());
+        let mut ordered_final = Vec::with_capacity(self.outputs.rounded.len());
         let mut source_children = Vec::new();
         while let Some(node) = pending.pop() {
             if visited.contains(&node) {
                 continue;
             }
             visited.push(node);
-            if let Some(entry) = take_layout_entry(&mut self.unrounded_entries, node) {
+            if let Some(entry) = take_layout_entry(&mut self.outputs.unrounded, node) {
                 ordered_unrounded.push(entry);
             }
-            if let Some(entry) = take_layout_entry(&mut self.final_entries, node) {
+            if let Some(entry) = take_layout_entry(&mut self.outputs.rounded, node) {
                 ordered_final.push(entry);
             }
             let children = self.tree.children(node).collect::<Vec<_>>();
@@ -960,11 +987,11 @@ where
             ));
         }
         assert!(
-            self.unrounded_entries.is_empty() && self.final_entries.is_empty(),
+            self.outputs.unrounded.is_empty() && self.outputs.rounded.is_empty(),
             "completed output nodes remain reachable from the validated root"
         );
-        self.unrounded_entries = ordered_unrounded;
-        self.final_entries = ordered_final;
+        self.outputs.unrounded = ordered_unrounded;
+        self.outputs.rounded = ordered_final;
         let mut batch = self.complete(root);
         let published: Vec<_> = batch.nodes.iter().map(|entry| entry.node()).collect();
         for (node, mut children) in source_children {
@@ -1019,7 +1046,8 @@ where
     }
 
     fn staged_source_index(&self, node: Tree::Node) -> crate::SourceIndex {
-        self.unrounded_entries
+        self.outputs
+            .unrounded
             .iter()
             .rev()
             .find(|entry| entry.node() == node)
@@ -1494,7 +1522,8 @@ where
         Self::Scalar,
         Tree::MeasureError,
     > {
-        self.unrounded_entries
+        self.outputs
+            .unrounded
             .iter()
             .rev()
             .find(|entry| entry.node() == node)
@@ -1537,17 +1566,17 @@ where
             if let Some(text) = &mut self.text {
                 text.discard_placement(node);
             }
-            self.cache_store_entries
-                .retain(|entry| entry.node() != node);
+            self.cache.stores.retain(|entry| entry.node() != node);
         }
         if let Some(index) = self
-            .unrounded_entries
+            .outputs
+            .unrounded
             .iter()
             .position(|entry| entry.node() == node)
         {
-            self.unrounded_entries.remove(index);
+            self.outputs.unrounded.remove(index);
         }
-        self.unrounded_entries.push(entry);
+        self.outputs.unrounded.push(entry);
     }
 
     fn publish_native_inline_run(
@@ -1621,7 +1650,7 @@ where
         node: Self::Node,
         fragments: Option<Vec<InlineFragmentOutputOf<Self::Scalar>>>,
     ) {
-        set_inline_fragment_group(&mut self.unrounded_inline_fragment_groups, node, fragments);
+        set_inline_fragment_group(&mut self.outputs.unrounded_fragments, node, fragments);
     }
 
     fn fragment_minimum(
@@ -1928,7 +1957,7 @@ where
         Self::Scalar,
         Tree::MeasureError,
     > {
-        let mut observation = Self::new(self.tree, self.invalidated_nodes.clone());
+        let mut observation = Self::new(self.tree, self.cache.invalidated.clone());
         observation.block_floats = self.block_floats.fork();
         observation.entry_sources = self.entry_sources.clone();
         observation.wrapping = self.wrapping.clone();
@@ -2056,12 +2085,12 @@ where
             output,
             frames,
             associations,
-            entries: probe.unrounded_entries,
-            fragments: probe.unrounded_inline_fragment_groups,
+            entries: probe.outputs.unrounded,
+            fragments: probe.outputs.unrounded_fragments,
             native_inline_runs: probe.native_inline_runs,
             native_inline_completions: probe.native_inline_completions,
-            stores: probe.cache_store_entries,
-            clears: probe.cache_clear_entries,
+            stores: probe.cache.stores,
+            clears: probe.cache.clears,
             pending,
             absolute_baselines,
             scope_fragments,
@@ -2254,7 +2283,8 @@ where
         Self::Scalar,
         Tree::MeasureError,
     > {
-        self.unrounded_entries
+        self.outputs
+            .unrounded
             .iter()
             .rev()
             .find(|entry| entry.node() == node)
@@ -2274,13 +2304,14 @@ where
         let node = entry.node();
         entry.non_box = self.publication_kind(&entry);
         if let Some(index) = self
-            .final_entries
+            .outputs
+            .rounded
             .iter()
             .position(|entry| entry.node() == node)
         {
-            self.final_entries.remove(index);
+            self.outputs.rounded.remove(index);
         }
-        self.final_entries.push(entry);
+        self.outputs.rounded.push(entry);
     }
 
     fn unrounded_inline_fragment_state(
@@ -2288,7 +2319,8 @@ where
         node: Self::Node,
     ) -> UnroundedInlineFragmentState<'_, Self::Scalar> {
         if let Some(group) = self
-            .unrounded_inline_fragment_groups
+            .outputs
+            .unrounded_fragments
             .iter()
             .find(|group| group.node == node)
         {
@@ -2307,13 +2339,9 @@ where
         unrounded: Vec<InlineFragmentOutputOf<Self::Scalar>>,
         final_fragments: Vec<InlineFragmentOutputOf<Self::Scalar>>,
     ) {
+        set_inline_fragment_group(&mut self.outputs.unrounded_fragments, node, Some(unrounded));
         set_inline_fragment_group(
-            &mut self.unrounded_inline_fragment_groups,
-            node,
-            Some(unrounded),
-        );
-        set_inline_fragment_group(
-            &mut self.final_inline_fragment_groups,
+            &mut self.outputs.rounded_fragments,
             node,
             Some(final_fragments),
         );
@@ -2367,7 +2395,7 @@ where
         context: crate::CacheKeyContext,
     ) -> SessionResult<Tree, Option<ComputeOutputOf<Self::Scalar>>> {
         if self.bound.is_some()
-            || self.invalidated_nodes.contains(&node)
+            || self.cache.invalidated.contains(&node)
             || self.block_floats.blocks_cache(node, input)
             || self.wrapping_uncached.contains(&node)
         {
@@ -2459,7 +2487,7 @@ where
             )
         };
         let mut previous = None;
-        for (index, entry) in self.cache_store_entries.iter().enumerate() {
+        for (index, entry) in self.cache.stores.iter().enumerate() {
             entry_staging::inspect(funding.as_ref(), 1).map_err(error)?;
             if entry.node() == node && entry.input() == input && entry.context() == context {
                 previous = Some(index);
@@ -2467,17 +2495,18 @@ where
             }
         }
         if let Some(index) = previous {
-            entry_staging::inspect(funding.as_ref(), self.cache_store_entries.len() - index - 1)
+            entry_staging::inspect(funding.as_ref(), self.cache.stores.len() - index - 1)
                 .map_err(error)?;
-            self.cache_store_entries.remove(index);
+            self.cache.stores.remove(index);
         }
         if let Some(storage) = &mut self.entry_storage {
             storage
                 .stores
-                .reserve_push(&mut self.cache_store_entries, funding.as_ref())
+                .reserve_push(&mut self.cache.stores, funding.as_ref())
                 .map_err(error)?;
         }
-        self.cache_store_entries
+        self.cache
+            .stores
             .push(LayoutCacheStoreEntryOf::new(node, *input, context, output));
         Ok(())
     }
@@ -2495,7 +2524,7 @@ where
                 LayoutErrorKindOf::Text(error),
             )
         };
-        for entry in &self.cache_clear_entries {
+        for entry in &self.cache.clears {
             entry_staging::inspect(funding.as_ref(), 1).map_err(error)?;
             if entry.node() == node {
                 return Ok(());
@@ -2504,11 +2533,10 @@ where
         if let Some(storage) = &mut self.entry_storage {
             storage
                 .clears
-                .reserve_push(&mut self.cache_clear_entries, funding.as_ref())
+                .reserve_push(&mut self.cache.clears, funding.as_ref())
                 .map_err(error)?;
         }
-        self.cache_clear_entries
-            .push(LayoutCacheClearEntry::new(node));
+        self.cache.clears.push(LayoutCacheClearEntry::new(node));
         Ok(())
     }
 }
@@ -2602,21 +2630,23 @@ mod tests {
                 .unwrap();
             assert_eq!(rejected.output.size.height, S::from_f64(30.0));
             drop(rejected);
-            assert!(session.unrounded_entries.is_empty());
-            assert!(session.cache_store_entries.is_empty());
+            assert!(session.outputs.unrounded.is_empty());
+            assert!(session.cache.stores.is_empty());
             let accepted = session
                 .probe_float_child(1, input, FloatChildTrial::Detached)
                 .unwrap();
             session.accept_float_child(&accepted).unwrap();
             let child = session
-                .unrounded_entries
+                .outputs
+                .unrounded
                 .iter()
                 .find(|entry| entry.node() == 2)
                 .unwrap()
                 .output();
             assert_eq!(child.size.height, S::ZERO);
             let float = session
-                .unrounded_entries
+                .outputs
+                .unrounded
                 .iter()
                 .find(|entry| entry.node() == 3)
                 .unwrap()
@@ -2861,7 +2891,7 @@ mod tests {
             );
             Compute::set_unrounded_inline_fragment_state(&mut session, 1, Some(fragments.clone()));
             round_layout(&mut session, 1).unwrap();
-            assert_eq!(session.final_entries[0].output(), output);
+            assert_eq!(session.outputs.rounded[0].output(), output);
             let batch = session.complete(1);
             assert_eq!(
                 batch
@@ -3282,12 +3312,13 @@ mod grid_overflow_observation_tests {
                     measured.size,
                     Size::new(S::from_f64(50.0), S::from_f64(20.0))
                 );
-                assert!(session.unrounded_entries.is_empty());
-                assert!(session.unrounded_inline_fragment_groups.is_empty());
+                assert!(session.outputs.unrounded.is_empty());
+                assert!(session.outputs.unrounded_fragments.is_empty());
                 assert!(session.text.as_ref().unwrap().pending.is_empty());
                 assert!(
                     session
-                        .cache_store_entries
+                        .cache
+                        .stores
                         .iter()
                         .all(|entry| !entry.input().run_mode().is_perform_layout())
                 );
@@ -3380,12 +3411,13 @@ mod grid_overflow_observation_tests {
                         .map(NonNegativeFiniteOf::get),
                     Some(S::from_f64(45.0))
                 );
-                assert!(session.unrounded_entries.is_empty());
-                assert!(session.unrounded_inline_fragment_groups.is_empty());
+                assert!(session.outputs.unrounded.is_empty());
+                assert!(session.outputs.unrounded_fragments.is_empty());
                 assert!(session.text.as_ref().unwrap().pending.is_empty());
                 assert!(
                     session
-                        .cache_store_entries
+                        .cache
+                        .stores
                         .iter()
                         .all(|entry| !entry.input().run_mode().is_perform_layout())
                 );
