@@ -39,6 +39,39 @@ pub(super) struct InFlowComputedBox<Node, S: LayoutScalar> {
 
 type InFlowBoxResult<Node, S, M> = ComputeResult<Node, InFlowComputedBox<Node, S>, S, M>;
 
+impl<Node, S: LayoutScalar> InFlowBoxComputation<'_, '_, Node, S> {
+    fn parent_entry(&self) -> scope::ParentEntry<S> {
+        scope::ParentEntry {
+            reference: self.containing_size,
+            cursor: self.adjoining.cursor,
+            occupied: self.occupied_block_end,
+            active: self.adjoining.active,
+            top: self.adjoining.top,
+            first: self.adjoining.start_open,
+        }
+    }
+}
+
+struct InFlowBoxPreparation<S: LayoutScalar> {
+    child_input: ComputeInputOf<S>,
+    child_indent_context: crate::text_indent::BlockIndentContext<S>,
+    parent_logical_unresolved_margin: LogicalEdgesOf<ResolvedLengthAutoOf<S>>,
+    parent_inline_basis: Option<S>,
+    avoids_float_exclusions: bool,
+    inherits_float_exclusions: bool,
+    places_against_float_exclusions: bool,
+}
+
+struct InFlowBoxOutput<Node, S: LayoutScalar> {
+    output: ComputeOutputOf<S>,
+    shared_child: Option<SharedInFlowPlacement<Node, S>>,
+    clearance_funding: Option<crate::text_layout::scope_alignment::EntryFunding<S>>,
+    introduced_cut: Option<entry::canonical::Separation<Node, S>>,
+}
+
+type InFlowBoxRequestResult<Node, S, M> =
+    ComputeResult<Node, (scope::ChildRequest<Node, S>, InFlowBoxPreparation<S>), S, M>;
+
 pub(super) fn compute_in_flow_box<'input, Tree, S, M>(
     tree: &mut Tree,
     computation: InFlowBoxComputation<'_, 'input, Tree::Node, S>,
@@ -48,6 +81,7 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
+    let (request, preparation) = prepare_in_flow_box(tree, &computation)?;
     let InFlowBoxComputation {
         node,
         child,
@@ -55,29 +89,79 @@ where
         child_style,
         constants,
         prepared,
-        adjoining,
+        float_exclusions,
+        ..
+    } = computation;
+    let resident_cut = *remaining_cut;
+    let output = if preparation.inherits_float_exclusions {
+        let computed = compute_shared_in_flow_child(
+            tree,
+            SharedInFlowChild {
+                node,
+                child,
+                index,
+                child_input: preparation.child_input,
+                child_style,
+                constants,
+                prepared,
+                parent_entry: computation.parent_entry(),
+                resident_cut,
+                float_exclusions,
+            },
+        )?;
+        *remaining_cut = computed.remaining_cut;
+        InFlowBoxOutput {
+            output: computed.accepted.output,
+            shared_child: Some(SharedInFlowPlacement {
+                origin: computed.location,
+                floats: computed.accepted.floats,
+            }),
+            clearance_funding: computed.clearance_funding,
+            introduced_cut: computed.introduced_cut,
+        }
+    } else {
+        InFlowBoxOutput {
+            output: tree.compute_block_child(request)?,
+            shared_child: None,
+            clearance_funding: None,
+            introduced_cut: resident_cut
+                .filter(|cut| cut.container == node && cut.node == child && cut.index == index),
+        }
+    };
+    finish_in_flow_box(tree, &computation, preparation, output)
+}
+
+fn prepare_in_flow_box<'input, Tree, S, M>(
+    tree: &mut Tree,
+    computation: &InFlowBoxComputation<'_, 'input, Tree::Node, S>,
+) -> InFlowBoxRequestResult<Tree::Node, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let InFlowBoxComputation {
+        node,
+        child,
+        child_style,
+        constants,
+        prepared,
         baselines,
         float_exclusions,
         input,
         pass_request,
-        child_run_mode,
         normal_operation,
         physical_float_context,
-        containing_size,
         inner_inline,
-        content_inline_size,
-        occupied_block_end,
-    } = computation;
+        ..
+    } = *computation;
     let child_indent_context = prepared
         .input
         .block_indent_context()
         .expect("shared child preparation supplies generating context");
     let unresolved_margin = prepared.unresolved_margin;
-    let child_padding = prepared.padding;
-    let child_border = prepared.border;
     let parent_logical_unresolved_margin = constants.flow_axes.logical_edges(unresolved_margin);
     let parent_logical_available = constants.flow_axes.logical_size(pass_request.axes());
-    let mut child_input = prepared
+    let child_input = prepared
         .input
         .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
         .with_physical_baseline_demand(
@@ -98,22 +182,8 @@ where
         )
         && !tree.has_leaf_measurement(child)
         && (!float_exclusions.is_empty() || tree.block_float_work(child));
-    let mut shared_child = None;
-    let mut clearance_funding = None;
-    let resident_cut = *remaining_cut;
-    let mut introduced_cut =
-        resident_cut.filter(|cut| cut.container == node && cut.node == child && cut.index == index);
-    let mut accepted_float_position = None;
     let places_against_float_exclusions =
         physical_float_context && avoids_float_exclusions && !float_exclusions.is_empty();
-    let parent_entry = || scope::ParentEntry {
-        reference: containing_size,
-        cursor: adjoining.cursor,
-        occupied: occupied_block_end,
-        active: adjoining.active,
-        top: adjoining.top,
-        first: adjoining.start_open,
-    };
     let child_request = scope::ChildRequest {
         node: child,
         entry: None,
@@ -134,7 +204,7 @@ where
             child_style,
             constants,
             prepared,
-            parent_entry(),
+            computation.parent_entry(),
         )?;
         scope::ChildRequest {
             node: child,
@@ -144,39 +214,64 @@ where
     } else {
         child_request
     };
-    let mut output = if inherits_float_exclusions {
-        let computed = compute_shared_in_flow_child(
-            tree,
-            SharedInFlowChild {
-                node,
-                child,
-                index,
-                child_input,
-                child_style,
-                constants,
-                prepared,
-                parent_entry: parent_entry(),
-                resident_cut,
-                float_exclusions,
-            },
-        )?;
-        clearance_funding = computed.clearance_funding;
-        introduced_cut = computed.introduced_cut;
-        *remaining_cut = computed.remaining_cut;
-        shared_child = Some(SharedInFlowPlacement {
-            origin: computed.location,
-            floats: computed.accepted.floats,
-        });
-        computed.accepted.output
-    } else {
-        tree.compute_block_child(child_request)?
-    };
-
     let parent_inline_basis = inner_inline.or(parent_logical_available
         .inline
         .space()
         .definite_size()
         .map(crate::NonNegativeFiniteOf::get));
+    Ok((
+        child_request,
+        InFlowBoxPreparation {
+            child_input,
+            child_indent_context,
+            parent_logical_unresolved_margin,
+            parent_inline_basis,
+            avoids_float_exclusions,
+            inherits_float_exclusions,
+            places_against_float_exclusions,
+        },
+    ))
+}
+
+fn finish_in_flow_box<'input, Tree, S, M>(
+    tree: &mut Tree,
+    computation: &InFlowBoxComputation<'_, 'input, Tree::Node, S>,
+    preparation: InFlowBoxPreparation<S>,
+    result: InFlowBoxOutput<Tree::Node, S>,
+) -> InFlowBoxResult<Tree::Node, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let InFlowBoxComputation {
+        child,
+        child_style,
+        constants,
+        prepared,
+        adjoining,
+        float_exclusions,
+        input,
+        pass_request,
+        child_run_mode,
+        content_inline_size,
+        ..
+    } = *computation;
+    let InFlowBoxPreparation {
+        mut child_input,
+        child_indent_context,
+        parent_logical_unresolved_margin,
+        parent_inline_basis,
+        avoids_float_exclusions,
+        places_against_float_exclusions,
+        ..
+    } = preparation;
+    let InFlowBoxOutput {
+        mut output,
+        shared_child,
+        clearance_funding,
+        introduced_cut,
+    } = result;
+    let mut accepted_float_position = None;
     let mut logical_child_size = constants.flow_axes.logical_size(output.size);
     let mut logical_child_margin = resolve_logical_in_flow_margin(
         parent_logical_unresolved_margin,
@@ -236,8 +331,8 @@ where
         output,
         child_input,
         child_margin,
-        child_padding,
-        child_border,
+        child_padding: prepared.padding,
+        child_border: prepared.border,
         logical_child_margin,
         logical_child_size,
         avoids_float_exclusions,
