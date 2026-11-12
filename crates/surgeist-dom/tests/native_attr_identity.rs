@@ -52,6 +52,104 @@ fn standard_attribute_sink_requires_the_node_documents_global() {
 }
 
 #[test]
+fn attached_attr_text_content_preserves_the_attribute_identity() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let element = setup.create_element(&document, "div");
+    let namespace = Namespace::from_uri("urn:attr-test");
+    setup.set_attribute_ns(&element, namespace, "original:item", "old");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let name = "original:item".into();
+    let before = dom.snapshot();
+    let attr = before
+        .node(element)
+        .unwrap()
+        .get_attribute_node(&name)
+        .unwrap()
+        .id();
+    let value = DocumentString::from_utf16(vec![0xd800, 0x0041, 0]);
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_text_content(attr.node(), value.clone()),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    let after = lease.snapshot();
+    let current = after
+        .node(element)
+        .unwrap()
+        .get_attribute_node(&name)
+        .unwrap();
+    assert_eq!(current.id(), attr);
+    assert_eq!(current.value(), &value);
+    assert_eq!(before.attr(attr.node()).unwrap().value(), &"old".into());
+}
+
+#[test]
+fn attached_attr_text_content_verifies_against_its_owner_element() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let element = setup.create_element_ns(&document, Namespace::html(), "div");
+    setup.set_attribute(&element, "onclick", "old");
+    let detached = setup.create_attribute(&document, "onclick");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let detached = commit.created(&detached).unwrap().unwrap();
+    let before = dom.snapshot();
+    let attr = before
+        .node(element)
+        .unwrap()
+        .get_attribute_node(&"onclick".into())
+        .unwrap()
+        .id();
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_text_content(attr.node(), "new"),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel),
+        Err(DomError::SourceAttributeGlobalUnavailable)
+    ));
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        lease.snapshot().attr(attr.node()).unwrap().value(),
+        &"old".into()
+    );
+    drop(lease);
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_text_content(detached, "new"),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    assert_eq!(
+        lease.snapshot().attr(detached).unwrap().value(),
+        &"new".into()
+    );
+}
+
+#[test]
 fn standard_source_setters_select_exact_attribute_sinks() {
     let cancel = AtomicBool::new(false);
     let xlink = "http://www.w3.org/1999/xlink";
