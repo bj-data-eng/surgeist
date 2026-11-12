@@ -2,11 +2,11 @@ use super::super::{formatted, roles};
 use super::*;
 
 pub(super) struct AcceptedCandidate {
-    pub(super) candidate: EvaluatedCandidate,
-    pub(super) role_start: usize,
-    pub(super) box_use_start: usize,
-    pub(super) zone_basis: ZoneBasis,
-    pub(super) phrase_basis: Vec<PhraseBasis>,
+    candidate: EvaluatedCandidate,
+    role_start: usize,
+    box_use_start: usize,
+    zone_basis: ZoneBasis,
+    phrase_basis: Vec<PhraseBasis>,
 }
 
 #[derive(Clone, Copy)]
