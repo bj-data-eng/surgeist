@@ -613,6 +613,7 @@ fn policy_only_raises_reject_foreign_completed_and_lowering_requests_without_cha
         .unwrap()
         .observation()
         .unwrap()
+        .common
         .limits;
     assert_eq!(
         dom.raise_source_event_limits(&foreign_request, limits(), &cancel),
@@ -640,6 +641,7 @@ fn policy_only_raises_reject_foreign_completed_and_lowering_requests_without_cha
                 .unwrap()
                 .observation()
                 .unwrap()
+                .common
                 .limits,
             original
         );
@@ -1232,7 +1234,7 @@ fn observation_resume_preserves_reserved_close_before_and_after_receipt_acceptan
             .unwrap()
             .observation()
             .unwrap();
-        assert_eq!(observation.limits, original);
+        assert_eq!(observation.common.limits, original);
         assert_eq!(observation.request.identity(), event.identity());
         assert!(Arc::ptr_eq(&observation.request.work, &event.work));
         assert_eq!(

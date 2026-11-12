@@ -1,13 +1,17 @@
 //! The original standard setter's registered verification and retained reply.
+use super::dialog::{CallbackObservation, OperationDraft, Usage};
 use super::*;
 use crate::hosted::ScriptRegistration;
+use crate::source::callback::CallbackWork;
 use crate::store::attributes::PreparedAttributeName;
 use crate::{DomDocumentScriptRegistration, DomHostedError};
 
 pub(in crate::store) struct Pending {
     request: DomSourceAttributeVerificationRequest,
+    registration: Arc<ScriptRegistration>,
     operands: Operands,
     outcome: Option<RetainedOutcome>,
+    callback_custody: Option<crate::DomDispatchCustody>,
 }
 
 enum Target {
@@ -29,6 +33,10 @@ struct RetainedOutcome {
 }
 
 impl Pending {
+    pub(super) fn registration_is_active(&self) -> bool {
+        self.registration.is_active()
+    }
+
     pub(super) fn has_outcome(&self) -> bool {
         self.outcome.is_some()
     }
@@ -46,7 +54,7 @@ impl Pending {
             .ok_or(DomError::InvalidSourceOperation)?;
         let error = match &retained.outcome {
             Value(value) => {
-                let result = match self.operands.target {
+                let result = (|| match self.operands.target {
                     Target::Named => {
                         let element = draft.resolve(self.request.element.into())?;
                         let name = self
@@ -71,9 +79,9 @@ impl Pending {
                             cancel,
                         )
                     }
-                };
+                })();
                 match result {
-                    Err(DomError::InUseAttribute) => DomError::InUseAttribute,
+                    Err(error @ (DomError::InUseAttribute | DomError::StaleNode)) => error,
                     other => return other,
                 }
             }
@@ -253,10 +261,75 @@ impl Operation {
                 global,
                 sink,
             },
+            registration: registration.clone(),
             operands,
             outcome: None,
+            callback_custody: None,
         });
         Ok(())
+    }
+
+    pub(super) fn observe_attribute_verification(
+        &mut self,
+        dom: &mut Dom,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let protected = dom.source_reserved_closing(cancel)?;
+        if self.limits.phases < headroom::FINAL_PUBLICATION {
+            return Err(DomError::SourcePublicationLimit);
+        }
+        dom.revision
+            .0
+            .checked_add(dom.hosted_revisions)
+            .and_then(|next| next.checked_add(protected))
+            .and_then(|next| next.checked_add(headroom::FINAL_PUBLICATION))
+            .ok_or(DomError::RevisionExhausted)?;
+        let custody = formation::CallbackWorkCustody::prepare(
+            self.draft.custody_ledger(),
+            self.draft.source_work_custody(),
+            self.draft.source_ancestor_custody(),
+            |usage| self.draft.admit_custody_usage(usage, cancel),
+        )?;
+        let work = formation::allocated_arc(CallbackWork::new(
+            self.draft.source_work.source_arc().clone(),
+            self.limits.work,
+            self.draft.source_ancestors.clone(),
+            formation::SourceStorage::new(self.draft.custody_ledger().clone()),
+        ));
+        let autofocus = self.draft.autofocus_count(cancel)?;
+        let observation = CallbackObservation {
+            owner: self.draft.owner.clone(),
+            usage: Usage::capture(&mut self.draft, autofocus),
+            limits: self.limits,
+            inputs: self.command_storage,
+            work: work.clone(),
+        };
+        self.event_custody = Some(custody.finish(work));
+        self.headroom = Some(headroom::Reservation {
+            remaining_phases: headroom::FINAL_PUBLICATION,
+        });
+        self.draft = OperationDraft::AttributeObserved(observation);
+        self.command_storage = storage::Payload::default();
+        self.custody_bytes = 0;
+        self.custody_units = 0;
+        Ok(())
+    }
+
+    pub(super) fn qualify_active_attribute_callback(
+        &self,
+        dom: &Dom,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let pending = self
+            .attribute_verification
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        self.qualify_attribute_registration(
+            dom,
+            pending.request.global,
+            &pending.registration,
+            cancel,
+        )
     }
 
     fn qualify_attribute_registration(
@@ -267,18 +340,26 @@ impl Operation {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         check_cancel(cancel)?;
+        let original = match &self.draft {
+            OperationDraft::Segment(draft) => draft.script_registration.as_ref(),
+            OperationDraft::AttributeObserved(_) => self
+                .attribute_verification
+                .as_ref()
+                .map(|pending| &pending.registration),
+            OperationDraft::Observed(_) => None,
+        };
         if registration.global != global
             || dom.active_script_registration() != Some(registration.key)
-            || !self
-                .draft
-                .script_registration
-                .as_ref()
-                .is_some_and(|original| Arc::ptr_eq(original, registration))
+            || !original.is_some_and(|original| Arc::ptr_eq(original, registration))
         {
             return Err(DomError::SourceAttributeExecutorUnavailable);
         }
         match dom.dispatch_script_registration_current_with(registration, || {
-            self.draft.source_step(cancel).map_err(DomHostedError::from)
+            match self.callback_observation() {
+                Some(observation) => observation.work.step(cancel),
+                None => self.draft.source_step(cancel),
+            }
+            .map_err(DomHostedError::from)
         }) {
             Ok(true) => Ok(()),
             Err(DomHostedError::Dom(error)) => Err(error),
@@ -291,7 +372,159 @@ impl Operation {
 }
 
 impl DomSourceLease<'_> {
-    fn qualify_attribute_verification(
+    pub(super) fn parked_attribute_request(
+        &self,
+    ) -> Result<Option<DomSourceAttributeVerificationRequest>, DomError> {
+        let operation = self
+            .dom
+            .source_operation
+            .as_deref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        if operation
+            .callback_observation()
+            .is_some_and(|observation| !observation.work.scope_closed())
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        Ok((!operation.cancelled)
+            .then(|| operation.waiting_attribute_verification())
+            .flatten())
+    }
+
+    pub(super) fn rebase_attribute_observation(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let operation = self
+            .dom
+            .source_operation
+            .as_deref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let OperationDraft::AttributeObserved(observation) = &operation.draft else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        let limits = self.dom.source_rebase_transferred_limits(
+            observation.limits,
+            observation.inputs,
+            cancel,
+        )?;
+        let (mut draft, command) = Draft::new_source_root_with_work(
+            self.dom,
+            observation.owner.clone(),
+            super::super::initial::CommandStorage {
+                commands: &operation.commands,
+                capacity: operation.commands.capacity(),
+            },
+            limits,
+            super::super::initial::Replay {
+                work: observation.work.work.clone(),
+                identity: operation
+                    .event_custody
+                    .as_ref()
+                    .ok_or(DomError::InvalidSourceOperation)?
+                    .source()
+                    .identity(),
+                names: Some(operation.names.clone()),
+            },
+            cancel,
+        )?;
+        let custody_bytes = self.dom.source_owner_custody_bytes()?;
+        let custody_units = self.dom.fullscreen_custody_units()?;
+        let mut operation = self
+            .dom
+            .source_operation
+            .take()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        operation.prepare_rebased_inline(self.dom, &mut draft);
+        let old = std::mem::replace(&mut operation.draft, OperationDraft::Segment(draft));
+        let OperationDraft::AttributeObserved(observation) = old else {
+            self.dom.source_operation = Some(operation);
+            return Err(DomError::InvalidSourceOperation);
+        };
+        observation.work.stage.store(4, Ordering::Relaxed);
+        observation.usage.restore(&mut operation.draft);
+        if let Some(pending) = &mut operation.attribute_verification {
+            pending.callback_custody = None;
+        }
+        operation.command_storage = command;
+        operation.custody_bytes = custody_bytes;
+        operation.custody_units = custody_units;
+        operation.limits = observation.limits;
+        let refreshed = (|| {
+            operation.draft.source_limits =
+                Some(self.dom.source_rebase_limits(operation.limits, cancel)?);
+            operation.canonical_aux_bytes = self
+                .dom
+                .source_retained_stack_bytes()?
+                .checked_add(
+                    self.dom
+                        .source_dispatch_custody_bytes(|| operation.draft.source_step(cancel))?,
+                )
+                .ok_or(DomError::RepresentationExhausted)?;
+            Ok(())
+        })();
+        self.dom.source_operation = Some(operation);
+        refreshed
+    }
+
+    /// Open the exact original verifier's one callback scope. Drop the lease
+    /// before nested edits and drop this scope before accepting the outcome.
+    pub fn open_attribute_verification_callback<'registration>(
+        &mut self,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &'registration DomDocumentScriptRegistration,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceAttributeCallbackScope<'registration>, DomError> {
+        let operation = self.attribute_verification_operation(request, registration, cancel)?;
+        operation.qualify_attribute_registration(
+            self.dom,
+            request.global,
+            &registration.0,
+            cancel,
+        )?;
+        let observation = operation
+            .callback_observation()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let work = observation.work.clone();
+        if work.stage.load(Ordering::Relaxed) != 0 {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        let target = &operation
+            .attribute_verification
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?
+            .operands
+            .target;
+        let receivers = match target {
+            Target::Named => [request.element, request.element],
+            Target::Value(attr) | Target::Attachment(attr) => [request.element, *attr],
+        };
+        let count = if receivers[0] == receivers[1] { 1 } else { 2 };
+        let formation = self.dom.source_observation_formation(cancel)?;
+        work.step(cancel)?;
+        let custody = self.dom.register_dispatch_custody_with_formation(
+            &receivers[..count],
+            formation.as_ref(),
+            cancel,
+        )?;
+        let pending = self
+            .dom
+            .source_operation
+            .as_mut()
+            .and_then(|operation| operation.attribute_verification.as_mut())
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let scope = work.open_scope().ok_or(DomError::InvalidSourceOperation)?;
+        work.stage
+            .compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed)
+            .map_err(|_| DomError::InvalidSourceOperation)?;
+        pending.callback_custody = Some(custody);
+        Ok(DomSourceAttributeCallbackScope {
+            _scope: scope,
+            _registration: registration,
+        })
+    }
+
+    fn attribute_verification_operation(
         &self,
         request: DomSourceAttributeVerificationRequest,
         registration: &DomDocumentScriptRegistration,
@@ -310,12 +543,13 @@ impl DomSourceLease<'_> {
         if operation.cancelled {
             return Err(DomError::Cancelled);
         }
-        operation.qualify_attribute_registration(
-            self.dom,
-            request.global,
-            &registration.0,
-            cancel,
-        )?;
+        if !operation
+            .attribute_verification
+            .as_ref()
+            .is_some_and(|pending| Arc::ptr_eq(&pending.registration, &registration.0))
+        {
+            return Err(DomError::SourceAttributeExecutorUnavailable);
+        }
         Ok(operation)
     }
 
@@ -326,7 +560,13 @@ impl DomSourceLease<'_> {
         registration: &DomDocumentScriptRegistration,
         cancel: &AtomicBool,
     ) -> Result<&DocumentString, DomError> {
-        let operation = self.qualify_attribute_verification(request, registration, cancel)?;
+        let operation = self.attribute_verification_operation(request, registration, cancel)?;
+        operation.qualify_attribute_registration(
+            self.dom,
+            request.global,
+            &registration.0,
+            cancel,
+        )?;
         let pending = operation
             .attribute_verification
             .as_ref()
@@ -343,10 +583,28 @@ impl DomSourceLease<'_> {
         outcome: &mut Option<DomSourceAttributeVerificationOutcome>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let operation = self.qualify_attribute_verification(request, registration, cancel)?;
+        let operation = self.attribute_verification_operation(request, registration, cancel)?;
+        let observation = operation
+            .callback_observation()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        if !observation.work.scope_closed() {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        match observation.work.stage.load(Ordering::Relaxed) {
+            0 => operation.qualify_attribute_registration(
+                self.dom,
+                request.global,
+                &registration.0,
+                cancel,
+            )?,
+            // The original live Global was qualified on entry. Its outcome
+            // still belongs to that invocation after nested changes.
+            1 => observation.work.step(cancel)?,
+            _ => return Err(DomError::InvalidSourceOperation),
+        }
         let candidate = outcome.as_ref().ok_or(DomError::InvalidSourceOperation)?;
         let backing = if let DomSourceAttributeVerificationOutcome::Value(value) = candidate {
-            let formation = formation::Formation::new(&operation.draft, cancel)?;
+            let formation = self.dom.source_observation_formation(cancel)?;
             if let Some(formation) = &formation {
                 let mut payload = storage::Payload::default();
                 payload.string(value)?;

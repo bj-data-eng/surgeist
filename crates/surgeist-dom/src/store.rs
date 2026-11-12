@@ -1683,16 +1683,16 @@ impl Dom {
     }
     /// Live bounds cannot fall below admitted state. Smaller history bounds
     /// discard coverage explicitly, without changing semantic revision.
-    /// Retained event observations must settle before these bounds can change.
+    /// Retained callback observations must settle before these bounds can change.
     pub fn set_limits(&mut self, limits: DomLimits) -> Result<(), DomError> {
         // This legacy policy controller supports the original single staged
-        // Source recovery, but not event-observation reentry. Refuse before
+        // Source recovery. Refuse callback observations before
         // traversing canonical banks without the observing owners' Work.
         if !self.source_parents.is_empty()
             || self
                 .source_operation
                 .as_ref()
-                .is_some_and(|operation| operation.is_observing_event())
+                .is_some_and(|operation| operation.is_observing_callback())
         {
             return Err(DomError::SourceOperationPending);
         }

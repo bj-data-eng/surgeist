@@ -288,7 +288,7 @@ impl DomSourceLease<'_> {
             .as_ref()
             .filter(|operation| !self.complete && operation.id == self.id)
             .ok_or(DomError::InvalidSourceOperation)?;
-        if operation.observation().is_some() {
+        if operation.callback_observation().is_some() {
             self.dom
                 .source_observation_formation(cancel)?
                 .ok_or(DomError::InvalidSourceOperation)

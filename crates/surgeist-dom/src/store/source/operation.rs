@@ -476,7 +476,8 @@ impl Dom {
             .as_ref()
             .filter(|operation| operation.id == id)
             .ok_or(DomError::InvalidSourceOperation)?
-            .observed_event_work();
+            .callback_observation()
+            .map(|observation| observation.work.clone());
         if let Some(work) = observed {
             let mut policy = dialog::ResumeWorkPolicy::new(work, limits.work)?;
             self.admit_source_resume(id, limits, cancel)?;
@@ -594,7 +595,7 @@ impl Operation {
     }
     pub(in crate::store) fn admit_dom_limits(&self, limits: DomLimits) -> Result<(), DomError> {
         self.names.admit_limits(limits.names())?;
-        if let Some(observation) = self.observation() {
+        if let Some(observation) = self.callback_observation() {
             return observation.usage.admit_limits(limits);
         }
         let draft = &self.draft;
@@ -661,7 +662,7 @@ impl Operation {
     }
     pub(in crate::store) fn update_dom_limits(&mut self, limits: DomLimits) {
         self.names.replace_limits(limits.names());
-        if self.observation().is_some() {
+        if self.callback_observation().is_some() {
             return;
         }
         let draft = &mut self.draft;
@@ -681,6 +682,18 @@ impl Operation {
     pub(in crate::store) fn status(&self) -> DomSourceStatus {
         if let Some(observation) = self.observation() {
             return observation.status(self);
+        }
+        if let dialog::OperationDraft::AttributeObserved(observation) = &self.draft {
+            return DomSourceStatus {
+                operation: self.id,
+                published: self.published,
+                cancelled: self.cancelled,
+                cleanup: self.failure,
+                work: observation.work.work.load(Ordering::Relaxed),
+                phases: self.phases,
+                parent: None,
+                phase: DomSourcePhase::AttributeVerification,
+            };
         }
         DomSourceStatus {
             operation: self.id,
@@ -802,7 +815,7 @@ impl Operation {
         Some(&request.source)
     }
     fn refresh_admission(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
-        if self.observation().is_some() {
+        if self.callback_observation().is_some() {
             return Ok(());
         }
         self.draft.source_other_bytes = self.input_bytes()?;
@@ -1806,10 +1819,11 @@ impl DomSourceLease<'_> {
     }
     pub fn request_cancel(&mut self) {
         let op = self.dom.source_operation.as_mut().expect("live lease");
-        if op
-            .attribute_verification
-            .as_ref()
-            .is_some_and(attribute::Pending::has_outcome)
+        if matches!(&op.draft, dialog::OperationDraft::AttributeObserved(observation) if !observation.work.scope_closed())
+            || op
+                .attribute_verification
+                .as_ref()
+                .is_some_and(attribute::Pending::has_outcome)
         {
             return;
         }
@@ -1907,6 +1921,19 @@ impl DomSourceLease<'_> {
             .is_some_and(|op| op.observation().is_some())
         {
             return self.advance_dialog_observation(execution, cancel);
+        }
+        if self
+            .dom
+            .source_operation
+            .as_ref()
+            .is_some_and(|op| matches!(op.draft, dialog::OperationDraft::AttributeObserved(_)))
+        {
+            if let Some(request) = self.parked_attribute_request()? {
+                return Ok(DomSourceProgress::Request(
+                    DomSourceRequest::AttributeVerification(request),
+                ));
+            }
+            self.rebase_attribute_observation(cancel)?;
         }
         let root = self
             .dom
@@ -2221,6 +2248,11 @@ impl DomSourceLease<'_> {
             if result.is_ok()
                 && let Some(request) = op.waiting_attribute_verification()
             {
+                if let Err(error) = op.observe_attribute_verification(self.dom, cancel) {
+                    op.attribute_verification = None;
+                    checkpoint.restore(&mut op.draft);
+                    return Err(error.into());
+                }
                 drop(checkpoint);
                 return Ok(DomSourceProgress::Request(
                     DomSourceRequest::AttributeVerification(request),

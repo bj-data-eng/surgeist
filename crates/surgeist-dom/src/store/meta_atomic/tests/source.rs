@@ -500,7 +500,7 @@ fn authentic_observed_ancestor_pays_child_native_prefix_and_original_parent_prog
             .source_operation
             .as_ref()
             .unwrap()
-            .is_observing_event()
+            .is_observing_callback()
     );
 }
 

@@ -41,6 +41,7 @@ impl Drop for ResumeWorkPolicy {
 pub(super) enum OperationDraft {
     Segment(Draft),
     Observed(DialogObservation),
+    AttributeObserved(CallbackObservation),
 }
 // Existing Style/child/installation/Select execution remains the original
 // segmented engine. Its entry points select the Segment phase before use.
@@ -49,7 +50,9 @@ impl std::ops::Deref for OperationDraft {
     fn deref(&self) -> &Draft {
         match self {
             Self::Segment(draft) => draft,
-            Self::Observed(_) => unreachable!("observation has no Draft"),
+            Self::Observed(_) | Self::AttributeObserved(_) => {
+                unreachable!("observation has no Draft")
+            }
         }
     }
 }
@@ -57,13 +60,14 @@ impl std::ops::DerefMut for OperationDraft {
     fn deref_mut(&mut self) -> &mut Draft {
         match self {
             Self::Segment(draft) => draft,
-            Self::Observed(_) => unreachable!("observation has no Draft"),
+            Self::Observed(_) | Self::AttributeObserved(_) => {
+                unreachable!("observation has no Draft")
+            }
         }
     }
 }
 pub(super) struct Usage {
     autofocus: usize,
-    work: Arc<AtomicU64>,
     base: u64,
     encoding: u64,
     meta: u64,
@@ -73,6 +77,32 @@ pub(super) struct Usage {
     input: input_processing::InputProcessing,
 }
 impl Usage {
+    pub(super) fn capture(draft: &mut Draft, autofocus: usize) -> Self {
+        Self {
+            autofocus,
+            base: draft.base_work.get(),
+            encoding: draft.encoding_url_work.get(),
+            meta: draft.meta_work.get(),
+            select: draft.select_work.get(),
+            semantic_work: draft.select_semantic_work.get(),
+            semantic_bytes: draft.select_semantic_bytes.get(),
+            input: std::mem::replace(
+                &mut draft.input_processing,
+                input_processing::InputProcessing::new(0, 0),
+            ),
+        }
+    }
+
+    pub(super) fn restore(self, draft: &mut Draft) {
+        draft.base_work.set(self.base);
+        draft.encoding_url_work.set(self.encoding);
+        draft.meta_work.set(self.meta);
+        draft.select_work.set(self.select);
+        draft.select_semantic_work.set(self.semantic_work);
+        draft.select_semantic_bytes.set(self.semantic_bytes);
+        draft.input_processing = self.input;
+    }
+
     pub(super) fn admit_limits(&self, limits: DomLimits) -> Result<(), DomError> {
         admit(
             self.autofocus,
@@ -144,15 +174,33 @@ enum FiringTime {
     Observed(Result<DomSourceEventTime, DomSourceEventClockFailure>),
 }
 
+pub(super) struct CallbackObservation {
+    pub(super) owner: Arc<BatchIdentity>,
+    pub(super) work: Arc<CallbackWork>,
+    pub(super) usage: Usage,
+    pub(super) limits: DomSourceLimits,
+    pub(super) inputs: storage::Payload,
+}
+
+impl CallbackObservation {
+    fn payload(&self) -> Result<storage::Payload, DomError> {
+        Ok(storage::Payload {
+            // The Operation allocation and command storage remain owner-side.
+            // The callback work and temporary buffers are in the ledger.
+            bytes: size_of::<Operation>()
+                .checked_add(self.inputs.bytes)
+                .ok_or(DomError::RepresentationExhausted)?,
+            units: self.inputs.units,
+        })
+    }
+}
+
 pub(super) struct DialogObservation {
     request: DomSourceEventRequest,
-    owner: Arc<BatchIdentity>,
     frame: Option<crate::store::dialog::MethodFrame>,
     source_invocation: u64,
-    pub(super) usage: Usage,
-    limits: DomSourceLimits,
+    pub(super) common: CallbackObservation,
     accepted: Option<DomSourceEventOutcome>,
-    inputs: storage::Payload,
     receiver: crate::DomDispatchCustody,
     time: FiringTime,
 }
@@ -163,7 +211,7 @@ impl DialogObservation {
             published: operation.published,
             cancelled: operation.cancelled,
             cleanup: operation.failure,
-            work: self.usage.work.load(Ordering::Relaxed),
+            work: self.common.work.work.load(Ordering::Relaxed),
             phases: operation.phases,
             parent: self.request.parent_operation(),
             phase: if operation.failure.is_some() {
@@ -177,21 +225,14 @@ impl DialogObservation {
             },
         }
     }
-    fn payload(&self) -> Result<storage::Payload, DomError> {
-        Ok(storage::Payload {
-            // The actual Operation allocation remains an external owner header
-            // while its counter/event atoms and temporary buffers are ledgered.
-            bytes: size_of::<Operation>()
-                .checked_add(self.inputs.bytes)
-                .ok_or(DomError::RepresentationExhausted)?,
-            units: self.inputs.units,
-        })
-    }
 }
 impl Drop for Operation {
     fn drop(&mut self) {
         if let Some(work) = self.event_work.upgrade() {
             work.stage.store(4, Ordering::Relaxed);
+        }
+        if let OperationDraft::AttributeObserved(observation) = &self.draft {
+            observation.work.stage.store(4, Ordering::Relaxed);
         }
     }
 }
@@ -202,9 +243,25 @@ impl Operation {
     ) -> Result<Option<formation::Formation>, DomError> {
         match &self.draft {
             OperationDraft::Segment(draft) => formation::Formation::new(draft, cancel),
-            OperationDraft::Observed(_) => Ok(None),
+            OperationDraft::Observed(_) | OperationDraft::AttributeObserved(_) => Ok(None),
         }
     }
+    pub(super) fn callback_observation(&self) -> Option<&CallbackObservation> {
+        match &self.draft {
+            OperationDraft::Segment(_) => None,
+            OperationDraft::Observed(observation) => Some(&observation.common),
+            OperationDraft::AttributeObserved(observation) => Some(observation),
+        }
+    }
+
+    fn callback_observation_mut(&mut self) -> Option<&mut CallbackObservation> {
+        match &mut self.draft {
+            OperationDraft::Segment(_) => None,
+            OperationDraft::Observed(observation) => Some(&mut observation.common),
+            OperationDraft::AttributeObserved(observation) => Some(observation),
+        }
+    }
+
     pub(super) fn observed_event_work(&self) -> Option<Arc<CallbackWork>> {
         self.observation()
             .map(|observation| observation.request.work.clone())
@@ -212,13 +269,13 @@ impl Operation {
     pub(super) fn observation(&self) -> Option<&DialogObservation> {
         match &self.draft {
             OperationDraft::Observed(observation) => Some(observation),
-            OperationDraft::Segment(_) => None,
+            OperationDraft::Segment(_) | OperationDraft::AttributeObserved(_) => None,
         }
     }
     fn observation_mut(&mut self) -> Option<&mut DialogObservation> {
         match &mut self.draft {
             OperationDraft::Observed(observation) => Some(observation),
-            OperationDraft::Segment(_) => None,
+            OperationDraft::Segment(_) | OperationDraft::AttributeObserved(_) => None,
         }
     }
     pub(in crate::store) fn id(&self) -> DomSourceOperationId {
@@ -228,24 +285,31 @@ impl Operation {
         self.observation()
             .map(|observation| observation.request.identity())
     }
-    pub(in crate::store) fn is_observing_event(&self) -> bool {
-        matches!(self.draft, OperationDraft::Observed(_))
+    pub(in crate::store) fn is_observing_callback(&self) -> bool {
+        self.callback_observation().is_some()
     }
     pub(in crate::store) fn has_event_tail(&self) -> bool {
         self.event_exposed && self.observation().is_none()
     }
     pub(in crate::store) fn permits_reentry(&self) -> bool {
-        self.observation()
-            .is_some_and(|observation| observation.request.work.active())
+        self.callback_observation()
+            .is_some_and(|observation| observation.work.active())
+            && (!matches!(self.draft, OperationDraft::AttributeObserved(_))
+                || self
+                    .attribute_verification
+                    .as_ref()
+                    .is_some_and(super::attribute::Pending::registration_is_active))
     }
     pub(super) fn admit_observation_limits(
         &mut self,
         limits: DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let observation = self.observation_mut().ok_or(DomError::InvalidSourceEvent)?;
+        let observation = self
+            .callback_observation_mut()
+            .ok_or(DomError::InvalidSourceOperation)?;
         check_cancel(cancel)?;
-        if limits.work < observation.usage.work.load(Ordering::Relaxed)
+        if limits.work < observation.work.work.load(Ordering::Relaxed)
             || limits.nested_operations == 0
         {
             return Err(DomError::InvalidLimit(DomResource::SourceRetainedBytes));
@@ -253,7 +317,6 @@ impl Operation {
         // Actual current whole-owner storage is qualified by the Dom front before
         // this policy is changed; no accepted event is consumed on refusal.
         observation
-            .request
             .work
             .work_limit
             .store(limits.work, Ordering::Relaxed);
@@ -476,34 +539,24 @@ impl Operation {
             FiringTime::Unavailable
         };
         let prepared = matches!(time, FiringTime::Pending { .. });
-        let usage = Usage {
-            autofocus,
-            work: self.draft.source_work.source_arc().clone(),
-            base: self.draft.base_work.get(),
-            encoding: self.draft.encoding_url_work.get(),
-            meta: self.draft.meta_work.get(),
-            select: self.draft.select_work.get(),
-            semantic_work: self.draft.select_semantic_work.get(),
-            semantic_bytes: self.draft.select_semantic_bytes.get(),
-            input: std::mem::replace(
-                &mut self.draft.input_processing,
-                input_processing::InputProcessing::new(0, 0),
-            ),
-        };
+        let usage = Usage::capture(&mut self.draft, autofocus);
         let observation = DialogObservation {
-            receiver,
             request: request.clone(),
-            owner: self.draft.owner.clone(),
             frame,
             source_invocation: if self.request_close.is_some() {
                 occurrence
             } else {
                 self.draft.source_invocation
             },
-            usage,
-            limits,
+            common: CallbackObservation {
+                owner: self.draft.owner.clone(),
+                work: request.work.clone(),
+                usage,
+                limits,
+                inputs,
+            },
             accepted: None,
-            inputs,
+            receiver,
             time,
         };
         self.event_custody = Some(event_custody);
@@ -668,7 +721,7 @@ impl Dom {
         let Some(operation) = self.source_operation.as_mut() else {
             return Ok(());
         };
-        if operation.observation().is_some() {
+        if operation.callback_observation().is_some() {
             return Ok(());
         }
         let old = operation.custody_bytes;
@@ -712,25 +765,31 @@ impl Dom {
             };
         };
         let observation = operation
-            .observation()
+            .callback_observation()
             .filter(|_| operation.permits_reentry())
             .ok_or(DomError::IncompleteSourceOperation)?;
-        let work = &observation.request.work;
-        self.qualify_source_event(work, 1)?;
-        let executor = self
-            .source_event_executor
-            .as_ref()
-            .and_then(Weak::upgrade)
-            .filter(|binding| binding.live.load(Ordering::Relaxed))
-            .ok_or(DomError::InvalidSourceEvent)?;
-        observation.request.validate_executor(&executor)?;
+        let work = &observation.work;
+        if let Some(event) = operation.observation() {
+            self.qualify_source_event(work, 1)?;
+            let executor = self
+                .source_event_executor
+                .as_ref()
+                .and_then(Weak::upgrade)
+                .filter(|binding| binding.live.load(Ordering::Relaxed))
+                .ok_or(DomError::InvalidSourceEvent)?;
+            event.request.validate_executor(&executor)?;
+        } else {
+            operation.qualify_active_attribute_callback(self, cancel)?;
+        }
         work.step(cancel)?;
         if let Some(incomplete) = self.state.incomplete_source {
             let mut qualified = operation.published && operation.id == incomplete;
             if !qualified {
                 for parent in self.source_parents.iter().rev() {
                     work.step(cancel)?;
-                    if parent.id == incomplete && parent.published && parent.observation().is_some()
+                    if parent.id == incomplete
+                        && parent.published
+                        && parent.callback_observation().is_some()
                     {
                         qualified = true;
                         break;
@@ -770,11 +829,11 @@ impl Dom {
             .iter()
             .map(Box::as_ref)
             .chain(self.source_parents.iter().rev().map(Box::as_ref))
-            .filter_map(|operation| operation.observation())
+            .filter_map(|operation| operation.callback_observation())
             .find(|observation| {
-                excluding.is_none_or(|work| !Arc::ptr_eq(work, &observation.usage.work))
+                excluding.is_none_or(|work| !Arc::ptr_eq(work, &observation.work.work))
             })
-            .map(|observation| observation.request.work.clone())
+            .map(|observation| observation.work.clone())
     }
     pub(in crate::store) fn source_work_ancestor_custody(
         &self,
@@ -785,8 +844,8 @@ impl Dom {
             .map(Box::as_ref)
             .chain(self.source_parents.iter().rev().map(Box::as_ref))
             .find(|operation| {
-                operation.observation().is_some_and(|observation| {
-                    excluding.is_none_or(|work| !Arc::ptr_eq(work, &observation.usage.work))
+                operation.callback_observation().is_some_and(|observation| {
+                    excluding.is_none_or(|work| !Arc::ptr_eq(work, &observation.work.work))
                 })
             })
             .and_then(|operation| operation.event_custody.clone())
@@ -813,10 +872,10 @@ impl Dom {
             return Ok(None);
         };
         let observation = operation
-            .observation()
+            .callback_observation()
             .ok_or(DomError::SourceOperationPending)?;
         let base = self.source_observation_external(cancel)?;
-        let controlled = observation.request.work.storage.ledger().total();
+        let controlled = observation.work.storage.ledger().total();
         let total = storage::Payload {
             bytes: base
                 .bytes
@@ -830,7 +889,7 @@ impl Dom {
         self.admit_source_observers(total, cancel)?;
         let mut limits = observation.limits;
         for ancestor in self.source_observers() {
-            let ancestor = ancestor.observation().expect("observer");
+            let ancestor = ancestor.callback_observation().expect("observer");
             limits.retained_bytes = limits.retained_bytes.min(ancestor.limits.retained_bytes);
             limits.retained_units = limits.retained_units.min(ancestor.limits.retained_units);
         }
@@ -849,7 +908,7 @@ impl Dom {
             .iter()
             .map(Box::as_ref)
             .chain(self.source_operation.as_deref())
-            .filter(|operation| operation.observation().is_some())
+            .filter(|operation| operation.callback_observation().is_some())
     }
     fn source_observation_payload(
         &self,
@@ -858,8 +917,8 @@ impl Dom {
         let mut payload = storage::Payload::default();
 
         for operation in self.source_observers() {
-            let observation = operation.observation().expect("observer");
-            observation.request.work.step_own(cancel)?;
+            let observation = operation.callback_observation().expect("observer");
+            observation.work.step_own(cancel)?;
             payload.append(observation.payload()?)?;
         }
         Ok(payload)
@@ -875,7 +934,7 @@ impl Dom {
             .as_ref()
             .filter(|operation| operation.id == id)
             .ok_or(DomError::InvalidSourceOperation)?;
-        if let Some(observation) = operation.observation() {
+        if let Some(observation) = operation.callback_observation() {
             if limits.phases
                 < operation
                     .phases
@@ -896,7 +955,7 @@ impl Dom {
                 limits.retained_units,
                 DomResource::SourceRetainedUnits,
             )?;
-            if limits.work < observation.usage.work.load(Ordering::Relaxed)
+            if limits.work < observation.work.work.load(Ordering::Relaxed)
                 || limits.outputs < operation.outputs
                 || limits.identities < operation.identities
                 || limits.nested_operations == 0
@@ -925,8 +984,8 @@ impl Dom {
     pub(super) fn step_source_observers(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         check_cancel(cancel)?;
         for operation in self.source_observers() {
-            let observation = operation.observation().expect("observer");
-            observation.request.work.step_own(cancel)?;
+            let observation = operation.callback_observation().expect("observer");
+            observation.work.step_own(cancel)?;
         }
         Ok(())
     }
@@ -934,7 +993,9 @@ impl Dom {
     pub(in crate::store) fn source_measurement_ancestors(&self) -> custody::Usage {
         let mut payload = storage::Payload::default();
         for operation in self.source_observers() {
-            let observation = operation.observation().expect("observed Source ancestor");
+            let observation = operation
+                .callback_observation()
+                .expect("observed Source ancestor");
             payload
                 .append(observation.payload().expect("retained ancestor receipt"))
                 .expect("retained ancestor sum");
@@ -954,7 +1015,7 @@ impl Dom {
             Some(OperationDraft::Segment(draft)) => {
                 custody::Usage::new(draft.source_other_bytes, draft.source_other_units)
             }
-            Some(OperationDraft::Observed(_)) => {
+            Some(OperationDraft::Observed(_) | OperationDraft::AttributeObserved(_)) => {
                 // These are cached input receipts and fixed owner headers. The
                 // only iteration is the actual Source ancestor stack; no bank,
                 // canonical payload, or effect frontier is inspected or metered.
@@ -963,7 +1024,7 @@ impl Dom {
                     payload
                         .append(
                             operation
-                                .observation()
+                                .callback_observation()
                                 .expect("observed ancestor")
                                 .payload()
                                 .expect("retained observer receipt"),
@@ -1052,8 +1113,8 @@ impl Dom {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         for operation in self.source_observers() {
-            let observation = operation.observation().expect("observer");
-            observation.request.work.step_own(cancel)?;
+            let observation = operation.callback_observation().expect("observer");
+            observation.work.step_own(cancel)?;
             admit(
                 total.bytes,
                 observation.limits.retained_bytes,
@@ -1172,7 +1233,11 @@ impl Dom {
                 .get_mut(parent.ok_or(DomError::InvalidSourceEvent)?)
                 .expect("qualified retained parent")
         };
-        let old = target.observation().expect("qualified observation").limits;
+        let old = target
+            .observation()
+            .expect("qualified observation")
+            .common
+            .limits;
         if limits.phases
             < target
                 .phases
@@ -1292,7 +1357,7 @@ impl Dom {
     // A method rebase retains the SAME command input; unlike callback edits it
     // forms no second string occurrence. New Draft admission includes that one
     // input while the old observation still owns its remaining header/control.
-    fn source_rebase_transferred_limits(
+    pub(super) fn source_rebase_transferred_limits(
         &self,
         mut limits: DomSourceLimits,
         transferred: storage::Payload,
@@ -1308,8 +1373,8 @@ impl Dom {
             .checked_sub(transferred.units)
             .ok_or(DomError::RepresentationExhausted)?;
         for operation in self.source_observers() {
-            let observation = operation.observation().expect("observer");
-            observation.request.work.step_own(cancel)?;
+            let observation = operation.callback_observation().expect("observer");
+            observation.work.step_own(cancel)?;
             limits.retained_bytes = limits.retained_bytes.min(
                 observation
                     .limits
@@ -1343,8 +1408,8 @@ impl Dom {
             return Err(DomError::SourceNestedOperationLimit { limit: 0 });
         }
         for (index, operation) in self.source_observers().enumerate() {
-            let observation = operation.observation().expect("observer");
-            observation.request.work.step_own(cancel)?;
+            let observation = operation.callback_observation().expect("observer");
+            observation.work.step_own(cancel)?;
             let depth = self.source_parents.len() + 2 - index;
             if depth > observation.limits.nested_operations {
                 return Err(DomError::SourceNestedOperationLimit {
@@ -1457,7 +1522,7 @@ impl Dom {
         let observation = self
             .source_operation
             .as_ref()
-            .and_then(|operation| operation.observation())
+            .and_then(|operation| operation.callback_observation())
             .ok_or(DomError::InvalidSourceEvent)?;
         let limits = self.source_rebase_limits(observation.limits, cancel)?;
         let (draft, _) = Draft::new_source_root_with_work(
@@ -1466,7 +1531,7 @@ impl Dom {
             super::super::initial::CommandStorage { commands, capacity },
             limits,
             super::super::initial::Replay {
-                work: observation.usage.work.clone(),
+                work: observation.work.work.clone(),
                 identity: self
                     .source_operation
                     .as_ref()
@@ -1491,9 +1556,8 @@ impl Dom {
         // observers. Rebase and parent moves preserve each operation's credit.
         for operation in self.source_observers() {
             operation
-                .observation()
+                .callback_observation()
                 .expect("observer")
-                .request
                 .work
                 .step_own(cancel)?;
             let reserved = operation
@@ -1541,7 +1605,7 @@ impl DomSourceLease<'_> {
         };
         let commit = DomCommit {
             created_ranges: Vec::new(),
-            owner: observation.owner.clone(),
+            owner: observation.common.owner.clone(),
             node_outputs: Vec::new(),
             node_output_kinds: Vec::new(),
             transition_ids: Vec::new(),
@@ -1847,11 +1911,11 @@ impl DomSourceLease<'_> {
             .observation()
             .ok_or(DomError::InvalidSourceEvent)?;
         let subject = observation.request.subject();
-        let owner = observation.owner.clone();
-        let work = observation.usage.work.clone();
+        let owner = observation.common.owner.clone();
+        let work = observation.common.work.work.clone();
         let limits = self.dom.source_rebase_transferred_limits(
-            observation.limits,
-            observation.inputs,
+            observation.common.limits,
+            observation.common.inputs,
             cancel,
         )?;
         let (mut draft, command) = Draft::new_source_root_with_work(
@@ -1903,22 +1967,11 @@ impl DomSourceLease<'_> {
         let OperationDraft::Observed(observation) = old else {
             unreachable!("qualified observer")
         };
-        let draft = &mut operation.draft;
-        draft.base_work.set(observation.usage.base);
-        draft.encoding_url_work.set(observation.usage.encoding);
-        draft.meta_work.set(observation.usage.meta);
-        draft.select_work.set(observation.usage.select);
-        draft
-            .select_semantic_work
-            .set(observation.usage.semantic_work);
-        draft
-            .select_semantic_bytes
-            .set(observation.usage.semantic_bytes);
-        draft.input_processing = observation.usage.input;
+        observation.common.usage.restore(&mut operation.draft);
         operation.command_storage = command;
         operation.custody_bytes = custody_bytes;
         operation.custody_units = custody_units;
-        operation.limits = observation.limits;
+        operation.limits = observation.common.limits;
         drop(observation.receiver);
         if operation.request_close.is_some() {
             observation.request.work.stage.store(4, Ordering::Relaxed);

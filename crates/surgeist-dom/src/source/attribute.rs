@@ -1,5 +1,6 @@
 use super::DomSourceOperationId;
-use crate::{DocumentString, DomHostedGlobalId, NodeId};
+use crate::{DocumentString, DomDocumentScriptRegistration, DomHostedGlobalId, NodeId};
+use std::sync::Arc;
 
 /// The exact sink selected for a standard attribute write.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -45,4 +46,12 @@ pub enum DomSourceAttributeVerificationOutcome {
     Value(DocumentString),
     Rejected,
     Abrupt,
+}
+
+/// The original verifier's live callback scope. Dropping it closes reentry.
+#[must_use = "keep the scope only while running the verifier callback"]
+#[derive(Debug)]
+pub struct DomSourceAttributeCallbackScope<'registration> {
+    pub(crate) _scope: Arc<super::callback::DispatchScope>,
+    pub(crate) _registration: &'registration DomDocumentScriptRegistration,
 }
