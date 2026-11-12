@@ -516,14 +516,8 @@ impl DomMetaSourceRuntimeHold<'_, '_> {
         Ok(())
     }
     pub fn request_cancel(&mut self) -> Result<(), DomError> {
-        let operation = self
-            .lease
-            .dom
-            .source_operation
-            .as_mut()
-            .filter(|operation| !self.lease.complete && operation.id == self.lease.id)
-            .ok_or(DomError::InvalidSourceOperation)?;
-        operation.cancelled = true;
+        self.lease.qualify_meta_lease()?;
+        self.lease.request_cancel();
         Ok(())
     }
 }
