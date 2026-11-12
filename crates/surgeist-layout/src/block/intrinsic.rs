@@ -16,24 +16,62 @@ pub(super) fn normal_fill<S: LayoutScalar>(
         )
 }
 
-/// Resolve the same accepted border-box inline extent for scalar demand and
-/// actual layout. ContentSize deliberately ignores authored preferred sizing.
-pub(super) fn accepted_inline<'input, Tree, M>(
-    tree: &mut Tree,
+enum InlineExtent<S> {
+    Resolved(S),
+    Measure(InlineMeasurement<S>),
+}
+
+enum InlineMeasurement<S> {
+    MinContent,
+    MaxContent,
+    FitMaximum { available: S },
+    FitMinimum { available: S, maximum: S },
+}
+
+impl<S: LayoutScalar> InlineMeasurement<S> {
+    fn operation(&self) -> SizingOperation {
+        match self {
+            Self::MinContent | Self::FitMinimum { .. } => SizingOperation::MinContent,
+            Self::MaxContent | Self::FitMaximum { .. } => SizingOperation::MaxContent,
+        }
+    }
+
+    fn accept(self, constants: &Constants<S>, measured: S) -> InlineExtent<S> {
+        let content = match self {
+            Self::MinContent | Self::MaxContent => measured,
+            Self::FitMaximum { available } => {
+                return InlineExtent::Measure(Self::FitMinimum {
+                    available,
+                    maximum: measured,
+                });
+            }
+            Self::FitMinimum { available, maximum } => maximum.min(measured.max(available)),
+        };
+        InlineExtent::Resolved(outer_inline(constants, content))
+    }
+}
+
+fn outer_inline<S: LayoutScalar>(constants: &Constants<S>, content: S) -> S {
+    (content + constants.logical_content_box_inset().inline_sum())
+        .clamp_max_before_min_optional(
+            constants.logical_node_min_size().inline,
+            constants.logical_node_max_size().inline,
+        )
+        .max(constants.logical_padding_border_size().inline)
+}
+
+fn begin_inline<'input, Tree, M>(
+    tree: &Tree,
     node: Tree::Node,
     style: &BlockContainerProjection<'_, Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     input: ComputeInputOf<Tree::Scalar>,
-    mut component: impl FnMut(
-        &mut Tree,
-        SizingOperation,
-    ) -> LayoutResultOf<Tree::Node, Tree::Scalar, Tree::Scalar, M>,
-) -> LayoutResultOf<Tree::Node, Tree::Scalar, Tree::Scalar, M>
+) -> InlineExtent<Tree::Scalar>
 where
     Tree: Compute<'input, M>,
 {
     if let Some(outer) = constants.definite_inline_outer() {
-        return Ok(outer);
+        return InlineExtent::Resolved(outer);
     }
     let inherited = constants
         .flow_axes
@@ -51,33 +89,53 @@ where
     } else {
         inherited.operation()
     };
-    let content = match operation {
-        SizingOperation::MinContent => component(tree, SizingOperation::MinContent)?,
-        SizingOperation::MaxContent => component(tree, SizingOperation::MaxContent)?,
+    let measurement = match operation {
+        SizingOperation::MinContent => InlineMeasurement::MinContent,
+        SizingOperation::MaxContent => InlineMeasurement::MaxContent,
         SizingOperation::Normal => {
+            let available = inherited
+                .space()
+                .definite_size()
+                .map(crate::NonNegativeFiniteOf::get);
             if normal_fill(style, input, tree.node_input(node).float)
-                && let Some(available) = inherited.space().definite_size()
+                && let Some(available) = available
             {
-                available.get()
-            } else {
-                let maximum = component(tree, SizingOperation::MaxContent)?;
-                if let Some(available) = inherited.space().definite_size() {
-                    let minimum = component(tree, SizingOperation::MinContent)?;
-                    maximum.min(minimum.max(available.get()))
-                } else {
-                    maximum
-                }
+                return InlineExtent::Resolved(outer_inline(constants, available));
             }
+            available.map_or(InlineMeasurement::MaxContent, |available| {
+                InlineMeasurement::FitMaximum { available }
+            })
         }
     };
-    Ok(
-        (content + constants.logical_content_box_inset().inline_sum())
-            .clamp_max_before_min_optional(
-                constants.logical_node_min_size().inline,
-                constants.logical_node_max_size().inline,
-            )
-            .max(constants.logical_padding_border_size().inline),
-    )
+    InlineExtent::Measure(measurement)
+}
+
+/// Resolve the same accepted border-box inline extent for scalar demand and
+/// actual layout. ContentSize deliberately ignores authored preferred sizing.
+pub(super) fn accepted_inline<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    style: &BlockContainerProjection<'_, Tree::Scalar>,
+    constants: &Constants<Tree::Scalar>,
+    input: ComputeInputOf<Tree::Scalar>,
+    mut component: impl FnMut(
+        &mut Tree,
+        SizingOperation,
+    ) -> LayoutResultOf<Tree::Node, Tree::Scalar, Tree::Scalar, M>,
+) -> LayoutResultOf<Tree::Node, Tree::Scalar, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let mut extent = begin_inline::<Tree, M>(tree, node, style, constants, input);
+    loop {
+        match extent {
+            InlineExtent::Resolved(outer) => return Ok(outer),
+            InlineExtent::Measure(measurement) => {
+                let measured = component(tree, measurement.operation())?;
+                extent = measurement.accept(constants, measured);
+            }
+        }
+    }
 }
 
 /// Full-source content contribution. Only an inline scalar is produced: no
