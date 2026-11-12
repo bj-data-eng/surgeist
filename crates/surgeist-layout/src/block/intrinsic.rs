@@ -1,7 +1,7 @@
 //! Scalar Block inline demand, independent of Normal block progression.
 
 use super::*;
-use crate::{FlowAxes, SizingOperation};
+use crate::{FlowAxes, SizingOperation, SizingRequestOf};
 
 pub(super) fn normal_fill<S: LayoutScalar>(
     style: &BlockContainerProjection<'_, S>,
@@ -138,8 +138,107 @@ where
     }
 }
 
-/// Full-source content contribution. Only an inline scalar is produced: no
-/// Normal pass, block cursor, baselines, margin-collapse state or publication.
+struct InlineContentChild<Node, S: LayoutScalar> {
+    node: Node,
+    input: ComputeInputOf<S>,
+    margin: Edges<ResolvedLengthAutoOf<S>>,
+}
+
+type NextInlineContentChild<Node, S, M> =
+    LayoutResultOf<Node, Option<InlineContentChild<Node, S>>, S, M>;
+
+struct InlineContentPass<Node, S: LayoutScalar> {
+    children: std::vec::IntoIter<Node>,
+    request: SizingRequestOf<S>,
+    inner: Size<Option<S>>,
+    containing_pass: crate::scroll::SettledAutoScrollbarState,
+    first_in_flow: bool,
+    demand: S,
+}
+
+impl<Node: Copy + Eq, S: LayoutScalar> InlineContentPass<Node, S> {
+    fn new(
+        children: Vec<Node>,
+        constants: &Constants<S>,
+        input: ComputeInputOf<S>,
+        operation: SizingOperation,
+    ) -> Self {
+        let axes = constants.flow_axes;
+        let mut requests = constants.sizing_request.axes();
+        match axes.inline_axis() {
+            PhysicalAxis::Horizontal => requests.width = requests.width.with_operation(operation),
+            PhysicalAxis::Vertical => requests.height = requests.height.with_operation(operation),
+        }
+        let inner = LogicalSizeOf::new(None, constants.logical_node_inner_size().block);
+        Self {
+            children: children.into_iter(),
+            request: constants.sizing_request.with_axes(requests),
+            inner: axes.physical_size(inner),
+            containing_pass: input.settled_auto_scrollbars(),
+            first_in_flow: true,
+            demand: S::ZERO,
+        }
+    }
+
+    fn next_child<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        constants: &Constants<S>,
+    ) -> NextInlineContentChild<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        for child in self.children.by_ref() {
+            let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
+            let InlineParticipantKindOf::Box(style) = projection.kind() else {
+                return Err(profile_error(child));
+            };
+            if style.display == crate::Display::None || style.common.position == Position::Absolute
+            {
+                continue;
+            }
+            if !style.float.is_none() || style.display.is_inline_level() {
+                return Err(profile_error(child));
+            }
+            let prepared = super::in_flow::prepare_child(
+                tree,
+                child,
+                &style,
+                constants,
+                super::in_flow::ChildSizingContext {
+                    inner_size: self.inner,
+                    request: self.request,
+                    run_mode: RunMode::ComputeSize,
+                    axis: requested_axis(constants.flow_axes.inline_axis()),
+                    first_in_flow: &mut self.first_in_flow,
+                },
+            )?;
+            return Ok(Some(InlineContentChild {
+                node: child,
+                input: prepared
+                    .input
+                    .with_containing_auto_scrollbar_pass(self.containing_pass),
+                margin: prepared.unresolved_margin,
+            }));
+        }
+        Ok(None)
+    }
+
+    fn accept_child(&mut self, axes: FlowAxes, child: InlineContentChild<Node, S>, inline: S) {
+        let margin = super::in_flow::resolve_logical_inline_margin(
+            axes.logical_edges(child.margin),
+            inline,
+            None,
+        );
+        self.demand = self.demand.max(super::in_flow::signed_inline_demand(
+            inline,
+            margin,
+            margin.inline_start + inline + margin.inline_end,
+        ));
+    }
+}
+
+/// Full-source content contribution. Only an inline scalar is produced.
 pub(super) fn content<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
@@ -150,59 +249,14 @@ pub(super) fn content<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
+    let mut pass =
+        InlineContentPass::new(tree.children(node).collect(), constants, input, operation);
     let axes = constants.flow_axes;
-    let mut requests = constants.sizing_request.axes();
-    match axes.inline_axis() {
-        PhysicalAxis::Horizontal => requests.width = requests.width.with_operation(operation),
-        PhysicalAxis::Vertical => requests.height = requests.height.with_operation(operation),
+    while let Some(child) = pass.next_child(tree, constants)? {
+        let inline = tree.compute_axis_demand(child.node, child.input, axes.inline_axis())?;
+        pass.accept_child(axes, child, inline);
     }
-    let pass = constants.sizing_request.with_axes(requests);
-    let inner = LogicalSizeOf::new(None, constants.logical_node_inner_size().block);
-    let mut demand = Tree::Scalar::ZERO;
-    let children = tree.children(node).collect::<Vec<_>>();
-    let mut first_in_flow = true;
-    for child in children {
-        let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
-        let InlineParticipantKindOf::Box(style) = projection.kind() else {
-            return Err(profile_error(child));
-        };
-        if style.display == crate::Display::None || style.common.position == Position::Absolute {
-            continue;
-        }
-        if !style.float.is_none() || style.display.is_inline_level() {
-            return Err(profile_error(child));
-        }
-        let prepared = super::in_flow::prepare_child(
-            tree,
-            child,
-            &style,
-            constants,
-            super::in_flow::ChildSizingContext {
-                inner_size: axes.physical_size(inner),
-                request: pass,
-                run_mode: RunMode::ComputeSize,
-                axis: requested_axis(axes.inline_axis()),
-                first_in_flow: &mut first_in_flow,
-            },
-        )?;
-        let child_input = prepared
-            .input
-            .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars());
-        let inline = tree.compute_axis_demand(child, child_input, axes.inline_axis())?;
-        let margin = super::in_flow::resolve_logical_inline_margin(
-            axes.logical_edges(prepared.unresolved_margin),
-            inline,
-            None,
-        );
-        // This is logical inline algebra only; no physical rectangle or
-        // undemanded block extent is synthesized.
-        demand = demand.max(super::in_flow::signed_inline_demand(
-            inline,
-            margin,
-            margin.inline_start + inline + margin.inline_end,
-        ));
-    }
-    Ok(demand)
+    Ok(pass.demand)
 }
 
 pub(crate) fn axis_demand<'input, Tree, M>(
