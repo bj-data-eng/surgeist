@@ -16,6 +16,17 @@ pub(super) enum NodePrototype<'value, 'scope> {
     Creation(&'value RetainedCallbackObject),
 }
 
+impl<'value, 'scope> NodePrototype<'value, 'scope> {
+    pub(super) fn projection(self) -> NativeProjectionPrototype<'value, 'scope> {
+        match self {
+            Self::Selected(prototype) => {
+                NativeProjectionPrototype::Current(ObjectPrototype::Object(prototype))
+            }
+            Self::Creation(prototype) => NativeProjectionPrototype::Creation(prototype),
+        }
+    }
+}
+
 enum Projection<'prototype, 'scope, Publish> {
     Create(NodePrototype<'prototype, 'scope>, Publish),
     Watch(&'prototype RetainedCallbackObject, Publish),
@@ -346,17 +357,9 @@ impl OrdinaryBindings {
         let allocation = Box::new_uninit();
         let (value, holder, live) = match projection {
             Projection::Create(prototype, create) => {
-                let prototype = match prototype {
-                    NodePrototype::Selected(prototype) => {
-                        NativeProjectionPrototype::Current(ObjectPrototype::Object(prototype))
-                    }
-                    NodePrototype::Creation(prototype) => {
-                        NativeProjectionPrototype::Creation(prototype)
-                    }
-                };
                 admission.step()?;
                 scope.try_project_retained_native_object(
-                    prototype,
+                    prototype.projection(),
                     payload,
                     |payload, holder| {
                         Ok::<_, DocumentGuestEventError>((
