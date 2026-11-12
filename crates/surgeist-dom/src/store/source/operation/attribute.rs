@@ -574,6 +574,40 @@ impl DomSourceLease<'_> {
         Ok(&pending.operands.input)
     }
 
+    /// Read the current CSP container of the exact original Global. An
+    /// inherited Global uses its associated Document's container. Call this
+    /// again after guest reentry when the selected policy algorithm re-reads it.
+    pub fn attribute_verification_policy(
+        &self,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &DomDocumentScriptRegistration,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceAttributePolicyRead<'_>, DomError> {
+        let operation = self.attribute_verification_operation(request, registration, cancel)?;
+        operation.qualify_attribute_registration(
+            self.dom,
+            request.global,
+            &registration.0,
+            cancel,
+        )?;
+        let observation = operation
+            .callback_observation()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let work = &observation.work;
+        work.step(cancel)?;
+        let document = registration.0.key.document;
+        let DomNodeKind::Document(metadata) =
+            self.dom.state.node(self.dom.owner, document.node())?.kind()
+        else {
+            return Err(DomError::WrongDocument);
+        };
+        Ok(DomSourceAttributePolicyRead {
+            document,
+            state: metadata.policy_container().csp(),
+            work,
+        })
+    }
+
     /// Admit the registered verifier's reply once. On refusal the caller still
     /// owns the reply, including any rooted abrupt outcome it represents.
     pub fn accept_attribute_verification(

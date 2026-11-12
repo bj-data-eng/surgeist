@@ -1,6 +1,10 @@
 use super::DomSourceOperationId;
-use crate::{DocumentString, DomDocumentScriptRegistration, DomHostedGlobalId, NodeId};
+use crate::{
+    DocumentId, DocumentString, DomDocumentCspState, DomDocumentScriptRegistration, DomError,
+    DomHostedGlobalId, NodeId,
+};
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 /// The exact sink selected for a standard attribute write.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -54,4 +58,29 @@ pub enum DomSourceAttributeVerificationOutcome {
 pub struct DomSourceAttributeCallbackScope<'registration> {
     pub(crate) _scope: Arc<super::callback::DispatchScope>,
     pub(crate) _registration: &'registration DomDocumentScriptRegistration,
+}
+
+/// One authenticated read of the registered Global's current policy state.
+/// Its borrow ends before any guest callback or nested mutation can run.
+pub struct DomSourceAttributePolicyRead<'a> {
+    pub(crate) document: DocumentId,
+    pub(crate) state: DomDocumentCspState<'a>,
+    pub(crate) work: &'a super::callback::CallbackWork,
+}
+
+impl<'a> DomSourceAttributePolicyRead<'a> {
+    /// The Global's associated Document at this read.
+    pub const fn document(&self) -> DocumentId {
+        self.document
+    }
+
+    /// The actual current canonical CSP state of that Document.
+    pub const fn state(&self) -> DomDocumentCspState<'a> {
+        self.state
+    }
+
+    /// Charge policy inspection to this occurrence and its Source ancestors.
+    pub fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.work.step(cancel)
+    }
 }

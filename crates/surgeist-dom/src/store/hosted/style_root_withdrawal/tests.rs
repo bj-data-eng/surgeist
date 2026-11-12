@@ -1170,6 +1170,18 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
             .unwrap(),
         &proposed
     );
+    let policy = lease
+        .attribute_verification_policy(request, &registration, &cancel)
+        .unwrap();
+    assert_eq!(policy.document(), document);
+    assert_ne!(policy.document(), constructed);
+    assert!(matches!(
+        policy.state(),
+        crate::DomDocumentCspState::ConstructorInitialEmpty
+    ));
+    let spent = lease.status().spent_work();
+    policy.step(&cancel).unwrap();
+    assert_eq!(lease.status().spent_work(), spent + 1);
     let scope = lease
         .open_attribute_verification_callback(request, &registration, &cancel)
         .unwrap();
@@ -1222,6 +1234,13 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
         Err(DomError::InvalidSourceOperation)
     ));
     let verified = crate::DocumentString::from_utf16(vec![0xdc00, 0x62]);
+    assert_eq!(
+        lease
+            .attribute_verification_policy(request, &registration, &cancel)
+            .unwrap()
+            .document(),
+        document
+    );
     let mut reply = Some(DomSourceAttributeVerificationOutcome::Value(
         verified.clone(),
     ));

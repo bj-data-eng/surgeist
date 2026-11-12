@@ -238,6 +238,31 @@ pub struct surgeist_runtime::document_scripting::WindowTimerLimits
 impl surgeist_runtime::document_scripting::WindowTimerLimits
 pub const fn surgeist_runtime::document_scripting::WindowTimerLimits::new(pending: usize, arguments: u16, storage_bytes: usize) -> Self
 pub const fn surgeist_runtime::document_scripting::media_scripting_for_status(status: surgeist_html_semantics::capture::HtmlScriptingStatus) -> core::option::Option<surgeist_css::query::media::media_features::CssMediaScripting>
+pub mod surgeist_runtime::trusted_types_csp
+pub enum surgeist_runtime::trusted_types_csp::Directive
+pub surgeist_runtime::trusted_types_csp::Directive::RequireTrustedTypesFor
+pub surgeist_runtime::trusted_types_csp::Directive::TrustedTypes
+pub enum surgeist_runtime::trusted_types_csp::PolicyDelivery
+pub surgeist_runtime::trusted_types_csp::PolicyDelivery::EnforcingHeader
+pub surgeist_runtime::trusted_types_csp::PolicyDelivery::Meta
+pub surgeist_runtime::trusted_types_csp::PolicyDelivery::ReportOnlyHeader
+pub struct surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>
+impl<'policy, 'name> surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>
+pub fn surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>::blocked(&self) -> core::option::Option<bool>
+pub fn surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>::next_violation<E>(&mut self, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_runtime::trusted_types_csp::Violation<'policy>>, E>
+pub const fn surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>::policy_creation(policies: &'policy [surgeist_runtime::trusted_types_csp::Policy], name: &'name [u16], duplicate: bool) -> Self
+pub const fn surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>::script_mismatch(policies: &'policy [surgeist_runtime::trusted_types_csp::Policy]) -> Self
+pub struct surgeist_runtime::trusted_types_csp::Policy
+impl surgeist_runtime::trusted_types_csp::Policy
+pub const fn surgeist_runtime::trusted_types_csp::Policy::delivery(&self) -> surgeist_runtime::trusted_types_csp::PolicyDelivery
+pub fn surgeist_runtime::trusted_types_csp::Policy::parse<E>(serialized: surgeist_html::internal::values::document_string::DocumentString, delivery: surgeist_runtime::trusted_types_csp::PolicyDelivery, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<Self, E>
+pub fn surgeist_runtime::trusted_types_csp::Policy::serialized(&self) -> &surgeist_html::internal::values::document_string::DocumentString
+pub struct surgeist_runtime::trusted_types_csp::Violation<'a>
+impl<'a> surgeist_runtime::trusted_types_csp::Violation<'a>
+pub const fn surgeist_runtime::trusted_types_csp::Violation<'a>::directive(self) -> surgeist_runtime::trusted_types_csp::Directive
+pub const fn surgeist_runtime::trusted_types_csp::Violation<'a>::policy(self) -> &'a surgeist_runtime::trusted_types_csp::Policy
+pub const fn surgeist_runtime::trusted_types_csp::Violation<'a>::policy_index(self) -> usize
+pub fn surgeist_runtime::trusted_types_csp::requires_script_values<E>(policies: &[surgeist_runtime::trusted_types_csp::Policy], include_report_only: bool, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 pub enum surgeist_runtime::AppEffectPayload
 pub surgeist_runtime::AppEffectPayload::CallService(surgeist_runtime::CallServiceEffect)
 pub surgeist_runtime::AppEffectPayload::CancelTask(surgeist_runtime::CancelTaskEffect)
