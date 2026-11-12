@@ -149,3 +149,51 @@ fn deep_block_layout_returns_on_bounded_stack() {
         },
     );
 }
+
+fn assert_scalar_block_chain<S: LayoutScalar>(nodes: u32) {
+    let width = S::from_f64(13.0);
+    let tree =
+        chain::<S>(Display::Block, nodes).measure(nodes - 1, Size::new(width, S::from_f64(7.0)));
+    let mut session = super::session::ComputeSession::new(&tree, Vec::new());
+    let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let input = crate::ComputeInputOf::for_child(
+        crate::RunMode::ComputeSize,
+        crate::SizingMode::ContentSize,
+        crate::RequestedAxis::Horizontal,
+        Size::NONE,
+        Size::NONE,
+        crate::ContainingLayoutContext::new(axes, crate::ParentFormattingContext::NoParent),
+        SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+    );
+    let measured = crate::Compute::compute_axis_demand(
+        &mut session,
+        0,
+        input,
+        crate::PhysicalAxis::Horizontal,
+    )
+    .expect("scalar Block demand must return");
+    assert_eq!(measured, width);
+}
+
+#[test]
+fn deep_block_scalar_inline_demand_returns() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_block_scalar_inline_demand_returns",
+        || {
+            assert_scalar_block_chain::<f32>(3);
+            assert_scalar_block_chain::<f64>(3);
+            assert_scalar_block_chain::<f32>(1024);
+            assert_scalar_block_chain::<f64>(1024);
+        },
+    );
+}
