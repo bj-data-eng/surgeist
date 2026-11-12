@@ -1,5 +1,5 @@
 use crate::engine::block_scope::{ComputeResult, ordinary};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, ops::ControlFlow};
 
 use super::inline::{
     AtomicInlineBoxParticipant, ForcedLineBreakControlOf, InlineBoundaryControlOf, InlineFlowOf,
@@ -58,6 +58,7 @@ mod sizing;
 
 pub(crate) use absolute::StaticPositionOf;
 use absolute::layout_absolute_children;
+pub(crate) use in_flow::PendingBox;
 pub(crate) use input::BlockChildProjection;
 use input::{
     BlockContainerProjection, automatic_block_depends_on_ratio, block_container_projection,
@@ -72,7 +73,7 @@ use sizing::{
 #[cfg(test)]
 pub(crate) use in_flow::resolve_logical_in_flow_margin;
 use in_flow::{
-    InFlowPassContext, layout_in_flow_children, normal_flow_children_need_physical_sizing_work,
+    InFlowPassContext, InFlowStep, InFlowTraversal, normal_flow_children_need_physical_sizing_work,
 };
 
 #[cfg(test)]
@@ -155,24 +156,193 @@ pub(crate) fn compute_block_scoped<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let incoming = tree
-        .block_float_state()
-        .and_then(|state| state.incoming(node, input));
-    if incoming.is_some()
-        && float_context::Role::for_input(tree.node_input(node), input)
-            != float_context::Role::Shared
-    {
-        return Err(float_context::missing(node).into());
-    }
-
-    compute_block_with_optional_inherited_float_exclusions(tree, node, input, incoming)
+    let mut computation = match begin_block_computation(tree, node, input)? {
+        ControlFlow::Break(output) => return Ok(output),
+        ControlFlow::Continue(computation) => computation,
+    };
+    let result = (|| loop {
+        match computation.advance(tree)? {
+            ControlFlow::Break(output) => return Ok(output),
+            ControlFlow::Continue(child) => {
+                let (pending, output) = child.compute(tree)?;
+                computation.accept_child(tree, pending, output)?;
+            }
+        }
+    })();
+    computation.finish(tree, result)
 }
 
-struct BlockResult<Node, S: LayoutScalar> {
+pub(crate) struct BlockResult<Node, S: LayoutScalar> {
     output: ComputeOutputOf<S>,
     used: ComputeInputOf<S>,
     floats: Option<(FloatExclusions<S, Node>, usize)>,
     remaining_cut: Option<entry::canonical::Separation<Node, S>>,
+}
+
+pub(crate) struct BlockComputation<'input, Node, S: LayoutScalar> {
+    node: Node,
+    input: ComputeInputOf<S>,
+    pass_input: ComputeInputOf<S>,
+    contained_size: Size<Option<S>>,
+    scrollbar_width: S,
+    incoming: Option<float_context::Incoming<Node, S>>,
+    anonymous: bool,
+    formatted: bool,
+    pass: BlockPass<'input, Node, S>,
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockComputation<'input, Node, S> {
+    pub(crate) fn request(&self) -> (Node, ComputeInputOf<S>) {
+        (self.node, self.input)
+    }
+
+    pub(crate) fn advance<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+    ) -> ComputeResult<Node, BlockPassStep<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            let output = if self.pass.active.is_some() {
+                let inherited = self
+                    .incoming
+                    .as_ref()
+                    .map(|incoming| incoming.frame.as_ref());
+                match self.pass.advance(tree, inherited)? {
+                    ControlFlow::Break(output) => output,
+                    ControlFlow::Continue(child) => return Ok(ControlFlow::Continue(child)),
+                }
+            } else if let Some(output) = self.start_pass(tree)? {
+                output
+            } else {
+                continue;
+            };
+            if !self.retry_scrollbars(&output)? {
+                return Ok(ControlFlow::Break(output));
+            }
+        }
+    }
+
+    fn start_pass<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+    ) -> ComputeResult<Node, Option<BlockResult<Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let inherited = self
+            .incoming
+            .as_ref()
+            .map(|incoming| incoming.frame.as_ref());
+        match begin_block_pass(
+            tree,
+            self.node,
+            self.pass_input,
+            inherited,
+            self.contained_size,
+        )? {
+            ControlFlow::Break(output) => Ok(Some(output)),
+            ControlFlow::Continue(pass) => {
+                self.pass = pass;
+                Ok(None)
+            }
+        }
+    }
+
+    pub(crate) fn accept_child<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        pending: Option<in_flow::PendingBox<'input, Node, S>>,
+        output: ComputeOutputOf<S>,
+    ) -> ComputeResult<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        self.pass.accept_child(tree, pending, output)
+    }
+
+    fn retry_scrollbars<M>(
+        &mut self,
+        result: &BlockResult<Node, S>,
+    ) -> ComputeResult<Node, bool, S, M> {
+        if !self.input.run_mode().is_perform_layout() {
+            return Ok(false);
+        }
+        let Some(geometry) = result.output.scroll_geometry else {
+            return Ok(false);
+        };
+        let current = self.pass_input.settled_auto_scrollbars();
+        let next = current.transition(geometry);
+        if next == current
+            || self.scrollbar_width == S::ZERO
+            || !crate::scroll::settled_auto_scrollbars_change_available_geometry(geometry, next)
+                .map_err(|error| {
+                    layout_own_geometry_error(self.node, self.input.run_mode(), error)
+                })?
+        {
+            return Ok(false);
+        }
+        self.pass_input = self.pass_input.with_settled_auto_scrollbars(next);
+        Ok(true)
+    }
+
+    pub(crate) fn finish<Tree, M>(
+        self,
+        tree: &mut Tree,
+        result: ComputeResult<Node, BlockResult<Node, S>, S, M>,
+    ) -> ComputeResult<Node, ComputeOutputOf<S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Self {
+            node,
+            input,
+            incoming,
+            anonymous,
+            formatted,
+            pass,
+            ..
+        } = self;
+        drop(pass);
+        let formatted_result = if formatted && let Some(text) = tree.text_computation() {
+            text.formatted_end_block(node, input, anonymous, result.is_ok())
+                .map_err(|error| inline_run::text_run_error(node, error.into()))
+        } else {
+            Ok(())
+        };
+        if let Some(groups) = tree.group_computation() {
+            groups.end(result.is_ok());
+        }
+        // Preserve the body failure ahead of completion bookkeeping.
+        let result = result?;
+        formatted_result?;
+        if incoming.is_none()
+            && float_context::Role::for_input(tree.node_input(node), input)
+                == float_context::Role::Shared
+            && result
+                .floats
+                .as_ref()
+                .is_some_and(|(ledger, _)| !ledger.is_empty())
+        {
+            return Err(float_context::missing(node).into());
+        }
+        if let Some((ledger, inherited)) = result.floats
+            && let Some(state) = tree.block_float_state()
+        {
+            state.record(float_context::Completed {
+                node,
+                request: incoming.as_ref().map_or(input, |incoming| incoming.request),
+                used: result.used,
+                output: result.output,
+                ledger,
+                inherited,
+                frame: incoming.map(|incoming| incoming.frame),
+                remaining_cut: result.remaining_cut,
+            });
+        }
+        Ok(result.output)
+    }
 }
 
 /// Actual empty-box sizing supplied by the containment owner. Scalar demand
@@ -216,15 +386,34 @@ where
     }))
 }
 
-fn compute_block_with_optional_inherited_float_exclusions<'input, Tree, M>(
+pub(crate) type BlockComputationStart<'input, Tree, M> = ComputeResult<
+    <Tree as Traverse>::Node,
+    ControlFlow<
+        ComputeOutputOf<<Tree as Traverse>::Scalar>,
+        BlockComputation<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    >,
+    <Tree as Traverse>::Scalar,
+    M,
+>;
+
+pub(crate) fn begin_block_computation<'input, Tree, M>(
     tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
+    node: Tree::Node,
     input: ComputeInputOf<Tree::Scalar>,
-    incoming: Option<float_context::Incoming<<Tree as Traverse>::Node, Tree::Scalar>>,
-) -> ComputeResult<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
+) -> BlockComputationStart<'input, Tree, M>
 where
     Tree: Compute<'input, M>,
 {
+    let incoming = tree
+        .block_float_state()
+        .and_then(|state| state.incoming(node, input));
+    if incoming.is_some()
+        && float_context::Role::for_input(tree.node_input(node), input)
+            != float_context::Role::Shared
+    {
+        return Err(float_context::missing(node).into());
+    }
+
     let inherited = incoming.as_ref().map(|incoming| incoming.frame.as_ref());
     let group_style = tree.node_input(node);
     let contained_size = if let Some(containment) =
@@ -247,7 +436,7 @@ where
                 .text_computation()
                 .is_some_and(|text| text.formatted_active())
         {
-            return Ok(containment.empty);
+            return Ok(ControlFlow::Break(containment.empty));
         }
         containment.outer
     } else {
@@ -263,80 +452,19 @@ where
             text.formatted_begin_block(node, input, anonymous)
         })
         .map_err(|error| inline_run::text_run_error(node, error.into()))?;
-    let result = (|| {
-        let scrollbar_width = block_container_projection::<Tree, M>(tree, node)
+    Ok(ControlFlow::Continue(BlockComputation {
+        node,
+        input,
+        pass_input: input,
+        contained_size,
+        scrollbar_width: block_container_projection::<Tree, M>(tree, node)
             .scrollbar_width
-            .get();
-        let mut pass_input = input;
-        loop {
-            let output = compute_block_inner::<Tree, Tree::Scalar, M>(
-                tree,
-                node,
-                pass_input,
-                inherited,
-                contained_size,
-            )?;
-            if !input.run_mode().is_perform_layout() {
-                return Ok(output);
-            }
-            let Some(geometry) = output.output.scroll_geometry else {
-                return Ok(output);
-            };
-            let next_state = pass_input.settled_auto_scrollbars().transition(geometry);
-            if next_state == pass_input.settled_auto_scrollbars()
-                || scrollbar_width == Tree::Scalar::ZERO
-                || !crate::scroll::settled_auto_scrollbars_change_available_geometry(
-                    geometry, next_state,
-                )
-                .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?
-            {
-                return Ok(output);
-            }
-            pass_input = input.with_settled_auto_scrollbars(next_state);
-        }
-    })();
-    let formatted_result = if formatted && let Some(text) = tree.text_computation() {
-        text.formatted_end_block(node, input, anonymous, result.is_ok())
-            .map_err(|error| inline_run::text_run_error(node, error.into()))
-    } else {
-        Ok(())
-    };
-    if let Some(groups) = tree.group_computation() {
-        groups.end(result.is_ok());
-    }
-    // Completion bookkeeping must not replace the already established body
-    // failure; any resource exhaustion remains in the shared resource owner.
-    let result = result.and_then(|output| {
-        formatted_result?;
-        Ok(output)
-    });
-    result.and_then(|result| {
-        if incoming.is_none()
-            && float_context::Role::for_input(tree.node_input(node), input)
-                == float_context::Role::Shared
-            && result
-                .floats
-                .as_ref()
-                .is_some_and(|(ledger, _)| !ledger.is_empty())
-        {
-            return Err(float_context::missing(node).into());
-        }
-        if let Some((ledger, inherited)) = result.floats
-            && let Some(state) = tree.block_float_state()
-        {
-            state.record(float_context::Completed {
-                node,
-                request: incoming.as_ref().map_or(input, |incoming| incoming.request),
-                used: result.used,
-                output: result.output,
-                ledger,
-                inherited,
-                frame: incoming.map(|incoming| incoming.frame),
-                remaining_cut: result.remaining_cut,
-            });
-        }
-        Ok(result.output)
-    })
+            .get(),
+        incoming,
+        anonymous,
+        formatted,
+        pass: BlockPass { active: None },
+    }))
 }
 
 fn compute_block_inner<'input, Tree, S, M>(
@@ -346,6 +474,37 @@ fn compute_block_inner<'input, Tree, S, M>(
     inherited: Option<&InheritedFloatExclusions<S, <Tree as Traverse>::Node>>,
     contained_size: Size<Option<S>>,
 ) -> ComputeResult<<Tree as Traverse>::Node, BlockResult<<Tree as Traverse>::Node, S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let mut pass = match begin_block_pass(tree, node, input, inherited, contained_size)? {
+        ControlFlow::Break(output) => return Ok(output),
+        ControlFlow::Continue(pass) => pass,
+    };
+    loop {
+        match pass.advance(tree, inherited)? {
+            ControlFlow::Break(output) => return Ok(output),
+            ControlFlow::Continue(child) => {
+                let (pending, output) = child.compute(tree)?;
+                pass.accept_child(tree, pending, output)?;
+            }
+        }
+    }
+}
+
+type BlockPassStart<'input, Node, S> =
+    ControlFlow<BlockResult<Node, S>, BlockPass<'input, Node, S>>;
+pub(crate) type BlockPassStep<'input, Node, S> =
+    ControlFlow<BlockResult<Node, S>, in_flow::InFlowChild<'input, Node, S>>;
+
+fn begin_block_pass<'input, Tree, S, M>(
+    tree: &mut Tree,
+    node: <Tree as Traverse>::Node,
+    input: ComputeInputOf<S>,
+    inherited: Option<&InheritedFloatExclusions<S, <Tree as Traverse>::Node>>,
+    contained_size: Size<Option<S>>,
+) -> ComputeResult<<Tree as Traverse>::Node, BlockPassStart<'input, Tree::Node, S>, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
@@ -373,7 +532,7 @@ where
             height: Some(height),
         } = constants.node_outer_size
     {
-        return Ok(BlockResult {
+        return Ok(ControlFlow::Break(BlockResult {
             output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
                 .with_named_baselines(named_block_baselines(
                     node,
@@ -385,7 +544,7 @@ where
             used: input,
             floats: None,
             remaining_cut: None,
-        });
+        }));
     }
     if contained_size == Size::NONE
         && input.run_mode() == RunMode::ComputeSize
@@ -399,7 +558,7 @@ where
         } = constants.node_outer_size
         && !normal_flow_children_need_physical_sizing_work(tree, &children)
     {
-        return Ok(BlockResult {
+        return Ok(ControlFlow::Break(BlockResult {
             output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
                 .with_named_baselines(named_block_baselines(
                     node,
@@ -411,256 +570,587 @@ where
             used: input,
             floats: None,
             remaining_cut: None,
-        });
+        }));
     }
-    let logical_inner_size = constants.logical_node_inner_size();
-    let inherited_inline_request = constants
-        .flow_axes
-        .logical_size(constants.sizing_request.axes())
-        .inline;
     let normal_block_fill = intrinsic::normal_fill(&style, input, tree.node_input(node).float);
-    let accepted_inline_outer =
-        intrinsic::accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
-            if let Some(content) = tree.fragment_inline_content(node, input, operation)? {
-                return Ok(content);
-            }
-            let measured = ordinary(layout_in_flow_children(
-                tree,
-                node,
-                &children,
-                &constants,
-                input,
-                InFlowPassContext {
-                    inline_operation: operation,
-                    inner_inline: None,
-                    set_layout: false,
-                    inherited,
-                    projection: None,
-                },
-            ))?;
-            Ok(measured.intrinsic_inline_demand)
-        })?;
-    let accepted_inline_inner = constants.accepted_inline_inner(node, accepted_inline_outer)?;
-    let definite_child_inner = constants
-        .flow_axes
-        .logical_size(constants.definite_child_containing_block_size());
-    let ratio_block_outer = if constants.ratio_dependent_block
-        && definite_child_inner.block.is_none()
-        && normal_block_fill
-        && inherited_inline_request.operation() == crate::SizingOperation::Normal
-        && (logical_inner_size.inline.is_some()
-            || inherited_inline_request.space().definite_size().is_some())
-    {
-        let adjustment = if style.common.box_sizing == BoxSizing::ContentBox {
-            constants.padding_border_size
-        } else {
-            Size::ZERO
-        };
-        let size = constants
-            .flow_axes
-            .physical_size(LogicalSizeOf::new(Some(accepted_inline_outer), None))
-            .sub_optional_clamped_to_zero(adjustment)
-            .apply_aspect_ratio(*style.common.aspect_ratio)
-            .add_optional(adjustment);
-        let block = constants.flow_axes.logical_size(size).block;
-        if let Some(block) = block
-            && !block.is_finite()
-        {
-            return Err(crate::error::sizing_resolution_error(
-                node,
-                crate::LengthResolutionStatus::InvalidNumeric { value: block }.into(),
-            )
-            .into());
-        }
-        block.map(|block| {
-            block
-                .clamp_max_before_min_optional(
-                    constants.logical_node_min_size().block,
-                    constants.logical_node_max_size().block,
-                )
-                .max(constants.logical_padding_border_size().block)
-        })
-    } else {
-        None
-    };
-    let block_minimum = match constants.flow_axes.block_axis() {
-        PhysicalAxis::Horizontal => &style.common.min_size.width,
-        PhysicalAxis::Vertical => &style.common.min_size.height,
-    };
-    let ratio_needs_content_minimum = constants
-        .flow_axes
-        .logical_size(contained_size)
-        .block
-        .is_none()
-        && ratio_block_outer.is_some()
-        && block_minimum.is_auto()
-        && !style
-            .common
-            .overflow
-            .establishes_independent_formatting_context()
-        && (!children.is_empty() || semantic_work);
-    // Collect the automatic minimum before using the settled ratio height
-    // as a containing basis for child percentages.
-    let definite_ratio_inner = ratio_block_outer
-        .filter(|_| !ratio_needs_content_minimum)
-        .map(|outer| {
-            logical_inner_size.block.unwrap_or_else(|| {
-                (outer - constants.logical_content_box_inset().block_sum()).max(S::ZERO)
-            })
-        });
-    let sizes_float_context = float_context::sizes_float_context(
-        float_role,
-        input,
-        Some(accepted_inline_inner),
-        inherited.is_some(),
-        tree.block_float_work(node),
-    );
-    let needs_final_pass = (input.run_mode().is_perform_layout() || sizes_float_context)
-        && (logical_inner_size.inline.is_none()
-            || input.run_mode().is_perform_layout() && ratio_needs_content_minimum
-            || constants
-                .flow_axes
-                .logical_axis_progression(crate::LogicalAxis::Block)
-                .is_decreasing()
-                && logical_inner_size.block.is_none());
-    crate::layout_math::checked_available_space(accepted_inline_inner)
-        .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?;
-    let normal_constants = constants.with_logical_node_inner_size(
-        LogicalSizeOf::new(
-            Some(accepted_inline_inner),
-            definite_ratio_inner.or(logical_inner_size.block),
-        ),
-        definite_ratio_inner.is_some(),
-    );
-    // Actual Normal traversal owns height, Shape encounters and normal facts
-    // at the accepted width. RunMode does not turn a size query intrinsic.
-    let measured_inset_demand = input.run_mode().is_perform_layout()
-        && relative::has_pending_children::<Tree, M>(tree, &children, normal_constants.flow_axes);
-    let normal_pass_input = if ratio_needs_content_minimum {
-        input.with_run_mode(RunMode::ComputeSize)
-    } else {
-        input
-    };
-    let normal_pass = layout_in_flow_children(
-        tree,
+    let extent = intrinsic::begin_inline::<Tree, M>(tree, node, &style, &constants, input);
+    let flow = BlockFlow {
         node,
-        &children,
-        &normal_constants,
-        normal_pass_input,
-        InFlowPassContext {
-            inline_operation: crate::SizingOperation::Normal,
-            inner_inline: Some(accepted_inline_inner),
-            set_layout: normal_pass_input.run_mode().is_perform_layout()
-                && (!needs_final_pass || measured_inset_demand),
-            inherited,
-            projection: None,
-        },
-    )?;
-    let auto_block = normal_pass.auto_block(&normal_constants, float_role);
-    let block = ratio_block_outer.map_or(auto_block, |ratio_block| {
-        if ratio_needs_content_minimum {
-            ratio_block.max(auto_block)
-        } else {
-            ratio_block
+        input,
+        style,
+        children,
+        constants,
+        float_role,
+        contained_size,
+        semantic_work,
+        normal_block_fill,
+        normal_preview: None,
+    };
+    let active = flow.begin_inline_or_normal(tree, inherited, extent)?;
+    Ok(ControlFlow::Continue(BlockPass {
+        active: Some(active),
+    }))
+}
+
+struct BlockPass<'input, Node, S: LayoutScalar> {
+    active: Option<ActiveBlockPass<'input, Node, S>>,
+}
+
+struct ActiveBlockPass<'input, Node, S: LayoutScalar> {
+    flow: BlockFlow<'input, Node, S>,
+    constants: Constants<S>,
+    traversal: InFlowTraversal<Node, S>,
+    phase: BlockPassPhase<S>,
+}
+
+enum BlockPassPhase<S: LayoutScalar> {
+    Inline(intrinsic::InlineMeasurement<S>),
+    Normal(BlockFlowSizing<S>),
+    Final {
+        provisional: LogicalSizeOf<S>,
+        ratio_block_outer: Option<S>,
+    },
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
+    fn advance<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        inherited: Option<&InheritedFloatExclusions<S, Node>>,
+    ) -> ComputeResult<Node, BlockPassStep<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            let active = self.active.as_mut().expect("active Block pass");
+            match active
+                .traversal
+                .step(tree, &active.flow.children, &active.constants)?
+            {
+                InFlowStep::Continue => {}
+                InFlowStep::Child(child) => return Ok(ControlFlow::Continue(child)),
+                InFlowStep::Complete => {
+                    if let Some(output) = self.complete_traversal(tree, inherited)? {
+                        return Ok(ControlFlow::Break(output));
+                    }
+                }
+            }
         }
-    });
-    let logical_intrinsic_outer_size = LogicalSizeOf::new(accepted_inline_outer, block);
-    let logical_intrinsic_outer_size = LogicalSizeOf::new(
-        logical_intrinsic_outer_size
-            .inline
-            .clamp_max_before_min_optional(
-                constants.logical_node_min_size().inline,
-                constants.logical_node_max_size().inline,
-            ),
-        logical_intrinsic_outer_size
-            .block
-            .clamp_max_before_min_optional(
-                constants.logical_node_min_size().block,
-                constants.logical_node_max_size().block,
-            ),
-    )
-    .max_optional(constants.logical_padding_border_size().map(Some));
-    let logical_outer_size = constants
-        .logical_node_outer_size()
-        .unwrap_or(logical_intrinsic_outer_size)
-        .max_optional(constants.logical_padding_border_size().map(Some));
-    let provisional_logical_output_size = constants
-        .flow_axes
-        .logical_size(input.known())
-        .or(constants.logical_node_outer_size())
-        .unwrap_or(logical_outer_size)
-        .max_optional(constants.logical_padding_border_size().map(Some));
-    let (final_constants, final_pass) = if needs_final_pass {
-        let logical_inner_size = LogicalSizeOf::new(
-            Some(
-                (provisional_logical_output_size.inline
-                    - constants.logical_content_box_inset().inline_sum())
-                .max(S::ZERO),
-            ),
-            Some(
-                (provisional_logical_output_size.block
-                    - constants.logical_content_box_inset().block_sum())
-                .max(S::ZERO),
-            ),
-        );
-        let final_constants =
-            constants.with_logical_node_inner_size(logical_inner_size, ratio_block_outer.is_some());
-        let final_pass = layout_in_flow_children(
+    }
+
+    fn complete_traversal<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        inherited: Option<&InheritedFloatExclusions<S, Node>>,
+    ) -> ComputeResult<Node, Option<BlockResult<Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let ActiveBlockPass {
+            flow,
+            constants,
+            traversal,
+            phase,
+        } = self.active.take().expect("completed Block pass");
+        let completed = traversal.finish(tree)?;
+        let next = match phase {
+            BlockPassPhase::Inline(measurement) => {
+                let extent = measurement.accept(&flow.constants, completed.intrinsic_inline_demand);
+                drop(completed);
+                flow.begin_inline_or_normal(tree, inherited, extent)?
+            }
+            BlockPassPhase::Normal(sizing) => {
+                let provisional = sizing.provisional_output_size(
+                    &flow.constants,
+                    &constants,
+                    flow.input,
+                    &completed,
+                    flow.float_role,
+                );
+                if sizing.needs_final_pass {
+                    flow.begin_final(
+                        tree,
+                        inherited,
+                        completed,
+                        provisional,
+                        sizing.ratio_block_outer,
+                    )?
+                } else {
+                    return flow
+                        .finish(
+                            tree,
+                            &constants,
+                            completed,
+                            provisional,
+                            sizing.ratio_block_outer,
+                        )
+                        .map(Some);
+                }
+            }
+            BlockPassPhase::Final {
+                provisional,
+                ratio_block_outer,
+            } => {
+                return flow
+                    .finish(tree, &constants, completed, provisional, ratio_block_outer)
+                    .map(Some);
+            }
+        };
+        self.active = Some(next);
+        Ok(None)
+    }
+
+    fn accept_child<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        pending: Option<in_flow::PendingBox<'input, Node, S>>,
+        output: ComputeOutputOf<S>,
+    ) -> ComputeResult<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let active = self.active.as_mut().expect("active Block pass");
+        active
+            .traversal
+            .accept_child(tree, &active.constants, pending, output)
+    }
+}
+
+struct BlockFlow<'input, Node, S: LayoutScalar> {
+    node: Node,
+    input: ComputeInputOf<S>,
+    style: BlockContainerProjection<'input, S>,
+    children: Vec<Node>,
+    constants: Constants<S>,
+    float_role: float_context::Role,
+    contained_size: Size<Option<S>>,
+    semantic_work: bool,
+    normal_block_fill: bool,
+    // Keep the measured flow alive through final placement.
+    normal_preview: Option<in_flow::InFlowResult<Node, S>>,
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockFlow<'input, Node, S> {
+    fn begin_inline_or_normal<Tree, M>(
+        self,
+        tree: &mut Tree,
+        inherited: Option<&InheritedFloatExclusions<S, Node>>,
+        mut extent: intrinsic::InlineExtent<S>,
+    ) -> ComputeResult<Node, ActiveBlockPass<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            match extent {
+                intrinsic::InlineExtent::Resolved(accepted_inline) => {
+                    return self.begin_normal(tree, inherited, accepted_inline);
+                }
+                intrinsic::InlineExtent::Measure(measurement) => {
+                    let operation = measurement.operation();
+                    if let Some(content) =
+                        tree.fragment_inline_content(self.node, self.input, operation)?
+                    {
+                        extent = measurement.accept(&self.constants, content);
+                        continue;
+                    }
+                    let constants = self.constants;
+                    let traversal = InFlowTraversal::begin(
+                        tree,
+                        self.node,
+                        &constants,
+                        self.input,
+                        InFlowPassContext {
+                            inline_operation: operation,
+                            inner_inline: None,
+                            set_layout: false,
+                            inherited,
+                            projection: None,
+                        },
+                    )?;
+                    return Ok(ActiveBlockPass {
+                        flow: self,
+                        constants,
+                        traversal,
+                        phase: BlockPassPhase::Inline(measurement),
+                    });
+                }
+            }
+        }
+    }
+
+    fn begin_normal<Tree, M>(
+        self,
+        tree: &mut Tree,
+        inherited: Option<&InheritedFloatExclusions<S, Node>>,
+        accepted_inline_outer: S,
+    ) -> ComputeResult<Node, ActiveBlockPass<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let PreparedNormalFlow {
+            sizing,
+            constants,
+            input,
+            inner_inline,
+            set_layout,
+        } = BlockFlowSizing::prepare(
             tree,
-            node,
-            &children,
-            &final_constants,
+            &self.style,
+            &self.constants,
+            &self.children,
+            BlockFlowRequest {
+                node: self.node,
+                input: self.input,
+                contained_size: self.contained_size,
+                inherited: inherited.is_some(),
+                semantic_work: self.semantic_work,
+                float_role: self.float_role,
+                normal_block_fill: self.normal_block_fill,
+                accepted_inline_outer,
+            },
+        )?;
+        let traversal = InFlowTraversal::begin(
+            tree,
+            self.node,
+            &constants,
             input,
             InFlowPassContext {
                 inline_operation: crate::SizingOperation::Normal,
-                inner_inline: logical_inner_size.inline,
-                set_layout: input.run_mode().is_perform_layout(),
+                inner_inline: Some(inner_inline),
+                set_layout,
                 inherited,
                 projection: None,
             },
         )?;
-        (final_constants, final_pass)
-    } else {
-        (normal_constants, normal_pass)
-    };
-    if let Some(text) = tree.text_computation() {
-        text.formatted_record_flow(&final_pass.formatted)
-            .map_err(|error| inline_run::text_run_error(node, error.into()))?;
+        Ok(ActiveBlockPass {
+            flow: self,
+            constants,
+            traversal,
+            phase: BlockPassPhase::Normal(sizing),
+        })
     }
-    if let Some(groups) = tree.group_computation() {
-        groups.select(final_pass.groups.clone());
+
+    fn begin_final<Tree, M>(
+        mut self,
+        tree: &mut Tree,
+        inherited: Option<&InheritedFloatExclusions<S, Node>>,
+        normal_pass: in_flow::InFlowResult<Node, S>,
+        provisional: LogicalSizeOf<S>,
+        ratio_block_outer: Option<S>,
+    ) -> ComputeResult<Node, ActiveBlockPass<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let inset = self.constants.logical_content_box_inset();
+        let logical_inner_size = LogicalSizeOf::new(
+            Some((provisional.inline - inset.inline_sum()).max(S::ZERO)),
+            Some((provisional.block - inset.block_sum()).max(S::ZERO)),
+        );
+        let constants = self
+            .constants
+            .with_logical_node_inner_size(logical_inner_size, ratio_block_outer.is_some());
+        let traversal = InFlowTraversal::begin(
+            tree,
+            self.node,
+            &constants,
+            self.input,
+            InFlowPassContext {
+                inline_operation: crate::SizingOperation::Normal,
+                inner_inline: logical_inner_size.inline,
+                set_layout: self.input.run_mode().is_perform_layout(),
+                inherited,
+                projection: None,
+            },
+        )?;
+        self.normal_preview = Some(normal_pass);
+        Ok(ActiveBlockPass {
+            flow: self,
+            constants,
+            traversal,
+            phase: BlockPassPhase::Final {
+                provisional,
+                ratio_block_outer,
+            },
+        })
     }
-    let logical_output_size = LogicalSizeOf::new(
-        provisional_logical_output_size.inline,
+
+    fn finish<Tree, M>(
+        self,
+        tree: &mut Tree,
+        final_constants: &Constants<S>,
+        final_pass: in_flow::InFlowResult<Node, S>,
+        provisional_logical_output_size: LogicalSizeOf<S>,
+        ratio_block_outer: Option<S>,
+    ) -> ComputeResult<Node, BlockResult<Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Self {
+            node,
+            input,
+            ref style,
+            ref children,
+            constants,
+            float_role,
+            ..
+        } = self;
+        if let Some(text) = tree.text_computation() {
+            text.formatted_record_flow(&final_pass.formatted)
+                .map_err(|error| inline_run::text_run_error(node, error.into()))?;
+        }
+        if let Some(groups) = tree.group_computation() {
+            groups.select(final_pass.groups.clone());
+        }
+        let logical_output_size = LogicalSizeOf::new(
+            provisional_logical_output_size.inline,
+            constants
+                .flow_axes
+                .logical_size(input.known())
+                .block
+                // Keep the resolved border extent when deriving the content
+                // extent and adding back its inset would round it differently.
+                .or(constants.logical_node_outer_size().block)
+                .or(final_constants.logical_node_outer_size().block)
+                .or(ratio_block_outer.map(|_| provisional_logical_output_size.block))
+                .unwrap_or_else(|| final_pass.auto_block(final_constants, float_role))
+                .clamp_max_before_min_optional(
+                    final_constants.logical_node_min_size().block,
+                    final_constants.logical_node_max_size().block,
+                )
+                .max(final_constants.logical_padding_border_size().block),
+        );
+        let output_size = final_constants.flow_axes.physical_size(logical_output_size);
+        finish_flow(
+            tree,
+            node,
+            input,
+            style,
+            children,
+            final_constants,
+            SizedFlow {
+                size: output_size,
+                flow: final_pass,
+            },
+        )
+    }
+}
+
+struct BlockFlowRequest<Node, S: LayoutScalar> {
+    node: Node,
+    input: ComputeInputOf<S>,
+    contained_size: Size<Option<S>>,
+    inherited: bool,
+    semantic_work: bool,
+    float_role: float_context::Role,
+    normal_block_fill: bool,
+    accepted_inline_outer: S,
+}
+
+struct BlockFlowSizing<S: LayoutScalar> {
+    accepted_inline_outer: S,
+    ratio_block_outer: Option<S>,
+    ratio_needs_content_minimum: bool,
+    needs_final_pass: bool,
+}
+
+struct PreparedNormalFlow<S: LayoutScalar> {
+    sizing: BlockFlowSizing<S>,
+    constants: Constants<S>,
+    input: ComputeInputOf<S>,
+    inner_inline: S,
+    set_layout: bool,
+}
+
+impl<S: LayoutScalar> BlockFlowSizing<S> {
+    fn prepare<'input, Tree, M>(
+        tree: &Tree,
+        style: &BlockContainerProjection<'input, S>,
+        constants: &Constants<S>,
+        children: &[Tree::Node],
+        request: BlockFlowRequest<Tree::Node, S>,
+    ) -> ComputeResult<Tree::Node, PreparedNormalFlow<S>, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+    {
+        let BlockFlowRequest {
+            node,
+            input,
+            contained_size,
+            inherited,
+            semantic_work,
+            float_role,
+            normal_block_fill,
+            accepted_inline_outer,
+        } = request;
+        let logical_inner_size = constants.logical_node_inner_size();
+        let inherited_inline_request = constants
+            .flow_axes
+            .logical_size(constants.sizing_request.axes())
+            .inline;
+        let accepted_inline_inner = constants.accepted_inline_inner(node, accepted_inline_outer)?;
+        let definite_child_inner = constants
+            .flow_axes
+            .logical_size(constants.definite_child_containing_block_size());
+        let ratio_block_outer = if constants.ratio_dependent_block
+            && definite_child_inner.block.is_none()
+            && normal_block_fill
+            && inherited_inline_request.operation() == crate::SizingOperation::Normal
+            && (logical_inner_size.inline.is_some()
+                || inherited_inline_request.space().definite_size().is_some())
+        {
+            let adjustment = if style.common.box_sizing == BoxSizing::ContentBox {
+                constants.padding_border_size
+            } else {
+                Size::ZERO
+            };
+            let size = constants
+                .flow_axes
+                .physical_size(LogicalSizeOf::new(Some(accepted_inline_outer), None))
+                .sub_optional_clamped_to_zero(adjustment)
+                .apply_aspect_ratio(*style.common.aspect_ratio)
+                .add_optional(adjustment);
+            let block = constants.flow_axes.logical_size(size).block;
+            if let Some(block) = block
+                && !block.is_finite()
+            {
+                return Err(crate::error::sizing_resolution_error(
+                    node,
+                    crate::LengthResolutionStatus::InvalidNumeric { value: block }.into(),
+                )
+                .into());
+            }
+            block.map(|block| {
+                block
+                    .clamp_max_before_min_optional(
+                        constants.logical_node_min_size().block,
+                        constants.logical_node_max_size().block,
+                    )
+                    .max(constants.logical_padding_border_size().block)
+            })
+        } else {
+            None
+        };
+        let block_minimum = match constants.flow_axes.block_axis() {
+            PhysicalAxis::Horizontal => &style.common.min_size.width,
+            PhysicalAxis::Vertical => &style.common.min_size.height,
+        };
+        let ratio_needs_content_minimum = constants
+            .flow_axes
+            .logical_size(contained_size)
+            .block
+            .is_none()
+            && ratio_block_outer.is_some()
+            && block_minimum.is_auto()
+            && !style
+                .common
+                .overflow
+                .establishes_independent_formatting_context()
+            && (!children.is_empty() || semantic_work);
+        // Collect the automatic minimum before using the settled ratio height
+        // as a containing basis for child percentages.
+        let definite_ratio_inner = ratio_block_outer
+            .filter(|_| !ratio_needs_content_minimum)
+            .map(|outer| {
+                logical_inner_size.block.unwrap_or_else(|| {
+                    (outer - constants.logical_content_box_inset().block_sum()).max(S::ZERO)
+                })
+            });
+        let sizes_float_context = float_context::sizes_float_context(
+            float_role,
+            input,
+            Some(accepted_inline_inner),
+            inherited,
+            tree.block_float_work(node),
+        );
+        let needs_final_pass = (input.run_mode().is_perform_layout() || sizes_float_context)
+            && (logical_inner_size.inline.is_none()
+                || input.run_mode().is_perform_layout() && ratio_needs_content_minimum
+                || constants
+                    .flow_axes
+                    .logical_axis_progression(crate::LogicalAxis::Block)
+                    .is_decreasing()
+                    && logical_inner_size.block.is_none());
+        crate::layout_math::checked_available_space(accepted_inline_inner)
+            .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?;
+        let normal_constants = constants.with_logical_node_inner_size(
+            LogicalSizeOf::new(
+                Some(accepted_inline_inner),
+                definite_ratio_inner.or(logical_inner_size.block),
+            ),
+            definite_ratio_inner.is_some(),
+        );
+        // Actual Normal traversal owns height, Shape encounters and normal facts
+        // at the accepted width. RunMode does not turn a size query intrinsic.
+        let measured_inset_demand = input.run_mode().is_perform_layout()
+            && relative::has_pending_children::<Tree, M>(
+                tree,
+                children,
+                normal_constants.flow_axes,
+            );
+        let normal_pass_input = if ratio_needs_content_minimum {
+            input.with_run_mode(RunMode::ComputeSize)
+        } else {
+            input
+        };
+        let set_normal_layout = normal_pass_input.run_mode().is_perform_layout()
+            && (!needs_final_pass || measured_inset_demand);
+        Ok(PreparedNormalFlow {
+            sizing: Self {
+                accepted_inline_outer,
+                ratio_block_outer,
+                ratio_needs_content_minimum,
+                needs_final_pass,
+            },
+            constants: normal_constants,
+            input: normal_pass_input,
+            inner_inline: accepted_inline_inner,
+            set_layout: set_normal_layout,
+        })
+    }
+
+    fn provisional_output_size<Node>(
+        &self,
+        constants: &Constants<S>,
+        normal_constants: &Constants<S>,
+        input: ComputeInputOf<S>,
+        normal_pass: &in_flow::InFlowResult<Node, S>,
+        float_role: float_context::Role,
+    ) -> LogicalSizeOf<S> {
+        let auto_block = normal_pass.auto_block(normal_constants, float_role);
+        let block = self.ratio_block_outer.map_or(auto_block, |ratio_block| {
+            if self.ratio_needs_content_minimum {
+                ratio_block.max(auto_block)
+            } else {
+                ratio_block
+            }
+        });
+        let logical_intrinsic_outer_size = LogicalSizeOf::new(self.accepted_inline_outer, block);
+        let logical_intrinsic_outer_size = LogicalSizeOf::new(
+            logical_intrinsic_outer_size
+                .inline
+                .clamp_max_before_min_optional(
+                    constants.logical_node_min_size().inline,
+                    constants.logical_node_max_size().inline,
+                ),
+            logical_intrinsic_outer_size
+                .block
+                .clamp_max_before_min_optional(
+                    constants.logical_node_min_size().block,
+                    constants.logical_node_max_size().block,
+                ),
+        )
+        .max_optional(constants.logical_padding_border_size().map(Some));
+        let logical_outer_size = constants
+            .logical_node_outer_size()
+            .unwrap_or(logical_intrinsic_outer_size)
+            .max_optional(constants.logical_padding_border_size().map(Some));
         constants
             .flow_axes
             .logical_size(input.known())
-            .block
-            // Keep the resolved border extent when deriving the content
-            // extent and adding back its inset would round it differently.
-            .or(constants.logical_node_outer_size().block)
-            .or(final_constants.logical_node_outer_size().block)
-            .or(ratio_block_outer.map(|_| provisional_logical_output_size.block))
-            .unwrap_or_else(|| final_pass.auto_block(&final_constants, float_role))
-            .clamp_max_before_min_optional(
-                final_constants.logical_node_min_size().block,
-                final_constants.logical_node_max_size().block,
-            )
-            .max(final_constants.logical_padding_border_size().block),
-    );
-    let output_size = final_constants.flow_axes.physical_size(logical_output_size);
-    finish_flow(
-        tree,
-        node,
-        input,
-        &style,
-        &children,
-        &final_constants,
-        SizedFlow {
-            size: output_size,
-            flow: final_pass,
-        },
-    )
+            .or(constants.logical_node_outer_size())
+            .unwrap_or(logical_outer_size)
+            .max_optional(constants.logical_padding_border_size().map(Some))
+    }
 }
 
 /// Final box extent paired with the actual descendant production it sizes.
