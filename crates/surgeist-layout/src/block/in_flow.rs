@@ -920,61 +920,34 @@ where
             child_margin = constants.flow_axes.physical_edges(logical_child_margin);
         }
         if !child_style.float.is_none() {
-            let margin_box_inline = logical_child_size.inline + logical_child_margin.inline_sum();
-            float_intrinsics.add(margin_box_inline, child_style.float, child_style.clear);
-            intrinsic_inline_demand = intrinsic_inline_demand.max(float_intrinsics.result());
-            if !physical_float_context && inline_operation != crate::SizingOperation::MaxContent {
-                index += 1;
-                continue;
-            }
-            // Project the otherwise-empty anonymous parent's border without
-            // consuming the component. Exported start groups stay outside;
-            // internal groups precede its own zero top margin, not a later
-            // in-flow sibling's margin.
-            let anonymous_start = adjoining.reduce_start(
-                constants.collapse_top_margin,
-                true,
-                CollapsibleMarginOf::ZERO,
-            );
-            let mut pending_float = PendingFloat {
-                placement: super::floats::PendingPlacement::Unresolved,
-                node: child,
-                source_index,
-                side: child_style.float,
-                clear: child_style.clear,
-                block_start: adjoining.cursor + anonymous_start.offset,
-                size: output.size,
-                named_baselines: output.named_baselines,
-                content_size: output.content_size,
-                border: child_border,
-                padding: child_padding,
-                margin: child_margin,
-                float_exclusion: child_style.float_exclusion,
-                child_compute_geometry: output.scroll_geometry,
-            };
-            // Intrinsic Max needs the actual rectangular cohort, without
-            // querying Shape or pretending an indefinite line has zero width.
-            let placement = if inline_operation == crate::SizingOperation::MaxContent {
-                float_exclusions.place_float_intrinsic(node, &pending_float)?
-            } else {
-                float_exclusions.place_float_for_line(node, &pending_float, None)?
-            };
-            let logical_location = placement.logical;
-            let intrinsic_float_demand = placement.intrinsic_inline_demand;
-            if set_layout {
-                float_exclusions.retain_native(&mut pending_float, placement);
-                pending_floats.push(pending_float);
-            }
-            let content_box_inset = constants.logical_content_box_inset();
-            let float_inline_end = logical_location.inline
-                + logical_child_size.inline
-                + logical_child_margin.inline_end
-                - content_box_inset.inline_start;
-            let float_block_end =
-                logical_location.block + logical_child_size.block + logical_child_margin.block_end;
-            intrinsic_inline_demand =
-                intrinsic_inline_demand.max(intrinsic_float_demand.unwrap_or(float_inline_end));
-            owned_float_block_end = owned_float_block_end.max(float_block_end);
+            place_in_flow_float(
+                node,
+                InFlowFloatItem {
+                    child,
+                    source_index,
+                    child_style: &child_style,
+                    output,
+                    child_border,
+                    child_padding,
+                    child_margin,
+                    logical_child_size,
+                    logical_child_margin,
+                },
+                InFlowFloatPass {
+                    constants,
+                    adjoining: &adjoining,
+                    inline_operation,
+                    physical_float_context,
+                    set_layout,
+                },
+                InFlowFloatState {
+                    float_exclusions: &mut float_exclusions,
+                    float_intrinsics: &mut float_intrinsics,
+                    pending_floats: &mut pending_floats,
+                    intrinsic_inline_demand: &mut intrinsic_inline_demand,
+                    owned_float_block_end: &mut owned_float_block_end,
+                },
+            )?;
             index += 1;
             continue;
         }
@@ -1371,6 +1344,125 @@ where
         active_margin_can_collapse_with_parent: adjoining.end_adjoins_parent,
         all_in_flow_children_can_collapse_through: adjoining.all_through,
     })
+}
+
+struct InFlowFloatItem<'input, 'a, Node, S: LayoutScalar> {
+    child: Node,
+    source_index: usize,
+    child_style: &'a BlockChildProjection<'input, S>,
+    output: ComputeOutputOf<S>,
+    child_border: Edges<S>,
+    child_padding: Edges<S>,
+    child_margin: Edges<S>,
+    logical_child_size: LogicalSizeOf<S>,
+    logical_child_margin: LogicalEdgesOf<S>,
+}
+
+struct InFlowFloatPass<'a, S: LayoutScalar> {
+    constants: &'a Constants<S>,
+    adjoining: &'a entry::AdjoiningFlow<S>,
+    inline_operation: crate::SizingOperation,
+    physical_float_context: bool,
+    set_layout: bool,
+}
+
+struct InFlowFloatState<'a, Node, S: LayoutScalar> {
+    float_exclusions: &'a mut FloatExclusions<S, Node>,
+    float_intrinsics: &'a mut FloatIntrinsics<S>,
+    pending_floats: &'a mut Vec<PendingFloat<Node, S>>,
+    intrinsic_inline_demand: &'a mut S,
+    owned_float_block_end: &'a mut S,
+}
+
+fn place_in_flow_float<Node, S, M>(
+    node: Node,
+    item: InFlowFloatItem<'_, '_, Node, S>,
+    pass: InFlowFloatPass<'_, S>,
+    state: InFlowFloatState<'_, Node, S>,
+) -> LayoutResultOf<Node, (), S, M>
+where
+    Node: Copy + Eq,
+    S: LayoutScalar,
+{
+    let InFlowFloatItem {
+        child,
+        source_index,
+        child_style,
+        output,
+        child_border,
+        child_padding,
+        child_margin,
+        logical_child_size,
+        logical_child_margin,
+    } = item;
+    let InFlowFloatPass {
+        constants,
+        adjoining,
+        inline_operation,
+        physical_float_context,
+        set_layout,
+    } = pass;
+    let InFlowFloatState {
+        float_exclusions,
+        float_intrinsics,
+        pending_floats,
+        intrinsic_inline_demand,
+        owned_float_block_end,
+    } = state;
+    let margin_box_inline = logical_child_size.inline + logical_child_margin.inline_sum();
+    float_intrinsics.add(margin_box_inline, child_style.float, child_style.clear);
+    *intrinsic_inline_demand = intrinsic_inline_demand.max(float_intrinsics.result());
+    if !physical_float_context && inline_operation != crate::SizingOperation::MaxContent {
+        return Ok(());
+    }
+    // Project the otherwise-empty anonymous parent's border without
+    // consuming the component. Exported start groups stay outside;
+    // internal groups precede its own zero top margin, not a later
+    // in-flow sibling's margin.
+    let anonymous_start = adjoining.reduce_start(
+        constants.collapse_top_margin,
+        true,
+        CollapsibleMarginOf::ZERO,
+    );
+    let mut pending_float = PendingFloat {
+        placement: super::floats::PendingPlacement::Unresolved,
+        node: child,
+        source_index,
+        side: child_style.float,
+        clear: child_style.clear,
+        block_start: adjoining.cursor + anonymous_start.offset,
+        size: output.size,
+        named_baselines: output.named_baselines,
+        content_size: output.content_size,
+        border: child_border,
+        padding: child_padding,
+        margin: child_margin,
+        float_exclusion: child_style.float_exclusion,
+        child_compute_geometry: output.scroll_geometry,
+    };
+    // Intrinsic Max needs the actual rectangular cohort, without
+    // querying Shape or pretending an indefinite line has zero width.
+    let placement = if inline_operation == crate::SizingOperation::MaxContent {
+        float_exclusions.place_float_intrinsic(node, &pending_float)?
+    } else {
+        float_exclusions.place_float_for_line(node, &pending_float, None)?
+    };
+    let logical_location = placement.logical;
+    let intrinsic_float_demand = placement.intrinsic_inline_demand;
+    if set_layout {
+        float_exclusions.retain_native(&mut pending_float, placement);
+        pending_floats.push(pending_float);
+    }
+    let content_box_inset = constants.logical_content_box_inset();
+    let float_inline_end =
+        logical_location.inline + logical_child_size.inline + logical_child_margin.inline_end
+            - content_box_inset.inline_start;
+    let float_block_end =
+        logical_location.block + logical_child_size.block + logical_child_margin.block_end;
+    *intrinsic_inline_demand =
+        intrinsic_inline_demand.max(intrinsic_float_demand.unwrap_or(float_inline_end));
+    *owned_float_block_end = owned_float_block_end.max(float_block_end);
+    Ok(())
 }
 
 pub(super) fn child_margin_can_collapse_with_parent<S: LayoutScalar>(
