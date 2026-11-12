@@ -89,6 +89,13 @@ pub(in crate::document_scripting) fn window_factory_creates_the_exact_default_po
                 const factory = globalThis.trustedTypes;
                 if (typeof factory !== 'object' || factory === null || factory !== window.trustedTypes ||
                     factory.defaultPolicy !== null) return 'factory exposure';
+                const getter = Object.getOwnPropertyDescriptor(globalThis, 'trustedTypes').get;
+                if (getter.call(window) !== factory || getter.call(globalThis) !== factory)
+                    return 'borrowed Window getter identity';
+                for (const receiver of [{}, Object.create(window), new Proxy(window, {})]) {
+                    try { getter.call(receiver); return 'accepted a foreign Window receiver'; }
+                    catch (error) { if (!(error instanceof TypeError)) return 'wrong getter error'; }
+                }
                 const visited = [];
                 const callback = input => input;
                 const options = {
