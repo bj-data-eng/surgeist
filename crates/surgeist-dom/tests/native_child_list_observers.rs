@@ -485,3 +485,63 @@ fn records_retain_a_real_historical_identity_for_a_node_retired_in_the_same_batc
         .unwrap();
     assert_ne!(next, *historical);
 }
+
+#[test]
+fn retiring_a_pending_observer_unlinks_it_without_losing_the_next_generation_or_recipient() {
+    let Tree {
+        mut dom,
+        root,
+        first,
+        branch,
+        last,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let limits = DomChildListObservationLimits::new(2, 8, 8, 32).unwrap();
+    dom.set_limits(dom.limits().with_child_list_observation(limits))
+        .unwrap();
+    let retired = observe(&mut dom, root, false);
+    let surviving = observe(&mut dom, root, false);
+    let mut detach = DomBatch::new();
+    detach.detach(branch);
+    dom.apply(detach, &cancel).unwrap();
+
+    dom.retire_child_list_observer(retired, &cancel).unwrap();
+    let replacement = observe(&mut dom, root, false);
+    assert_ne!(replacement, retired);
+    assert_eq!(
+        dom.take_child_list_records(retired, &cancel).unwrap_err(),
+        DomError::StaleChildListObserver
+    );
+    let mut foreign = tree().dom;
+    assert_eq!(
+        foreign.retire_child_list_observer(surviving, &cancel),
+        Err(DomError::ForeignOwner)
+    );
+    let checkpoint = checkpoint_limits(1_000_000);
+    let DomNativeCheckpoint::ChildList(delivery) =
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+    else {
+        panic!("only the surviving observer is pending");
+    };
+    assert_eq!(delivery.observer(), surviving);
+    assert_eq!(delivery.records().len(), 1);
+    assert_record(
+        &delivery.records()[0],
+        root,
+        &[],
+        &[branch],
+        Some(first),
+        Some(last),
+    );
+    drop(delivery);
+    assert!(matches!(
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap(),
+        DomNativeCheckpoint::Idle
+    ));
+    assert!(
+        dom.take_child_list_records(replacement, &cancel)
+            .unwrap()
+            .is_empty()
+    );
+}
