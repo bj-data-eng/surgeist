@@ -159,7 +159,12 @@ struct Attachment {
     policy: HtmlScriptingPolicy,
     failures: FailureSlot,
     source_failures: SourceFailureSlot,
+    registration: Weak<DomDocumentScriptRegistration>,
+    _registration_access_backing: DomHostedRuntimeRetention,
 }
+
+const REGISTRATION_ACCESS_BYTES: usize =
+    size_of::<DomDocumentScriptRegistration>() + 2 * size_of::<usize>();
 
 struct NativeOwner {
     attachment: OnceCell<Attachment>,
@@ -409,7 +414,8 @@ impl PreparedDocumentScriptHost {
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let failure_bytes = FailureSlot::storage_bytes();
         let source_failure_bytes = SourceFailureSlot::storage_bytes();
-        let liveness_bytes = DomDocumentScriptRegistration::storage_bytes();
+        let liveness_bytes =
+            DomDocumentScriptRegistration::storage_bytes() + REGISTRATION_ACCESS_BYTES;
         let css_bytes = css::callback_storage_bytes::<DomHostedRuntimeRetention>();
         let css_failure_bytes =
             HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes();
@@ -618,12 +624,15 @@ impl UnpublishedScriptEngine {
             source_failures,
             window_event,
             window_timers,
-            liveness_backing,
+            mut liveness_backing,
             retained_bytes,
             _hook_backing,
         } = self;
         // Keep the hook debit alive through engine disposal on refusal.
         let process = process;
+        let registration_access_backing = liveness_backing
+            .split_off(REGISTRATION_ACCESS_BYTES)
+            .map_err(DocumentScriptNativeError::from)?;
         let mut session = owner
             .session
             .try_borrow_mut()
@@ -646,6 +655,7 @@ impl UnpublishedScriptEngine {
             .map_err(DocumentScriptNativeError::from)?;
         // Only this unpublished owner can initialize the cell; it is consumed
         // on success, and no guest operation can run during publication.
+        let registration = Rc::new(registration);
         owner.attachment.get_or_init(|| Attachment {
             target,
             canonical,
@@ -653,6 +663,8 @@ impl UnpublishedScriptEngine {
             policy,
             failures,
             source_failures,
+            registration: Rc::downgrade(&registration),
+            _registration_access_backing: registration_access_backing,
         });
         Ok(ScriptEngine {
             registration,
@@ -722,7 +734,7 @@ struct CreationRealm {
 
 struct ScriptEngine {
     // Close the canonical engine fact before releasing SDK handles/captures.
-    registration: DomDocumentScriptRegistration,
+    registration: Rc<DomDocumentScriptRegistration>,
     guest_events: Option<Rc<guest::GuestEvents>>,
     window_event: Rc<window_event::WindowEvent>,
     window_timers: Option<Rc<window_timers::WindowTimers>>,

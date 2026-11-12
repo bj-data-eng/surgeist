@@ -28,8 +28,9 @@ fn dispatch_reads_require_the_current_active_scope_and_stop_when_it_drops() {
         dom.source_operation
             .as_ref()
             .unwrap()
-            .observed_event_work()
+            .callback_observation()
             .unwrap()
+            .work
             .work
             .load(Ordering::Relaxed)
             > 0

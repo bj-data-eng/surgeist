@@ -311,6 +311,7 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         + FailureSlot::storage_bytes()
         + SourceFailureSlot::storage_bytes()
         + DomDocumentScriptRegistration::storage_bytes()
+        + REGISTRATION_ACCESS_BYTES
         + escape
         + HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes()
         + dom_exception

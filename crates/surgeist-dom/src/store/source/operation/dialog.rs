@@ -262,10 +262,6 @@ impl Operation {
         }
     }
 
-    pub(super) fn observed_event_work(&self) -> Option<Arc<CallbackWork>> {
-        self.observation()
-            .map(|observation| observation.request.work.clone())
-    }
     pub(super) fn observation(&self) -> Option<&DialogObservation> {
         match &self.draft {
             OperationDraft::Observed(observation) => Some(observation),

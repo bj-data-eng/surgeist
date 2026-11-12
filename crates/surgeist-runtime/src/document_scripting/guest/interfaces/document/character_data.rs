@@ -450,7 +450,7 @@ fn character_receiver<'scope>(
         .filter(|id| matches!(id, GuestNode::Text(_) | GuestNode::Comment(_))))
 }
 
-fn copy_native_data(
+pub(super) fn copy_native_data(
     owner: &NativeOwner,
     events: &GuestEvents,
     units: &[u16],

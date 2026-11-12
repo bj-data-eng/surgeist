@@ -27,6 +27,7 @@ pub(in crate::document_scripting) fn guest_attribute_writes_reach_the_native_ele
                 branded.toString = () => { throw new Error('coerced branded value'); };
                 if (target.setAttribute('ONCLICK', branded) !== undefined ||
                     target.setAttribute('DATA-X', 'plain\udc00') !== undefined ||
+                    target.setAttributeNS(null, 'onfocus', 'plain sink\ud800') !== undefined ||
                     target.setAttributeNS('urn:example', 'p:value', 'foreign\0') !== undefined) return false;
                 try { target.setAttributeNS(null, 'p:invalid', 'x'); return false; }
                 catch (error) { if (error.name !== 'NamespaceError') return false; }
@@ -40,6 +41,13 @@ pub(in crate::document_scripting) fn guest_attribute_writes_reach_the_native_ele
     assert_eq!(
         element.attribute(&"onclick".into()).unwrap().code_units(),
         &[b'A' as u16, 0xd800, 0]
+    );
+    assert_eq!(
+        element.attribute(&"onfocus".into()).unwrap().code_units(),
+        &units("plain sink")
+            .into_iter()
+            .chain([0xd800])
+            .collect::<Vec<_>>()
     );
     assert_eq!(
         element.attribute(&"data-x".into()).unwrap().code_units(),

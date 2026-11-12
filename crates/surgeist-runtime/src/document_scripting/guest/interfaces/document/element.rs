@@ -7,6 +7,7 @@ use surgeist_html::{
     bounded::lexical::validate_custom_element_name_with, vocabulary::KnownHtmlElement,
 };
 
+mod attribute;
 mod svg;
 
 const ELEMENT: &[u16] = &ascii(b"Element");
@@ -184,6 +185,7 @@ impl ElementBindings {
             )?;
         }
         super::shadow::install_attachment(scope, &element, capture)?;
+        attribute::install(scope, &element, capture)?;
         super::parent_node::install(
             scope,
             &element,
