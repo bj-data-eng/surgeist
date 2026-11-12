@@ -484,3 +484,81 @@ pub(in crate::document_scripting) fn scripted_shadow_source_refusal_keeps_the_or
         .unwrap();
     assert_eq!(events.budget.used.get(), bytes);
 }
+
+pub(in crate::document_scripting) fn scripted_shadow_selects_the_hosted_registry_and_clones_null() {
+    use surgeist_dom::DomRegistryBinding;
+
+    let mut host = public_node_host(1_000, 20_000);
+    let permit = host.permit().unwrap();
+    let cancel = host.native.cancellation.clone();
+    let document = permit.document();
+    let before = host.snapshot().unwrap();
+    let initial = before.document(document).unwrap();
+    let document_registry = initial.metadata().custom_element_registry();
+    assert!(matches!(document_registry, DomRegistryBinding::Registry(_)));
+    let old = initial.document_element().unwrap();
+    let first = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let first = batch.create_element_ns(document, Namespace::html(), "div");
+            batch.replace_child(&first, document, old);
+            dom.apply(batch, &cancel)
+                .unwrap()
+                .created(&first)
+                .unwrap()
+                .unwrap()
+        })
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const host = document.documentElement;
+            return host.attachShadow({mode: "open", clonable: true, customElementRegistry: null})
+                === host.shadowRoot;
+        })()"#,
+        )
+    })
+    .unwrap();
+    let null_registry = |snapshot: &DomSnapshot, element| {
+        let root = snapshot.node(element).unwrap().shadow_root().unwrap();
+        let state = snapshot.shadow_root(root).unwrap().state();
+        assert_eq!(state.custom_element_registry(), DomRegistryBinding::Null);
+        assert!(!state.keep_custom_element_registry_null());
+    };
+    null_registry(&host.snapshot().unwrap(), first);
+    let (copy, second) = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let copy = batch.clone_node(first, false);
+            let second = batch.create_element_ns(document, Namespace::html(), "span");
+            batch.replace_child(&second, document, first);
+            let commit = dom.apply(batch, &cancel).unwrap();
+            (
+                commit.created(&copy).unwrap().unwrap(),
+                commit.created(&second).unwrap().unwrap(),
+            )
+        })
+        .unwrap();
+    null_registry(&host.snapshot().unwrap(), copy);
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const host = document.documentElement;
+            return host.attachShadow({mode: "open"}) === host.shadowRoot;
+        })()"#,
+        )
+    })
+    .unwrap();
+    let after = host.snapshot().unwrap();
+    let root = after.node(second).unwrap().shadow_root().unwrap();
+    assert_eq!(
+        after
+            .shadow_root(root)
+            .unwrap()
+            .state()
+            .custom_element_registry(),
+        document_registry
+    );
+}
