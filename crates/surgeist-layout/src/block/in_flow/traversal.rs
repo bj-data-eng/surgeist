@@ -1,5 +1,14 @@
 use super::*;
 
+pub(super) enum InFlowStep<Node, S: LayoutScalar> {
+    Continue,
+    Complete,
+    HiddenChild {
+        node: Node,
+        input: ComputeInputOf<S>,
+    },
+}
+
 pub(super) struct InFlowTraversal<Node, S: LayoutScalar> {
     node: Node,
     input: ComputeInputOf<S>,
@@ -249,12 +258,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         tree: &mut Tree,
         children: &[Node],
         constants: &Constants<S>,
-    ) -> ComputeResult<Node, bool, S, M>
+    ) -> ComputeResult<Node, InFlowStep<Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         if self.index >= children.len() && self.slot_cursor >= self.slots.len() {
-            return Ok(false);
+            return Ok(InFlowStep::Complete);
         }
         let node = self.node;
         let input = self.input;
@@ -285,20 +294,20 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                         NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(source_index)),
                     ));
                     if compute_box {
-                        tree.compute_child(
-                            child,
-                            ComputeInputOf::<S>::hidden_in_containing_pass(
+                        return Ok(InFlowStep::HiddenChild {
+                            node: child,
+                            input: ComputeInputOf::<S>::hidden_in_containing_pass(
                                 ContainingLayoutContext::new(
                                     constants.flow_axes,
                                     ParentFormattingContext::BlockFlow,
                                 ),
                                 input.settled_auto_scrollbars(),
                             ),
-                        )?;
+                        });
                     }
                 }
                 self.index += 1;
-                return Ok(true);
+                return Ok(InFlowStep::Continue);
             }
             InFlowChildStart::Positioned { child, geometry } => {
                 self.static_positions.push((
@@ -311,7 +320,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                     ),
                 ));
                 self.index += 1;
-                return Ok(true);
+                return Ok(InFlowStep::Continue);
             }
             InFlowChildStart::VisibleInlineRun(transition) => {
                 let run_start = transition.start;
@@ -382,7 +391,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                     },
                 )?;
                 self.first_in_flow &= self.inline_indent_state.is_none();
-                return Ok(true);
+                return Ok(InFlowStep::Continue);
             }
             InFlowChildStart::FlowBox { child, style } => (child, style),
         };
@@ -406,20 +415,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                 first_in_flow: &mut self.first_in_flow,
             },
         )?;
-        let InFlowComputedBox {
-            output,
-            child_input,
-            child_margin,
-            child_padding,
-            child_border,
-            logical_child_margin,
-            logical_child_size,
-            avoids_float_exclusions,
-            accepted_float_position,
-            shared_child,
-            mut clearance_funding,
-            introduced_cut,
-        } = compute_in_flow_box(
+        let computed = compute_in_flow_box(
             tree,
             InFlowBoxComputation {
                 node,
@@ -443,6 +439,42 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
             },
             &mut self.remaining_cut,
         )?;
+        self.accept_box(tree, constants, source_index, child, &child_style, computed)?;
+        self.index += 1;
+        Ok(InFlowStep::Continue)
+    }
+
+    pub(super) fn accept_hidden_child(&mut self) {
+        self.index += 1;
+    }
+
+    fn accept_box<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        constants: &Constants<S>,
+        source_index: usize,
+        child: Node,
+        child_style: &BlockChildProjection<'input, S>,
+        computed: InFlowComputedBox<Node, S>,
+    ) -> ComputeResult<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let node = self.node;
+        let InFlowComputedBox {
+            output,
+            child_input,
+            child_margin,
+            child_padding,
+            child_border,
+            logical_child_margin,
+            logical_child_size,
+            avoids_float_exclusions,
+            accepted_float_position,
+            shared_child,
+            mut clearance_funding,
+            introduced_cut,
+        } = computed;
         let child_flow_axes = child_style.common.flow_axes;
         if !child_style.float.is_none() {
             place_in_flow_float(
@@ -450,7 +482,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                 InFlowFloatItem {
                     child,
                     source_index,
-                    child_style: &child_style,
+                    child_style,
                     output,
                     child_border,
                     child_padding,
@@ -473,8 +505,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                     owned_float_block_end: &mut self.owned_float_block_end,
                 },
             )?;
-            self.index += 1;
-            return Ok(true);
+            return Ok(());
         }
         self.resolved_terminal_float_block_end = None;
         if let Some(groups) = tree.group_computation() {
@@ -515,7 +546,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                 node,
                 child,
                 index: self.index,
-                child_style: &child_style,
+                child_style,
                 output: &output,
                 child_margin,
                 constants,
@@ -613,8 +644,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
             logical_child_size.block,
             child_block_end,
         )?;
-        self.index += 1;
-        Ok(true)
+        Ok(())
     }
 
     pub(super) fn finish<'input, Tree, M>(

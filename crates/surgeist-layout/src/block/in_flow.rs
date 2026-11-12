@@ -237,8 +237,16 @@ where
     S: LayoutScalar,
 {
     let mut traversal = traversal::InFlowTraversal::begin(tree, node, constants, input, pass)?;
-    while traversal.step(tree, children, constants)? {}
-    traversal.finish(tree)
+    loop {
+        match traversal.step(tree, children, constants)? {
+            traversal::InFlowStep::Continue => {}
+            traversal::InFlowStep::Complete => return traversal.finish(tree),
+            traversal::InFlowStep::HiddenChild { node, input } => {
+                tree.compute_child(node, input)?;
+                traversal.accept_hidden_child();
+            }
+        }
+    }
 }
 
 pub(super) fn child_margin_can_collapse_with_parent<S: LayoutScalar>(
