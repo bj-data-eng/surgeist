@@ -251,6 +251,181 @@ fn named_node_map_removal_resolves_each_current_qualified_or_expanded_name() {
 }
 
 #[test]
+fn native_attr_attachment_distinguishes_replace_unchanged_in_use_and_append() {
+    use surgeist_dom::{DomAttributeAttachment, DomSourceOutput};
+
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let namespace = Namespace::from_uri("urn:attachment");
+    let mut setup = DomBatch::new();
+    let source = setup.create_document();
+    let destination = setup.create_document();
+    let target = setup.create_element(&destination, "target");
+    let other = setup.create_element(&source, "other");
+    setup.set_attribute(&target, "first", "a");
+    setup.set_attribute_ns(&target, namespace.clone(), "old:item", "old");
+    setup.set_attribute(&target, "last", "z");
+    let incoming = setup.create_attribute_ns(&source, namespace.clone(), "new:item");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let source = commit.document(&source).unwrap();
+    let destination = commit.document(&destination).unwrap();
+    let target = commit.created(&target).unwrap().unwrap();
+    let other = commit.created(&other).unwrap().unwrap();
+    let incoming = commit.created(&incoming).unwrap().unwrap();
+    let raw = DocumentString::from_utf16(vec![0xd800, 0x41, 0]);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_text_content(incoming, raw.clone()),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
+
+    let before = dom.snapshot();
+    let incoming = before.attr(incoming).unwrap().id();
+    let map = before.node(target).unwrap().attributes().unwrap();
+    let previous = map.item(1).unwrap().id();
+    let mut attach = DomBatch::new();
+    let replacement = attach.attach_native_attribute(target, incoming);
+    let commit = dom.apply(attach, &cancel).unwrap();
+    assert_eq!(
+        commit.attribute_attachment(&replacement),
+        Ok(DomAttributeAttachment::Replaced(previous))
+    );
+    let after = dom.snapshot();
+    let attached = after.node(target).unwrap().attributes().unwrap();
+    assert_eq!(
+        attached.iter().map(|attr| attr.id()).collect::<Vec<_>>(),
+        [
+            map.item(0).unwrap().id(),
+            incoming,
+            map.item(2).unwrap().id()
+        ]
+    );
+    let current = attached
+        .get_named_item_ns(&namespace, &"item".into())
+        .unwrap();
+    assert_eq!(current.name().prefix(), Some(&"new".into()));
+    assert_eq!(current.value(), &raw);
+    assert_eq!(current.owner_document(), destination);
+    assert_eq!(current.owner_element(), Some(target));
+    assert_eq!(after.attr(previous.node()).unwrap().owner_element(), None);
+    assert_eq!(
+        after.attr(previous.node()).unwrap().owner_document(),
+        destination
+    );
+    assert_eq!(
+        before.attr(incoming.node()).unwrap().owner_document(),
+        source
+    );
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::attach_native_attribute(target, incoming),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("attaching the same native Attr is complete");
+    };
+    assert_eq!(
+        done.output(),
+        Some(DomSourceOutput::AttributeAttachment(
+            DomAttributeAttachment::Unchanged(incoming)
+        ))
+    );
+    assert!(done.commit().changes().changes().is_empty());
+    drop(lease);
+    assert_eq!(dom.snapshot().stamp(), after.stamp());
+
+    let mut in_use = DomBatch::new();
+    in_use.attach_native_attribute(other, incoming);
+    assert!(matches!(
+        dom.apply(in_use, &cancel),
+        Err(DomError::InUseAttribute)
+    ));
+    assert_eq!(dom.snapshot().stamp(), after.stamp());
+
+    let mut append = DomBatch::new();
+    append.remove_attribute_node(target, incoming);
+    let result = append.attach_native_attribute(other, incoming);
+    let commit = dom.apply(append, &cancel).unwrap();
+    assert_eq!(
+        commit.attribute_attachment(&result),
+        Ok(DomAttributeAttachment::Appended(incoming))
+    );
+    let now = dom.snapshot();
+    assert_eq!(now.attr(incoming.node()).unwrap().owner_document(), source);
+    assert_eq!(
+        now.attr(incoming.node()).unwrap().owner_element(),
+        Some(other)
+    );
+    assert_eq!(now.attr(incoming.node()).unwrap().value(), &raw);
+    assert_eq!(now.node(target).unwrap().attributes().unwrap().len(), 2);
+}
+
+#[test]
+fn native_attr_source_replacement_runs_the_original_nonce_hook() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let target = setup.create_element_ns(&document, Namespace::html(), "div");
+    setup.set_attribute(&target, "nonce", "original");
+    let incoming = setup.create_attribute(&document, "nonce");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let target = commit.created(&target).unwrap().unwrap();
+    let incoming = commit.created(&incoming).unwrap().unwrap();
+    let before = dom.snapshot();
+    let target_before = before.node(target).unwrap();
+    let previous = target_before
+        .get_attribute_node(&"nonce".into())
+        .unwrap()
+        .id();
+    let incoming = before.attr(incoming).unwrap().id();
+    assert_eq!(
+        target_before.as_element().unwrap().nonce(),
+        Some(&"original".into())
+    );
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::attach_native_attribute(target, incoming),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("native nonce replacement has no external service");
+    };
+    assert_eq!(
+        done.output(),
+        Some(surgeist_dom::DomSourceOutput::AttributeAttachment(
+            surgeist_dom::DomAttributeAttachment::Replaced(previous)
+        ))
+    );
+    drop(lease);
+    let now = dom.snapshot();
+    let node = now.node(target).unwrap();
+    assert_eq!(
+        node.get_attribute_node(&"nonce".into()).unwrap().id(),
+        incoming
+    );
+    assert_eq!(node.as_element().unwrap().nonce(), Some(&"".into()));
+    assert_eq!(
+        now.attr(previous.node()).unwrap().value(),
+        &"original".into()
+    );
+    assert_eq!(now.attr(previous.node()).unwrap().owner_element(), None);
+}
+
+#[test]
 fn detached_attr_value_clone_adoption_and_retirement_use_exact_node_identity() {
     let cancel = AtomicBool::new(false);
     let mut dom = owner();
