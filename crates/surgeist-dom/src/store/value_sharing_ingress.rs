@@ -9,15 +9,22 @@ impl Draft {
         retained_occurrence: bool,
         cancel: &AtomicBool,
     ) -> Result<custody::Held<NewNode>, DomError> {
-        let NewNode::Text(text) = incoming.value() else {
+        // A Text or Comment node lists the block its string borrows, whether this holder charges
+        // the string itself or the formation that made it already did.
+        let (NewNode::Text(text) | NewNode::Comment(text)) = incoming.value() else {
             return Ok(incoming);
         };
-        let mut original = source::storage::Payload::default();
-        original.string(text)?;
-        let original = custody::Usage::new(original.bytes, original.units);
-        // The producer classifies this exact field, rather than inferring
-        // its presence from unrelated credit in the same candidate holder.
-        if !retained_occurrence {
+        self.blocks.adopt(
+            text,
+            |next| self.admit_custody_usage(next, cancel),
+            || self.source_step(cancel),
+        )?;
+        // Only a Text holder charges its string here: a Comment's is charged where its payload is
+        // formed, after the block is listed.
+        if matches!(incoming.value(), NewNode::Text(_)) && !retained_occurrence {
+            let mut original = source::storage::Payload::default();
+            original.listed_string(text)?;
+            let original = custody::Usage::new(original.bytes, original.units);
             incoming
                 .debit_mut()
                 .grow(original, |next| self.admit_custody_usage(next, cancel))?;

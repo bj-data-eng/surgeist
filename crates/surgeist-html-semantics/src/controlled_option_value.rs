@@ -840,6 +840,10 @@ impl<'a> QueryControl<'a> {
     }
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "The builder holds its records inline, and boxing it would add an allocation the controlled option-value operation does not admit."
+)]
 enum Phase {
     Building(HtmlCaptureBuilder),
     Finished {

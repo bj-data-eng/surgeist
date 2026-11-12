@@ -171,8 +171,10 @@ impl DomStyleRuntime {
             sheet_sets::Action::Preferred,
             |a, b| same(&prep, &steps, a, b),
         )?;
-        let mut surviving_bytes = size_of::<DomStyleSheetSetObservation>();
-        let mut surviving_units = 0usize;
+        let mut surviving = Surviving {
+            bytes: size_of::<DomStyleSheetSetObservation>(),
+            units: 0,
+        };
         for (name_index, name) in next.names().enumerate() {
             step(&prep, &steps)?;
             let mut duplicate = false;
@@ -183,11 +185,6 @@ impl DomStyleRuntime {
             if duplicate {
                 continue;
             }
-            let bytes = name
-                .retained_units()
-                .checked_mul(size_of::<u16>())
-                .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
-                .ok_or(DomStyleRuntimeError::Admission)?;
             // Runtime's live old/new graph union is priced independently. The
             // lower occurrence owns its actual original decoded name backing.
             let mut existing = false;
@@ -200,31 +197,33 @@ impl DomStyleRuntime {
                     }
                 }
             }
-            if !existing {
-                custody.add(bytes)?;
-            }
-            if name.shares_storage_with(prep.occurrence().content()) {
-                if !existing {
-                    custody.shared = custody
-                        .shared
-                        .checked_add(bytes)
-                        .ok_or(DomStyleRuntimeError::Admission)?;
+            // The block a name borrows is part of its backing, charged once for all names of the
+            // union that borrow it.
+            let mut block_existing = false;
+            for root in roots.iter() {
+                step(&prep, &steps)?;
+                if let Some(old) = root.sheet_sets.state() {
+                    for old in old.names() {
+                        step(&prep, &steps)?;
+                        block_existing |= sheet_sets::shares_block(name, old);
+                    }
                 }
-            } else {
-                surviving_bytes = surviving_bytes
-                    .checked_add(bytes)
-                    .ok_or(DomStyleRuntimeError::Admission)?;
-                surviving_units = surviving_units
-                    .checked_add(name.retained_units())
-                    .ok_or(DomStyleRuntimeError::Admission)?;
-                // The output can outlive every Runtime row. Its independent
-                // closing custody includes each actual other name allocation.
-                custody.add(bytes)?;
-                custody.units = custody
-                    .units
-                    .checked_add(name.retained_units())
-                    .ok_or(DomStyleRuntimeError::Admission)?;
             }
+            let mut block_earlier = false;
+            for previous in next.names().take(name_index) {
+                step(&prep, &steps)?;
+                block_earlier |= sheet_sets::shares_block(name, previous);
+            }
+            charge_name(
+                &mut custody,
+                &mut surviving,
+                name,
+                NameHeld {
+                    existing,
+                    block: block_existing || block_earlier,
+                    in_content: name.shares_storage_with(prep.occurrence().content()),
+                },
+            )?;
             prep.admit_runtime(custody.usage()?, cancel)
                 .map_err(DomStyleRuntimeError::from)?;
         }
@@ -264,8 +263,8 @@ impl DomStyleRuntime {
             .state_mut()
             .expect("qualified actual Document preference owner");
         let surviving = surgeist_dom::DomParsedHtmlAssociationRuntimeUsage::new(
-            surviving_bytes,
-            surviving_units,
+            surviving.bytes,
+            surviving.units,
             1,
         )
         .map_err(DomStyleRuntimeError::from)?;
@@ -291,3 +290,75 @@ impl DomStyleRuntime {
         })
     }
 }
+
+/// What the name of the output's union has in common with the state that holds it.
+#[derive(Clone, Copy)]
+struct NameHeld {
+    /// A name of the old state aliases this one, so its backing is charged already.
+    existing: bool,
+    /// A name of the old state or an earlier name borrows the block this name borrows.
+    block: bool,
+    /// The name is the content of the DOM occurrence, which owns its backing.
+    in_content: bool,
+}
+
+/// The bytes and units of the names the output retains alone.
+struct Surviving {
+    bytes: usize,
+    units: usize,
+}
+
+/// Charges one name of the output's union: its occurrence, and the block it borrows when no name
+/// holds the block yet, to the custody and, when the output keeps the name alone, to what survives.
+fn charge_name(
+    custody: &mut Custody,
+    surviving: &mut Surviving,
+    name: &surgeist_dom::DocumentString,
+    held: NameHeld,
+) -> Result<(), DomStyleRuntimeError> {
+    let (bytes, units) = sheet_sets::occurrence_backing(name)?;
+    let block = sheet_sets::block_backing(name).filter(|_| !held.block);
+    let (block_bytes, block_units) = block.unwrap_or((0, 0));
+    if !held.existing {
+        custody.add(bytes)?;
+    }
+    if block.is_some() {
+        custody.add(block_bytes)?;
+    }
+    if held.in_content {
+        if !held.existing {
+            custody.shared = custody
+                .shared
+                .checked_add(bytes)
+                .ok_or(DomStyleRuntimeError::Admission)?;
+        }
+        custody.shared = custody
+            .shared
+            .checked_add(block_bytes)
+            .ok_or(DomStyleRuntimeError::Admission)?;
+    } else {
+        surviving.bytes = surviving
+            .bytes
+            .checked_add(bytes)
+            .and_then(|total| total.checked_add(block_bytes))
+            .ok_or(DomStyleRuntimeError::Admission)?;
+        surviving.units = surviving
+            .units
+            .checked_add(units)
+            .and_then(|total| total.checked_add(block_units))
+            .ok_or(DomStyleRuntimeError::Admission)?;
+        // The output can outlive every Runtime row. Its independent
+        // closing custody includes each actual other name allocation.
+        custody.add(bytes)?;
+        custody.add(block_bytes)?;
+        custody.units = custody
+            .units
+            .checked_add(units)
+            .and_then(|total| total.checked_add(block_units))
+            .ok_or(DomStyleRuntimeError::Admission)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests;

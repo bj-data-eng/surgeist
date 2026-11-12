@@ -886,7 +886,7 @@ impl DraftNode {
             }
             NewNode::Text(value) => {
                 let mut extra = storage::Payload::default();
-                extra.string(value)?;
+                extra.listed_string(value)?;
                 let data = fresh_language(
                     input,
                     true,
@@ -911,7 +911,7 @@ impl DraftNode {
             }
             NewNode::Comment(value) => {
                 let mut extra = storage::Payload::default();
-                extra.string(value)?;
+                extra.listed_string(value)?;
                 let data = fresh_language(
                     input,
                     retained_occurrence,

@@ -416,3 +416,145 @@ fn checked_arithmetic_refuses_without_constructing_impossible_allocations() {
         Err(HtmlCaptureStorageError::RepresentationExhausted)
     );
 }
+
+fn borrowers() -> (surgeist_html::values::TextBlock, [DocumentString; 2]) {
+    let mut units = Vec::with_capacity(512);
+    units.extend([97_u16, 98, 99, 100, 101, 102, 103, 104]);
+    let block = surgeist_html::values::TextBlock::from_utf16(units);
+    let first = block.string(0..4).unwrap();
+    let second = block.string(4..8).unwrap();
+    (block, [first, second])
+}
+
+fn exact(units: &[u16]) -> DocumentString {
+    let mut backing = Vec::new();
+    backing.try_reserve_exact(units.len()).unwrap();
+    backing.extend_from_slice(units);
+    assert_eq!(backing.capacity(), units.len());
+    DocumentString::from_utf16(backing)
+}
+
+#[test]
+fn borrowers_of_one_block_are_priced_by_length_and_the_block_once() {
+    let build = |first: DocumentString, second: DocumentString| {
+        let mut builder = builder();
+        let document = document(&mut builder);
+        builder.add_text(&document, first).unwrap();
+        builder.add_comment(&document, second).unwrap();
+        builder.finish().unwrap()
+    };
+    let owners = build(exact(&[97, 98, 99, 100]), exact(&[101, 102, 103, 104]));
+    let (block, [first, second]) = borrowers();
+    let borrowed = build(first, second);
+    let block_bytes = size_of::<Vec<u16>>() + block.capacity() * size_of::<u16>();
+    let (owned, shared) = (observe(&owners), observe(&borrowed));
+    assert_eq!(
+        shared.utf16_extent(),
+        owned.utf16_extent() + block.capacity()
+    );
+    // The block is listed once however many strings borrow it, in a table the capture owns.
+    assert_eq!(borrowed.0.blocks.len(), 1);
+    assert!(owners.0.blocks.is_empty());
+    let table_bytes = borrowed.0.blocks.capacity() * BlockTable::ENTRY_BYTES;
+    assert_eq!(
+        shared.retained_bytes(),
+        owned.retained_bytes() + block_bytes + table_bytes
+    );
+}
+
+fn listed_strings<'a>(
+    strings: &'a [DocumentString],
+) -> impl Fn(&mut dyn FnMut(&DocumentString)) + 'a {
+    move |visit| strings.iter().for_each(visit)
+}
+
+#[test]
+fn a_listing_adds_each_new_block_once_and_undoes_only_what_it_added() {
+    let (first_block, [first, second]) = borrowers();
+    let (second_block, [third, _]) = borrowers();
+    let mut table = BlockTable::new();
+    let mut sequence = 0;
+    let earlier = [first.clone()];
+    let kept = list_blocks(&mut table, &mut sequence, listed_strings(&earlier)).unwrap();
+    assert_eq!(table.len(), 1);
+    // The second listing meets the first block again and adds the second block once, however many
+    // strings borrow it.
+    let both = [second, third.clone(), third];
+    let listing = list_blocks(&mut table, &mut sequence, listed_strings(&both)).unwrap();
+    assert_eq!(table.len(), 2);
+    assert_eq!(
+        table.find(&first_block),
+        Some(&(first_block.retained_bytes(), first_block.capacity(), 0))
+    );
+    listing.undo(&mut table);
+    assert_eq!(table.len(), 1);
+    assert!(table.find(&first_block).is_some());
+    assert!(table.find(&second_block).is_none());
+    kept.undo(&mut table);
+    assert!(table.is_empty());
+}
+
+#[test]
+fn an_owner_string_lists_no_block() {
+    let mut table = BlockTable::new();
+    let mut sequence = 0;
+    let owners = [exact(&[97]), padded(&[98], 9)];
+    list_blocks(&mut table, &mut sequence, listed_strings(&owners)).unwrap();
+    assert!(table.is_empty());
+}
+
+#[test]
+fn a_record_that_a_host_cap_refuses_lists_no_block() {
+    let (block, [first, second]) = borrowers();
+    let caps = surgeist_html::accounting::HtmlLimits::from_fn(
+        |_| u64::MAX,
+        |resource| match resource {
+            surgeist_html::accounting::HtmlResource::CapturedUtf16Units => 4,
+            _ => u64::MAX,
+        },
+    );
+    let operation = surgeist_ledger::Operation::with_profile(
+        "host",
+        caps,
+        4,
+        surgeist_ledger::ProfileMode::Summary { timing: false },
+    )
+    .unwrap();
+    let root = operation.root();
+    let accounting = surgeist_html::accounting::HtmlHostScope::new(operation.share(), root);
+    let mut hosted = HtmlCaptureBuilder::with_accounting(
+        HtmlCaptureLimits::new(100, 1000, 100, 10000, 100, 100, 100, 16 * 1024 * 1024),
+        HtmlHostFactsRevision::fresh(),
+        &accounting,
+    )
+    .unwrap();
+    let document = hosted
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    // Four units fit the cap; the next four do not.
+    hosted.add_text(&document, first).unwrap();
+    assert!(hosted.add_text(&document, second).is_err());
+    assert_eq!(hosted.data.blocks.len(), 1);
+    assert!(hosted.data.blocks.find(&block).is_some());
+    let mut refused = HtmlCaptureBuilder::with_accounting(
+        HtmlCaptureLimits::new(100, 1000, 100, 10000, 100, 100, 100, 16 * 1024 * 1024),
+        HtmlHostFactsRevision::fresh(),
+        &accounting,
+    )
+    .unwrap();
+    let document = refused
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let (other, [third, _]) = borrowers();
+    assert!(refused.add_text(&document, third).is_err());
+    assert!(refused.data.blocks.find(&other).is_none());
+    assert!(refused.data.blocks.is_empty());
+}

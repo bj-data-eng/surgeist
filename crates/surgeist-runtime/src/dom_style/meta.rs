@@ -395,6 +395,23 @@ impl Backing {
             .ok_or(DomStyleRuntimeError::Admission)?;
         self.check()
     }
+    /// Retains a name of the old and new union: the bytes and units of its occurrence, and, when
+    /// the name borrows a block that no name of the union holds yet, the block once. `shared_dom`
+    /// and `block_dom` say that a DOM occurrence holds the name, or its block, as well.
+    fn retain_union_name(
+        &mut self,
+        name: &DocumentString,
+        shared_dom: bool,
+        block_held: bool,
+        block_dom: bool,
+    ) -> Result<(), DomStyleRuntimeError> {
+        let (bytes, units) = sheet_sets::occurrence_backing(name)?;
+        self.retain_name(bytes, units, shared_dom)?;
+        if !block_held && let Some((bytes, units)) = sheet_sets::block_backing(name) {
+            self.retain_name(bytes, units, block_dom)?;
+        }
+        Ok(())
+    }
     fn retain_name(
         &mut self,
         bytes: usize,
@@ -699,12 +716,14 @@ impl DomStyleRuntime {
             for (name_index, name) in next.names().enumerate() {
                 steps.joined(&preparation)?;
                 let mut retained = false;
+                let mut block_held = false;
                 for root in roots.iter() {
                     steps.joined(&preparation)?;
                     if let Some(current) = root.sheet_sets.state() {
                         for old in current.names() {
                             steps.joined(&preparation)?;
                             retained |= name.shares_storage_with(old);
+                            block_held |= sheet_sets::shares_block(name, old);
                         }
                     }
                 }
@@ -715,26 +734,25 @@ impl DomStyleRuntime {
                     {
                         steps.joined(&preparation)?;
                         retained |= name.shares_storage_with(old);
+                        block_held |= sheet_sets::shares_block(name, old);
                     }
                 }
                 for old in next.names().take(name_index) {
                     steps.joined(&preparation)?;
                     retained |= name.shares_storage_with(old);
+                    block_held |= sheet_sets::shares_block(name, old);
                 }
                 if retained {
                     continue;
                 }
                 let mut shared_dom = false;
+                let mut block_dom = false;
                 for original in preparation.occurrences() {
                     steps.joined(&preparation)?;
                     shared_dom |= name.shares_storage_with(original.content());
+                    block_dom |= sheet_sets::shares_block(name, original.content());
                 }
-                let units = name.retained_units();
-                let bytes = units
-                    .checked_mul(size_of::<u16>())
-                    .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
-                    .ok_or(DomStyleRuntimeError::Admission)?;
-                backing.retain_name(bytes, units, shared_dom)?;
+                backing.retain_union_name(name, shared_dom, block_held, block_dom)?;
                 steps.runtime()?;
                 preparation
                     .admit_runtime(backing.native_usage()?, cancel)
@@ -1010,12 +1028,14 @@ impl DomStyleRuntime {
             for (name_index, name) in next.names().enumerate() {
                 steps.joined(&preparation)?;
                 let mut retained = false;
+                let mut block_held = false;
                 for root in roots.iter() {
                     steps.joined(&preparation)?;
                     if let Some(current) = root.sheet_sets.state() {
                         for old in current.names() {
                             steps.joined(&preparation)?;
                             retained |= name.shares_storage_with(old);
+                            block_held |= sheet_sets::shares_block(name, old);
                         }
                     }
                 }
@@ -1026,26 +1046,25 @@ impl DomStyleRuntime {
                     {
                         steps.joined(&preparation)?;
                         retained |= name.shares_storage_with(old);
+                        block_held |= sheet_sets::shares_block(name, old);
                     }
                 }
                 for old in next.names().take(name_index) {
                     steps.joined(&preparation)?;
                     retained |= name.shares_storage_with(old);
+                    block_held |= sheet_sets::shares_block(name, old);
                 }
                 if retained {
                     continue;
                 }
                 let mut shared_dom = false;
+                let mut block_dom = false;
                 for original in preparation.occurrences() {
                     steps.joined(&preparation)?;
                     shared_dom |= name.shares_storage_with(original.content());
+                    block_dom |= sheet_sets::shares_block(name, original.content());
                 }
-                let units = name.retained_units();
-                let bytes = units
-                    .checked_mul(size_of::<u16>())
-                    .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
-                    .ok_or(DomStyleRuntimeError::Admission)?;
-                backing.retain_name(bytes, units, shared_dom)?;
+                backing.retain_union_name(name, shared_dom, block_held, block_dom)?;
                 steps.joined(&preparation)?;
                 preparation
                     .admit_runtime(backing.native_usage()?, cancel)
@@ -1145,3 +1164,6 @@ impl DomStyleRuntime {
         Ok(DomSourceAdvance::Progress(outcome))
     }
 }
+
+#[cfg(test)]
+mod tests;

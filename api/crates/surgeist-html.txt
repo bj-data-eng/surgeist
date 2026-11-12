@@ -6353,6 +6353,12 @@ impl core::error::Error for surgeist_html::values::HtmlValueSyntaxError
 pub fn surgeist_html::values::HtmlValueSyntaxError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::values::HtmlValueSyntaxError
 pub fn surgeist_html::values::HtmlValueSyntaxError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::values::TextBlockTableError
+pub surgeist_html::values::TextBlockTableError::AllocationFailed
+pub surgeist_html::values::TextBlockTableError::Present
+impl core::error::Error for surgeist_html::values::TextBlockTableError
+impl core::fmt::Display for surgeist_html::values::TextBlockTableError
+pub fn surgeist_html::values::TextBlockTableError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::values::TextRangeError
 pub surgeist_html::values::TextRangeError::OutOfBounds
 pub surgeist_html::values::TextRangeError::OutOfBounds::block_len: usize
@@ -6378,6 +6384,7 @@ pub fn surgeist_html::values::Attribute::value(&self) -> &surgeist_html::values:
 pub struct surgeist_html::values::DocumentString
 impl surgeist_html::values::DocumentString
 pub fn surgeist_html::values::DocumentString::block(&self) -> &surgeist_html::values::TextBlock
+pub fn surgeist_html::values::DocumentString::borrowed_block(&self) -> core::option::Option<&surgeist_html::values::TextBlock>
 pub fn surgeist_html::values::DocumentString::code_points(&self) -> impl core::iter::traits::iterator::Iterator<Item = u32> + core::clone::Clone + '_
 pub fn surgeist_html::values::DocumentString::code_units(&self) -> &[u16]
 pub fn surgeist_html::values::DocumentString::from_shared_utf16(units: alloc::sync::Arc<alloc::vec::Vec<u16>>) -> Self
@@ -6385,6 +6392,7 @@ pub fn surgeist_html::values::DocumentString::from_utf16(code_units: impl core::
 pub fn surgeist_html::values::DocumentString::is_empty(&self) -> bool
 pub fn surgeist_html::values::DocumentString::is_whole_block(&self) -> bool
 pub fn surgeist_html::values::DocumentString::len(&self) -> usize
+pub fn surgeist_html::values::DocumentString::occurrence_units(&self) -> usize
 pub fn surgeist_html::values::DocumentString::range(&self) -> core::ops::range::Range<usize>
 pub fn surgeist_html::values::DocumentString::retained_units(&self) -> usize
 pub fn surgeist_html::values::DocumentString::shares_storage_with(&self, other: &Self) -> bool
@@ -6718,11 +6726,31 @@ pub fn surgeist_html::values::TextBlock::get(&self, range: core::ops::range::Ran
 pub fn surgeist_html::values::TextBlock::holders(&self) -> usize
 pub fn surgeist_html::values::TextBlock::is_empty(&self) -> bool
 pub fn surgeist_html::values::TextBlock::len(&self) -> usize
+pub fn surgeist_html::values::TextBlock::retained_bytes(&self) -> usize
 pub fn surgeist_html::values::TextBlock::shares_allocation_with(&self, other: &Self) -> bool
 pub fn surgeist_html::values::TextBlock::string(&self, range: core::ops::range::Range<usize>) -> core::result::Result<surgeist_html::values::DocumentString, surgeist_html::values::TextRangeError>
 pub fn surgeist_html::values::TextBlock::units(&self) -> &[u16]
 pub fn surgeist_html::values::TextBlock::weak_holders(&self) -> usize
 pub fn surgeist_html::values::TextBlock::whole(&self) -> surgeist_html::values::DocumentString
+pub struct surgeist_html::values::TextBlockTable<T>
+impl<T> surgeist_html::values::TextBlockTable<T>
+pub const surgeist_html::values::TextBlockTable<T>::ENTRY_BYTES: usize
+pub fn surgeist_html::values::TextBlockTable<T>::capacity(&self) -> usize
+pub fn surgeist_html::values::TextBlockTable<T>::find(&self, block: &surgeist_html::values::TextBlock) -> core::option::Option<&T>
+pub fn surgeist_html::values::TextBlockTable<T>::find_mut(&mut self, block: &surgeist_html::values::TextBlock) -> core::option::Option<&mut T>
+pub fn surgeist_html::values::TextBlockTable<T>::insert(&mut self, block: &surgeist_html::values::TextBlock, value: T) -> core::result::Result<(), surgeist_html::values::TextBlockTableError>
+pub fn surgeist_html::values::TextBlockTable<T>::is_empty(&self) -> bool
+pub fn surgeist_html::values::TextBlockTable<T>::len(&self) -> usize
+pub const fn surgeist_html::values::TextBlockTable<T>::new() -> Self
+pub fn surgeist_html::values::TextBlockTable<T>::remove(&mut self, block: &surgeist_html::values::TextBlock) -> core::option::Option<T>
+pub fn surgeist_html::values::TextBlockTable<T>::reserve(&mut self, additional: usize) -> core::result::Result<(), surgeist_html::values::TextBlockTableError>
+pub fn surgeist_html::values::TextBlockTable<T>::reserve_exact(&mut self, additional: usize) -> core::result::Result<(), surgeist_html::values::TextBlockTableError>
+pub fn surgeist_html::values::TextBlockTable<T>::retain(&mut self, keep: impl core::ops::function::FnMut(&T) -> bool)
+pub fn surgeist_html::values::TextBlockTable<T>::shifted_by_insert(&self, block: &surgeist_html::values::TextBlock) -> usize
+pub fn surgeist_html::values::TextBlockTable<T>::sweep(&mut self, release: impl core::ops::function::FnMut(T))
+pub fn surgeist_html::values::TextBlockTable<T>::values(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = &T>
+impl<T> core::default::Default for surgeist_html::values::TextBlockTable<T>
+pub fn surgeist_html::values::TextBlockTable<T>::default() -> Self
 pub struct surgeist_html::values::Utf8ConversionError
 impl surgeist_html::values::Utf8ConversionError
 pub fn surgeist_html::values::Utf8ConversionError::code_unit_offset(&self) -> usize

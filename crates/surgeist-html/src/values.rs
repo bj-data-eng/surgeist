@@ -26,5 +26,6 @@ pub use crate::internal::values::semantic_input::{
 };
 pub use crate::internal::values::{
     Attribute, DocumentString, DuplicateAttributeError, Namespace, OrderedAttributes,
-    QualifiedName, TextBlock, TextRangeError, Utf8ConversionError, WeakTextBlock,
+    QualifiedName, TextBlock, TextBlockTable, TextBlockTableError, TextRangeError,
+    Utf8ConversionError, WeakTextBlock,
 };

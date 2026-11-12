@@ -28,8 +28,17 @@ impl Payload {
         self.add_bytes(other.bytes)?;
         self.add_units(other.units)
     }
+    /// Prices one occurrence of `string` by the capacity of its block, which is what the string
+    /// keeps alive wherever its block is not charged apart.
     pub fn string(&mut self, string: &DocumentString) -> Result<(), DomError> {
-        let capacity = string.retained_units();
+        self.counted_string(string.retained_units())
+    }
+    /// Prices one occurrence of `string` for a path that lists its block, which the store charges
+    /// once apart: a borrower by its own length, and an owner by the capacity of its block.
+    pub fn listed_string(&mut self, string: &DocumentString) -> Result<(), DomError> {
+        self.counted_string(string.occurrence_units())
+    }
+    fn counted_string(&mut self, capacity: usize) -> Result<(), DomError> {
         self.empty_string()?;
         self.bank::<u16>(capacity)?;
         self.add_units(capacity)

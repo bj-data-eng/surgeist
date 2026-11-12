@@ -63,7 +63,10 @@ impl TextBlock {
         self.units.get(range)
     }
 
-    /// Returns a handle on the whole block. Every block has this representation.
+    /// Returns a handle on the whole block that owns it: the form of a string made by
+    /// [`DocumentString::from_utf16`], which accounts for the block's whole capacity itself.
+    ///
+    /// Use [`Self::string`] for a handle that shares the block with other handles.
     pub fn whole(&self) -> DocumentString {
         DocumentString {
             block: self.clone(),
@@ -72,19 +75,31 @@ impl TextBlock {
         }
     }
 
-    /// Returns a handle on the units of `range`.
+    /// Returns a handle on the units of `range`, a borrower of the block.
     ///
-    /// The range must lie in the block. A range that is not the whole block also has to fit the
-    /// handle's 32-bit start and have at most [`Self::MAX_RANGE_UNITS`] units.
+    /// The range must lie in the block, start at most at `u32::MAX` and have at most
+    /// [`Self::MAX_RANGE_UNITS`] units. A range that covers the whole block is a borrower like any
+    /// other. An owner that lists the blocks of its borrowers charges each block once and each
+    /// borrower by [`DocumentString::occurrence_units`] (see [`TextBlockTable`]); any other holder
+    /// keeps charging [`DocumentString::retained_units`], the capacity of the block.
     pub fn string(&self, range: Range<usize>) -> Result<DocumentString, TextRangeError> {
-        match range_fields(range.start, range.end, self.units.len())? {
-            None => Ok(self.whole()),
-            Some((start, len)) => Ok(DocumentString {
-                block: self.clone(),
-                start,
-                len,
-            }),
-        }
+        let (start, len) = range_fields(range.start, range.end, self.units.len())?;
+        Ok(DocumentString {
+            block: self.clone(),
+            start,
+            len,
+        })
+    }
+
+    /// Returns the bytes the block keeps alive: its [capacity](Self::capacity) and the vector
+    /// header that shares it. A holder of the block accounts for these bytes and that capacity in
+    /// units once.
+    /// The value saturates, so a block too large to measure compares as the largest extent.
+    pub fn retained_bytes(&self) -> usize {
+        self.units
+            .capacity()
+            .saturating_mul(size_of::<u16>())
+            .saturating_add(size_of::<Vec<u16>>())
     }
 
     /// Reports whether both are the same allocation.
@@ -93,8 +108,9 @@ impl TextBlock {
     }
 
     /// Returns an identity for the allocation, equal for the clones of one block and different
-    /// for blocks alive at the same time. A block allocated after this one is freed may reuse
-    /// its address.
+    /// for blocks alive at the same time. While a [`WeakTextBlock`] of the block exists, no other
+    /// block has this address, because the allocation outlives its units until the last weak
+    /// reference is dropped. Without one, a block allocated after this one is freed may reuse it.
     pub fn address(&self) -> usize {
         Arc::as_ptr(&self.units) as usize
     }
@@ -134,36 +150,205 @@ impl WeakTextBlock {
         self.units.strong_count()
     }
 
-    /// Returns the identity [`TextBlock::address`] gives the block. The address identifies the
-    /// block only while [`Self::holders`] is not zero: once the units are freed, a later block
-    /// may reuse it.
+    /// Returns the identity [`TextBlock::address`] gives the block. It identifies this block for as
+    /// long as this reference exists, even after [`Self::holders`] reaches zero, because a weak
+    /// reference keeps the allocation, and so its address, from being reused.
     pub fn address(&self) -> usize {
         self.units.as_ptr() as usize
     }
 }
 
-/// Returns the `start` and `len` fields of a handle on `start..end` in a block of `block_len`
-/// units, or `None` when the range is the whole block.
+/// The blocks one owner has accounted for, each with the value its owner keeps for it.
 ///
-/// A range other than the whole block needs a start that fits `u32` and a length below
-/// [`WHOLE`], which marks the whole block.
-fn range_fields(
-    start: usize,
-    end: usize,
-    block_len: usize,
-) -> Result<Option<(u32, u32)>, TextRangeError> {
+/// An owner of many borrowers charges a block once, when its table first meets a borrower of the
+/// block, and releases the charge when no string holds the block any more. Entries are sorted by
+/// block address. Each entry holds a [`WeakTextBlock`], which keeps the block's allocation, and so
+/// its address, from being reused while the entry exists: a block found by address is the block the
+/// entry was made for, and a block freed while listed can be neither mistaken for a newer block
+/// nor charged to it. [`Self::sweep`] removes the entries of blocks that no string holds.
+#[derive(Debug)]
+pub struct TextBlockTable<T> {
+    entries: Vec<TableEntry<T>>,
+}
+
+#[derive(Debug)]
+struct TableEntry<T> {
+    address: usize,
+    block: WeakTextBlock,
+    value: T,
+}
+
+/// A refusal to list a block.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextBlockTableError {
+    /// The block is listed already.
+    Present,
+    /// The table could not reserve room for the entry.
+    AllocationFailed,
+}
+
+impl fmt::Display for TextBlockTableError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Present => formatter.write_str("the text block is listed already"),
+            Self::AllocationFailed => {
+                formatter.write_str("the text block table could not reserve an entry")
+            }
+        }
+    }
+}
+
+impl Error for TextBlockTableError {}
+
+impl<T> Default for TextBlockTable<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> TextBlockTable<T> {
+    /// Makes an empty table, which allocates nothing.
+    pub const fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+
+    /// The bytes one entry takes in the table, and so the bytes an owner counts for each entry of
+    /// capacity: the DOM store charges the table by its capacity, in one debit that grows with the
+    /// table beside the debit of each block, and a capture counts the capacity of its table when
+    /// it measures its retained storage.
+    pub const ENTRY_BYTES: usize = size_of::<TableEntry<T>>();
+
+    /// Returns the number of listed blocks.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Reports whether no block is listed.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// The position of the entry of `address`, or the position it would take. The positions come
+    /// from `binary_search`, which keeps them within the entries.
+    fn position(&self, address: usize) -> Result<usize, usize> {
+        self.entries
+            .binary_search_by_key(&address, |entry| entry.address)
+    }
+
+    /// Returns the value kept for `block`, which is listed only if it is the block of an entry:
+    /// equal addresses of a listed block name one allocation.
+    pub fn find(&self, block: &TextBlock) -> Option<&T> {
+        let position = self.position(block.address()).ok()?;
+        self.entries.get(position).map(|entry| &entry.value)
+    }
+
+    /// Returns the number of entries the table holds room for.
+    pub fn capacity(&self) -> usize {
+        self.entries.capacity()
+    }
+
+    /// Returns the value kept for `block` for change, under the same rule as [`Self::find`].
+    pub fn find_mut(&mut self, block: &TextBlock) -> Option<&mut T> {
+        let position = self.position(block.address()).ok()?;
+        self.entries.get_mut(position).map(|entry| &mut entry.value)
+    }
+
+    /// Reserves room for `additional` more entries, so that as many [`Self::insert`] calls cannot
+    /// refuse for lack of room. A refusal leaves the table as it was.
+    pub fn reserve(&mut self, additional: usize) -> Result<(), TextBlockTableError> {
+        self.entries
+            .try_reserve(additional)
+            .map_err(|_| TextBlockTableError::AllocationFailed)
+    }
+
+    /// Reserves room for exactly `additional` more entries, so that an owner that charges the
+    /// table by its capacity knows the capacity it reserves. A refusal leaves the table as it was.
+    pub fn reserve_exact(&mut self, additional: usize) -> Result<(), TextBlockTableError> {
+        self.entries
+            .try_reserve_exact(additional)
+            .map_err(|_| TextBlockTableError::AllocationFailed)
+    }
+
+    /// Iterates the values of the entries in block address order.
+    pub fn values(&self) -> impl ExactSizeIterator<Item = &T> {
+        self.entries.iter().map(|entry| &entry.value)
+    }
+
+    /// Returns the number of entries after the one `block` would take, which an insertion moves.
+    /// An owner that meters its work charges this number before it calls [`Self::insert`].
+    pub fn shifted_by_insert(&self, block: &TextBlock) -> usize {
+        let position = match self.position(block.address()) {
+            Ok(position) | Err(position) => position,
+        };
+        self.entries.iter().skip(position).count()
+    }
+
+    /// Lists `block` with `value`, reserving room for the entry first. A refusal drops `value`
+    /// and leaves the table as it was.
+    ///
+    /// The entries after the new one move up by one place, so an insertion takes time in
+    /// proportion to [`Self::shifted_by_insert`]; the table keeps the few blocks of one owner,
+    /// and an owner that meters its work charges that number first.
+    pub fn insert(&mut self, block: &TextBlock, value: T) -> Result<(), TextBlockTableError> {
+        let address = block.address();
+        let Err(position) = self.position(address) else {
+            return Err(TextBlockTableError::Present);
+        };
+        self.entries
+            .try_reserve(1)
+            .map_err(|_| TextBlockTableError::AllocationFailed)?;
+        self.entries.insert(
+            position,
+            TableEntry {
+                address,
+                block: block.downgrade(),
+                value,
+            },
+        );
+        Ok(())
+    }
+
+    /// Keeps the entries whose value `keep` accepts and drops the others, which release what they
+    /// hold. An owner rolls back to a checkpoint by dropping the entries made after it.
+    pub fn retain(&mut self, mut keep: impl FnMut(&T) -> bool) {
+        self.entries.retain(|entry| keep(&entry.value));
+    }
+
+    /// Removes the entry of `block` and returns its value.
+    pub fn remove(&mut self, block: &TextBlock) -> Option<T> {
+        let position = self.position(block.address()).ok()?;
+        Some(self.entries.remove(position).value)
+    }
+
+    /// Removes every entry whose block no string holds any more and hands its value to
+    /// `release`, in address order.
+    pub fn sweep(&mut self, mut release: impl FnMut(T)) {
+        for entry in self
+            .entries
+            .extract_if(.., |entry| entry.block.holders() == 0)
+        {
+            release(entry.value);
+        }
+    }
+}
+
+/// Returns the `start` and `len` fields of a handle on `start..end` in a block of `block_len`
+/// units.
+///
+/// A range needs a start that fits `u32` and a length below [`WHOLE`], which marks the handle that
+/// owns its block.
+fn range_fields(start: usize, end: usize, block_len: usize) -> Result<(u32, u32), TextRangeError> {
     if start > end {
         return Err(TextRangeError::Reversed { start, end });
     }
     if end > block_len {
         return Err(TextRangeError::OutOfBounds { end, block_len });
     }
-    if start == 0 && end == block_len {
-        return Ok(None);
-    }
     let len = end - start;
     match (u32::try_from(start), u32::try_from(len)) {
-        (Ok(start), Ok(len)) if len != WHOLE => Ok(Some((start, len))),
+        (Ok(start), Ok(len)) if len != WHOLE => Ok((start, len)),
         _ => Err(TextRangeError::Unrepresentable { start, len }),
     }
 }
@@ -216,7 +401,9 @@ impl Error for TextRangeError {}
 
 /// An immutable sequence of exact UTF-16 code units.
 ///
-/// The value is a 16-byte handle: a [`TextBlock`] and the range of the block it covers.
+/// The value is a 16-byte handle: a [`TextBlock`] and the range of the block it covers. A handle is
+/// an owner when it covers the block it was made with ([`Self::from_utf16`], [`TextBlock::whole`])
+/// and a borrower when it is a range made by [`TextBlock::string`].
 /// Cloning copies the handle and shares the block. Equality and hashing compare the units, not
 /// the block or the position in it.
 ///
@@ -279,8 +466,8 @@ impl DocumentString {
         start..start + self.len()
     }
 
-    /// Reports whether this string covers its whole block, as a string that owns its allocation
-    /// does.
+    /// Reports whether this string owns its block, as a string made by [`Self::from_utf16`] does.
+    /// A range made by [`TextBlock::string`] is not, even when it covers every unit.
     pub fn is_whole_block(&self) -> bool {
         self.len == WHOLE
     }
@@ -295,9 +482,28 @@ impl DocumentString {
     }
 
     /// Returns the number of units the string keeps alive: the capacity of its block, spare
-    /// capacity included, however much of the block it covers.
+    /// capacity included, however much of the block it covers. A holder that does not list the
+    /// block of a borrower charges this, which can never charge less than the memory it holds.
     pub fn retained_units(&self) -> usize {
         self.block.capacity()
+    }
+
+    /// Returns the number of units this string accounts for when its holder charges the block of
+    /// a borrower separately, once for all the borrowers it holds (see [`TextBlockTable`]): the
+    /// length of a borrower, and the capacity of the block for an owner. Charge this only where
+    /// the block is listed, and [`Self::retained_units`] everywhere else.
+    pub fn occurrence_units(&self) -> usize {
+        if self.len == WHOLE {
+            self.block.capacity()
+        } else {
+            self.len as usize
+        }
+    }
+
+    /// Returns the block this string borrows, or `None` for an owner. An owner is charged the
+    /// capacity of its block at every occurrence.
+    pub fn borrowed_block(&self) -> Option<&TextBlock> {
+        (self.len != WHOLE).then_some(&self.block)
     }
 
     /// Returns the units of a string that nothing else observes, for the construction owner to
@@ -320,9 +526,9 @@ impl DocumentString {
 
     /// Returns the units as a shared vector, for interfaces that take `Arc<Vec<u16>>`.
     ///
-    /// A string that covers its whole block hands over the block's own allocation without
-    /// copying. A partial range copies its units into a new vector that has no storage in common
-    /// with the block.
+    /// An owner hands over the block's own allocation without copying. A borrower, including a
+    /// range over every unit of its block, copies its units into a new vector that has no storage
+    /// in common with the block.
     pub fn to_shared_utf16(&self) -> Arc<Vec<u16>> {
         if self.len == WHOLE {
             Arc::clone(&self.block.units)

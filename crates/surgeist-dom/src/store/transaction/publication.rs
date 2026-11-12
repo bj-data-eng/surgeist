@@ -684,6 +684,7 @@ impl Draft {
         let semantic_changed = !changes.is_empty();
         Ok((
             Prepared {
+                blocks: self.blocks.clone(),
                 node_retirement_candidates,
                 inline_echo: self.inline_echo.clone(),
                 sharing: None,
