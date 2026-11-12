@@ -4220,7 +4220,8 @@ mod tests {
                         panic!("Style fixture cannot request a fullscreen exit handoff")
                     }
                     DomSourceProgress::Request(
-                        surgeist_dom::DomSourceRequest::Event(_)
+                        surgeist_dom::DomSourceRequest::AttributeVerification(_)
+                        | surgeist_dom::DomSourceRequest::Event(_)
                         | surgeist_dom::DomSourceRequest::Dialog(_)
                         | surgeist_dom::DomSourceRequest::DialogFocusing(_)
                         | surgeist_dom::DomSourceRequest::FocusDelegate(_)

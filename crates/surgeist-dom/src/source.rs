@@ -1,5 +1,7 @@
 //! One requested canonical edit and its retained source continuation.
+mod attribute;
 pub(crate) mod callback;
+pub use attribute::*;
 mod design_mode;
 pub(crate) mod event;
 pub use design_mode::{
@@ -104,6 +106,8 @@ pub struct DomSourceOperationId {
 pub enum DomSourcePhase {
     /// Original private canonical segment.
     Staging,
+    /// A standard attribute setter awaits its registered verifier.
+    AttributeVerification,
     /// A reached synchronous firing awaits its original clock observation.
     EventFiring,
     /// Coherent current-state observation awaiting actual event dispatch.
@@ -168,6 +172,7 @@ impl DomSourceStatus {
 /// The actual service reached by the retained canonical source engine.
 #[derive(Clone, Debug)]
 pub enum DomSourceRequest {
+    AttributeVerification(DomSourceAttributeVerificationRequest),
     FullscreenExitHandoff(crate::DomSourceFullscreenExitHandoffRequest),
     Style(DomStyleRequest),
     HostedChild(crate::DomHostedChildRequest),

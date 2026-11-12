@@ -1048,6 +1048,7 @@ fn actual_parked_source_keeps_its_mandatory_tail_and_original_cleanup_custody() 
 
 #[test]
 fn trusted_attribute_sink_parks_for_its_registered_global() {
+    use crate::{DomSourceAttributeSink, DomSourceAttributeVerificationOutcome};
     use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
     use surgeist_html::values::Namespace;
 
@@ -1100,7 +1101,7 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
             &cancel,
         )
         .unwrap();
-    let (_binding, _registration) = source
+    let (_binding, registration) = source
         .attach_document_script_host(&mut dom, global, document, facts, backing, &cancel)
         .unwrap();
 
@@ -1116,17 +1117,24 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
             .unwrap(),
         Some(global)
     );
+    let proposed = crate::DocumentString::from_utf16(vec![0xd800, 0, 0x61]);
     let mut lease = dom
         .begin_source_edit(
-            DomSourceEdit::set_attribute(element, "onclick", "handler"),
+            DomSourceEdit::set_attribute(element, "onclick", proposed.clone()),
             source_limits(),
             &cancel,
         )
         .unwrap();
-    let result = lease.advance(&cancel);
-    assert!(
-        matches!(result, Ok(DomSourceProgress::Request(_))),
-        "the constructed Document inherits the live verification Global: {result:?}"
+    let DomSourceProgress::Request(DomSourceRequest::AttributeVerification(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("the constructed Document supplies the registered verification Global");
+    };
+    assert_eq!(request.element(), element);
+    assert_eq!(request.global(), global);
+    assert_eq!(
+        request.sink(),
+        DomSourceAttributeSink::EventHandler("onclick")
     );
     assert_eq!(lease.snapshot().stamp(), before.stamp());
     assert_eq!(
@@ -1138,6 +1146,101 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
         None
     );
     assert!(!lease.status().has_published());
+    assert_eq!(
+        lease.status().phase(),
+        crate::DomSourcePhase::AttributeVerification
+    );
+    drop(lease);
+
+    let mut lease = dom
+        .resume_source_edit(request.operation(), source_limits(), &cancel)
+        .unwrap();
+    assert!(
+        matches!(lease.advance(&cancel).unwrap(), DomSourceProgress::Request(DomSourceRequest::AttributeVerification(retry)) if retry == request)
+    );
+    assert_eq!(
+        lease
+            .attribute_verification_input(request, &registration, &cancel)
+            .unwrap(),
+        &proposed
+    );
+    let verified = crate::DocumentString::from_utf16(vec![0xdc00, 0x62]);
+    let mut reply = Some(DomSourceAttributeVerificationOutcome::Value(
+        verified.clone(),
+    ));
+    let interrupted = AtomicBool::new(true);
+    assert_eq!(
+        lease.accept_attribute_verification(request, &registration, &mut reply, &interrupted),
+        Err(DomError::Cancelled)
+    );
+    assert!(reply.is_some());
+    lease
+        .accept_attribute_verification(request, &registration, &mut reply, &cancel)
+        .unwrap();
+    assert!(reply.is_none());
+    let mut duplicate = Some(DomSourceAttributeVerificationOutcome::Rejected);
+    assert_eq!(
+        lease.accept_attribute_verification(request, &registration, &mut duplicate, &cancel),
+        Err(DomError::InvalidSourceOperation)
+    );
+    assert!(duplicate.is_some());
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    assert_eq!(
+        lease
+            .snapshot()
+            .node(element)
+            .unwrap()
+            .attribute(&"onclick".into()),
+        Some(&verified)
+    );
+    drop(lease);
+
+    for (outcome, error) in [
+        (
+            DomSourceAttributeVerificationOutcome::Rejected,
+            DomError::SourceAttributeVerificationRejected,
+        ),
+        (
+            DomSourceAttributeVerificationOutcome::Abrupt,
+            DomError::SourceAttributeVerificationAbrupt,
+        ),
+    ] {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::set_attribute(element, "onclick", "new"),
+                source_limits(),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::AttributeVerification(current)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("the new operation reaches its own verification request");
+        };
+        let mut outcome = Some(outcome);
+        assert_eq!(
+            lease.accept_attribute_verification(request, &registration, &mut outcome, &cancel),
+            Err(DomError::InvalidSourceOperation)
+        );
+        lease
+            .accept_attribute_verification(current, &registration, &mut outcome, &cancel)
+            .unwrap();
+        let DomSourceProgress::Failed(failure) = lease.advance(&cancel).unwrap() else {
+            panic!("a verification failure is terminal");
+        };
+        assert_eq!(failure.error(), &error);
+        assert_eq!(
+            lease
+                .snapshot()
+                .node(element)
+                .unwrap()
+                .attribute(&"onclick".into()),
+            Some(&verified)
+        );
+    }
 }
 
 #[test]

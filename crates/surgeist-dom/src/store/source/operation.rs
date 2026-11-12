@@ -1,5 +1,6 @@
 //! One canonical retained synchronous source operation. The lease grants access;
 //! all mandatory continuation and acknowledged external publication stays in Dom.
+pub(in crate::store) mod attribute;
 #[cfg(test)]
 mod design_mode_tests;
 mod dialog;
@@ -90,6 +91,7 @@ pub(in crate::store) struct Operation {
     published: bool,
     event_exposed: bool,
     script_parked: bool,
+    attribute_verification: Option<attribute::Pending>,
     event_work: std::sync::Weak<crate::source::callback::CallbackWork>,
     event_custody: Option<Arc<formation::CallbackWorkCustody>>,
     dialog_queue: Option<crate::DomElementTaskId>,
@@ -171,6 +173,7 @@ impl Drop for DomSourceLease<'_> {
                 !o.published
                     && !o.event_exposed
                     && !o.script_parked
+                    && o.attribute_verification.is_none()
                     && matches!(
                         &o.draft,
                         dialog::OperationDraft::Segment(draft) if draft.compound_failure().is_none()
@@ -379,6 +382,7 @@ impl Dom {
             published: false,
             event_exposed: false,
             script_parked: false,
+            attribute_verification: None,
             event_work: std::sync::Weak::new(),
             event_custody: None,
             dialog_queue: None,
@@ -690,6 +694,8 @@ impl Operation {
                 crate::DomSourcePhase::PendingCleanup
             } else if self.draft.pending_script().is_some() {
                 crate::DomSourcePhase::ScriptPreparation
+            } else if self.waiting_attribute_verification().is_some() {
+                crate::DomSourcePhase::AttributeVerification
             } else if self.draft.fullscreen_exit.is_some() {
                 crate::DomSourcePhase::FullscreenExitHandoff
             } else if self.draft.pending_autofocus().is_some() {
@@ -852,6 +858,8 @@ impl Operation {
                 parent: installation.parent,
                 before: installation.before,
             }
+        } else if let Some(attribute) = &self.attribute_verification {
+            headroom::Entry::VerifiedAttribute(attribute)
         } else {
             headroom::Entry::Command(
                 self.commands
@@ -1798,6 +1806,13 @@ impl DomSourceLease<'_> {
     }
     pub fn request_cancel(&mut self) {
         let op = self.dom.source_operation.as_mut().expect("live lease");
+        if op
+            .attribute_verification
+            .as_ref()
+            .is_some_and(attribute::Pending::has_outcome)
+        {
+            return;
+        }
         op.cancelled = true;
         // Unstarted commands have no canonical obligations. The current command
         // retains every mandatory source frame until explicit recovery finishes.
@@ -2058,6 +2073,13 @@ impl DomSourceLease<'_> {
             // External task/runtime guards may have released storage since the
             // last receipt. Refresh before resumed methods or value formation.
             op.refresh_admission(cancel)?;
+            if !op.started
+                && let Some(request) = op.waiting_attribute_verification()
+            {
+                return Ok(DomSourceProgress::Request(
+                    DomSourceRequest::AttributeVerification(request),
+                ));
+            }
             if op.draft.pending_script().is_some() {
                 let (request, frame) = op.issue_script_request(cancel)?;
                 if !op.try_accept_disposed_script_settings(self.dom, request, frame, cancel)? {
@@ -2191,11 +2213,19 @@ impl DomSourceLease<'_> {
                 } else if op.started {
                     op.draft.run_effects(self.dom.limits, cancel)
                 } else if op.index < op.commands.len() && !op.cancelled {
-                    op.apply_command(self.dom.limits, cancel)
+                    op.apply_reached_command(self.dom, cancel)
                 } else {
                     Ok(())
                 }
             })();
+            if result.is_ok()
+                && let Some(request) = op.waiting_attribute_verification()
+            {
+                drop(checkpoint);
+                return Ok(DomSourceProgress::Request(
+                    DomSourceRequest::AttributeVerification(request),
+                ));
+            }
             match result {
                 Err(
                     boundary @ (DomError::ScriptPreparationRequired
@@ -3578,6 +3608,7 @@ impl Dom {
                 published: false,
                 event_exposed: false,
                 script_parked: false,
+                attribute_verification: None,
                 event_work: std::sync::Weak::new(),
                 event_custody: None,
                 dialog_queue: None,
@@ -6887,6 +6918,7 @@ pub(in crate::store) mod accounting_tests {
                         | DomSourceRequest::DesignMode(_)
                         | DomSourceRequest::FullscreenExitHandoff(_)
                         | DomSourceRequest::Script(_)
+                        | DomSourceRequest::AttributeVerification(_)
                         | DomSourceRequest::AutofocusInsertion(_),
                     )) => {
                         panic!("Slot assignment fixture has no eventful Dialog operation")

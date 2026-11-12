@@ -1,7 +1,7 @@
 use super::*;
 use crate::element::{ElementFormation, FormedElement, NonceUpdate};
 use crate::names::{attribute_name, name_units, valid_attribute_local_name};
-use crate::{DomAttribute as Attribute, DomQualifiedName as QualifiedName};
+use crate::{DomAttribute as Attribute, DomQualifiedName as QualifiedName, DomSourceAttributeSink};
 use surgeist_html::values::{HtmlNameInput, Namespace};
 use surgeist_html::vocabulary::{
     ElementKey, ElementNamespace, KnownHtmlElement, KnownHtmlEventHandler, KnownSvgElement,
@@ -43,7 +43,7 @@ struct AttributeSetter<'a> {
     mode: AttributeSetterMode,
 }
 
-struct PreparedAttributeName {
+pub(super) struct PreparedAttributeName {
     raw_name: surgeist_html::values::QualifiedName,
     formation: Option<source::formation::Formation>,
     normalized: name_registry::NormalizedCustody,
@@ -67,29 +67,40 @@ fn ascii_spelling(units: &[u16], literal: &str) -> bool {
     units.len() == literal.len() && units.iter().copied().eq(literal.bytes().map(u16::from))
 }
 
-fn is_trusted_attribute_sink(element: &QualifiedName, attribute: &impl HtmlNameInput) -> bool {
+fn trusted_attribute_sink(
+    element: &QualifiedName,
+    attribute: &impl HtmlNameInput,
+) -> Option<DomSourceAttributeSink> {
     let element = ElementKey::from_name(element);
     let namespace = attribute.namespace_uri();
     let local = attribute.local_name().code_units();
     if namespace.is_none() {
         if element.namespace() != ElementNamespace::Other
-            && (KnownHtmlEventHandler::from_local_units(local).is_some()
-                || ["onwaitingforkey", "onbegin", "onend", "onrepeat"]
-                    .into_iter()
-                    .any(|name| ascii_spelling(local, name)))
+            && let Some(handler) = KnownHtmlEventHandler::from_local_units(local)
+                .map(KnownHtmlEventHandler::local_name)
+                .or_else(|| {
+                    ["onwaitingforkey", "onbegin", "onend", "onrepeat"]
+                        .into_iter()
+                        .find(|name| ascii_spelling(local, name))
+                })
         {
-            return true;
+            return Some(DomSourceAttributeSink::EventHandler(handler));
         }
         match element.html() {
-            Some(KnownHtmlElement::Iframe) => return ascii_spelling(local, "srcdoc"),
-            Some(KnownHtmlElement::Script) => return ascii_spelling(local, "src"),
+            Some(KnownHtmlElement::Iframe) if ascii_spelling(local, "srcdoc") => {
+                return Some(DomSourceAttributeSink::HtmlIframeSrcdoc);
+            }
+            Some(KnownHtmlElement::Script) if ascii_spelling(local, "src") => {
+                return Some(DomSourceAttributeSink::HtmlScriptSrc);
+            }
             _ => {}
         }
     }
-    element.svg() == Some(KnownSvgElement::Script)
+    (element.svg() == Some(KnownSvgElement::Script)
         && ascii_spelling(local, "href")
         && namespace
-            .is_none_or(|uri| ascii_spelling(uri.code_units(), "http://www.w3.org/1999/xlink"))
+            .is_none_or(|uri| ascii_spelling(uri.code_units(), "http://www.w3.org/1999/xlink")))
+    .then_some(DomSourceAttributeSink::SvgScriptHref)
 }
 
 // The validated name and its admission remain one argument across every
@@ -537,10 +548,10 @@ impl Draft {
         attribute: &impl HtmlNameInput,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let name = self.element(element)?.language().name();
-        // The sink table uses bounded vocabulary and literal comparisons.
-        self.source_step(cancel)?;
-        if is_trusted_attribute_sink(name, attribute) {
+        if self
+            .classify_attribute_sink(element, attribute, cancel)?
+            .is_some()
+        {
             let document = self.node(element)?.document();
             return Err(if self.node(document)?.relevant_global().is_some() {
                 DomError::SourceAttributeExecutorUnavailable
@@ -550,6 +561,31 @@ impl Draft {
         }
         Ok(())
     }
+    fn classify_attribute_sink(
+        &self,
+        element: Key,
+        attribute: &impl HtmlNameInput,
+        cancel: &AtomicBool,
+    ) -> Result<Option<DomSourceAttributeSink>, DomError> {
+        let name = self.element(element)?.language().name();
+        // The sink table uses bounded vocabulary and literal comparisons.
+        self.source_step(cancel)?;
+        Ok(trusted_attribute_sink(name, attribute))
+    }
+
+    pub(super) fn prepare_standard_attribute_name(
+        &self,
+        node: Key,
+        namespace: Option<&Namespace>,
+        name: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<(PreparedAttributeName, Option<DomSourceAttributeSink>), DomError> {
+        self.element(node)?;
+        let prepared = self.prepare_attribute_name(node, namespace, name, cancel)?;
+        let sink = self.classify_attribute_sink(node, &prepared.raw_name, cancel)?;
+        Ok((prepared, sink))
+    }
+
     fn prepare_attribute_name(
         &self,
         node: Key,
@@ -592,15 +628,12 @@ impl Draft {
             expanded: namespace.is_some(),
         })
     }
-    fn apply_attribute_name(
-        &mut self,
-        node: Key,
-        prepared: PreparedAttributeName,
-        value: &DocumentString,
-        limits: DomLimits,
-        cancelled: &AtomicBool,
-    ) -> Result<(), DomError> {
-        let element = self.element(node)?;
+    fn prepared_attribute_position(
+        &self,
+        element: transaction::ElementRead<'_>,
+        prepared: &PreparedAttributeName,
+        cancel: &AtomicBool,
+    ) -> Result<Option<usize>, DomError> {
         let raw_name = &prepared.raw_name;
         let lookup = if prepared.expanded {
             AttributeLookup::Expanded {
@@ -610,7 +643,19 @@ impl Draft {
         } else {
             AttributeLookup::Qualified(raw_name.local_name())
         };
-        let position = self.attribute_position(element.attributes(), lookup, cancelled)?;
+        self.attribute_position(element.attributes(), lookup, cancel)
+    }
+
+    pub(super) fn apply_attribute_name(
+        &mut self,
+        node: Key,
+        prepared: PreparedAttributeName,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let element = self.element(node)?;
+        let position = self.prepared_attribute_position(element, &prepared, cancelled)?;
         // Existing set-value preserves its exact canonical prefix and order.
         // Discard lookup spelling before admitting the selected occurrence.
         let (name, name_formation) = if let Some(position) = position {
@@ -629,7 +674,7 @@ impl Draft {
             (name, formation)
         } else {
             let formation = source::formation::Formation::new(self, cancelled)?;
-            let name = self.bind_name(raw_name, formation.as_ref(), cancelled)?;
+            let name = self.bind_name(&prepared.raw_name, formation.as_ref(), cancelled)?;
             drop(prepared);
             (name, formation)
         };
@@ -646,6 +691,43 @@ impl Draft {
             cancelled,
         )
     }
+    pub(super) fn apply_verified_attribute_name(
+        &mut self,
+        node: Key,
+        prepared: &PreparedAttributeName,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let element = self.element(node)?;
+        let position = self.prepared_attribute_position(element, prepared, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let name = match position {
+            Some(index) => self.bind_canonical_name(
+                element
+                    .attributes()
+                    .get(index)
+                    .ok_or(DomError::StaleNode)?
+                    .name(),
+                formation.as_ref(),
+                cancel,
+            )?,
+            None => self.bind_name(&prepared.raw_name, formation.as_ref(), cancel)?,
+        };
+        self.write_attribute(
+            AttributeWrite {
+                node,
+                position,
+                name,
+                value,
+                cause: AttributeCause::Change,
+                name_formation: formation,
+            },
+            limits,
+            cancel,
+        )
+    }
+
     /// Append exact validated component records; no QName reconstruction.
     pub(super) fn append_attribute(
         &mut self,

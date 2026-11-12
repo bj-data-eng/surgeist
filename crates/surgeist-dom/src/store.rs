@@ -328,6 +328,10 @@ pub enum DomError {
     SourceAttributeGlobalUnavailable,
     /// A reached attribute verification has no qualified executor.
     SourceAttributeExecutorUnavailable,
+    /// The exact registered verifier rejected the proposed value.
+    SourceAttributeVerificationRejected,
+    /// The exact registered verifier retained an abrupt guest outcome.
+    SourceAttributeVerificationAbrupt,
     DialogInvalidState,
     NeedsEventfulOperation {
         subject: Option<NodeId>,

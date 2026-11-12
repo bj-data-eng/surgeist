@@ -57,6 +57,8 @@ pub struct DomSourceUrlService<'a> {
 /// A missing service at the actual next request, without acknowledging it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceUnavailable {
+    /// This exact standard attribute operation awaits a qualified verifier.
+    AttributeVerification,
     /// An exact beforetoggle request requires explicit event dispatch.
     Event,
     /// This actual Dialog service has no implementation yet.
@@ -970,6 +972,12 @@ impl DomSourceRuntime {
                     return Ok(DomSourceDriveProgress::Pending {
                         request: DomSourceRequest::FocusDelegate(request),
                         reason,
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::AttributeVerification(request)) => {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        reason: DomSourceUnavailable::AttributeVerification,
+                        request: DomSourceRequest::AttributeVerification(request),
                     });
                 }
                 DomSourceProgress::Request(DomSourceRequest::Script(request)) => {
