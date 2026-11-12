@@ -1073,6 +1073,58 @@ mod tests {
     }
 
     #[test]
+    fn publishing_an_attached_attr_charges_the_utf16_prefix_it_compares() {
+        const UNITS: usize = 1024;
+        let (mut dom, _, _, button) = fixture();
+        let cancel = AtomicBool::new(false);
+        let mut setup = DomBatch::new();
+        setup.set_attribute(
+            button,
+            "data-x",
+            DocumentString::from_utf16(vec![0xd800; UNITS]),
+        );
+        dom.apply(setup, &cancel).unwrap();
+
+        let publication_work = |mismatch| {
+            let batch = DomBatch::new();
+            let limits =
+                crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
+            let (mut draft, _) =
+                Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel)
+                    .unwrap();
+            let mut units = vec![0xd800; UNITS];
+            units[mismatch] = 0xdc00;
+            draft
+                .set_attribute(
+                    Key::Existing(button),
+                    None,
+                    &"data-x".into(),
+                    &DocumentString::from_utf16(units),
+                    dom.limits,
+                    &cancel,
+                )
+                .unwrap();
+            // Exclude staging, which already meters the edit's own comparison.
+            let before = draft.source_work.load(Ordering::Relaxed);
+            let prepared = draft.finish_segment(&dom, &cancel).unwrap();
+            assert!(prepared.changes.contains(&DomChange::Attributes(button)));
+            assert!(
+                prepared
+                    .changes
+                    .iter()
+                    .any(|row| matches!(row, DomChange::AttrValue(_)))
+            );
+            draft.source_work.load(Ordering::Relaxed) - before
+        };
+        let early = publication_work(0);
+        let late = publication_work(UNITS - 1);
+        assert!(
+            late >= early + (UNITS - 1) as u64,
+            "publishing the early mismatch used {early} work and the late mismatch used {late}"
+        );
+    }
+
+    #[test]
     fn finish_reports_initialized_selection_changes_and_public_receipts() {
         if !scale_metrics::ENABLED {
             return;
