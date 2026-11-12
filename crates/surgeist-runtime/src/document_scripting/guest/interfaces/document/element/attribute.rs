@@ -71,6 +71,12 @@ impl Capture {
                 scope.type_error(&ascii(b"Element required"))?,
             ));
         };
+        let required = if namespaced { 3 } else { 2 };
+        if arguments.len() < required {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Missing attribute argument"))?,
+            ));
+        }
         let (owner, events) = self.active(scope)?;
         let result = (|| -> Result<_, DocumentGuestEventError> {
             let (namespace, name, value) = self
