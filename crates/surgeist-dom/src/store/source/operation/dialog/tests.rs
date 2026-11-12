@@ -141,7 +141,7 @@ fn request_close_called_boundary_reserves_nested_close_before_request_state_publ
     let original_source = {
         let mut lease = dom
             .begin_source_edit(
-                DomSourceEdit::set_attribute(subject, "open", ""),
+                DomSourceEdit::set_native_attribute(subject, "open", ""),
                 limits(),
                 &cancel,
             )

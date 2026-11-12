@@ -171,7 +171,7 @@ fn complete(progress: DomSourceDriveProgress) -> DomSourceCompletion {
 fn open(session: &mut DomSession, subject: NodeId) {
     drop(complete(apply(
         session,
-        DomSourceEdit::set_attribute(subject, "open", ""),
+        DomSourceEdit::set_native_attribute(subject, "open", ""),
     )));
     let snapshot = session.snapshot();
     assert_eq!(
@@ -534,7 +534,7 @@ fn mutation_registry(
                         nested(
                             context,
                             dom,
-                            DomSourceEdit::set_attribute(subject, "open", ""),
+                            DomSourceEdit::set_native_attribute(subject, "open", ""),
                         );
                     }
                     Mutation::Remove | Mutation::Retire => nested(
@@ -604,7 +604,7 @@ fn reentrant_request_retains_latest_fields_and_literal_false_blocks_outer_auto_o
         if let Some(closedby) = closedby {
             drop(complete(apply(
                 &mut session,
-                DomSourceEdit::set_attribute(subject, "closedby", closedby),
+                DomSourceEdit::set_native_attribute(subject, "closedby", closedby),
             )));
         }
         open(&mut session, subject);
@@ -641,7 +641,7 @@ fn current_request_fields_are_captured_when_fresh_enabled_check_allows_nested_cl
     let (mut session, _, _, subject) = fixture();
     drop(complete(apply(
         &mut session,
-        DomSourceEdit::set_attribute(subject, "closedby", "any"),
+        DomSourceEdit::set_native_attribute(subject, "closedby", "any"),
     )));
     open(&mut session, subject);
     let mut context = mutation_context(&session, Mutation::Reenter, false);

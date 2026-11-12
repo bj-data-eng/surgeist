@@ -657,7 +657,7 @@ fn measured_external_envelope_follows_nested_source_parent_restore_and_drop() {
                 .subject();
             let child = dom
                 .begin_source_edit(
-                    DomSourceEdit::set_attribute(subject, "data-unpublished", "child"),
+                    DomSourceEdit::set_native_attribute(subject, "data-unpublished", "child"),
                     limits(),
                     &AtomicBool::new(false),
                 )

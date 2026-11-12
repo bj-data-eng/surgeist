@@ -1561,7 +1561,7 @@ mod tests {
                         source
                             .apply(
                                 &mut session.dom(),
-                                DomSourceEdit::set_attribute(target, "open", ""),
+                                DomSourceEdit::set_native_attribute(target, "open", ""),
                                 source_limits(),
                                 &mut services,
                                 &cancel,
@@ -2397,7 +2397,7 @@ mod tests {
                     source
                         .apply(
                             &mut session.dom(),
-                            DomSourceEdit::set_attribute(target, "open", ""),
+                            DomSourceEdit::set_native_attribute(target, "open", ""),
                             source_limits(),
                             &mut services,
                             &cancel,
@@ -2818,7 +2818,7 @@ mod tests {
                         source
                             .apply(
                                 &mut session.dom(),
-                                DomSourceEdit::set_attribute(target, "open", ""),
+                                DomSourceEdit::set_native_attribute(target, "open", ""),
                                 source_limits(),
                                 &mut services,
                                 &cancel,

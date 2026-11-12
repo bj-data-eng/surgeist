@@ -93,7 +93,7 @@ fn fixture_with_setup<T>(
         .source_execution()
         .apply(
             &mut session.dom(),
-            DomSourceEdit::set_attribute(dialog, "open", ""),
+            DomSourceEdit::set_native_attribute(dialog, "open", ""),
             SOURCE,
             &mut DomSourceServices {
                 meta: None,
@@ -728,7 +728,7 @@ fn open_and_close(
                 source
                     .apply(
                         dom,
-                        DomSourceEdit::set_attribute(fixture.dialog, "open", ""),
+                        DomSourceEdit::set_native_attribute(fixture.dialog, "open", ""),
                         SOURCE,
                         &mut services,
                         &cancel(),

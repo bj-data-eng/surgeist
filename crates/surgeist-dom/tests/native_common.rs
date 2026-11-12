@@ -454,7 +454,7 @@ fn source_media_creation_retains_its_exact_native_result() {
         );
         let before = dom.snapshot().stamp();
         let usage = dom.usage();
-        let edit = DomSourceEdit::set_attribute(node, "src", "");
+        let edit = DomSourceEdit::set_native_attribute(node, "src", "");
         let refusal = match dom.begin_source_edit(edit, limits, &cancel) {
             Ok(mut lease) => lease.advance(&cancel).unwrap_err(),
             Err(error) => error,

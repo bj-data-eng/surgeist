@@ -15,7 +15,7 @@ pub use focus::{
 };
 pub use scope::DomSourceExecutionEntryScope;
 pub(crate) mod watcher;
-use crate::batch::{Command, Creation};
+use crate::batch::{AttributeSetterMode, Command, Creation};
 use crate::view_transition::*;
 use crate::{DomDocumentStamp, DomError, DomSnapshot, DomStyleRequest, NodeId};
 pub use event::*;
@@ -1069,34 +1069,68 @@ impl DomSourceEdit {
             },
         }
     }
-    /// Request one `set_attribute` operation on the canonical owner.
+    /// Request the standard qualified attribute setter, including verification
+    /// of values for reached Trusted Types sinks.
     pub fn set_attribute(
         node: NodeId,
         name: impl Into<DocumentString>,
         value: impl Into<DocumentString>,
     ) -> Self {
-        Self {
-            command: Command::SetAttribute {
-                node: node.into(),
-                namespace: None,
-                name: name.into(),
-                value: value.into(),
-            },
-        }
+        Self::attribute_setter(node, None, name, value, AttributeSetterMode::Standard)
     }
-    /// Request one `set_attribute_ns` operation on the canonical owner.
+    /// Request the standard namespace-aware attribute setter, including
+    /// verification of values for reached Trusted Types sinks.
     pub fn set_attribute_ns(
         node: NodeId,
         namespace: Namespace,
         qualified_name: impl Into<DocumentString>,
         value: impl Into<DocumentString>,
     ) -> Self {
+        Self::attribute_setter(
+            node,
+            Some(namespace),
+            qualified_name,
+            value,
+            AttributeSetterMode::Standard,
+        )
+    }
+    /// Write a qualified attribute as part of native canonical authoring.
+    pub fn set_native_attribute(
+        node: NodeId,
+        name: impl Into<DocumentString>,
+        value: impl Into<DocumentString>,
+    ) -> Self {
+        Self::attribute_setter(node, None, name, value, AttributeSetterMode::Native)
+    }
+    /// Write an expanded attribute as part of native canonical authoring.
+    pub fn set_native_attribute_ns(
+        node: NodeId,
+        namespace: Namespace,
+        qualified_name: impl Into<DocumentString>,
+        value: impl Into<DocumentString>,
+    ) -> Self {
+        Self::attribute_setter(
+            node,
+            Some(namespace),
+            qualified_name,
+            value,
+            AttributeSetterMode::Native,
+        )
+    }
+    fn attribute_setter(
+        node: NodeId,
+        namespace: Option<Namespace>,
+        name: impl Into<DocumentString>,
+        value: impl Into<DocumentString>,
+        mode: AttributeSetterMode,
+    ) -> Self {
         Self {
             command: Command::SetAttribute {
                 node: node.into(),
-                namespace: Some(namespace),
-                name: qualified_name.into(),
+                namespace,
+                name: name.into(),
                 value: value.into(),
+                mode,
             },
         }
     }

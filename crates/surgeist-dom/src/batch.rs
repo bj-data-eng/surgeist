@@ -95,6 +95,12 @@ pub(crate) enum Creation {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AttributeSetterMode {
+    Native,
+    Standard,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum Command {
     Normalize(NodeOperand),
@@ -251,6 +257,7 @@ pub(crate) enum Command {
         namespace: Option<Namespace>,
         name: DocumentString,
         value: DocumentString,
+        mode: AttributeSetterMode,
     },
     SetCustomValidity {
         node: NodeOperand,
@@ -1059,6 +1066,7 @@ impl DomBatch {
             namespace: None,
             name: name.into(),
             value: value.into(),
+            mode: AttributeSetterMode::Native,
         });
     }
     /// Sets by expanded name. Existing attributes preserve their prefix/order.
@@ -1074,6 +1082,7 @@ impl DomBatch {
             namespace: Some(namespace),
             name: qualified_name.into(),
             value: value.into(),
+            mode: AttributeSetterMode::Native,
         });
     }
     pub fn remove_attribute(

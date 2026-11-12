@@ -778,7 +778,7 @@ fn measure_edit(fixture: &mut Fixture, edit: Edit, sample: usize) -> Duration {
         let mut lease = fixture
             .dom
             .begin_source_edit(
-                DomSourceEdit::set_attribute(fixture.target, "data-local", next),
+                DomSourceEdit::set_native_attribute(fixture.target, "data-local", next),
                 limits,
                 &cancel,
             )
@@ -2504,7 +2504,7 @@ fn postsetup_native_source_park_resume_reentry_scale() {
                 .unwrap();
             let changed = callback_source(
                 &mut fixture.dom,
-                DomSourceEdit::set_attribute(fixture.target, "data-local", next),
+                DomSourceEdit::set_native_attribute(fixture.target, "data-local", next),
             );
             assert_eq!(
                 changed.commit().changes().changes(),
@@ -2524,7 +2524,7 @@ fn postsetup_native_source_park_resume_reentry_scale() {
             );
             let opened = callback_source(
                 &mut fixture.dom,
-                DomSourceEdit::set_attribute(dialog, "open", ""),
+                DomSourceEdit::set_native_attribute(dialog, "open", ""),
             );
             assert_eq!(
                 opened.commit().changes().changes(),

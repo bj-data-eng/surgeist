@@ -23,7 +23,7 @@ fn removed_record_stays_in_original_invocation_and_resets_without_touching_repla
     let cancel = AtomicBool::new(false);
     drop(apply(
         &mut session,
-        DomSourceEdit::set_attribute(subject, "open", ""),
+        DomSourceEdit::set_native_attribute(subject, "open", ""),
     ));
     let hosted = session.hosted_execution();
     let owner = hosted.state().unwrap();
@@ -63,7 +63,7 @@ fn removed_record_stays_in_original_invocation_and_resets_without_touching_repla
             DomEventCallback::new(|_,_,context: &mut Context,_| {context.global_callbacks += 1; Ok(())}),
             DomEventListenerOptions {capture: true, once: true, passive: None,}).unwrap();
         assert!(context.original.borrow().state.running_cancel_action());
-        for edit in [DomSourceEdit::remove_attribute(subject, "open"), DomSourceEdit::set_attribute(subject, "open", "")] {
+        for edit in [DomSourceEdit::remove_attribute(subject, "open"), DomSourceEdit::set_native_attribute(subject, "open", "")] {
             let progress = context.source.apply(dom, edit, source_limits(), &mut DomSourceServices {meta: None,execution_scope: None, style_policy: &mut |_| None, url: None}, &AtomicBool::new(false)).unwrap();
             let DomSourceDriveProgress::Complete(done) = progress else {panic!("actual Hook must finish: {progress:?}");};
             context.nested.push(done);
@@ -181,7 +181,7 @@ fn source_cancellation_after_force_publication_still_finishes_authentic_cancel_a
     let (mut session, _, _, subject) = fixture();
     drop(apply(
         &mut session,
-        DomSourceEdit::set_attribute(subject, "open", ""),
+        DomSourceEdit::set_native_attribute(subject, "open", ""),
     ));
     let mut registry = dispatcher::<usize>();
     registry
@@ -335,7 +335,7 @@ fn history_consumption_prepays_both_actual_window_walks_and_write_before_effect(
         let (mut session, top, _, subject) = fixture();
         drop(apply(
             &mut session,
-            DomSourceEdit::set_attribute(subject, "open", ""),
+            DomSourceEdit::set_native_attribute(subject, "open", ""),
         ));
         let hosted = session.hosted_execution();
         let mut registry = dispatcher::<()>();
@@ -525,7 +525,7 @@ fn canceled_request_history_capture_uses_shadow_tree_order_and_actual_child_docu
         .unwrap();
     drop(apply(
         &mut session,
-        DomSourceEdit::set_attribute(subject, "open", ""),
+        DomSourceEdit::set_native_attribute(subject, "open", ""),
     ));
     let mut registry = dispatcher::<()>();
     registry
@@ -628,7 +628,7 @@ fn retired_nested_close_cleanup_parks_at_settle_and_source_tail_without_replay()
     let (mut session, top, _, subject) = fixture();
     drop(apply(
         &mut session,
-        DomSourceEdit::set_attribute(subject, "open", ""),
+        DomSourceEdit::set_native_attribute(subject, "open", ""),
     ));
     let hosted = session.hosted_execution();
     let owner = hosted.state().unwrap();
@@ -922,7 +922,7 @@ fn first_native_request() -> (
     let (mut session, _, _, subject) = fixture();
     drop(apply(
         &mut session,
-        DomSourceEdit::set_attribute(subject, "open", ""),
+        DomSourceEdit::set_native_attribute(subject, "open", ""),
     ));
     let mut registry = dispatcher::<()>();
     registry

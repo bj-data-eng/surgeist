@@ -288,7 +288,7 @@ fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_e
                 .source_execution()
                 .apply(
                     &mut session.dom(),
-                    DomSourceEdit::set_attribute(subject, name, ""),
+                    DomSourceEdit::set_native_attribute(subject, name, ""),
                     source_limits(10_000_000),
                     &mut DomSourceServices {
                         meta: None,

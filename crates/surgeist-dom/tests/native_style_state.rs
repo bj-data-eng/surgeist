@@ -870,7 +870,7 @@ fn exercise_wrong_owner_media(
     };
     use surgeist_dom::{DomSourceProgress, DomStyleCssomOwnerBinding};
     let cancel = AtomicBool::new(false);
-    let edit = DomSourceEdit::set_attribute(element, "media", "print");
+    let edit = DomSourceEdit::set_native_attribute(element, "media", "print");
     let mut lease = dom
         .begin_source_edit(edit, source_limits(), &cancel)
         .unwrap();

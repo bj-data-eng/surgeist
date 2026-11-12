@@ -1265,7 +1265,7 @@ fn completed_child_policy_and_origin_do_not_change_after_allow_and_sandbox_edits
             let mut policy = |_: &DomStyleSource| None;
             let result = session.source_execution().apply(
                 &mut session.dom(),
-                DomSourceEdit::set_attribute(container, name, value),
+                DomSourceEdit::set_native_attribute(container, name, value),
                 source_limits(),
                 &mut DomSourceServices {
                     meta: None,

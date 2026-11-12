@@ -222,7 +222,7 @@ fn production_session_local_source_scale() {
         for sample in 0..WARMUPS + SAMPLES {
             let next = if sample % 2 == 0 { "next" } else { "base" };
             let before = session.snapshot();
-            let edit = DomSourceEdit::set_attribute(target, "data-local", next);
+            let edit = DomSourceEdit::set_native_attribute(target, "data-local", next);
             let limits = source_limits();
             let started = Instant::now();
             let progress = session
@@ -399,7 +399,7 @@ fn production_session_parked_source_reentry_scale() {
                         .source
                         .apply(
                             dom,
-                            DomSourceEdit::set_attribute(target, "data-local", context.next),
+                            DomSourceEdit::set_native_attribute(target, "data-local", context.next),
                             continuation_limits(),
                             &mut services,
                             &AtomicBool::new(false),
@@ -441,7 +441,7 @@ fn production_session_parked_source_reentry_scale() {
                         .source
                         .apply(
                             dom,
-                            DomSourceEdit::set_attribute(subject, "open", ""),
+                            DomSourceEdit::set_native_attribute(subject, "open", ""),
                             continuation_limits(),
                             &mut services,
                             &AtomicBool::new(false),

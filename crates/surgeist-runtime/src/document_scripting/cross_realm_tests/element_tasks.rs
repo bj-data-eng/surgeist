@@ -453,7 +453,7 @@ fn attached_registry_runs_the_original_dialog_toggle_and_close_tasks() {
                 source
                     .apply(
                         dom,
-                        DomSourceEdit::set_attribute(dialog, "open", ""),
+                        DomSourceEdit::set_native_attribute(dialog, "open", ""),
                         SOURCE,
                         &mut services,
                         &cancel

@@ -3,6 +3,9 @@ use crate::element::{ElementFormation, FormedElement, NonceUpdate};
 use crate::names::{attribute_name, name_units, valid_attribute_local_name};
 use crate::{DomAttribute as Attribute, DomQualifiedName as QualifiedName};
 use surgeist_html::values::Namespace;
+use surgeist_html::vocabulary::{
+    ElementKey, ElementNamespace, KnownHtmlElement, KnownHtmlEventHandler, KnownSvgElement,
+};
 
 /// Actual native edit versus the Input Color cloning step whose current value
 /// will be copied by source overlay, without resolving its default again.
@@ -31,6 +34,45 @@ enum AttributeLookup<'a> {
         namespace: Option<&'a DocumentString>,
         local_name: &'a DocumentString,
     },
+}
+
+struct AttributeSetter<'a> {
+    namespace: Option<&'a Namespace>,
+    name: &'a DocumentString,
+    value: &'a DocumentString,
+    mode: AttributeSetterMode,
+}
+
+fn ascii_spelling(units: &[u16], literal: &str) -> bool {
+    units.len() == literal.len() && units.iter().copied().eq(literal.bytes().map(u16::from))
+}
+
+fn is_trusted_attribute_sink(
+    element: &QualifiedName,
+    attribute: &surgeist_html::values::QualifiedName,
+) -> bool {
+    let element = ElementKey::from_name(element);
+    let namespace = attribute.namespace().uri();
+    let local = attribute.local_name().code_units();
+    if namespace.is_none() {
+        if element.namespace() != ElementNamespace::Other
+            && (KnownHtmlEventHandler::from_local_units(local).is_some()
+                || ["onwaitingforkey", "onbegin", "onend", "onrepeat"]
+                    .into_iter()
+                    .any(|name| ascii_spelling(local, name)))
+        {
+            return true;
+        }
+        match element.html() {
+            Some(KnownHtmlElement::Iframe) => return ascii_spelling(local, "srcdoc"),
+            Some(KnownHtmlElement::Script) => return ascii_spelling(local, "src"),
+            _ => {}
+        }
+    }
+    element.svg() == Some(KnownSvgElement::Script)
+        && ascii_spelling(local, "href")
+        && namespace
+            .is_none_or(|uri| ascii_spelling(uri.code_units(), "http://www.w3.org/1999/xlink"))
 }
 
 // The validated name and its admission remain one argument across every
@@ -387,11 +429,57 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.set_attribute_value(
+            node,
+            AttributeSetter {
+                namespace,
+                name,
+                value,
+                mode: AttributeSetterMode::Native,
+            },
+            limits,
+            cancelled,
+        )
+    }
+    pub(super) fn set_standard_attribute(
+        &mut self,
+        node: Key,
+        namespace: Option<&Namespace>,
+        name: &DocumentString,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.set_attribute_value(
+            node,
+            AttributeSetter {
+                namespace,
+                name,
+                value,
+                mode: AttributeSetterMode::Standard,
+            },
+            limits,
+            cancelled,
+        )
+    }
+    fn set_attribute_value(
+        &mut self,
+        node: Key,
+        input: AttributeSetter<'_>,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let AttributeSetter {
+            namespace,
+            name,
+            value,
+            mode,
+        } = input;
         let element = self.element(node)?;
         let mut name_formation = source::formation::Formation::new(self, cancelled)?;
         let mut normalized = name_registry::Normalized::new(&self.names);
-        let (position, raw_name) = if let Some(namespace) = namespace {
-            let name = attribute_name(
+        let raw_name = if let Some(namespace) = namespace {
+            attribute_name(
                 namespace,
                 name,
                 &mut || self.name_step(cancelled),
@@ -399,16 +487,7 @@ impl Draft {
                     normalized.units(input, lower, name_formation.as_ref(), cancelled)
                 },
                 &mut |value| retain_string(value, name_formation.as_ref(), cancelled),
-            )?;
-            let position = self.attribute_position(
-                element.attributes(),
-                AttributeLookup::Expanded {
-                    namespace: name.namespace().uri(),
-                    local_name: name.local_name(),
-                },
-                cancelled,
-            )?;
-            (position, name)
+            )?
         } else {
             if !valid_attribute_local_name(name, &mut || self.name_step(cancelled))? {
                 return Err(DomError::InvalidCharacter);
@@ -425,16 +504,29 @@ impl Draft {
             } else {
                 retain_string(name, name_formation.as_ref(), cancelled)?
             };
-            let position = self.attribute_position(
-                element.attributes(),
-                AttributeLookup::Qualified(&name),
-                cancelled,
-            )?;
-            (
-                position,
-                surgeist_html::values::QualifiedName::new(Namespace::none(), None, name),
-            )
+            surgeist_html::values::QualifiedName::new(Namespace::none(), None, name)
         };
+        if mode == AttributeSetterMode::Standard {
+            // The sink table uses bounded vocabulary and literal comparisons.
+            self.source_step(cancelled)?;
+            if is_trusted_attribute_sink(element.language().name(), &raw_name) {
+                let document = self.node(node)?.document();
+                return Err(if self.node(document)?.relevant_global().is_some() {
+                    DomError::SourceAttributeExecutorUnavailable
+                } else {
+                    DomError::SourceAttributeGlobalUnavailable
+                });
+            }
+        }
+        let lookup = if namespace.is_some() {
+            AttributeLookup::Expanded {
+                namespace: raw_name.namespace().uri(),
+                local_name: raw_name.local_name(),
+            }
+        } else {
+            AttributeLookup::Qualified(raw_name.local_name())
+        };
+        let position = self.attribute_position(element.attributes(), lookup, cancelled)?;
         // Existing set-value preserves its exact canonical prefix and order.
         // Discard lookup spelling before admitting the selected occurrence.
         let name = if let Some(position) = position {

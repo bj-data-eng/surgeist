@@ -3286,7 +3286,7 @@ mod tests {
             source
                 .apply(
                     &mut dom,
-                    DomSourceEdit::set_attribute(style, "title", title.clone()),
+                    DomSourceEdit::set_native_attribute(style, "title", title.clone()),
                     source_limits(),
                     &mut DomSourceServices {
                         meta: None,
@@ -3299,7 +3299,8 @@ mod tests {
                 .unwrap(),
             DomSourceDriveProgress::Complete(_)
         ));
-        let edit = DomSourceEdit::set_attribute(style, "media", "screen and (min-width: 2px)");
+        let edit =
+            DomSourceEdit::set_native_attribute(style, "media", "screen and (min-width: 2px)");
         let progress = source
             .apply(
                 &mut dom,
@@ -4329,7 +4330,7 @@ mod tests {
         append_style(&mut session, document, Some("print and"));
         let mut permission = session.style_execution();
         let mut source = session.source_execution();
-        let edit = DomSourceEdit::set_attribute(first, "title", "changed");
+        let edit = DomSourceEdit::set_native_attribute(first, "title", "changed");
         assert!(matches!(
             source
                 .apply(
@@ -4735,7 +4736,7 @@ mod tests {
             stamp,
             "actual external configuration edit changes no DOM state"
         );
-        let edit = DomSourceEdit::set_attribute(target, "media", "screen and");
+        let edit = DomSourceEdit::set_native_attribute(target, "media", "screen and");
         assert!(matches!(
             source
                 .apply(
@@ -4820,7 +4821,7 @@ mod tests {
                 .media_diagnostics()
                 .is_empty()
         );
-        let edit = DomSourceEdit::set_attribute(target, "title", "same-mode");
+        let edit = DomSourceEdit::set_native_attribute(target, "title", "same-mode");
         assert!(matches!(
             source
                 .apply(
@@ -5998,7 +5999,7 @@ mod tests {
             + size_of::<DomStyleProcessedSheet>()
             - 1;
         permission.set_limits(&session.dom(), low, &cancel).unwrap();
-        let edit = DomSourceEdit::set_attribute(target, "title", "changed");
+        let edit = DomSourceEdit::set_native_attribute(target, "title", "changed");
         assert!(
             matches!(
                 source.apply(

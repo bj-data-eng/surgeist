@@ -477,7 +477,7 @@ impl Projection {
                     source
                         .apply(
                             dom,
-                            DomSourceEdit::set_attribute(self.dialog, "open", ""),
+                            DomSourceEdit::set_native_attribute(self.dialog, "open", ""),
                             SOURCE,
                             &mut services,
                             cancel,
@@ -1313,7 +1313,7 @@ fn start_attached_cancel(
             source
                 .apply(
                     dom,
-                    DomSourceEdit::set_attribute(dialog, "open", ""),
+                    DomSourceEdit::set_native_attribute(dialog, "open", ""),
                     SOURCE,
                     services,
                     cancel

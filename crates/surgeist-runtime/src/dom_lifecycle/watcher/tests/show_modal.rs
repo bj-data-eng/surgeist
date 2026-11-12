@@ -512,7 +512,7 @@ fn inactive_adoption_assertion_retains_real_cleanup_cause_across_admission_drop_
         .unwrap();
     drop(apply(
         &mut session,
-        DomSourceEdit::set_attribute(sentinel, "open", ""),
+        DomSourceEdit::set_native_attribute(sentinel, "open", ""),
     ));
     let sentinel_watcher = session
         .snapshot()

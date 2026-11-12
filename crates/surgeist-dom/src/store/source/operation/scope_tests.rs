@@ -50,7 +50,7 @@ fn original_edit_binding_is_once_only_and_first_advance_seals_the_native_entry()
     let before = dom.snapshot();
     let mut lease = dom
         .begin_source_edit(
-            DomSourceEdit::set_attribute(root, "data-entry", "value"),
+            DomSourceEdit::set_native_attribute(root, "data-entry", "value"),
             limits(),
             &cancel,
         )

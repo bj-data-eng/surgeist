@@ -220,7 +220,7 @@ fn source_attribute_edit_shares_large_unchanged_native_value_and_children_under_
 
         let done = complete(
             &mut dom,
-            DomSourceEdit::set_attribute(input, "id", "changed"),
+            DomSourceEdit::set_native_attribute(input, "id", "changed"),
             extent,
         );
         let now = dom.snapshot();

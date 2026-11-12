@@ -758,7 +758,7 @@ fn retained_result_cannot_cross_canonical_mutation_while_original_source_is_busy
     ));
     let result = session.source_execution().apply(
         &mut session.dom(),
-        DomSourceEdit::set_attribute(original.subject(), "data-unrelated", ""),
+        DomSourceEdit::set_native_attribute(original.subject(), "data-unrelated", ""),
         source_limits(10_000_000),
         &mut DomSourceServices {
             meta: None,

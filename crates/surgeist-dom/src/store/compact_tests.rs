@@ -854,7 +854,7 @@ fn known_empty_form_snapshot_and_source_rollback_keep_original_root() {
     assert_eq!(dom.snapshot().stamp(), held.stamp());
     let mut source = dom
         .begin_source_edit(
-            crate::DomSourceEdit::set_attribute(form, "title", "changed"),
+            crate::DomSourceEdit::set_native_attribute(form, "title", "changed"),
             policy,
             &cancel,
         )

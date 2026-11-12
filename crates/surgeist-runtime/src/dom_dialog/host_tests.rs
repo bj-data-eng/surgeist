@@ -349,7 +349,7 @@ fn dispatcher_drop_abandons_pending_host_and_closes_the_original_source_scope() 
         source
             .apply(
                 &mut session.dom(),
-                DomSourceEdit::set_attribute(dialog, "data-before-owner-drop", "kept"),
+                DomSourceEdit::set_native_attribute(dialog, "data-before-owner-drop", "kept"),
                 limits().source,
                 &mut services(&mut |_| None),
                 &AtomicBool::new(false)
@@ -369,7 +369,7 @@ fn dispatcher_drop_abandons_pending_host_and_closes_the_original_source_scope() 
         source
             .apply(
                 &mut session.dom(),
-                DomSourceEdit::set_attribute(dialog, "data-after-owner-drop", "forbidden"),
+                DomSourceEdit::set_native_attribute(dialog, "data-after-owner-drop", "forbidden"),
                 limits().source,
                 &mut services(&mut |_| None),
                 &AtomicBool::new(false)
@@ -621,7 +621,7 @@ fn owned_host_invocation_releases_session_loan_and_retains_real_nested_source_au
             source
                 .apply(
                     &mut loan.session.dom(),
-                    DomSourceEdit::set_attribute(dialog, "data-host", "nested"),
+                    DomSourceEdit::set_native_attribute(dialog, "data-host", "nested"),
                     limits().source,
                     &mut services(&mut |_| None),
                     &AtomicBool::new(false),
@@ -1113,7 +1113,11 @@ fn abandonment_and_session_drop_close_active_observation_without_successful_sour
                 source
                     .apply(
                         &mut session.dom(),
-                        DomSourceEdit::set_attribute(dialog, "data-after-abandon", "forbidden"),
+                        DomSourceEdit::set_native_attribute(
+                            dialog,
+                            "data-after-abandon",
+                            "forbidden"
+                        ),
                         limits().source,
                         &mut services(&mut |_| None),
                         &AtomicBool::new(false)

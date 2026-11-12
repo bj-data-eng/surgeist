@@ -59,7 +59,7 @@ fn original_toggle_cleanup_result_survives_native_checkpoint_work_refusal_withou
         .source_execution()
         .apply(
             &mut session.dom(),
-            DomSourceEdit::set_attribute(subject, "open", ""),
+            DomSourceEdit::set_native_attribute(subject, "open", ""),
             source_limits(10_000_000),
             &mut services,
             &cancel,

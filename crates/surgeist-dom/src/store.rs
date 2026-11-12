@@ -7,7 +7,8 @@ use std::{
 };
 
 use crate::batch::{
-    AttachedAttribute, AttachedShadowRoot, BatchIdentity, Command, Creation, RemovedAttribute,
+    AttachedAttribute, AttachedShadowRoot, AttributeSetterMode, BatchIdentity, Command, Creation,
+    RemovedAttribute,
 };
 use crate::document::{DomDocumentMetadata, NATIVE_DOCUMENT_STRING_UNITS};
 use crate::{
@@ -323,6 +324,10 @@ pub enum DomError {
     },
     CloseWatcherProtocol(surgeist_html::elements::dialog::HtmlCloseWatcherRequestError),
     SourceEventExecutorUnavailable,
+    /// A reached attribute verification has no authentic node-document Global.
+    SourceAttributeGlobalUnavailable,
+    /// A reached attribute verification has no qualified executor.
+    SourceAttributeExecutorUnavailable,
     DialogInvalidState,
     NeedsEventfulOperation {
         subject: Option<NodeId>,
@@ -3742,9 +3747,31 @@ impl Draft {
                 namespace,
                 name,
                 value,
+                mode,
             } => {
                 let node = self.resolve(node.clone())?;
-                self.set_attribute(node, namespace.as_ref(), name, value, limits, cancelled)?;
+                match mode {
+                    AttributeSetterMode::Native => {
+                        self.set_attribute(
+                            node,
+                            namespace.as_ref(),
+                            name,
+                            value,
+                            limits,
+                            cancelled,
+                        )?;
+                    }
+                    AttributeSetterMode::Standard => {
+                        self.set_standard_attribute(
+                            node,
+                            namespace.as_ref(),
+                            name,
+                            value,
+                            limits,
+                            cancelled,
+                        )?;
+                    }
+                }
             }
             Command::SetCustomValidity { node, value } => {
                 let node = self.resolve(node.clone())?;

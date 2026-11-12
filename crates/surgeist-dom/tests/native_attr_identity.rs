@@ -40,7 +40,7 @@ fn standard_attribute_sink_requires_the_node_documents_global() {
         .unwrap();
     let result = lease.advance(&cancel);
     assert!(
-        result.is_err(),
+        matches!(result, Err(DomError::SourceAttributeGlobalUnavailable)),
         "a recognized handler sink needs the node document's actual Global: {result:?}"
     );
     let after = lease.snapshot();
@@ -49,6 +49,69 @@ fn standard_attribute_sink_requires_the_node_documents_global() {
         after.node(element).unwrap().attribute(&"onclick".into()),
         None
     );
+}
+
+#[test]
+fn standard_source_setters_select_exact_attribute_sinks() {
+    let cancel = AtomicBool::new(false);
+    let xlink = "http://www.w3.org/1999/xlink";
+    let cases = [
+        (Namespace::html(), "div", None, "ONCLICK", true),
+        (Namespace::html(), "div", Some(""), "ONCLICK", false),
+        (Namespace::html(), "div", None, "onafterprint", true),
+        (Namespace::html(), "div", None, "onopen", false),
+        (Namespace::mathml(), "mrow", None, "onbegin", true),
+        (
+            Namespace::from_uri("urn:foreign"),
+            "div",
+            None,
+            "onclick",
+            false,
+        ),
+        (Namespace::svg(), "script", None, "href", true),
+        (Namespace::svg(), "script", Some(xlink), "p:href", true),
+        (Namespace::svg(), "g", Some(xlink), "p:href", false),
+        (Namespace::html(), "script", None, "src", true),
+        (Namespace::html(), "iframe", None, "srcdoc", true),
+        (
+            Namespace::html(),
+            "div",
+            Some("urn:foreign"),
+            "p:onclick",
+            false,
+        ),
+    ];
+    for (namespace, tag, attr_namespace, name, sink) in cases {
+        let mut dom = owner();
+        let mut setup = DomBatch::new();
+        let origin = setup.create_document();
+        let document = setup.create_html_document(&origin, None);
+        let element = setup.create_element_ns(&document, namespace, tag);
+        let commit = dom.apply(setup, &cancel).unwrap();
+        let element = commit.created(&element).unwrap().unwrap();
+        let before = dom.snapshot().stamp();
+        let edit = match attr_namespace {
+            Some(namespace) => {
+                DomSourceEdit::set_attribute_ns(element, Namespace::from_uri(namespace), name, "")
+            }
+            None => DomSourceEdit::set_attribute(element, name, ""),
+        };
+        let mut lease = dom.begin_source_edit(edit, policy(), &cancel).unwrap();
+        let result = lease.advance(&cancel);
+        if sink {
+            assert!(
+                matches!(result, Err(DomError::SourceAttributeGlobalUnavailable)),
+                "{tag} {attr_namespace:?} {name}: {result:?}"
+            );
+            assert_eq!(lease.snapshot().stamp(), before);
+        } else {
+            assert!(
+                matches!(result, Ok(DomSourceProgress::Complete(_))),
+                "{tag} {attr_namespace:?} {name}: {result:?}"
+            );
+            assert_ne!(lease.snapshot().stamp(), before);
+        }
+    }
 }
 
 #[test]

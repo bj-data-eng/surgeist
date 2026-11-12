@@ -140,7 +140,7 @@ fn nested_source_and_recursive_show_charge_ancestors_and_obey_the_parent_depth_l
     {
         let mut child = dom
             .begin_source_edit(
-                DomSourceEdit::set_attribute(second, "data-child", "kept"),
+                DomSourceEdit::set_native_attribute(second, "data-child", "kept"),
                 limits(),
                 &cancel,
             )

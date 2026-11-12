@@ -466,12 +466,12 @@ fn later_raw_attribute_changes_do_not_recompute_the_complete_constructor_policy(
         DomInitialPermissionsPolicy::new(D, D)
     );
     for edit in [
-        DomSourceEdit::set_attribute(
+        DomSourceEdit::set_native_attribute(
             iframe,
             "allow",
             "fullscreen *; focus-without-user-activation *",
         ),
-        DomSourceEdit::set_attribute(iframe, "allowfullscreen", ""),
+        DomSourceEdit::set_native_attribute(iframe, "allowfullscreen", ""),
     ] {
         let progress = session
             .source_execution()
@@ -693,7 +693,7 @@ fn enabled_autofocus_preserves_actual_focusing_wait_and_completes_same_origin_ta
                 .source_execution()
                 .apply(
                     &mut session.dom(),
-                    DomSourceEdit::set_attribute(subject, name, ""),
+                    DomSourceEdit::set_native_attribute(subject, name, ""),
                     source_limits(),
                     &mut DomSourceServices {
                         meta: None,
@@ -811,7 +811,7 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
             .source_execution()
             .apply(
                 &mut session.dom(),
-                DomSourceEdit::set_attribute(subject, name, ""),
+                DomSourceEdit::set_native_attribute(subject, name, ""),
                 source_limits(),
                 &mut DomSourceServices {
                     meta: None,
@@ -1052,7 +1052,7 @@ fn enabled_cross_origin_inert_autofocus_dialog_completes_show_modal() {
             .source_execution()
             .apply(
                 &mut session.dom(),
-                DomSourceEdit::set_attribute(subject, name, ""),
+                DomSourceEdit::set_native_attribute(subject, name, ""),
                 source_limits(),
                 &mut DomSourceServices {
                     meta: None,
@@ -1185,7 +1185,7 @@ fn enabled_same_origin_inert_autofocus_dialog_completes_its_autofocus_tail() {
             .source_execution()
             .apply(
                 &mut session.dom(),
-                DomSourceEdit::set_attribute(subject, name, ""),
+                DomSourceEdit::set_native_attribute(subject, name, ""),
                 source_limits(),
                 &mut DomSourceServices {
                     meta: None,
@@ -1371,7 +1371,7 @@ fn enabled_same_origin_inert_dialog_without_autofocus_completes_after_empty_dele
         .source_execution()
         .apply(
             &mut session.dom(),
-            DomSourceEdit::set_attribute(subject, "inert", ""),
+            DomSourceEdit::set_native_attribute(subject, "inert", ""),
             source_limits(),
             &mut DomSourceServices {
                 meta: None,

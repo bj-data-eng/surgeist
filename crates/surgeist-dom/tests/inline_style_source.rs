@@ -166,7 +166,7 @@ fn real_setter_returns_paired_original_publication_and_preserves_utf16() {
     let mut lease = f
         .dom
         .begin_source_edit_with_inline_styles(
-            DomSourceEdit::set_attribute(f.first, "style", raw.clone()),
+            DomSourceEdit::set_native_attribute(f.first, "style", raw.clone()),
             ctx,
             limits(),
             requests(),
@@ -232,7 +232,7 @@ fn resolver_refusal_and_unwind_restore_same_lease_before_retry() {
     let mut lease = f
         .dom
         .begin_source_edit_with_inline_styles(
-            DomSourceEdit::set_attribute(f.first, "style", "width: 5px"),
+            DomSourceEdit::set_native_attribute(f.first, "style", "width: 5px"),
             ctx,
             limits(),
             requests(),
@@ -331,7 +331,7 @@ fn subtree_adoption_updates_two_packets_in_one_commit_without_reparse() {
     let mut lease = f
         .dom
         .begin_source_edit_with_inline_styles(
-            DomSourceEdit::set_attribute(f.first, "style", "width: 10px"),
+            DomSourceEdit::set_native_attribute(f.first, "style", "width: 10px"),
             ctx,
             limits(),
             requests(),
@@ -355,7 +355,7 @@ fn output_refusal_precedes_resolver_and_preserves_original_invocation() {
     let mut lease = f
         .dom
         .begin_source_edit_with_inline_styles(
-            DomSourceEdit::set_attribute(f.first, "style", "width: 7px"),
+            DomSourceEdit::set_native_attribute(f.first, "style", "width: 7px"),
             ctx,
             none,
             requests(),
@@ -552,7 +552,7 @@ fn zero_binding_capability_survives_authentic_observer_reentry_and_original_comp
     let mut lease = f
         .dom
         .begin_source_edit_with_inline_styles(
-            DomSourceEdit::set_attribute(f.first, "style", "width: 9px"),
+            DomSourceEdit::set_native_attribute(f.first, "style", "width: 9px"),
             ctx,
             limits(),
             requests(),
@@ -592,7 +592,7 @@ fn same_value_wrapper_requires_one_output_before_resolver_or_publication() {
     let mut control = f
         .dom
         .begin_source_edit(
-            DomSourceEdit::set_attribute(f.second, "style", "width: 7px"),
+            DomSourceEdit::set_native_attribute(f.second, "style", "width: 7px"),
             zero,
             &cancel(),
         )
@@ -606,7 +606,7 @@ fn same_value_wrapper_requires_one_output_before_resolver_or_publication() {
     let mut lease = f
         .dom
         .begin_source_edit_with_inline_styles(
-            DomSourceEdit::set_attribute(f.first, "style", "width: 7px"),
+            DomSourceEdit::set_native_attribute(f.first, "style", "width: 7px"),
             ctx,
             zero,
             requests(),
@@ -631,7 +631,7 @@ fn same_value_wrapper_requires_one_output_before_resolver_or_publication() {
     let mut lease = f
         .dom
         .begin_source_edit_with_inline_styles(
-            DomSourceEdit::set_attribute(f.first, "style", "width: 7px"),
+            DomSourceEdit::set_native_attribute(f.first, "style", "width: 7px"),
             ctx,
             one,
             requests(),
@@ -665,7 +665,7 @@ fn cancellation_during_resolver_rolls_back_then_retries_same_original_operation(
     let mut lease = f
         .dom
         .begin_source_edit_with_inline_styles(
-            DomSourceEdit::set_attribute(f.first, "style", "width: 11px"),
+            DomSourceEdit::set_native_attribute(f.first, "style", "width: 11px"),
             ctx,
             limits(),
             requests(),
@@ -705,7 +705,7 @@ fn missing_profiles_refuse_reached_setter_but_absent_removal_needs_no_resolver()
     let mut lease = f
         .dom
         .begin_source_edit_with_inline_styles(
-            DomSourceEdit::set_attribute(f.first, "style", "width: 13px"),
+            DomSourceEdit::set_native_attribute(f.first, "style", "width: 13px"),
             ctx,
             limits(),
             requests(),
@@ -748,7 +748,7 @@ fn plain_advance_refuses_then_borrowed_resolver_uses_same_retained_profiles() {
     let mut lease = f
         .dom
         .begin_source_edit_with_inline_styles(
-            DomSourceEdit::set_attribute(f.first, "style", "width: 17px"),
+            DomSourceEdit::set_native_attribute(f.first, "style", "width: 17px"),
             ctx,
             limits(),
             requests(),

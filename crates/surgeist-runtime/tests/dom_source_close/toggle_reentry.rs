@@ -258,7 +258,7 @@ fn exercise(retain: bool) {
     for name in ["inert", "autofocus"] {
         drop(complete(apply(
             &mut session,
-            DomSourceEdit::set_attribute(subject, name, ""),
+            DomSourceEdit::set_native_attribute(subject, name, ""),
         )));
     }
     let ready = session.snapshot();
