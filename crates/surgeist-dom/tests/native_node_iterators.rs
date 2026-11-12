@@ -4,7 +4,8 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DocumentId, Dom, DomBatch, DomChange, DomError, DomLimits, DomNameLimits,
     DomNodeFilterDecision, DomNodeIteratorFilter, DomNodeIteratorFilterRequest, DomNodeIteratorId,
-    DomNodeIteratorProgress, DomResource, DomSourceEdit, DomSourceLimits, DomSourceProgress,
+    DomNodeIteratorProgress, DomResource, DomSourceEdit, DomSourceEventExecutor,
+    DomSourceEventOutcome, DomSourceEventRequest, DomSourceLimits, DomSourceProgress,
     DomSourceRequest, DomStyleInlineCspObservation, Namespace, NodeId,
 };
 
@@ -86,6 +87,131 @@ fn request(progress: DomNodeIteratorProgress, expected: NodeId) -> DomNodeIterat
     };
     assert_eq!(request.node(), expected);
     request
+}
+
+fn begin_dialog_observation(
+    dom: &mut Dom,
+    root: NodeId,
+    limits: DomSourceLimits,
+    cancel: &AtomicBool,
+) -> (DomSourceEventExecutor, DomSourceEventRequest) {
+    let custody =
+        surgeist_dom::DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000)
+            .unwrap();
+    dom.set_limits(dom.limits().with_dispatch_custody(custody))
+        .unwrap();
+    let document = dom.snapshot().node(root).unwrap().owner_document().unwrap();
+    let mut batch = DomBatch::new();
+    let dialog = batch.create_element_ns(document, Namespace::html(), "dialog");
+    batch.insert_before(&dialog, root, None);
+    let dialog = dom
+        .apply(batch, cancel)
+        .unwrap()
+        .created(&dialog)
+        .unwrap()
+        .unwrap();
+    let executor = dom.bind_source_event_executor(cancel).unwrap();
+    let mut lease = dom
+        .begin_source_edit(DomSourceEdit::show_dialog(dialog), limits, cancel)
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Event(request)) =
+        lease.advance(cancel).unwrap()
+    else {
+        panic!("showing the connected dialog must reach its native event");
+    };
+    (executor, request)
+}
+
+#[test]
+fn empty_traversal_in_a_live_source_callback_spends_the_observers_work() {
+    let Tree { mut dom, root, .. } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = iterator(&mut dom, root, 0);
+    let limits = DomSourceLimits::new(32_000_000, 1_000_000, 4096, 64, 4096, 4096, 4);
+    let (executor, event) = begin_dialog_observation(&mut dom, root, limits, &cancel);
+    let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
+    let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
+    let before = dom.pending_source_edit().unwrap().spent_work();
+    assert!(matches!(
+        dom.node_iterator_next(id, 256, &cancel).unwrap(),
+        DomNodeIteratorProgress::Complete(None)
+    ));
+    let after = dom.pending_source_edit().unwrap().spent_work();
+    assert!(
+        after > before,
+        "the live Source observer must own read-only traversal work"
+    );
+    for _ in after..limits.work() - 1 {
+        dom.source_event_step(&event, &cancel).unwrap();
+    }
+    assert_eq!(
+        dom.node_iterator_next(id, 256, &cancel).unwrap_err(),
+        DomError::SourceWorkLimit {
+            limit: limits.work()
+        }
+    );
+    assert_eq!(reference(&dom, id), (root, true));
+    drop(scope);
+    let resumed = DomSourceLimits::new(32_000_000, 1_000_000, 1_000_000, 64, 4096, 4096, 4);
+    dom.raise_source_event_limits(&event, resumed, &cancel)
+        .unwrap();
+    let mut permit = Some(permit);
+    let mut outcome = Some(
+        executor
+            .seal_completed(&dom, &mut permit, DomSourceEventOutcome::Canceled, &cancel)
+            .unwrap(),
+    );
+    let mut lease = dom
+        .resume_source_edit(event.operation(), resumed, &cancel)
+        .unwrap();
+    lease
+        .accept_source_event(&event, &mut outcome, &cancel)
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+}
+
+#[test]
+fn filter_response_cannot_outlive_its_original_source_callback() {
+    let Tree { mut dom, root, .. } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = dom
+        .create_node_iterator(root, u32::MAX, DomNodeIteratorFilter::Callback, &cancel)
+        .unwrap();
+    let limits = DomSourceLimits::new(32_000_000, 1_000_000, 1_000_000, 64, 4096, 4096, 4);
+    let (executor, event) = begin_dialog_observation(&mut dom, root, limits, &cancel);
+    let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
+    let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
+    let filter = request(dom.node_iterator_next(id, 256, &cancel).unwrap(), root);
+    drop(scope);
+    let mut permit = Some(permit);
+    let mut outcome = Some(
+        executor
+            .seal_completed(&dom, &mut permit, DomSourceEventOutcome::Canceled, &cancel)
+            .unwrap(),
+    );
+    let mut lease = dom
+        .resume_source_edit(event.operation(), limits, &cancel)
+        .unwrap();
+    lease
+        .accept_source_event(&event, &mut outcome, &cancel)
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
+    assert_eq!(
+        filter
+            .respond(&mut dom, DomNodeFilterDecision::Accept, &cancel)
+            .unwrap_err(),
+        DomError::InvalidSourceEvent
+    );
+    assert_eq!(reference(&dom, id), (root, true));
+    let filter = request(dom.node_iterator_next(id, 256, &cancel).unwrap(), root);
+    drop(filter);
 }
 
 #[test]
