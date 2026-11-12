@@ -4,10 +4,10 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DocumentId, Dom, DomBatch, DomChange, DomChildListObservationLimits, DomChildListRecord,
     DomError, DomLimits, DomNameLimits, DomNativeCheckpoint, DomNativeCheckpointLimits,
-    DomNodeIteratorFilter, DomNodeIteratorProgress, DomSelectCompletionStart, DomSelectTask,
-    DomSelectTaskCancellationReason, DomSelectTaskOutcome, DomShadowRootInit, DomSlotQueryLimits,
-    DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceProgress, HtmlShadowRootMode, Namespace,
-    NodeId,
+    DomNodeIteratorFilter, DomNodeIteratorProgress, DomResource, DomSelectCompletionStart,
+    DomSelectTask, DomSelectTaskCancellationReason, DomSelectTaskOutcome, DomShadowRootInit,
+    DomSlotQueryLimits, DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceProgress,
+    HtmlShadowRootMode, Namespace, NodeId,
 };
 
 struct Tree {
@@ -505,4 +505,286 @@ fn retiring_either_captured_node_cancels_the_exact_issued_selectedcontent_task()
             Err(DomError::InvalidNativeTask)
         ));
     }
+}
+
+#[test]
+fn a_move_propagates_old_subtree_observation_until_its_notification() {
+    let cancel = AtomicBool::new(false);
+    let Tree {
+        mut dom,
+        document,
+        left,
+        right,
+        moved,
+        tail,
+        ..
+    } = tree(true, &cancel);
+    let observer = dom.create_child_list_observer(&cancel).unwrap();
+    dom.observe_child_list(observer, left, true, &cancel)
+        .unwrap();
+    move_node(&mut dom, moved, right, None, &cancel).unwrap();
+    let records = dom.take_child_list_records(observer, &cancel).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_record(&records[0], left, &[], &[moved], tail);
+
+    let mut append = DomBatch::new();
+    let first = append.create_text(document, "old observer still follows this");
+    append.insert_before(&first, moved, None);
+    let first = dom
+        .apply(append, &cancel)
+        .unwrap()
+        .created(&first)
+        .unwrap()
+        .unwrap();
+    let DomNativeCheckpoint::ChildList(delivery) =
+        dom.native_checkpoint_step(checkpoint(), &cancel).unwrap()
+    else {
+        panic!("transient registration delivers its actual descendant record");
+    };
+    assert_eq!(delivery.observer(), observer);
+    let [record] = delivery.records() else {
+        panic!("one queued record");
+    };
+    assert_eq!(record.target(), moved);
+    assert_eq!(record.added_nodes(), [first]);
+    drop(delivery);
+    assert!(matches!(
+        dom.native_checkpoint_step(checkpoint(), &cancel).unwrap(),
+        DomNativeCheckpoint::Idle
+    ));
+
+    let mut append = DomBatch::new();
+    let second = append.create_text(document, "cleanup removed the old registration");
+    append.insert_before(&second, moved, None);
+    dom.apply(append, &cancel).unwrap();
+    assert!(
+        dom.take_child_list_records(observer, &cancel)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn refusing_the_second_move_record_leaves_the_tree_and_first_record_private() {
+    let cancel = AtomicBool::new(false);
+    let Tree {
+        mut dom,
+        root,
+        left,
+        right,
+        moved,
+        tail,
+        reference,
+        ..
+    } = tree(true, &cancel);
+    let observer = dom.create_child_list_observer(&cancel).unwrap();
+    dom.observe_child_list(observer, root, true, &cancel)
+        .unwrap();
+    let observation = |records| DomChildListObservationLimits::new(4, 16, records, 96).unwrap();
+    dom.set_limits(dom.limits().with_child_list_observation(observation(1)))
+        .unwrap();
+    let before = dom.snapshot();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::move_before(moved, right, Some(reference)),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::ChildListRecords,
+            limit: 1
+        })
+    ));
+    assert!(!lease.status().has_published());
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    drop(lease);
+    assert!(dom.pending_source_edit().is_none());
+    assert_eq!(dom.pending_native_tasks(), 0);
+    assert!(
+        dom.take_child_list_records(observer, &cancel)
+            .unwrap()
+            .is_empty()
+    );
+
+    dom.set_limits(dom.limits().with_child_list_observation(observation(2)))
+        .unwrap();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::move_before(moved, right, Some(reference)),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    let canceled = AtomicBool::new(true);
+    assert!(matches!(lease.advance(&canceled), Err(DomError::Cancelled)));
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
+    let records = dom.take_child_list_records(observer, &cancel).unwrap();
+    assert_eq!(records.len(), 2);
+    assert_record(&records[0], left, &[], &[moved], tail);
+    assert_record(&records[1], right, &[moved], &[], reference);
+}
+
+#[test]
+fn an_image_move_uses_the_old_picture_and_does_not_run_picture_insertion() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(limits()).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element_ns(&document, Namespace::html(), "div");
+    let first = batch.create_element_ns(&document, Namespace::html(), "picture");
+    let second = batch.create_element_ns(&document, Namespace::html(), "picture");
+    let image = batch.create_element_ns(&document, Namespace::html(), "img");
+    batch.insert_before(&first, &root, None);
+    batch.insert_before(&second, &root, None);
+    batch.insert_before(&image, &first, None);
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let root = commit.created(&root).unwrap().unwrap();
+    let second = commit.created(&second).unwrap().unwrap();
+    let image = commit.created(&image).unwrap().unwrap();
+    let update = |dom: &Dom| {
+        dom.snapshot()
+            .node(image)
+            .unwrap()
+            .as_img()
+            .unwrap()
+            .suspended_update()
+            .unwrap()
+            .unwrap()
+            .id()
+    };
+    let inserted = update(&dom);
+    move_node(&mut dom, image, root, None, &cancel).unwrap();
+    let moved_from_picture = update(&dom);
+    assert_ne!(inserted, moved_from_picture);
+    move_node(&mut dom, image, second, None, &cancel).unwrap();
+    assert_eq!(update(&dom), moved_from_picture);
+}
+
+#[test]
+fn moving_id_bearing_form_and_control_update_the_actual_ordinary_tree_owner() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(limits()).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element_ns(&document, Namespace::html(), "div");
+    let host = batch.create_element_ns(&document, Namespace::html(), "div");
+    let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+    let first = batch.create_element_ns(&document, Namespace::html(), "form");
+    let second = batch.create_element_ns(&document, Namespace::html(), "form");
+    let input = batch.create_element_ns(&document, Namespace::html(), "input");
+    batch.set_attribute(&first, "id", "owner");
+    batch.set_attribute(&second, "id", "owner");
+    batch.set_attribute(&input, "form", "owner");
+    batch.insert_before(&root, &document, None);
+    for child in [&first, &second, &input, &host] {
+        batch.insert_before(child, &root, None);
+    }
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let root = commit.created(&root).unwrap().unwrap();
+    let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
+    let first = commit.created(&first).unwrap().unwrap();
+    let second = commit.created(&second).unwrap().unwrap();
+    let input = commit.created(&input).unwrap().unwrap();
+    let owner = |dom: &Dom| {
+        dom.snapshot()
+            .node(input)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .form_owner()
+            .unwrap()
+    };
+    assert_eq!(owner(&dom), Some(first));
+    move_node(&mut dom, first, root, None, &cancel).unwrap();
+    assert_eq!(owner(&dom), Some(second));
+    move_node(&mut dom, input, shadow, None, &cancel).unwrap();
+    assert_eq!(owner(&dom), None);
+    assert!(dom.snapshot().node(input).unwrap().is_connected());
+}
+
+#[test]
+fn moving_hooks_visit_shadow_descendants_before_light_descendants() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(limits()).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element_ns(&document, Namespace::html(), "div");
+    let host = batch.create_element_ns(&document, Namespace::html(), "div");
+    let destination = batch.create_element_ns(&document, Namespace::html(), "div");
+    let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+    let shadow_select = batch.create_element_ns(&document, Namespace::html(), "select");
+    let light_select = batch.create_element_ns(&document, Namespace::html(), "select");
+    let shadow_target = batch.create_element_ns(&document, Namespace::html(), "selectedcontent");
+    let light_target = batch.create_element_ns(&document, Namespace::html(), "selectedcontent");
+    batch.insert_before(&host, &root, None);
+    batch.insert_before(&destination, &root, None);
+    batch.insert_before(&shadow_select, &shadow, None);
+    batch.insert_before(&light_select, &host, None);
+    batch.insert_before(&shadow_target, &shadow_select, None);
+    batch.insert_before(&light_target, &light_select, None);
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let host = commit.created(&host).unwrap().unwrap();
+    let destination = commit.created(&destination).unwrap().unwrap();
+    let resolve = |ticket| commit.created(ticket).unwrap().unwrap();
+
+    move_node(&mut dom, host, destination, None, &cancel).unwrap();
+    assert_eq!(dom.pending_native_tasks(), 2);
+    for (select, target) in [
+        (&shadow_select, &shadow_target),
+        (&light_select, &light_target),
+    ] {
+        let task = task(&mut dom, &cancel);
+        assert_eq!(
+            (task.select(), task.selectedcontent()),
+            (resolve(select), Some(resolve(target)))
+        );
+        dom.complete_select_task(&task, checkpoint(), &cancel)
+            .unwrap();
+    }
+}
+
+#[test]
+fn moving_a_source_into_unloaded_media_refuses_the_actual_resource_selection() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(limits()).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element_ns(&document, Namespace::html(), "div");
+    let source = batch.create_element_ns(&document, Namespace::html(), "source");
+    let media = batch.create_element_ns(&document, Namespace::html(), "video");
+    batch.insert_before(&source, &root, None);
+    batch.insert_before(&media, &root, None);
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let root = commit.created(&root).unwrap().unwrap();
+    let source = commit.created(&source).unwrap().unwrap();
+    let media = commit.created(&media).unwrap().unwrap();
+    let observer = dom.create_child_list_observer(&cancel).unwrap();
+    dom.observe_child_list(observer, root, true, &cancel)
+        .unwrap();
+    let before = dom.snapshot();
+    assert!(matches!(
+        move_node(&mut dom, source, media, None, &cancel),
+        Err(DomError::MediaResourceEffectUnavailable(
+            surgeist_html::elements::media::HtmlMediaResourceEffect::SelectResource,
+        ))
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        dom.snapshot().node(root).unwrap().children(),
+        [source, media]
+    );
+    assert!(
+        dom.take_child_list_records(observer, &cancel)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(dom.pending_native_tasks(), 0);
 }
