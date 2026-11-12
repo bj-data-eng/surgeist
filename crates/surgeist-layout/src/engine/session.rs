@@ -64,12 +64,8 @@ where
 {
     tree: &'a Tree,
     bound: Option<crate::LayoutTargetBasis>,
-    block_scopes: Option<super::block_scope::Dispatch<Tree::Node, Tree::Scalar>>,
-    scope_receipts: Vec<(Tree::Node, super::block_scope::Adoption)>,
-    scope_ready: Vec<(Tree::Node, super::block_scope::Adoption)>,
-    block_frames: Vec<super::block_scope::Frame<Tree::Node, Tree::Scalar>>,
-    record_block_bodies: bool,
-    block_bodies: Vec<super::block_scope::Body<Tree::Node, Tree::Scalar>>,
+    scopes: BlockScopeStaging<Tree::Node, Tree::Scalar>,
+    block_bodies: Option<Vec<super::block_scope::Body<Tree::Node, Tree::Scalar>>>,
     fragmentation: Option<FragmentComputation<Tree::Node, Tree::Scalar>>,
     block_floats: crate::block::float_context::State<Tree::Node, Tree::Scalar>,
     entry_sources: Option<EntrySources<Tree>>,
@@ -80,6 +76,29 @@ where
     outputs: OutputStaging<Tree::Node, Tree::Scalar>,
     cache: CacheStaging<Tree::Node, Tree::Scalar>,
     entry_storage: Option<EntryStorage>,
+}
+
+struct BlockScopeStaging<Node, S: LayoutScalar> {
+    dispatch: Option<super::block_scope::Dispatch<Node, S>>,
+    receipts: Vec<(Node, super::block_scope::Adoption)>,
+    ready: Vec<(Node, super::block_scope::Adoption)>,
+    frames: Vec<super::block_scope::Frame<Node, S>>,
+}
+
+impl<Node, S: LayoutScalar> BlockScopeStaging<Node, S> {
+    fn new() -> Self {
+        Self {
+            dispatch: None,
+            receipts: Vec::new(),
+            ready: Vec::new(),
+            frames: Vec::new(),
+        }
+    }
+
+    fn reset_receipts(&mut self) {
+        self.receipts.clear();
+        self.ready.clear();
+    }
 }
 
 struct FragmentComputation<Node, S: LayoutScalar> {
@@ -263,7 +282,7 @@ where
                 ),
             ));
         }
-        self.block_scopes = Some(dispatch);
+        self.scopes.dispatch = Some(dispatch);
         Ok(())
     }
 
@@ -284,12 +303,8 @@ where
         Self {
             tree,
             bound: None,
-            block_scopes: None,
-            scope_receipts: Vec::new(),
-            scope_ready: Vec::new(),
-            block_frames: Vec::new(),
-            record_block_bodies: false,
-            block_bodies: Vec::new(),
+            scopes: BlockScopeStaging::new(),
+            block_bodies: None,
             fragmentation: None,
             block_floats: crate::block::float_context::State::new(),
             entry_sources: None,
@@ -792,8 +807,7 @@ where
             text.scope_fragments.clear();
             text.absolute_baselines.clear();
         }
-        self.scope_receipts.clear();
-        self.scope_ready.clear();
+        self.scopes.reset_receipts();
         self.wrapping.reset_receipts();
         self.block_floats.reset();
         self.outputs.reset();
@@ -806,14 +820,14 @@ where
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
     ) -> SessionResult<Tree, ()> {
-        self.block_frames.try_reserve(1).map_err(|_| {
+        self.scopes.frames.try_reserve(1).map_err(|_| {
             LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(node),
                 LayoutOperation::ChildLayout,
                 LayoutErrorKindOf::Allocation,
             )
         })?;
-        self.block_frames.push(super::block_scope::Frame {
+        self.scopes.frames.push(super::block_scope::Frame {
             node,
             input,
             entry: None,
@@ -822,7 +836,7 @@ where
     }
 
     pub(super) fn retain_block_bodies(&mut self) {
-        self.record_block_bodies = true;
+        self.block_bodies.get_or_insert_with(Vec::new);
     }
     pub(super) fn record_block_body(
         &mut self,
@@ -830,25 +844,29 @@ where
         input: ComputeInputOf<Tree::Scalar>,
         output: ComputeOutputOf<Tree::Scalar>,
     ) -> SessionResult<Tree, ()> {
-        if !self.record_block_bodies || !input.run_mode().is_perform_layout() {
+        let Some(bodies) = self
+            .block_bodies
+            .as_mut()
+            .filter(|_| input.run_mode().is_perform_layout())
+        else {
             return Ok(());
-        }
+        };
         let body = super::block_scope::Body {
             node,
             input,
             output,
         };
-        if let Some(slot) = self.block_bodies.iter_mut().find(|slot| slot.node == node) {
+        if let Some(slot) = bodies.iter_mut().find(|slot| slot.node == node) {
             *slot = body;
         } else {
-            self.block_bodies.try_reserve(1).map_err(|_| {
+            bodies.try_reserve(1).map_err(|_| {
                 LayoutErrorOf::new(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::ChildLayout,
                     LayoutErrorKindOf::Allocation,
                 )
             })?;
-            self.block_bodies.push(body);
+            bodies.push(body);
         }
         Ok(())
     }
@@ -859,8 +877,8 @@ where
         let mut receipts = Vec::new();
         let mut projections = Vec::new();
         receipts
-            .try_reserve(self.scope_receipts.len())
-            .and_then(|_| projections.try_reserve(self.scope_receipts.len()))
+            .try_reserve(self.scopes.receipts.len())
+            .and_then(|_| projections.try_reserve(self.scopes.receipts.len()))
             .map_err(|_| {
                 LayoutErrorOf::new(
                     LayoutErrorSiteOf::Standalone,
@@ -868,7 +886,7 @@ where
                     LayoutErrorKindOf::Allocation,
                 )
             })?;
-        for (node, adoption) in self.scope_receipts {
+        for (node, adoption) in self.scopes.receipts {
             receipts.push(adoption.receipt);
             if let Some(projection) = adoption.projection {
                 projections.push((node, projection));
@@ -884,7 +902,7 @@ where
             receipts,
             projections,
             clears: self.cache.clears,
-            bodies: self.block_bodies,
+            bodies: self.block_bodies.unwrap_or_default(),
         })
     }
 
@@ -1593,18 +1611,20 @@ where
 
     fn set_unrounded(&mut self, mut entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
         if let Some(&(_, id)) = self
-            .scope_ready
+            .scopes
+            .ready
             .iter()
             .find(|(node, _)| *node == entry.node())
         {
             if let Some((_, current)) = self
-                .scope_receipts
+                .scopes
+                .receipts
                 .iter_mut()
                 .find(|(node, _)| *node == entry.node())
             {
                 *current = id;
             } else {
-                self.scope_receipts.push((entry.node(), id));
+                self.scopes.receipts.push((entry.node(), id));
             }
         }
 
@@ -1778,13 +1798,15 @@ where
     }
 
     fn block_scope_path(&self, node: Self::Node) -> bool {
-        self.block_scopes
+        self.scopes
+            .dispatch
             .as_ref()
             .is_some_and(|dispatch| dispatch.paths.contains(&node))
     }
 
     fn block_scope_child(&self, node: Self::Node) -> bool {
-        self.block_scopes
+        self.scopes
+            .dispatch
             .as_ref()
             .is_some_and(|dispatch| dispatch.owners.contains(&node))
     }
@@ -1802,7 +1824,8 @@ where
             crate::block::scope::ChildRequest::Scope(entry) => {
                 let node = entry.node;
                 let dispatch = self
-                    .block_scopes
+                    .scopes
+                    .dispatch
                     .as_ref()
                     .expect("Block qualified a driver-owned scope");
                 let ready = dispatch
@@ -1830,14 +1853,16 @@ where
                         receipt: ready.id,
                         projection: ready.projection,
                     };
-                    if let Some((_, id)) = self.scope_ready.iter_mut().find(|(key, _)| *key == node)
+                    if let Some((_, id)) =
+                        self.scopes.ready.iter_mut().find(|(key, _)| *key == node)
                     {
                         *id = adoption;
                     } else {
-                        let needed = self.scope_ready.len() + 1 - self.scope_receipts.len();
-                        self.scope_ready
+                        let needed = self.scopes.ready.len() + 1 - self.scopes.receipts.len();
+                        self.scopes
+                            .ready
                             .try_reserve(1)
-                            .and_then(|_| self.scope_receipts.try_reserve(needed))
+                            .and_then(|_| self.scopes.receipts.try_reserve(needed))
                             .map_err(|_| {
                                 LayoutErrorOf::new(
                                     LayoutErrorSiteOf::Node(node),
@@ -1845,7 +1870,7 @@ where
                                     LayoutErrorKindOf::Allocation,
                                 )
                             })?;
-                        self.scope_ready.push((node, adoption));
+                        self.scopes.ready.push((node, adoption));
                     }
                     self.record_block_body(node, entry.input, ready.output)?;
                     return Ok(ready.output);
@@ -1854,7 +1879,7 @@ where
                     scope: dispatch.scope,
                     view: dispatch.view,
                     entry,
-                    frames: std::mem::take(&mut self.block_frames),
+                    frames: std::mem::take(&mut self.scopes.frames),
                 };
                 let id = dispatch
                     .requests
@@ -1870,7 +1895,7 @@ where
                 Err(super::block_scope::ComputeStop::NeedScope(id))
             }
             crate::block::scope::ChildRequest::Ordinary(request) => {
-                if self.block_scopes.is_some()
+                if self.scopes.dispatch.is_some()
                     && !self.tree.has_leaf_measurement(request.node)
                     && self.tree.node_input(request.node).display.inner_display()
                         == crate::Display::Block
@@ -1881,15 +1906,15 @@ where
                     {
                         return self.compute_child(request.node, input).map_err(Into::into);
                     }
-                    let depth = self.block_frames.len();
-                    self.block_frames.try_reserve(1).map_err(|_| {
+                    let depth = self.scopes.frames.len();
+                    self.scopes.frames.try_reserve(1).map_err(|_| {
                         LayoutErrorOf::new(
                             LayoutErrorSiteOf::Node(request.node),
                             LayoutOperation::ChildLayout,
                             LayoutErrorKindOf::Allocation,
                         )
                     })?;
-                    self.block_frames.push(super::block_scope::Frame {
+                    self.scopes.frames.push(super::block_scope::Frame {
                         node: request.node,
                         input,
                         entry: request.entry,
@@ -1899,7 +1924,7 @@ where
                         input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL),
                     );
                     if !matches!(result, Err(super::block_scope::ComputeStop::NeedScope(_))) {
-                        self.block_frames.truncate(depth);
+                        self.scopes.frames.truncate(depth);
                     }
                     result
                 } else {
