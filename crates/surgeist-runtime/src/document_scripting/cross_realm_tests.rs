@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
-    DomElementTaskRuntimeLimits, DomEventCallback, DomEventDispatchError, DomEventDispatchLimits,
+    DomElementTaskProgress, DomElementTaskRunLimits, DomElementTaskRuntimeLimits,
+    DomElementTaskSourceKind, DomEventCallback, DomEventDispatchError, DomEventDispatchLimits,
     DomEventDispatcher, DomEventHostError, DomEventListenerOptions, DomEventRegistryLimits,
     DomEventStorageLimits, DomEventType, DomHostedRuntimeLimits, DomHostedTaskProgress,
     DomSessionLimits, DomShutdownOutcome, DomSourceDriveProgress, DomSourceEventRuntimeError,
@@ -208,6 +209,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     attached_registry_keeps_preparation_refusal_on_retry();
     attached_registry_preserves_the_original_terminal_refusal();
     attached_beforetoggle_uses_the_original_toggle_event();
+    attached_registry_runs_the_original_queued_details_toggle();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
     );
@@ -766,7 +768,7 @@ struct AttachedCancel {
     observations: Rc<RefCell<Vec<NativeDomEvent>>>,
 }
 
-fn hosted_dialog(cancel: &AtomicBool) -> (DomSession, DomHostedTopLevel, NodeId) {
+fn hosted_element(cancel: &AtomicBool, name: &str) -> (DomSession, DomHostedTopLevel, NodeId) {
     let (mut session, target) = hosted_session(cancel, 8);
     let document = target.document();
     let html = session
@@ -777,20 +779,20 @@ fn hosted_dialog(cancel: &AtomicBool) -> (DomSession, DomHostedTopLevel, NodeId)
         .unwrap();
     let body = session.snapshot().node(html).unwrap().children()[1];
     let mut create = DomBatch::new();
-    let dialog = create.create_element_ns(document, Namespace::html(), "dialog");
-    create.insert_before(&dialog, body, None);
-    let dialog = session
+    let element = create.create_element_ns(document, Namespace::html(), name);
+    create.insert_before(&element, body, None);
+    let element = session
         .dom()
         .apply(create, cancel)
         .unwrap()
-        .created(&dialog)
+        .created(&element)
         .unwrap()
         .unwrap();
-    (session, target, dialog)
+    (session, target, element)
 }
 
 fn attached_cancel_host(cancel: Arc<AtomicBool>) -> AttachedCancel {
-    let (mut session, target, dialog) = hosted_dialog(&cancel);
+    let (mut session, target, dialog) = hosted_element(&cancel, "dialog");
     let document = target.document();
     let registry_limits = DomEventRegistryLimits {
         registrations: 8,
@@ -1116,7 +1118,7 @@ fn attached_registry_preserves_the_original_terminal_refusal() {
 
 fn attached_beforetoggle_uses_the_original_toggle_event() {
     let cancel = Arc::new(AtomicBool::new(false));
-    let (mut session, target, dialog) = hosted_dialog(&cancel);
+    let (mut session, target, dialog) = hosted_element(&cancel, "dialog");
     let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
         registrations: 8,
         pending_events: 4,
@@ -1265,6 +1267,150 @@ fn attached_beforetoggle_uses_the_original_toggle_event() {
             .is_none()
     );
     assert!(host.stop().into_session().is_ok());
+}
+
+fn attached_registry_runs_the_original_queued_details_toggle() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target, details) = hosted_element(&cancel, "details");
+    let mut tasks = session.element_task_execution();
+    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 4,
+        nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
+    })
+    .unwrap();
+    let observations = Rc::new(RefCell::new(Vec::new()));
+    let native = observations.clone();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            details,
+            DomEventType::TOGGLE,
+            DomEventCallback::new(move |_, _, _, event| {
+                native.borrow_mut().push(event.clone());
+                Ok(())
+            }),
+            Default::default(),
+        )
+        .unwrap();
+    let mut registry = Some(registry);
+    let mut host = super::guest::tests::attach_public_nodes_with_registry(
+        session,
+        target,
+        cancel.clone(),
+        1_000,
+        20_000,
+        &mut registry,
+    );
+    let permit = host.permit().unwrap();
+    super::guest::tests::expose_public_node_for_source_test(&mut host, &permit, details, "details");
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"
+            globalThis.taskSentinel = {};
+            globalThis.taskChecks = false;
+            details.addEventListener("toggle", event => {
+                globalThis.originalTaskEvent = event;
+                throw taskSentinel;
+            }, {once: true});
+            details.addEventListener("toggle", function (event) {
+                taskChecks = this === details && event === originalTaskEvent
+                    && event === globalThis.event && event.target === details
+                    && event.currentTarget === details && event instanceof ToggleEvent
+                    && event.isTrusted && !event.cancelable && !event.bubbles
+                    && event.oldState === "closed" && event.newState === "open"
+                    && event.source === null && event.target.ownerDocument === document;
+                event.preventDefault();
+            }, {once: true});
+        "#,
+        )
+        .map(drop)
+    })
+    .unwrap();
+    let source = DomElementTaskSourceKind::DomManipulation;
+    host.with_native(|dom, _, _| {
+        let mut edit = DomBatch::new();
+        edit.set_attribute(details, "open", "");
+        dom.apply(edit, &cancel).unwrap();
+        tasks.ingest(dom, &cancel).unwrap();
+    })
+    .unwrap();
+    let original = tasks.pending_task(source, 0).unwrap().unwrap();
+    assert_eq!(original.id().target(), details);
+    let limits = DomElementTaskRunLimits {
+        dispatch: EVENT.dispatch,
+        source: EVENT.source,
+    };
+    let mut bounded = limits;
+    bounded.dispatch.callbacks = 2;
+    let progress = host
+        .run_attached_element_task(&permit, source, bounded)
+        .unwrap();
+    assert!(
+        matches!(
+            progress,
+            DomElementTaskProgress::Retained {
+                task,
+                dispatch: crate::DomEventDispatchOutcome::Retained(crate::DomEventResource::Callbacks),
+                displaced_owner: None,
+            } if task.id() == original.id()
+        ),
+        "the original task must retain after two callbacks: {progress:?}"
+    );
+    assert_eq!(
+        tasks.pending_task(source, 0).unwrap().unwrap().id(),
+        original.id()
+    );
+    assert_eq!(observations.borrow().len(), 1);
+    let result = host
+        .run_attached_element_task(&permit, source, limits)
+        .unwrap();
+    let DomElementTaskProgress::Complete {
+        task,
+        receipt,
+        dialog_toggle_disposition: None,
+        displaced_owner: None,
+    } = result
+    else {
+        panic!("queued Details must complete its exact original task: {result:?}");
+    };
+    assert_eq!(task.id(), original.id());
+    assert_eq!(receipt.callbacks(), 3);
+    assert_eq!(receipt.failures().len(), 1);
+    assert!(!receipt.default_prevented());
+    {
+        let observed = observations.borrow();
+        let [native] = observed.as_slice() else {
+            panic!("the original Rust listener must run once");
+        };
+        let data = native.toggle_event().unwrap();
+        assert_eq!(
+            (data.old_state(), data.new_state(), data.source()),
+            ("closed", "open", None)
+        );
+        assert!(native.current_target().is_none());
+    }
+    assert!(matches!(
+        host.run_attached_element_task(&permit, source, limits)
+            .unwrap(),
+        DomElementTaskProgress::Empty,
+    ));
+    let exception = host
+        .take_guest_listener_exception(&permit)
+        .unwrap()
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        let observed = scope.import(exception.exception.value())?;
+        let expected = evaluate(scope, "taskSentinel")?;
+        assert!(scope.strict_equals(&observed, &expected)?);
+        let observed = evaluate(scope, "taskChecks && originalTaskEvent.currentTarget === null && !originalTaskEvent.defaultPrevented")?;
+        let expected = scope.primitive(Primitive::Boolean(true))?;
+        assert!(scope.strict_equals(&observed, &expected)?);
+        Ok(())
+    }).unwrap();
 }
 
 fn start_attached_cancel(
