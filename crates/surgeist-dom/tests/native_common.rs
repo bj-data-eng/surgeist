@@ -2,9 +2,9 @@
 //! initialization and §2.5.6 nonce attribute/IDL/insertion/cloning clauses.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentString, Dom, DomBatch, DomChange, DomError, DomLimits, DomResource, DomShadowRootInit,
-    DomSourceEdit, DomSourceLimits, DomSourceProgress, HtmlCustomElementState, HtmlShadowRootMode,
-    Namespace,
+    DocumentString, Dom, DomBatch, DomChange, DomError, DomFlatRelation, DomLimits, DomResource,
+    DomShadowRootInit, DomSlotQueryLimits, DomSourceEdit, DomSourceLimits, DomSourceProgress,
+    HtmlCustomElementState, HtmlShadowRootMode, Namespace,
 };
 use surgeist_html::{
     elements::media::{HtmlInitialMediaState, HtmlMediaResourceEffect},
@@ -302,6 +302,57 @@ fn unloaded_media_rejects_reached_resource_effects_atomically() {
             .initial_media_state(),
         Some(HtmlInitialMediaState::Video)
     );
+}
+
+#[test]
+fn media_fallback_is_ordinary_content_outside_the_flat_tree() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element_ns(&document, Namespace::html(), "div");
+    batch.insert_before(&root, &document, None);
+    let cases = [(HTML, "audio"), (HTML, "video"), (SVG, "video")].map(|(namespace, name)| {
+        let host = batch.create_element_ns(&document, Namespace::from_uri(namespace), name);
+        let fallback = batch.create_element_ns(&document, Namespace::html(), "span");
+        let text = batch.create_text(&document, "fallback");
+        batch.insert_before(&host, &root, None);
+        batch.insert_before(&fallback, &host, None);
+        batch.insert_before(&text, &fallback, None);
+        (host, fallback, text, namespace == HTML)
+    });
+    let commit = apply(&mut dom, batch);
+    let document = commit.document(&document).unwrap();
+    let root = commit.created(&root).unwrap().unwrap();
+    let snapshot = dom.snapshot();
+    let cancel = AtomicBool::new(false);
+    let flat = snapshot
+        .flat_tree(document, DomSlotQueryLimits::new(16, 16).unwrap(), &cancel)
+        .unwrap();
+    for (host, fallback, text, media) in cases {
+        let host = commit.created(&host).unwrap().unwrap();
+        let fallback = commit.created(&fallback).unwrap().unwrap();
+        let text = commit.created(&text).unwrap().unwrap();
+        assert_eq!(snapshot.node(fallback).unwrap().parent(), Some(host));
+        assert_eq!(snapshot.node(text).unwrap().parent(), Some(fallback));
+        assert_eq!(snapshot.node(host).unwrap().shadow_root(), None);
+        assert_eq!(flat.relation(host).unwrap(), DomFlatRelation::Parent(root));
+        assert_eq!(
+            flat.relation(fallback).unwrap(),
+            if media {
+                DomFlatRelation::Excluded
+            } else {
+                DomFlatRelation::Parent(host)
+            }
+        );
+        assert_eq!(
+            flat.relation(text).unwrap(),
+            if media {
+                DomFlatRelation::Excluded
+            } else {
+                DomFlatRelation::Parent(fallback)
+            }
+        );
+    }
 }
 
 #[test]
