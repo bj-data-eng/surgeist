@@ -139,7 +139,11 @@ pub(super) fn install<'scope>(
     let factory = scope.retain_callback_object(observed, fund)?;
     let window_capture = capture(size_of::<Capture>())?;
     let getter = scope.fixed_arity_function(
-        &Callback::new(move |scope, _| {
+        &Callback::new(move |scope, arguments| {
+            let global = scope.global()?;
+            if !scope.strict_equals(arguments.receiver(), &global)? {
+                return type_error(scope, &ascii(b"Window required"));
+            }
             let (owner, events) = window_capture.active(scope)?;
             if let Err(error) = qualify(&window_capture, &owner, &events) {
                 return refuse(scope, &events.refusal, error);
