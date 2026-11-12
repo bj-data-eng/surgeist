@@ -1,7 +1,6 @@
 //! Element-owned immutable feature bodies. Controlled custody stays with the
 //! constructing transaction, never inside these semantic records.
 use super::{DomElement, DomElementDefinition};
-use crate::name::AttributeStorage;
 use crate::store::{
     bank,
     block_custody::BlockAdoptions,
@@ -18,11 +17,6 @@ mod tests;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ElementName {
     pub value: DomQualifiedName,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct AttributeBinding {
-    pub storage: AttributeStorage,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -57,7 +51,6 @@ pub(crate) struct HostedContent {
 #[derive(Default)]
 pub(crate) struct ElementChildren {
     pub name: Option<bank::ObjectCustody>,
-    pub attributes: Option<bank::ObjectCustody>,
     pub native: Option<bank::ObjectCustody>,
     pub custom: Option<bank::ObjectCustody>,
     pub nonce: Option<bank::ObjectCustody>,

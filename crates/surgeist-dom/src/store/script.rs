@@ -82,7 +82,7 @@ impl Draft {
         let transaction::KindRead::Element(element) = &self.node(node)?.kind() else {
             unreachable!("actual Script family requires Element")
         };
-        for attribute in element.language().attributes().iter() {
+        for attribute in element.attributes().iter() {
             self.source_step(cancel)?;
             if attribute_name_is(attribute.name(), selected) {
                 return Ok(Some(attribute.value()));

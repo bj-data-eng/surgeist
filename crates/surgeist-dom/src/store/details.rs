@@ -629,7 +629,12 @@ mod tests {
     fn actual_source_retirement_growth(bytes: usize) -> Option<source_observation::Growth> {
         let (mut dom, _, a, _) = fixture();
         let cancel = AtomicBool::new(false);
-        dom.set_limits(policy(1024)).unwrap();
+        // Each removal keeps a detached Attr alongside the queued intentions.
+        dom.set_limits(DomLimits {
+            nodes: 3 + 16 * 16,
+            ..policy(1024)
+        })
+        .unwrap();
         for _ in 0..16 {
             let mut setup = DomBatch::new();
             for _ in 0..16 {
@@ -1273,7 +1278,6 @@ mod tests {
         let mut b = DomBatch::new();
         let n = b.create_element_ns(doc, Namespace::html(), "details");
         b.set_attribute(&n, "open", "");
-        b.remove_attribute(&n, "open");
         b.destroy(&n);
         let c = dom.apply(b, &cancel).unwrap();
         assert_eq!(c.created(&n).unwrap(), None);

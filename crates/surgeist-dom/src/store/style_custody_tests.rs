@@ -255,15 +255,22 @@ fn local_attribute_publication_does_not_visit_unrelated_style_owners() {
         let observation = Observation::start();
         let commit = fixture.dom.apply(batch, &cancel).unwrap();
         let visits = observation.finish();
+        let snapshot = fixture.dom.snapshot();
+        let attr = snapshot
+            .node(fixture.element)
+            .unwrap()
+            .get_attribute_node(&"data-local".into())
+            .unwrap();
         assert_eq!(
             commit.changes().changes(),
-            &[DomChange::Attributes(fixture.element)]
+            &[
+                DomChange::Attributes(fixture.element),
+                DomChange::Created(attr.id().node())
+            ]
         );
         assert!(
             original
                 .node(fixture.element)
-                .unwrap()
-                .as_element()
                 .unwrap()
                 .attribute(&"data-local".into())
                 .is_none()
@@ -273,8 +280,6 @@ fn local_attribute_publication_does_not_visit_unrelated_style_owners() {
                 .dom
                 .snapshot()
                 .node(fixture.element)
-                .unwrap()
-                .as_element()
                 .unwrap()
                 .attribute(&"data-local".into()),
             Some(&DocumentString::from("changed"))

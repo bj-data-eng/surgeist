@@ -447,11 +447,17 @@ fn support_bytes(value: &surgeist_cssom::CssomDeclarationSupport) -> Result<usiz
         .ok_or(DomError::RepresentationExhausted)
 }
 fn style_value<'a>(
-    element: &'a DomElement,
+    state: &'a State,
+    owner: DomOwnerId,
+    element: &'a Node,
     p: &Processing<'_>,
 ) -> Result<Option<&'a DocumentString>, DomError> {
-    for attribute in element.attributes() {
+    for &id in element.attribute_ids() {
         p.step()?;
+        let (attribute, _) = state
+            .node(owner, id)?
+            .attribute_node()
+            .ok_or(DomError::WrongNodeKind)?;
         if attribute.name().namespace_uri().is_none()
             && ascii(attribute.name().local_name(), "style", p)?
         {
@@ -848,7 +854,7 @@ impl Dom {
             .expect("existing or provisional store");
         let mut batch = store.batch(CssomEditGuard::from_snapshot(&store.snapshot()))?;
         let ticket = batch.create_inline_declarations(packet.value().clone())?;
-        if let Some(value) = style_value(language, &p)? {
+        if let Some(value) = style_value(&self.state, self.owner, node, &p)? {
             let change = CssomStyleAttributeChange {
                 owner: packet.value().owner().clone(),
                 local_name: "style".into(),
@@ -1090,11 +1096,7 @@ impl Dom {
                     selected.insert(Key::Existing(*id), &self.custody_registry, &p)?;
                 }
                 DomChange::Attributes(id) if owner.index.membership.contains(*id) => {
-                    let a = self
-                        .state
-                        .node(self.owner, *id)?
-                        .element()
-                        .ok_or(DomError::WrongNodeKind)?;
+                    let a = self.state.node(self.owner, *id)?;
                     if prepared
                         .inline_recording
                         .as_ref()
@@ -1104,23 +1106,31 @@ impl Dom {
                     {
                         continue;
                     }
-                    let b = prepared
-                        .state
-                        .node(self.owner, *id)?
-                        .element()
-                        .ok_or(DomError::WrongNodeKind)?;
+                    let b = prepared.state.node(self.owner, *id)?;
                     let matching_echo = match &prepared.inline_echo {
-                        Some(echo) if echo.element == *id => {
-                            same_optional_text(Some(&echo.value), style_value(b, &p)?, &p)?
-                        }
+                        Some(echo) if echo.element == *id => same_optional_text(
+                            Some(&echo.value),
+                            style_value(&prepared.state, self.owner, b, &p)?,
+                            &p,
+                        )?,
                         _ => false,
                     };
                     if !matching_echo
-                        && !same_optional_text(style_value(a, &p)?, style_value(b, &p)?, &p)?
+                        && !same_optional_text(
+                            style_value(&self.state, self.owner, a, &p)?,
+                            style_value(&prepared.state, self.owner, b, &p)?,
+                            &p,
+                        )?
                         && !prepared
                             .inline_recording
                             .as_ref()
-                            .map(|r| r.final_attribute(*id, style_value(b, &p)?, &p))
+                            .map(|r| {
+                                r.final_attribute(
+                                    *id,
+                                    style_value(&prepared.state, self.owner, b, &p)?,
+                                    &p,
+                                )
+                            })
                             .transpose()?
                             .unwrap_or(false)
                     {

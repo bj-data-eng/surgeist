@@ -271,8 +271,9 @@ fn native_explicit_headless_scope_remembers_authentic_none_then_waits_at_dialog_
     assert_eq!(next.subject(), subject);
     assert_eq!(next.operation(), event.operation());
     let after = session.snapshot();
-    let element = after.node(subject).unwrap().as_element().unwrap();
-    assert_eq!(element.attribute(&"open".into()), Some(&"".into()));
+    let node = after.node(subject).unwrap();
+    let element = node.as_element().unwrap();
+    assert_eq!(node.attribute(&"open".into()), Some(&"".into()));
     assert_eq!(
         element
             .common_state()

@@ -305,14 +305,14 @@ fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_e
         let initial = ready.document(top.document()).unwrap().autofocus().unwrap();
         assert!(initial.candidates().is_empty());
         assert!(!initial.processed());
-        // Queue tracker + Source marker2; AddOpen attribute + open-list2;
+        // Queue tracker + Source marker2; AddOpen Attr, attribute order and open-list3;
         // watcher ElementState1; modal ElementState + raw-layer Document2;
-        // changed top-Document autofocus flag1; final Source marker1 = nine.
+        // changed top-Document autofocus flag1; final Source marker1 = ten.
         // Emptying the already-empty list contributes no second autofocus row.
         // Remembering None preserves the fresh already-None slot, adding no row.
         // Five original publication phases suffice: the new tail joins final
         // publication and does not add a service or phase allowance.
-        const EXACT_OUTPUTS: usize = 2 + 2 + 1 + 2 + 1 + 1;
+        const EXACT_OUTPUTS: usize = 2 + 3 + 1 + 2 + 1 + 1;
         let bounded = |outputs| {
             let ordinary = source_limits(10_000_000);
             DomSourceLimits::new(

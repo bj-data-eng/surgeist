@@ -36,7 +36,7 @@ pub(in crate::store) use names::Names;
 #[cfg(test)]
 pub(in crate::store) use records::NamesRead;
 pub(in crate::store) use records::{
-    AutofocusRead, ElementRead, InteractiveRead, KindRead, NodeRead,
+    AttributeRead, AutofocusRead, ElementRead, InteractiveRead, KindRead, NodeRead,
 };
 #[cfg(test)]
 pub(crate) use sequence::CopyObservation;

@@ -531,11 +531,7 @@ fn html_create_element_casing_and_semantic_failure_keep_actual_snapshot_state() 
         DocumentString::from("FIELDSET")
     );
     assert_eq!(
-        s.node(f)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&DocumentString::from("form")),
+        s.node(f).unwrap().attribute(&DocumentString::from("form")),
         Some(&DocumentString::from("chosen"))
     );
     null_owner(&capture(&s, html), f);

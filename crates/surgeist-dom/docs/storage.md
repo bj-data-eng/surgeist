@@ -55,8 +55,8 @@ pages shared by snapshots. These receipts grant no host execution authority.
 | Persistent page or record | Actual new page storage, or record body and its payload-field occurrences, admitted before controlled retention. Shared descendants keep their existing debit. |
 | Node root and typed children | The Slot receipt includes its exact-kind root body. Independently materialized language, relation and feature targets retain their own custody; a new parent root aliases unchanged children. |
 | Canonical names | Owner-qualified immutable records with weak index entries. Strong tokens retain text independently of the owner; admitted objects retain the corresponding child custody. |
-| Element name and attributes | A name occurrence has its own typed child. Attribute banks own their typed body and actual array capacity; each independent Element binding retains its conservative text occurrence. Unrelated edits share those same children. Equal banks can share array storage without merging independent Element occurrence charges. Fresh empty attributes have no bank or binding target. |
-| Attribute value that borrows a block of text | The attribute bank, the nonce and saved `is` slots (at formation and when a registry binding re-forms them), control, details group, slot and slottable names, the transient focus, image, loading, `closedby` and details exclusivity reads, the embedder policy inputs, URL basis and host observation of a hosted iframe, the Meta default-style recording and the inline style recording list the block, through the transaction's block adoptions or the envelope of the recording: the store charges the block once, and each occurrence its length. The input state, a style source, the name a hosted history entry keeps and the semantic capture of a frozen Base copy the value into an exact owner. A value a caller supplies where no transaction has listed its block keeps the capacity price. |
+| Element names and Attr nodes | Each Element name has a typed child. Each Attr has its own arena identity and retained name and value. Elements with attributes retain an ordered sequence of Attr identities. Empty sequences allocate no target. |
+| Attribute value that borrows a block of text | Canonical Attr values, the nonce and saved `is` slots (at formation and when a registry binding re-forms them), control, details group, slot and slottable names, the transient focus, image, loading, `closedby` and details exclusivity reads, the embedder policy inputs, URL basis and host observation of a hosted iframe, the Meta default-style recording and the inline style recording list the block, through the transaction's block adoptions or the envelope of the recording: the store charges the block once, and each occurrence its length. The input state, a style source, the name a hosted history entry keeps and the semantic capture of a frozen Base copy the value into an exact owner. A value a caller supplies where no transaction has listed its block keeps the capacity price. |
 | Retained Form history | One typed payload body, actual entry capacity and conservative name-field occurrences. Known-empty history has no payload. Slot controls own its child custody; another Slot or staged alias of that payload does not charge its contents again. |
 | Additional bank-root or savepoint alias | Actual holder and control storage. Sharing a root or copying record handles does not materialize its reachable records again. |
 | Changed transaction field or selected sequence | The new materialized field/backing, while the previous occurrence remains charged for as long as canonical state or rollback still retains it. |
@@ -74,8 +74,8 @@ own admitted storage. Cleanup releases only objects whose controlled ownership
 has actually ended.
 
 `DomNameLimits` bounds directly owned name records, text, index capacity and
-operation receipts, plus dedicated Element-name and attribute-binding targets,
-canonical attribute-array storage and directly owned name-custody capsules.
+operation receipts, plus the dedicated Element-name and Attr payloads and their
+name-custody controls.
 Containing targets keep conservative text occurrences in global and Source
 admission; their local attribution counts actual target and control storage.
 Pending and dead entries count until removal; a live record
@@ -100,34 +100,16 @@ creates a new payload while the staged and previous versions remain controlled.
 Historical adoption borrows that same immutable payload and its cached receipt;
 the external semantic handle itself carries no custody.
 
-An optional owner-local pool reuses equal ordered attribute banks during creation,
-import, installation and actual edits. Whole-bank lookup follows required name
-resolution. Strings are not pooled: equal values are separate allocations, and
-installation clones the producer's string handles. Namespace/local-name atoms keep
-their required identity; sharing a bank never merges node identity, native state or
-parser provenance. A semantic no-op keeps its original backing and history,
-including deliberately reserved capacity.
+An Element's [attribute map](../src/attr.rs) reads its ordered identities from
+the captured snapshot. Each Attr counts as a managed node. Updating its value
+preserves its identity and order. Removing it from the Element preserves the
+Attr and its retained value until explicit destruction. Destroying an Element
+also retires its attached Attr nodes.
 
-The pool lives outside snapshots and retains bounded weak entries. Its bucket,
-inverse and known weak-target storage is admitted separately. A strong candidate
-upgrade admits its full retained graph before selection; sharing does not reduce
-the established per-field occurrence charges. Fresh zero-capacity attribute banks
-have no target to pool. Installation keeps the producer report and receipt intact
-while forming canonical DOM arrays, so retained producer and DOM arrays remain
-separate storage.
-
-The session attachment retains its admitted weak-owner storage, but the pool root
-remains dormant until eligible bank work starts. Value-free edits pay no pool
-root, mark or seal work. A Source checkpoint predating activation restores by
-aborting that session's late root; an existing active root uses marks to undo the
-selected suffix. Both preserve spent work. Resumed formation uses the current
-admission envelope after external retained data has been reconciled.
-
-Publication prepares all closing work before accepting marks and freezing the
-pool; the final seal is infallible. Refusal, cancellation and whole-operation
-no-ops abort their session. Discarding a Draft for reentrant observation ends its
-uncommitted session before child edits use the current owner. Bounded eviction and
-optional qualifier exhaustion affect reuse, never semantic identity.
+Snapshot and transaction aliases can retain the same immutable Attr payload.
+Cloning or importing an Element allocates fresh Attr identities and can share
+immutable name or UTF-16 backing. Direct parsed installation keeps the parser's
+report under its own receipt and forms canonical Attr nodes in producer order.
 
 Revision history uses closed chunks of 32 entries with direct oldest and newest
 access. Publication prepares its insertion, actual oldest-entry evictions and

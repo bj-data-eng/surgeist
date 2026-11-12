@@ -357,146 +357,12 @@ impl NameChildren {
         })
     }
 }
-#[cfg(test)]
-pub(in crate::store) mod attribute_child_observation {
-    use std::{cell::Cell, marker::PhantomData, rc::Rc};
-    thread_local! { static READS: Cell<Option<usize>> = const { Cell::new(None) }; }
-    pub struct Observation(PhantomData<Rc<()>>);
-    impl Observation {
-        pub fn begin() -> Self {
-            READS.with(|value| {
-                assert!(value.get().is_none(), "one child observation per thread");
-                value.set(Some(0));
-            });
-            Self(PhantomData)
-        }
-        pub fn reads(&self) -> usize {
-            READS.with(|value| value.get().expect("active child observation"))
-        }
-    }
-    impl Drop for Observation {
-        fn drop(&mut self) {
-            READS.with(|value| value.set(None));
-        }
-    }
-    pub(super) fn read() {
-        READS.with(|value| {
-            if let Some(before) = value.get() {
-                value.set(Some(before.checked_add(1).expect("observed child reads")));
-            }
-        });
-    }
-}
-struct AttributeChildren {
-    _names: Vec<NameChildren>,
-    // The one original dependency debit owns the global extent. This inline
-    // receipt constrains that same measured extent locally and drops last.
-    _attribution: Option<super::name_registry::Attribution>,
-}
-pub(in crate::store) fn attribute_dependency(
-    value: &crate::name::AttributeValues,
-    registry: &bank::CustodyRegistry,
-    names: Option<&super::name_registry::Operation>,
-    bank_reserved: bool,
-    mut admit: impl FnMut(Usage) -> Result<(), DomError>,
-) -> Result<Option<bank::Dependency>, DomError> {
-    // This function receives an actual present bank, including a reserved
-    // empty bank. Absence never enters it and allocates no child capsule.
-    let entries = value.entries();
-    let bytes = entries
-        .len()
-        .checked_mul(size_of::<NameChildren>())
-        .and_then(|bytes| bytes.checked_add(size_of::<AttributeChildren>()))
-        .ok_or(DomError::RepresentationExhausted)?;
-    let receipt = custody::SharedDebit::administration_usage().bytes();
-    let local = bytes
-        .checked_add(receipt)
-        .and_then(|bytes| {
-            if bank_reserved {
-                Some(bytes)
-            } else {
-                bytes
-                    .checked_add(value.shallow_usage().ok()?.bytes())?
-                    .checked_add(receipt)
-            }
-        })
-        .ok_or(DomError::RepresentationExhausted)?;
-    let mut attribution = names.map(|names| names.attribute(local)).transpose()?;
-    let debit = registry.ledger().retain(Usage::new(bytes, 0), &mut admit)?;
-    let mut values = custody::Held::new(Vec::new(), debit);
-    values
-        .value_mut()
-        .try_reserve_exact(entries.len())
-        .map_err(|_| DomError::AllocationFailed)?;
-    let actual = values
-        .value()
-        .capacity()
-        .checked_mul(size_of::<NameChildren>())
-        .and_then(|bytes| bytes.checked_add(size_of::<AttributeChildren>()))
-        .ok_or(DomError::RepresentationExhausted)?;
-    let extra = Usage::new(actual, 0).checked_sub(values.debit().usage())?;
-    if let Some(attribution) = &mut attribution {
-        attribution.grow(extra.bytes())?;
-    }
-    values.debit_mut().grow(extra, &mut admit)?;
-    #[cfg(test)]
-    if super::scale_metrics::ENABLED && values.value().capacity() != 0 {
-        super::scale_metrics::record(super::scale_metrics::Event::StructuralAllocation {
-            bytes: values.value().capacity() * size_of::<NameChildren>(),
-        });
-    }
-    #[cfg(test)]
-    let mut copied = super::CopyObservation::default();
-    for entry in entries {
-        #[cfg(test)]
-        if super::scale_metrics::ENABLED {
-            attribute_child_observation::read();
-        }
-        values.value_mut().push(NameChildren::adopt(
-            entry.name(),
-            registry,
-            names,
-            &mut admit,
-        )?);
-        #[cfg(test)]
-        copied.pushed::<NameChildren>();
-    }
-    let (names, debit) = values.into_parts();
-    bank::Dependency::from_retained(
-        custody::Held::new(
-            AttributeChildren {
-                _names: names,
-                _attribution: attribution,
-            },
-            debit,
-        ),
-        Usage::new(actual, 0),
-        admit,
-    )
-    .map(Some)
-}
-pub(in crate::store) fn attach_attribute_extent(
-    dependency: &mut bank::Dependency,
-    bank: super::name_registry::Attribution,
-) {
-    dependency
-        .value_mut::<AttributeChildren>()
-        ._attribution
-        .as_mut()
-        .expect("new bank has explicit name-operation custody")
-        .absorb(bank);
-}
 struct ElementNameChildren {
     _names: NameChildren,
     _attribution: Option<super::name_registry::Attribution>,
 }
-struct AttributeBindingChildren {
-    _bank: Option<bank::ObjectCustody>,
-    _attribution: Option<super::name_registry::Attribution>,
-}
 struct ElementLanguageChildren {
     _name: bank::ObjectCustody,
-    _attributes: Option<bank::ObjectCustody>,
     _native: Option<bank::ObjectCustody>,
     _custom: Option<bank::ObjectCustody>,
     _nonce: Option<bank::ObjectCustody>,
@@ -556,28 +422,6 @@ fn qualified_name_dependency<T>(
     .map(Some)
 }
 
-pub(in crate::store) fn attribute_binding_dependency(
-    value: &crate::element::AttributeBinding,
-    registry: &bank::CustodyRegistry,
-    names: Option<&super::name_registry::Operation>,
-    mut admit: impl FnMut(Usage) -> Result<(), DomError>,
-) -> Result<Option<bank::Dependency>, DomError> {
-    let attribution = containing_attribution::<
-        crate::element::AttributeBinding,
-        AttributeBindingChildren,
-    >(names)?;
-    let bank = adopt_attributes(&value.storage, registry, names, &mut admit)?;
-    bank::Dependency::new(
-        AttributeBindingChildren {
-            _bank: bank,
-            _attribution: attribution,
-        },
-        registry.ledger(),
-        admit,
-    )
-    .map(Some)
-}
-
 pub(in crate::store) fn element_dependency(
     element: &crate::DomElement,
     registry: &bank::CustodyRegistry,
@@ -595,17 +439,6 @@ pub(in crate::store) fn element_dependency(
         |admit| element_name_dependency(&value.value, registry, names, admit),
         &mut admit,
     )?;
-    let attributes = element
-        .attribute_binding()
-        .map(|value| {
-            registry.adopt_object_with_children(
-                value.identity,
-                value.own_usage,
-                |admit| attribute_binding_dependency(&value.value, registry, names, admit),
-                &mut admit,
-            )
-        })
-        .transpose()?;
     let native = match element.native_family() {
         crate::element::NativeFamily::Dialog(value) => {
             Some(children::leaf(value, registry, &mut admit)?)
@@ -655,7 +488,6 @@ pub(in crate::store) fn element_dependency(
     bank::Dependency::new(
         ElementLanguageChildren {
             _name: name,
-            _attributes: attributes,
             _native: native,
             _custom: custom,
             _nonce: nonce,
@@ -741,63 +573,16 @@ pub(in crate::store) fn inspect_slot_name_custody(
         if let Some(value) = element._name.inspect_dependency::<ElementNameChildren>() {
             names(&value._names, &mut out);
         }
-        if let Some(binding) = &element._attributes
-            && let Some(binding) = binding.inspect_dependency::<AttributeBindingChildren>()
-            && let Some(bank) = &binding._bank
+    }
+    for dependency in children::inspect_slot_dependencies(slots) {
+        if let children::SlotDependency::Data(data) = dependency
+            && let Some(value) = data._data.inspect_dependency::<ElementNameChildren>()
         {
-            out.push((bank.identity(), bank.inspect_payload_usage()));
-            if let Some(children) = bank.inspect_dependency::<AttributeChildren>() {
-                for value in &children._names {
-                    names(value, &mut out);
-                }
-            }
+            names(&value._names, &mut out);
         }
     }
     out
 }
-#[cfg(test)]
-pub(in crate::store) fn inspect_attribute_child_allocations(
-    slots: &bank::BankCustody<super::Slot>,
-    graph: &mut super::compact_tests::AllocationGraph,
-) {
-    for element in inspect_element_children(slots) {
-        if let Some(binding) = &element._attributes
-            && let Some(binding) = binding.inspect_dependency::<AttributeBindingChildren>()
-            && let Some(bank) = &binding._bank
-            && let Some(children) = bank.inspect_dependency::<AttributeChildren>()
-        {
-            graph.allocation(
-                &*children as *const AttributeChildren as usize,
-                "control.dependency",
-                size_of::<AttributeChildren>(),
-            );
-            graph.buffer(&children._names, "attributes.children.buffer");
-        }
-    }
-}
-
-/// Adopt the one actual immutable attribute target and its qualified name
-/// children. Existing controlled targets reuse their original custody; callers
-/// never reconstruct or charge another attribute-child graph for that alias.
-pub(in crate::store) fn adopt_attributes(
-    storage: &crate::name::AttributeStorage,
-    registry: &bank::CustodyRegistry,
-    names: Option<&super::name_registry::Operation>,
-    mut admit: impl FnMut(Usage) -> Result<(), DomError>,
-) -> Result<Option<bank::ObjectCustody>, DomError> {
-    storage
-        .payload()
-        .map(|value| {
-            registry.adopt_object_with_children(
-                value.identity,
-                storage.own_usage(),
-                |admit| attribute_dependency(&value.value, registry, names, false, admit),
-                &mut admit,
-            )
-        })
-        .transpose()
-}
-
 pub(in crate::store) fn describe_slot(
     slot: &super::Slot,
     registry: &bank::CustodyRegistry,
@@ -981,234 +766,5 @@ mod tests {
         assert!(first.seal(&registry, |_| Err(DomError::Cancelled)).is_err());
         registry.reconcile_releases();
         assert_eq!(ledger.total(), baseline);
-    }
-
-    #[test]
-    fn attribute_capsule_aliases_skip_children_and_historical_adoption_recreates_exact_children() {
-        use super::super::*;
-        if !scale_metrics::ENABLED {
-            return;
-        }
-        let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(
-            DomLimits::new(
-                32,
-                65_536,
-                64,
-                0,
-                0,
-                16,
-                4_000_000,
-                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        let mut setup = crate::DomBatch::new();
-        let document = setup.create_document();
-        let element =
-            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
-        setup.set_attribute(&element, "data-a", "first");
-        setup.set_attribute(&element, "data-b", "second");
-        let observed = attribute_child_observation::Observation::begin();
-        let element = dom
-            .apply(setup, &cancel)
-            .unwrap()
-            .created(&element)
-            .unwrap()
-            .unwrap();
-        assert!(
-            observed.reads() >= 2,
-            "positive construction reads its actual new attribute children"
-        );
-        drop(observed);
-        let before = dom.snapshot();
-        let bank = before
-            .node(element)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes_backing()
-            .unwrap()
-            .clone();
-        let mut edit = crate::DomBatch::new();
-        edit.set_nonce(element, "ordinary");
-        let observed = attribute_child_observation::Observation::begin();
-        dom.apply(edit, &cancel).unwrap();
-        assert_eq!(
-            observed.reads(),
-            0,
-            "scalar Slot replacement aliases the original bank capsule"
-        );
-        drop(observed);
-        let observed = attribute_child_observation::Observation::begin();
-        let mut source = dom
-            .begin_source_edit(
-                crate::DomSourceEdit::set_nonce(element, "source"),
-                crate::DomSourceLimits::new(16_000_000, 100_000, 2_000_000, 16, 64, 64, 1),
-                &cancel,
-            )
-            .unwrap();
-        assert!(matches!(
-            source.advance(&cancel).unwrap(),
-            crate::DomSourceProgress::Complete(_)
-        ));
-        drop(source);
-        assert_eq!(
-            observed.reads(),
-            0,
-            "Source preflight/restore/replay retain the same attribute capsule"
-        );
-        drop(observed);
-        assert!(
-            bank.same_storage(
-                dom.snapshot()
-                    .node(element)
-                    .unwrap()
-                    .as_element()
-                    .unwrap()
-                    .attributes_backing()
-                    .unwrap()
-            )
-        );
-        let snapshot = dom.snapshot();
-        let slot = snapshot.state.slots.get(element.slot).unwrap().clone();
-        drop(dom);
-        let ledger = custody::Ledger::default();
-        let registry = bank::CustodyRegistry::new(&ledger, unlimited).unwrap();
-        let baseline = ledger.total();
-        let observed = attribute_child_observation::Observation::begin();
-        let dependency = slot_dependency(&slot, &registry, None, unlimited)
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            observed.reads(),
-            2,
-            "historical re-adoption visits exactly the selected bank children"
-        );
-        drop(observed);
-        assert!(ledger.total().bytes() > baseline.bytes());
-        drop(dependency);
-        registry.reconcile_releases();
-        assert_eq!(
-            ledger.total(),
-            baseline,
-            "last controlled release ends bank/name capsules despite external values"
-        );
-        assert_eq!(bank.entries()[1].value(), &"second".into());
-        assert_eq!(
-            snapshot
-                .node(element)
-                .unwrap()
-                .as_element()
-                .unwrap()
-                .name()
-                .local_name(),
-            &"div".into()
-        );
-    }
-    #[test]
-    fn reserved_empty_attribute_bank_has_exact_local_extent_and_last_alias_release() {
-        use super::super::*;
-        let cancel = AtomicBool::new(false);
-        for source in [false, true] {
-            let mut dom = Dom::new(
-                DomLimits::new(
-                    32,
-                    65_536,
-                    64,
-                    0,
-                    0,
-                    16,
-                    4_000_000,
-                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
-                )
-                .unwrap(),
-            )
-            .unwrap();
-            let mut setup = crate::DomBatch::new();
-            let document = setup.create_document();
-            let document = dom
-                .apply(setup, &cancel)
-                .unwrap()
-                .created(&document)
-                .unwrap()
-                .unwrap();
-            let mut batch = crate::DomBatch::new();
-            batch.create_comment(document, "unchanged");
-            let draft = if source {
-                Draft::new_source(
-                    &dom,
-                    batch.owner.clone(),
-                    &batch.commands,
-                    crate::DomSourceLimits::new(32_000_000, 100_000, 4_000_000, 16, 64, 64, 1),
-                    &cancel,
-                )
-                .unwrap()
-                .0
-            } else {
-                Draft::new(&dom, batch.owner.clone(), &cancel).unwrap()
-            };
-            let baseline = dom.names.inspect_usage();
-            // Independent actual layouts, not the production bank receipt or
-            // the name-local collector, determine this exact object boundary.
-            let bank = size_of::<Payload<crate::name::AttributeValues>>()
-                + 7 * size_of::<crate::DomAttribute>();
-            let receipt = size_of::<custody::Debit>();
-            let extent = bank + size_of::<AttributeChildren>() + 2 * receipt;
-            for short in [true, false] {
-                dom.names
-                    .set_retained_limits(
-                        baseline.bytes() + extent - usize::from(short),
-                        dom.limits.names().entries(),
-                    )
-                    .unwrap();
-                let formation = source::formation::Formation::new(&draft, &cancel).unwrap();
-                let input = draft
-                    .attribute_input::<DomError>(7, formation.as_ref(), &cancel, |entries| {
-                        source::formation::reserve(entries, 7, formation.as_ref(), &cancel)
-                    })
-                    .unwrap();
-                assert_eq!(input.entries.capacity(), 7, "owning reserve_exact premise");
-                assert_eq!(
-                    dom.names.inspect_usage().bytes(),
-                    baseline.bytes() + bank + receipt,
-                    "bank reserve is locally owned before initialization"
-                );
-                let formed = draft.form_attributes(input, formation.as_ref(), &cancel);
-                if short {
-                    assert!(matches!(
-                        formed,
-                        Err(DomError::ResourceLimit {
-                            resource: DomResource::NameRetainedBytes,
-                            ..
-                        })
-                    ));
-                    assert_eq!(dom.names.inspect_usage(), baseline);
-                } else {
-                    let formed = formed.unwrap();
-                    assert!(formed.value.entries().is_empty());
-                    assert_eq!(formed.value.capacity(), 7);
-                    assert_eq!(dom.names.inspect_usage().bytes(), baseline.bytes() + extent);
-                    let external = formed.value.clone();
-                    let alias = formed.custody.clone();
-                    drop(formed);
-                    assert_eq!(dom.names.inspect_usage().bytes(), baseline.bytes() + extent);
-                    drop(alias);
-                    dom.custody_registry.reconcile_releases();
-                    assert_eq!(
-                        dom.names.inspect_usage(),
-                        baseline,
-                        "only last controlled release ends local custody"
-                    );
-                    assert_eq!(
-                        external.capacity(),
-                        7,
-                        "external immutable bank remains readable"
-                    );
-                }
-                drop(formation);
-            }
-        }
     }
 }

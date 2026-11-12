@@ -1081,8 +1081,7 @@ impl Dom {
         }
         let recording = self.begin_inline_recording(context, cancel)?;
         let prepared = self.prepare_with_inline(batch, recording, cancel)?;
-        let mut publication = self.prepare_publication(prepared, cancel)?;
-        publication.close_ordinary_sharing(cancel)?;
+        let publication = self.prepare_publication(prepared, cancel)?;
         let inline = self
             .prepare_inline_batch(&publication, limits, &mut resolver, cancel)?
             .map(|batch| self.commit_inline_batch(batch))

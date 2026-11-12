@@ -67,7 +67,7 @@ impl Draft {
         let transaction::KindRead::Element(element) = &self.node(key)?.kind() else {
             return Ok(None);
         };
-        for entry in element.language().attributes().iter() {
+        for entry in element.attributes().iter() {
             self.meta_step(cancel)?;
             if entry.name().namespace_uri().is_none()
                 && self.meta_ascii(

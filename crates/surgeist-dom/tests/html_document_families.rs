@@ -117,11 +117,16 @@ fn html_uppercase_attribute_inputs_resize_canvas_but_raw_ns_uppercase_names_rema
     let changes = apply(&mut dom, batch);
     let old = dom.snapshot();
     assert_eq!(dimensions(&old, canvas), ("300".into(), "150".into()));
+    let node = old.node(canvas).unwrap();
+    let attributes = node.attributes().unwrap();
     assert_eq!(
         changes.changes().changes(),
-        &[DomChange::Attributes(canvas)]
+        &[
+            DomChange::Attributes(canvas),
+            DomChange::Created(attributes.item(0).unwrap().id().node()),
+            DomChange::Created(attributes.item(1).unwrap().id().node()),
+        ]
     );
-    let node = old.node(canvas).unwrap();
     assert_eq!(node.attribute(&"WIDTH".into()), None);
     assert_eq!(
         node.attribute_ns(&Namespace::none(), &"WIDTH".into()),
@@ -134,7 +139,7 @@ fn html_uppercase_attribute_inputs_resize_canvas_but_raw_ns_uppercase_names_rema
     let snapshot = dom.snapshot();
     let node = snapshot.node(canvas).unwrap();
     assert_eq!(dimensions(&snapshot, canvas), ("400".into(), "20".into()));
-    assert_eq!(node.as_element().unwrap().attributes().len(), 4);
+    assert_eq!(node.attributes().unwrap().len(), 4);
     assert_eq!(node.attribute(&"WIDTH".into()), Some(&"+00400tail".into()));
     assert_eq!(
         node.attribute_ns(&Namespace::none(), &"WIDTH".into()),
@@ -215,14 +220,15 @@ fn adoption_preserves_family_state_and_import_reinitializes_families_while_raw_n
             node.as_element().unwrap().name(),
             old_html.node(id).unwrap().as_element().unwrap().name()
         );
-        assert_eq!(
-            node.as_element().unwrap().attributes(),
-            old_html
-                .node(id)
-                .unwrap()
-                .as_element()
-                .unwrap()
-                .attributes()
+        let attributes = node.attributes().unwrap();
+        let previous = old_html.node(id).unwrap().attributes().unwrap();
+        assert!(
+            attributes
+                .iter()
+                .map(|attr| (attr.id(), attr.name(), attr.value()))
+                .eq(previous
+                    .iter()
+                    .map(|attr| (attr.id(), attr.name(), attr.value())))
         );
     }
     assert_eq!(dimensions(&in_xml, canvas), ("42".into(), "150".into()));
@@ -235,13 +241,22 @@ fn adoption_preserves_family_state_and_import_reinitializes_families_while_raw_n
         old_html.node(canvas).unwrap().attribute(&"WIDTH".into()),
         Some(&"42".into())
     );
-    assert_eq!(
-        changes.changes().changes(),
-        &[
-            DomChange::NodeDocument(canvas),
-            DomChange::NodeDocument(marquee)
-        ]
-    );
+    let mut expected = vec![
+        DomChange::NodeDocument(canvas),
+        DomChange::NodeDocument(marquee),
+    ];
+    for element in [canvas, marquee] {
+        expected.extend(
+            old_html
+                .node(element)
+                .unwrap()
+                .attributes()
+                .unwrap()
+                .iter()
+                .map(|attr| DomChange::NodeDocument(attr.id().node())),
+        );
+    }
+    assert_eq!(changes.changes().changes(), expected);
     let mut batch = DomBatch::new();
     let to_html_canvas = batch.import_node(&in_xml, canvas, html, false);
     let to_html_marquee = batch.import_node(&in_xml, marquee, html, false);
@@ -270,14 +285,19 @@ fn adoption_preserves_family_state_and_import_reinitializes_families_while_raw_n
             node.as_element().unwrap().name(),
             old_html.node(canvas).unwrap().as_element().unwrap().name()
         );
-        assert_eq!(
-            node.as_element().unwrap().attributes(),
-            old_html
-                .node(canvas)
-                .unwrap()
-                .as_element()
-                .unwrap()
-                .attributes()
+        let attributes = node.attributes().unwrap();
+        let previous = old_html.node(canvas).unwrap().attributes().unwrap();
+        assert!(
+            attributes
+                .iter()
+                .map(|attr| (attr.name(), attr.value()))
+                .eq(previous.iter().map(|attr| (attr.name(), attr.value())))
+        );
+        assert!(
+            attributes
+                .iter()
+                .zip(previous.iter())
+                .all(|(a, b)| a.id() != b.id())
         );
     }
     let mut batch = DomBatch::new();
@@ -301,7 +321,7 @@ fn composed_html_canvas_dimension_storage_obeys_independent_exact_capacity() {
     for capacity in [200, 201] {
         let mut dom = Dom::new(
             DomLimits::new(
-                7,
+                8,
                 capacity,
                 8,
                 0,
@@ -332,7 +352,7 @@ fn composed_html_canvas_dimension_storage_obeys_independent_exact_capacity() {
         } else {
             let commit = result.unwrap();
             let canvas = commit.created(&canvas).unwrap().unwrap();
-            assert_eq!(dom.usage().managed_nodes(), 7);
+            assert_eq!(dom.usage().managed_nodes(), 8);
             assert_eq!(dom.usage().string_code_units(), 201);
             assert_eq!(
                 dimensions(&dom.snapshot(), canvas),
@@ -342,8 +362,21 @@ fn composed_html_canvas_dimension_storage_obeys_independent_exact_capacity() {
             batch.set_attribute(canvas, "WIDTH", "300");
             apply(&mut dom, batch);
             assert_eq!(dom.usage().string_code_units(), 198);
+            let attr = dom
+                .snapshot()
+                .node(canvas)
+                .unwrap()
+                .attributes()
+                .unwrap()
+                .item(0)
+                .unwrap()
+                .id();
             let mut batch = DomBatch::new();
             batch.remove_attribute(canvas, "WIDTH");
+            apply(&mut dom, batch);
+            assert_eq!(dom.usage().string_code_units(), 198);
+            let mut batch = DomBatch::new();
+            batch.destroy(attr.node());
             apply(&mut dom, batch);
             assert_eq!(dom.usage().string_code_units(), 190);
         }

@@ -12,7 +12,7 @@ pub(crate) struct Common<K> {
     pub parent: Option<K>,
 }
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ContainerChildren<K> {
+pub(crate) struct NodeSequence<K> {
     pub values: SharedVec<K>,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -140,7 +140,7 @@ pub(crate) struct FullscreenQueue {
 pub(crate) struct DocumentNode<K> {
     pub common: Common<K>,
     pub metadata: Arc<Payload<DomDocumentMetadata>>,
-    pub children: Option<Arc<Payload<ContainerChildren<K>>>>,
+    pub children: Option<Arc<Payload<NodeSequence<K>>>>,
     pub active_range: crate::DomActiveRangeState,
     pub focused_area_designation: crate::DomFocusedAreaDesignation,
     pub fullscreen_events: Option<Arc<Payload<FullscreenQueue>>>,
@@ -154,7 +154,9 @@ pub(crate) struct DocumentNode<K> {
 pub(crate) struct ElementNode<K> {
     pub common: Common<K>,
     pub element: Arc<Payload<DomElement>>,
-    pub children: Option<Arc<Payload<ContainerChildren<K>>>>,
+    pub attributes: Option<Arc<Payload<NodeSequence<K>>>>,
+    pub attribute_revision: Option<custody::MaterializationId>,
+    pub children: Option<Arc<Payload<NodeSequence<K>>>>,
     pub slottable: Option<Arc<Payload<Slottable<K>>>>,
     pub shadow: Option<Arc<Payload<ShadowHost<K>>>>,
     pub associations: ElementAssociations<K>,
@@ -162,14 +164,14 @@ pub(crate) struct ElementNode<K> {
 #[derive(Clone, Debug)]
 pub(crate) struct FragmentNode<K> {
     pub common: Common<K>,
-    pub children: Option<Arc<Payload<ContainerChildren<K>>>>,
+    pub children: Option<Arc<Payload<NodeSequence<K>>>>,
     pub host: Option<K>,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct ShadowNode<K> {
     pub common: Common<K>,
     pub state: Arc<Payload<crate::DomShadowRootState>>,
-    pub children: Option<Arc<Payload<ContainerChildren<K>>>>,
+    pub children: Option<Arc<Payload<NodeSequence<K>>>>,
     pub host: Option<K>,
 }
 #[derive(Clone, Debug)]
@@ -272,6 +274,16 @@ impl Node {
         match self {
             Self::Attr(node) => Some((&node.value.data.value, node.value.owner)),
             _ => None,
+        }
+    }
+    pub(crate) fn attribute_ids(&self) -> &[NodeId] {
+        match self {
+            Self::Element(node) => node
+                .value
+                .attributes
+                .as_ref()
+                .map_or(&[], |attributes| attributes.value.values.as_slice()),
+            _ => &[],
         }
     }
     pub(crate) fn children_backing(&self) -> Option<&SharedVec<NodeId>> {
@@ -639,8 +651,8 @@ impl<K: PartialEq> PartialEq for Autofocus<K> {
     }
 }
 fn same_children<K: PartialEq>(
-    a: &Option<Arc<Payload<ContainerChildren<K>>>>,
-    b: &Option<Arc<Payload<ContainerChildren<K>>>>,
+    a: &Option<Arc<Payload<NodeSequence<K>>>>,
+    b: &Option<Arc<Payload<NodeSequence<K>>>>,
 ) -> bool {
     match (a, b) {
         (None, Some(v)) | (Some(v), None) => v.value.values.is_empty(),
@@ -686,6 +698,8 @@ impl<K: PartialEq> PartialEq for ElementNode<K> {
     fn eq(&self, other: &Self) -> bool {
         self.common == other.common
             && same_payload(&self.element, &other.element)
+            && self.attribute_revision == other.attribute_revision
+            && same_children(&self.attributes, &other.attributes)
             && same_children(&self.children, &other.children)
             && same_slottable(&self.slottable, &other.slottable)
             && same_optional(&self.shadow, &other.shadow)

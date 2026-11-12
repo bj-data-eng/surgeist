@@ -241,13 +241,13 @@ impl Operation {
         dom: &mut Dom,
         target: PublicationTarget,
         disposition: Option<meta::Disposition>,
-        checkpoint: Option<&checkpoint::Checkpoint>,
+        _checkpoint: Option<&checkpoint::Checkpoint>,
         execution: &mut Execution<'_>,
         cancel: &AtomicBool,
     ) -> Result<PublishedSegment, AdvanceError> {
         let incomplete = !matches!(disposition, Some(meta::Disposition::Complete { .. }));
         let mut segment = self
-            .prepare_segment(dom, incomplete, target, None, checkpoint, cancel)
+            .prepare_segment(dom, incomplete, target, None, cancel)
             .map_err(|error| match error {
                 crate::DomHostedError::Dom(error) => AdvanceError::Dom(error),
                 _ => unreachable!("no hosted permit"),
@@ -317,7 +317,7 @@ impl Operation {
         };
         // CSSOM commit was the last fallible operation. Everything below is an
         // infallible transfer of preadmitted original publication evidence.
-        let published = segment.publish(self, dom, checkpoint);
+        let published = segment.publish(self, dom);
         if let Some(inline) = inline {
             execution.publication = Some(DomInlineStyleSourcePublication {
                 dom: published.commit.changes.clone(),

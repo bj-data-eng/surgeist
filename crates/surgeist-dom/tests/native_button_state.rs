@@ -159,11 +159,7 @@ fn same_batch_targets_resolve_to_real_ids_and_reflection_slots_stay_independent(
     assert_eq!(button(&s, n).explicit_popover_target(), Some(two));
     for attr in ["commandfor", "popovertarget"] {
         assert_eq!(
-            s.node(n)
-                .unwrap()
-                .as_element()
-                .unwrap()
-                .attribute(&attr.into()),
+            s.node(n).unwrap().attribute(&attr.into()),
             Some(&DocumentString::from(""))
         );
     }
@@ -189,12 +185,7 @@ fn same_batch_targets_resolve_to_real_ids_and_reflection_slots_stay_independent(
     let current = dom.snapshot();
     assert_eq!(button(&current, n).explicit_popover_target(), None);
     assert_eq!(
-        current
-            .node(n)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"popovertarget".into()),
+        current.node(n).unwrap().attribute(&"popovertarget".into()),
         None
     );
 }
@@ -382,11 +373,7 @@ fn message_and_adoption_preserve_state_while_native_import_starts_fresh() {
     );
     assert_eq!(button(&s, copy).explicit_command_for(), None);
     assert_eq!(
-        s.node(copy)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"commandfor".into()),
+        s.node(copy).unwrap().attribute(&"commandfor".into()),
         Some(&DocumentString::from(""))
     );
     assert_eq!(old.node(n).unwrap().owner_document(), Some(a));

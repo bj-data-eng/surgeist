@@ -1101,8 +1101,6 @@ fn contextual_utf16_fragment_is_detached_and_later_explicit_insertion_keeps_hist
             .snapshot()
             .node(p)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attribute(&DocumentString::from("data-x")),
         Some(&DocumentString::from_utf16(vec![0xd800]))
     );
@@ -2420,18 +2418,11 @@ fn completed_utf16_mode_and_text_survive_one_publication_and_later_edit() {
             .snapshot()
             .node(p)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attribute(&"class".into())
             .is_none()
     );
     assert_eq!(
-        dom.snapshot()
-            .node(p)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"class".into()),
+        dom.snapshot().node(p).unwrap().attribute(&"class".into()),
         Some(&DocumentString::from("later"))
     );
     assert_eq!(
@@ -2462,7 +2453,11 @@ fn saved_creation_state_is_independent_of_recovered_attribute_merge_and_foreign_
     assert_eq!(body.saved_is(), None);
     assert_eq!(body.nonce(), Some(&DocumentString::from("late")));
     assert_eq!(
-        body.attribute(&"is".into()),
+        result
+            .snapshot()
+            .node(element(&result, "body"))
+            .unwrap()
+            .attribute(&"is".into()),
         Some(&DocumentString::from("x-control"))
     );
     assert_eq!(
@@ -2475,14 +2470,10 @@ fn saved_creation_state_is_independent_of_recovered_attribute_merge_and_foreign_
             .custom_element_state(),
         HtmlCustomElementState::Undefined
     );
-    let div = result
-        .snapshot()
-        .node(element(&result, "div"))
-        .unwrap()
-        .as_element()
-        .unwrap();
-    assert_eq!(div.attributes().len(), 1);
-    let first = &div.attributes()[0];
+    let div = result.snapshot().node(element(&result, "div")).unwrap();
+    let attributes = div.attributes().unwrap();
+    assert_eq!(attributes.len(), 1);
+    let first = attributes.item(0).unwrap();
     assert_eq!(first.name().local_name(), &DocumentString::from("a:b"));
     assert_eq!(first.value(), &DocumentString::from("first"));
     assert!(first.name().prefix().is_none());
@@ -3510,8 +3501,6 @@ fn parsed_style_retains_parser_and_general_clone_causes_with_real_pending_associ
             .snapshot()
             .node(head)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attribute(&DocumentString::from("class"))
             .is_none()
     );
@@ -3950,8 +3939,6 @@ fn parsed_default_style_installs_structure_with_pending_association_processing()
             .snapshot()
             .node(meta)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attribute(&"content".into()),
         Some(&DocumentString::from("chosen"))
     );
@@ -4191,20 +4178,21 @@ fn parsed_dialog_report_transfers_actual_return_value_independently_of_attribute
     let node = result.snapshot().node(id).unwrap();
     assert_eq!(node.owner_document(), Some(result.document()));
     assert!(node.is_connected());
-    let element = node.as_element().unwrap();
     assert_eq!(
-        element.attribute(&"open".into()),
+        node.attribute(&"open".into()),
         Some(&DocumentString::from(""))
     );
     assert_eq!(
-        element.attribute(&"returnvalue".into()),
+        node.attribute(&"returnvalue".into()),
         Some(&DocumentString::from("attribute-only")),
     );
     let dialog = node.as_dialog().expect("actual parsed Dialog state");
     assert_eq!(dialog.return_value().code_units(), []);
     assert_parsed_dialog_closed_services(dialog);
     assert!(
-        !element
+        !node
+            .as_element()
+            .unwrap()
             .common_state()
             .html()
             .unwrap()
@@ -4248,17 +4236,9 @@ fn parsed_dialog_free_document_retains_history_for_later_native_open_cleanup() {
         .expect("source-established Document list history supports open cleanup");
     let cleaned = dom.snapshot();
     let node = cleaned.node(id).unwrap();
-    assert_eq!(node.as_element().unwrap().attribute(&"open".into()), None);
+    assert_eq!(node.attribute(&"open".into()), None);
     assert_parsed_dialog_closed_services(node.as_dialog().unwrap());
-    assert!(
-        opened
-            .node(id)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"open".into())
-            .is_some()
-    );
+    assert!(opened.node(id).unwrap().attribute(&"open".into()).is_some());
 
     // Exercise removed-open cleanup as a separate real ordinary operation.
     let mut batch = DomBatch::new();
@@ -4272,12 +4252,7 @@ fn parsed_dialog_free_document_retains_history_for_later_native_open_cleanup() {
     let node = detached.node(id).unwrap();
     assert!(!node.is_connected());
     assert_eq!(node.owner_document(), Some(document));
-    assert!(
-        node.as_element()
-            .unwrap()
-            .attribute(&"open".into())
-            .is_some()
-    );
+    assert!(node.attribute(&"open".into()).is_some());
     assert_eq!(node.as_dialog().unwrap().return_value().code_units(), []);
     assert_parsed_dialog_closed_services(node.as_dialog().unwrap());
 }
@@ -4304,12 +4279,7 @@ fn parsed_template_dialog_adoption_keeps_current_value_and_original_inert_histor
     assert_eq!(initial.node(inner).unwrap().owner_document(), Some(inert));
     assert_eq!(initial.node(inner).unwrap().parent(), Some(contents));
     assert_eq!(
-        initial
-            .node(inner)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"id".into()),
+        initial.node(inner).unwrap().attribute(&"id".into()),
         Some(&"inner".into())
     );
     assert_eq!(
@@ -4351,15 +4321,7 @@ fn parsed_template_dialog_adoption_keeps_current_value_and_original_inert_histor
             .return_value(),
         &exact
     );
-    assert_eq!(
-        current
-            .node(inner)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"open".into()),
-        None
-    );
+    assert_eq!(current.node(inner).unwrap().attribute(&"open".into()), None);
     assert!(current.node(contents).unwrap().children().is_empty());
     assert_parsed_dialog_closed_services(current.node(inner).unwrap().as_dialog().unwrap());
     assert!(
@@ -4383,8 +4345,6 @@ fn parsed_template_dialog_adoption_keeps_current_value_and_original_inert_histor
     assert!(
         initial
             .node(inner)
-            .unwrap()
-            .as_element()
             .unwrap()
             .attribute(&"open".into())
             .is_some()
@@ -4484,12 +4444,7 @@ fn captured_fragment_dialogs_keep_target_state_and_auxiliary_identity_through_la
     assert!(!current.node(nested).unwrap().is_connected());
     assert_eq!(current.node(root).unwrap().owner_document(), Some(document));
     assert_eq!(
-        current
-            .node(nested)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"open".into()),
+        current.node(nested).unwrap().attribute(&"open".into()),
         None
     );
     assert_eq!(current.node(host).unwrap().children(), &[existing]);
@@ -4506,8 +4461,6 @@ fn captured_fragment_dialogs_keep_target_state_and_auxiliary_identity_through_la
         current
             .node(existing)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attribute(&"open".into())
             .is_some()
     );
@@ -4516,8 +4469,6 @@ fn captured_fragment_dialogs_keep_target_state_and_auxiliary_identity_through_la
     assert!(
         initial
             .node(nested)
-            .unwrap()
-            .as_element()
             .unwrap()
             .attribute(&"open".into())
             .is_some()
@@ -4561,16 +4512,8 @@ fn actual_selectedcontent_dialog_clone_has_distinct_original_metadata_and_curren
         }
         assert_eq!(dialog.return_value().code_units(), []);
         assert_parsed_dialog_closed_services(dialog);
-        assert_eq!(
-            node.as_element().unwrap().attribute(&"data-copy".into()),
-            Some(&"literal".into())
-        );
-        assert!(
-            node.as_element()
-                .unwrap()
-                .attribute(&"open".into())
-                .is_some()
-        );
+        assert_eq!(node.attribute(&"data-copy".into()), Some(&"literal".into()));
+        assert!(node.attribute(&"open".into()).is_some());
         pair.push((local.clone(), *binding.source(), node.id()));
     }
     assert_eq!(
@@ -5017,12 +4960,7 @@ fn parsed_values_keep_the_reports_backing_beside_equal_native_values_without_rew
     let native_input = seeded.created(&native_input).unwrap().unwrap();
     let native_text = seeded.created(&native_text).unwrap().unwrap();
     let native = dom.snapshot();
-    let native_bank = native
-        .node(native_input)
-        .unwrap()
-        .as_element()
-        .unwrap()
-        .attributes();
+    let native_bank = native.node(native_input).unwrap().attributes().unwrap();
     assert_eq!(native_bank.len(), 3);
     let native_data = native.node(native_text).unwrap().data().unwrap();
     assert_eq!(native_data.code_units(), [114, 101, 112, 101, 97, 116]);
@@ -5108,22 +5046,26 @@ fn parsed_values_keep_the_reports_backing_beside_equal_native_values_without_rew
     assert_ne!(texts[0], texts[1]);
     for (index, input) in inputs.iter().enumerate() {
         let node = result.snapshot().node(*input).unwrap();
-        let attributes = node.as_element().unwrap().attributes();
-        assert_eq!(
-            attributes.as_ptr(),
-            native_bank.as_ptr(),
-            "canonical bank reuse is independent of the report's HTML bank"
-        );
-        assert_ne!(
-            attributes.as_ptr() as usize,
-            source_inputs[index].3,
-            "the retained HTML and canonical DOM arrays are distinct live allocations"
-        );
-        for (attribute, (name, value)) in
-            attributes
-                .iter()
-                .zip([("type", "text"), ("value", "initial"), ("class", "cell")])
+        let attributes = node.attributes().unwrap();
+        assert_eq!(attributes.len(), 3);
+        for (position, (attribute, (name, value))) in attributes
+            .iter()
+            .zip([("type", "text"), ("value", "initial"), ("class", "cell")])
+            .enumerate()
         {
+            let native = native_bank.item(position).unwrap();
+            assert_ne!(attribute.id(), native.id());
+            assert_eq!(attribute.name(), native.name());
+            assert_eq!(attribute.owner_element(), Some(*input));
+            assert_eq!(attribute.owner_document(), result.document());
+            assert_eq!(
+                attribute.value().block().address(),
+                source_inputs[index].4[position].0
+            );
+            assert_eq!(
+                attribute.value().retained_units(),
+                source_inputs[index].4[position].1
+            );
             assert!(attribute.name().namespace_uri().is_none());
             assert!(attribute.name().prefix().is_none());
             assert!(
@@ -5210,7 +5152,7 @@ fn parsed_values_keep_the_reports_backing_beside_equal_native_values_without_rew
         (result.snapshot(), inputs[1], texts[1]),
         (&current, inputs[1], texts[1]),
     ] {
-        let element = snapshot.node(input).unwrap().as_element().unwrap();
+        let element = snapshot.node(input).unwrap();
         assert_eq!(
             element.attribute(&"class".into()),
             Some(&DocumentString::from("cell"))

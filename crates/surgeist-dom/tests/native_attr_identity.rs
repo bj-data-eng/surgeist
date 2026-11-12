@@ -343,3 +343,58 @@ fn attr_document_and_element_custody_are_independent() {
         &"value".into()
     );
 }
+
+#[test]
+fn shallow_element_clone_and_foreign_import_create_new_attached_attributes() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let namespace = Namespace::from_uri("urn:copy");
+    let value = DocumentString::from_utf16(vec![0xd800, 0, 0x51]);
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let element = setup.create_element(&document, "source");
+    setup.set_attribute(&element, "first", "");
+    setup.set_attribute_ns(&element, namespace.clone(), "p:token", value.clone());
+    let created = dom.apply(setup, &cancel).unwrap();
+    let document = created.document(&document).unwrap();
+    let element = created.created(&element).unwrap().unwrap();
+    let before = dom.snapshot();
+    let original = before.node(element).unwrap().attributes().unwrap();
+    let original_ids: Vec<_> = original.iter().map(|attr| attr.id()).collect();
+
+    let mut batch = DomBatch::new();
+    let clone = batch.clone_node(element, false);
+    let created = dom.apply(batch, &cancel).unwrap();
+    let clone = created.created(&clone).unwrap().unwrap();
+    let after = dom.snapshot();
+    let cloned = after.node(clone).unwrap().attributes().unwrap();
+
+    let mut foreign = owner();
+    let mut batch = DomBatch::new();
+    let target = batch.create_document();
+    let import = batch.import_node(&before, element, &target, false);
+    let created = foreign.apply(batch, &cancel).unwrap();
+    let target = created.document(&target).unwrap();
+    let import = created.created(&import).unwrap().unwrap();
+    let imported_snapshot = foreign.snapshot();
+    let imported = imported_snapshot
+        .node(import)
+        .unwrap()
+        .attributes()
+        .unwrap();
+
+    for (map, owner, document) in [(cloned, clone, document), (imported, import, target)] {
+        assert_eq!(map.len(), 2);
+        for (index, attr) in map.iter().enumerate() {
+            assert_ne!(attr.id(), original_ids[index]);
+            assert_eq!(attr.name(), original.item(index).unwrap().name());
+            assert_eq!(attr.owner_element(), Some(owner));
+            assert_eq!(attr.owner_document(), document);
+        }
+        assert_eq!(map.item(1).unwrap().value(), &value);
+    }
+    assert_ne!(
+        original.item(1).unwrap().name().owner(),
+        imported.item(1).unwrap().name().owner()
+    );
+}

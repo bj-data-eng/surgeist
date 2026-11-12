@@ -288,12 +288,7 @@ fn raw_directives_follow_literal_last_entry_ascii_and_allowfullscreen_outcomes()
             Some(top.document())
         );
         assert_eq!(
-            current
-                .node(container)
-                .unwrap()
-                .as_element()
-                .unwrap()
-                .attribute(&"allow".into()),
+            current.node(container).unwrap().attribute(&"allow".into()),
             allow.map(DocumentString::from).as_ref()
         );
         assert_eq!(fullscreen(&before, top.document()), Enabled);
@@ -384,8 +379,6 @@ fn actual_frame_ignores_iframe_allow_sandbox_and_srcdoc_attributes() {
     assert_eq!(
         current
             .node(container)
-            .unwrap()
-            .as_element()
             .unwrap()
             .attribute(&"sandbox".into()),
         Some(&"".into())
@@ -1287,9 +1280,12 @@ fn completed_child_policy_and_origin_do_not_change_after_allow_and_sandbox_edits
                 "actual {name} mutation must complete before readback: {result:?}"
             );
             let current = session.snapshot();
-            let element = current.node(container).unwrap().as_element().unwrap();
+            let element = current.node(container).unwrap();
             assert_eq!(element.attribute(&name.into()), Some(&value.into()));
-            assert_eq!(element.child_navigable(), original_navigable);
+            assert_eq!(
+                element.as_element().unwrap().child_navigable(),
+                original_navigable
+            );
             assert_eq!(child_document(&current, container), child);
             assert_eq!(fullscreen(&current, child), expected);
             assert_eq!(
@@ -1298,7 +1294,7 @@ fn completed_child_policy_and_origin_do_not_change_after_allow_and_sandbox_edits
             );
             assert_eq!(current.incomplete_source_operation(), None);
         }
-        let old_element = before.node(container).unwrap().as_element().unwrap();
+        let old_element = before.node(container).unwrap();
         assert_eq!(
             old_element.attribute(&"allow".into()),
             (!initially_enabled)
@@ -1559,14 +1555,14 @@ fn absent_raw_sandbox_after_detach_still_reaches_present_empty_declared_origin_u
     raw_edits.set_attribute(container, "src", "");
     session.dom().apply(raw_edits, &cancel()).unwrap();
     let edited = session.snapshot();
-    let element = edited.node(container).unwrap().as_element().unwrap();
+    let element = edited.node(container).unwrap();
     assert_eq!(element.attribute(&"sandbox".into()), None);
     assert_eq!(element.attribute(&"src".into()), Some(&"".into()));
     assert_eq!(
         element.attribute(&"allow".into()),
         Some(&"fullscreen *".into())
     );
-    assert_eq!(element.child_navigable(), Some(None));
+    assert_eq!(element.as_element().unwrap().child_navigable(), Some(None));
     let result = insert_without_url(&mut session, container, parent).unwrap();
     assert!(
         matches!(
@@ -1590,12 +1586,7 @@ fn absent_raw_sandbox_after_detach_still_reaches_present_empty_declared_origin_u
         Some(None)
     );
     assert_eq!(
-        first
-            .node(container)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"sandbox".into()),
+        first.node(container).unwrap().attribute(&"sandbox".into()),
         Some(&"".into())
     );
     assert_eq!(

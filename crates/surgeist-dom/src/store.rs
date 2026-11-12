@@ -110,11 +110,8 @@ mod textarea;
 mod transaction;
 #[cfg(test)]
 pub(crate) use transaction::CopyObservation;
+mod text_custody_ingress;
 mod tree;
-mod value_sharing;
-mod value_sharing_ingress;
-#[cfg(test)]
-mod value_sharing_lifecycle_tests;
 mod view_transition;
 use crate::view_transition::*;
 pub(crate) use bank::owned::{EmptyPath, OwnedBank};
@@ -1123,6 +1120,7 @@ pub enum DomChange {
     Destroyed(NodeId),
     Data(NodeId),
     AttrValue(crate::DomAttrId),
+    AttrOwner(crate::DomAttrId),
     Attributes(NodeId),
     ElementState(NodeId),
     NodeDocument(NodeId),
@@ -1436,7 +1434,6 @@ pub struct Dom {
     details_transferred: bool,
     hosted_operations: hosted::operations::Operations,
     hosted_revisions: u64,
-    value_sharing: value_sharing::Owner,
     csp_owner: custody::Held<std::cell::RefCell<surgeist_html::security::csp::HtmlCspOwner>>,
     _custody_administration: custody::Debit,
 }
@@ -1497,14 +1494,6 @@ impl Dom {
                 step: &mut || Ok(()),
             },
         )?;
-        let value_sharing = value_sharing::Owner::new(
-            owner,
-            ledger.clone(),
-            &mut value_sharing::Admission {
-                global: &mut |_| Ok(()),
-                step: &mut || Ok(()),
-            },
-        )?;
         Ok(Self {
             child_list_turn: None,
             style_cssom_roots: style_custody::Bank::new(&registry),
@@ -1519,7 +1508,6 @@ impl Dom {
             element_tasks: None,
             owner,
             names,
-            value_sharing,
             csp_owner,
             revision: DomRevision(0),
             limits,
@@ -1887,8 +1875,7 @@ impl Dom {
         prepared: Prepared,
         cancelled: &AtomicBool,
     ) -> Result<DomCommit, DomError> {
-        let mut publication = self.prepare_publication(prepared, cancelled)?;
-        publication.close_ordinary_sharing(cancelled)?;
+        let publication = self.prepare_publication(prepared, cancelled)?;
         Ok(self.publish_prepared(publication))
     }
     fn prepare_publication(
@@ -1930,7 +1917,6 @@ impl Dom {
         let Prepared {
             blocks,
             inline_echo: _,
-            sharing,
             inline_positions: _,
             inline_recording,
             name_promotions,
@@ -2095,7 +2081,6 @@ impl Dom {
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
         Ok(PreparedPublication {
-            sharing: sharing.map(SharingPublication::Open),
             name_promotions,
             state_custody,
             allocation_ids,
@@ -2197,7 +2182,6 @@ struct PublicationFields<'a> {
 impl PublicationFields<'_> {
     fn publish(mut self, publication: PreparedPublication) -> CommittedPublication {
         let PreparedPublication {
-            sharing,
             name_promotions,
             state_custody,
             allocation_ids: _,
@@ -2229,14 +2213,6 @@ impl PublicationFields<'_> {
             _formation,
             blocks: _,
         } = publication;
-        if let Some(sharing) = sharing {
-            match sharing {
-                SharingPublication::Prepared(prepared) => prepared.commit(),
-                SharingPublication::Open(_) => {
-                    unreachable!("value sharing closes before publication")
-                }
-            }
-        }
         if changed {
             name_promotions.commit();
             #[cfg(test)]
@@ -2447,12 +2423,7 @@ struct Draft {
     source_mirrors: source::formation::SourceMirrors,
     source_ancestor_custody: Option<Arc<source::formation::EventWorkCustody>>,
     names: name_registry::Operation,
-    sharing: Option<value_sharing::Session>,
     _header_custody: custody::Debit,
-}
-enum SharingPublication {
-    Open(value_sharing::Session),
-    Prepared(value_sharing::Prepared),
 }
 pub(crate) struct PreparedPublication {
     created_ranges: Vec<Option<crate::DomRangeId>>,
@@ -2486,7 +2457,6 @@ pub(crate) struct PreparedPublication {
     _transition_outputs: custody::Debit,
     _formation: Option<source::formation::Formation>,
     name_promotions: name_registry::Promotions,
-    sharing: Option<SharingPublication>,
     blocks: Arc<block_custody::BlockAdoptions>,
 }
 struct Prepared {
@@ -2517,7 +2487,6 @@ struct Prepared {
     _transition_outputs: custody::Debit,
     formation: Option<source::formation::Formation>,
     name_promotions: name_registry::Promotions,
-    sharing: Option<value_sharing::Session>,
     blocks: Arc<block_custody::BlockAdoptions>,
 }
 
@@ -2537,107 +2506,7 @@ impl Prepared {
     }
 }
 
-impl PreparedPublication {
-    fn close_ordinary_sharing(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
-        let Some(SharingPublication::Open(session)) = &self.sharing else {
-            return Ok(());
-        };
-        let ready = if self.changed {
-            Some(session.prepare_close(
-                &[],
-                &mut value_sharing::Admission {
-                    global: &mut |usage| match &self._formation {
-                        Some(formation) => formation.admit_custody_usage(usage, cancel),
-                        None => check_cancel(cancel),
-                    },
-                    step: &mut || source::formation::step(self._formation.as_ref(), cancel),
-                },
-            )?)
-        } else {
-            None
-        };
-        let Some(SharingPublication::Open(session)) = self.sharing.take() else {
-            unreachable!("exclusive ordinary sharing preparation")
-        };
-        if let Some(ready) = ready {
-            self.sharing = Some(SharingPublication::Prepared(session.close(ready, &[])));
-        } else {
-            drop(session);
-        }
-        Ok(())
-    }
-}
-
 impl Draft {
-    pub(in crate::store) fn sharing_session(&self) -> Option<&value_sharing::Session> {
-        self.sharing.as_ref()
-    }
-
-    pub(in crate::store) fn with_sharing_admission<T>(
-        &self,
-        cancel: &AtomicBool,
-        action: impl FnOnce(&mut value_sharing::Admission<'_>) -> Result<T, DomError>,
-    ) -> Result<T, DomError> {
-        action(&mut value_sharing::Admission {
-            global: &mut |usage| self.admit_custody_usage(usage, cancel),
-            step: &mut || self.source_step(cancel),
-        })
-    }
-
-    fn ensure_sharing(
-        &mut self,
-        owner: &value_sharing::Owner,
-        cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
-        if self.sharing.is_none() {
-            self.sharing =
-                Some(self.with_sharing_admission(cancel, |admission| owner.attach(admission))?);
-        }
-        Ok(())
-    }
-
-    fn prepare_sharing_publication(
-        &self,
-        changed: bool,
-        checkpoint: Option<&source::checkpoint::Checkpoint>,
-        cancel: &AtomicBool,
-    ) -> Result<Option<value_sharing::CloseReady>, DomError> {
-        let Some(session) = self.sharing.as_ref().filter(|_| changed) else {
-            return Ok(None);
-        };
-        let mark = checkpoint.and_then(source::checkpoint::Checkpoint::sharing);
-        self.with_sharing_admission(cancel, |admission| {
-            session.prepare_close(mark.as_slice(), admission).map(Some)
-        })
-    }
-
-    fn close_sharing_publication(
-        &mut self,
-        publication: &mut PreparedPublication,
-        ready: Option<value_sharing::CloseReady>,
-        checkpoint: Option<&source::checkpoint::Checkpoint>,
-    ) {
-        let Some(session) = self.sharing.take() else {
-            assert!(ready.is_none(), "no closing plan without a sharing session");
-            return;
-        };
-        if publication.changed {
-            let mark = checkpoint.and_then(source::checkpoint::Checkpoint::sharing);
-            let prepared = session.close(
-                ready.expect("all sharing close admission precedes the fence"),
-                mark.as_slice(),
-            );
-            assert!(
-                publication.sharing.is_none(),
-                "one value root per publication"
-            );
-            publication.sharing = Some(SharingPublication::Prepared(prepared));
-        } else {
-            assert!(ready.is_none(), "a whole no-op aborts optional sharing");
-            drop(session);
-        }
-    }
-
     pub(in crate::store) fn source_work_custody(&self) -> source::formation::SourceWorkCustody {
         self.source_work.source_custody()
     }
@@ -2873,10 +2742,6 @@ impl Draft {
                 )?
             }
         };
-        let sharing = dom.value_sharing.attach(&mut value_sharing::Admission {
-            global: &mut admit_initial,
-            step: &mut || admission.step(cancelled),
-        })?;
         let existing = bank::Bank::default();
         let existing_custody = bank::BankCustody::default();
         let records_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
@@ -2936,7 +2801,6 @@ impl Draft {
             blocks: block_custody::BlockAdoptions::new(registry.clone()),
             custody_registry: registry,
             names,
-            sharing: Some(sharing),
             journal,
             _header_custody: header,
             ranges,
@@ -3088,6 +2952,7 @@ impl Draft {
         Ok(self.alias_node_read(read))
     }
     fn alias_node_read<'a>(&'a self, read: transaction::NodeRead<'a>) -> transaction::NodeRead<'a> {
+        let read = read.in_draft(self);
         match &self.phase_map {
             Some(map) => read.aliases(&map.ids),
             None => read,
@@ -3856,6 +3721,7 @@ impl Draft {
                 let node = self.resolve(node.clone())?;
                 if self.node(node)?.parent().is_some()
                     || self.node(node)?.host().is_some()
+                    || self.node(node)?.attr_owner().is_some()
                     || matches!(
                         self.node(node)?.kind(),
                         transaction::KindRead::Document(_) | transaction::KindRead::ShadowRoot(_)
@@ -3875,6 +3741,7 @@ impl Draft {
                     self.select_reserve(
                         &mut pending,
                         current.children().len()
+                            + current.attribute_ids().len()
                             + usize::from(current.shadow_root().is_some())
                             + usize::from(contents.is_some()),
                         cancelled,
@@ -3883,6 +3750,10 @@ impl Draft {
                     for child in current.children().iter().rev() {
                         self.source_step(cancelled)?;
                         pending.push(child);
+                    }
+                    for attribute in current.attribute_ids().iter().rev() {
+                        self.source_step(cancelled)?;
+                        pending.push(attribute);
                     }
                     pending.extend(current.shadow_root());
                     pending.extend(contents);
@@ -3963,19 +3834,18 @@ impl Draft {
         cancelled: &AtomicBool,
         requested: impl ExactSizeIterator<Item = Key>,
     ) -> Result<(Prepared, Vec<NodeId>), DomError> {
-        let (mut prepared, mapped) = self.finish_sparse(dom, cancelled, requested)?;
-        prepared.sharing = self.sharing.take();
-        Ok((prepared, mapped))
+        self.finish_sparse(dom, cancelled, requested)
     }
 }
 fn new_kind_units(kind: &NewNode) -> Result<usize, DomError> {
     match kind {
         NewNode::Document(v) => v.units().ok_or(DomError::RepresentationExhausted),
         NewNode::Element(v) => v.units().ok_or(DomError::RepresentationExhausted),
+        NewNode::Attr(v) => v.logical_units().ok_or(DomError::RepresentationExhausted),
         NewNode::Text(v) | NewNode::Comment(v) => Ok(v.len()),
         NewNode::ProcessingInstruction(v) => v.units().ok_or(DomError::RepresentationExhausted),
         NewNode::DocumentType(v) => v.units().ok_or(DomError::RepresentationExhausted),
-        _ => Ok(0),
+        NewNode::DocumentFragment | NewNode::ShadowRoot(_) => Ok(0),
     }
 }
 

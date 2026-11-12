@@ -41,13 +41,39 @@ fn same_language(left: &Node, right: &Node) -> bool {
     }
 }
 
-fn same_attributes(left: &DomElement, right: &DomElement) -> bool {
-    if let (Some(a), Some(b)) = (left.attribute_binding(), right.attribute_binding())
-        && Arc::ptr_eq(a, b)
-    {
-        return true;
+fn same_attributes(
+    owner: DomOwnerId,
+    states: (&State, &State),
+    nodes: (&Node, &Node),
+    budget: Option<&source::formation::Formation>,
+    cancel: &AtomicBool,
+) -> Result<bool, DomError> {
+    let (Node::Element(left), Node::Element(right)) = nodes else {
+        return Ok(false);
+    };
+    if left.value.attribute_revision == right.value.attribute_revision {
+        return Ok(true);
     }
-    same_slice(left.attributes(), right.attributes())
+    let left = nodes.0.attribute_ids();
+    let right = nodes.1.attribute_ids();
+    if left.len() != right.len() {
+        return Ok(false);
+    }
+    for (&left, &right) in left.iter().zip(right) {
+        source::formation::step(budget, cancel)?;
+        if left != right {
+            return Ok(false);
+        }
+        if !same_language(states.0.node(owner, left)?, states.1.node(owner, right)?) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn attr_owner_changed(before: &Node, after: &Node) -> bool {
+    before.attribute_node().and_then(|(_, owner)| owner)
+        != after.attribute_node().and_then(|(_, owner)| owner)
 }
 
 fn document_fields(node: &Node) -> Option<&canonical::DocumentNode<NodeId>> {
@@ -345,8 +371,8 @@ pub(super) fn sparse_difference(
                     written.pushed::<DomChange>();
                 }
                 let intrinsic_changed = match (node.kind(), current.kind()) {
-                    (DomNodeKind::Element(before), DomNodeKind::Element(after)) => {
-                        !same_attributes(before, after)
+                    (DomNodeKind::Element(_), DomNodeKind::Element(_)) => {
+                        !same_attributes(owner, (old, new), (node, current), budget, cancelled)?
                     }
                     (DomNodeKind::Document(before), DomNodeKind::Document(after)) => {
                         !std::ptr::eq(before, after) && !before.same_nondesign_mode_state(after)
@@ -458,6 +484,8 @@ pub(super) fn sparse_difference(
                 };
                 for change in [
                     kind_change,
+                    attr_owner_changed(node, current)
+                        .then_some(DomChange::AttrOwner(crate::DomAttrId(id))),
                     (!same_slice(node.manual_nodes(), current.manual_nodes()))
                         .then_some(DomChange::SlotManual(id)),
                     (!same_slice(node.assigned_nodes(), current.assigned_nodes()))
@@ -666,8 +694,8 @@ pub(super) fn full_difference(
                     ));
                 }
                 let intrinsic_changed = match (node.kind(), current.kind()) {
-                    (DomNodeKind::Element(before), DomNodeKind::Element(after)) => {
-                        !same_attributes(before, after)
+                    (DomNodeKind::Element(_), DomNodeKind::Element(_)) => {
+                        !same_attributes(owner, (old, new), (node, current), budget, cancelled)?
                     }
                     (DomNodeKind::Document(before), DomNodeKind::Document(after)) => {
                         !std::ptr::eq(before, after) && !before.same_nondesign_mode_state(after)
@@ -751,6 +779,8 @@ pub(super) fn full_difference(
                 };
                 for change in [
                     kind_change,
+                    attr_owner_changed(node, current)
+                        .then_some(DomChange::AttrOwner(crate::DomAttrId(id))),
                     (!same_slice(node.manual_nodes(), current.manual_nodes()))
                         .then_some(DomChange::SlotManual(id)),
                     (!same_slice(node.assigned_nodes(), current.assigned_nodes()))

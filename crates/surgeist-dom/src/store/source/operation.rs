@@ -1174,17 +1174,17 @@ impl Operation {
             &crate::hosted::Request,
             crate::DomHostedSourceRevision,
         )>,
-        checkpoint: Option<&checkpoint::Checkpoint>,
+        _checkpoint: Option<&checkpoint::Checkpoint>,
         cancel: &AtomicBool,
     ) -> Result<PublishedSegment, crate::hosted::DomHostedError> {
-        let segment = self.prepare_segment(dom, incomplete, target, hosted, checkpoint, cancel)?;
+        let segment = self.prepare_segment(dom, incomplete, target, hosted, cancel)?;
         if let Some(recording) = segment.prepared.inline_recording.as_ref() {
             recording.require_unreached(|| self.draft.source_step(cancel))?;
         }
         let permit = hosted
             .map(|(source, request, revision)| source.permit(request, revision, false, cancel))
             .transpose()?;
-        let published = segment.publish(self, dom, checkpoint);
+        let published = segment.publish(self, dom);
         if let Some(permit) = permit {
             permit.commit();
         }
@@ -1200,7 +1200,6 @@ impl Operation {
             &crate::hosted::Request,
             crate::DomHostedSourceRevision,
         )>,
-        checkpoint: Option<&checkpoint::Checkpoint>,
         cancel: &AtomicBool,
     ) -> Result<SegmentPublication, crate::hosted::DomHostedError> {
         formation::SourceStorage::record_entry();
@@ -1611,13 +1610,9 @@ impl Operation {
         let owner_custody = dom.source_owner_custody_bytes()?;
         let mut prepared = dom.prepare_publication(prepared, cancel)?;
         let rebase = self.draft.prepare_rebase(&mut prepared, cancel)?;
-        let sharing = self
-            .draft
-            .prepare_sharing_publication(changed, checkpoint, cancel)?;
         Ok(SegmentPublication {
             prepared,
             rebase,
-            sharing,
             owner_custody,
             issued_next,
             source,
@@ -1641,7 +1636,6 @@ impl Operation {
 struct SegmentPublication {
     prepared: PreparedPublication,
     rebase: transaction::PreparedRebase,
-    sharing: Option<value_sharing::CloseReady>,
     owner_custody: usize,
     issued_next: Option<u64>,
     source: Option<Arc<DomStyleSource>>,
@@ -1658,16 +1652,10 @@ struct SegmentPublication {
     design_mode: Option<crate::DomSourceDesignModeRequest>,
 }
 impl SegmentPublication {
-    fn publish(
-        self,
-        op: &mut Operation,
-        dom: &mut Dom,
-        checkpoint: Option<&checkpoint::Checkpoint>,
-    ) -> PublishedSegment {
+    fn publish(self, op: &mut Operation, dom: &mut Dom) -> PublishedSegment {
         let Self {
-            mut prepared,
+            prepared,
             rebase,
-            sharing,
             owner_custody,
             issued_next,
             source,
@@ -1683,8 +1671,6 @@ impl SegmentPublication {
             autofocus,
             design_mode,
         } = self;
-        op.draft
-            .close_sharing_publication(&mut prepared, sharing, checkpoint);
         let crate::store::CommittedPublication { commit, committed } =
             dom.publish_prepared_with_proof(prepared);
         op.draft.commit_publication(rebase, &committed);
@@ -2102,7 +2088,6 @@ impl DomSourceLease<'_> {
             {
                 return Ok(progress);
             }
-            op.draft.ensure_sharing(&self.dom.value_sharing, cancel)?;
             if op.published
                 && !op.started
                 && !op.cancelled
@@ -3904,8 +3889,6 @@ pub(in crate::store) mod accounting_tests {
                 .snapshot()
                 .node(target)
                 .unwrap()
-                .as_element()
-                .unwrap()
                 .attribute(&"data-next".into())
                 .is_none()
         );
@@ -3942,8 +3925,6 @@ pub(in crate::store) mod accounting_tests {
             lease
                 .snapshot()
                 .node(target)
-                .unwrap()
-                .as_element()
                 .unwrap()
                 .attribute(&"data-next".into()),
             Some(&DocumentString::from("once"))
@@ -4954,7 +4935,9 @@ pub(in crate::store) mod accounting_tests {
         let native_units = original.current_value().retained_units()
             + original.custom_validity_message().retained_units();
         assert!(native_units > 0);
-        let original_element = before.node(input).unwrap().as_element().unwrap();
+        let original_node = before.node(input).unwrap();
+        let original_element = original_node.as_element().unwrap();
+        let original_attrs = original_node.attributes().unwrap();
         let original_native = original_element.input_payload().unwrap().clone();
         let mut commands = DomBatch::new();
         commands.set_input_checked(input, true);
@@ -4984,7 +4967,13 @@ pub(in crate::store) mod accounting_tests {
             original_element.name_payload(),
             current_element.name_payload()
         ));
-        assert!(original_element.same_attribute_storage(current_element));
+        let attrs = op.draft.element(Key::Existing(input)).unwrap().attributes();
+        assert!(
+            original_attrs
+                .iter()
+                .map(|attr| (attr.name(), attr.value()))
+                .eq(attrs.iter().map(|attr| (attr.name(), attr.value())))
+        );
         let changed_native = current_element.input_payload().unwrap().clone();
         assert!(!Arc::ptr_eq(&original_native, &changed_native));
         assert_eq!(
@@ -5015,7 +5004,18 @@ pub(in crate::store) mod accounting_tests {
             original_element.name_payload(),
             element.name_payload()
         ));
-        assert!(original_element.same_attribute_storage(element));
+        assert!(
+            original_attrs
+                .iter()
+                .map(|attr| attr.id().node())
+                .eq(prepared
+                    .state
+                    .node(lease.dom.owner, input)
+                    .unwrap()
+                    .attribute_ids()
+                    .iter()
+                    .copied())
+        );
         // Publication keeps the already sealed selected native identity. It
         // creates no second occurrence of the unchanged strings.
         assert_eq!(
@@ -5852,8 +5852,6 @@ pub(in crate::store) mod accounting_tests {
                     snapshot
                         .node(input)
                         .unwrap()
-                        .as_element()
-                        .unwrap()
                         .attribute(&"form".into())
                         .unwrap()
                         .len(),
@@ -6129,22 +6127,12 @@ pub(in crate::store) mod accounting_tests {
             .next_details_intention = u64::MAX;
         let before = dom.snapshot();
         assert_eq!(
-            before
-                .node(peer)
-                .unwrap()
-                .as_element()
-                .unwrap()
-                .details_state(),
-            Some(surgeist_html::elements::details::HtmlDetailsState::Open)
+            before.node(peer).unwrap().as_details().unwrap().state(),
+            surgeist_html::elements::details::HtmlDetailsState::Open
         );
         assert_eq!(
-            before
-                .node(later)
-                .unwrap()
-                .as_element()
-                .unwrap()
-                .details_state(),
-            Some(surgeist_html::elements::details::HtmlDetailsState::Open)
+            before.node(later).unwrap().as_details().unwrap().state(),
+            surgeist_html::elements::details::HtmlDetailsState::Open
         );
         let mut batch = DomBatch::new();
         batch.insert_before(container, connected, None);

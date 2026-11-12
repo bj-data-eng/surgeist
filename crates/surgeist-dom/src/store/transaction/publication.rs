@@ -730,7 +730,6 @@ impl Draft {
                 blocks: self.blocks.clone(),
                 node_retirement_candidates,
                 inline_echo: self.inline_echo.clone(),
-                sharing: None,
                 inline_recording: self.inline_recording.clone(),
                 inline_positions: self
                     .inline_membership

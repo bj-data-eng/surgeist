@@ -3,8 +3,8 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomChanges, DomHistoryError, DomLimits,
-    DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceProgress, NodeId,
+    DocumentId, DocumentString, Dom, DomAttrId, DomBatch, DomChange, DomChanges, DomHistoryError,
+    DomLimits, DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceProgress, NodeId,
 };
 
 const SOURCE_WORK: u64 = 20_000;
@@ -31,10 +31,12 @@ struct Fixture {
     root: NodeId,
     text: NodeId,
     comment: NodeId,
+    local_attr: DomAttrId,
+    history_attr: DomAttrId,
 }
 fn fixture(entries: usize, bytes: usize) -> Fixture {
-    // Initial construction is outside retained revision history. The four
-    // live nodes and all string lengths remain fixed as history grows.
+    // The four tree nodes, two Attr nodes and their string lengths remain
+    // fixed as history grows. Initial construction is outside that history.
     let mut dom = Dom::new(limits(0, 0)).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
@@ -53,13 +55,25 @@ fn fixture(entries: usize, bytes: usize) -> Fixture {
     let comment = commit.created(&comment).unwrap().unwrap();
     dom.set_limits(limits(entries, bytes)).unwrap();
     assert_eq!(dom.usage().history_entries(), 0);
-    assert_eq!(dom.snapshot().nodes().count(), 4);
+    let snapshot = dom.snapshot();
+    assert_eq!(snapshot.nodes().count(), 6);
+    let element = snapshot.node(root).unwrap();
+    let local_attr = element
+        .get_attribute_node(&"data-local".into())
+        .unwrap()
+        .id();
+    let history_attr = element
+        .get_attribute_node(&"data-history".into())
+        .unwrap()
+        .id();
     Fixture {
         dom,
         document,
         root,
         text,
         comment,
+        local_attr,
+        history_attr,
     }
 }
 
@@ -74,10 +88,13 @@ fn append_history(case: &mut Fixture, revisions: usize) {
         let commit = case.dom.apply(batch, &AtomicBool::new(false)).unwrap();
         assert_eq!(
             commit.changes().changes(),
-            &[DomChange::Attributes(case.root)]
+            &[
+                DomChange::Attributes(case.root),
+                DomChange::AttrValue(case.history_attr)
+            ]
         );
     }
-    assert_eq!(case.dom.snapshot().nodes().count(), 4);
+    assert_eq!(case.dom.snapshot().nodes().count(), 6);
 }
 
 fn source_attribute(case: &mut Fixture, value: &str, extent: usize) -> DomChanges {
@@ -103,7 +120,7 @@ fn source_attribute(case: &mut Fixture, value: &str, extent: usize) -> DomChange
 
 fn assert_neighborhood(case: &Fixture, old: &DomSnapshot) {
     let now = case.dom.snapshot();
-    assert_eq!(now.nodes().count(), 4);
+    assert_eq!(now.nodes().count(), 6);
     assert_eq!(
         now.node(case.document.node()).unwrap().children(),
         &[case.root]
@@ -158,7 +175,13 @@ fn fixed_source_attribute_work_does_not_grow_with_unrelated_retained_revisions()
         let delta = source_attribute(&mut case, "after", retained);
         assert_eq!(delta.from(), old.stamp());
         assert_eq!(delta.to(), case.dom.snapshot().stamp());
-        assert_eq!(delta.changes(), &[DomChange::Attributes(case.root)]);
+        assert_eq!(
+            delta.changes(),
+            &[
+                DomChange::Attributes(case.root),
+                DomChange::AttrValue(case.local_attr)
+            ]
+        );
         assert_eq!(case.dom.usage().history_entries(), retained + 1);
         assert_eq!(
             case.dom.changes_since(old.stamp()).unwrap().changes(),
@@ -186,9 +209,15 @@ fn fixed_source_attribute_work_keeps_a_full_history_window_incremental() {
         let old = case.dom.snapshot();
         let bytes = case.dom.usage().history_bytes();
         let delta = source_attribute(&mut case, "after", retained);
-        assert_eq!(delta.changes(), &[DomChange::Attributes(case.root)]);
+        assert_eq!(
+            delta.changes(),
+            &[
+                DomChange::Attributes(case.root),
+                DomChange::AttrValue(case.local_attr)
+            ]
+        );
         assert_eq!(case.dom.usage().history_entries(), retained);
-        // All retained entries have exactly one DomChange. At steady capacity
+        // All retained entries have the Element and Attr changes. At steady capacity
         // this append evicts exactly one equally sized original entry.
         assert_eq!(case.dom.usage().history_bytes(), bytes);
         if retained == 0 {
@@ -222,15 +251,17 @@ fn retained_entry_eviction_keeps_literal_chronology_and_exact_noops() {
         case.dom.changes_since(old.stamp()).unwrap().changes(),
         &[
             DomChange::Attributes(case.root),
+            DomChange::AttrValue(case.local_attr),
             DomChange::Data(case.text),
             DomChange::Attributes(case.root),
+            DomChange::AttrValue(case.local_attr),
         ]
     );
     let stamp = case.dom.snapshot().stamp();
     let usage = case.dom.usage();
     let mut noop = DomBatch::new();
-    noop.set_attribute(case.root, "temporary", "x");
-    noop.remove_attribute(case.root, "temporary");
+    noop.set_attribute(case.root, "data-local", "temporary");
+    noop.set_attribute(case.root, "data-local", "before");
     assert!(
         case.dom
             .apply(noop, &AtomicBool::new(false))
@@ -259,6 +290,7 @@ fn retained_entry_eviction_keeps_literal_chronology_and_exact_noops() {
         &[
             DomChange::Data(case.text),
             DomChange::Attributes(case.root),
+            DomChange::AttrValue(case.local_attr),
             DomChange::Data(case.comment),
         ]
     );
@@ -284,7 +316,13 @@ fn a_single_oversized_history_entry_requires_recompute_without_losing_the_commit
     assert_eq!(case.dom.usage().history_entries(), 0);
     let old = case.dom.snapshot();
     let delta = source_attribute(&mut case, "after", 0);
-    assert_eq!(delta.changes(), &[DomChange::Attributes(case.root)]);
+    assert_eq!(
+        delta.changes(),
+        &[
+            DomChange::Attributes(case.root),
+            DomChange::AttrValue(case.local_attr)
+        ]
+    );
     assert_eq!(case.dom.usage().history_entries(), 0);
     assert_eq!(case.dom.usage().history_bytes(), 0);
     assert_eq!(

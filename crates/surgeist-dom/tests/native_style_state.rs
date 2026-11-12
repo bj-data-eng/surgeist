@@ -164,8 +164,6 @@ fn source_retained_bytes_cover_actual_spare_attribute_backing() {
         let retained = before
             .node(parent)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attribute(&"data-retained".into())
             .unwrap();
         assert_eq!(retained.code_units(), &[u16::from(b'x')]);
@@ -208,8 +206,6 @@ fn source_retained_bytes_cover_actual_spare_attribute_backing() {
         for snapshot in [&before, &dom.snapshot()] {
             let retained = snapshot
                 .node(parent)
-                .unwrap()
-                .as_element()
                 .unwrap()
                 .attribute(&"data-retained".into())
                 .unwrap();
@@ -441,8 +437,6 @@ fn published_source_parks_exact_tail_and_cancellation_finishes_the_same_insertio
             snapshot
                 .node(id)
                 .unwrap()
-                .as_element()
-                .unwrap()
                 .attribute(&"unstarted".into())
                 .is_none()
         );
@@ -454,8 +448,6 @@ fn published_source_parks_exact_tail_and_cancellation_finishes_the_same_insertio
     assert_eq!(
         dom.snapshot()
             .node(first)
-            .unwrap()
-            .as_element()
             .unwrap()
             .attribute(&"unstarted".into()),
         Some(&"runs only after completion".into())

@@ -222,7 +222,7 @@ fn reserved_empty_first_write_admits_overlap_and_removal_keeps_selected_capacity
     let ledger = custody::Ledger::default();
     let registry = bank::CustodyRegistry::new(&ledger, |_| Ok(())).unwrap();
     let payload_usage = custody::Usage::new(
-        size_of::<store::payload::Payload<store::canonical::ContainerChildren<u32>>>()
+        size_of::<store::payload::Payload<store::canonical::NodeSequence<u32>>>()
             + size_of::<Vec<u32>>()
             + capacity * size_of::<u32>(),
         0,
@@ -232,7 +232,7 @@ fn reserved_empty_first_write_admits_overlap_and_removal_keeps_selected_capacity
     let group = reserved
         .materialize(
             custody::Held::new(
-                store::canonical::ContainerChildren {
+                store::canonical::NodeSequence {
                     values: original.clone(),
                 },
                 debit,

@@ -12,6 +12,12 @@ pub(in crate::store) enum FieldUndo {
     Focus(FocusVersion),
     Element(Controlled<DomElement>, FocusVersion),
     Attr(Controlled<crate::DomAttribute>),
+    AttrOwner(Option<Key>),
+    AttributeRevision(Option<custody::MaterializationId>),
+    AttributeOrder(
+        Option<Group<NodeSequence<NodeId>, NodeSequenceFields>>,
+        Option<custody::MaterializationId>,
+    ),
     ImageOwner(Option<Key>),
     ImageState(Group<crate::image::ImageState<NodeId>, crate::image::ImageState<Key>>),
     Metadata(Controlled<DomDocumentMetadata>),
@@ -29,7 +35,7 @@ pub(in crate::store) enum FieldUndo {
     Interactive(InteractiveGroup),
     Autofocus(AutofocusGroup),
     ActiveRange(crate::DomActiveRangeState),
-    Children(Option<Group<ContainerChildren<NodeId>, Children>>),
+    Children(Option<Group<NodeSequence<NodeId>, NodeSequenceFields>>),
     FullscreenGroup(
         Option<
             Group<
@@ -94,6 +100,26 @@ impl FieldUndo {
                     Self::Attr(std::mem::replace(&mut node.value_mut().data, value))
                 }
                 _ => Self::Attr(value),
+            },
+            Self::AttrOwner(owner) => match node {
+                DraftNode::Attr(node) => {
+                    Self::AttrOwner(std::mem::replace(&mut node.value_mut().owner, owner))
+                }
+                _ => Self::AttrOwner(owner),
+            },
+            Self::AttributeRevision(revision) => match node.element_fields_mut() {
+                Some(fields) => Self::AttributeRevision(std::mem::replace(
+                    &mut fields.attribute_revision,
+                    revision,
+                )),
+                None => Self::AttributeRevision(revision),
+            },
+            Self::AttributeOrder(order, revision) => match node.element_fields_mut() {
+                Some(fields) => Self::AttributeOrder(
+                    std::mem::replace(&mut fields.attributes, order),
+                    std::mem::replace(&mut fields.attribute_revision, revision),
+                ),
+                None => Self::AttributeOrder(order, revision),
             },
             Self::Metadata(value) => Self::Metadata(std::mem::replace(
                 &mut node.document_fields_mut().expect("Document").metadata,
@@ -341,6 +367,103 @@ pub(super) fn seal_language<T>(
         .map(Controlled::from)
 }
 impl Draft {
+    pub(in crate::store) fn set_attr_owner(
+        &mut self,
+        key: Key,
+        owner: Option<Key>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.materialize_node(key, cancel)?;
+        if !matches!(self.node(key)?.kind(), super::KindRead::Attr(_)) {
+            return Err(DomError::WrongNodeKind);
+        }
+        let undo = self.prepare_undo(cancel)?;
+        let debit = self
+            .custody_ledger()
+            .retain(custody::Usage::ZERO, |usage| {
+                self.admit_custody_usage(usage, cancel)
+            })?;
+        self.commit_selected(
+            key,
+            custody::Held::new(owner, debit),
+            |owner| Overlay::AttrOwner(*owner),
+            |_, _, owner, _| Ok(FieldUndo::AttrOwner(*owner.value())),
+            undo,
+            cancel,
+        )
+    }
+
+    pub(in crate::store) fn advance_attribute_revision(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.materialize_node(key, cancel)?;
+        self.element(key)?;
+        let undo = self.prepare_undo(cancel)?;
+        let revision = custody::MaterializationId::fresh()?;
+        let debit = self
+            .custody_ledger()
+            .retain(custody::Usage::ZERO, |usage| {
+                self.admit_custody_usage(usage, cancel)
+            })?;
+        self.commit_selected(
+            key,
+            custody::Held::new(revision, debit),
+            |revision| Overlay::AttributeRevision(*revision),
+            |_, _, revision, _| Ok(FieldUndo::AttributeRevision(Some(*revision.value()))),
+            undo,
+            cancel,
+        )
+    }
+
+    pub(in crate::store) fn replace_attribute_order(
+        &mut self,
+        key: Key,
+        order: source::scratch::OwnedScratch<Key>,
+        removed: &[Key],
+        added: Option<&[Key]>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.materialize_node(key, cancel)?;
+        self.element(key)?;
+        let undo = self.prepare_undo(cancel)?;
+        let revision = custody::MaterializationId::fresh()?;
+        let registry = self.custody_registry();
+        let mut admit = |usage| self.admit_custody_usage(usage, cancel);
+        let order = if order.values().is_empty() {
+            None
+        } else {
+            let (values, debit) = order.into_held(registry.ledger(), &mut admit)?.into_parts();
+            let values = super::Sequence::staged(values, debit, Key::Existing);
+            Some(boxed(registry, &mut admit, || {
+                Ok(NodeSequenceFields { values })
+            })?)
+        };
+        let debit = registry.ledger().retain(custody::Usage::ZERO, &mut admit)?;
+        self.commit_selected(
+            key,
+            custody::Held::new((order, removed, added), debit),
+            |(order, removed, added)| Overlay::AttributeOrder {
+                order: order.as_ref().map_or(super::SequenceView::Empty, |order| {
+                    order.value().values.view()
+                }),
+                revision,
+                removed,
+                added: *added,
+            },
+            |_, _, order, _| {
+                let ((order, _, _), debit) = order.into_parts();
+                drop(debit);
+                Ok(FieldUndo::AttributeOrder(
+                    order.map(Group::Changed),
+                    Some(revision),
+                ))
+            },
+            undo,
+            cancel,
+        )
+    }
     pub(in crate::store) fn replace_attr_value_formed(
         &mut self,
         key: Key,

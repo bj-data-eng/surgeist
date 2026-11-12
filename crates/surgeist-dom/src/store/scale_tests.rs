@@ -314,6 +314,9 @@ fn fixture(managed: usize, context: Context) -> Fixture {
     fixture_with_capacity(managed, context, 0)
 }
 
+// Two Documents, two Elements, one Text and the target's authored Attr.
+const FIXTURE_BASE_NODES: usize = 6;
+
 fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixture {
     let started = Instant::now();
     // Guard direct Vacant callers as well as the size selector, before any DOM
@@ -464,14 +467,16 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
         Context::LargeChildren => LARGE_CHILDREN,
         // The boundary companion also admits the 10k selection. Its two
         // endpoint Comments occupy the tail of this public sequence.
-        Context::RangeBoundary => LARGE_CHILDREN.min(managed.checked_sub(5).unwrap()),
+        Context::RangeBoundary => {
+            LARGE_CHILDREN.min(managed.checked_sub(FIXTURE_BASE_NODES).unwrap())
+        }
         _ => 0,
     };
-    assert!(managed >= 5 + large_children);
+    assert!(managed >= FIXTURE_BASE_NODES + large_children);
 
     // Attached fixtures use bounded groups. Only the explicitly selected wide
     // Children and Range-boundary fixtures grow a large sequence during setup.
-    let mut remaining = managed - 5 - style_count * 3 - hosted_nodes;
+    let mut remaining = managed - FIXTURE_BASE_NODES - style_count * 3 - hosted_nodes;
     let mut target_remaining = large_children;
     let mut details_remaining = details;
     let mut select_remaining = select_tasks;
@@ -504,15 +509,15 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
                 target_tickets.push(child);
                 target_remaining -= 1;
                 left -= 1;
-            } else if details_remaining > 0 {
+            } else if details_remaining > 0 && left >= 2 {
                 let details = batch.create_element_ns(other_document, Namespace::html(), "details");
                 // Two source transitions leave equal authored state
                 // and retain both ordered native task intentions.
                 batch.set_attribute(&details, "open", "");
                 batch.remove_attribute(&details, "open");
                 details_remaining -= 1;
-                left -= 1;
-            } else if select_remaining > 0 && left >= 2 {
+                left -= 2;
+            } else if select_remaining > 0 && left >= 3 {
                 let select = batch.create_element_ns(other_document, Namespace::html(), "select");
                 let option = batch.create_element_ns(other_document, Namespace::html(), "option");
                 batch.set_attribute(&option, "selected", "");
@@ -522,17 +527,17 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
                 batch.detach(&option);
                 select_tickets.push(select);
                 select_remaining -= 1;
-                left -= 2;
+                left -= 3;
             } else if fullscreen_remaining > 0 {
                 let element = batch.create_element(other_document, "fullscreen-member");
                 fullscreen_tickets.push(element);
                 fullscreen_remaining -= 1;
                 left -= 1;
-            } else if matches!(context, Context::Attributes) {
+            } else if matches!(context, Context::Attributes) && left >= 3 {
                 let extra = batch.create_element(other_document, "extra");
                 batch.set_attribute(&extra, "data-unrelated", "retained-value");
                 batch.set_attribute(&extra, "other", "independent-value");
-                left -= 1;
+                left -= 3;
             } else {
                 let ticket = batch.create_comment(other_document, "u");
                 if dispatch_ids.len() + dispatch_tickets.len() < dispatch_targets {
@@ -694,8 +699,6 @@ enum Edit {
 fn attribute(snapshot: &DomSnapshot, id: NodeId) -> DocumentString {
     snapshot
         .node(id)
-        .unwrap()
-        .as_element()
         .unwrap()
         .attribute(&"data-local".into())
         .unwrap()
@@ -1169,7 +1172,7 @@ fn source_range_boundaries_beside_unchanged_siblings_scale() {
     for managed in selected_sizes() {
         // A 1k pilot cannot discriminate the old scan with this unchanged work
         // policy; disclose that ineligibility instead of claiming scale credit.
-        let comments = LARGE_CHILDREN.min(managed.checked_sub(5).unwrap());
+        let comments = LARGE_CHILDREN.min(managed.checked_sub(FIXTURE_BASE_NODES).unwrap());
         if comments < usize::try_from(WORK).unwrap() + 2 {
             eprintln!(
                 "scale range_boundary skipped managed={managed} tail_prefix_below_fixed_work=true comments={comments} work={WORK}"
@@ -1985,12 +1988,7 @@ fn check_import(
     );
     assert_eq!(snapshot.node(root).unwrap().children(), children);
     assert_eq!(
-        snapshot
-            .node(root)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"captured".into()),
+        snapshot.node(root).unwrap().attribute(&"captured".into()),
         Some(&DocumentString::from("literal"))
     );
     for (index, child) in children.iter().enumerate() {
@@ -2590,15 +2588,7 @@ fn postsetup_native_source_park_resume_reentry_scale() {
                 attribute(&fixture.dom.snapshot(), fixture.target),
                 DocumentString::from(next)
             );
-            assert_eq!(
-                before
-                    .node(dialog)
-                    .unwrap()
-                    .as_element()
-                    .unwrap()
-                    .attribute(&"open".into()),
-                None
-            );
+            assert_eq!(before.node(dialog).unwrap().attribute(&"open".into()), None);
             assert_eq!(
                 before.node(fixture.target).unwrap().children(),
                 fixture.children
@@ -2737,8 +2727,6 @@ fn fixed_unrelated_spare_utf16_backing_scale() {
             let retained = original
                 .node(unrelated)
                 .unwrap()
-                .as_element()
-                .unwrap()
                 .attribute(&"data-spare".into())
                 .unwrap();
             assert_eq!(retained.code_units(), &[0xd800]);
@@ -2773,8 +2761,6 @@ fn fixed_unrelated_spare_utf16_backing_scale() {
             for snapshot in [&original, &current] {
                 let retained = snapshot
                     .node(unrelated)
-                    .unwrap()
-                    .as_element()
                     .unwrap()
                     .attribute(&"data-spare".into())
                     .unwrap();

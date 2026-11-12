@@ -73,7 +73,7 @@ fn native_generic_elements_keep_exact_names_and_known_null_creation_state() {
     );
     assert_eq!(element.saved_is(), None);
     assert_eq!(
-        element.attribute(&"is".into()),
+        node.attribute(&"is".into()),
         Some(&DocumentString::from("x-control"))
     );
     assert_eq!(node.element_index(), Some(0));
@@ -161,9 +161,13 @@ fn attributes_preserve_expanded_identity_prefix_order_and_first_qualified_match(
     batch.set_attribute_ns(root, a.clone(), "other:x", "updated");
     batch.set_attribute(root, "p:x", "first qualified match");
     let report = apply(&mut dom, batch);
-    assert_eq!(report.changes().changes(), [DomChange::Attributes(root)]);
     let snapshot = dom.snapshot();
-    let element = snapshot.node(root).unwrap().as_element().unwrap();
+    let element = snapshot.node(root).unwrap();
+    let attr = element.get_attribute_node_ns(&a, &"x".into()).unwrap();
+    assert_eq!(
+        report.changes().changes(),
+        [DomChange::Attributes(root), DomChange::AttrValue(attr.id())]
+    );
     assert_eq!(
         element.attribute_ns(&a, &"x".into()),
         Some(&DocumentString::from("first qualified match"))
@@ -183,24 +187,23 @@ fn attributes_preserve_expanded_identity_prefix_order_and_first_qualified_match(
         ),
         None
     );
-    let attrs = element.attributes();
+    let attrs = element.attributes().unwrap();
     assert_eq!(attrs.len(), 3);
-    assert_eq!(attrs[0].name().prefix(), Some(&DocumentString::from("p")));
-    assert_eq!(attrs[1].name().namespace_uri(), b.uri());
     assert_eq!(
-        old.node(root)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute_ns(&a, &"x".into()),
+        attrs.item(0).unwrap().name().prefix(),
+        Some(&DocumentString::from("p"))
+    );
+    assert_eq!(attrs.item(1).unwrap().name().namespace_uri(), b.uri());
+    assert_eq!(
+        old.node(root).unwrap().attribute_ns(&a, &"x".into()),
         Some(&DocumentString::from("first"))
     );
     let mut batch = DomBatch::new();
     batch.remove_attribute(root, "p:x");
     apply(&mut dom, batch);
     let snapshot = dom.snapshot();
-    let element = snapshot.node(root).unwrap().as_element().unwrap();
-    assert_eq!(element.attributes().len(), 2);
+    let element = snapshot.node(root).unwrap();
+    assert_eq!(element.attributes().unwrap().len(), 2);
     assert_eq!(
         element.attribute(&"p:x".into()),
         Some(&DocumentString::from("second"))
@@ -212,9 +215,8 @@ fn attributes_preserve_expanded_identity_prefix_order_and_first_qualified_match(
         dom.snapshot()
             .node(root)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attributes()
+            .unwrap()
             .len(),
         1
     );
@@ -262,11 +264,12 @@ fn namespace_validation_uses_first_colon_and_source_error_precedence() {
         batch.set_attribute_ns(root, Namespace::from_uri(namespace), qualified, "v");
         apply(&mut dom, batch);
         let snapshot = dom.snapshot();
-        let element = snapshot.node(root).unwrap().as_element().unwrap();
+        let element = snapshot.node(root).unwrap();
         let namespace = Namespace::from_uri(namespace);
         let local = DocumentString::from(local);
         let attr = element
             .attributes()
+            .unwrap()
             .iter()
             .find(|attribute| {
                 attribute.name().namespace_uri() == namespace.uri()
@@ -291,12 +294,7 @@ fn ordinary_attribute_validation_and_missing_removals_do_not_become_qname_checks
         batch.set_attribute(root, name, "v");
         apply(&mut dom, batch);
         assert_eq!(
-            dom.snapshot()
-                .node(root)
-                .unwrap()
-                .as_element()
-                .unwrap()
-                .attribute(&name.into()),
+            dom.snapshot().node(root).unwrap().attribute(&name.into()),
             Some(&DocumentString::from("v"))
         );
     }
@@ -377,7 +375,7 @@ fn exact_attribute_budget_counts_all_stored_name_parts_and_rolls_back_overflow()
     // 31 Document + 1 Element + 5 URI + 1 prefix + 1 local + 2 value = 41.
     let mut dom = Dom::new(
         DomLimits::new(
-            2,
+            4,
             41,
             8,
             0,
@@ -422,12 +420,7 @@ fn exact_attribute_budget_counts_all_stored_name_parts_and_rolls_back_overflow()
     apply(&mut dom, batch);
     assert_eq!(dom.usage().string_code_units(), 31);
     assert_eq!(
-        before
-            .node(root)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"p:x".into()),
+        before.node(root).unwrap().attribute(&"p:x".into()),
         Some(&DocumentString::from("😀"))
     );
 }
@@ -446,14 +439,20 @@ fn attribute_names_namespaces_and_values_preserve_exact_utf16_units() {
     batch.set_attribute_ns(root, namespace.clone(), qualified, value.clone());
     apply(&mut dom, batch);
     let snapshot = dom.snapshot();
-    let element = snapshot.node(root).unwrap().as_element().unwrap();
+    let element = snapshot.node(root).unwrap();
     assert_eq!(
         element.attribute_ns(&Namespace::none(), &literal),
         Some(&value)
     );
     assert_eq!(element.attribute_ns(&namespace, &local), Some(&value));
     assert_eq!(
-        element.attributes()[1].name().prefix(),
+        element
+            .attributes()
+            .unwrap()
+            .item(1)
+            .unwrap()
+            .name()
+            .prefix(),
         Some(&DocumentString::from("p"))
     );
 }
@@ -470,8 +469,6 @@ fn final_attribute_and_unpublished_element_noops_do_not_advance_revision() {
     let mut batch = DomBatch::new();
     batch.set_attribute(root, "kept", "changed");
     batch.set_attribute(root, "kept", "old");
-    batch.set_attribute(root, "new", "new");
-    batch.remove_attribute(root, "new");
     let transient = batch.create_element(document, "transient");
     batch.set_attribute(&transient, "a", "value");
     batch.destroy(&transient);

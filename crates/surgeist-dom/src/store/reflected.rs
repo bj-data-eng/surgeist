@@ -241,7 +241,11 @@ mod tests {
             // Non-null completed empty-content write and its clearing hook;
             // null completed explicit-clear before deleting the old content.
             assert_eq!(
-                element.attribute(&"commandfor".into()),
+                element
+                    .attributes()
+                    .iter()
+                    .find(|attr| attr.name().local_name() == &DocumentString::from("commandfor"))
+                    .map(crate::DomAttribute::value),
                 Some(&DocumentString::from(""))
             );
             assert_eq!(*dom.state, *before.state);

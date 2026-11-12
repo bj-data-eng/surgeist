@@ -1,4 +1,4 @@
-//! A refused containing-bank replacement retains the acknowledged Close for retry.
+//! Mandatory attribute removal under finite name and Source storage allowances.
 use super::*;
 use surgeist_html::elements::dialog::HtmlDialogAction;
 
@@ -11,14 +11,14 @@ fn source_policy() -> DomSourceLimits {
 }
 
 #[test]
-fn acknowledged_close_retries_same_attribute_tail_after_raising_name_allowance() {
+fn acknowledged_close_detaches_existing_open_under_name_pressure() {
     let cancel = AtomicBool::new(false);
     let (mut dom, executor, _, subject, callback_subject) = fixture();
     // Select the valid finite policy before any Source observation. No policy
     // is lowered to measured live usage during dispatch or mandatory closing.
     // Disabling history prevents old setup arrays from becoming participants.
     let policy = DomLimits::new(
-        128,
+        512,
         1_000_000,
         256,
         128,
@@ -44,9 +44,8 @@ fn acknowledged_close_retries_same_attribute_tail_after_raising_name_allowance()
         dom.snapshot()
             .node(subject)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attributes()
+            .unwrap()
             .len(),
         UNRELATED_ATTRIBUTES + 1
     );
@@ -132,7 +131,7 @@ fn acknowledged_close_retries_same_attribute_tail_after_raising_name_allowance()
             .unwrap(),
     );
     assert!(permit.is_none());
-    let (closing, work_before_closing) = {
+    {
         let mut lease = dom
             .resume_source_edit(operation, source_policy(), &cancel)
             .unwrap();
@@ -164,94 +163,18 @@ fn acknowledged_close_retries_same_attribute_tail_after_raising_name_allowance()
             .unwrap();
         assert!(queued.is_none());
         let work = lease.status().spent_work();
-        (lease.advance(&cancel), work)
-    };
-
-    // A replacement must at least own its concrete target and surviving array.
-    // This independent lower bound excludes child-custody and occurrence costs;
-    // it is not an observed admission maximum or an exact receipt oracle.
-    let replacement_minimum =
-        size_of::<crate::store::payload::Payload<crate::name::AttributeValues>>()
-            + UNRELATED_ATTRIBUTES * size_of::<crate::DomAttribute>();
-    eprintln!(
-        "Close bindings={}, name_bytes={}, mandatory_array_minimum={replacement_minimum}",
-        held.len(),
-        dom.names.inspect_usage().bytes(),
-    );
-    assert!(
-        matches!(
-            closing,
-            Err(DomError::ResourceLimit {
-                resource: DomResource::NameRetainedBytes,
-                limit: NAME_BYTES,
-            })
-        ),
-        "the fresh containing bank must report its exact finite refusal: {closing:?}"
-    );
-    let status = dom.pending_source_edit().expect("mandatory tail retained");
-    assert_eq!(status.operation(), operation);
-    assert_eq!(status.phase(), DomSourcePhase::DialogService);
-    assert!(status.has_published());
-    assert!(status.spent_work() > work_before_closing);
-    assert_eq!(
-        dom.snapshot().incomplete_source_operation(),
-        Some(operation)
-    );
-    let retained = dom.source_operation.as_ref().unwrap();
-    assert!(retained.headroom.as_ref().unwrap().remaining_phases > 0);
-    let Some(crate::store::method::Frame::Dialog(frame)) = retained.draft.method.as_ref() else {
-        panic!("the original Close cursor must survive refusal")
-    };
-    assert_eq!(frame.cursor.action(), HtmlDialogAction::RemoveOpen);
-    assert_eq!(
-        dom.snapshot()
-            .node(subject)
-            .unwrap()
-            .attribute(&"open".into()),
-        Some(&"".into())
-    );
-    assert_eq!(tasks[0].as_ref().unwrap().info().id().target(), subject);
-    assert!(tasks[1].is_none());
-    let published_phases = status.published_phases();
-    let spent_work = status.spent_work();
-
-    // A fresh containing bank follows the existing raised-budget Source retry
-    // contract. Fixed doubling is selected independently of measured receipts;
-    // atom/index reservations and already published queue work remain intact.
-    let raised = DomLimits::new(
-        128,
-        1_000_000,
-        256,
-        128,
-        128,
-        0,
-        0,
-        crate::DomNameLimits::new(NAME_BYTES * 2, 16_384, 100_000_000, 8_000_000).unwrap(),
-    )
-    .unwrap()
-    .with_dispatch_custody(dom.limits().dispatch_custody());
-    dom.set_limits(raised).unwrap();
-    let after_raise = dom.pending_source_edit().unwrap();
-    assert_eq!(after_raise.operation(), operation);
-    assert!(after_raise.spent_work() >= spent_work);
-    let retry_work = after_raise.spent_work();
-    assert_eq!(after_raise.published_phases(), published_phases);
-    {
-        let mut lease = dom
-            .resume_source_edit(operation, source_policy(), &cancel)
-            .unwrap();
-        assert!(lease.status().spent_work() >= retry_work);
-        let DomSourceProgress::Request(DomSourceRequest::Dialog(close)) =
-            lease.advance(&cancel).unwrap()
+        let DomSourceProgress::Request(DomSourceRequest::Dialog(close)) = lease
+            .advance(&cancel)
+            .expect("removal uses the existing Attr name")
         else {
-            panic!("original RemoveOpen must resume directly to QueueClose")
+            panic!("RemoveOpen reaches QueueClose")
         };
-        // Repeated beforetoggle or QueueToggle would be a protocol regression.
         assert_eq!(close.operation(), operation);
         assert_eq!(close.subject(), subject);
         assert_eq!(close.action(), HtmlDialogAction::QueueClose);
-        assert_eq!(lease.status().published_phases(), published_phases);
-        assert!(lease.status().spent_work() > retry_work);
+        assert!(lease.status().spent_work() > work);
+        assert_eq!(tasks[0].as_ref().unwrap().info().id().target(), subject);
+        assert!(tasks[1].is_none());
         let plan = lease
             .dialog_task_queue_plan(&close, &task_source, 2, &cancel)
             .unwrap();
@@ -270,7 +193,7 @@ fn acknowledged_close_retries_same_attribute_tail_after_raising_name_allowance()
             lease.advance(&cancel),
             Ok(DomSourceProgress::Complete(_))
         ));
-    }
+    };
     for (index, token) in held.iter().enumerate() {
         assert_eq!(token.owner(), dom.owner());
         assert_eq!(
@@ -307,12 +230,10 @@ fn acknowledged_close_retries_same_attribute_tail_after_raising_name_allowance()
 
 // The Source companion consumes actual task-owner buffers, rather than lowering
 // a policy to an observed ledger total or calibrating an admission threshold.
-const SOURCE_ATTRIBUTES: usize = 1024;
-const SOURCE_BYTES: usize = 8 * 1024 * 1024;
-const SOURCE_BANK_MINIMUM: usize = size_of::<
-    crate::store::payload::Payload<crate::name::AttributeValues>,
->() + SOURCE_ATTRIBUTES * size_of::<crate::DomAttribute>();
-const TASK_SLAB_BYTES: usize = SOURCE_BANK_MINIMUM / 2;
+const SOURCE_ATTRIBUTES: usize = 256;
+const SOURCE_BYTES: usize = 32 * 1024 * 1024;
+const SOURCE_ORDER_MINIMUM: usize = SOURCE_ATTRIBUTES * size_of::<crate::store::Key>();
+const TASK_SLAB_BYTES: usize = SOURCE_ORDER_MINIMUM / 2;
 
 struct TaskSlab {
     bytes: Box<[u8; TASK_SLAB_BYTES]>,
@@ -328,7 +249,7 @@ fn acknowledged_close_retries_attribute_formation_after_source_storage_refusal()
     let cancel = AtomicBool::new(false);
     let (mut dom, executor, _, subject, callback_subject) = fixture();
     let names = crate::DomNameLimits::new(16_777_216, 16_384, 100_000_000, 8_000_000).unwrap();
-    let owner_policy = DomLimits::new(128, 1_000_000, 256, 128, 128, 0, 0, names)
+    let owner_policy = DomLimits::new(2_048, 1_000_000, 256, 128, 128, 0, 0, names)
         .unwrap()
         .with_dispatch_custody(dom.limits().dispatch_custody());
     dom.set_limits(owner_policy).unwrap();
@@ -343,12 +264,9 @@ fn acknowledged_close_retries_attribute_formation_after_source_storage_refusal()
 
     {
         let snapshot = dom.snapshot();
-        let element = snapshot.node(subject).unwrap().as_element().unwrap();
-        let open = element
-            .attributes()
-            .iter()
-            .find(|attribute| attribute.name().local_name() == &DocumentString::from("open"))
-            .unwrap();
+        let node = snapshot.node(subject).unwrap();
+        let element = node.as_element().unwrap();
+        let open = node.get_attribute_node(&"open".into()).unwrap();
         assert_eq!(open.name().namespace_uri(), None);
         assert_eq!(open.name().prefix(), None);
         assert_eq!(open.name().local_name().len(), 4);
@@ -361,8 +279,8 @@ fn acknowledged_close_retries_attribute_formation_after_source_storage_refusal()
     // one-row capacity, including the large inline Undo variants. The mark is
     // bounded conservatively by its larger owning JournalMark handle. Four
     // short-string occurrences cover the command, normalization and retained
-    // removal-name/empty-value locals before attribute_input. No node record
-    // materializes until publish_element, after that array has been formed.
+    // removal-name/empty-value locals. The new attribute order must still
+    // coexist with the detached Attr record and the original published order.
     let mut raw_inverse = std::collections::VecDeque::<crate::store::transaction::Undo>::new();
     raw_inverse.try_reserve_exact(1).unwrap();
     let prefix_bound = size_of::<crate::store::source::checkpoint::Checkpoint>()
@@ -370,8 +288,7 @@ fn acknowledged_close_retries_attribute_formation_after_source_storage_refusal()
         + raw_inverse.capacity() * size_of::<crate::store::transaction::Undo>()
         + 4 * (size_of::<Vec<u16>>() + 4 * size_of::<u16>());
     assert!(
-        prefix_bound + size_of::<crate::store::payload::Payload<crate::name::AttributeValues>>()
-            <= TASK_SLAB_BYTES,
+        prefix_bound <= TASK_SLAB_BYTES,
         "raw checkpoint/cursor/string prefix must fit the independently sized slab"
     );
     drop(raw_inverse);
@@ -496,7 +413,7 @@ fn acknowledged_close_retries_attribute_formation_after_source_storage_refusal()
         // the declared byte extent; it allocates no additional metadata. Its
         // exact failed Source admission therefore leaves less than one slab.
         // Release one actual buffer, data before its original permission. Free
-        // room is now >=slab and <2*slab <= the mandatory new bank minimum.
+        // room is now >=slab and <2*slab <= the mandatory new order minimum.
         let released = slabs.pop().expect("at least one actual buffer admitted");
         drop(released);
         // Notify the existing owner admission front of the reduced actual task
@@ -517,7 +434,7 @@ fn acknowledged_close_retries_attribute_formation_after_source_storage_refusal()
                 limit: SOURCE_BYTES,
             })
         ),
-        "mandatory array formation reports the original finite Source bound: {refusal:?}"
+        "mandatory order formation reports the original finite Source bound: {refusal:?}"
     );
     let status = dom.pending_source_edit().unwrap();
     assert_eq!(status.operation(), operation);

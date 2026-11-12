@@ -361,14 +361,6 @@ impl Dependency {
         Ok(Self { value, debit })
     }
 
-    /// Complete an unpublished dependency before any custody alias escapes.
-    pub(in crate::store) fn value_mut<T: Any + Send + Sync>(&mut self) -> &mut T {
-        Arc::get_mut(&mut self.value)
-            .expect("unpublished dependency has one owner")
-            .downcast_mut::<T>()
-            .expect("one owning dependency type")
-    }
-
     /// Inspect a heterogeneous dependency without changing its real owner.
     #[cfg(test)]
     pub(in crate::store) fn try_get<T: Any + Send + Sync>(&self) -> Option<Retained<T>> {

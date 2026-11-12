@@ -1469,7 +1469,7 @@ impl Dom {
         let (bindings, captured_bindings) = pending
             .output_headers
             .materialize(pending.bindings, pending.captured_bindings);
-        let mut publication = self.prepare_publication(pending.prepared, cancelled)?;
+        let publication = self.prepare_publication(pending.prepared, cancelled)?;
         let pending_association = (!pending.association_documents.is_empty()).then_some(
             crate::DomParsedHtmlAssociationId {
                 stamp: publication.to,
@@ -1503,7 +1503,6 @@ impl Dom {
         } else {
             None
         };
-        publication.close_ordinary_sharing(cancelled)?;
         control.check()?;
         // Every original-history, mapping, bank and output allocation is now
         // admitted. Structural publication and durable custody move together.

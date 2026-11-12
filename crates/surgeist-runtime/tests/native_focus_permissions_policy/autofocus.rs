@@ -640,10 +640,11 @@ fn undefined_element_namespaces_do_not_trigger_autofocus_insertion() {
             .unwrap()
             .unwrap();
         let detached = session.snapshot();
-        let element = detached.node(node).unwrap().as_element().unwrap();
+        let subject = detached.node(node).unwrap();
+        let element = subject.as_element().unwrap();
         assert_eq!(element.name().namespace_uri(), namespace.uri());
         assert_eq!(
-            element.attribute_ns(&Namespace::none(), &"autofocus".into()),
+            subject.attribute_ns(&Namespace::none(), &"autofocus".into()),
             Some(&"".into())
         );
         assert_eq!(

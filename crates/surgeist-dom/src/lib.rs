@@ -81,7 +81,7 @@
 //! let snapshot = dom.snapshot();
 //! let root = snapshot.node(committed.created(&root)?.unwrap())?;
 //! assert_eq!(root.node_name().to_utf8()?, "Root");
-//! assert_eq!(root.as_element().unwrap().attributes().len(), 1);
+//! assert_eq!(root.attributes().unwrap().len(), 1);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
@@ -189,7 +189,7 @@ mod template;
 mod textarea;
 mod view_transition;
 
-pub use attr::DomAttr;
+pub use attr::{DomAttr, DomNamedNodeMap};
 pub use autofocus::DomDocumentAutofocus;
 pub use base::{DomBase, DomBaseFactsError, DomBaseResponse, DomFrozenBase, DomLink};
 pub use batch::{AttachedShadowRoot, CreatedNode, DomBatch, NodeOperand};

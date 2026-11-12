@@ -1191,11 +1191,11 @@ impl Pending {
     ) -> (DomSourceProgress, crate::DomChanges) {
         let Self {
             segment,
-            checkpoint,
+            checkpoint: _checkpoint,
             disposition,
             bases: _,
         } = self;
-        let published = segment.publish(operation, lease.dom, checkpoint.as_ref());
+        let published = segment.publish(operation, lease.dom);
         let changes = published.commit.changes.clone();
         operation.receipt = None;
         operation.owner_binding = None;

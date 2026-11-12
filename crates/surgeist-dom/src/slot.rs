@@ -162,37 +162,32 @@ pub(crate) fn is_slottable(kind: TreeKind<'_>) -> bool {
     matches!(kind, TreeKind::Element(_) | TreeKind::Text)
 }
 pub(crate) fn name_admitted<'a, E>(
-    kind: TreeKind<'a>,
+    attributes: impl Iterator<Item = &'a crate::DomAttribute>,
     attr: &str,
     step: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Option<&'a DocumentString>, E> {
-    match kind {
-        TreeKind::Element(e) => {
-            for a in e.attributes().iter() {
-                step()?;
-                if a.name().namespace_uri().is_some() {
-                    continue;
-                }
-                let units = a.name().local_name().code_units();
-                if units.len() != attr.len() {
-                    continue;
-                }
-                let mut equal = true;
-                for (actual, expected) in units.iter().zip(attr.bytes()) {
-                    step()?;
-                    if *actual != u16::from(expected) {
-                        equal = false;
-                        break;
-                    }
-                }
-                if equal {
-                    return Ok(Some(a.value()));
-                }
-            }
-            Ok(None)
+    for a in attributes {
+        step()?;
+        if a.name().namespace_uri().is_some() {
+            continue;
         }
-        _ => Ok(None),
+        let units = a.name().local_name().code_units();
+        if units.len() != attr.len() {
+            continue;
+        }
+        let mut equal = true;
+        for (actual, expected) in units.iter().zip(attr.bytes()) {
+            step()?;
+            if *actual != u16::from(expected) {
+                equal = false;
+                break;
+            }
+        }
+        if equal {
+            return Ok(Some(a.value()));
+        }
     }
+    Ok(None)
 }
 pub(crate) fn same_name(
     a: Option<&DocumentString>,

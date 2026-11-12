@@ -125,11 +125,7 @@ fn raw_attribute_changes_and_loading_transitions_preserve_unprocessed_state() {
     assert!(lazy.node(iframe).unwrap().is_connected());
     assert_eq!(state(&lazy, iframe), state(&initial, iframe));
     assert_eq!(
-        lazy.node(iframe)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"srcdoc".into()),
+        lazy.node(iframe).unwrap().attribute(&"srcdoc".into()),
         Some(&"".into())
     );
     for loading in [
@@ -151,14 +147,7 @@ fn raw_attribute_changes_and_loading_transitions_preserve_unprocessed_state() {
     b.remove_attribute(iframe, "src");
     apply(&mut dom, b);
     let s = dom.snapshot();
-    assert!(
-        s.node(iframe)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes()
-            .is_empty()
-    );
+    assert!(s.node(iframe).unwrap().attributes().unwrap().is_empty());
     state(&s, iframe);
     // Namespace and case are exact in this XML node-document.
     let mut b = DomBatch::new();
@@ -177,11 +166,7 @@ fn raw_attribute_changes_and_loading_transitions_preserve_unprocessed_state() {
     assert!(apply(&mut dom, b).changes().changes().is_empty());
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(
-        lazy.node(iframe)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"src".into()),
+        lazy.node(iframe).unwrap().attribute(&"src".into()),
         Some(&raw)
     );
 }
@@ -257,11 +242,11 @@ fn cloning_is_fresh_creation_adoption_preserves_and_import_reads_retained_source
     );
     let e = node.as_element().unwrap();
     assert_eq!(
-        e.attribute(&"sandbox".into()),
+        node.attribute(&"sandbox".into()),
         Some(&"allow-scripts".into())
     );
-    assert_eq!(e.attribute(&"src".into()), Some(&"old src".into()));
-    assert_eq!(e.attribute(&"srcdoc".into()), Some(&"".into()));
+    assert_eq!(node.attribute(&"src".into()), Some(&"old src".into()));
+    assert_eq!(node.attribute(&"srcdoc".into()), Some(&"".into()));
     assert_eq!(e.nonce(), Some(&"slot".into()));
     state(&s, imported);
     state(captured.source(), iframe);
@@ -445,9 +430,8 @@ fn exact_native_iframe_admission_and_failed_attribute_edit_are_atomic() {
                 dom.snapshot()
                     .node(iframe)
                     .unwrap()
-                    .as_element()
-                    .unwrap()
                     .attributes()
+                    .unwrap()
                     .is_empty()
             );
             let mut b = DomBatch::new();
@@ -517,9 +501,8 @@ fn failed_and_cancelled_batches_preserve_history_and_native_state() {
             before
                 .node(iframe)
                 .unwrap()
-                .as_element()
-                .unwrap()
                 .attributes()
+                .unwrap()
                 .is_empty()
         );
     }

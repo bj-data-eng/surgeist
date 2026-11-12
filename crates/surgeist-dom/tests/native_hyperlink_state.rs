@@ -394,8 +394,6 @@ fn binding_rejects_missing_stale_foreign_and_identity_mismatched_context_atomica
         dom.snapshot()
             .node(a)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attribute_ns(&Namespace::none(), &"href".into())
             .is_none()
     );

@@ -40,9 +40,8 @@ fn native_fresh_document_design_mode_disables_implicit_editing_host() {
         snapshot
             .node(root)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attributes()
+            .unwrap()
             .is_empty()
     );
     let capture = snapshot

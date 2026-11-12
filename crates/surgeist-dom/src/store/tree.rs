@@ -410,8 +410,12 @@ impl Draft {
                 self.select_reserve(&mut pending, 1, cancelled)?;
                 pending.push(contents);
             }
-            // Attributes are value records owned by this Element, not Attr
-            // nodes. Their node-document is consequently this same relation.
+            let attributes = self.node(node)?.attribute_ids();
+            self.select_reserve(&mut pending, attributes.len(), cancelled)?;
+            for attribute in attributes.iter().rev() {
+                self.source_step(cancelled)?;
+                pending.push((attribute, document));
+            }
         }
         Ok(())
     }

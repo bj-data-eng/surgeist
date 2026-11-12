@@ -274,11 +274,7 @@ fn captured_subtree_import_reuses_capacity_without_reusing_source_or_retired_ide
         Some(&DocumentString::from("literal child"))
     );
     assert_eq!(
-        now.node(imported)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"key".into()),
+        now.node(imported).unwrap().attribute(&"key".into()),
         Some(&DocumentString::from("literal attribute"))
     );
     assert_eq!(now.node(retired).unwrap_err(), DomError::StaleNode);
@@ -307,24 +303,27 @@ fn attribute_edit_preserves_a_large_unchanged_child_sequence_and_exact_change_co
     let mut batch = DomBatch::new();
     batch.set_attribute(root, "data-local", "changed");
     let commit = apply(&mut dom, batch);
-    assert_eq!(commit.changes().changes(), &[DomChange::Attributes(root)]);
     let now = dom.snapshot();
+    let attr = now
+        .node(root)
+        .unwrap()
+        .get_attribute_node(&"data-local".into())
+        .unwrap();
+    assert_eq!(
+        commit.changes().changes(),
+        &[
+            DomChange::Attributes(root),
+            DomChange::Created(attr.id().node())
+        ]
+    );
     assert_eq!(old.node(root).unwrap().children(), children);
     assert_eq!(now.node(root).unwrap().children(), children);
     assert_eq!(
-        old.node(root)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"data-local".into()),
+        old.node(root).unwrap().attribute(&"data-local".into()),
         None
     );
     assert_eq!(
-        now.node(root)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"data-local".into()),
+        now.node(root).unwrap().attribute(&"data-local".into()),
         Some(&DocumentString::from("changed"))
     );
     for child in children {
@@ -433,27 +432,27 @@ fn local_source_attribute_edit_completes_with_fixed_work_despite_unrelated_recor
         let DomSourceProgress::Complete(done) = progress else {
             panic!("plain XML attribute edit has no external service");
         };
+        let now = lease.snapshot();
+        let attr = now
+            .node(root)
+            .unwrap()
+            .get_attribute_node(&"data-local".into())
+            .unwrap();
         assert_eq!(
             done.commit().changes().changes(),
-            &[DomChange::Attributes(root)]
+            &[
+                DomChange::Attributes(root),
+                DomChange::Created(attr.id().node())
+            ]
         );
-        let now = lease.snapshot();
         assert_eq!(
-            now.node(root)
-                .unwrap()
-                .as_element()
-                .unwrap()
-                .attribute(&"data-local".into()),
+            now.node(root).unwrap().attribute(&"data-local".into()),
             Some(&DocumentString::from("changed"))
         );
         assert_eq!(
-            old.node(root)
-                .unwrap()
-                .as_element()
-                .unwrap()
-                .attribute(&"data-local".into()),
+            old.node(root).unwrap().attribute(&"data-local".into()),
             None
         );
-        assert_eq!(now.nodes().count(), unrelated + 3);
+        assert_eq!(now.nodes().count(), unrelated + 4);
     }
 }

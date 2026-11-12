@@ -6,8 +6,6 @@ use std::{
     sync::Arc,
 };
 use surgeist_html::values::DocumentString;
-mod attributes;
-pub(crate) use attributes::{AttributeStorage, AttributeValues};
 
 /// Lease-free target shared by canonical atoms and their external holders.
 /// Its private materialization identity routes custody, never public matching.

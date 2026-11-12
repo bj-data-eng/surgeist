@@ -33,7 +33,7 @@ impl Selection {
             .map_err(|_| "invalid SURGEIST_MEMORY_MANAGED")?;
         if (rows, columns, managed) != (ROWS, COLUMNS, MANAGED_NODES) {
             return Err(
-                "the parsed fixture requires exactly 4 rows, 8 columns and 76 managed nodes",
+                "the parsed fixture requires exactly 4 rows, 8 columns and 144 managed nodes",
             );
         }
         Ok(Self {
@@ -240,14 +240,14 @@ mod tests {
 
     #[test]
     fn fixed_parsed_selection_refuses_other_geometry_and_samples() {
-        assert!(Selection::parse("parsed-table", "4", "8", "76", "0").is_ok());
-        assert!(Selection::parse("parsed-table", "4", "8", "76", "warmup").is_ok());
+        assert!(Selection::parse("parsed-table", "4", "8", "144", "0").is_ok());
+        assert!(Selection::parse("parsed-table", "4", "8", "144", "warmup").is_ok());
         for (population, rows, columns, managed, sample) in [
-            ("detached-elements", "4", "8", "76", "0"),
-            ("parsed-table", "5", "8", "76", "0"),
-            ("parsed-table", "4", "9", "76", "0"),
-            ("parsed-table", "4", "8", "75", "0"),
-            ("parsed-table", "4", "8", "76", "3"),
+            ("detached-elements", "4", "8", "144", "0"),
+            ("parsed-table", "5", "8", "144", "0"),
+            ("parsed-table", "4", "9", "144", "0"),
+            ("parsed-table", "4", "8", "143", "0"),
+            ("parsed-table", "4", "8", "144", "3"),
         ] {
             assert!(Selection::parse(population, rows, columns, managed, sample).is_err());
         }

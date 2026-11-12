@@ -131,15 +131,21 @@ fn connected_frame_src_updates_and_removal_keep_actual_native_null_content() {
     let mut batch = DomBatch::new();
     batch.set_attribute_ns(frame, Namespace::none(), "src", raw.clone());
     let commit = apply(&mut dom, batch);
-    assert_eq!(commit.changes().changes(), &[DomChange::Attributes(frame)]);
     let snapshot = dom.snapshot();
+    let attr = snapshot
+        .node(frame)
+        .unwrap()
+        .get_attribute_node(&"src".into())
+        .unwrap();
     assert_eq!(
-        snapshot
-            .node(frame)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"src".into()),
+        commit.changes().changes(),
+        &[
+            DomChange::Attributes(frame),
+            DomChange::Created(attr.id().node())
+        ]
+    );
+    assert_eq!(
+        snapshot.node(frame).unwrap().attribute(&"src".into()),
         Some(&raw)
     );
     content(&snapshot, frame);
@@ -162,9 +168,8 @@ fn connected_frame_src_updates_and_removal_keep_actual_native_null_content() {
         connected
             .node(frame)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attributes()
+            .unwrap()
             .is_empty()
     );
 }
@@ -183,7 +188,7 @@ fn actual_attribute_expanded_identity_and_current_document_casing_remain_exact()
     let commit = apply(&mut dom, batch);
     let html = commit.document(&html).unwrap();
     let old = dom.snapshot();
-    let old_element = old.node(frame).unwrap().as_element().unwrap();
+    let old_element = old.node(frame).unwrap();
     assert_eq!(
         old_element.attribute_ns(&Namespace::from_uri("urn:x"), &"src".into()),
         Some(&"foreign-updated".into())
@@ -202,7 +207,7 @@ fn actual_attribute_expanded_identity_and_current_document_casing_remain_exact()
     batch.remove_attribute(frame, "SRC"); // Removes the first qualified spelling.
     apply(&mut dom, batch);
     let snapshot = dom.snapshot();
-    let element = snapshot.node(frame).unwrap().as_element().unwrap();
+    let element = snapshot.node(frame).unwrap();
     assert!(
         element
             .attribute_ns(&Namespace::from_uri("urn:x"), &"src".into())
@@ -315,7 +320,7 @@ fn same_store_clone_and_cross_store_import_use_the_actual_capture_and_fresh_null
     let snapshot = target.snapshot();
     let node = snapshot.node(imported).unwrap();
     let element = node.as_element().unwrap();
-    assert_eq!(element.attribute(&"src".into()), Some(&"old-src".into()));
+    assert_eq!(node.attribute(&"src".into()), Some(&"old-src".into()));
     assert_eq!(element.nonce(), Some(&"saved-slot".into()));
     assert_eq!(node.owner_document(), Some(destination));
     assert_eq!(node.children().len(), 1);

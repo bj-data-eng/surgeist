@@ -138,7 +138,23 @@ impl Draft {
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.set_source_privacy(key, true, cancel)
+        if self.is_private(key) {
+            return Ok(());
+        }
+        self.set_source_privacy(key, true, cancel)?;
+        if self.is_private(key) {
+            let count = self.node(key)?.attribute_ids().len();
+            for index in 0..count {
+                self.source_step(cancel)?;
+                let attr = self
+                    .node(key)?
+                    .attribute_ids()
+                    .get(index)
+                    .ok_or(DomError::StaleNode)?;
+                self.set_source_privacy(attr, true, cancel)?;
+            }
+        }
+        Ok(())
     }
     fn set_source_privacy(
         &mut self,
@@ -235,10 +251,20 @@ impl Draft {
             self.effect_step(cancel)?;
             self.set_source_privacy(key, false, cancel)?;
             let n = self.node(key)?;
-            self.select_reserve(&mut pending, n.children().len() + 2, cancel)?;
+            let extent = n
+                .children()
+                .len()
+                .checked_add(n.attribute_ids().len())
+                .and_then(|n| n.checked_add(2))
+                .ok_or(DomError::RepresentationExhausted)?;
+            self.select_reserve(&mut pending, extent, cancel)?;
             for child in n.children().iter() {
                 self.source_step(cancel)?;
                 pending.push(child);
+            }
+            for attribute in n.attribute_ids().iter() {
+                self.source_step(cancel)?;
+                pending.push(attribute);
             }
             pending.extend(n.shadow_root());
             pending.extend(self.owned_template_contents(key, cancel)?);

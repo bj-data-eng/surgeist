@@ -128,8 +128,8 @@ fn absent_src_insertion_creates_child(local: &str) {
     assert_eq!(old_node.parent(), None);
     let old_element = old_node.as_element().unwrap();
     assert_eq!(old_element.child_navigable(), Some(None));
-    assert_eq!(old_element.attribute(&DocumentString::from("src")), None);
-    assert_eq!(old_element.attribute(&DocumentString::from("srcdoc")), None);
+    assert_eq!(old_node.attribute(&DocumentString::from("src")), None);
+    assert_eq!(old_node.attribute(&DocumentString::from("srcdoc")), None);
     let mut source = session.source_execution();
     let mut policy = |_: &DomStyleSource| None;
     let mut services = DomSourceServices {

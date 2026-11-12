@@ -20,7 +20,7 @@ use surgeist_html::{
         media::{HtmlCanvasBitmapDimension, HtmlCanvasNoneState},
     },
     microsyntax::numeric::HtmlNonNegativeInteger,
-    values::{HtmlAttributeInput, HtmlNameInput, HtmlValueInterpreter},
+    values::{HtmlAttributeInput, HtmlAttributesInput, HtmlNameInput, HtmlValueInterpreter},
     vocabulary::KnownHtmlAttribute,
 };
 
@@ -40,11 +40,12 @@ impl IframeState {
     }
 }
 
-pub(super) struct AttributeMutation<'a, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> {
+pub(super) struct AttributeMutation<'a, N: HtmlNameInput + ?Sized, A: HtmlAttributesInput + ?Sized>
+{
     pub element_name: &'a N,
     pub name: &'a N,
-    pub previous: &'a [A],
-    pub attributes: &'a [A],
+    pub previous: &'a A,
+    pub attributes: &'a A,
     pub content: Option<surgeist_html::elements::frame::HtmlChildNavigablePresence>,
 }
 
@@ -83,7 +84,7 @@ pub(crate) enum NativeFamily {
 }
 
 impl NativeFamily {
-    pub(super) fn units(&self) -> Option<usize> {
+    pub(crate) fn units(&self) -> Option<usize> {
         fn units(value: HtmlCanvasBitmapDimension<'_>) -> usize {
             match value {
                 HtmlCanvasBitmapDimension::Default(_) => 0,
@@ -126,7 +127,7 @@ impl NativeFamily {
         }
     }
 
-    pub(super) fn after_attribute<N: HtmlNameInput + ?Sized, A: HtmlAttributeInput>(
+    pub(super) fn after_attribute<N: HtmlNameInput + ?Sized, A: HtmlAttributesInput + ?Sized>(
         &self,
         change: AttributeMutation<'_, N, A>,
         admit: &mut impl FnMut() -> Result<(), DomError>,
@@ -151,14 +152,20 @@ impl NativeFamily {
             };
             if let Some(resource) = resource {
                 let mut value = None;
-                for attribute in attributes {
+                for index in 0..attributes.len() {
+                    let attribute = attributes
+                        .get(index)
+                        .ok_or(DomError::InvalidSourceOperation)?;
                     admit()?;
                     if attribute_is(attribute.name(), resource, budget, cancel)? {
-                        value = Some(attribute.value());
+                        value = Some(attribute);
                         break;
                     }
                 }
-                if let Some(effect) = state.attribute_resource_effect(resource, value) {
+                if let Some(effect) = state.attribute_resource_effect(
+                    resource,
+                    value.as_ref().map(HtmlAttributeInput::value),
+                ) {
                     return Err(DomError::MediaResourceEffectUnavailable(effect));
                 }
             }
@@ -193,7 +200,10 @@ impl NativeFamily {
                         .attribute_change_requires_processing()
                     {
                         let mut raw = None;
-                        for attribute in attributes {
+                        for index in 0..attributes.len() {
+                            let attribute = attributes
+                                .get(index)
+                                .ok_or(DomError::InvalidSourceOperation)?;
                             admit()?;
                             if attribute_is(
                                 attribute.name(),
@@ -201,14 +211,15 @@ impl NativeFamily {
                                 budget,
                                 cancel,
                             )? {
-                                raw = Some(attribute.value());
+                                raw = Some(attribute);
                                 break;
                             }
                         }
                         let sandbox = match raw {
                             Some(raw) => {
                                 surgeist_html::attributes::sandbox::HtmlSandboxFlags::parse_with(
-                                    raw, admit,
+                                    raw.value(),
+                                    admit,
                                 )?
                             }
                             None => surgeist_html::attributes::sandbox::HtmlSandboxFlags::empty(),
@@ -244,8 +255,8 @@ impl NativeFamily {
     }
     /// Pure owned Canvas dimension interpretation shared with actual retained
     /// materialization; this performs no attribute hooks or bitmap reset.
-    pub(crate) fn canvas_from_attributes<A: HtmlAttributeInput>(
-        attributes: &[A],
+    pub(crate) fn canvas_from_attributes<A: HtmlAttributesInput + ?Sized>(
+        attributes: &A,
         admit: &mut impl FnMut() -> Result<(), DomError>,
         formation: &mut ElementFormation<'_>,
     ) -> Result<Self, DomError> {
@@ -253,7 +264,10 @@ impl NativeFamily {
         let cancel = formation.cancel;
         let mut width = None;
         let mut height = None;
-        for attribute in attributes {
+        for index in 0..attributes.len() {
+            let attribute = attributes
+                .get(index)
+                .ok_or(DomError::InvalidSourceOperation)?;
             admit()?;
             let target = match dimension(attribute.name(), budget, cancel)? {
                 Some(Dimension::Width) => &mut width,
@@ -348,15 +362,18 @@ fn attribute_is(
     Ok(expected.next().is_none())
 }
 
-fn loading_state<N: HtmlNameInput + ?Sized, A: HtmlAttributeInput>(
+fn loading_state<N: HtmlNameInput + ?Sized, A: HtmlAttributesInput + ?Sized>(
     element: &N,
-    attributes: &[A],
+    attributes: &A,
     admit: &mut impl FnMut() -> Result<(), DomError>,
     budget: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<HtmlLoading, DomError> {
     let mut raw = None;
-    for attribute in attributes {
+    for index in 0..attributes.len() {
+        let attribute = attributes
+            .get(index)
+            .ok_or(DomError::InvalidSourceOperation)?;
         admit()?;
         if attribute_is(
             attribute.name(),
@@ -376,7 +393,7 @@ fn loading_state<N: HtmlNameInput + ?Sized, A: HtmlAttributeInput>(
     let mut report_payload = Payload::default();
     if let Some(budget) = budget {
         report_payload.name(element)?;
-        if let Some(raw) = raw {
+        if let Some(raw) = raw.as_ref() {
             report_payload.name(raw.name())?;
             budget.adopt_block(raw.value(), cancel)?;
             report_payload.listed_string(raw.value())?;
@@ -398,7 +415,7 @@ fn loading_state<N: HtmlNameInput + ?Sized, A: HtmlAttributeInput>(
                 budget.step(cancel)?;
             }
         }
-        if let Some(raw) = raw {
+        if let Some(raw) = raw.as_ref() {
             for _ in 0..=raw.name().local_name().len() {
                 budget.step(cancel)?;
             }
@@ -410,8 +427,8 @@ fn loading_state<N: HtmlNameInput + ?Sized, A: HtmlAttributeInput>(
             }
         }
     }
-    let report = HtmlValueInterpreter::new(raw.map_or(0, |a| a.value().len()))
-        .loading(element, raw)
+    let report = HtmlValueInterpreter::new(raw.as_ref().map_or(0, |a| a.value().len()))
+        .loading(element, raw.as_ref())
         .expect("actual admitted attribute fits its exact raw-unit cap");
     let value = *report
         .intrinsic()
@@ -555,7 +572,7 @@ mod tests {
                     AttributeMutation {
                         element_name: &element,
                         name: &name,
-                        previous: &[],
+                        previous: &[] as &[Attribute],
                         attributes,
                         content: Some(content),
                     },
@@ -609,8 +626,8 @@ mod tests {
             AttributeMutation {
                 element_name: &element,
                 name: &name,
-                previous: &[],
-                attributes: &attributes,
+                previous: &[] as &[Attribute],
+                attributes: attributes.as_slice(),
                 content: Some(surgeist_html::elements::frame::HtmlChildNavigablePresence::Present),
             },
             &mut || {
@@ -645,8 +662,8 @@ mod tests {
             AttributeMutation {
                 element_name: &element,
                 name: &name,
-                previous: &[],
-                attributes: &attributes,
+                previous: &[] as &[Attribute],
+                attributes: attributes.as_slice(),
                 content: None,
             },
             &mut || {

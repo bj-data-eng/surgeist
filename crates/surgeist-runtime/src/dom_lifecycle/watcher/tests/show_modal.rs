@@ -288,12 +288,12 @@ fn modal_publication_output_refusal_keeps_real_watcher_prefix_and_retries_withou
     assert_eq!(task.dialog_toggle().unwrap().id().target(), subject);
     assert_eq!(task.queue_association().unwrap().global(), top.global());
     assert_eq!(task.queue_association().unwrap().document(), top.document());
-    // Queue tracker + Source start2, AddOpen attribute + Document open list2,
+    // Queue tracker + Source start2, AddOpen Attr + attribute order + open list3,
     // watcher Element state1, and mandatory Source marker close1 admit the
     // actual existing prefix. The coherent modal phase adds two more outputs:
     // Dialog ElementState and DocumentState (raw/blocking/generated-UA input).
     // Apply this caller cap only after real queue preadmission and setup.
-    const PREFIX_AND_CLOSE: usize = 2 + 2 + 1 + 1;
+    const PREFIX_AND_CLOSE: usize = 2 + 3 + 1 + 1;
     let base = source_limits();
     let bounded = DomSourceLimits::new(
         base.retained_bytes(),

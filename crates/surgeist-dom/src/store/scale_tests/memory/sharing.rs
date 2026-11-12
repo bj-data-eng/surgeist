@@ -3,7 +3,6 @@
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
-use crate::store::value_sharing::fixture::{Layers, control};
 use crate::{
     DocumentId, Dom, DomBatch, DomChange, DomCommit, DomLimits, DomNameLimits, DomNodeKind,
     DomSnapshot, NodeId,
@@ -15,7 +14,6 @@ mod selected;
 const ROWS: usize = 2;
 const COLUMNS: usize = 3;
 const CELLS: usize = ROWS * COLUMNS;
-const NODES: usize = 2 + ROWS + 2 * CELLS;
 const RAW: &[u16] = &[65, 0xd800, 0, 0xdc00];
 const NEXT: &[u16] = &[110, 101, 120, 116];
 const UNIQUE_ATTRIBUTE_NEXT: &[u16] = &[65, 110, 101, 119];
@@ -46,6 +44,9 @@ impl Geometry {
     }
     fn nodes(self) -> usize {
         2 + self.rows() + 2 * self.cells()
+    }
+    fn managed_nodes(self, unique: Unique) -> usize {
+        self.nodes() + self.attributes(unique)
     }
     fn attributes(self, unique: Unique) -> usize {
         2 * self.cells()
@@ -82,35 +83,19 @@ impl Geometry {
 enum Mode {
     Independent,
     CallerShared,
-    BanksOnly,
-    Combined,
 }
 impl Mode {
     fn name(self) -> &'static str {
         match self {
             Self::Independent => "independent",
             Self::CallerShared => "caller-shared",
-            Self::BanksOnly => "banks-only",
-            Self::Combined => "combined",
-        }
-    }
-    fn layers(self) -> Layers {
-        match self {
-            Self::Independent | Self::CallerShared => Layers::CallerOnly,
-            Self::BanksOnly => Layers::BanksOnly,
-            Self::Combined => Layers::Combined,
         }
     }
     fn caller_shared(self) -> bool {
         self == Self::CallerShared
     }
 }
-const MODES: [Mode; 4] = [
-    Mode::Independent,
-    Mode::CallerShared,
-    Mode::BanksOnly,
-    Mode::Combined,
-];
+const MODES: [Mode; 2] = [Mode::Independent, Mode::CallerShared];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Unique {
     None,
@@ -179,7 +164,7 @@ struct Constructed {
 fn owner(geometry: Geometry) -> Dom {
     Dom::new(
         DomLimits::new(
-            geometry.nodes().max(64),
+            (geometry.nodes() + geometry.attributes(Unique::Cells)).max(64),
             1_000_000,
             geometry.command_limit(),
             0,
@@ -271,13 +256,8 @@ fn construct(
         creation,
     }
 }
-fn attributes(snapshot: &DomSnapshot, id: NodeId) -> &[crate::DomAttribute] {
-    snapshot
-        .node(id)
-        .unwrap()
-        .as_element()
-        .unwrap()
-        .attributes()
+fn attributes(snapshot: &DomSnapshot, id: NodeId) -> crate::DomNamedNodeMap<'_> {
+    snapshot.node(id).unwrap().attributes().unwrap()
 }
 fn text(snapshot: &DomSnapshot, id: NodeId) -> &DocumentString {
     snapshot.node(id).unwrap().data().unwrap()
@@ -329,16 +309,21 @@ fn check_grid(
     assert_eq!(grid.rows.len(), geometry.rows());
     assert_eq!(grid.cells.len(), geometry.cells());
     assert_eq!(grid.texts.len(), geometry.cells());
-    assert_eq!(snapshot.nodes().count(), geometry.nodes());
-    let (mut documents, mut elements, mut texts) = (0, 0, 0);
+    assert_eq!(
+        snapshot.nodes().count(),
+        geometry.nodes() + geometry.attributes(unique)
+    );
+    let (mut documents, mut elements, mut texts, mut attrs) = (0, 0, 0, 0);
     for id in snapshot.nodes() {
         match snapshot.node(id).unwrap().kind() {
             DomNodeKind::Document(_) => documents += 1,
             DomNodeKind::Element(_) => elements += 1,
             DomNodeKind::Text(_) => texts += 1,
-            _ => panic!("the authored XML grid has only Document, Element and Text nodes"),
+            DomNodeKind::Attr(_) => attrs += 1,
+            _ => panic!("unexpected node kind in the authored XML grid"),
         }
     }
+    assert_eq!(attrs, geometry.attributes(unique));
     assert_eq!(
         (documents, elements, texts),
         (1, 1 + geometry.rows() + geometry.cells(), geometry.cells())
@@ -385,10 +370,15 @@ fn check_grid(
         attribute_count += values.len();
         if matches!(unique, Unique::Rows) {
             assert_eq!(values.len(), 1);
-            assert_eq!(values[0].name().local_name().code_units(), [105, 100]);
+            assert_eq!(
+                values.item(0).unwrap().name().local_name().code_units(),
+                [105, 100]
+            );
             match geometry {
                 Geometry::Tiny => assert!(
-                    values[0]
+                    values
+                        .item(0)
+                        .unwrap()
                         .value()
                         .code_units()
                         .iter()
@@ -396,7 +386,7 @@ fn check_grid(
                         .eq(ROW_IDS[row].encode_utf16())
                 ),
                 Geometry::Representative => assert!(representative_id_matches(
-                    values[0].value(),
+                    values.item(0).unwrap().value(),
                     u16::from(b'r'),
                     row
                 )),
@@ -425,34 +415,54 @@ fn check_grid(
             }
         );
         for (offset, suffix) in [97, 98].into_iter().enumerate() {
-            assert!(values[offset].name().namespace_uri().is_none());
-            assert!(values[offset].name().prefix().is_none());
+            assert!(
+                values
+                    .item(offset)
+                    .unwrap()
+                    .name()
+                    .namespace_uri()
+                    .is_none()
+            );
+            assert!(values.item(offset).unwrap().name().prefix().is_none());
             assert_eq!(
-                values[offset].name().local_name().code_units(),
+                values
+                    .item(offset)
+                    .unwrap()
+                    .name()
+                    .local_name()
+                    .code_units(),
                 [100, 97, 116, 97, 45, suffix]
             );
             let changed = attr_changed && index == 0 && offset == 0;
             match grid.values {
                 ValuePattern::RepeatedShort => assert_eq!(
-                    values[offset].value().code_units(),
+                    values.item(offset).unwrap().value().code_units(),
                     if changed { NEXT } else { RAW }
                 ),
                 ValuePattern::UniqueShort if changed => {
-                    assert_eq!(values[offset].value().code_units(), UNIQUE_ATTRIBUTE_NEXT);
+                    assert_eq!(
+                        values.item(offset).unwrap().value().code_units(),
+                        UNIQUE_ATTRIBUTE_NEXT
+                    );
                 }
                 ValuePattern::UniqueShort => {
                     assert!(unique_value_matches(
-                        values[offset].value(),
+                        values.item(offset).unwrap().value(),
                         index * 3 + offset
                     ));
                 }
             }
         }
         if matches!(unique, Unique::Cells) {
-            assert_eq!(values[2].name().local_name().code_units(), [105, 100]);
+            assert_eq!(
+                values.item(2).unwrap().name().local_name().code_units(),
+                [105, 100]
+            );
             match geometry {
                 Geometry::Tiny => assert!(
-                    values[2]
+                    values
+                        .item(2)
+                        .unwrap()
                         .value()
                         .code_units()
                         .iter()
@@ -460,7 +470,7 @@ fn check_grid(
                         .eq(CELL_IDS[index].encode_utf16())
                 ),
                 Geometry::Representative => assert!(representative_id_matches(
-                    values[2].value(),
+                    values.item(2).unwrap().value(),
                     u16::from(b'c'),
                     index
                 )),
@@ -490,14 +500,17 @@ fn check_grid(
     if grid.values == ValuePattern::UniqueShort {
         let first = attributes(snapshot, grid.cells[0]);
         assert_eq!(
-            first[0].value().code_units(),
+            first.item(0).unwrap().value().code_units(),
             if attr_changed {
                 UNIQUE_ATTRIBUTE_NEXT
             } else {
                 &[118, 48, 48, 48]
             }
         );
-        assert_eq!(first[1].value().code_units(), [118, 48, 48, 49]);
+        assert_eq!(
+            first.item(1).unwrap().value().code_units(),
+            [118, 48, 48, 49]
+        );
         assert_eq!(
             text(snapshot, grid.texts[0]).code_units(),
             if text_changed {
@@ -510,13 +523,25 @@ fn check_grid(
         let last_text = text(snapshot, *grid.texts.last().unwrap());
         match geometry {
             Geometry::Tiny => {
-                assert_eq!(last[0].value().code_units(), [118, 48, 49, 53]);
-                assert_eq!(last[1].value().code_units(), [118, 48, 49, 54]);
+                assert_eq!(
+                    last.item(0).unwrap().value().code_units(),
+                    [118, 48, 49, 53]
+                );
+                assert_eq!(
+                    last.item(1).unwrap().value().code_units(),
+                    [118, 48, 49, 54]
+                );
                 assert_eq!(last_text.code_units(), [118, 48, 49, 55]);
             }
             Geometry::Representative => {
-                assert_eq!(last[0].value().code_units(), [118, 55, 54, 53]);
-                assert_eq!(last[1].value().code_units(), [118, 55, 54, 54]);
+                assert_eq!(
+                    last.item(0).unwrap().value().code_units(),
+                    [118, 55, 54, 53]
+                );
+                assert_eq!(
+                    last.item(1).unwrap().value().code_units(),
+                    [118, 55, 54, 54]
+                );
                 assert_eq!(last_text.code_units(), [118, 55, 54, 55]);
             }
         }
@@ -532,11 +557,28 @@ fn check_topology(before: &DomSnapshot, after: &DomSnapshot) {
         assert_eq!(new.owner_document(), old.owner_document());
     }
 }
-fn same_bank(snapshot: &DomSnapshot, first: NodeId, second: NodeId) -> bool {
+fn distinct_attributes(snapshot: &DomSnapshot, first: NodeId, second: NodeId) {
     let first = attributes(snapshot, first);
     let second = attributes(snapshot, second);
-    assert!(!first.is_empty() && !second.is_empty());
-    std::ptr::eq(first.as_ptr(), second.as_ptr())
+    assert_eq!(first.len(), second.len());
+    assert!(
+        first
+            .iter()
+            .zip(second.iter())
+            .all(|(a, b)| a.id() != b.id())
+    );
+}
+
+fn same_attribute_backing(
+    first: crate::DomNamedNodeMap<'_>,
+    second: crate::DomNamedNodeMap<'_>,
+) -> bool {
+    first.len() == second.len()
+        && first.iter().zip(second.iter()).all(|(a, b)| {
+            a.id() == b.id()
+                && std::ptr::eq(a.name(), b.name())
+                && std::ptr::eq(a.value(), b.value())
+        })
 }
 
 fn check_inputs(inputs: &[[DocumentString; 3]], geometry: Geometry, mode: Mode) {
@@ -546,65 +588,44 @@ fn check_inputs(inputs: &[[DocumentString; 3]], geometry: Geometry, mode: Mode) 
         assert!(!inputs[0][0].shares_storage_with(&inputs[0][2]));
     }
 }
-fn check_reuse(
-    snapshot: &DomSnapshot,
-    grid: &Grid,
-    inputs: &[[DocumentString; 3]],
-    mode: Mode,
-    unique: Unique,
-) {
-    // The independent inputs remain held throughout every backing comparison.
+fn check_reuse(snapshot: &DomSnapshot, grid: &Grid, inputs: &[[DocumentString; 3]], mode: Mode) {
     check_inputs(inputs, grid.geometry, mode);
-    let repeated = grid.values == ValuePattern::RepeatedShort;
-    let banks = repeated && mode.layers() != Layers::CallerOnly && unique != Unique::Cells;
-    let strings = repeated && mode.caller_shared();
-    let exact_optional_hits = grid.geometry == Geometry::Tiny;
+    let shared = grid.values == ValuePattern::RepeatedShort && mode.caller_shared();
     for index in 1..grid.geometry.cells() {
-        // The representative unique stream can turn over the finite pools.
-        // Retain the tiny exact-hit oracle and mandatory disabled/distinct
-        // controls, without requiring an unbounded optional-cache hit ratio.
-        if exact_optional_hits || !banks {
-            assert_eq!(
-                same_bank(snapshot, grid.cells[0], grid.cells[index]),
-                banks,
-                "{mode:?} {unique:?}"
-            );
-        }
-        if exact_optional_hits || !strings || mode.caller_shared() {
-            assert_eq!(
-                text(snapshot, grid.texts[0])
-                    .shares_storage_with(text(snapshot, grid.texts[index])),
-                strings,
-                "{mode:?} {unique:?}"
-            );
-        }
+        distinct_attributes(snapshot, grid.cells[0], grid.cells[index]);
+        assert_eq!(
+            text(snapshot, grid.texts[0]).shares_storage_with(text(snapshot, grid.texts[index])),
+            shared,
+        );
     }
     let first = attributes(snapshot, grid.cells[0]);
-    if exact_optional_hits || !strings || mode.caller_shared() {
-        assert_eq!(
-            first[0].value().shares_storage_with(first[1].value()),
-            strings,
-            "{mode:?}"
-        );
-        assert_eq!(
-            first[0]
-                .value()
-                .shares_storage_with(text(snapshot, grid.texts[0])),
-            strings,
-            "{mode:?}"
-        );
-    }
-    if mode.layers() == Layers::CallerOnly {
-        for (index, input) in inputs.iter().enumerate() {
-            for (offset, value) in input[..2].iter().enumerate() {
-                assert!(
-                    attributes(snapshot, grid.cells[index])[offset]
-                        .value()
-                        .shares_storage_with(value)
-                );
-            }
-            assert!(text(snapshot, grid.texts[index]).shares_storage_with(&input[2]));
+    assert_eq!(
+        first
+            .item(0)
+            .unwrap()
+            .value()
+            .shares_storage_with(first.item(1).unwrap().value()),
+        shared
+    );
+    assert_eq!(
+        first
+            .item(0)
+            .unwrap()
+            .value()
+            .shares_storage_with(text(snapshot, grid.texts[0])),
+        shared
+    );
+    for (index, input) in inputs.iter().enumerate() {
+        for (offset, value) in input[..2].iter().enumerate() {
+            assert!(
+                attributes(snapshot, grid.cells[index])
+                    .item(offset)
+                    .unwrap()
+                    .value()
+                    .shares_storage_with(value)
+            );
         }
+        assert!(text(snapshot, grid.texts[index]).shares_storage_with(&input[2]));
     }
 }
 
@@ -696,7 +717,7 @@ fn run_sample(
     observe(&mut observer, HolderStage::HarnessOnly);
     let started = timing.then(Instant::now);
     let mut dom = owner(geometry);
-    let guard = control(&dom.value_sharing, mode.layers());
+
     let Constructed {
         grid,
         inputs,
@@ -708,7 +729,7 @@ fn run_sample(
     let old_snapshot = elapsed(started);
     let started = timing.then(Instant::now);
     check_grid(&old, &grid, unique, false, false);
-    check_reuse(&old, &grid, &inputs, mode, unique);
+    check_reuse(&old, &grid, &inputs, mode);
     let mut oracle_checks = elapsed(started);
     // These checks complete before the creation receipt/snapshot goes.
     drop(creation);
@@ -736,7 +757,10 @@ fn run_sample(
     let attribute_edit = elapsed(started);
     assert_eq!(
         attr_commit.changes().changes(),
-        [DomChange::Attributes(grid.cells[0])]
+        [
+            DomChange::Attributes(grid.cells[0]),
+            DomChange::AttrValue(attributes(&old, grid.cells[0]).item(0).unwrap().id())
+        ]
     );
     assert_eq!(dom.revision().get(), old.revision().get() + 1);
     drop(attr_commit);
@@ -776,24 +800,22 @@ fn run_sample(
     check_grid(&current, &grid, unique, true, true);
     check_grid(&old, &grid, unique, false, false);
     for index in 1..geometry.cells() {
-        assert!(std::ptr::eq(
-            attributes(&current, grid.cells[index]).as_ptr(),
-            attributes(&old, grid.cells[index]).as_ptr()
+        assert!(same_attribute_backing(
+            attributes(&current, grid.cells[index]),
+            attributes(&old, grid.cells[index])
         ));
         assert!(
             text(&current, grid.texts[index]).shares_storage_with(text(&old, grid.texts[index]))
         );
     }
-    assert!(!std::ptr::eq(
-        attributes(&current, grid.cells[0]).as_ptr(),
-        attributes(&old, grid.cells[0]).as_ptr()
+    assert!(!same_attribute_backing(
+        attributes(&current, grid.cells[0]),
+        attributes(&old, grid.cells[0])
     ));
     assert!(!text(&current, grid.texts[0]).shares_storage_with(text(&old, grid.texts[0])));
     oracle_checks += elapsed(started);
     observe(&mut observer, HolderStage::Edited);
 
-    // The diagnostic Weak must die before measuring actual owner loss.
-    drop(guard);
     let started = timing.then(Instant::now);
     drop(dom);
     let owner_drop = elapsed(started);
@@ -831,7 +853,7 @@ fn run_sample(
 }
 
 #[test]
-fn ordinary_layers_preserve_equal_banks_text_and_isolated_edits() {
+fn ordinary_layers_preserve_attribute_identities_text_and_isolated_edits() {
     for mode in MODES {
         let _ = run_sample(
             Geometry::Tiny,
@@ -844,11 +866,11 @@ fn ordinary_layers_preserve_equal_banks_text_and_isolated_edits() {
 }
 
 #[test]
-fn unique_row_ids_preserve_cell_bank_reuse_while_unique_cell_ids_keep_banks_distinct() {
-    for mode in [Mode::BanksOnly, Mode::Combined] {
+fn unique_row_and_cell_ids_keep_attribute_identities_through_text_edits() {
+    for mode in MODES {
         for unique in [Unique::Rows, Unique::Cells] {
             let mut dom = owner(Geometry::Tiny);
-            let guard = control(&dom.value_sharing, mode.layers());
+
             let Constructed {
                 grid,
                 inputs,
@@ -864,10 +886,7 @@ fn unique_row_ids_preserve_cell_bank_reuse_while_unique_cell_ids_keep_banks_dist
             let old = dom.snapshot();
             check_grid(&old, &grid, unique, false, false);
             for index in 1..CELLS {
-                assert_eq!(
-                    same_bank(&old, grid.cells[0], grid.cells[index]),
-                    matches!(unique, Unique::Rows)
-                );
+                distinct_attributes(&old, grid.cells[0], grid.cells[index]);
             }
             let mut batch = DomBatch::new();
             for (index, id) in grid.texts.iter().copied().enumerate() {
@@ -902,15 +921,18 @@ fn unique_row_ids_preserve_cell_bank_reuse_while_unique_cell_ids_keep_banks_dist
                     current.node(grid.cells[index]).unwrap().children(),
                     [grid.texts[index]]
                 );
-                assert!(std::ptr::eq(
-                    attributes(&current, grid.cells[index]).as_ptr(),
-                    attributes(&old, grid.cells[index]).as_ptr()
+                assert!(same_attribute_backing(
+                    attributes(&current, grid.cells[index]),
+                    attributes(&old, grid.cells[index])
                 ));
             }
-            drop(guard);
+
             drop(commit);
             drop(dom);
-            assert_eq!(current.nodes().count(), NODES);
+            assert_eq!(
+                current.nodes().count(),
+                Geometry::Tiny.nodes() + Geometry::Tiny.attributes(unique)
+            );
             check_grid(&old, &grid, unique, false, false);
             drop(inputs);
             drop(creation);
@@ -923,9 +945,9 @@ fn unique_row_ids_preserve_cell_bank_reuse_while_unique_cell_ids_keep_banks_dist
 
 #[test]
 fn caller_held_long_and_empty_values_keep_literals_and_noop_backings() {
-    for layers in [Layers::CallerOnly, Layers::Combined] {
+    {
         let mut dom = owner(Geometry::Tiny);
-        let guard = control(&dom.value_sharing, layers);
+
         let reserved_units = Vec::with_capacity(73);
         assert!(reserved_units.capacity() >= 73);
         let reserved = DocumentString::from_utf16(reserved_units);
@@ -951,7 +973,7 @@ fn caller_held_long_and_empty_values_keep_literals_and_noop_backings() {
         let empty = creation.created(&empty).unwrap().unwrap();
         let text_node = creation.created(&text_node).unwrap().unwrap();
         let old = dom.snapshot();
-        assert_eq!(old.nodes().count(), 4);
+        assert_eq!(old.nodes().count(), 6);
         assert_eq!(old.node(element).unwrap().children(), [empty, text_node]);
         assert_eq!(attributes(&old, element).len(), 2);
         for (attribute, local) in attributes(&old, element)
@@ -970,16 +992,24 @@ fn caller_held_long_and_empty_values_keep_literals_and_noop_backings() {
                     .eq(local.encode_utf16())
             );
         }
-        assert_eq!(attributes(&old, element)[0].value().code_units(), []);
+        assert_eq!(
+            attributes(&old, element)
+                .item(0)
+                .unwrap()
+                .value()
+                .code_units(),
+            []
+        );
         assert_eq!(text(&old, empty).code_units(), []);
-        if layers == Layers::CallerOnly {
-            assert_eq!(
-                text(&old, empty).retained_units(),
-                reserved.retained_units()
-            );
-            assert!(text(&old, empty).shares_storage_with(&reserved));
-        }
-        for value in [attributes(&old, element)[1].value(), text(&old, text_node)] {
+        assert_eq!(
+            text(&old, empty).retained_units(),
+            reserved.retained_units()
+        );
+        assert!(text(&old, empty).shares_storage_with(&reserved));
+        for value in [
+            attributes(&old, element).item(1).unwrap().value(),
+            text(&old, text_node),
+        ] {
             assert_eq!(value.len(), 8192);
             let (chunks, remainder) = value.code_units().as_chunks::<4>();
             assert!(remainder.is_empty());
@@ -1002,9 +1032,9 @@ fn caller_held_long_and_empty_values_keep_literals_and_noop_backings() {
         let current = dom.snapshot();
         assert_eq!(current.stamp(), old.stamp());
         assert!(dom.changes_since(old.stamp()).unwrap().changes().is_empty());
-        assert!(std::ptr::eq(
-            attributes(&current, element).as_ptr(),
-            attributes(&old, element).as_ptr()
+        assert!(same_attribute_backing(
+            attributes(&current, element),
+            attributes(&old, element)
         ));
         assert!(text(&current, empty).shares_storage_with(text(&old, empty)));
         assert!(text(&current, text_node).shares_storage_with(&long));
@@ -1017,21 +1047,23 @@ fn caller_held_long_and_empty_values_keep_literals_and_noop_backings() {
         check_topology(&old, &changed);
         assert_eq!(text(&changed, text_node).code_units(), [99, 117, 116]);
         assert_eq!(text(&old, text_node).len(), 8192);
-        assert!(std::ptr::eq(
-            attributes(&changed, element).as_ptr(),
-            attributes(&old, element).as_ptr()
+        assert!(same_attribute_backing(
+            attributes(&changed, element),
+            attributes(&old, element)
         ));
         assert!(
-            attributes(&changed, element)[1]
+            attributes(&changed, element)
+                .item(1)
+                .unwrap()
                 .value()
                 .shares_storage_with(&long)
         );
-        drop(guard);
+
         drop(edit);
         drop(noop);
         drop(creation);
         drop(dom);
-        assert_eq!(current.nodes().count(), 4);
+        assert_eq!(current.nodes().count(), 6);
         assert_eq!(text(&old, empty).code_units(), []);
         assert_eq!(text(&old, text_node).len(), 8192);
         assert_eq!(text(&changed, text_node).code_units(), [99, 117, 116]);

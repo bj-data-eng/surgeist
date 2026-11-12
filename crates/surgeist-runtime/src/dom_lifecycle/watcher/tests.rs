@@ -948,9 +948,14 @@ fn show_event(
 }
 #[test]
 fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect() {
+    const EXACT_OUTPUTS: usize = 2 + 3 + 1 + 1;
     for refusal in [Some(true), Some(false), None] {
         let (mut session, top, _body, subject) = fixture();
         let cancel = AtomicBool::new(false);
+        let namespace = surgeist_dom::Namespace::from_uri("urn:foreign");
+        let mut authored = surgeist_dom::DomBatch::new();
+        authored.set_attribute_ns(subject, namespace.clone(), "open", "foreign");
+        session.dom().apply(authored, &cancel).unwrap();
         let ordinary = source_limits();
         let bounded = DomSourceLimits::new(
             ordinary.retained_bytes(),
@@ -959,8 +964,8 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
             if refusal == Some(true) { 3 } else { 4 },
             match refusal {
                 Some(true) => 4096,
-                Some(false) => 5,
-                None => 6,
+                Some(false) => EXACT_OUTPUTS - 1,
+                None => EXACT_OUTPUTS,
             },
             ordinary.published_native_identities(),
             ordinary.nested_operations(),
@@ -1042,7 +1047,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
             );
             assert_eq!(counts(&session.hosted_execution()), (1, 0, 0));
         }
-        // Tracker+Source start2, open attribute+Document list2, watcher state1,
+        // Tracker+Source start2, open Attr+attribute order+Document list3, watcher1,
         // and final Source close1. Three of the four phases are published here;
         // the retained synchronous tail still owns the fourth closing phase.
         let exact = DomSourceLimits::new(
@@ -1050,7 +1055,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
             ordinary.retained_string_code_units(),
             ordinary.work(),
             4,
-            6,
+            EXACT_OUTPUTS,
             ordinary.published_native_identities(),
             ordinary.nested_operations(),
         );
@@ -1085,9 +1090,14 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
         let watcher = dialog.close_watcher().expect("real established watcher");
         assert_eq!(watcher.subject(), subject);
         assert_eq!(watcher.global(), top.global());
+        let node = snapshot.node(subject).unwrap();
         assert_eq!(
-            snapshot.node(subject).unwrap().attribute(&"open".into()),
+            node.attribute_ns(&surgeist_dom::Namespace::none(), &"open".into()),
             Some(&"".into())
+        );
+        assert_eq!(
+            node.attribute_ns(&namespace, &"open".into()),
+            Some(&"foreign".into())
         );
         assert_eq!(
             snapshot.incomplete_source_operation(),

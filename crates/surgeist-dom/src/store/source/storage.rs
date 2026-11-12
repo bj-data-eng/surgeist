@@ -218,11 +218,6 @@ pub(crate) fn element(
         bytes: name.bytes(),
         units: name.units(),
     };
-    if let Some(value) = element.attribute_binding() {
-        payload.add_bytes(value.own_usage.bytes())?;
-        payload.add_units(value.own_usage.units())?;
-        payload.add_bytes(value.value.storage.own_usage().bytes())?;
-    }
     for usage in [
         element.custom_payload().map(|v| v.own_usage),
         element.nonce_payload().map(|v| v.own_usage),

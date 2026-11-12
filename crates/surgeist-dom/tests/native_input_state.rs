@@ -288,11 +288,7 @@ fn type_transfers_default_on_file_and_selection_follow_the_ordered_effects() {
     let s = dom.snapshot();
     assert_eq!(value(&s, input), "abc".into());
     assert_eq!(
-        s.node(input)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"value".into()),
+        s.node(input).unwrap().attribute(&"value".into()),
         Some(&"abc".into())
     );
     assert!(state(&s, input).flags().dirty_value());

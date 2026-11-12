@@ -99,7 +99,7 @@ impl Draft {
                             })?,
                             Some(Group::Changed(_)) => unreachable!("already prepared children"),
                         };
-                        Ok(Children { values })
+                        Ok(NodeSequenceFields { values })
                     },
                 )?;
                 FieldUndo::Children(

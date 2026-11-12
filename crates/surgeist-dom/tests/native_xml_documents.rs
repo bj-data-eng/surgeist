@@ -102,7 +102,7 @@ fn namespace_argument_selects_literal_mime_even_without_a_root() {
                 assert_eq!(element.name().namespace_uri(), namespace.uri());
                 assert_eq!(element.name().prefix(), None);
                 assert_eq!(element.name().local_name(), &DocumentString::from("MiXeD"));
-                assert!(element.attributes().is_empty());
+                assert!(root.attributes().unwrap().is_empty());
                 assert_eq!(dom.usage().managed_nodes(), usage.managed_nodes() + 2);
             }
         }

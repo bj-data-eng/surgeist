@@ -177,10 +177,18 @@ pub(in crate::store) struct ElementRead<'a> {
     value: &'a DomElement,
     focus: Option<&'a FocusVersion>,
     aliases: Option<&'a source::AllocationIds>,
+    attributes: AttributeRead<'a>,
+    attribute_revision: Option<custody::MaterializationId>,
 }
 impl<'a> ElementRead<'a> {
     pub fn language(self) -> &'a DomElement {
         self.value
+    }
+    pub fn attributes(self) -> AttributeRead<'a> {
+        self.attributes
+    }
+    pub fn same_attributes(self, other: Self) -> bool {
+        self.attribute_revision == other.attribute_revision
     }
     pub fn common_state(self) -> surgeist_html::elements::native::HtmlCommonState<Key> {
         let map = |id| {
@@ -201,6 +209,108 @@ impl<'a> ElementRead<'a> {
         state
     }
 }
+
+#[derive(Clone, Copy)]
+enum AttributeArena<'a> {
+    Draft(&'a Draft),
+    Canonical(&'a State, DomOwnerId),
+}
+
+#[derive(Clone, Copy)]
+pub(in crate::store) struct AttributeRead<'a> {
+    ids: Relations<'a>,
+    arena: Option<AttributeArena<'a>>,
+    edit: Option<AttributeEdit<'a>>,
+}
+
+#[derive(Clone, Copy)]
+struct AttributeEdit<'a> {
+    position: usize,
+    replaces: bool,
+    value: Option<&'a crate::DomAttribute>,
+    length: usize,
+}
+
+impl<'a> AttributeRead<'a> {
+    pub fn edited(
+        self,
+        position: usize,
+        replaces: bool,
+        value: Option<&'a crate::DomAttribute>,
+    ) -> Result<Self, DomError> {
+        let retained = self
+            .ids
+            .len()
+            .checked_sub(usize::from(replaces))
+            .ok_or(DomError::IndexSize)?;
+        if position > retained {
+            return Err(DomError::IndexSize);
+        }
+        let length = retained
+            .checked_add(usize::from(value.is_some()))
+            .ok_or(DomError::RepresentationExhausted)?;
+        Ok(Self {
+            edit: Some(AttributeEdit {
+                position,
+                replaces,
+                value,
+                length,
+            }),
+            ..self
+        })
+    }
+    pub fn len(self) -> usize {
+        self.edit.map_or(self.ids.len(), |edit| edit.length)
+    }
+    pub fn get(self, index: usize) -> Option<&'a crate::DomAttribute> {
+        if index >= self.len() {
+            return None;
+        }
+        let index = match self.edit {
+            Some(edit) if index >= edit.position => match edit.value {
+                Some(value) if index == edit.position => return Some(value),
+                value => index + usize::from(edit.replaces) - usize::from(value.is_some()),
+            },
+            _ => index,
+        };
+        let key = self.ids.get(index)?;
+        match self.arena? {
+            AttributeArena::Draft(draft) => match draft.node(key).ok()?.kind() {
+                KindRead::Attr(attribute) => Some(attribute),
+                _ => None,
+            },
+            AttributeArena::Canonical(state, owner) => {
+                let Key::Existing(id) = key else {
+                    return None;
+                };
+                state
+                    .node(owner, id)
+                    .ok()?
+                    .attribute_node()
+                    .map(|(value, _)| value)
+            }
+        }
+    }
+
+    pub fn iter(self) -> impl Iterator<Item = &'a crate::DomAttribute> + 'a {
+        (0..self.len()).filter_map(move |index| self.get(index))
+    }
+}
+
+impl surgeist_html::values::HtmlAttributesInput for AttributeRead<'_> {
+    type Attribute<'a>
+        = &'a crate::DomAttribute
+    where
+        Self: 'a;
+
+    fn len(&self) -> usize {
+        (*self).len()
+    }
+
+    fn get(&self, index: usize) -> Option<Self::Attribute<'_>> {
+        (*self).get(index)
+    }
+}
 impl std::ops::Deref for ElementRead<'_> {
     type Target = DomElement;
     fn deref(&self) -> &DomElement {
@@ -218,6 +328,14 @@ pub(in crate::store) enum Overlay<'a> {
     Focus(&'a FocusVersion),
     Element(&'a DomElement),
     Attr(&'a crate::DomAttribute),
+    AttrOwner(Option<Key>),
+    AttributeOrder {
+        order: Relations<'a>,
+        revision: custody::MaterializationId,
+        removed: &'a [Key],
+        added: Option<&'a [Key]>,
+    },
+    AttributeRevision(custody::MaterializationId),
     Metadata(&'a DomDocumentMetadata),
     ShadowState(&'a crate::DomShadowRootState),
     ProcessingInstruction(&'a crate::DomProcessingInstruction),
@@ -248,6 +366,7 @@ pub(in crate::store) struct NodeRead<'a> {
     source: Source<'a>,
     aliases: Option<&'a source::AllocationIds>,
     overlay: Option<Overlay<'a>>,
+    attribute_arena: Option<AttributeArena<'a>>,
 }
 impl<'a> NodeRead<'a> {
     pub fn canonical(value: &'a Node) -> Self {
@@ -255,6 +374,7 @@ impl<'a> NodeRead<'a> {
             source: Source::Canonical(value),
             aliases: None,
             overlay: None,
+            attribute_arena: None,
         }
     }
     pub fn staged(value: &'a DraftNode) -> Self {
@@ -262,11 +382,24 @@ impl<'a> NodeRead<'a> {
             source: Source::Staged(value),
             aliases: None,
             overlay: None,
+            attribute_arena: None,
         }
     }
     pub fn changed(self, value: Overlay<'a>) -> Self {
         Self {
             overlay: Some(value),
+            ..self
+        }
+    }
+    pub fn in_draft(self, draft: &'a Draft) -> Self {
+        Self {
+            attribute_arena: Some(AttributeArena::Draft(draft)),
+            ..self
+        }
+    }
+    pub fn in_state(self, state: &'a State, owner: DomOwnerId) -> Self {
+        Self {
+            attribute_arena: Some(AttributeArena::Canonical(state, owner)),
             ..self
         }
     }
@@ -283,6 +416,9 @@ impl<'a> NodeRead<'a> {
         self.alias(Key::Existing(id))
     }
     pub fn attr_owner(self) -> Option<Key> {
+        if let Some(Overlay::AttrOwner(owner)) = self.overlay {
+            return owner.map(|key| self.alias(key));
+        }
         match self.source {
             Source::Canonical(node) => node.attribute_node()?.1.map(|id| self.id(id)),
             Source::Staged(DraftNode::Attr(node)) => node.value().owner.map(|key| self.alias(key)),
@@ -320,13 +456,7 @@ impl<'a> NodeRead<'a> {
     pub fn kind(self) -> KindRead<'a> {
         if let Some(value) = self.overlay {
             match value {
-                Overlay::Element(v) => {
-                    return KindRead::Element(ElementRead {
-                        value: v,
-                        focus: self.stage_focus(),
-                        aliases: self.aliases,
-                    });
-                }
+                Overlay::Element(v) => return KindRead::Element(self.element_read(v)),
                 Overlay::Attr(v) => return KindRead::Attr(v),
                 Overlay::Metadata(v) => return KindRead::Document(v),
                 Overlay::ProcessingInstruction(v) => return KindRead::ProcessingInstruction(v),
@@ -339,11 +469,7 @@ impl<'a> NodeRead<'a> {
         match self.source {
             Source::Canonical(n) => match n.kind() {
                 DomNodeKind::Document(v) => KindRead::Document(v),
-                DomNodeKind::Element(v) => KindRead::Element(ElementRead {
-                    value: v,
-                    focus: self.stage_focus(),
-                    aliases: self.aliases,
-                }),
+                DomNodeKind::Element(v) => KindRead::Element(self.element_read(v)),
                 DomNodeKind::Attr(v) => KindRead::Attr(v),
                 DomNodeKind::DocumentFragment => KindRead::DocumentFragment,
                 DomNodeKind::ShadowRoot(v) => KindRead::ShadowRoot(v),
@@ -354,11 +480,9 @@ impl<'a> NodeRead<'a> {
             },
             Source::Staged(n) => match n {
                 DraftNode::Document(v) => KindRead::Document(&v.value().metadata.value.value),
-                DraftNode::Element(v) => KindRead::Element(ElementRead {
-                    value: &v.value().element.value.value,
-                    focus: self.stage_focus(),
-                    aliases: self.aliases,
-                }),
+                DraftNode::Element(v) => {
+                    KindRead::Element(self.element_read(&v.value().element.value.value))
+                }
                 DraftNode::Attr(v) => KindRead::Attr(&v.value().data.value.value),
                 DraftNode::DocumentFragment(_) => KindRead::DocumentFragment,
                 DraftNode::ShadowRoot(v) => KindRead::ShadowRoot(&v.value().state.value.value),
@@ -368,6 +492,62 @@ impl<'a> NodeRead<'a> {
                     KindRead::ProcessingInstruction(&v.value().data.value.value)
                 }
                 DraftNode::DocumentType(v) => KindRead::DocumentType(&v.value().data.value.value),
+            },
+        }
+    }
+    fn element_read(self, value: &'a DomElement) -> ElementRead<'a> {
+        ElementRead {
+            value,
+            focus: self.stage_focus(),
+            aliases: self.aliases,
+            attributes: AttributeRead {
+                ids: self.attribute_ids(),
+                arena: self.attribute_arena,
+                edit: None,
+            },
+            attribute_revision: self.attribute_revision(),
+        }
+    }
+    pub fn attribute_ids(self) -> Relations<'a> {
+        if let Some(Overlay::AttributeOrder { order, .. }) = self.overlay {
+            return self.relation_aliases(order);
+        }
+        let order = match self.source {
+            Source::Canonical(Node::Element(node)) => node
+                .value
+                .attributes
+                .as_ref()
+                .map(|order| Relations::Canonical(&order.value.values, Key::Existing)),
+            Source::Staged(DraftNode::Element(node)) => {
+                node.value()
+                    .attributes
+                    .as_ref()
+                    .map(|order| match order.read() {
+                        GroupRead::Canonical(order) => {
+                            Relations::Canonical(&order.values, Key::Existing)
+                        }
+                        GroupRead::Changed(order) => order.values.view(),
+                    })
+            }
+            _ => None,
+        };
+        self.relation_aliases(order.unwrap_or(Relations::Empty))
+    }
+    pub fn attribute_membership_delta(self) -> Option<(&'a [Key], Option<&'a [Key]>)> {
+        match self.overlay {
+            Some(Overlay::AttributeOrder { removed, added, .. }) => Some((removed, added)),
+            _ => None,
+        }
+    }
+    fn attribute_revision(self) -> Option<custody::MaterializationId> {
+        match self.overlay {
+            Some(
+                Overlay::AttributeOrder { revision, .. } | Overlay::AttributeRevision(revision),
+            ) => Some(revision),
+            _ => match self.source {
+                Source::Canonical(Node::Element(node)) => node.value.attribute_revision,
+                Source::Staged(DraftNode::Element(node)) => node.value().attribute_revision,
+                _ => None,
             },
         }
     }
@@ -1154,6 +1334,12 @@ impl FrozenNodeInput {
                 value: &value.value.value,
                 focus: Some(focus),
                 aliases: None,
+                attributes: AttributeRead {
+                    ids: Relations::Empty,
+                    arena: None,
+                    edit: None,
+                },
+                attribute_revision: None,
             }),
             Self::Attr(v) => KindRead::Attr(&v.value.value),
             Self::DocumentFragment => KindRead::DocumentFragment,

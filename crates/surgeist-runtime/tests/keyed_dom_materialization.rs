@@ -212,9 +212,7 @@ impl MountedItems {
             assert_eq!(row.parent(), Some(self.parent));
             assert!(row.is_connected());
             assert_eq!(
-                row.as_element()
-                    .unwrap()
-                    .attribute(&"data-key".into())
+                row.attribute(&"data-key".into())
                     .unwrap()
                     .to_utf8()
                     .unwrap(),
@@ -309,8 +307,6 @@ fn runtime_key_requests_preserve_live_identity_reorder_and_retire_without_aliasi
     assert_eq!(
         old.node(a)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attribute(&"data-key".into())
             .unwrap()
             .to_utf8()
@@ -346,8 +342,6 @@ fn selected_caller_item_data_survives_retirement_and_is_republished_on_a_fresh_n
     let selected_content = |snapshot: &DomSnapshot, node| {
         snapshot
             .node(node)
-            .unwrap()
-            .as_element()
             .unwrap()
             .attribute(&"data-item-selected".into())
             .unwrap()
@@ -442,9 +436,9 @@ fn actual_late_invalid_attribute_rolls_back_retirement_creation_reorder_and_map(
 #[test]
 fn exact_managed_node_capacity_admits_three_rows_and_one_short_keeps_map_and_dom_atomic() {
     let (mut mounted, mut requests) = mounted_pair();
-    // Document + Items + two nodes (Row and Text) per materialized item.
-    assert_eq!(mounted.dom.usage().managed_nodes(), 6);
-    mounted.dom.set_limits(limits(7)).unwrap();
+    // Document + Items + three nodes (Row, Text and key Attr) per item.
+    assert_eq!(mounted.dom.usage().managed_nodes(), 8);
+    mounted.dom.set_limits(limits(10)).unwrap();
     let before = mounted.dom.snapshot();
     let map = mounted.live.clone();
     schedule(&mut requests, &[ItemKey::A, ItemKey::B, ItemKey::C]);
@@ -452,16 +446,16 @@ fn exact_managed_node_capacity_admits_three_rows_and_one_short_keeps_map_and_dom
         mounted.apply_request(&requests),
         Err(ComposeError::Dom(DomError::ResourceLimit {
             resource: DomResource::ManagedNodes,
-            limit: 7
+            limit: 10
         }))
     );
-    assert_eq!(mounted.dom.usage().managed_nodes(), 6);
+    assert_eq!(mounted.dom.usage().managed_nodes(), 8);
     assert_eq!(requests.state(), &[ItemKey::A, ItemKey::B, ItemKey::C]);
     assert_unchanged(&mounted, &before, &map);
-    mounted.dom.set_limits(limits(8)).unwrap();
+    mounted.dom.set_limits(limits(11)).unwrap();
     mounted.apply_request(&requests).unwrap();
     mounted.assert_keys(&[ItemKey::A, ItemKey::B, ItemKey::C]);
-    assert_eq!(mounted.dom.usage().managed_nodes(), 8);
+    assert_eq!(mounted.dom.usage().managed_nodes(), 11);
     assert_eq!(mounted.node(ItemKey::A), map[0].1);
     assert_eq!(mounted.node(ItemKey::B), map[1].1);
 }

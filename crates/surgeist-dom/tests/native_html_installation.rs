@@ -51,7 +51,10 @@ fn assert_name_values(actual: &DomQualifiedName, authored: &QualifiedName) {
     assert_eq!(actual.prefix(), authored.prefix());
     assert_eq!(actual.local_name(), authored.local_name());
 }
-fn assert_attribute_values(actual: &[DomAttribute], authored: &OrderedAttributes) {
+fn assert_attribute_values(
+    actual: surgeist_dom::DomNamedNodeMap<'_>,
+    authored: &OrderedAttributes,
+) {
     assert_eq!(actual.len(), authored.len());
     for (actual, authored) in actual.iter().zip(authored.iter()) {
         assert_name_values(actual.name(), authored.name());
@@ -180,7 +183,10 @@ fn mixed_fields_and_utf16_install_before_real_reference_with_complete_historical
     assert_name_values(e.name(), authored.name());
     assert_eq!(e.name().prefix(), Some(&"p:q".into()));
     assert_eq!(e.name().local_name(), &"a:b".into());
-    assert_attribute_values(e.attributes(), &attributes);
+    assert_attribute_values(
+        s.node(mapped[2]).unwrap().attributes().unwrap(),
+        &attributes,
+    );
     assert_eq!(
         s.node(mapped[2]).unwrap().children(),
         &[report.node_for(&child).unwrap()]
@@ -235,11 +241,9 @@ fn native_components_preserve_whole_spelling_and_do_not_replay_ns_api_conditions
         let element = report
             .snapshot()
             .node(report.node_for(&id).unwrap())
-            .unwrap()
-            .as_element()
             .unwrap();
-        assert_name_values(element.name(), &exact);
-        assert_attribute_values(element.attributes(), &attributes);
+        assert_name_values(element.as_element().unwrap().name(), &exact);
+        assert_attribute_values(element.attributes().unwrap(), &attributes);
     }
 }
 

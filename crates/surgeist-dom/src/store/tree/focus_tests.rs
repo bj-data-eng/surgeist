@@ -66,8 +66,7 @@ fn unqualified_owner_with_meta(
         .unwrap();
     let document = DocumentId(mapped[0]);
     drop(draft);
-    let mut publication = dom.prepare_publication(prepared, &cancel).unwrap();
-    publication.close_ordinary_sharing(&cancel).unwrap();
+    let publication = dom.prepare_publication(prepared, &cancel).unwrap();
     dom.publish_prepared(publication);
     let mut batch = DomBatch::new();
     let parent = batch.create_element_ns(document, Namespace::html(), "body");

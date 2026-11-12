@@ -105,26 +105,37 @@ fn shallow_element_import_copies_all_exact_attributes_and_has_fresh_detached_ide
     assert_eq!(node.parent(), None);
     assert!(node.children().is_empty());
     assert_eq!(node.node_name(), DocumentString::from("MiXeD:Root"));
-    assert_eq!(element.attributes().len(), 3);
-    assert_eq!(
-        element.attributes(),
-        snapshot
-            .node(source.root)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes()
+    assert_eq!(node.attributes().unwrap().len(), 3);
+    let attributes = node.attributes().unwrap();
+    let authored = snapshot.node(source.root).unwrap().attributes().unwrap();
+    assert!(
+        attributes
+            .iter()
+            .map(|attr| (attr.name(), attr.value()))
+            .eq(authored.iter().map(|attr| (attr.name(), attr.value())))
+    );
+    assert!(
+        attributes
+            .iter()
+            .zip(authored.iter())
+            .all(|(a, b)| a.id() != b.id())
     );
     assert_eq!(
-        element.attribute_ns(&Namespace::none(), &"xml:lang".into()),
+        node.attribute_ns(&Namespace::none(), &"xml:lang".into()),
         Some(&DocumentString::from("literal"))
     );
     assert_eq!(
-        element.attributes()[1].name().prefix(),
+        attributes.item(1).unwrap().name().prefix(),
         Some(&DocumentString::from("p"))
     );
     assert_eq!(element.saved_is(), None);
-    assert_eq!(report.changes().changes(), [DomChange::Created(imported)]);
+    let mut expected = vec![DomChange::Created(imported)];
+    expected.extend(
+        attributes
+            .iter()
+            .map(|attr| DomChange::Created(attr.id().node())),
+    );
+    assert_eq!(report.changes().changes(), expected);
     assert_eq!(source.dom.snapshot().stamp(), source_stamp);
     assert_eq!(
         snapshot.node(source.root).unwrap().parent(),
@@ -178,7 +189,7 @@ fn deep_fragment_import_preserves_mixed_order_and_every_copy_uses_target_documen
         .node(capture.node(children[3]).unwrap().children()[0])
         .unwrap();
     assert_eq!(leaf.data(), Some(&DocumentString::from("leaf")));
-    assert_eq!(report.changes().changes().len(), 7);
+    assert_eq!(report.changes().changes().len(), 10);
     for change in report.changes().changes() {
         let DomChange::Created(id) = *change else {
             panic!("import creates fresh state only")
@@ -286,12 +297,7 @@ fn native_tickets_before_and_after_private_descendants_keep_their_own_nodes() {
         Some(&DocumentString::from("after"))
     );
     assert_eq!(
-        capture
-            .node(imported)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"changed".into()),
+        capture.node(imported).unwrap().attribute(&"changed".into()),
         Some(&DocumentString::from("later command"))
     );
     assert_eq!(
@@ -518,7 +524,7 @@ fn import_counts_exact_logical_strings_even_when_immutable_backing_is_shared() {
     for (limit, succeeds) in [(40, false), (41, true)] {
         let mut target = Dom::new(
             DomLimits::new(
-                2,
+                3,
                 limit,
                 4,
                 0,
@@ -537,7 +543,7 @@ fn import_counts_exact_logical_strings_even_when_immutable_backing_is_shared() {
         if succeeds {
             apply(&mut target, batch);
             assert_eq!(target.usage().string_code_units(), 41);
-            assert_eq!(target.usage().managed_nodes(), 2);
+            assert_eq!(target.usage().managed_nodes(), 3);
         } else {
             assert_eq!(
                 target.apply(batch, &AtomicBool::new(false)).unwrap_err(),

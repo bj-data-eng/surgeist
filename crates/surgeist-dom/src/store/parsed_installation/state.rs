@@ -802,45 +802,8 @@ pub(super) fn allocate(
             let family = family(source, node, class, input, c, &mut formation)?;
             let name = draft.bind_name(element.name(), None, cancel)?;
             let name = draft.form_element_name(name, None, cancel)?;
-            let capacity = element.attributes().len();
-            let body = if capacity == 0 {
-                0
-            } else {
-                size_of::<payload::Payload<crate::name::AttributeValues>>()
-            };
-            c.retain(body)?;
-            let mut entries = draft.attribute_input(capacity, None, c.cancel, |values| {
-                c.reserve(values, capacity)
-            })?;
-            for attribute in element.attributes().iter() {
-                c.step(size_of::<crate::DomAttribute>())?;
-                let name = draft.bind_name(attribute.name(), None, c.cancel)?;
-                entries.entries.push(crate::DomAttribute::from_parts(
-                    name,
-                    attribute.value().clone(),
-                ));
-                #[cfg(test)]
-                if scale_metrics::ENABLED {
-                    scale_metrics::record(scale_metrics::Event::ParsedAttributeRowMaterialized);
-                }
-                #[cfg(test)]
-                written.pushed::<crate::DomAttribute>();
-            }
-            let attribute_scratch = if entries.entries.capacity() != 0 {
-                entries
-                    .entries
-                    .capacity()
-                    .checked_mul(size_of::<crate::DomAttribute>())
-                    .and_then(|bytes| bytes.checked_add(body))
-                    .ok_or(Error::RepresentationExhausted)?
-            } else {
-                0
-            };
-            let attributes = draft.form_attributes(entries, None, cancel)?;
-            let attributes = draft.form_attribute_binding(attributes, None, cancel)?;
             let mut formed = DomElement::from_parsed(
                 name.value,
-                attributes.as_ref().map(|value| value.value.clone()),
                 custom_state,
                 saved_is.cloned(),
                 nonce.cloned(),
@@ -849,13 +812,49 @@ pub(super) fn allocate(
                 formation,
             )?;
             formed.children.name = Some(name.custody);
-            formed.children.attributes = attributes.map(|value| value.custody);
             let key = draft.allocate_element_formed(formed, document, limits, cancel, None)?;
-            // The exact input array/target now belongs to the receiving Slot.
-            c.bytes = c
-                .bytes
-                .checked_sub(attribute_scratch)
-                .expect("transferred attribute scratch");
+            let count = element.attributes().len();
+            if count != 0 {
+                let bytes = count
+                    .checked_mul(size_of::<Key>())
+                    .ok_or(Error::RepresentationExhausted)?;
+                c.retain(bytes)?;
+                let mut order = draft.effect_vec();
+                draft.select_reserve(&mut order, count, cancel)?;
+                let actual = order
+                    .capacity()
+                    .checked_mul(size_of::<Key>())
+                    .ok_or(Error::RepresentationExhausted)?;
+                c.retain(
+                    actual
+                        .checked_sub(bytes)
+                        .ok_or(Error::RepresentationExhausted)?,
+                )?;
+                for attribute in element.attributes().iter() {
+                    c.step(size_of::<Key>())?;
+                    let name = draft.bind_name(attribute.name(), None, cancel)?;
+                    let attr = draft.allocate(
+                        NewNode::Attr(crate::DomAttribute::from_parts(
+                            name,
+                            attribute.value().clone(),
+                        )),
+                        document,
+                        limits,
+                        cancel,
+                    )?;
+                    draft.set_attr_owner(attr, Some(key), cancel)?;
+                    order.push(attr);
+                    #[cfg(test)]
+                    if scale_metrics::ENABLED {
+                        scale_metrics::record(scale_metrics::Event::ParsedAttributeRowMaterialized);
+                    }
+                }
+                draft.replace_attribute_order(key, order.into_values(), &[], None, cancel)?;
+                c.bytes = c
+                    .bytes
+                    .checked_sub(actual)
+                    .ok_or(Error::RepresentationExhausted)?;
+            }
             return Ok(key);
         }
     };

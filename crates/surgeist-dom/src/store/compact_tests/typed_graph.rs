@@ -113,7 +113,7 @@ impl Walker<'_> {
         self.text(out, value.local_name());
         self.atom(value.local_name_atom());
     }
-    fn container<K>(&mut self, value: &Option<Arc<Target<canonical::ContainerChildren<K>>>>) {
+    fn container<K>(&mut self, value: &Option<Arc<Target<canonical::NodeSequence<K>>>>) {
         if let Some(value) = value {
             let mut raw = Raw::default();
             self.sequence(&mut raw, &value.value.values);
@@ -176,23 +176,6 @@ impl Walker<'_> {
         let mut raw = Raw::default();
         self.qualified(&mut raw, &name.value.value);
         self.object(name, raw, "element.name");
-        if let Some(binding) = element.attribute_binding() {
-            let mut text = Raw::default();
-            let storage = &binding.value.storage;
-            for attribute in storage.entries() {
-                self.qualified(&mut text, attribute.name());
-                self.text(&mut text, attribute.value());
-            }
-            self.object(binding, text, "element.attributes");
-            if let Some(bank) = storage.payload() {
-                let mut raw = Raw::default();
-                raw.bytes(bank.value.capacity() * size_of::<crate::DomAttribute>());
-                self.object(bank, raw, "attributes.target");
-                if let Some(graph) = &mut self.graph {
-                    storage.inspect_allocations(graph);
-                }
-            }
-        }
         if let Some(custom) = element.custom_payload() {
             let mut raw = Raw::default();
             if let Some(text) = &custom.value.saved_is {
@@ -407,6 +390,18 @@ impl Walker<'_> {
                 self.root(v, "node.element");
                 let v = &v.value;
                 self.element(&v.element);
+                if let Some(attributes) = &v.attributes {
+                    let mut raw = Raw::default();
+                    raw.sequence(&attributes.value.values);
+                    self.object(attributes, raw, "attributes.target");
+                    if let Some(graph) = &mut self.graph {
+                        attributes.value.values.inspect_named_allocations(
+                            graph,
+                            "attributes.vector",
+                            "attributes.buffer",
+                        );
+                    }
+                }
                 self.container(&v.children);
                 if let Some(v) = &v.slottable {
                     self.fixed(v, "node.slottable");

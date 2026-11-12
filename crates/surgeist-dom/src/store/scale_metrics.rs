@@ -91,28 +91,6 @@ pub(super) enum Event {
     NameHashUnit,
     NameComparisonPair,
     NameProbeRow,
-    SharingBankHashUnit,
-    SharingBankComparisonPair,
-    SharingBankProbeSlot,
-    SharingBankHit,
-    SharingBankMiss,
-    SharingBankBypassed,
-    SharingBankOfferCommitted,
-    SharingPairActivated,
-    SharingMarkCreated,
-    SharingMarkRestored,
-    SharingMarkAccepted,
-    SharingClosePrepared,
-    SharingPairClosed,
-    SharingPairCommitted,
-    SharingPairAborted,
-    /// Executed nomination/duplicate/header checks in protected paired closing.
-    SharingCoordinationVisit,
-    /// Actual initialized/moved bank-cache metadata, also in SequenceMaterialized.
-    /// This does not measure consumer-owned attribute-array replacement copies.
-    SharingMetadataSequenceMaterialized {
-        bytes: usize,
-    },
     /// One completed HTML-report to canonical DOM attribute output row.
     /// This is metadata construction, not a copied UTF16 buffer.
     ParsedAttributeRowMaterialized,
@@ -175,24 +153,6 @@ pub(super) struct Counters {
     pub name_hash_units: usize,
     pub name_comparison_pairs: usize,
     pub name_probe_rows: usize,
-    pub sharing_bank_hash_units: usize,
-    pub sharing_bank_comparison_pairs: usize,
-    pub sharing_bank_probe_slots: usize,
-    pub sharing_bank_hits: usize,
-    pub sharing_bank_misses: usize,
-    pub sharing_bank_bypasses: usize,
-    pub sharing_bank_offers: usize,
-    pub sharing_pair_activations: usize,
-    pub sharing_marks_created: usize,
-    pub sharing_marks_restored: usize,
-    pub sharing_marks_accepted: usize,
-    pub sharing_close_preparations: usize,
-    pub sharing_pairs_closed: usize,
-    pub sharing_pairs_committed: usize,
-    pub sharing_pairs_aborted: usize,
-    pub sharing_coordination_visits: usize,
-    pub sharing_metadata_materializations: usize,
-    pub sharing_metadata_materialized_bytes: usize,
     pub parsed_attribute_rows_materialized: usize,
     pub parsed_attribute_row_materialized_bytes: usize,
     pub queue_record_visits: usize,
@@ -253,26 +213,6 @@ impl Counters {
             Event::NameHashUnit => add(&mut self.name_hash_units, 1),
             Event::NameComparisonPair => add(&mut self.name_comparison_pairs, 1),
             Event::NameProbeRow => add(&mut self.name_probe_rows, 1),
-            Event::SharingBankHashUnit => add(&mut self.sharing_bank_hash_units, 1),
-            Event::SharingBankComparisonPair => add(&mut self.sharing_bank_comparison_pairs, 1),
-            Event::SharingBankProbeSlot => add(&mut self.sharing_bank_probe_slots, 1),
-            Event::SharingBankHit => add(&mut self.sharing_bank_hits, 1),
-            Event::SharingBankMiss => add(&mut self.sharing_bank_misses, 1),
-            Event::SharingBankBypassed => add(&mut self.sharing_bank_bypasses, 1),
-            Event::SharingBankOfferCommitted => add(&mut self.sharing_bank_offers, 1),
-            Event::SharingPairActivated => add(&mut self.sharing_pair_activations, 1),
-            Event::SharingMarkCreated => add(&mut self.sharing_marks_created, 1),
-            Event::SharingMarkRestored => add(&mut self.sharing_marks_restored, 1),
-            Event::SharingMarkAccepted => add(&mut self.sharing_marks_accepted, 1),
-            Event::SharingClosePrepared => add(&mut self.sharing_close_preparations, 1),
-            Event::SharingPairClosed => add(&mut self.sharing_pairs_closed, 1),
-            Event::SharingPairCommitted => add(&mut self.sharing_pairs_committed, 1),
-            Event::SharingPairAborted => add(&mut self.sharing_pairs_aborted, 1),
-            Event::SharingCoordinationVisit => add(&mut self.sharing_coordination_visits, 1),
-            Event::SharingMetadataSequenceMaterialized { bytes } => {
-                add(&mut self.sharing_metadata_materializations, 1);
-                add(&mut self.sharing_metadata_materialized_bytes, bytes);
-            }
             Event::ParsedAttributeRowMaterialized => {
                 add(&mut self.parsed_attribute_rows_materialized, 1);
                 add(

@@ -492,12 +492,12 @@ fn empty_delegate_tail_preadmits_only_actual_changed_same_origin_autofocus_outpu
                     [seed]
                 );
             }
-            // Queue tracker+marker2, AddOpen attribute+Document2, watcher1,
-            // modal+raw-layer2, final marker1 = eight actual output rows.
+            // Queue tracker+marker2, AddOpen Attr+attribute order+Document3, watcher1,
+            // modal+raw-layer2, final marker1 = nine actual output rows.
             // Only dirty same-origin history adds DocumentAutofocusState1.
             // Remember(None) is unchanged; the already-empty candidate list
             // has no second row. The existing five phases do not grow.
-            const BASE_OUTPUTS: usize = 2 + 2 + 1 + 2 + 1;
+            const BASE_OUTPUTS: usize = 2 + 3 + 1 + 2 + 1;
             let exact = BASE_OUTPUTS + usize::from(case == 0);
             let (before, calls) = before_with_policy(
                 &mut session,

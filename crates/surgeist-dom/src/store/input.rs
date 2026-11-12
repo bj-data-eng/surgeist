@@ -979,13 +979,23 @@ mod tests {
                 unreachable!()
             };
             assert!(!first_state.input_state().unwrap().flags().checkedness());
-            let second_state = prepared.state.node(dom.owner, second).unwrap();
-            let DomNodeKind::Element(second_state) = &second_state.kind() else {
+            let second_node = prepared.state.node(dom.owner, second).unwrap();
+            let DomNodeKind::Element(second_state) = &second_node.kind() else {
                 unreachable!()
             };
             assert!(second_state.input_state().unwrap().flags().checkedness());
             assert_eq!(
-                second_state.attribute(&"value".into()),
+                second_node.attribute_ids().iter().find_map(|id| {
+                    let attr = prepared
+                        .state
+                        .node(dom.owner, *id)
+                        .unwrap()
+                        .attribute_node()
+                        .unwrap()
+                        .0;
+                    (attr.name().local_name() == &DocumentString::from("value"))
+                        .then_some(attr.value())
+                }),
                 Some(&"prefix".into())
             );
             if !exhausted {

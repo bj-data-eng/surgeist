@@ -811,7 +811,6 @@ impl<'caps> DomParsedHtmlStyleSheetPreparation<'_, '_, 'caps> {
                 || admission.step(cancel),
             )?);
         }
-        publication.close_ordinary_sharing(cancel)?;
         let history = self.dom.history.retain_evictions(
             &publication.history_plan,
             self.dom.custody_registry.ledger(),

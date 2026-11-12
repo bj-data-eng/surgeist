@@ -872,13 +872,7 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
     assert_eq!(current.owner_document(), Some(second.document()));
     assert_eq!(current.parent(), Some(second_body));
     assert!(current.is_connected());
-    assert!(
-        current
-            .as_element()
-            .unwrap()
-            .attribute(&"open".into())
-            .is_some()
-    );
+    assert!(current.attribute(&"open".into()).is_some());
 }
 
 #[test]
@@ -1467,8 +1461,6 @@ fn unsupported_child_navigable_and_svg_processing_profiles_refuse_connection_ato
         assert!(
             dom.snapshot()
                 .node(parent)
-                .unwrap()
-                .as_element()
                 .unwrap()
                 .attribute(&"data-unpublished".into())
                 .is_none()

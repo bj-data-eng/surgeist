@@ -269,7 +269,7 @@ impl Draft {
                             .add_element(
                                 &document,
                                 element.name(),
-                                element.attributes(),
+                                &element.attributes(),
                                 element.saved_is(),
                                 envelope,
                                 cancel,

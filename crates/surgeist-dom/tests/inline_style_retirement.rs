@@ -562,7 +562,7 @@ fn repeated_retirement_reuses_live_capacity_and_never_rebinds_stale_nodes_or_blo
     // One producer root sheet-list plus keeper and target are three objects.
     let (mut dom, document) = owner(
         2,
-        3,
+        5,
         CssomLimits {
             max_objects: 3,
             ..Default::default()

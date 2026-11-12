@@ -219,7 +219,7 @@ fn fresh_native_audio_and_video_preserve_exact_namespaces() {
             Namespace::from_uri(*namespace).uri()
         );
         assert_eq!(element.name().local_name(), &DocumentString::from(*local));
-        assert!(element.attributes().is_empty());
+        assert!(node.attributes().unwrap().is_empty());
         assert_eq!(element.initial_media_state(), *state);
         if let Some(state) = state {
             assert!(state.network_is_empty());
@@ -529,7 +529,10 @@ fn nonce_content_and_idl_slot_change_independently_with_precise_change_domains()
     let capture = dom.snapshot();
     let current = capture.node(element).unwrap().as_element().unwrap();
     assert_eq!(current.nonce(), Some(&"slot".into()));
-    assert_eq!(current.attribute(&"nonce".into()), Some(&"content".into()));
+    assert_eq!(
+        capture.node(element).unwrap().attribute(&"nonce".into()),
+        Some(&"content".into())
+    );
     assert_eq!(
         old.node(element).unwrap().as_element().unwrap().nonce(),
         Some(&"content".into())
@@ -651,7 +654,13 @@ fn captured_import_copies_nonce_after_attributes_and_native_insertion_keeps_cont
     assert_ne!(copied_child, child);
     let element = capture.node(copied_child).unwrap().as_element().unwrap();
     assert_eq!(element.nonce(), Some(&"private".into()));
-    assert_eq!(element.attribute(&"nonce".into()), Some(&"public".into()));
+    assert_eq!(
+        capture
+            .node(copied_child)
+            .unwrap()
+            .attribute(&"nonce".into()),
+        Some(&"public".into())
+    );
     assert_eq!(
         capture.node(copied_child).unwrap().owner_document(),
         Some(document)
@@ -683,7 +692,7 @@ fn exact_nonce_string_capacity_counts_both_content_and_slot_and_rolls_back_late_
     for capacity in [70, 71] {
         let mut dom = Dom::new(
             DomLimits::new(
-                2,
+                3,
                 capacity,
                 16,
                 0,
@@ -747,6 +756,63 @@ fn exact_nonce_string_capacity_counts_both_content_and_slot_and_rolls_back_late_
 }
 
 #[test]
+fn replacing_nonce_slot_can_make_room_for_the_content_attribute() {
+    // The document and element use 62 units. With an empty content attribute
+    // and a private 16-unit slot, the replacement case starts at the limit.
+    // Both edits end at 62 + 5 (name) + 7 (content) + 7 (slot).
+    let cancel = AtomicBool::new(false);
+    for existing in [false, true] {
+        let mut dom = Dom::new(
+            DomLimits::new(
+                3,
+                83,
+                16,
+                0,
+                0,
+                0,
+                0,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mut initial = DomBatch::new();
+        let document = initial.create_document();
+        let element = initial.create_element_ns(&document, Namespace::from_uri(HTML), "div");
+        if existing {
+            initial.set_attribute(&element, "nonce", "");
+        }
+        initial.set_nonce(&element, "0123456789abcdef");
+        let element = dom
+            .apply(initial, &cancel)
+            .unwrap()
+            .created(&element)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            dom.usage().string_code_units(),
+            if existing { 83 } else { 78 }
+        );
+
+        let before = dom.snapshot();
+        let old = before.node(element).unwrap().attributes().unwrap().item(0);
+        let mut edit = DomBatch::new();
+        edit.set_attribute(element, "nonce", "1234567");
+        dom.apply(edit, &cancel).unwrap();
+        assert_eq!(dom.usage().string_code_units(), 81);
+        let after = dom.snapshot();
+        let node = after.node(element).unwrap();
+        let attr = node.attributes().unwrap().item(0).unwrap();
+        assert_eq!(attr.value(), &"1234567".into());
+        assert_eq!(node.as_element().unwrap().nonce(), Some(attr.value()));
+        if let Some(old) = old {
+            assert_eq!(attr.id(), old.id());
+            assert_eq!(old.value(), &"".into());
+        }
+    }
+}
+
+#[test]
 fn common_state_survives_character_data_replacement_fragment_moves_and_child_replacement() {
     let mut dom = dom();
     let mut batch = DomBatch::new();
@@ -783,7 +849,10 @@ fn common_state_survives_character_data_replacement_fragment_moves_and_child_rep
     assert_eq!(capture.node(old_child).unwrap().parent(), None);
     let element = capture.node(new_child).unwrap().as_element().unwrap();
     assert_eq!(element.nonce(), Some(&nonce));
-    assert_eq!(element.attribute(&"nonce".into()), Some(&nonce));
+    assert_eq!(
+        capture.node(new_child).unwrap().attribute(&"nonce".into()),
+        Some(&nonce)
+    );
     assert_eq!(element.saved_is(), None);
     assert_eq!(
         element.custom_element_state(),

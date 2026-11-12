@@ -45,7 +45,7 @@ pub(super) fn with_facts(
         }
         if let Some(value) = node.node.base().and_then(|b| b.frozen.as_ref()) {
             let mut href = None;
-            for attr in node.as_element().expect("Base").attributes().iter() {
+            for attr in node.attributes().ok_or(DomError::WrongNodeKind)?.iter() {
                 control.charge(1)?;
                 if attr.name().namespace_uri().is_none()
                     && attr.name().local_name().code_units() == [104, 114, 101, 102]

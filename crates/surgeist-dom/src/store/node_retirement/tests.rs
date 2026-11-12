@@ -205,8 +205,7 @@ fn watched_creation_admits_the_exact_peak_and_retires_the_exact_generation() {
     // preparation, then add the fixed first-watch index, leaf and notice.
     let (batch, ticket) = fragment();
     let prepared = dom.prepare(batch, &cancel).unwrap();
-    let mut publication = dom.prepare_publication(prepared, &cancel).unwrap();
-    publication.close_ordinary_sharing(&cancel).unwrap();
+    let publication = dom.prepare_publication(prepared, &cancel).unwrap();
     let exact = bytes(&dom) + size_of::<Index>() + size_of::<Armed>() + size_of::<Notice>();
     // The initial native lookup uses one slot page. Retirement reserves
     // descent, unwind and exact-leaf disarm from the same work allowance.
@@ -427,8 +426,7 @@ fn replacement_watch_can_still_disarm_the_old_generation_before_publication() {
     let created = resolve_created_node(&prepared.owner, &prepared.created, &ticket)
         .unwrap()
         .unwrap();
-    let mut publication = dom.prepare_publication(prepared, &cancel).unwrap();
-    publication.close_ordinary_sharing(&cancel).unwrap();
+    let publication = dom.prepare_publication(prepared, &cancel).unwrap();
     let staged_bytes = bytes(&dom);
     let exact = staged_bytes + size_of::<Replacement>() + size_of::<Armed>() + size_of::<Notice>();
     let attempt = |limit| {

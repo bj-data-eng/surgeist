@@ -253,8 +253,9 @@ fn additional_headless_context_remembers_none(in_frame_child: bool) {
     assert_eq!(next.operation(), event.operation());
     assert_eq!(next.subject(), subject);
     let after = session.snapshot();
-    let element = after.node(subject).unwrap().as_element().unwrap();
-    assert_eq!(element.attribute(&"open".into()), Some(&"".into()));
+    let node = after.node(subject).unwrap();
+    let element = node.as_element().unwrap();
+    assert_eq!(node.attribute(&"open".into()), Some(&"".into()));
     assert_eq!(
         element
             .common_state()

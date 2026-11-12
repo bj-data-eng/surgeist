@@ -195,7 +195,14 @@ impl Draft {
                     let formation = source::formation::Formation::new(self, cancel)?;
                     let name = source::formation::string("open", formation.as_ref(), cancel)?;
                     let value = source::formation::string("", formation.as_ref(), cancel)?;
-                    self.set_attribute(key, None, &name, &value, limits, cancel)?;
+                    self.set_attribute(
+                        key,
+                        Some(&surgeist_html::values::Namespace::none()),
+                        &name,
+                        &value,
+                        limits,
+                        cancel,
+                    )?;
                     self.run_effects(limits, cancel)?;
                     frame.state = MethodState::Ready;
                     Reply::Applied
@@ -204,7 +211,13 @@ impl Draft {
                     frame.state = MethodState::AwaitingAttributeHooks;
                     let formation = source::formation::Formation::new(self, cancel)?;
                     let name = source::formation::string("open", formation.as_ref(), cancel)?;
-                    self.remove_attribute(key, None, &name, limits, cancel)?;
+                    self.remove_attribute(
+                        key,
+                        Some(&surgeist_html::values::Namespace::none()),
+                        &name,
+                        limits,
+                        cancel,
+                    )?;
                     self.run_effects(limits, cancel)?;
                     frame.state = MethodState::Ready;
                     Reply::Applied
@@ -1014,7 +1027,13 @@ mod tests {
                 [second]
             );
             assert_eq!(
-                draft.element(first).unwrap().attribute(&"open".into()),
+                draft
+                    .element(first)
+                    .unwrap()
+                    .attributes()
+                    .iter()
+                    .find(|attr| attr.name().local_name() == &DocumentString::from("open"))
+                    .map(crate::DomAttribute::value),
                 None
             );
             assert!(draft.effects.is_empty());

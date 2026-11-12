@@ -1,15 +1,10 @@
-use crate::name::AttributeStorage;
-use crate::names::qualified_equals;
 use crate::store::payload::Payload;
 use crate::store::source::formation::{self, Formation};
-use crate::{DomAttribute, DomError, DomQualifiedName, DomRegistryBinding};
+use crate::{DomError, DomQualifiedName, DomRegistryBinding};
 use std::sync::Arc;
 #[cfg(test)]
 use std::sync::atomic::AtomicBool;
-use surgeist_html::{
-    elements::native::HtmlCustomElementState,
-    values::{DocumentString, Namespace},
-};
+use surgeist_html::{elements::native::HtmlCustomElementState, values::DocumentString};
 use surgeist_html::{
     elements::{
         frame::HtmlIframeInitialState,
@@ -25,8 +20,8 @@ mod groups;
 mod tests;
 pub(crate) use family::{IframeState, NativeFamily};
 pub(crate) use groups::{
-    AttributeBinding, CustomAssociation, ElementChildren, ElementFormation, ElementName,
-    FocusReference, FormedElement, HostedContent, NonceSlot, NonceUpdate,
+    CustomAssociation, ElementChildren, ElementFormation, ElementName, FocusReference,
+    FormedElement, HostedContent, NonceSlot, NonceUpdate,
 };
 
 fn original_string(
@@ -83,7 +78,6 @@ pub enum DomElementDefinition {
 #[derive(Clone, Debug)]
 pub struct DomElement {
     name: Arc<Payload<ElementName>>,
-    attributes: Option<Arc<Payload<AttributeBinding>>>,
     custom_state: HtmlCustomElementState,
     common_scope: surgeist_html::elements::native::HtmlCommonScope,
     custom: Option<Arc<Payload<CustomAssociation>>>,
@@ -97,7 +91,6 @@ pub struct DomElement {
 impl PartialEq for DomElement {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
-            && self.attributes() == other.attributes()
             && self.custom_element_registry() == other.custom_element_registry()
             && self.custom_element_definition() == other.custom_element_definition()
             && self.saved_is() == other.saved_is()
@@ -190,15 +183,6 @@ impl DomElement {
             _ => None,
         }
     }
-    #[cfg(test)]
-    pub(crate) fn attributes_payload(
-        &self,
-    ) -> Result<crate::store::source::storage::Payload, DomError> {
-        Ok(self.attributes_backing().map_or_else(
-            crate::store::source::storage::Payload::default,
-            AttributeStorage::text_payload,
-        ))
-    }
     pub(crate) fn retained_payload(
         &self,
         step: impl FnMut() -> Result<(), DomError>,
@@ -207,13 +191,8 @@ impl DomElement {
     }
     /// Completed retained materialization. The importer retains its native
     /// control until this result is attached to the receiving language payload.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Independent parsed facts and already formed child owners enter one atomic Element formation; grouping them would add an artificial staging record"
-    )]
     pub(crate) fn from_parsed(
         name: Arc<Payload<ElementName>>,
-        attributes: Option<Arc<Payload<AttributeBinding>>>,
         custom_state: HtmlCustomElementState,
         saved_is: Option<DocumentString>,
         nonce: Option<DocumentString>,
@@ -248,7 +227,6 @@ impl DomElement {
             .transpose()?;
         let value = Self {
             name,
-            attributes,
             custom_state,
             common_scope: common.scope(),
             custom,
@@ -285,11 +263,11 @@ impl DomElement {
         Self::initialize(name, saved_is, environment, formation)
     }
 
-    /// Construct only the changed binding and feature bodies. An unrelated
-    /// attribute edit aliases its original name, native state and nonce.
-    pub(crate) fn with_attributes_formed(
+    /// Form the native state for one content attribute mutation.
+    pub(crate) fn with_attribute_effect<A: surgeist_html::values::HtmlAttributesInput + ?Sized>(
         &self,
-        attributes: Option<Arc<Payload<AttributeBinding>>>,
+        previous: &A,
+        attributes: &A,
         changed: &DomQualifiedName,
         nonce: NonceUpdate,
         mut formation: ElementFormation<'_>,
@@ -301,10 +279,8 @@ impl DomElement {
             family::AttributeMutation {
                 element_name: self.name(),
                 name: changed,
-                previous: self.attributes(),
-                attributes: attributes
-                    .as_ref()
-                    .map_or(&[], |binding| binding.value.storage.as_slice()),
+                previous,
+                attributes,
                 content: self.child_navigable_presence(),
             },
             &mut || formation::step(budget, cancel),
@@ -318,7 +294,6 @@ impl DomElement {
             }
         };
         let value = Self {
-            attributes,
             nonce,
             family,
             ..self.clone()
@@ -502,7 +477,6 @@ impl DomElement {
         };
         let value = Self {
             name,
-            attributes: None,
             custom_state: surgeist_html::elements::native::custom_element_state_without_definition(
                 html,
                 custom_name,
@@ -623,22 +597,6 @@ impl DomElement {
     }
     pub(crate) fn is_meta(&self) -> bool {
         matches!(self.family, NativeFamily::Meta)
-    }
-    /// Native Details state is actual exact no-namespace open presence.
-    pub fn details_state(&self) -> Option<surgeist_html::elements::details::HtmlDetailsState> {
-        if !self.is_details() {
-            return None;
-        }
-        Some(
-            if self.attributes().iter().any(|a| {
-                a.name().namespace_uri().is_none()
-                    && a.name().local_name().code_units() == [0x6f, 0x70, 0x65, 0x6e]
-            }) {
-                surgeist_html::elements::details::HtmlDetailsState::Open
-            } else {
-                surgeist_html::elements::details::HtmlDetailsState::Closed
-            },
-        )
     }
     pub fn select_state(&self) -> Option<&crate::DomSelectState> {
         match &self.family {
@@ -858,24 +816,6 @@ impl DomElement {
     pub fn name(&self) -> &DomQualifiedName {
         &self.name.value.value
     }
-    pub fn attributes(&self) -> &[DomAttribute] {
-        self.attributes
-            .as_ref()
-            .map_or(&[], |value| value.value.storage.as_slice())
-    }
-    pub(crate) fn attribute_binding(&self) -> Option<&Arc<Payload<AttributeBinding>>> {
-        self.attributes.as_ref()
-    }
-    pub(crate) fn attributes_backing(&self) -> Option<&AttributeStorage> {
-        self.attributes.as_ref().map(|value| &value.value.storage)
-    }
-    pub(crate) fn same_attribute_storage(&self, other: &Self) -> bool {
-        match (self.attributes_backing(), other.attributes_backing()) {
-            (None, None) => true,
-            (Some(left), Some(right)) => left.same_storage(right),
-            _ => false,
-        }
-    }
     pub fn custom_element_registry(&self) -> DomRegistryBinding {
         self.custom
             .as_ref()
@@ -898,40 +838,15 @@ impl DomElement {
             .as_ref()
             .and_then(|value| value.value.saved_is.as_ref())
     }
-    /// First exact qualified spelling, without namespace interpretation.
-    pub fn attribute(&self, qualified_name: &DocumentString) -> Option<&DocumentString> {
-        self.attributes()
-            .iter()
-            .find(|attribute| qualified_equals(attribute.name(), qualified_name))
-            .map(|attribute| attribute.value())
-    }
-    pub fn attribute_ns(
-        &self,
-        namespace: &Namespace,
-        local_name: &DocumentString,
-    ) -> Option<&DocumentString> {
-        self.attributes()
-            .iter()
-            .find(|attribute| {
-                attribute.name().namespace_uri() == namespace.uri()
-                    && attribute.name().local_name() == local_name
-            })
-            .map(|attribute| attribute.value())
-    }
-    pub(crate) fn family_units(&self) -> Option<usize> {
-        self.family.units()
-    }
     pub(crate) fn units(&self) -> Option<usize> {
-        let mut units = self
-            .name()
+        self.name()
             .logical_units()?
             .checked_add(self.saved_is().map_or(0, DocumentString::len))?
-            .checked_add(self.nonce().map_or(0, DocumentString::len))?;
-        units = units.checked_add(self.family.units()?)?;
-        units = units.checked_add(
-            self.attributes_backing()
-                .map_or(0, AttributeStorage::logical_units),
-        )?;
-        Some(units)
+            .checked_add(self.nonce().map_or(0, DocumentString::len))?
+            .checked_add(self.family.units()?)
+    }
+
+    pub(crate) fn family_units(&self) -> Option<usize> {
+        self.family.units()
     }
 }

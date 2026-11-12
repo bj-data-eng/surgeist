@@ -124,7 +124,9 @@ impl<'a> OrderView<'a> {
                 draft.node(key)
             }
             Read::State(state, owner) => match key {
-                Key::Existing(id) => Ok(NodeRead::canonical(state.node(owner, id)?)),
+                Key::Existing(id) => {
+                    Ok(NodeRead::canonical(state.node(owner, id)?).in_state(state, owner))
+                }
                 Key::Created(_) => Err(DomError::UnavailableCreation),
             },
         }

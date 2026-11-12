@@ -375,8 +375,6 @@ mod tests {
                 historical
                     .node(subject)
                     .unwrap()
-                    .as_element()
-                    .unwrap()
                     .attribute(&"data-local".into())
                     .unwrap(),
                 &DocumentString::from("before")
@@ -384,8 +382,6 @@ mod tests {
             assert_eq!(
                 dom.snapshot()
                     .node(subject)
-                    .unwrap()
-                    .as_element()
                     .unwrap()
                     .attribute(&"data-local".into())
                     .unwrap(),

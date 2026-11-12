@@ -140,12 +140,7 @@ fn bitmap_dimensions_use_shared_prefix_recovery_and_preserve_exact_raw_utf16() {
         let snapshot = dom.snapshot();
         assert_eq!(dimensions(&snapshot, canvas), (expected.into(), "0".into()));
         assert_eq!(
-            snapshot
-                .node(canvas)
-                .unwrap()
-                .as_element()
-                .unwrap()
-                .attribute(&"width".into()),
+            snapshot.node(canvas).unwrap().attribute(&"width".into()),
             Some(&raw)
         );
     }
@@ -218,7 +213,20 @@ fn dimension_and_marquee_changes_have_exact_domains_old_captures_and_final_noops
     );
     assert_eq!(dimensions(&old, canvas), ("300".into(), "150".into()));
     assert_eq!(marquee(&old, moving), (true, 0));
-    let stamp = dom.snapshot().stamp();
+    let initial = dom.snapshot();
+    let width = initial
+        .node(canvas)
+        .unwrap()
+        .get_attribute_node(&"width".into())
+        .unwrap()
+        .id();
+    assert!(
+        changes
+            .changes()
+            .changes()
+            .contains(&DomChange::Created(width.node()))
+    );
+    let stamp = initial.stamp();
     let mut batch = DomBatch::new();
     batch.set_attribute(canvas, "width", "301");
     batch.stop_marquee(moving);
@@ -231,7 +239,7 @@ fn dimension_and_marquee_changes_have_exact_domains_old_captures_and_final_noops
     let changes = apply(&mut dom, batch);
     assert_eq!(
         changes.changes().changes(),
-        &[DomChange::Attributes(canvas)]
+        &[DomChange::Attributes(canvas), DomChange::AttrValue(width)]
     );
     let mut batch = DomBatch::new();
     batch.set_attribute(moving, "loop", "1");
@@ -299,7 +307,7 @@ fn exact_limits_count_canonical_digits_but_inline_defaults_cost_no_digit_storage
         for capacity in [exact - 1, exact] {
             let mut dom = Dom::new(
                 DomLimits::new(
-                    2,
+                    3,
                     capacity,
                     8,
                     0,
@@ -341,7 +349,22 @@ fn exact_limits_count_canonical_digits_but_inline_defaults_cost_no_digit_storage
                     assert_eq!(dom.usage().string_code_units(), 76);
                 }
                 let mut batch = DomBatch::new();
+                let before = dom.snapshot();
+                let width = before
+                    .node(canvas)
+                    .unwrap()
+                    .get_attribute_node(&"width".into())
+                    .unwrap()
+                    .id();
                 batch.remove_attribute(canvas, "width");
+                apply(&mut dom, batch);
+                assert_eq!(dom.usage().string_code_units(), 65 + 5 + raw.len());
+                assert_eq!(
+                    dom.snapshot().attr(width.node()).unwrap().owner_element(),
+                    None
+                );
+                let mut batch = DomBatch::new();
+                batch.destroy(width.node());
                 apply(&mut dom, batch);
                 assert_eq!(dom.usage().string_code_units(), 65);
                 let mut batch = DomBatch::new();

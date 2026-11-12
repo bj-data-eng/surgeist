@@ -510,7 +510,7 @@ impl Draft {
             return Ok(());
         }
         let new = slot::name_admitted(
-            self.node(node)?.kind().into(),
+            self.element(node)?.attributes().iter(),
             if is_name { "name" } else { "slot" },
             &mut || self.source_step(cancel),
         )?;
@@ -748,9 +748,10 @@ mod tests {
             .snapshot()
             .node(s)
             .unwrap()
-            .as_element()
+            .attributes()
             .unwrap()
-            .attributes()[0]
+            .item(0)
+            .unwrap()
             .name()
             .clone();
         let cancel = AtomicBool::new(false);
