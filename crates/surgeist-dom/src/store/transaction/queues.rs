@@ -2583,6 +2583,89 @@ mod tests {
         }
     }
     #[test]
+    fn selectedcontent_task_obligations_follow_both_captured_documents() {
+        let cancel = AtomicBool::new(false);
+        let limits = DomLimits::new(
+            32,
+            4096,
+            64,
+            32,
+            32,
+            8,
+            65536,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(16, 1_000_000, 1_000_000)
+        .unwrap();
+        let mut dom = Dom::new(limits).unwrap();
+        let mut setup = DomBatch::new();
+        let first = setup.create_document();
+        let second = setup.create_document();
+        let html = surgeist_html::values::Namespace::html;
+        let root = setup.create_element_ns(&first, html(), "div");
+        let select = setup.create_element_ns(&first, html(), "select");
+        let target = setup.create_element_ns(&first, html(), "selectedcontent");
+        setup.insert_before(&select, &root, None);
+        setup.insert_before(&target, &root, None);
+        let commit = dom.apply(setup, &cancel).unwrap();
+        let first = commit.document(&first).unwrap();
+        let second = commit.document(&second).unwrap();
+        let select = commit.created(&select).unwrap().unwrap();
+        let target = commit.created(&target).unwrap().unwrap();
+        let mut lease = dom
+            .begin_source_edit(
+                crate::DomSourceEdit::move_before(target, select, None),
+                crate::DomSourceLimits::new(64_000_000, 1_000_000, 20_000_000, 128, 4096, 4096, 8),
+                &cancel,
+            )
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancel).unwrap(),
+            crate::DomSourceProgress::Complete(_)
+        ));
+        drop(lease);
+        let before = dom.snapshot();
+        assert!(before.state.native_targets.has_document_obligations(first));
+        assert!(!before.state.native_targets.has_document_obligations(second));
+
+        let mut adopt = DomBatch::new();
+        adopt.adopt(target, second.node());
+        dom.apply(adopt, &cancel).unwrap();
+        assert_eq!(
+            dom.snapshot().node(target).unwrap().owner_document(),
+            Some(second)
+        );
+        assert_eq!(
+            dom.snapshot().node(select).unwrap().owner_document(),
+            Some(first)
+        );
+        assert!(dom.state.native_targets.has_document_obligations(first));
+        assert!(dom.state.native_targets.has_document_obligations(second));
+        assert!(!before.state.native_targets.has_document_obligations(second));
+
+        let checkpoint = crate::DomNativeCheckpointLimits::new(
+            1_000_000,
+            1_000_000,
+            crate::DomSlotQueryLimits::new(32, 32).unwrap(),
+        )
+        .unwrap();
+        let crate::DomNativeCheckpoint::Select(task) =
+            dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+        else {
+            panic!("the captured pair remains pending across adoption");
+        };
+        assert_eq!(
+            (task.select(), task.selectedcontent()),
+            (select, Some(target))
+        );
+        dom.complete_select_task(&task, checkpoint, &cancel)
+            .unwrap();
+        assert!(!dom.state.native_targets.has_document_obligations(first));
+        assert!(!dom.state.native_targets.has_document_obligations(second));
+    }
+
+    #[test]
     fn actual_signal_and_select_obligations_follow_adoption_and_exact_retirement() {
         let cancel = AtomicBool::new(false);
         let limits = DomLimits::new(
