@@ -107,10 +107,18 @@ wrapping; typography and captured ancestor wrapping still govern admission.
 
 `System::prepare_leader_pattern` finalizes a decoded literal or a dotted, solid,
 or space keyword as one isolated inline unit. The caller supplies its used
-style, bidi base, orientation, and tab reference. Text removes mandatory
-Unicode line-break controls before Phase I whitespace processing and retains
-their original UTF-16 correspondence. Surviving pattern-edge spaces and
-punctuation keep their advances. Preserved tabs use the unit start as origin.
+style, bidi base, writing axis, orientation, and tab reference. Text removes
+mandatory Unicode line-break controls before Phase I whitespace processing
+and retains their original UTF-16 correspondence. Surviving pattern-edge
+spaces and punctuation keep their advances. Preserved tabs use the unit
+start as origin.
+
+In vertical writing, `text-combine-upright` uses a complete capture of the
+generated inline. The pattern edges bound cell selection and lookaround.
+`LeaderCombinationContext` supplies the actual horizontal inner direction,
+scope font reference, and limits when a cell is selected. Each cell applies
+ordinary horizontal inner whitespace processing and retains its source pieces
+and horizontal paint frame. Horizontal writing leaves the declaration inactive.
 
 `FinalizedLeaderPattern` retains the exact source, transformed mappings, unit
 metrics, and actual glyph runs and font instances. `cluster_views()` supplies
