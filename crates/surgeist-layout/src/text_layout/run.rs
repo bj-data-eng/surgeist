@@ -2413,6 +2413,10 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                     visual_raw_y - border.origin.y,
                 ),
                 measured_normal,
+                measured_padding_origin: Point::new(
+                    atomic.item.padding.left,
+                    atomic.item.padding.top,
+                ),
                 normal: crate::output::NormalGeometryOf::box_geometry(
                     normal_location,
                     normal_size,

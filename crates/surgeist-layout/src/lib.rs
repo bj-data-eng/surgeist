@@ -350,6 +350,7 @@ pub use text_layout::{
     TextParticipation, TextScopeAlignmentInput, TextScopeAlignmentInputOf, TextScopeAssociation,
     TextScopeBinding,
 };
+mod resize_observer;
 mod scalar;
 mod scroll;
 mod sizing;
@@ -445,6 +446,10 @@ pub use output::{
     RootLocalPositionedContext, RootLocalPositionedContextOf, SourceIndex,
 };
 pub(crate) use output::{RequestedAxis, RunMode, SizingMode};
+pub use resize_observer::{
+    ResizeObserverBoxSize, ResizeObserverContentRectOf, ResizeObserverMeasurementError,
+    ResizeObserverMeasurementOf, ResizeObserverPixelGrid,
+};
 /// Supported scalar contract for generic layout APIs.
 pub use scalar::LayoutScalar;
 pub use scroll::{

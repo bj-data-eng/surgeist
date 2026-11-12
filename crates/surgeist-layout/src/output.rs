@@ -1959,6 +1959,7 @@ impl<S: LayoutScalar> MeasuredInsetBasisOf<S> {
 pub(crate) struct CanonicalAtomicGeometryOf<S: LayoutScalar> {
     pub(crate) visual_readback_offset: Point<f64>,
     pub(crate) measured_normal: NormalGeometryOf<S>,
+    pub(crate) measured_padding_origin: Point<S>,
     pub(crate) normal: NormalGeometryOf<S>,
     pub(crate) normal_origin: Point<f64>,
     pub(crate) visual_origin: Point<f64>,
@@ -1980,6 +1981,7 @@ pub(crate) enum GeometryStateOf<S: LayoutScalar> {
     },
     CanonicalAtomic {
         measured_normal: NormalGeometryOf<S>,
+        measured_padding_origin: Point<S>,
         normal: NormalGeometryOf<S>,
         normal_origin: Point<f64>,
         visual_origin: Point<f64>,
@@ -2055,6 +2057,7 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
     pub(crate) const fn canonical_atomic(
         node: Node,
         measured_normal: NormalGeometryOf<S>,
+        measured_padding_origin: Point<S>,
         normal: NormalGeometryOf<S>,
         normal_origin: Point<f64>,
         visual_origin: Point<f64>,
@@ -2066,6 +2069,7 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
             non_box: None,
             geometry: GeometryStateOf::CanonicalAtomic {
                 measured_normal,
+                measured_padding_origin,
                 normal,
                 normal_origin,
                 visual_origin,
@@ -2101,6 +2105,7 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
         match self.geometry {
             GeometryStateOf::CanonicalAtomic {
                 measured_normal,
+                measured_padding_origin,
                 normal,
                 normal_origin,
                 visual_origin,
@@ -2109,6 +2114,7 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
                 output,
                 geometry: GeometryStateOf::CanonicalAtomic {
                     measured_normal,
+                    measured_padding_origin,
                     normal,
                     normal_origin,
                     visual_origin,

@@ -468,6 +468,7 @@ where
                 Some(canonical) => crate::LayoutOutputEntryOf::canonical_atomic(
                     child,
                     canonical.measured_normal,
+                    canonical.measured_padding_origin,
                     canonical.normal,
                     canonical.normal_origin,
                     canonical.visual_origin,

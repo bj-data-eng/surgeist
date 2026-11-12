@@ -1030,6 +1030,10 @@ Sources: [geometry](../src/geometry.rs) and [scroll](../src/scroll/mod.rs).
 - [Snap geometry](explanation.md#scroll-snap-geometry) uses `ScrollSnapContextOf`
   and `ScrollSnapGeometryOf`.
 
+- [Resize Observer measurements](explanation.md#resize-observer-box-measurements)
+  use `SingleBoxOutputRefOf::resize_observer_measurement` and
+  `ResizeObserverPixelGrid`.
+
 ### Output
 
 Source: [output](../src/output.rs).

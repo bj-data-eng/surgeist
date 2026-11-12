@@ -807,3 +807,29 @@ mod captured_percentage_basis;
 
 #[path = "fractional_parent_basis.rs"]
 mod fractional_parent_basis;
+
+#[test]
+fn resize_observer_uses_the_measured_text_placed_atomic_box() {
+    fn check<S: LayoutScalar>() {
+        let paragraph = custody_paragraph(true);
+        let host = CustodyHost::<S>::new(custody_fixture(&paragraph, true, 0.32));
+        let batch = custody_compute(&host, vec![paragraph.binding(0)], &[]);
+        let atomic = batch.node_layout(2).unwrap().single_box().unwrap();
+        let grid =
+            crate::ResizeObserverPixelGrid::try_new(crate::Point::new(-0.5, 0.0), 1.0).unwrap();
+        let measurement = atomic
+            .resize_observer_measurement(WritingMode::HorizontalTb, grid)
+            .unwrap()
+            .unwrap();
+        assert_eq!(atomic.unrounded_output().size.width, S::from_f64(11.0));
+        assert_eq!(measurement.border_box().inline, S::from_f64(10.4));
+        assert_eq!(measurement.content_box().inline, S::from_f64(9.9));
+        assert_eq!(
+            measurement.content_rect().origin,
+            Point::new(S::from_f64(0.25), S::from_f64(0.25))
+        );
+        assert_eq!(measurement.device_pixel_content_box().inline, 9);
+    }
+    check::<f32>();
+    check::<f64>();
+}

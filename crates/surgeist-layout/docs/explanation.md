@@ -179,6 +179,22 @@ The scrolling consumer checks visibility at the final two-axis offset
 before selecting a destination. Shared boundary coordinates count as
 visible. [CSS Scroll Snap 1](https://www.w3.org/TR/2021/CR-css-scroll-snap-1-20210311/#scroll-snap-align)
 
+#### Resize Observer box measurements
+
+A completed single CSS box supplies its accepted unrounded border extent and
+its canonical content extent after scrollbar reservation. Layout maps both
+extents to the target writing mode. The physical content rectangle starts at
+padding-left and padding-top. A consumer with a known empty target uses the
+zero measurement. An absent measurement represents unavailable geometry.
+
+The consumer supplies the content origin relative to the device-pixel grid
+and the effective scale from the same geometry revision, including zoom and
+host scale and excluding CSS transforms. Layout rounds the scaled start and
+end of each physical interval to nearest with ties toward positive infinity.
+Their difference is the integral extent, which Layout maps to the target
+writing mode. The same CSS size can produce a different device-pixel size
+after a position change. [Resize Observer draft](https://www.w3.org/TR/2020/WD-resize-observer-1-20200211/#calculate-box-size)
+
 These boundaries describe the represented behavior; they do not establish broad
 CSS conformance. The [browser parity guide](../tests/layout/browser_parity/README.md)
 describes the checked-in evidence and its classified unsupported cases.
