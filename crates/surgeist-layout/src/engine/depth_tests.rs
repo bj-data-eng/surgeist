@@ -241,3 +241,53 @@ fn deep_block_scalar_inline_demand_returns() {
         },
     );
 }
+
+fn assert_intrinsic_block_chain<S: LayoutScalar>(nodes: u32) {
+    let expected = Size::new(S::from_f64(13.0), S::from_f64(7.0));
+    let tree = chain::<S>(Display::Block, nodes).measure(nodes - 1, expected);
+    let request = LayoutRootRequestOf::standalone(
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::NONE,
+    );
+    let batch = compute_layout(&tree, 0, request).expect("intrinsically sized Block chain");
+    assert_eq!(batch.node_layouts().len(), nodes as usize);
+    for (node, view) in batch.node_layouts() {
+        let output = view.single_box().unwrap().final_output();
+        assert_eq!(output.size, expected, "node {node}");
+        assert_eq!(output.location, crate::Point::new(S::ZERO, S::ZERO));
+        assert_eq!(output.source_index, crate::SourceIndex::ZERO);
+    }
+}
+
+#[test]
+fn shallow_intrinsic_block_layout_publishes_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_intrinsic_block_layout_publishes_geometry",
+        || {
+            assert_intrinsic_block_chain::<f32>(3);
+            assert_intrinsic_block_chain::<f64>(3);
+        },
+    );
+}
+
+#[test]
+fn deep_intrinsic_block_layout_returns_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_intrinsic_block_layout_returns_on_bounded_stack",
+        || {
+            assert_intrinsic_block_chain::<f32>(128);
+            assert_intrinsic_block_chain::<f64>(128);
+        },
+    );
+}
