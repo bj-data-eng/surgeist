@@ -160,12 +160,14 @@ pub(in crate::document_scripting) fn closed_root_keeps_identity_and_native_event
                 let outside = false;
                 root.addEventListener("boundary", event => {
                     const path = event.composedPath();
-                    inside = event.target === shadowChild && event.currentTarget === root
+                    inside = globalThis.event === undefined
+                        && event.target === shadowChild && event.currentTarget === root
                         && path[0] === shadowChild && path.includes(root);
                 }, { once: true });
                 closedHost.addEventListener("boundary", event => {
                     const path = event.composedPath();
-                    outside = event.target === closedHost && event.currentTarget === closedHost
+                    outside = globalThis.event === event
+                        && event.target === closedHost && event.currentTarget === closedHost
                         && path[0] === closedHost && !path.includes(root) && !path.includes(shadowChild);
                 }, { once: true });
                 return closedHost.shadowRoot === null && root instanceof ShadowRoot

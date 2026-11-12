@@ -40,7 +40,7 @@ pub(super) struct Admission<'a> {
 }
 
 impl<'a> Admission<'a> {
-    fn ordinary(owner: &'a NativeOwner, events: &'a GuestEvents) -> Self {
+    pub(super) fn ordinary(owner: &'a NativeOwner, events: &'a GuestEvents) -> Self {
         Self {
             owner,
             events,
@@ -80,7 +80,7 @@ impl<'a> Admission<'a> {
         self.events.step()
     }
 
-    fn reserve(self, bytes: usize) -> Result<GuestBacking, DocumentGuestEventError> {
+    pub(super) fn reserve(self, bytes: usize) -> Result<GuestBacking, DocumentGuestEventError> {
         self.source_step()?;
         self.events.reserve(self.owner, bytes)
     }
@@ -455,15 +455,6 @@ impl OrdinaryBindings {
                 Ok((payload, holder))
             },
         )
-    }
-
-    pub(super) fn open<'scope>(
-        &self,
-        scope: &mut Scope<'scope>,
-        events: &GuestEvents,
-        node: NodeId,
-    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
-        self.open_with(scope, node, || events.step())
     }
 
     pub(super) fn open_with<'scope>(

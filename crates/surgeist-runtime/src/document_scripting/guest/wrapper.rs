@@ -57,12 +57,7 @@ pub(super) fn event_target_value<'scope>(
     target: &DomEventTarget,
 ) -> Result<Value<'scope>, DocumentGuestEventError> {
     match target {
-        DomEventTarget::Global(global) => {
-            let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
-            if *global == attachment.target.global() {
-                return Ok(scope.global()?);
-            }
-        }
+        DomEventTarget::Global(_) => project_native_event_target(owner, events, scope, target),
         DomEventTarget::Node(node) => {
             events.step()?;
             if let Some(value) = scope.native_object_reference::<GuestEventProjection>(
@@ -75,11 +70,7 @@ pub(super) fn event_target_value<'scope>(
             {
                 return Ok(value);
             }
-            return events
-                .public
-                .as_ref()
-                .ok_or(Error::ExpiredIdentity)?
-                .project_node(scope, owner, events, *node);
+            project_native_event_target(owner, events, scope, target)
         }
         DomEventTarget::Standalone(expected) => {
             let value = scope
@@ -92,9 +83,35 @@ pub(super) fn event_target_value<'scope>(
                 .native_object::<GuestTargetProjection>(&value)?
                 .is_some_and(|projection| &projection.payload().native == expected)
             {
-                return Ok(value);
+                Ok(value)
+            } else {
+                Err(Error::RegistryConflict.into())
             }
         }
+    }
+}
+
+pub(super) fn project_native_event_target<'scope>(
+    owner: &NativeOwner,
+    events: &GuestEvents,
+    scope: &mut Scope<'scope>,
+    target: &DomEventTarget,
+) -> Result<Value<'scope>, DocumentGuestEventError> {
+    match target {
+        DomEventTarget::Global(global) => {
+            let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
+            if *global == attachment.target.global() {
+                return Ok(scope.global()?);
+            }
+        }
+        DomEventTarget::Node(node) => {
+            return events
+                .public
+                .as_ref()
+                .ok_or(Error::ExpiredIdentity)?
+                .project_node(scope, owner, events, *node);
+        }
+        DomEventTarget::Standalone(_) => (),
     }
     Err(Error::RegistryConflict.into())
 }

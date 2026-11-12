@@ -24,6 +24,7 @@ pub(super) struct ActiveSource {
 }
 
 impl ActiveSource {
+    #[cfg(test)]
     pub(super) fn request(&self) -> &DomSourceEventRequest {
         &self.request
     }
@@ -37,7 +38,7 @@ impl Drop for ActiveGuard<'_> {
     }
 }
 
-/// Failure before a guest listener is selected.
+/// Refusal during native Source event delivery.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum DocumentScriptEventError {
@@ -45,6 +46,8 @@ pub enum DocumentScriptEventError {
     Access(DocumentScriptError),
     /// The original native event adapter refused servicing.
     Service(DomSourceRuntimeError),
+    /// The attached registry or guest invocation refused delivery.
+    Guest(DocumentGuestEventError),
 }
 
 impl fmt::Display for DocumentScriptEventError {
@@ -52,6 +55,7 @@ impl fmt::Display for DocumentScriptEventError {
         match self {
             Self::Access(error) => error.fmt(f),
             Self::Service(error) => error.fmt(f),
+            Self::Guest(error) => error.fmt(f),
         }
     }
 }
@@ -61,6 +65,7 @@ impl std::error::Error for DocumentScriptEventError {
         match self {
             Self::Access(error) => Some(error),
             Self::Service(error) => Some(error),
+            Self::Guest(error) => Some(error),
         }
     }
 }
@@ -87,6 +92,23 @@ pub enum DocumentScriptEventProgress<'host> {
 
 fn event_report_bytes() -> usize {
     size_of::<SelectedDocumentScriptListener<'_>>().max(size_of::<DocumentScriptEventReport<'_>>())
+}
+
+pub(super) fn validate_source_event(
+    dom: &crate::DomEventDom<'_>,
+    document: DocumentId,
+    request: &DomSourceEventRequest,
+    cancel: &AtomicBool,
+) -> Result<(), DocumentScriptNativeError> {
+    let root = dom
+        .pending_source_edit()
+        .ok_or(DocumentScriptNativeError::SourceAccess)?;
+    if root.operation() != request.operation() {
+        return Err(DocumentScriptNativeError::SourceAccess);
+    }
+    dom.raw().source_event_step(request, cancel)?;
+    dom.snapshot().document(document)?.node(request.subject())?;
+    Ok(())
 }
 
 impl DocumentScriptHost {
@@ -117,21 +139,7 @@ impl DocumentScriptHost {
         let cancellation = self.native.cancellation.clone();
         let (progress, backing) = self.with_native(|dom, _, source| {
             let cancel = &cancellation;
-            let root = dom
-                .pending_source_edit()
-                .ok_or(DocumentScriptNativeError::SourceAccess)?;
-            if root.operation() != request.operation() {
-                return Err(DocumentScriptEventError::from(
-                    DocumentScriptNativeError::SourceAccess,
-                ));
-            }
-            dom.raw()
-                .source_event_step(request, cancel)
-                .map_err(DocumentScriptNativeError::from)?;
-            dom.snapshot()
-                .document(permit.document)
-                .and_then(|document| document.node(request.subject()))
-                .map_err(DocumentScriptNativeError::from)?;
+            validate_source_event(dom, permit.document, request, cancel)?;
             let backing = dom
                 .raw()
                 .retain_source_event_payload(request, bytes, 0, cancel)
@@ -139,7 +147,7 @@ impl DocumentScriptHost {
             let progress = source
                 .service_event(dom, request, dispatcher, context, limits, cancel)
                 .map_err(DocumentScriptEventError::Service)?;
-            Ok((progress, backing))
+            Ok::<_, DocumentScriptEventError>((progress, backing))
         })??;
 
         match progress {
@@ -496,6 +504,15 @@ fn invoke_argument<'scope>(
 }
 
 impl NativeOwner {
+    pub(super) fn attached_event_request(&self) -> Option<DomSourceEventRequest> {
+        self.active_attached_event.borrow().clone()
+    }
+
+    pub(super) fn active_event_request(&self) -> Option<DomSourceEventRequest> {
+        self.attached_event_request()
+            .or_else(|| self.active_source().map(|active| active.request))
+    }
+
     pub(super) fn active_source(&self) -> Option<ActiveSource> {
         let active = self.active_source.take()?;
         let observation = active.clone();

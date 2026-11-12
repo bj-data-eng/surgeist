@@ -248,22 +248,22 @@ impl DocumentBindings {
     fn find<'scope>(
         &self,
         scope: &mut Scope<'scope>,
-        events: &GuestEvents,
-        node: surgeist_dom::NodeId,
+        admission: ordinary::Admission<'_>,
+        node: NodeId,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
-        if let Some(value) = self.open_document(scope, events, node)? {
+        if let Some(value) = self.open_document(scope, node, || admission.step())? {
             return Ok(Some(value));
         }
-        self.ordinary.open(scope, events, node)
+        self.ordinary.open_with(scope, node, || admission.step())
     }
 
     fn open_document<'scope>(
         &self,
         scope: &mut Scope<'scope>,
-        events: &GuestEvents,
         node: NodeId,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
-        events.step()?;
+        step()?;
         if node == self.attached_id.node() {
             return Ok(Some(scope.open_callback_object(&self.attached)?));
         }
@@ -273,7 +273,7 @@ impl DocumentBindings {
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let mut next = pins.as_deref();
         while let Some(pin) = next {
-            events.step()?;
+            step()?;
             if pin.document.node() == node {
                 return Ok(Some(scope.open_callback_object(&pin.holder)?));
             }
@@ -285,8 +285,7 @@ impl DocumentBindings {
     fn publish_document<'scope>(
         &self,
         scope: &mut Scope<'scope>,
-        owner: &NativeOwner,
-        events: &GuestEvents,
+        admission: ordinary::Admission<'_>,
         prototype: ordinary::NodePrototype<'_, 'scope>,
         resolve: impl FnOnce() -> Result<DocumentId, DocumentGuestEventError>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
@@ -294,20 +293,20 @@ impl DocumentBindings {
             .documents
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let backing = events.reserve(owner, size_of::<DocumentPin>())?;
+        let backing = admission.reserve(size_of::<DocumentPin>())?;
         let payload = GuestNodeProjection {
             node: Cell::new(None),
             lifetime: None,
         };
-        events.step()?;
+        admission.step()?;
         let allocation = Box::new_uninit();
         let (value, holder, document) = scope.try_project_retained_native_object(
             prototype.projection(),
             payload,
             |payload, holder| {
                 Ok::<_, DocumentGuestEventError>((
-                    events.reserve(owner, payload)?,
-                    events.reserve(owner, holder)?,
+                    admission.reserve(payload)?,
+                    admission.reserve(holder)?,
                 ))
             },
             |payload| {
@@ -607,7 +606,7 @@ impl Capture {
                 Ok(())
             })?;
             bindings
-                .open_document(scope, &events, bindings.attached_id.node())?
+                .open_document(scope, bindings.attached_id.node(), || events.step())?
                 .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
         })();
         complete(scope, &events, result)
@@ -750,8 +749,7 @@ impl Capture {
                 .target;
             bindings.publish_document(
                 scope,
-                &owner,
-                &events,
+                ordinary::Admission::ordinary(&owner, &events),
                 ordinary::NodePrototype::Selected(selected.prototype()),
                 || {
                     self.with_native(&owner, |session, global| {

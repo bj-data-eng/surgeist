@@ -6,7 +6,7 @@ use crate::{
     DomSessionLimits, DomShutdownOutcome, DomSourceDriveProgress, DomSourceEventRuntimeError,
     DomSourceEventRuntimeLimits, DomSourceEventServiceLimits, DomSourceEventServiceProgress,
     DomSourceExecutionScope, DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable,
-    DomStyleRuntimeLimits,
+    DomStyleRuntimeLimits, NativeDomEvent,
 };
 use surgeist_bindings_js::{Root, Value};
 use surgeist_css::source::CssUtf16InputLimits;
@@ -205,6 +205,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     );
     public_and_source_comment_projection_share_identity();
     attached_registry_delivers_the_original_native_cancel_event();
+    attached_registry_preserves_the_original_terminal_refusal();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
     );
@@ -757,8 +758,13 @@ fn source_comment_qualification_precedes_foreign_handler() {
     }
 }
 
-fn attached_registry_delivers_the_original_native_cancel_event() {
-    let cancel = Arc::new(AtomicBool::new(false));
+struct AttachedCancel {
+    host: DocumentScriptHost,
+    dialog: NodeId,
+    observations: Rc<RefCell<Vec<NativeDomEvent>>>,
+}
+
+fn attached_cancel_host(cancel: Arc<AtomicBool>) -> AttachedCancel {
     let (mut session, target) = hosted_session(&cancel, 8);
     let document = target.document();
     let html = session
@@ -778,30 +784,33 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
         .created(&dialog)
         .unwrap()
         .unwrap();
-    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+    let registry_limits = DomEventRegistryLimits {
         registrations: 8,
         pending_events: 4,
         nested_dispatches: 4,
         storage_bytes: 16_000_000,
         work: 1_000_000,
-    })
-    .unwrap();
-    let observed = Rc::new(Cell::new(0));
-    let native_observed = observed.clone();
+    };
+    let mut registry = DomEventDispatcher::new(registry_limits).unwrap();
+    let observations = Rc::new(RefCell::new(Vec::new()));
+    let native_observed = observations.clone();
     registry
         .add_listener(
             &mut session.dom(),
-            dialog,
+            document.node(),
             DomEventType::CANCEL,
             DomEventCallback::new(move |_, _, _, event| {
                 assert_eq!(event.event_type(), DomEventType::CANCEL);
                 assert_eq!(event.target().unwrap().node(), Some(dialog));
                 assert!(event.cancelable());
                 assert!(event.toggle_event().is_none());
-                native_observed.set(native_observed.get() + 1);
+                native_observed.borrow_mut().push(event.clone());
                 Ok(())
             }),
-            DomEventListenerOptions::default(),
+            DomEventListenerOptions {
+                capture: true,
+                ..Default::default()
+            },
         )
         .unwrap();
     let mut registry = Some(registry);
@@ -814,6 +823,28 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
         &mut registry,
     );
     assert!(registry.is_none());
+    let mut competing = DomEventDispatcher::<()>::new(registry_limits).unwrap();
+    assert!(matches!(
+        host.with_native(|dom, _, _| competing.bind(dom, &cancel))
+            .unwrap(),
+        Err(DomEventDispatchError::Dom(
+            DomError::EventRegistryAlreadyBound
+        ))
+    ));
+    AttachedCancel {
+        host,
+        dialog,
+        observations,
+    }
+}
+
+fn attached_registry_delivers_the_original_native_cancel_event() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let AttachedCancel {
+        mut host,
+        dialog,
+        observations,
+    } = attached_cancel_host(cancel.clone());
     let permit = host.permit().unwrap();
     super::guest::tests::expose_public_node_for_source_test(&mut host, &permit, dialog, "dialog");
     host.in_document(&permit, |scope| {
@@ -822,6 +853,7 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
             r#"
             globalThis.sentinel = {};
             globalThis.cancelChecks = false;
+            const attachedDocument = document;
             dialog.addEventListener("cancel", function (event) {
                 globalThis.originalCancel = event;
                 throw sentinel;
@@ -830,7 +862,11 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
                 cancelChecks = this === dialog && event === originalCancel
                     && event.target === dialog && event.currentTarget === dialog
                     && event instanceof Event && event.isTrusted
-                    && event.cancelable && !event.bubbles && !event.composed;
+                    && event.cancelable && !event.bubbles && !event.composed
+                    && globalThis.event === event && readChildCount() === 1;
+                const path = event.composedPath();
+                cancelChecks &&= path[0] === dialog
+                    && path[1] instanceof HTMLBodyElement && path.includes(attachedDocument);
                 event.preventDefault();
             }, {once: true});
         "#,
@@ -844,47 +880,32 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
         style_policy: &mut |_| None,
         url: None,
     };
-    let request = host
-        .with_native(|dom, _, mut source| {
-            assert!(matches!(
-                source
-                    .apply(
-                        dom,
-                        DomSourceEdit::set_attribute(dialog, "open", ""),
-                        SOURCE,
-                        &mut services,
-                        &cancel
-                    )
-                    .unwrap(),
-                DomSourceDriveProgress::Complete(_)
-            ));
-            let progress = source
-                .apply(
-                    dom,
-                    DomSourceEdit::request_close_dialog(dialog, Some("uncommitted".into())),
-                    SOURCE,
-                    &mut services,
-                    &cancel,
-                )
-                .unwrap();
-            let DomSourceDriveProgress::Pending {
-                request: DomSourceRequest::Event(request),
-                reason: DomSourceUnavailable::Event,
-            } = progress
-            else {
-                panic!("actual requestClose must reach native Cancel: {progress:?}");
-            };
-            assert_eq!(request.kind(), surgeist_dom::DomSourceEventKind::Cancel);
-            request
-        })
-        .unwrap();
+    let request = start_attached_cancel(&mut host, dialog, &mut services, &cancel);
+    let mut bounded = EVENT;
+    bounded.dispatch.callbacks = 2;
+    assert!(matches!(
+        host.service_attached_source_event(&permit, &request, bounded)
+            .unwrap(),
+        DomSourceEventServiceProgress::Retained {
+            dispatch: crate::DomEventDispatchOutcome::Retained(crate::DomEventResource::Callbacks)
+        }
+    ));
+    assert_eq!(observations.borrow().len(), 1);
+    assert!(
+        host.snapshot()
+            .unwrap()
+            .node(dialog)
+            .unwrap()
+            .attribute(&"open".into())
+            .is_some()
+    );
     let progress = host
         .service_attached_source_event(&permit, &request, EVENT)
         .unwrap();
     let DomSourceEventServiceProgress::Serviced { receipt } = progress else {
         panic!("attached guest delivery must accept the original receipt: {progress:?}");
     };
-    assert_eq!(observed.get(), 1);
+    assert_eq!(observations.borrow().len(), 1);
     assert_eq!(receipt.callbacks(), 3);
     assert_eq!(receipt.failures().len(), 1);
     assert!(receipt.default_prevented());
@@ -917,6 +938,140 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
         assert!(scope.strict_equals(&actual, &expected)?);
         Ok(())
     }).unwrap();
+}
+
+fn attached_registry_preserves_the_original_terminal_refusal() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let AttachedCancel {
+        mut host,
+        dialog,
+        observations,
+    } = attached_cancel_host(cancel.clone());
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"
+            const attached = document;
+            let first;
+            attached.addEventListener("cancel", event => {
+                first = event;
+                if (!(event.target instanceof HTMLDialogElement)
+                    || event.currentTarget !== attached || readChildCount() !== 1) return;
+                throw { original: true };
+            }, {capture: true, once: true});
+            attached.addEventListener("cancel", {
+                handleEvent(event) {
+                    if (event === first && event === globalThis.event) detachIf();
+                }
+            }, {capture: true, once: true});
+            attached.addEventListener("cancel", () => { throw { replayed: true }; },
+                {capture: true, once: true});
+        "#,
+        )
+        .map(drop)
+    })
+    .unwrap();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let request = start_attached_cancel(&mut host, dialog, &mut services, &cancel);
+    let window_event = host.engine.as_ref().unwrap().window_event.clone();
+    let Err(DocumentScriptEventError::Access(DocumentScriptError::Script(Error::HostFailure(
+        first,
+    )))) = host.service_attached_source_event(&permit, &request, EVENT)
+    else {
+        panic!("the selected guest listener must return the actual host refusal");
+    };
+    let cause = first.cause::<DocumentScriptNativeError>().unwrap();
+    assert!(matches!(cause, DocumentScriptNativeError::SourceAccess));
+    assert!(window_event.is_idle());
+    assert!(host.native.attached_event_request().is_none());
+    {
+        let delivered = observations.borrow();
+        let [event] = delivered.as_slice() else {
+            panic!("the native callback must have observed the original event exactly once");
+        };
+        assert!(event.current_target().is_none());
+        assert_eq!(event.composed_path().count(), 0);
+    }
+    assert!(
+        host.take_guest_listener_exception(&permit)
+            .unwrap()
+            .is_some()
+    );
+    let Err(DocumentScriptEventError::Access(DocumentScriptError::Script(Error::HostFailure(
+        again,
+    )))) = host.service_attached_source_event(&permit, &request, EVENT)
+    else {
+        panic!("retry must return the first refusal without reentering any listener");
+    };
+    assert!(std::ptr::eq(
+        cause,
+        again.cause::<DocumentScriptNativeError>().unwrap()
+    ));
+    assert!(
+        host.take_guest_listener_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    let mut session = host.stop().into_session().unwrap();
+    assert_eq!(
+        session.dom().pending_source_edit().unwrap().operation(),
+        request.operation()
+    );
+    assert!(
+        session
+            .snapshot()
+            .node(dialog)
+            .unwrap()
+            .attribute(&"open".into())
+            .is_some()
+    );
+}
+
+fn start_attached_cancel(
+    host: &mut DocumentScriptHost,
+    dialog: NodeId,
+    services: &mut DomSourceServices<'_>,
+    cancel: &AtomicBool,
+) -> DomSourceEventRequest {
+    host.with_native(|dom, _, mut source| {
+        assert!(matches!(
+            source
+                .apply(
+                    dom,
+                    DomSourceEdit::set_attribute(dialog, "open", ""),
+                    SOURCE,
+                    services,
+                    cancel
+                )
+                .unwrap(),
+            DomSourceDriveProgress::Complete(_)
+        ));
+        let progress = source
+            .apply(
+                dom,
+                DomSourceEdit::request_close_dialog(dialog, Some("uncommitted".into())),
+                SOURCE,
+                services,
+                cancel,
+            )
+            .unwrap();
+        let DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Event(request),
+            reason: DomSourceUnavailable::Event,
+        } = progress
+        else {
+            panic!("actual requestClose must reach native Cancel: {progress:?}");
+        };
+        assert_eq!(request.kind(), surgeist_dom::DomSourceEventKind::Cancel);
+        request
+    })
+    .unwrap()
 }
 
 fn evaluate<'scope>(scope: &mut Scope<'scope>, text: &str) -> Result<Value<'scope>, Error> {

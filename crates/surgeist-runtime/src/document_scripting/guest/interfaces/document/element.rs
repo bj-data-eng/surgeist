@@ -197,8 +197,8 @@ impl ElementBindings {
 
     fn prototype(
         &self,
-        events: &GuestEvents,
         interface: ElementInterface,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
     ) -> Result<&RetainedCallbackObject, DocumentGuestEventError> {
         let interface = match interface {
             ElementInterface::Element => return Ok(&self.element),
@@ -207,7 +207,7 @@ impl ElementBindings {
             ElementInterface::Svg(interface) => return self.svg.prototype(interface),
         };
         for entry in &self.html {
-            events.step()?;
+            step()?;
             if entry.interface == interface {
                 return Ok(&entry.prototype);
             }
@@ -235,15 +235,15 @@ pub(super) fn install_document_root<'scope>(
 
 fn element_interface(
     name: &DomQualifiedName,
-    events: &GuestEvents,
+    mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
 ) -> Result<ElementInterface, DocumentGuestEventError> {
-    events.step()?;
+    step()?;
     match name.namespace_uri().map(DocumentString::code_units) {
-        Some(HTML_NAMESPACE) => Ok(ElementInterface::Html(html_interface(name, events)?)),
+        Some(HTML_NAMESPACE) => Ok(ElementInterface::Html(html_interface(name, step)?)),
         Some(MATHML_NAMESPACE) => Ok(ElementInterface::Mathml),
         Some(SVG_NAMESPACE) => Ok(ElementInterface::Svg(svg::interface(
             name.local_name(),
-            events,
+            step,
         )?)),
         _ => Ok(ElementInterface::Element),
     }
@@ -251,7 +251,7 @@ fn element_interface(
 
 fn html_interface(
     name: &DomQualifiedName,
-    events: &GuestEvents,
+    mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
 ) -> Result<&'static str, DocumentGuestEventError> {
     let local = name.local_name();
     let matches = |spelling: &str| {
@@ -261,29 +261,29 @@ fn html_interface(
             .copied()
             .eq(spelling.bytes().map(u16::from))
     };
-    events.step()?;
+    step()?;
     if let Some(known) = KnownHtmlElement::from_units(local.code_units()) {
         return Ok(known.inventory_row().interface());
     }
     for &spelling in OBSOLETE_UNKNOWN {
-        events.step()?;
+        step()?;
         if matches(spelling) {
             return Ok("HTMLUnknownElement");
         }
     }
     for &spelling in OBSOLETE_GENERIC {
-        events.step()?;
+        step()?;
         if matches(spelling) {
             return Ok("HTMLElement");
         }
     }
     for &(spelling, interface) in OBSOLETE_SPECIAL {
-        events.step()?;
+        step()?;
         if matches(spelling) {
             return Ok(interface);
         }
     }
-    let valid = validate_custom_element_name_with(local, |_| events.step())?.is_ok();
+    let valid = validate_custom_element_name_with(local, |_| step())?.is_ok();
     Ok(if valid {
         "HTMLElement"
     } else {
@@ -350,119 +350,138 @@ impl PublicEventBindings {
         node: NodeId,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let bindings = &self.document;
-        if let Some(value) = bindings.find(scope, events, node)? {
+        let request = owner.attached_event_request();
+        let admission = match &request {
+            Some(request) => ordinary::Admission::source(owner, events, request),
+            None => ordinary::Admission::ordinary(owner, events),
+        };
+        if let Some(value) = bindings.find(scope, admission, node)? {
             return Ok(value);
         }
-        let (origin, attached, projection) =
-            self.callbacks.with_native(owner, |session, attached| {
-                let snapshot = session.snapshot();
-                let node = snapshot.node_with(node, || events.step())?;
-                if !matches!(
-                    node.kind(),
-                    DomNodeKind::Document(_)
-                        | DomNodeKind::DocumentFragment
-                        | DomNodeKind::ShadowRoot(_)
-                        | DomNodeKind::Text(_)
-                        | DomNodeKind::Comment(_)
-                        | DomNodeKind::Element(_)
-                ) {
-                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
+        let observe = |session: &mut DomSession, attached| {
+            let snapshot = session.snapshot();
+            let dom = session.dom();
+            let mut step = || {
+                if let Some(request) = &request {
+                    dom.raw().source_event_step(request, &owner.cancellation)?;
                 }
-                events.step()?;
-                let origin = node
-                    .relevant_global()
-                    .map_err(DomHostedRuntimeError::Dom)
-                    .map_err(DocumentScriptNativeError::from)?;
-                if let Some(document) = node.as_document() {
-                    // Rust-created Documents with no Global acquire their
-                    // attachment's Document interface on first exposure.
-                    return Ok((
-                        origin.unwrap_or(attached),
-                        attached,
-                        NativeProjection::Document(document.id()),
-                    ));
-                }
-                let origin = origin.ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
-                if matches!(node.kind(), DomNodeKind::DocumentFragment) {
-                    return Ok((origin, attached, NativeProjection::Fragment));
-                }
-                if matches!(node.kind(), DomNodeKind::ShadowRoot(_)) {
-                    return Ok((origin, attached, NativeProjection::ShadowRoot));
-                }
-                if let Some(kind) = match node.kind() {
-                    DomNodeKind::Text(_) => Some(CharacterKind::Text),
-                    DomNodeKind::Comment(_) => Some(CharacterKind::Comment),
-                    _ => None,
-                } {
-                    return Ok((origin, attached, NativeProjection::Character(kind)));
-                }
-                let element = node
-                    .as_element()
-                    .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                Ok((
-                    origin,
+                events.step()
+            };
+            let node = snapshot.node_with(node, &mut step)?;
+            if !matches!(
+                node.kind(),
+                DomNodeKind::Document(_)
+                    | DomNodeKind::DocumentFragment
+                    | DomNodeKind::ShadowRoot(_)
+                    | DomNodeKind::Text(_)
+                    | DomNodeKind::Comment(_)
+                    | DomNodeKind::Element(_)
+            ) {
+                return Err(DocumentScriptNativeError::ProjectionCustody.into());
+            }
+            step()?;
+            let origin = node
+                .relevant_global()
+                .map_err(DomHostedRuntimeError::Dom)
+                .map_err(DocumentScriptNativeError::from)?;
+            if let Some(document) = node.as_document() {
+                // Rust-created Documents with no Global acquire their
+                // attachment's Document interface on first exposure.
+                return Ok((
+                    origin.unwrap_or(attached),
                     attached,
-                    NativeProjection::Element(element_interface(element.name(), events)?),
-                ))
-            })?;
+                    NativeProjection::Document(document.id()),
+                ));
+            }
+            let origin = origin.ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
+            if matches!(node.kind(), DomNodeKind::DocumentFragment) {
+                return Ok((origin, attached, NativeProjection::Fragment));
+            }
+            if matches!(node.kind(), DomNodeKind::ShadowRoot(_)) {
+                return Ok((origin, attached, NativeProjection::ShadowRoot));
+            }
+            if let Some(kind) = match node.kind() {
+                DomNodeKind::Text(_) => Some(CharacterKind::Text),
+                DomNodeKind::Comment(_) => Some(CharacterKind::Comment),
+                _ => None,
+            } {
+                return Ok((origin, attached, NativeProjection::Character(kind)));
+            }
+            let element = node
+                .as_element()
+                .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+            Ok((
+                origin,
+                attached,
+                NativeProjection::Element(element_interface(element.name(), step)?),
+            ))
+        };
+        let (origin, attached, projection) = if let Some(request) = &request {
+            let attachment = owner
+                .attachment
+                .get()
+                .ok_or(DocumentScriptNativeError::Revoked)?;
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            owner.qualify_event(attachment, &mut session, request)?;
+            observe(&mut session, attachment.target.global())?
+        } else {
+            self.callbacks.with_native(owner, observe)?
+        };
+        let watch =
+            |scope: &mut Scope<'scope>, node, prototype: &RetainedCallbackObject| match &request {
+                Some(request) => bindings.ordinary.watch_source(
+                    scope,
+                    (owner, events),
+                    request,
+                    node,
+                    prototype,
+                    Ok(()),
+                ),
+                None => {
+                    bindings
+                        .ordinary
+                        .watch(scope, owner, events, &self.callbacks, node, prototype)
+                }
+            };
         let project = |documents: &DocumentPrototypes, elements: &ElementBindings| match projection
         {
             NativeProjection::Document(document) => {
                 // Published Documents survive for the native owner's lifetime.
                 bindings.publish_document(
                     scope,
-                    owner,
-                    events,
+                    admission,
                     ordinary::NodePrototype::Creation(&documents.document),
                     || Ok(document),
                 )
             }
-            NativeProjection::Fragment => self.project_watched_node(
+            NativeProjection::Fragment => {
+                watch(scope, GuestNode::Fragment(node), &documents.fragment)
+            }
+            NativeProjection::ShadowRoot => {
+                watch(scope, GuestNode::ShadowRoot(node), &documents.shadow)
+            }
+            NativeProjection::Character(kind) => watch(
                 scope,
-                owner,
-                events,
-                GuestNode::Fragment(node),
-                &documents.fragment,
-            ),
-            NativeProjection::ShadowRoot => self.project_watched_node(
-                scope,
-                owner,
-                events,
-                GuestNode::ShadowRoot(node),
-                &documents.shadow,
-            ),
-            NativeProjection::Character(kind) => self.project_watched_node(
-                scope,
-                owner,
-                events,
                 kind.project(node),
                 documents.character_data.prototype(kind),
             ),
             NativeProjection::Element(interface) => {
-                let prototype = elements.prototype(events, interface)?;
-                self.project_watched_node(scope, owner, events, GuestNode::Element(node), prototype)
+                let prototype = elements.prototype(interface, || admission.step())?;
+                watch(scope, GuestNode::Element(node), prototype)
             }
         };
         if origin == attached {
             project(&bindings.prototypes, &bindings.element)
         } else {
-            self.with_origin(events, origin, |origin| {
-                project(&origin.documents, &origin.elements)
-            })
+            self.with_origin_with(
+                origin,
+                || admission.step(),
+                |origin| project(&origin.documents, &origin.elements),
+            )
         }
-    }
-
-    fn project_watched_node<'scope>(
-        &self,
-        scope: &mut Scope<'scope>,
-        owner: &NativeOwner,
-        events: &GuestEvents,
-        node: GuestNode,
-        prototype: &RetainedCallbackObject,
-    ) -> Result<Value<'scope>, DocumentGuestEventError> {
-        self.document
-            .ordinary
-            .watch(scope, owner, events, &self.callbacks, node, prototype)
     }
 }
 
