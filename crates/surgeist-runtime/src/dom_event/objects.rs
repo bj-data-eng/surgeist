@@ -172,7 +172,7 @@ impl NativeDomEvent {
                 creation: Ok(creation.into_observation()),
                 toggle: None,
                 #[cfg(feature = "document-scripting")]
-                source_projection: RefCell::new(None),
+                attached_projection: RefCell::new(None),
                 storage,
                 target: RefCell::new(None),
                 stop: Cell::new(false),

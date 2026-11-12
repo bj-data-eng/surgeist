@@ -8,10 +8,10 @@ use surgeist_dom::{
 };
 
 use crate::{
-    DomEventCallbackError, DomEventDispatchError, DomEventDispatchOutcome, DomEventDispatcher,
-    DomEventHostError, DomEventHostInvocation, DomEventRegistrationId, DomSourceDriveProgress,
-    DomSourceEventServiceLimits, DomSourceEventServiceProgress, DomSourceRuntimeError,
-    DomSourceServices,
+    DomElementTaskRuntimeError, DomEventCallbackError, DomEventDispatchError,
+    DomEventDispatchOutcome, DomEventDispatcher, DomEventHostError, DomEventHostInvocation,
+    DomEventRegistrationId, DomSourceDriveProgress, DomSourceEventServiceLimits,
+    DomSourceEventServiceProgress, DomSourceRuntimeError, DomSourceServices,
 };
 
 #[derive(Clone)]
@@ -38,7 +38,7 @@ impl Drop for ActiveGuard<'_> {
     }
 }
 
-/// Refusal during native Source event delivery.
+/// Refusal during native event delivery or external Source listener selection.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum DocumentScriptEventError {
@@ -46,6 +46,8 @@ pub enum DocumentScriptEventError {
     Access(DocumentScriptError),
     /// The original native event adapter refused servicing.
     Service(DomSourceRuntimeError),
+    /// The original element task owner refused delivery or completion.
+    Task(DomElementTaskRuntimeError),
     /// The attached registry or guest invocation refused delivery.
     Guest(DocumentGuestEventError),
 }
@@ -55,6 +57,7 @@ impl fmt::Display for DocumentScriptEventError {
         match self {
             Self::Access(error) => error.fmt(f),
             Self::Service(error) => error.fmt(f),
+            Self::Task(error) => error.fmt(f),
             Self::Guest(error) => error.fmt(f),
         }
     }
@@ -65,6 +68,7 @@ impl std::error::Error for DocumentScriptEventError {
         match self {
             Self::Access(error) => Some(error),
             Self::Service(error) => Some(error),
+            Self::Task(error) => Some(error),
             Self::Guest(error) => Some(error),
         }
     }
