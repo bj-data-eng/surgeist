@@ -82,6 +82,121 @@ fn attr_creation_uses_the_actual_document_and_exact_qualified_name() {
 }
 
 #[test]
+fn remove_attribute_node_returns_the_exact_detached_identity_after_atomic_publication() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let element = setup.create_element(&document, "target");
+    let other = setup.create_element(&document, "other");
+    let raw = DocumentString::from_utf16(vec![0xd800, 0x61, 0]);
+    setup.set_attribute(&element, "value", raw.clone());
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let other = commit.created(&other).unwrap().unwrap();
+    let original = dom.snapshot();
+    let attr = original
+        .node(element)
+        .unwrap()
+        .get_attribute_node(&"value".into())
+        .unwrap()
+        .id();
+
+    let mut wrong = DomBatch::new();
+    wrong.set_attribute(other, "temporary", "value");
+    let foreign_ticket = wrong.remove_attribute_node(other, attr);
+    assert!(matches!(dom.apply(wrong, &cancel), Err(DomError::NotFound)));
+    assert_eq!(dom.snapshot().stamp(), original.stamp());
+    assert!(
+        dom.snapshot()
+            .node(other)
+            .unwrap()
+            .attributes()
+            .unwrap()
+            .is_empty()
+    );
+
+    let mut edit = DomBatch::new();
+    let removed = edit.remove_attribute_node(element, attr);
+    let commit = dom.apply(edit, &cancel).unwrap();
+    assert_eq!(commit.removed_attribute(&removed), Ok(attr));
+    assert_eq!(
+        commit.removed_attribute(&foreign_ticket),
+        Err(DomError::ForeignBatch)
+    );
+    assert_eq!(
+        commit.changes().changes(),
+        [
+            surgeist_dom::DomChange::Attributes(element),
+            surgeist_dom::DomChange::AttrOwner(attr),
+        ]
+    );
+    let now = dom.snapshot();
+    assert_eq!(now.attr(attr.node()).unwrap().owner_element(), None);
+    assert_eq!(now.attr(attr.node()).unwrap().value(), &raw);
+    assert_eq!(
+        original.attr(attr.node()).unwrap().owner_element(),
+        Some(element)
+    );
+}
+
+#[test]
+fn named_node_map_removal_resolves_each_current_qualified_or_expanded_name() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let xml = setup.create_document();
+    let html = setup.create_html_document(&xml, None);
+    let element = setup.create_element_ns(&html, Namespace::html(), "div");
+    let namespace = Namespace::from_uri("urn:named");
+    setup.set_attribute_ns(&element, namespace.clone(), "p:item", "namespaced");
+    setup.set_attribute(&element, "item", "ordinary");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let old = dom.snapshot();
+    let map = old.node(element).unwrap().attributes().unwrap();
+    let namespaced = map.item(0).unwrap().id();
+    let ordinary = map.item(1).unwrap().id();
+
+    let mut missing = DomBatch::new();
+    missing.remove_named_item(element, "ITEM");
+    missing.remove_named_item_ns(element, namespace.clone(), "ITEM");
+    assert!(matches!(
+        dom.apply(missing, &cancel),
+        Err(DomError::NotFound)
+    ));
+    assert_eq!(dom.snapshot().stamp(), old.stamp());
+
+    let mut edit = DomBatch::new();
+    let removed = edit.remove_named_item(element, "ITEM");
+    let commit = dom.apply(edit, &cancel).unwrap();
+    assert_eq!(commit.removed_attribute(&removed), Ok(ordinary));
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::remove_named_item_ns(element, namespace, "item"),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("a plain Attr removal has no external service");
+    };
+    assert_eq!(
+        done.output(),
+        Some(surgeist_dom::DomSourceOutput::RemovedAttribute(namespaced))
+    );
+    drop(lease);
+    let now = dom.snapshot();
+    assert!(now.node(element).unwrap().attributes().unwrap().is_empty());
+    for (id, value) in [(ordinary, "ordinary"), (namespaced, "namespaced")] {
+        let detached = now.attr(id.node()).unwrap();
+        assert_eq!(detached.owner_element(), None);
+        assert_eq!(detached.value(), &value.into());
+        assert_eq!(old.attr(id.node()).unwrap().owner_element(), Some(element));
+    }
+}
+
+#[test]
 fn detached_attr_value_clone_adoption_and_retirement_use_exact_node_identity() {
     let cancel = AtomicBool::new(false);
     let mut dom = owner();
