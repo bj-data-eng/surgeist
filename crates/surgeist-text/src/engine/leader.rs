@@ -3,13 +3,14 @@
 use std::sync::Arc;
 
 use crate::{
-    Alignment, AnalysisTypography, AnalyzedSource, FinalizedFragmentView, FinalizedLine,
-    FinalizedRunView, FormattedLineContext, LineAlignmentInsets, LineAllocations, LineBoxDirection,
-    LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
-    ParagraphOriginKind, ParagraphTabReference, ParagraphTerminalEdge, PreparationOptions,
-    PreparedBreakKind, PreparedTermination, PreparedText, ProcessedSource, ProtocolError, Result,
-    ScopeAllocations, SelectedMappingView, Source, SourceIdentity, SpacingAllocations,
-    SpacingPolicy, Style, TabContext, TabPreparation, Text, Wrap, WrappingPolicy,
+    Alignment, AnalysisTypography, AnalyzedSource, FinalizedFragmentView, FinalizedGlyphView,
+    FinalizedLine, FinalizedRunView, FormattedLineContext, LineAlignmentInsets, LineAllocations,
+    LineBoxDirection, LineContext, LineEdgeUnitView, LineEnd, LineOrientation,
+    LineSelectionRequest, LineStart, ParagraphBaseDirection, ParagraphOriginKind,
+    ParagraphTabReference, ParagraphTerminalEdge, PreparationOptions, PreparedBreakKind,
+    PreparedTermination, PreparedText, ProcessedSource, ProtocolError, Result, ScopeAllocations,
+    SelectedMappingView, Source, SourceIdentity, SpacingAllocations, SpacingPolicy, Style,
+    TabContext, TabPreparation, Text, Wrap, WrappingPolicy,
     protocol::{
         paragraph::ParagraphData,
         protocol_error,
@@ -70,9 +71,26 @@ impl FinalizedLeaderPattern {
         self.line.feedback()
     }
 
-    /// Actual glyph runs in the finalized unit, with their retained fonts.
-    pub fn run_views(&self) -> impl ExactSizeIterator<Item = FinalizedRunView<'_>> {
-        self.line.run_views()
+    /// Paint-order glyph runs with retained font and group associations.
+    pub fn run_views(&self) -> impl ExactSizeIterator<Item = LeaderRunView<'_>> {
+        let inner = &self.line.inner;
+        let atom_count = inner.selected.presentation.projection.atoms.len();
+        let groups = &inner.data.leader_paint_groups[atom_count..];
+        self.line.run_views().map(|run| LeaderRunView {
+            groups: &groups[run.paint_glyph_range()],
+            run,
+        })
+    }
+
+    /// Finalized cluster contributions, including glyphless spacing.
+    pub fn cluster_views(&self) -> impl ExactSizeIterator<Item = LeaderClusterView<'_>> {
+        let groups = &self.line.inner.data.leader_paint_groups;
+        self.line.edge_units().map(|edge| LeaderClusterView {
+            group: edge
+                .first_presentation_atom()
+                .map(|atom| LeaderPaintGroup(groups[atom])),
+            edge,
+        })
     }
 
     /// Actual fragment and source coverage in the finalized unit.
@@ -83,6 +101,72 @@ impl FinalizedLeaderPattern {
     /// Actual original-source correspondence after transformation and shaping.
     pub fn mapping_views(&self) -> impl ExactSizeIterator<Item = SelectedMappingView<'_>> {
         self.line.mapping_views()
+    }
+}
+
+/// Identity of one indivisible paint group within a finalized pattern.
+/// Clones retain these identities. Compare groups within that pattern.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct LeaderPaintGroup(usize);
+
+/// A finalized font run with exact paint group membership for each glyph.
+pub struct LeaderRunView<'a> {
+    run: FinalizedRunView<'a>,
+    groups: &'a [usize],
+}
+
+impl LeaderRunView<'_> {
+    /// Actual retained font instance, basis, and metric frame.
+    #[must_use]
+    pub fn run(&self) -> &FinalizedRunView<'_> {
+        &self.run
+    }
+
+    /// Each actual glyph in paint order with its indivisible group identity.
+    pub fn glyphs(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (FinalizedGlyphView<'_>, LeaderPaintGroup)> {
+        self.run
+            .glyphs()
+            .zip(self.groups.iter().copied().map(LeaderPaintGroup))
+    }
+}
+
+/// A finalized contribution in the isolated pattern's metric frame.
+pub struct LeaderClusterView<'a> {
+    edge: LineEdgeUnitView<'a>,
+    group: Option<LeaderPaintGroup>,
+}
+
+impl LeaderClusterView<'_> {
+    /// Group of this contribution. Several contributions can share one paint group.
+    /// A group can have zero paint glyphs.
+    #[must_use]
+    pub fn paint_group(&self) -> Option<LeaderPaintGroup> {
+        self.group
+    }
+
+    /// Signed inline advance after spacing.
+    #[must_use]
+    pub fn advance(&self) -> f64 {
+        self.edge.advance()
+    }
+
+    /// Allocated metric bounds, independent of glyph ink.
+    #[must_use]
+    pub fn bounds(&self) -> crate::Rect {
+        self.edge.bounds()
+    }
+
+    /// Position in the transformed presentation.
+    #[must_use]
+    pub fn presentation_range(&self) -> crate::PresentationRange {
+        self.edge.presentation_range()
+    }
+
+    /// Nonempty original UTF-16 pieces associated with this contribution.
+    pub fn source_pieces(&self) -> impl Iterator<Item = crate::Range> + '_ {
+        self.edge.source_pieces()
     }
 }
 
@@ -221,7 +305,7 @@ mod tests {
             .run_views()
             .flat_map(|run| {
                 run.glyphs()
-                    .map(|glyph| (glyph.id(), glyph.advance(), glyph.pen()))
+                    .map(|(glyph, _)| (glyph.id(), glyph.advance(), glyph.pen()))
                     .collect::<Vec<_>>()
             })
             .collect()
@@ -252,8 +336,8 @@ mod tests {
             assert_eq!(glyphs(&pattern), glyphs(&explicit));
             if literal == " " {
                 for run in pattern.run_views() {
-                    let instance = run.effective_instance().unwrap();
-                    for glyph in run.glyphs() {
+                    let instance = run.run().effective_instance().unwrap();
+                    for (glyph, _) in run.glyphs() {
                         let outline = instance
                             .glyph_outline(glyph.id(), instance.face().catalogue_identity())
                             .unwrap();
@@ -302,12 +386,36 @@ mod tests {
         let mut system = system();
         let pattern = system
             .prepare_leader_pattern(input(
-                LeaderPattern::Literal("A\tB".into()),
+                LeaderPattern::Literal("A\t\tB".into()),
                 WhiteSpace::Preserve,
             ))
             .unwrap();
-        assert_eq!(pattern.metrics().advance, 100.0);
-        assert_eq!(glyphs(&pattern), [(35, 20.0, 0.0), (36, 20.0, 80.0)]);
+        assert_eq!(pattern.metrics().advance, 180.0);
+        assert_eq!(glyphs(&pattern), [(35, 20.0, 0.0), (36, 20.0, 160.0)]);
+        let run = pattern.run_views().next().unwrap();
+        let painted: Vec<_> = run.glyphs().map(|(_, group)| group).collect();
+        assert_eq!(pattern.cluster_views().len(), 4);
+        assert_eq!(
+            pattern.cluster_views().next().unwrap().paint_group(),
+            Some(painted[0])
+        );
+        assert_eq!(
+            pattern.cluster_views().last().unwrap().paint_group(),
+            Some(painted[1])
+        );
+        for (index, (position, advance)) in [(20.0, 60.0), (80.0, 80.0)].into_iter().enumerate() {
+            let tab = pattern.cluster_views().nth(index + 1).unwrap();
+            assert_eq!(tab.advance(), advance);
+            assert_eq!(tab.bounds().origin.x, position);
+            assert_eq!(tab.bounds().size.width, advance);
+            let presentation = tab.presentation_range();
+            assert_eq!(
+                (presentation.start(), presentation.end()),
+                (index + 1, index + 2)
+            );
+            assert!(tab.source_pieces().eq([Range::new(index + 1, index + 2)]));
+            assert!(!painted.contains(&tab.paint_group().unwrap()));
+        }
         let edge_spaces = system
             .prepare_leader_pattern(input(
                 LeaderPattern::Literal(" . ".into()),
@@ -316,6 +424,34 @@ mod tests {
             .unwrap();
         assert_eq!(edge_spaces.metrics().advance, 60.0);
         assert_eq!(glyphs(&edge_spaces)[1], (16, 20.0, 20.0));
+    }
+
+    #[test]
+    fn reads_each_expanded_cluster_with_its_own_geometry_and_shared_source() {
+        let mut system = system();
+        let mut request = input(LeaderPattern::Literal("ß".into()), WhiteSpace::Collapse);
+        request.style.text_transform = crate::TextTransform::Set(
+            crate::TextTransformSet::none().with_case(crate::CaseTransform::Uppercase),
+        );
+        let pattern = system.prepare_leader_pattern(request).unwrap();
+        assert_eq!(pattern.metrics().advance, 40.0);
+        assert_eq!(glyphs(&pattern), [(53, 20.0, 0.0), (53, 20.0, 20.0)]);
+        assert_eq!(pattern.cluster_views().len(), 2);
+        let run = pattern.run_views().next().unwrap();
+        let painted: Vec<_> = run.glyphs().map(|(_, group)| group).collect();
+        assert_ne!(painted[0], painted[1]);
+        for (index, (cluster, position)) in pattern.cluster_views().zip([0.0, 20.0]).enumerate() {
+            assert_eq!(cluster.advance(), 20.0);
+            assert_eq!(cluster.bounds().origin.x, position);
+            assert_eq!(cluster.bounds().size.width, 20.0);
+            let presentation = cluster.presentation_range();
+            assert_eq!(
+                (presentation.start(), presentation.end()),
+                (index, index + 1)
+            );
+            assert!(cluster.source_pieces().eq([Range::new(0, 1)]));
+            assert_eq!(cluster.paint_group(), Some(painted[index]));
+        }
     }
 
     #[test]
@@ -403,16 +539,19 @@ mod tests {
             ))
             .unwrap();
         assert_eq!(glyphs(&pattern), [(58, 20.0, 0.0)]);
-        assert_eq!(
+        let run = pattern.run_views().next().unwrap();
+        let (glyph, group) = run.glyphs().next().unwrap();
+        assert_eq!(glyph.range(), Range::new(0, 4));
+        assert!(
             pattern
-                .run_views()
-                .next()
-                .unwrap()
-                .glyphs()
-                .next()
-                .unwrap()
-                .range(),
-            Range::new(0, 4)
+                .cluster_views()
+                .all(|cluster| cluster.paint_group() == Some(group))
+        );
+        assert!(
+            pattern
+                .cluster_views()
+                .flat_map(|cluster| cluster.source_pieces().collect::<Vec<_>>())
+                .eq([Range::new(0, 1), Range::new(3, 4)])
         );
         assert!(pattern.mapping_views().any(|piece| {
             piece.kind() == PresentationMappingKind::Deleted
@@ -431,10 +570,16 @@ mod tests {
             .unwrap();
         assert_eq!(pattern.metrics().advance, 20.0);
         let run = pattern.run_views().next().unwrap();
-        let mark = run.glyphs().find(|glyph| glyph.id() == 100).unwrap();
+        let (mark, group) = run.glyphs().find(|(glyph, _)| glyph.id() == 100).unwrap();
+        assert!(run.glyphs().all(|(_, painted)| painted == group));
+        assert!(
+            pattern
+                .cluster_views()
+                .all(|cluster| cluster.paint_group() == Some(group))
+        );
         assert_eq!(mark.advance(), 0.0);
         assert_eq!(mark.range(), Range::new(0, 3));
-        let instance = run.effective_instance().unwrap();
+        let instance = run.run().effective_instance().unwrap();
         let outline = instance
             .glyph_outline(mark.id(), instance.face().catalogue_identity())
             .unwrap();
@@ -465,10 +610,13 @@ mod tests {
         assert!(Arc::ptr_eq(&original.line.inner, &repeat.line.inner));
         let original_run = original.run_views().next().unwrap();
         assert_eq!(
-            original_run.glyph_basis(),
+            original_run.run().glyph_basis(),
             crate::GlyphBasis::Counterclockwise
         );
-        assert_eq!(original_run.effective_instance().unwrap().font_size(), 20.0);
+        assert_eq!(
+            original_run.run().effective_instance().unwrap().font_size(),
+            20.0
+        );
         request.style.size = 25.0;
         let changed = system.prepare_leader_pattern(request).unwrap();
         assert_eq!(changed.metrics().advance, 25.0);
@@ -477,6 +625,7 @@ mod tests {
                 .run_views()
                 .next()
                 .unwrap()
+                .run()
                 .effective_instance()
                 .unwrap()
                 .font_size(),

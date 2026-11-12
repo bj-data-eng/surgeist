@@ -1756,6 +1756,10 @@ impl FinalizedLine {
 }
 
 impl FinalizedRunView<'_> {
+    pub(crate) fn paint_glyph_range(&self) -> std::ops::Range<usize> {
+        self.run.glyphs.clone()
+    }
+
     /// The outer cell whose horizontal inner frame owns this run.
     #[must_use]
     pub fn cell(&self) -> Option<FinalizedCellView<'_>> {

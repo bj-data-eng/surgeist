@@ -482,6 +482,7 @@ fn execute(
 
     let mut data = FinalizedLineData {
         measurements: None,
+        leader_paint_groups: Vec::new(),
         spacing_slots,
         spacing_amounts: account::collect(
             &mut ledger,
@@ -566,11 +567,13 @@ fn execute(
     let mut internal_edges = account::filled(&mut ledger, groups.len(), 0.0)?;
     let cell_gap_indices =
         super::super::spacing::character::cell_gap_indices(&shaped, &mut ledger)?;
+    let leader_pattern = selected.prepared.analyzed.processed.is_leader_pattern();
     for (ordinal, _) in order.iter() {
         account::work(&mut ledger, 1)?;
         let level = levels[ordinal];
         match shaped.items[ordinal] {
             ShapedItem::Cell(cell) => {
+                let glyph_start = data.glyphs.len();
                 pen = append_cell(
                     &selected,
                     &shaped,
@@ -587,6 +590,13 @@ fn execute(
                     &mut data,
                     &mut ledger,
                 )?;
+                if leader_pattern && glyph_start < data.glyphs.len() {
+                    let unit = data.cells.last().expect("finalized cell").unit;
+                    let group = atom_groups[selected.presentation.units[unit].atoms.start];
+                    for _ in glyph_start..data.glyphs.len() {
+                        account::push_fallible(&mut ledger, &mut atom_groups, group)?;
+                    }
+                }
                 last_run = None;
             }
             ShapedItem::Anchor { unit, .. } => {
@@ -986,6 +996,9 @@ fn execute(
                                 word_half,
                             },
                         )?;
+                        if leader_pattern {
+                            account::push_fallible(&mut ledger, &mut atom_groups, group)?;
+                        }
                         run.glyphs.end = data.glyphs.len();
                         run.source.start = run.source.start.min(glyph.source.start);
                         run.source.end = run.source.end.max(glyph.source.end);
@@ -1442,7 +1455,11 @@ fn execute(
     account::drop_vec(&mut ledger, source_fragments)?;
     account::drop_vec(&mut ledger, owned_fragments)?;
     account::drop_vec(&mut ledger, groups)?;
-    account::drop_vec(&mut ledger, atom_groups)?;
+    if leader_pattern {
+        data.leader_paint_groups = atom_groups;
+    } else {
+        account::drop_vec(&mut ledger, atom_groups)?;
+    }
     account::drop_vec(&mut ledger, internal_edges)?;
     if let Some(geometry) = endpoint_offsets {
         account::drop_vec(&mut ledger, geometry.offsets)?;
