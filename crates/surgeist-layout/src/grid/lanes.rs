@@ -3161,42 +3161,27 @@ where
         containing_size,
     );
     lane_report.replace_stacking_baselines(&pending_items, flow_axes, &mut baselines.baselines);
-    if !pending_absolute.is_empty() {
-        let in_flow_contributions = grid_scroll_contributions(
-            child_contributions.clone(),
-            None,
-            flow_axes,
-            constants.padding,
-        )
-        .map_err(|error| layout_child_geometry_error(node, node, error))?;
-        let auto_area = grid_absolute_auto_area(in_flow_contributions, scroll_box)
-            .map_err(|error| layout_child_geometry_error(node, node, error))?;
-        for (source_index, child, column, row) in pending_absolute {
-            let child_style = placements.item_input(source_index);
-            child_contributions.push(layout_absolute_grid_child(
-                tree,
-                child,
-                source_index,
-                child_style,
-                AbsoluteGridContext::for_lanes(
-                    AbsoluteGridContextInput {
-                        container_style: style,
-                        constants,
-                        containing_size,
-                        auto_area,
-                        column,
-                        row,
-                        column_geometry: &column_geometry,
-                        row_geometry: &row_geometry,
-                        lines: context.lines,
-                    },
-                    lane_axis_alignment_start + lane_report.range_start,
-                    lane_axis_alignment_start + lane_report.range_end,
-                )
-                .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass),
-            )?);
-        }
-    }
+    layout_positioned_grid_items(
+        tree,
+        PositionedGridPlacement {
+            node,
+            style,
+            constants,
+            containing_size,
+            scroll_box,
+            placements,
+            column_geometry: &column_geometry,
+            row_geometry: &row_geometry,
+            lines: context.lines,
+            containing_auto_scrollbar_pass,
+            bounds: PositionedGridBounds::Lanes {
+                start: lane_axis_alignment_start + lane_report.range_start,
+                end: lane_axis_alignment_start + lane_report.range_end,
+            },
+        },
+        pending_absolute,
+        &mut child_contributions,
+    )?;
     let mut contributions =
         grid_scroll_contributions(child_contributions, None, flow_axes, constants.padding)
             .map_err(|error| layout_child_geometry_error(node, node, error))?;

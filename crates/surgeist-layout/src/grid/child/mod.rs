@@ -178,7 +178,7 @@ pub(super) struct GridChildItemsInput<'input, 'a, Node, S: LayoutScalar> {
 
 pub(super) struct PendingGridItems<'input, Node, S: LayoutScalar> {
     pub(super) in_flow: Vec<PendingGridItem<'input, Node, S>>,
-    pub(super) absolute: Vec<(usize, Node, GridPlacement, GridPlacement)>,
+    pub(super) absolute: Vec<PendingAbsoluteGridItem<Node>>,
 }
 
 type PendingGridItemsResult<'input, Node, S, M> =
@@ -774,38 +774,24 @@ where
             resolved_axes.block && !rows.is_empty(),
         ),
     };
-    if !pending_absolute.is_empty() {
-        let in_flow_contributions = grid_scroll_contributions(
-            child_contributions.clone(),
-            Some(track_scroll_bounds()),
-            constants.flow_axes,
-            constants.padding,
-        )
-        .map_err(|error| layout_child_geometry_error(node, node, error))?;
-        let auto_area = grid_absolute_auto_area(in_flow_contributions, scroll_box)
-            .map_err(|error| layout_child_geometry_error(node, node, error))?;
-        for (source_index, child, column, row) in pending_absolute {
-            let child_style = placements.item_input(source_index);
-            child_contributions.push(layout_absolute_grid_child(
-                tree,
-                child,
-                source_index,
-                child_style,
-                AbsoluteGridContext::new(AbsoluteGridContextInput {
-                    container_style: style,
-                    constants,
-                    containing_size,
-                    auto_area,
-                    column,
-                    row,
-                    column_geometry: &logical_column_geometry,
-                    row_geometry: &logical_row_geometry,
-                    lines,
-                })
-                .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass),
-            )?);
-        }
-    }
+    layout_positioned_grid_items(
+        tree,
+        PositionedGridPlacement {
+            node,
+            style,
+            constants,
+            containing_size,
+            scroll_box,
+            placements,
+            column_geometry: &logical_column_geometry,
+            row_geometry: &logical_row_geometry,
+            lines,
+            containing_auto_scrollbar_pass,
+            bounds: PositionedGridBounds::Ordinary(track_scroll_bounds()),
+        },
+        pending_absolute,
+        &mut child_contributions,
+    )?;
     let mut contributions = grid_scroll_contributions(
         child_contributions,
         Some(track_scroll_bounds()),
