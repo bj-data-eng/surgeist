@@ -2,7 +2,7 @@
 //!
 //! Implements the pinned DOM3071 dispatch/invoke and parent algorithms for the
 //! ordinary Node, Global and standalone dispatch, and selected Style, Details
-//! and Dialog delivery.
+//! and Dialog delivery, and attached CSP violation delivery.
 //! Authored Event bodies retain their exact UTF-16 type and creation observation.
 //! The affine dispatch owns one invocation's path, cursor and admission. Details
 //! preserves its queued state and Dialog supplies its source-selected cancelability.
@@ -27,6 +27,8 @@
 //! Unwinding callbacks are reported alongside ordinary callback failures and
 //! later listeners continue. With panic=abort, Rust terminates the process.
 
+#[cfg(feature = "document-scripting")]
+use crate::document_scripting::guest::QueuedViolation;
 use crate::dom_lifecycle::EventCreation;
 use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -48,7 +50,11 @@ pub use objects::{
     DomEventConstructionError, DomEventCreationObservation, DomEventInit,
     DomEventTimestampUnavailable,
 };
+#[cfg(feature = "document-scripting")]
+mod csp;
 mod invocation;
+#[cfg(feature = "document-scripting")]
+pub(crate) use csp::{AuthoredCspViolationInit, CspEventText};
 pub use invocation::DomEventDispatch;
 mod target;
 pub use target::{DomEventTarget, DomStandaloneEventTarget};
@@ -1887,6 +1893,14 @@ enum EventData {
         payload: DomToggleEvent,
         cancelable: bool,
     },
+    #[cfg(feature = "document-scripting")]
+    CspViolation(Rc<csp::CspEventData>),
+}
+enum EventPayload {
+    None,
+    Toggle(DomToggleEvent),
+    #[cfg(feature = "document-scripting")]
+    CspViolation(Rc<csp::CspEventData>),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NativeEventCause {
@@ -1897,6 +1911,8 @@ pub(crate) enum NativeEventCause {
     DialogToggle,
     DialogCancel,
     DialogClose,
+    #[cfg(feature = "document-scripting")]
+    CspViolation,
 }
 impl NativeEventCause {
     fn event_type(self) -> DomEventType {
@@ -1907,6 +1923,8 @@ impl NativeEventCause {
             Self::DialogBeforeToggle => DomEventType::BEFORE_TOGGLE,
             Self::DialogCancel => DomEventType::CANCEL,
             Self::DialogClose => DomEventType::CLOSE,
+            #[cfg(feature = "document-scripting")]
+            Self::CspViolation => DomEventType::CSP_VIOLATION,
         }
     }
 }
@@ -1918,7 +1936,7 @@ struct Event {
     init: Cell<DomEventInit>,
     trusted: Cell<bool>,
     creation: Result<DomEventCreationObservation, DomEventTimestampUnavailable>,
-    toggle: Option<DomToggleEvent>,
+    payload: EventPayload,
     #[cfg(feature = "document-scripting")]
     attached_projection: RefCell<
         Option<
@@ -2435,40 +2453,71 @@ impl EventInvocationOwner {
         creation: Result<EventCreation, DomEventTimestampUnavailable>,
         backing: EventBodyCustody,
     ) -> Self {
-        let (cause, toggle, cancelable) = match data {
-            EventData::StyleLoad => (NativeEventCause::StyleLoad, None, false),
-            EventData::StyleError => (NativeEventCause::StyleError, None, false),
-            EventData::DialogClose => (NativeEventCause::DialogClose, None, false),
-            EventData::DialogCancel { cancelable } => {
-                (NativeEventCause::DialogCancel, None, cancelable)
-            }
-            EventData::DetailsToggle(payload) => {
-                (NativeEventCause::DetailsToggle, Some(payload), false)
-            }
-            EventData::DialogToggle(payload) => {
-                (NativeEventCause::DialogToggle, Some(payload), false)
-            }
+        let default_init = DomEventInit::default();
+        let (cause, payload, init) = match data {
+            EventData::StyleLoad => (
+                NativeEventCause::StyleLoad,
+                EventPayload::None,
+                default_init,
+            ),
+            EventData::StyleError => (
+                NativeEventCause::StyleError,
+                EventPayload::None,
+                default_init,
+            ),
+            EventData::DialogClose => (
+                NativeEventCause::DialogClose,
+                EventPayload::None,
+                default_init,
+            ),
+            EventData::DialogCancel { cancelable } => (
+                NativeEventCause::DialogCancel,
+                EventPayload::None,
+                DomEventInit {
+                    cancelable,
+                    ..default_init
+                },
+            ),
+            EventData::DetailsToggle(payload) => (
+                NativeEventCause::DetailsToggle,
+                EventPayload::Toggle(payload),
+                default_init,
+            ),
+            EventData::DialogToggle(payload) => (
+                NativeEventCause::DialogToggle,
+                EventPayload::Toggle(payload),
+                default_init,
+            ),
             EventData::DialogBeforeToggle {
                 payload,
                 cancelable,
             } => (
                 NativeEventCause::DialogBeforeToggle,
-                Some(payload),
-                cancelable,
+                EventPayload::Toggle(payload),
+                DomEventInit {
+                    cancelable,
+                    ..default_init
+                },
+            ),
+            #[cfg(feature = "document-scripting")]
+            EventData::CspViolation(report) => (
+                NativeEventCause::CspViolation,
+                EventPayload::CspViolation(report),
+                DomEventInit {
+                    bubbles: true,
+                    cancelable: false,
+                    composed: true,
+                },
             ),
         };
         let event = NativeDomEvent(
             Rc::new(Event {
                 owner: original.owner(),
                 event_type: RefCell::new(Some(cause.event_type())),
-                init: Cell::new(DomEventInit {
-                    bubbles: false,
-                    cancelable,
-                    composed: false,
-                }),
+                init: Cell::new(init),
                 trusted: Cell::new(true),
                 creation: creation.map(EventCreation::into_observation),
-                toggle,
+                payload,
                 #[cfg(feature = "document-scripting")]
                 attached_projection: RefCell::new(None),
                 storage: backing.storage,
@@ -2839,7 +2888,17 @@ impl NativeDomEvent {
     }
     /// Immutable data initialized by a native producer or authored constructor.
     pub fn toggle_event(&self) -> Option<&DomToggleEvent> {
-        self.0.toggle.as_ref()
+        if let EventPayload::Toggle(payload) = &self.0.payload {
+            return Some(payload);
+        }
+        None
+    }
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn csp_violation(&self) -> Option<&csp::CspEventData> {
+        if let EventPayload::CspViolation(report) = &self.0.payload {
+            return Some(report.as_ref());
+        }
+        None
     }
     /// Current shadow-adjusted target; cleanup clears shadow-internal targets.
     pub fn target(&self) -> Option<DomEventTarget> {

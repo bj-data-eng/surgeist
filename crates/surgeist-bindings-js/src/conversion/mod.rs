@@ -6,6 +6,7 @@ mod composition;
 pub mod declarations;
 mod failure;
 mod listener;
+mod security_policy_violation;
 mod sequence;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -31,6 +32,9 @@ pub use failure::{
     CleanupFailure, CleanupFault, CleanupPrimary, CleanupStage, Failure, FailureKind, Rule,
 };
 pub use listener::StandaloneListenerOptions;
+pub use security_policy_violation::{
+    SecurityPolicyViolationEventDisposition, SecurityPolicyViolationEventOptions,
+};
 pub use sequence::Sequence;
 pub use toggle_event::ToggleEventOptions;
 pub use trusted_types::trusted_policy_callback_result;

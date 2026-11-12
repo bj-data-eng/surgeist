@@ -16,7 +16,7 @@ pub(super) fn violation_error(
     }
 }
 
-pub(super) enum ViolationBacking {
+pub(crate) enum ViolationBacking {
     Guest {
         _backing: GuestBacking,
     },
@@ -32,9 +32,22 @@ pub(super) struct ViolationOrigin {
     pub(super) document: DocumentId,
 }
 
+/// The immutable report and its original admission, shared by its task and Event.
+pub(crate) struct QueuedViolation {
+    report: ViolationReport<ViolationBacking>,
+}
+
+impl QueuedViolation {
+    pub(crate) fn report(&self) -> &ViolationReport<ViolationBacking> {
+        &self.report
+    }
+}
+
 pub(in crate::document_scripting) struct ViolationQueue {
-    origin: ViolationOrigin,
-    reports: VecDeque<ViolationReport<ViolationBacking>>,
+    pub(super) origin: ViolationOrigin,
+    reports: VecDeque<Rc<QueuedViolation>>,
+    pub(super) active: Option<super::csp_task::ActiveViolationTask>,
+    next_task: u64,
     backing: Option<ViolationBacking>,
     _header: ViolationBacking,
 }
@@ -52,6 +65,8 @@ impl ViolationQueue {
             *queue = Some(Box::new(Self {
                 origin,
                 reports: VecDeque::new(),
+                active: None,
+                next_task: 0,
                 backing: None,
                 _header: header,
             }));
@@ -61,7 +76,13 @@ impl ViolationQueue {
             return Err(DocumentScriptNativeError::ForeignPermit.into());
         }
         queue.reserve(&mut reserve, charge_copy)?;
-        reserve(bytes, bytes / size_of::<u16>())
+        let allocation = size_of::<QueuedViolation>() + 2 * size_of::<usize>();
+        reserve(
+            bytes
+                .checked_add(allocation)
+                .ok_or(DocumentScriptNativeError::StorageLimit)?,
+            bytes / size_of::<u16>(),
+        )
     }
 
     fn reserve(
@@ -79,7 +100,7 @@ impl ViolationQueue {
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?
             .max(1);
         let bytes = capacity
-            .checked_mul(size_of::<ViolationReport<ViolationBacking>>())
+            .checked_mul(size_of::<Rc<QueuedViolation>>())
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let backing = reserve(bytes, 0)?;
         let mut reports = VecDeque::new();
@@ -100,7 +121,35 @@ impl ViolationQueue {
     }
 
     pub(super) fn push(&mut self, report: ViolationReport<ViolationBacking>) {
-        self.reports.push_back(report);
+        self.reports.push_back(Rc::new(QueuedViolation { report }));
+    }
+
+    pub(super) fn head(&self) -> Option<Rc<QueuedViolation>> {
+        self.reports.front().cloned()
+    }
+
+    pub(super) fn start_head(
+        &mut self,
+    ) -> Result<&mut super::csp_task::ActiveViolationTask, DocumentGuestEventError> {
+        if self.reports.is_empty() {
+            return Err(DocumentGuestEventError::RegistryState);
+        }
+        if self.active.is_none() {
+            let task = self
+                .next_task
+                .checked_add(1)
+                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+            self.next_task = task;
+            self.active = Some(super::csp_task::ActiveViolationTask::new(task));
+        }
+        self.active
+            .as_mut()
+            .ok_or(DocumentGuestEventError::RegistryState)
+    }
+
+    pub(super) fn finish_head(&mut self) {
+        self.active = None;
+        self.reports.pop_front();
     }
 
     #[cfg(test)]
@@ -110,7 +159,7 @@ impl ViolationQueue {
 
     #[cfg(test)]
     pub(super) fn iter(&self) -> impl Iterator<Item = &ViolationReport<ViolationBacking>> {
-        self.reports.iter()
+        self.reports.iter().map(|report| report.report())
     }
 }
 

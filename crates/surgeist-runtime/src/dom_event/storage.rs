@@ -239,6 +239,11 @@ impl DomEventType {
     pub const CLOSE: Self = Self(EventText::Static(&[99, 108, 111, 115, 101]));
     /// Exact `cancel` spelling.
     pub const CANCEL: Self = Self(EventText::Static(&[99, 97, 110, 99, 101, 108]));
+    #[cfg(feature = "document-scripting")]
+    pub(super) const CSP_VIOLATION: Self = Self(EventText::Static(&[
+        115, 101, 99, 117, 114, 105, 116, 121, 112, 111, 108, 105, 99, 121, 118, 105, 111, 108, 97,
+        116, 105, 111, 110,
+    ]));
 
     /// Exact code units, including isolated surrogates and NULs.
     pub fn code_units(&self) -> &[u16] {

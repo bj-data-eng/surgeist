@@ -3,6 +3,7 @@
 mod document;
 mod listener_methods;
 mod operations;
+mod security_policy_violation;
 mod toggle_event;
 mod trusted_policy;
 
@@ -140,6 +141,7 @@ pub(super) struct PublicEventBindings {
     trusted_types: RetainedCallbackObject,
     event: RetainedCallbackObject,
     toggle_event: RetainedCallbackObject,
+    security_policy_violation: RetainedCallbackObject,
     target: RetainedCallbackObject,
     trusted: RetainedCallbackObject,
     dispatch_in_attachment: RetainedCallbackObject,
@@ -332,6 +334,9 @@ impl PublicEventBindings {
         let toggle_event = toggle_event::install(scope, &event, &capture)?;
         let toggle_event = scope.callback_object(&toggle_event)?;
         let toggle_event = scope.retain_callback_object(toggle_event, fund)?;
+        let violation = security_policy_violation::install(scope, &event, &capture)?;
+        let violation = scope.callback_object(&violation)?;
+        let security_policy_violation = scope.retain_callback_object(violation, fund)?;
         install_event_interface(scope, Interface::Target, &target, &capture_origin)?;
         let observed = scope.callback_object(&event)?;
         let document = document::DocumentBindings::install(
@@ -385,6 +390,7 @@ impl PublicEventBindings {
             trusted_types,
             event,
             toggle_event,
+            security_policy_violation,
             target,
             trusted,
             dispatch_in_attachment,
@@ -524,6 +530,9 @@ impl PublicEventBindings {
         scope: &mut Scope<'scope>,
         event: &NativeDomEvent,
     ) -> Result<Value<'scope>, Error> {
+        if event.csp_violation().is_some() {
+            return scope.open_callback_object(&self.security_policy_violation);
+        }
         match event.toggle_event() {
             Some(_) => scope.open_callback_object(&self.toggle_event),
             None => self.event_prototype(scope),

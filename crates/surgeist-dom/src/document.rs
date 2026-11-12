@@ -665,6 +665,14 @@ impl DomDocumentMetadata {
     pub fn url(&self) -> &DocumentString {
         &self.url
     }
+
+    /// Referrer supplied by the original hosted Document creation. The outer
+    /// option records whether the hosted constructor supplied this fact.
+    pub fn hosted_referrer(&self) -> Option<Option<&DocumentString>> {
+        self.hosted_inputs
+            .as_ref()
+            .map(|inputs| inputs.0.referrer.as_ref())
+    }
     pub fn origin(&self) -> &DomOpaqueOrigin {
         &self.origin
     }

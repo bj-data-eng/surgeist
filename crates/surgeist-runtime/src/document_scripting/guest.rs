@@ -1,5 +1,6 @@
 //! Registered guest callbacks for ordinary authored standalone dispatch.
 
+mod csp_task;
 mod element_task;
 mod interfaces;
 mod listeners;
@@ -16,7 +17,9 @@ use crate::dom_event::{
     DomEventInit, DomEventListenerOptions, DomEventPhase, DomEventRegistrationId, DomEventTarget,
     DomEventTimestampUnavailable, DomEventType, DomStandaloneEventTarget, NativeDomEvent,
 };
+pub use csp_task::DocumentCspViolationProgress;
 use interfaces::PublicEventBindings;
+pub(crate) use reports::QueuedViolation;
 use reports::{DirectExceptions, ExceptionRoots};
 pub(super) use reports::{GuestExceptionReports, ViolationQueue};
 use surgeist_bindings_js::{
@@ -354,7 +357,7 @@ impl From<DocumentGuestEventError> for DocumentGuestEventDispatchFailure {
     }
 }
 
-struct GuestBacking {
+pub(crate) struct GuestBacking {
     used: Rc<Cell<usize>>,
     bytes: usize,
     _canonical: DomHostedRuntimeRetention,

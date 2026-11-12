@@ -1,6 +1,6 @@
 use super::*;
 
-/// One affine ordinary dispatch prepared for an exact Event, target and registry.
+/// One affine dispatch prepared for an exact Event, target and registry.
 pub struct DomEventDispatch {
     owner: EventInvocationOwner,
     registry: u64,
@@ -56,6 +56,58 @@ impl<C> DomEventDispatcher<C> {
             registry: self.owner.id,
         })
     }
+
+    /// Prepare the report's selected native delivery. Refused preparation
+    /// leaves the task's original creation observation available to retry.
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn prepare_csp_violation(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        document: surgeist_dom::DocumentId,
+        report: Rc<QueuedViolation>,
+        creation: &mut Option<Result<EventCreation, DomEventTimestampUnavailable>>,
+        cancel: &AtomicBool,
+    ) -> Result<DomEventDispatch, DomEventDispatchError> {
+        if creation.is_none() {
+            return Err(DomEventDispatchError::WrongContinuation);
+        }
+        self.association.validate(dom.raw())?;
+        let node = document.node();
+        self.validate_target(dom.raw(), &node.into(), cancel)?;
+        self.storage.step(1, cancel)?;
+        let payload = csp::CspEventData::native(dom, &self.storage, document, report, cancel)?;
+
+        let bytes = EventInvocationOwner::initial_payload_bytes()
+            .ok_or(DomEventDispatchError::Admission(DomEventResource::Storage))?;
+        let mut allocation = self.storage.reserve(dom, bytes, bytes, 0, cancel)?;
+        let event_bytes = EventBodyCustody::event_bytes();
+        let event_allocation = allocation.split(event_bytes, event_bytes, 0)?;
+        let backing = EventBodyCustody {
+            event: Rc::new(BodyCustody {
+                _storage: BodyStorage::Owned {
+                    _retained: event_allocation,
+                },
+            }),
+            continuation: BodyCustody {
+                _storage: BodyStorage::Owned {
+                    _retained: allocation,
+                },
+            },
+            storage: self.storage.clone(),
+        };
+        let creation = creation
+            .take()
+            .ok_or(DomEventDispatchError::WrongContinuation)?;
+        Ok(DomEventDispatch {
+            owner: EventInvocationOwner::new(
+                node,
+                EventData::CspViolation(payload),
+                creation,
+                backing,
+            ),
+            registry: self.owner.id,
+        })
+    }
 }
 
 impl DomEventDispatch {
@@ -88,6 +140,26 @@ impl DomEventDispatch {
         cancel: &AtomicBool,
         host: DispatchHost,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        self.advance_with_host_usage(
+            dom,
+            dispatcher,
+            context,
+            (limits, &mut DispatchUsage::default()),
+            cancel,
+            host,
+        )
+    }
+
+    /// Share the current call's budget across owned host listener selections.
+    pub(crate) fn advance_with_host_usage<C>(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        dispatcher: &mut DomEventDispatcher<C>,
+        context: &mut C,
+        (limits, usage): (DomEventDispatchLimits, &mut DispatchUsage),
+        cancel: &AtomicBool,
+        host: DispatchHost,
+    ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
         if self.registry != dispatcher.owner.id {
             return Err(DomEventDispatchError::WrongContinuation);
         }
@@ -116,7 +188,7 @@ impl DomEventDispatch {
             dispatcher
                 .storage
                 .reserve(dom, formation.full, formation.source, 0, cancel)?;
-        dispatcher.deliver(
+        dispatcher.deliver_with_usage(
             dom.raw_mut(),
             context,
             &self.owner.dispatch_observation(),
@@ -126,6 +198,7 @@ impl DomEventDispatch {
                 host,
                 funding: DispatchFunding(Funding::Owned(allocation)),
             },
+            usage,
         )
     }
 }

@@ -113,7 +113,7 @@ impl From<crate::DomHostedRuntimeError> for DomEventConstructionError {
 struct InitializedEvent {
     event_type: DomEventType,
     init: DomEventInit,
-    toggle: Option<DomToggleEvent>,
+    payload: EventPayload,
 }
 
 #[cfg(feature = "document-scripting")]
@@ -174,7 +174,7 @@ impl NativeDomEvent {
             Some(InitializedEvent {
                 event_type,
                 init,
-                toggle: None,
+                payload: EventPayload::None,
             }),
             cancel,
         )
@@ -199,7 +199,7 @@ impl NativeDomEvent {
             Some(InitializedEvent {
                 event_type,
                 init: init.event,
-                toggle: Some(toggle),
+                payload: EventPayload::Toggle(toggle),
             }),
             cancel,
         )
@@ -213,6 +213,31 @@ impl NativeDomEvent {
     ) -> Result<Self, DomEventDispatchError> {
         storage.step(1, cancel)?;
         Self::allocate(dom, storage, creation, None, cancel)
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn authored_csp_violation(
+        dom: &mut DomEventDom<'_>,
+        storage: EventStorage,
+        creation: crate::dom_lifecycle::EventCreation,
+        event_type: &[u16],
+        init: AuthoredCspViolationInit<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomEventDispatchError> {
+        storage.step(1, cancel)?;
+        let event_type = DomEventType::retain(&storage, dom, event_type, cancel)?;
+        let payload = csp::CspEventData::authored(dom, &storage, &init, cancel)?;
+        Self::allocate(
+            dom,
+            storage,
+            creation,
+            Some(InitializedEvent {
+                event_type,
+                init: init.event,
+                payload: EventPayload::CspViolation(payload),
+            }),
+            cancel,
+        )
     }
 
     fn allocate(
@@ -229,9 +254,9 @@ impl NativeDomEvent {
                 _retained: allocation,
             },
         });
-        let (event_type, init, toggle) = initialized.map_or_else(
-            || (None, DomEventInit::default(), None),
-            |event| (Some(event.event_type), event.init, event.toggle),
+        let (event_type, init, payload) = initialized.map_or_else(
+            || (None, DomEventInit::default(), EventPayload::None),
+            |event| (Some(event.event_type), event.init, event.payload),
         );
         Ok(Self(
             Rc::new(Event {
@@ -240,7 +265,7 @@ impl NativeDomEvent {
                 init: Cell::new(init),
                 trusted: Cell::new(false),
                 creation: Ok(creation.into_observation()),
-                toggle,
+                payload,
                 #[cfg(feature = "document-scripting")]
                 attached_projection: RefCell::new(None),
                 storage,

@@ -232,6 +232,21 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         let expression: Vec<_> = r#"
             (() => {
                 const marker = {};
+                globalThis.cspEvents = [];
+                document.addEventListener('securitypolicyviolation', event => {
+                    if (!(event instanceof SecurityPolicyViolationEvent) || !event.isTrusted
+                        || !event.bubbles || !event.composed || event.cancelable
+                        || event.target !== document || event.currentTarget !== document) {
+                        throw new Error('incorrect native CSP event');
+                    }
+                    cspEvents.push(event);
+                });
+                globalThis.cspBubbles = 0;
+                EventTarget.prototype.addEventListener.call(window, 'securitypolicyviolation', event => {
+                    if (cspEvents[cspBubbles] !== event || event.currentTarget !== window
+                        || event.target !== document) throw new Error('incorrect CSP path or identity');
+                    cspBubbles++;
+                });
                 try { protectedTarget.setAttribute('onclick', 'missing'); return false; }
                 catch (error) { if (!(error instanceof TypeError)) return false; }
                 const policy = trustedTypes.createPolicy('default', {
@@ -354,6 +369,71 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
             (1, "trusted-types-sink", "Element onclick|empty"),
         ],
     );
+    assert_csp_event_counts(&mut host, &permit, 0);
+    let first_slice = DomEventDispatchLimits {
+        callbacks: 1,
+        ..EVENT.dispatch
+    };
+    let progress = host
+        .run_attached_csp_violation_task(&permit, first_slice)
+        .unwrap();
+    assert!(
+        matches!(
+            progress,
+            DocumentCspViolationProgress::Retained(crate::DomEventDispatchOutcome::Retained(
+                crate::DomEventResource::Callbacks
+            ))
+        ),
+        "{progress:?}"
+    );
+    for count in 1..=4 {
+        let progress = host
+            .run_attached_csp_violation_task(&permit, EVENT.dispatch)
+            .unwrap();
+        let DocumentCspViolationProgress::Complete(receipt) = progress else {
+            panic!("expected one native CSP violation task to complete: {progress:?}");
+        };
+        assert!(receipt.failures().is_empty());
+        assert_csp_event_counts(&mut host, &permit, count);
+    }
+    assert!(matches!(
+        host.run_attached_csp_violation_task(&permit, EVENT.dispatch)
+            .unwrap(),
+        DocumentCspViolationProgress::Empty
+    ));
+    host.in_document(&permit, |scope| {
+        let source = r#"
+            (() => {
+                const expected = [
+                    ['trusted-types-sink', 'require-trusted-types-for', 'Element onclick|missing'],
+                    ['trusted-types-sink', 'require-trusted-types-for', 'Element onclick|empty'],
+                    ['trusted-types-policy', 'trusted-types', 'denied'],
+                    ['trusted-types-sink', 'require-trusted-types-for', 'Element onclick|empty']
+                ];
+                if (!cspEvents.every((event, index) => {
+                    const [resource, directive, sample] = expected[index];
+                    const policy = index === 2 ? 'trusted-types default' : "require-trusted-types-for 'script'";
+                    return event.blockedURI === resource && event.effectiveDirective === directive
+                        && event.violatedDirective === directive && event.sample === sample
+                        && event.originalPolicy === policy && event.documentURI === 'about'
+                        && event.referrer === '' && event.sourceFile === '' && event.statusCode === 0
+                        && event.lineNumber === 0 && event.columnNumber === 0 && event.disposition === 'enforce';
+                })) return false;
+                const authored = new SecurityPolicyViolationEvent('authored', {
+                    documentURI: '\ud800', sample: '\ud800', statusCode: -1, lineNumber: -1,
+                    disposition: 'report', effectiveDirective: 'effective', violatedDirective: 'violated'
+                });
+                return authored instanceof Event && !authored.isTrusted
+                    && authored.type === 'authored' && authored.documentURI === '\ufffd'
+                    && authored.sample === '\ud800' && authored.statusCode === 65535
+                    && authored.lineNumber === 4294967295 && authored.disposition === 'report'
+                    && authored.effectiveDirective === 'effective' && authored.violatedDirective === 'violated';
+            })()
+        "#;
+        let value = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
+        assert!(scope.boolean(&value)?);
+        Ok(())
+    }).unwrap();
 
     let calls = pause_guest_attribute(
         &mut host,
@@ -580,6 +660,20 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
             .attribute(&"onclick".into()),
         Some(&"later!".into()),
     );
+}
+
+fn assert_csp_event_counts(
+    host: &mut DocumentScriptHost,
+    permit: &DocumentScriptPermit,
+    count: usize,
+) {
+    host.in_document(permit, |scope| {
+        let source = format!("cspEvents.length === {count} && cspBubbles === {count}");
+        let value = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
+        assert!(scope.boolean(&value)?);
+        Ok(())
+    })
+    .unwrap();
 }
 
 fn attach_attribute_recovery_fixture(

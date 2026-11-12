@@ -1878,7 +1878,49 @@ impl Drop for NativeTaskRunning {
         }
     }
 }
+
+#[cfg(feature = "document-scripting")]
+pub(crate) struct CspTaskCustody {
+    event_loop: Weak<RefCell<records::WindowLoop>>,
+    current: records::CurrentTask,
+}
+
+#[cfg(feature = "document-scripting")]
+impl Drop for CspTaskCustody {
+    fn drop(&mut self) {
+        if let Some(owner) = self.event_loop.upgrade() {
+            // The runner holds no loop borrow. If it is still live, it keeps
+            // the executing flag set until its own drop.
+            let mut event_loop = owner.borrow_mut();
+            if event_loop.current == Some(self.current) {
+                event_loop.current = None;
+            }
+        }
+    }
+}
+
 impl HostedRuntime {
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn enter_csp_violation_task(
+        &self,
+        dom: &DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        document: surgeist_dom::DocumentId,
+        task: u64,
+        custody: &mut Option<CspTaskCustody>,
+        cancel: &AtomicBool,
+    ) -> Result<NativeTaskRunning, DomHostedRuntimeError> {
+        let current = records::CurrentTask::CspViolation { task, document };
+        let running = self.enter_document_task(dom, (global, document), current, false, cancel)?;
+        if custody.is_none() {
+            *custody = Some(CspTaskCustody {
+                event_loop: Rc::downgrade(&running.event_loop),
+                current,
+            });
+        }
+        Ok(running)
+    }
+
     pub(crate) fn enter_element_task(
         &self,
         dom: &DomEventDom<'_>,
@@ -1888,13 +1930,34 @@ impl HostedRuntime {
         retired_target: bool,
         cancel: &AtomicBool,
     ) -> Result<NativeTaskRunning, DomHostedRuntimeError> {
+        let document = association.document();
+        self.enter_document_task(
+            dom,
+            (association.global(), document),
+            records::CurrentTask::ElementTask {
+                source,
+                task,
+                document,
+            },
+            retired_target,
+            cancel,
+        )
+    }
+
+    fn enter_document_task(
+        &self,
+        dom: &DomEventDom<'_>,
+        (global_id, document): (DomHostedGlobalId, surgeist_dom::DocumentId),
+        current: records::CurrentTask,
+        retired_target: bool,
+        cancel: &AtomicBool,
+    ) -> Result<NativeTaskRunning, DomHostedRuntimeError> {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
-        let document = association.document();
-        let (h, t, c, g) = state.find_global(association.global(), cancel, |_| Ok(()))?;
+        let (h, t, c, g) = state.find_global(global_id, cancel, |_| Ok(()))?;
         let cluster = &state.hosts[h].top_levels[t]
             .group
             .as_ref()
@@ -1909,11 +1972,6 @@ impl HostedRuntime {
         let mut event_loop = loop_owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let current = records::CurrentTask::ElementTask {
-            source,
-            task,
-            document,
-        };
         if event_loop.executing || event_loop.current.is_some_and(|old| old != current) {
             return Err(DomHostedRuntimeError::Busy);
         }
@@ -1922,7 +1980,7 @@ impl HostedRuntime {
             let snapshot = dom.snapshot();
             if dom
                 .raw()
-                .global_document(association.global())
+                .global_document(global_id)
                 .map_err(DomHostedRuntimeError::Dom)?
                 != document
             {
@@ -1950,7 +2008,7 @@ impl HostedRuntime {
         Ok(NativeTaskRunning {
             state: Rc::downgrade(&owner),
             event_loop: loop_owner,
-            global: association.global(),
+            global: global_id,
             time_origin,
             complete: false,
         })

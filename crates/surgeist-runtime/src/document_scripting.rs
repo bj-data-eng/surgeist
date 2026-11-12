@@ -29,9 +29,10 @@ use crate::{
 pub(crate) mod guest;
 mod projection;
 pub use guest::{
-    DocumentGuestEvent, DocumentGuestEventDispatchFailure, DocumentGuestEventError,
-    DocumentGuestEventLimits, DocumentGuestEventReport, DocumentGuestEventTarget,
-    DocumentGuestEventView, DocumentGuestListenerException, EnableDocumentGuestEventsFailure,
+    DocumentCspViolationProgress, DocumentGuestEvent, DocumentGuestEventDispatchFailure,
+    DocumentGuestEventError, DocumentGuestEventLimits, DocumentGuestEventReport,
+    DocumentGuestEventTarget, DocumentGuestEventView, DocumentGuestListenerException,
+    EnableDocumentGuestEventsFailure,
 };
 mod source;
 mod window_event;
@@ -1027,6 +1028,7 @@ impl DocumentScriptHost {
                 Err(error) => ScriptRetirement::BindingsFailure(error),
             });
             drop(self.engine.take());
+            self.native.trusted_types_reports.borrow_mut().take();
         }
     }
 
@@ -1310,6 +1312,7 @@ impl DocumentScriptHost {
     /// Revoke the attachment and dispose of its queue without a checkpoint.
     pub fn stop(self) -> StoppedDocumentScriptHost {
         drop(self.engine);
+        self.native.trusted_types_reports.borrow_mut().take();
         StoppedDocumentScriptHost {
             native: self.native,
         }

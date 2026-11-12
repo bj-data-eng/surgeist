@@ -104,6 +104,8 @@ pub(super) enum CurrentTask {
         task: DomElementTaskId,
         document: DocumentId,
     },
+    #[cfg(feature = "document-scripting")]
+    CspViolation { task: u64, document: DocumentId },
     History {
         operation: DomHostedOperationId,
         occurrence: u64,
