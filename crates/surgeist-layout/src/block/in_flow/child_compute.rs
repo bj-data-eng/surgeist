@@ -62,6 +62,13 @@ pub(super) struct InFlowBoxPreparation<S: LayoutScalar> {
     places_against_float_exclusions: bool,
 }
 
+impl<S: LayoutScalar> InFlowBoxPreparation<S> {
+    pub(super) fn shared_input(&self) -> ComputeInputOf<S> {
+        self.child_input
+            .with_settled_auto_scrollbars(crate::scroll::SettledAutoScrollbarState::INITIAL)
+    }
+}
+
 struct InFlowBoxOutput<Node, S: LayoutScalar> {
     output: ComputeOutputOf<S>,
     shared_child: Option<SharedInFlowPlacement<Node, S>>,
@@ -72,50 +79,41 @@ struct InFlowBoxOutput<Node, S: LayoutScalar> {
 type InFlowBoxRequestResult<Node, S, M> =
     ComputeResult<Node, (scope::ChildRequest<Node, S>, InFlowBoxPreparation<S>), S, M>;
 
-pub(super) fn compute_shared_box<'input, Tree, S, M>(
+pub(super) fn finish_shared_box<'input, Tree, S, M>(
     tree: &mut Tree,
     computation: InFlowBoxComputation<'_, 'input, Tree::Node, S>,
     preparation: InFlowBoxPreparation<S>,
+    pending: PendingSharedBox<Tree::Node, S>,
+    output: ComputeOutputOf<S>,
     remaining_cut: &mut Option<entry::canonical::Separation<Tree::Node, S>>,
 ) -> InFlowBoxResult<Tree::Node, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    let InFlowBoxComputation {
-        node,
-        child,
-        index,
-        child_style,
-        constants,
-        prepared,
-        float_exclusions,
-        ..
-    } = computation;
-    let computed = compute_shared_in_flow_child(
-        tree,
-        SharedInFlowChild {
-            node,
-            child,
-            index,
-            child_input: preparation.child_input,
-            child_style,
-            constants,
-            prepared,
-            parent_entry: computation.parent_entry(),
-            resident_cut: *remaining_cut,
-            float_exclusions,
-        },
-    )?;
-    *remaining_cut = computed.remaining_cut;
+    let child = computation.child;
+    let floats = tree
+        .end_child_float_context(child, preparation.shared_input())
+        .ok_or_else(|| float_context::missing(child))?;
+    if floats.output != output {
+        return Err(float_context::missing(child).into());
+    }
+    if let Some(previous) = *remaining_cut
+        && pending.child_cut.is_some_and(|cut| cut.same_cut(previous))
+        && floats.remaining_cut.is_none()
+    {
+        *remaining_cut = None;
+    }
+    // Entry qualification retains its funding until the child receipt is consumed.
+    drop(pending.entry);
     let output = InFlowBoxOutput {
-        output: computed.accepted.output,
+        output,
         shared_child: Some(SharedInFlowPlacement {
-            origin: computed.location,
-            floats: computed.accepted.floats,
+            origin: pending.location,
+            floats,
         }),
-        clearance_funding: computed.clearance_funding,
-        introduced_cut: computed.introduced_cut,
+        clearance_funding: pending.clearance_funding,
+        introduced_cut: pending.introduced_cut,
     };
     finish_in_flow_box(tree, &computation, preparation, output)
 }
@@ -580,49 +578,46 @@ where
     })
 }
 
-struct SharedInFlowChild<'input, 'a, Node, S: LayoutScalar> {
-    node: Node,
-    child: Node,
-    index: usize,
-    child_input: ComputeInputOf<S>,
-    child_style: &'a BlockChildProjection<'input, S>,
-    constants: &'a Constants<S>,
-    prepared: &'a PreparedChild<S>,
-    parent_entry: scope::ParentEntry<S>,
-    resident_cut: Option<entry::canonical::Separation<Node, S>>,
-    float_exclusions: &'a FloatExclusions<S, Node>,
-}
-
-struct SharedInFlowComputation<Node, S: LayoutScalar> {
-    accepted: float_context::ChildOutput<Node, S>,
+pub(super) struct PendingSharedBox<Node, S: LayoutScalar> {
+    entry: entry::EntrySummary<Node, S>,
     location: LogicalPointOf<S>,
     clearance_funding: Option<crate::text_layout::scope_alignment::EntryFunding<S>>,
     introduced_cut: Option<entry::canonical::Separation<Node, S>>,
-    remaining_cut: Option<entry::canonical::Separation<Node, S>>,
+    child_cut: Option<entry::canonical::Separation<Node, S>>,
 }
 
-type SharedInFlowResult<Node, S, M> = LayoutResultOf<Node, SharedInFlowComputation<Node, S>, S, M>;
+type SharedBoxPreparation<Node, S, M> = LayoutResultOf<
+    Node,
+    (
+        float_context::ChildFrame<Node, S>,
+        PendingSharedBox<Node, S>,
+    ),
+    S,
+    M,
+>;
 
-fn compute_shared_in_flow_child<'input, Tree, S, M>(
+pub(super) fn prepare_shared_box<'input, Tree, S, M>(
     tree: &mut Tree,
-    request: SharedInFlowChild<'input, '_, Tree::Node, S>,
-) -> SharedInFlowResult<Tree::Node, S, M>
+    computation: &InFlowBoxComputation<'_, 'input, Tree::Node, S>,
+    preparation: &InFlowBoxPreparation<S>,
+    resident_cut: Option<entry::canonical::Separation<Tree::Node, S>>,
+) -> SharedBoxPreparation<Tree::Node, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    let SharedInFlowChild {
+    let InFlowBoxComputation {
         node,
         child,
         index,
-        child_input,
         child_style,
         constants,
         prepared,
-        parent_entry,
-        resident_cut,
         float_exclusions,
-    } = request;
+        ..
+    } = *computation;
+    let child_input = preparation.child_input;
+    let parent_entry = computation.parent_entry();
     let cursor = parent_entry.cursor;
     let active = parent_entry.active;
     let start_open = parent_entry.first;
@@ -724,26 +719,20 @@ where
     } else {
         summary.separation.or(resident_cut)
     };
-    let accepted = tree.compute_child_with_float_context(
-        child,
-        child_input.with_settled_auto_scrollbars(crate::scroll::SettledAutoScrollbarState::INITIAL),
-        float_exclusions
-            .for_entry_child(location, funding)
-            .map_err(|error| inline_run::text_run_error(child, error.into()))?,
-        child_cut,
-    )?;
-    let mut remaining_cut = resident_cut;
-    if let Some(previous) = remaining_cut
-        && child_cut.is_some_and(|cut| cut.same_cut(previous))
-        && accepted.floats.remaining_cut.is_none()
-    {
-        remaining_cut = None;
-    }
-    Ok(SharedInFlowComputation {
-        accepted,
-        location,
-        clearance_funding,
-        introduced_cut,
-        remaining_cut,
-    })
+    let exclusions = float_exclusions
+        .for_entry_child(location, funding)
+        .map_err(|error| inline_run::text_run_error(child, error.into()))?;
+    Ok((
+        float_context::ChildFrame {
+            exclusions,
+            cut: child_cut,
+        },
+        PendingSharedBox {
+            entry: summary,
+            location,
+            clearance_funding,
+            introduced_cut,
+            child_cut,
+        },
+    ))
 }

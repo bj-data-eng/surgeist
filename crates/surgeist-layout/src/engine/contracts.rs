@@ -9,9 +9,6 @@ pub(crate) type WrappingContextLoan<'a, Node> = (
     &'a crate::engine::validation::ValidationGraph<Node>,
 );
 
-pub(crate) type FloatContextChildResult<Node, S, M> =
-    LayoutResultOf<Node, crate::block::float_context::ChildOutput<Node, S>, S, M>;
-
 pub(crate) type UnroundedEntryResult<Node, S, M> =
     LayoutResultOf<Node, LayoutOutputEntryOf<Node, S>, S, M>;
 
@@ -85,33 +82,31 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     fn block_float_work(&self, node: Self::Node) -> bool {
         crate::block::float_context::discover_work(self, node)
     }
-    fn compute_child_with_float_context(
+    fn begin_child_float_context(
         &mut self,
         node: Self::Node,
         input: ComputeInputOf<Self::Scalar>,
-        frame: crate::block::InheritedFloatExclusions<Self::Scalar, Self::Node>,
-        cut: Option<crate::block::entry::canonical::Separation<Self::Node, Self::Scalar>>,
-    ) -> FloatContextChildResult<Self::Node, Self::Scalar, M> {
+        frame: crate::block::float_context::ChildFrame<Self::Node, Self::Scalar>,
+    ) -> LayoutResultOf<Self::Node, (), Self::Scalar, M> {
         self.block_float_state()
             .ok_or_else(|| crate::block::float_context::missing(node))?
-            .push(node, input, frame, cut)
+            .push(node, input, frame.exclusions, frame.cut)
             .map_err(|error| {
                 crate::LayoutErrorOf::new(
                     crate::LayoutErrorSiteOf::Node(node),
                     crate::LayoutOperation::ChildLayout,
                     crate::LayoutErrorKindOf::Text(error),
                 )
-            })?;
-        let result = self.compute_child(node, input);
-        let completed = self
-            .block_float_state()
-            .and_then(|state| state.pop(node, input));
-        let output = result?;
-        let floats = completed.ok_or_else(|| crate::block::float_context::missing(node))?;
-        if floats.output != output {
-            return Err(crate::block::float_context::missing(node));
-        }
-        Ok(crate::block::float_context::ChildOutput { output, floats })
+            })
+    }
+
+    fn end_child_float_context(
+        &mut self,
+        node: Self::Node,
+        input: ComputeInputOf<Self::Scalar>,
+    ) -> Option<crate::block::float_context::Completed<Self::Node, Self::Scalar>> {
+        self.block_float_state()
+            .and_then(|state| state.pop(node, input))
     }
     /// Actual accepted current-trial custody; never a host/cache reconstruction.
     fn staged_unrounded(

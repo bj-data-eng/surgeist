@@ -67,9 +67,9 @@ pub(crate) struct Completed<Node, S: LayoutScalar> {
     pub(crate) frame: Option<std::sync::Arc<InheritedFloatExclusions<S, Node>>>,
     pub(crate) remaining_cut: Option<super::entry::canonical::Separation<Node, S>>,
 }
-pub(crate) struct ChildOutput<Node, S: LayoutScalar> {
-    pub(crate) output: ComputeOutputOf<S>,
-    pub(crate) floats: Completed<Node, S>,
+pub(crate) struct ChildFrame<Node, S: LayoutScalar> {
+    pub(crate) exclusions: InheritedFloatExclusions<S, Node>,
+    pub(crate) cut: Option<super::entry::canonical::Separation<Node, S>>,
 }
 pub(crate) struct State<Node, S: LayoutScalar> {
     incoming: Vec<Incoming<Node, S>>,
@@ -319,6 +319,68 @@ mod tests {
             float: crate::Float::Left,
             ..block(width, Some(height))
         }
+    }
+    #[test]
+    fn positioned_measurement_failure_releases_nested_shared_float_frames() {
+        use crate::engine::contracts::Compute;
+
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1, 2])
+            .children(2, [3])
+            .children(3, [4])
+            .children(4, [5])
+            .style(0, block::<f64>(100.0, Some(80.0)))
+            .style(1, floated(80.0, 20.0))
+            .style(2, block(100.0, None))
+            .style(3, block(100.0, None))
+            .style(4, block(100.0, None))
+            .style(
+                5,
+                NodeInputOf {
+                    display: crate::Display::Block,
+                    position: crate::Position::Absolute,
+                    ..NodeInputOf::default()
+                },
+            )
+            // Entry qualification skips this positioned leaf. Its first
+            // measurement occurs in the innermost shared Block's placement.
+            .measure(5, crate::Size::new(f64::NAN, 1.0));
+        let axes = FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr);
+        let input = ComputeInputOf::for_child(
+            crate::RunMode::PerformLayout,
+            crate::SizingMode::InherentSize,
+            crate::RequestedAxis::Both,
+            crate::Size::NONE,
+            crate::Size::NONE,
+            crate::ContainingLayoutContext::new(axes, ParentFormattingContext::NoParent),
+            crate::SizingRequestOf::new(
+                crate::Size::splat(crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+        );
+        let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
+        let error = session.compute_child(0, input).unwrap_err();
+        assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(5));
+        assert!(matches!(
+            error.kind(),
+            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::MeasurementOutput(
+                _
+            ))
+        ));
+        let state = session.block_float_state().unwrap();
+        assert!(
+            state.incoming.capacity() > 0,
+            "a shared frame must have been installed"
+        );
+        assert!(state.incoming.is_empty());
+        assert!(state.completed.is_none());
     }
     fn output<S: LayoutScalar>(
         batch: &crate::CompletedLayoutBatchOf<u32, S>,

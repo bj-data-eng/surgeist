@@ -31,7 +31,18 @@ impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         let Self { request, pending } = self;
-        let output = if pending.is_some() {
+        let output = if pending
+            .as_ref()
+            .is_some_and(|child| child.preparation.inherits_float_exclusions)
+        {
+            match tree.compute_child(request.node, request.input) {
+                Ok(output) => output,
+                Err(error) => {
+                    let _ = tree.end_child_float_context(request.node, request.input);
+                    return Err(error.into());
+                }
+            }
+        } else if pending.is_some() {
             tree.compute_block_child(request)?
         } else {
             tree.compute_child(request.node, request.input)?
@@ -47,6 +58,14 @@ pub(crate) struct PendingBox<'input, Node, S: LayoutScalar> {
     preparation: InFlowBoxPreparation<S>,
 }
 
+impl<Node: Copy, S: LayoutScalar> PendingBox<'_, Node, S> {
+    pub(crate) fn shared_request(&self) -> Option<(Node, ComputeInputOf<S>)> {
+        self.preparation
+            .inherits_float_exclusions
+            .then(|| (self.child, self.preparation.shared_input()))
+    }
+}
+
 pub(in crate::block) struct InFlowTraversal<Node, S: LayoutScalar> {
     node: Node,
     input: ComputeInputOf<S>,
@@ -56,6 +75,7 @@ pub(in crate::block) struct InFlowTraversal<Node, S: LayoutScalar> {
     node_inner_size: Size<Option<S>>,
     adjoining: entry::AdjoiningFlow<S>,
     remaining_cut: Option<entry::canonical::Separation<Node, S>>,
+    shared_child: Option<PendingSharedBox<Node, S>>,
     occupied_block_end: S,
     intrinsic_inline_demand: S,
     owned_float_block_end: S,
@@ -257,6 +277,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
             node_inner_size,
             adjoining,
             remaining_cut,
+            shared_child: None,
             occupied_block_end,
             intrinsic_inline_demand,
             owned_float_block_end,
@@ -459,14 +480,21 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         )?;
         let computation = self.box_computation(child, &child_style, &prepared, constants);
         let (request, preparation) = prepare_in_flow_box(tree, &computation)?;
-        if preparation.inherits_float_exclusions {
-            let mut remaining_cut = self.remaining_cut;
-            let computed = compute_shared_box(tree, computation, preparation, &mut remaining_cut)?;
-            self.remaining_cut = remaining_cut;
-            self.accept_box(tree, constants, source_index, child, &child_style, computed)?;
-            self.index += 1;
-            return Ok(InFlowStep::Continue);
-        }
+        let shared = preparation.inherits_float_exclusions;
+        let request = if shared {
+            let (frame, pending) =
+                prepare_shared_box(tree, &computation, &preparation, self.remaining_cut)?;
+            let input = preparation.shared_input();
+            tree.begin_child_float_context(child, input, frame)?;
+            self.shared_child = Some(pending);
+            scope::ChildRequest {
+                node: child,
+                input,
+                entry: None,
+            }
+        } else {
+            request
+        };
         Ok(InFlowStep::Child(InFlowChild {
             request,
             pending: Some(PendingBox {
@@ -524,9 +552,25 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
             preparation,
         }) = pending
         {
+            let shared = preparation
+                .inherits_float_exclusions
+                .then(|| self.shared_child.take().expect("prepared shared child"));
             let computation = self.box_computation(child, &style, &prepared, constants);
-            let computed =
-                finish_requested_box(tree, computation, preparation, output, self.remaining_cut)?;
+            let computed = if let Some(shared) = shared {
+                let mut remaining_cut = self.remaining_cut;
+                let computed = finish_shared_box(
+                    tree,
+                    computation,
+                    preparation,
+                    shared,
+                    output,
+                    &mut remaining_cut,
+                )?;
+                self.remaining_cut = remaining_cut;
+                computed
+            } else {
+                finish_requested_box(tree, computation, preparation, output, self.remaining_cut)?
+            };
             self.accept_box(tree, constants, self.index, child, &style, computed)?;
         }
         self.index += 1;
