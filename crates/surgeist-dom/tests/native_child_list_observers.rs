@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DocumentId, Dom, DomBatch, DomChildListObservationLimits, DomChildListObserverId,
     DomChildListRecord, DomError, DomLimits, DomNameLimits, DomNativeCheckpoint,
-    DomNativeCheckpointLimits, DomSlotQueryLimits, DomSourceEdit, DomSourceLimits,
+    DomNativeCheckpointLimits, DomResource, DomSlotQueryLimits, DomSourceEdit, DomSourceLimits,
     DomSourceProgress, Namespace, NodeId,
 };
 
@@ -290,6 +290,7 @@ fn notification_reads_each_observers_queue_when_reached_after_earlier_callback_e
         panic!("first observer must be reached");
     };
     assert_eq!(delivery.observer(), one);
+    assert_eq!(dom.pending_native_tasks(), 1);
     assert_eq!(delivery.records().len(), 1);
     assert_record(
         &delivery.records()[0],
@@ -397,4 +398,90 @@ fn a_notification_without_records_still_removes_transient_registrations() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[test]
+fn record_limit_refuses_the_tree_edit_and_retry_keeps_exact_record_order() {
+    let Tree {
+        mut dom,
+        document,
+        nested,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let limits = DomChildListObservationLimits::new(1, 1, 1, 2).unwrap();
+    dom.set_limits(dom.limits().with_child_list_observation(limits))
+        .unwrap();
+    let observer = observe(&mut dom, nested, false);
+    let mut insert = DomBatch::new();
+    let text = insert.create_text(document, "first");
+    insert.insert_before(&text, nested, None);
+    let text = dom
+        .apply(insert, &cancel)
+        .unwrap()
+        .created(&text)
+        .unwrap()
+        .unwrap();
+    let stamp = dom.snapshot().stamp();
+
+    let mut detach = DomBatch::new();
+    detach.detach(text);
+    assert_eq!(
+        dom.apply(detach, &cancel).unwrap_err(),
+        DomError::ResourceLimit {
+            resource: DomResource::ChildListRecords,
+            limit: 1
+        }
+    );
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    assert_eq!(dom.snapshot().node(text).unwrap().parent(), Some(nested));
+    let records = dom.take_child_list_records(observer, &cancel).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_record(&records[0], nested, &[text], &[], None, None);
+
+    let mut detach = DomBatch::new();
+    detach.detach(text);
+    dom.apply(detach, &cancel).unwrap();
+    let records = dom.take_child_list_records(observer, &cancel).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_record(&records[0], nested, &[], &[text], None, None);
+}
+
+#[test]
+fn records_retain_a_real_historical_identity_for_a_node_retired_in_the_same_batch() {
+    let Tree {
+        mut dom,
+        document,
+        nested,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let observer = observe(&mut dom, nested, false);
+    let mut edit = DomBatch::new();
+    let temporary = edit.create_text(document, "temporary");
+    edit.insert_before(&temporary, nested, None);
+    edit.detach(&temporary);
+    edit.destroy(&temporary);
+    let commit = dom.apply(edit, &cancel).unwrap();
+    assert_eq!(commit.created(&temporary).unwrap(), None);
+    let records = dom.take_child_list_records(observer, &cancel).unwrap();
+    assert_eq!(records.len(), 2);
+    let [historical] = records[0].added_nodes() else {
+        panic!("one actual historical identity");
+    };
+    assert_record(&records[0], nested, &[*historical], &[], None, None);
+    assert_record(&records[1], nested, &[], &[*historical], None, None);
+    assert!(matches!(
+        dom.snapshot().node(*historical),
+        Err(DomError::StaleNode)
+    ));
+    let mut create = DomBatch::new();
+    let next = create.create_text(document, "next generation");
+    let next = dom
+        .apply(create, &cancel)
+        .unwrap()
+        .created(&next)
+        .unwrap()
+        .unwrap();
+    assert_ne!(next, *historical);
 }
