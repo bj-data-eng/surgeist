@@ -1446,6 +1446,19 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         .with_native(|dom, _, _| dom.pending_source_edit())
         .unwrap()
         .expect("a null callback result must survive refusal before its mismatch reports");
+    host.with_native(|dom, _, _| {
+        let stamp = dom.snapshot().stamp();
+        let mut lease = dom
+            .resume_source_edit(parked.operation(), SOURCE, &cancel)
+            .unwrap();
+        assert!(matches!(
+            lease.process_meta_csp(request, &mut other, &cancel),
+            Err(DomSourceMetaCspError::Dom(DomError::InvalidSourceOperation))
+        ));
+        assert_eq!(lease.status().operation(), parked.operation());
+        assert_eq!(lease.snapshot().stamp(), stamp);
+    })
+    .unwrap();
     let partial = DomSourceLimits::new(32_000_000, 1_000_000, 1_000, 128, 4096, 4096, 8);
     let refusal = host.resume_pending_attribute_write(&permit, partial);
     assert!(
