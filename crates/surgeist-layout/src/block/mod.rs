@@ -175,6 +175,99 @@ struct BlockResult<Node, S: LayoutScalar> {
     remaining_cut: Option<entry::canonical::Separation<Node, S>>,
 }
 
+struct BlockComputation<Node, S: LayoutScalar> {
+    node: Node,
+    input: ComputeInputOf<S>,
+    pass_input: ComputeInputOf<S>,
+    contained_size: Size<Option<S>>,
+    scrollbar_width: S,
+    incoming: Option<float_context::Incoming<Node, S>>,
+    anonymous: bool,
+    formatted: bool,
+}
+
+impl<Node: Copy + Eq, S: LayoutScalar> BlockComputation<Node, S> {
+    fn retry_scrollbars<M>(
+        &mut self,
+        result: &BlockResult<Node, S>,
+    ) -> ComputeResult<Node, bool, S, M> {
+        if !self.input.run_mode().is_perform_layout() {
+            return Ok(false);
+        }
+        let Some(geometry) = result.output.scroll_geometry else {
+            return Ok(false);
+        };
+        let current = self.pass_input.settled_auto_scrollbars();
+        let next = current.transition(geometry);
+        if next == current
+            || self.scrollbar_width == S::ZERO
+            || !crate::scroll::settled_auto_scrollbars_change_available_geometry(geometry, next)
+                .map_err(|error| {
+                    layout_own_geometry_error(self.node, self.input.run_mode(), error)
+                })?
+        {
+            return Ok(false);
+        }
+        self.pass_input = self.pass_input.with_settled_auto_scrollbars(next);
+        Ok(true)
+    }
+
+    fn finish<'input, Tree, M>(
+        self,
+        tree: &mut Tree,
+        result: ComputeResult<Node, BlockResult<Node, S>, S, M>,
+    ) -> ComputeResult<Node, ComputeOutputOf<S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Self {
+            node,
+            input,
+            incoming,
+            anonymous,
+            formatted,
+            ..
+        } = self;
+        let formatted_result = if formatted && let Some(text) = tree.text_computation() {
+            text.formatted_end_block(node, input, anonymous, result.is_ok())
+                .map_err(|error| inline_run::text_run_error(node, error.into()))
+        } else {
+            Ok(())
+        };
+        if let Some(groups) = tree.group_computation() {
+            groups.end(result.is_ok());
+        }
+        // Preserve the body failure ahead of completion bookkeeping.
+        let result = result?;
+        formatted_result?;
+        if incoming.is_none()
+            && float_context::Role::for_input(tree.node_input(node), input)
+                == float_context::Role::Shared
+            && result
+                .floats
+                .as_ref()
+                .is_some_and(|(ledger, _)| !ledger.is_empty())
+        {
+            return Err(float_context::missing(node).into());
+        }
+        if let Some((ledger, inherited)) = result.floats
+            && let Some(state) = tree.block_float_state()
+        {
+            state.record(float_context::Completed {
+                node,
+                request: incoming.as_ref().map_or(input, |incoming| incoming.request),
+                used: result.used,
+                output: result.output,
+                ledger,
+                inherited,
+                frame: incoming.map(|incoming| incoming.frame),
+                remaining_cut: result.remaining_cut,
+            });
+        }
+        Ok(result.output)
+    }
+}
+
 /// Actual empty-box sizing supplied by the containment owner. Scalar demand
 /// and canonical preparation consume the same authority as Normal Block layout.
 struct ContainmentSizing<S: LayoutScalar> {
@@ -263,80 +356,35 @@ where
             text.formatted_begin_block(node, input, anonymous)
         })
         .map_err(|error| inline_run::text_run_error(node, error.into()))?;
-    let result = (|| {
-        let scrollbar_width = block_container_projection::<Tree, M>(tree, node)
+    let mut computation = BlockComputation {
+        node,
+        input,
+        pass_input: input,
+        contained_size,
+        scrollbar_width: block_container_projection::<Tree, M>(tree, node)
             .scrollbar_width
-            .get();
-        let mut pass_input = input;
-        loop {
-            let output = compute_block_inner::<Tree, Tree::Scalar, M>(
-                tree,
-                node,
-                pass_input,
-                inherited,
-                contained_size,
-            )?;
-            if !input.run_mode().is_perform_layout() {
-                return Ok(output);
-            }
-            let Some(geometry) = output.output.scroll_geometry else {
-                return Ok(output);
-            };
-            let next_state = pass_input.settled_auto_scrollbars().transition(geometry);
-            if next_state == pass_input.settled_auto_scrollbars()
-                || scrollbar_width == Tree::Scalar::ZERO
-                || !crate::scroll::settled_auto_scrollbars_change_available_geometry(
-                    geometry, next_state,
-                )
-                .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?
-            {
-                return Ok(output);
-            }
-            pass_input = input.with_settled_auto_scrollbars(next_state);
+            .get(),
+        incoming,
+        anonymous,
+        formatted,
+    };
+    let result = (|| loop {
+        let inherited = computation
+            .incoming
+            .as_ref()
+            .map(|incoming| incoming.frame.as_ref());
+        let output = compute_block_inner::<Tree, Tree::Scalar, M>(
+            tree,
+            computation.node,
+            computation.pass_input,
+            inherited,
+            computation.contained_size,
+        )?;
+        if !computation.retry_scrollbars(&output)? {
+            return Ok(output);
         }
     })();
-    let formatted_result = if formatted && let Some(text) = tree.text_computation() {
-        text.formatted_end_block(node, input, anonymous, result.is_ok())
-            .map_err(|error| inline_run::text_run_error(node, error.into()))
-    } else {
-        Ok(())
-    };
-    if let Some(groups) = tree.group_computation() {
-        groups.end(result.is_ok());
-    }
-    // Completion bookkeeping must not replace the already established body
-    // failure; any resource exhaustion remains in the shared resource owner.
-    let result = result.and_then(|output| {
-        formatted_result?;
-        Ok(output)
-    });
-    result.and_then(|result| {
-        if incoming.is_none()
-            && float_context::Role::for_input(tree.node_input(node), input)
-                == float_context::Role::Shared
-            && result
-                .floats
-                .as_ref()
-                .is_some_and(|(ledger, _)| !ledger.is_empty())
-        {
-            return Err(float_context::missing(node).into());
-        }
-        if let Some((ledger, inherited)) = result.floats
-            && let Some(state) = tree.block_float_state()
-        {
-            state.record(float_context::Completed {
-                node,
-                request: incoming.as_ref().map_or(input, |incoming| incoming.request),
-                used: result.used,
-                output: result.output,
-                ledger,
-                inherited,
-                frame: incoming.map(|incoming| incoming.frame),
-                remaining_cut: result.remaining_cut,
-            });
-        }
-        Ok(result.output)
-    })
+    computation.finish(tree, result)
 }
 
 fn compute_block_inner<'input, Tree, S, M>(
