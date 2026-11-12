@@ -172,15 +172,12 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         })
     }
 
-    /// Block flow may suspend at an actual independently scheduled child scope.
-    /// Ordinary dispatch has no scope inventory and completes synchronously.
-    fn block_scope_path(&self, _node: Self::Node) -> bool {
+    /// An installed Block scope driver requires prepared entry geometry for
+    /// owned scopes and their ancestor paths.
+    fn block_scope_entry_required(&self, _node: Self::Node) -> bool {
         false
     }
 
-    fn block_scope_child(&self, _node: Self::Node) -> bool {
-        false
-    }
     fn compute_block_child(
         &mut self,
         request: crate::block::scope::ChildRequest<Self::Node, Self::Scalar>,
@@ -188,14 +185,8 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     where
         Self: Sized,
     {
-        match request {
-            crate::block::scope::ChildRequest::Ordinary(request) => self
-                .compute_child(request.node, request.input)
-                .map_err(Into::into),
-            crate::block::scope::ChildRequest::Scope(_) => {
-                unreachable!("scope entries require their installing driver")
-            }
-        }
+        self.compute_child(request.node, request.input)
+            .map_err(Into::into)
     }
 
     fn fragment_inline_content(

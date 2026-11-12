@@ -64,7 +64,6 @@ where
 {
     tree: &'a Tree,
     bound: Option<crate::LayoutTargetBasis>,
-    scopes: BlockScopeStaging<Tree::Node, Tree::Scalar>,
     block_bodies: Option<Vec<super::block_scope::Body<Tree::Node, Tree::Scalar>>>,
     fragmentation: Option<FragmentComputation<Tree::Node, Tree::Scalar>>,
     block_floats: crate::block::float_context::State<Tree::Node, Tree::Scalar>,
@@ -79,16 +78,16 @@ where
 }
 
 struct BlockScopeStaging<Node, S: LayoutScalar> {
-    dispatch: Option<super::block_scope::Dispatch<Node, S>>,
+    dispatch: super::block_scope::Dispatch<Node, S>,
     receipts: Vec<(Node, super::block_scope::Adoption)>,
     ready: Vec<(Node, super::block_scope::Adoption)>,
     frames: Vec<super::block_scope::Frame<Node, S>>,
 }
 
 impl<Node, S: LayoutScalar> BlockScopeStaging<Node, S> {
-    fn new() -> Self {
+    fn new(dispatch: super::block_scope::Dispatch<Node, S>) -> Self {
         Self {
-            dispatch: None,
+            dispatch,
             receipts: Vec::new(),
             ready: Vec::new(),
             frames: Vec::new(),
@@ -101,7 +100,104 @@ impl<Node, S: LayoutScalar> BlockScopeStaging<Node, S> {
     }
 }
 
+impl<Node: Copy + Eq, S: LayoutScalar> BlockScopeStaging<Node, S> {
+    fn push_frame<M>(
+        &mut self,
+        node: Node,
+        input: ComputeInputOf<S>,
+        entry: Option<crate::block::scope::Pending<Node, S>>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        self.frames.try_reserve(1).map_err(|_| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::Allocation,
+            )
+        })?;
+        self.frames
+            .push(super::block_scope::Frame { node, input, entry });
+        Ok(())
+    }
+
+    fn stage_adoption(&mut self, node: Node) {
+        if let Some(&(_, id)) = self.ready.iter().find(|(key, _)| *key == node) {
+            if let Some((_, current)) = self.receipts.iter_mut().find(|(key, _)| *key == node) {
+                *current = id;
+            } else {
+                self.receipts.push((node, id));
+            }
+        }
+    }
+
+    fn receive_entry<M>(
+        &mut self,
+        entry: crate::block::scope::Pending<Node, S>,
+        margins: &mut crate::block::fragment_margins::State<Node, S>,
+    ) -> super::block_scope::ComputeResult<Node, ComputeOutputOf<S>, S, M> {
+        let node = entry.node;
+        let ready = self
+            .dispatch
+            .ready
+            .borrow()
+            .iter()
+            .find(|ready| ready.entry == entry && ready.view == self.dispatch.view)
+            .copied();
+        if let Some(ready) = ready {
+            if let Some(projection) = ready.projection {
+                margins.bind(node, projection).map_err(|error| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::Text(error),
+                    )
+                })?;
+            }
+            let adoption = super::block_scope::Adoption {
+                receipt: ready.id,
+                projection: ready.projection,
+            };
+            if let Some((_, id)) = self.ready.iter_mut().find(|(key, _)| *key == node) {
+                *id = adoption;
+            } else {
+                let needed = self.ready.len() + 1 - self.receipts.len();
+                self.ready
+                    .try_reserve(1)
+                    .and_then(|_| self.receipts.try_reserve(needed))
+                    .map_err(|_| {
+                        LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(node),
+                            LayoutOperation::ChildLayout,
+                            LayoutErrorKindOf::Allocation,
+                        )
+                    })?;
+                self.ready.push((node, adoption));
+            }
+            return Ok(ready.output);
+        }
+        let request = super::block_scope::Request {
+            scope: self.dispatch.scope,
+            view: self.dispatch.view,
+            entry,
+            frames: std::mem::take(&mut self.frames),
+        };
+        let id = self
+            .dispatch
+            .requests
+            .borrow_mut()
+            .insert(request)
+            .map_err(|_| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Allocation,
+                )
+            })?;
+        Err(super::block_scope::ComputeStop::NeedScope(id))
+    }
+}
+
 struct FragmentComputation<Node, S: LayoutScalar> {
+    scopes: Option<BlockScopeStaging<Node, S>>,
     margins: crate::block::fragment_margins::State<Node, S>,
     allocations: Vec<crate::block_fragmentation::FragmentBoxAllocation<Node, S>>,
     intrinsics: Option<std::sync::Arc<crate::block::intrinsic::FragmentContext<Node, S>>>,
@@ -273,17 +369,38 @@ where
         root: Tree::Node,
         dispatch: super::block_scope::Dispatch<Tree::Node, Tree::Scalar>,
     ) -> SessionResult<Tree, ()> {
-        if self.bound.as_ref() != Some(&dispatch.target) {
-            return Err(LayoutErrorOf::new(
-                LayoutErrorSiteOf::Node(root),
-                LayoutOperation::RootLayout,
-                LayoutErrorKindOf::InvalidInput(
-                    crate::LayoutInvalidInputOf::BlockFragmentationRequest,
-                ),
-            ));
+        if let Some(fragment) = &mut self.fragmentation
+            && self.bound.as_ref() == Some(&dispatch.target)
+        {
+            if let Some(scopes) = &mut fragment.scopes {
+                scopes.dispatch = dispatch;
+            } else {
+                fragment.scopes = Some(BlockScopeStaging::new(dispatch));
+            }
+            return Ok(());
         }
-        self.scopes.dispatch = Some(dispatch);
-        Ok(())
+        Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(root),
+            LayoutOperation::RootLayout,
+            LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::BlockFragmentationRequest),
+        ))
+    }
+
+    fn block_scopes(&self) -> Option<&BlockScopeStaging<Tree::Node, Tree::Scalar>> {
+        self.fragmentation
+            .as_ref()
+            .and_then(|fragment| fragment.scopes.as_ref())
+    }
+
+    fn block_scopes_mut(&mut self) -> Option<&mut BlockScopeStaging<Tree::Node, Tree::Scalar>> {
+        self.fragmentation
+            .as_mut()
+            .and_then(|fragment| fragment.scopes.as_mut())
+    }
+
+    pub(super) fn owns_block_scope(&self, node: Tree::Node) -> bool {
+        self.block_scopes()
+            .is_some_and(|scopes| scopes.dispatch.owners.contains(&node))
     }
 
     pub(crate) fn new(tree: &'a Tree, invalidated_nodes: Vec<Tree::Node>) -> Self {
@@ -303,7 +420,6 @@ where
         Self {
             tree,
             bound: None,
-            scopes: BlockScopeStaging::new(),
             block_bodies: None,
             fragmentation: None,
             block_floats: crate::block::float_context::State::new(),
@@ -417,6 +533,7 @@ where
             let intrinsics = fragment.intrinsics.clone();
             let margins = fragment.margins.fork_entry(funding_ref).map_err(error)?;
             probe.fragmentation = Some(FragmentComputation {
+                scopes: None,
                 margins,
                 allocations,
                 intrinsics,
@@ -453,6 +570,7 @@ where
     ) {
         self.bound = Some(target);
         self.fragmentation = Some(FragmentComputation {
+            scopes: None,
             margins: crate::block::fragment_margins::State::new(),
             allocations,
             intrinsics: None,
@@ -468,6 +586,7 @@ where
     ) {
         self.bound = Some(context.target.clone());
         self.fragmentation = Some(FragmentComputation {
+            scopes: None,
             margins: crate::block::fragment_margins::State::new(),
             allocations,
             intrinsics: Some(context),
@@ -807,7 +926,9 @@ where
             text.scope_fragments.clear();
             text.absolute_baselines.clear();
         }
-        self.scopes.reset_receipts();
+        if let Some(scopes) = self.block_scopes_mut() {
+            scopes.reset_receipts();
+        }
         self.wrapping.reset_receipts();
         self.block_floats.reset();
         self.outputs.reset();
@@ -820,19 +941,9 @@ where
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
     ) -> SessionResult<Tree, ()> {
-        self.scopes.frames.try_reserve(1).map_err(|_| {
-            LayoutErrorOf::new(
-                LayoutErrorSiteOf::Node(node),
-                LayoutOperation::ChildLayout,
-                LayoutErrorKindOf::Allocation,
-            )
-        })?;
-        self.scopes.frames.push(super::block_scope::Frame {
-            node,
-            input,
-            entry: None,
-        });
-        Ok(())
+        self.block_scopes_mut()
+            .ok_or_else(|| crate::block::intrinsic::profile_error(node))?
+            .push_frame(node, input, None)
     }
 
     pub(super) fn retain_block_bodies(&mut self) {
@@ -874,11 +985,18 @@ where
     pub(super) fn block_packet(
         self,
     ) -> SessionResult<Tree, super::block_scope::Packet<Tree::Node, Tree::Scalar>> {
+        let fragment = self
+            .fragmentation
+            .expect("bound scope has margin provenance");
+        let staged = fragment
+            .scopes
+            .map(|scopes| scopes.receipts)
+            .unwrap_or_default();
         let mut receipts = Vec::new();
         let mut projections = Vec::new();
         receipts
-            .try_reserve(self.scopes.receipts.len())
-            .and_then(|_| projections.try_reserve(self.scopes.receipts.len()))
+            .try_reserve(staged.len())
+            .and_then(|_| projections.try_reserve(staged.len()))
             .map_err(|_| {
                 LayoutErrorOf::new(
                     LayoutErrorSiteOf::Standalone,
@@ -886,7 +1004,7 @@ where
                     LayoutErrorKindOf::Allocation,
                 )
             })?;
-        for (node, adoption) in self.scopes.receipts {
+        for (node, adoption) in staged {
             receipts.push(adoption.receipt);
             if let Some(projection) = adoption.projection {
                 projections.push((node, projection));
@@ -895,10 +1013,7 @@ where
         Ok(super::block_scope::Packet {
             target: self.bound.expect("scope production is bound to a target"),
             entries: self.outputs.unrounded,
-            margins: self
-                .fragmentation
-                .expect("bound scope has margin provenance")
-                .margins,
+            margins: fragment.margins,
             receipts,
             projections,
             clears: self.cache.clears,
@@ -1610,22 +1725,8 @@ where
     }
 
     fn set_unrounded(&mut self, mut entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
-        if let Some(&(_, id)) = self
-            .scopes
-            .ready
-            .iter()
-            .find(|(node, _)| *node == entry.node())
-        {
-            if let Some((_, current)) = self
-                .scopes
-                .receipts
-                .iter_mut()
-                .find(|(node, _)| *node == entry.node())
-            {
-                *current = id;
-            } else {
-                self.scopes.receipts.push((entry.node(), id));
-            }
+        if let Some(scopes) = self.block_scopes_mut() {
+            scopes.stage_adoption(entry.node());
         }
 
         let node = entry.node();
@@ -1797,18 +1898,10 @@ where
         })
     }
 
-    fn block_scope_path(&self, node: Self::Node) -> bool {
-        self.scopes
-            .dispatch
-            .as_ref()
-            .is_some_and(|dispatch| dispatch.paths.contains(&node))
-    }
-
-    fn block_scope_child(&self, node: Self::Node) -> bool {
-        self.scopes
-            .dispatch
-            .as_ref()
-            .is_some_and(|dispatch| dispatch.owners.contains(&node))
+    fn block_scope_entry_required(&self, node: Self::Node) -> bool {
+        self.block_scopes().is_some_and(|scopes| {
+            scopes.dispatch.owners.contains(&node) || scopes.dispatch.paths.contains(&node)
+        })
     }
 
     fn compute_block_child(
@@ -1820,119 +1913,46 @@ where
         Self::Scalar,
         Tree::MeasureError,
     > {
-        match request {
-            crate::block::scope::ChildRequest::Scope(entry) => {
-                let node = entry.node;
-                let dispatch = self
-                    .scopes
-                    .dispatch
-                    .as_ref()
-                    .expect("Block qualified a driver-owned scope");
-                let ready = dispatch
-                    .ready
-                    .borrow()
-                    .iter()
-                    .find(|ready| ready.entry == entry && ready.view == dispatch.view)
-                    .copied();
-                if let Some(ready) = ready {
-                    if let Some(projection) = ready.projection {
-                        self.fragmentation
-                            .as_mut()
-                            .expect("bound Block retains margins")
-                            .margins
-                            .bind(node, projection)
-                            .map_err(|error| {
-                                LayoutErrorOf::new(
-                                    LayoutErrorSiteOf::Node(node),
-                                    LayoutOperation::ChildLayout,
-                                    LayoutErrorKindOf::Text(error),
-                                )
-                            })?;
-                    }
-                    let adoption = super::block_scope::Adoption {
-                        receipt: ready.id,
-                        projection: ready.projection,
-                    };
-                    if let Some((_, id)) =
-                        self.scopes.ready.iter_mut().find(|(key, _)| *key == node)
-                    {
-                        *id = adoption;
-                    } else {
-                        let needed = self.scopes.ready.len() + 1 - self.scopes.receipts.len();
-                        self.scopes
-                            .ready
-                            .try_reserve(1)
-                            .and_then(|_| self.scopes.receipts.try_reserve(needed))
-                            .map_err(|_| {
-                                LayoutErrorOf::new(
-                                    LayoutErrorSiteOf::Node(node),
-                                    LayoutOperation::ChildLayout,
-                                    LayoutErrorKindOf::Allocation,
-                                )
-                            })?;
-                        self.scopes.ready.push((node, adoption));
-                    }
-                    self.record_block_body(node, entry.input, ready.output)?;
-                    return Ok(ready.output);
-                }
-                let request = super::block_scope::Request {
-                    scope: dispatch.scope,
-                    view: dispatch.view,
-                    entry,
-                    frames: std::mem::take(&mut self.scopes.frames),
-                };
-                let id = dispatch
-                    .requests
-                    .borrow_mut()
-                    .insert(request)
-                    .map_err(|_| {
-                        LayoutErrorOf::new(
-                            LayoutErrorSiteOf::Node(node),
-                            LayoutOperation::ChildLayout,
-                            LayoutErrorKindOf::Allocation,
-                        )
-                    })?;
-                Err(super::block_scope::ComputeStop::NeedScope(id))
-            }
-            crate::block::scope::ChildRequest::Ordinary(request) => {
-                if self.scopes.dispatch.is_some()
-                    && !self.tree.has_leaf_measurement(request.node)
-                    && self.tree.node_input(request.node).display.inner_display()
-                        == crate::Display::Block
-                {
-                    let input = self.prepare_child_input(request.node, request.input)?;
-                    if input.run_mode() == RunMode::PerformHiddenLayout
-                        || self.tree.node_input(request.node).display == crate::Display::None
-                    {
-                        return self.compute_child(request.node, input).map_err(Into::into);
-                    }
-                    let depth = self.scopes.frames.len();
-                    self.scopes.frames.try_reserve(1).map_err(|_| {
-                        LayoutErrorOf::new(
-                            LayoutErrorSiteOf::Node(request.node),
-                            LayoutOperation::ChildLayout,
-                            LayoutErrorKindOf::Allocation,
-                        )
-                    })?;
-                    self.scopes.frames.push(super::block_scope::Frame {
-                        node: request.node,
-                        input,
-                        entry: request.entry,
-                    });
-                    let result = self.compute_child_uncached_scoped(
-                        request.node,
-                        input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL),
-                    );
-                    if !matches!(result, Err(super::block_scope::ComputeStop::NeedScope(_))) {
-                        self.scopes.frames.truncate(depth);
-                    }
-                    result
-                } else {
-                    self.compute_child(request.node, request.input)
-                        .map_err(Into::into)
-                }
-            }
+        if let Some(entry) = request.entry
+            && let Some(fragment) = &mut self.fragmentation
+            && let Some(scopes) = &mut fragment.scopes
+            && scopes.dispatch.owners.contains(&request.node)
+        {
+            let output = scopes.receive_entry(entry, &mut fragment.margins)?;
+            self.record_block_body(entry.node, entry.input, output)?;
+            return Ok(output);
         }
+
+        if self.block_scopes().is_none()
+            || self.tree.has_leaf_measurement(request.node)
+            || self.tree.node_input(request.node).display.inner_display() != crate::Display::Block
+        {
+            return self
+                .compute_child(request.node, request.input)
+                .map_err(Into::into);
+        }
+        let input = self.prepare_child_input(request.node, request.input)?;
+        if input.run_mode() == RunMode::PerformHiddenLayout
+            || self.tree.node_input(request.node).display == crate::Display::None
+        {
+            return self.compute_child(request.node, input).map_err(Into::into);
+        }
+
+        let scopes = self
+            .block_scopes_mut()
+            .ok_or_else(|| crate::block::intrinsic::profile_error(request.node))?;
+        let depth = scopes.frames.len();
+        scopes.push_frame(request.node, input, request.entry)?;
+        let result = self.compute_child_uncached_scoped(
+            request.node,
+            input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL),
+        );
+        if !matches!(result, Err(super::block_scope::ComputeStop::NeedScope(_)))
+            && let Some(scopes) = self.block_scopes_mut()
+        {
+            scopes.frames.truncate(depth);
+        }
+        result
     }
 
     fn compute_child(
@@ -2052,6 +2072,7 @@ where
                 )
             })?;
             observation.fragmentation = Some(FragmentComputation {
+                scopes: None,
                 margins,
                 allocations,
                 intrinsics,

@@ -114,7 +114,7 @@ where
         top: adjoining.top,
         first: adjoining.start_open,
     };
-    let child_request = scope::Ordinary {
+    let child_request = scope::ChildRequest {
         node: child,
         entry: None,
         input: if inherits_float_exclusions || places_against_float_exclusions {
@@ -125,7 +125,7 @@ where
     };
     let child_request = if normal_operation
         && input.run_mode().is_perform_layout()
-        && (tree.block_scope_child(child) || tree.block_scope_path(child))
+        && tree.block_scope_entry_required(child)
     {
         let pending = scope::prepare(
             tree,
@@ -136,17 +136,13 @@ where
             prepared,
             parent_entry(),
         )?;
-        if tree.block_scope_child(child) {
-            scope::ChildRequest::Scope(pending)
-        } else {
-            scope::ChildRequest::Ordinary(scope::Ordinary {
-                node: child,
-                input: pending.input,
-                entry: Some(pending),
-            })
+        scope::ChildRequest {
+            node: child,
+            input: pending.input,
+            entry: Some(pending),
         }
     } else {
-        scope::ChildRequest::Ordinary(child_request)
+        child_request
     };
     let mut output = if inherits_float_exclusions {
         let computed = compute_shared_in_flow_child(
@@ -527,7 +523,7 @@ where
     let pending = scope::prepare(
         tree,
         node,
-        scope::Ordinary {
+        scope::ChildRequest {
             node: child,
             input: child_input,
             entry: None,
