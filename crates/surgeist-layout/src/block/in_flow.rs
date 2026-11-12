@@ -952,184 +952,44 @@ where
                 first_in_flow: &mut first_in_flow,
             },
         )?;
-        let child_indent_context = prepared
-            .input
-            .block_indent_context()
-            .expect("shared child preparation supplies generating context");
-        let unresolved_margin = prepared.unresolved_margin;
-        let child_padding = prepared.padding;
-        let child_border = prepared.border;
-        let parent_logical_unresolved_margin = constants.flow_axes.logical_edges(unresolved_margin);
-        let parent_logical_available = constants.flow_axes.logical_size(pass_request.axes());
-        let child_flow_axes = child_style.common.flow_axes;
-        let mut child_input = prepared
-            .input
-            .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
-            .with_physical_baseline_demand(
-                input.physical_baseline_demand() && child_style.float.is_none(),
-            )
-            .with_named_baseline_demand(if child_style.float.is_none() {
-                baselines.demand_for_following(input.named_baseline_demand())
-            } else {
-                crate::output::NamedBaselineDemand::None
-            });
-        let avoids_float_exclusions =
-            block_child_avoids_float_exclusions(&child_style, constants.flow_axes.writing_mode());
-        let inherits_float_exclusions = physical_float_context
-            && float_context::shares_parent_context(
-                tree.node_input(child),
-                constants.flow_axes,
-                ParentFormattingContext::BlockFlow,
-            )
-            && !tree.has_leaf_measurement(child)
-            && (!float_exclusions.is_empty() || tree.block_float_work(child));
-        let mut shared_child = None;
-        let mut clearance_funding = None;
-        let resident_cut = remaining_cut;
-        let mut introduced_cut = resident_cut
-            .filter(|cut| cut.container == node && cut.node == child && cut.index == index);
-        let mut accepted_float_position = None;
-        let places_against_float_exclusions =
-            physical_float_context && avoids_float_exclusions && !float_exclusions.is_empty();
-        let parent_entry = || scope::ParentEntry {
-            reference: containing_size,
-            cursor: adjoining.cursor,
-            occupied: occupied_block_end,
-            active: adjoining.active,
-            top: adjoining.top,
-            first: adjoining.start_open,
-        };
-        let child_request = scope::Ordinary {
-            node: child,
-            entry: None,
-            input: if inherits_float_exclusions || places_against_float_exclusions {
-                child_input.with_run_mode(RunMode::ComputeSize)
-            } else {
-                child_input
-            },
-        };
-        let child_request = if normal_operation
-            && input.run_mode().is_perform_layout()
-            && (tree.block_scope_child(child) || tree.block_scope_path(child))
-        {
-            let pending = scope::prepare(
-                tree,
-                node,
-                child_request,
-                &child_style,
-                constants,
-                &prepared,
-                parent_entry(),
-            )?;
-            if tree.block_scope_child(child) {
-                scope::ChildRequest::Scope(pending)
-            } else {
-                scope::ChildRequest::Ordinary(scope::Ordinary {
-                    node: child,
-                    input: pending.input,
-                    entry: Some(pending),
-                })
-            }
-        } else {
-            scope::ChildRequest::Ordinary(child_request)
-        };
-        let mut output = if inherits_float_exclusions {
-            let computed = compute_shared_in_flow_child(
-                tree,
-                SharedInFlowChild {
-                    node,
-                    child,
-                    index,
-                    child_input,
-                    child_style: &child_style,
-                    constants,
-                    prepared: &prepared,
-                    parent_entry: parent_entry(),
-                    resident_cut,
-                    float_exclusions: &float_exclusions,
-                },
-            )?;
-            clearance_funding = computed.clearance_funding;
-            introduced_cut = computed.introduced_cut;
-            remaining_cut = computed.remaining_cut;
-            shared_child = Some(SharedInFlowPlacement {
-                origin: computed.location,
-                floats: computed.accepted.floats,
-            });
-            computed.accepted.output
-        } else {
-            tree.compute_block_child(child_request)?
-        };
-
-        let mut logical_child_size = constants.flow_axes.logical_size(output.size);
-        let mut logical_child_margin = resolve_logical_in_flow_margin(
-            parent_logical_unresolved_margin,
+        let InFlowComputedBox {
+            output,
+            child_input,
+            child_margin,
+            child_padding,
+            child_border,
+            logical_child_margin,
             logical_child_size,
-            logical_node_inner_size.inline.or(parent_logical_available
-                .inline
-                .space()
-                .definite_size()
-                .map(crate::NonNegativeFiniteOf::get)),
-        );
-        let mut child_margin = constants.flow_axes.physical_edges(logical_child_margin);
-        if places_against_float_exclusions {
-            let measured = compute_child_against_floats(
-                tree,
-                FloatAvoidingChild {
-                    child,
-                    child_style: &child_style,
-                    constants,
-                    adjoining: &adjoining,
-                    prepared: &prepared,
-                    pass_request,
-                    child_run_mode,
-                    child_indent_context,
-                    parent_inline_basis: logical_node_inner_size.inline.or(
-                        parent_logical_available
-                            .inline
-                            .space()
-                            .definite_size()
-                            .map(crate::NonNegativeFiniteOf::get),
-                    ),
-                    containing_scrollbars: input.settled_auto_scrollbars(),
-                    float_exclusions: &float_exclusions,
-                    output,
-                    child_margin,
-                    child_input,
-                },
-            )?;
-            output = measured.output;
-            child_input = measured.input;
-            accepted_float_position = measured.position;
-            logical_child_size = constants.flow_axes.logical_size(output.size);
-            logical_child_margin = resolve_logical_in_flow_margin(
-                parent_logical_unresolved_margin,
-                logical_child_size,
-                logical_node_inner_size.inline.or(parent_logical_available
-                    .inline
-                    .space()
-                    .definite_size()
-                    .map(crate::NonNegativeFiniteOf::get)),
-            );
-            if let Some(position) = accepted_float_position {
-                let inline_offset =
-                    position.inline - constants.logical_content_box_inset().inline_start;
-                if matches!(
-                    parent_logical_unresolved_margin.inline_start,
-                    ResolvedLengthAutoOf::Auto
-                ) {
-                    logical_child_margin.inline_start = inline_offset;
-                }
-                if matches!(
-                    parent_logical_unresolved_margin.inline_end,
-                    ResolvedLengthAutoOf::Auto
-                ) {
-                    logical_child_margin.inline_end =
-                        content_inline_size - inline_offset - logical_child_size.inline;
-                }
-            }
-            child_margin = constants.flow_axes.physical_edges(logical_child_margin);
-        }
+            avoids_float_exclusions,
+            accepted_float_position,
+            shared_child,
+            mut clearance_funding,
+            introduced_cut,
+        } = compute_in_flow_box(
+            tree,
+            InFlowBoxComputation {
+                node,
+                child,
+                index,
+                child_style: &child_style,
+                constants,
+                prepared: &prepared,
+                adjoining: &adjoining,
+                baselines: &baselines,
+                float_exclusions: &float_exclusions,
+                input,
+                pass_request,
+                child_run_mode,
+                normal_operation,
+                physical_float_context,
+                containing_size,
+                inner_inline: logical_node_inner_size.inline,
+                content_inline_size,
+                occupied_block_end,
+            },
+            &mut remaining_cut,
+        )?;
+        let child_flow_axes = child_style.common.flow_axes;
         if !child_style.float.is_none() {
             place_in_flow_float(
                 node,
@@ -1338,6 +1198,257 @@ where
         active_margin_at_start: adjoining.start_open,
         active_margin_can_collapse_with_parent: adjoining.end_adjoins_parent,
         all_in_flow_children_can_collapse_through: adjoining.all_through,
+    })
+}
+
+struct InFlowBoxComputation<'a, 'input, Node, S: LayoutScalar> {
+    node: Node,
+    child: Node,
+    index: usize,
+    child_style: &'a BlockChildProjection<'input, S>,
+    constants: &'a Constants<S>,
+    prepared: &'a PreparedChild<S>,
+    adjoining: &'a entry::AdjoiningFlow<S>,
+    baselines: &'a super::baseline_frame::PendingBaselines,
+    float_exclusions: &'a FloatExclusions<S, Node>,
+    input: ComputeInputOf<S>,
+    pass_request: crate::SizingRequestOf<S>,
+    child_run_mode: RunMode,
+    normal_operation: bool,
+    physical_float_context: bool,
+    containing_size: Size<S>,
+    inner_inline: Option<S>,
+    content_inline_size: S,
+    occupied_block_end: S,
+}
+
+struct InFlowComputedBox<Node, S: LayoutScalar> {
+    output: ComputeOutputOf<S>,
+    child_input: ComputeInputOf<S>,
+    child_margin: Edges<S>,
+    child_padding: Edges<S>,
+    child_border: Edges<S>,
+    logical_child_margin: LogicalEdgesOf<S>,
+    logical_child_size: LogicalSizeOf<S>,
+    avoids_float_exclusions: bool,
+    accepted_float_position: Option<LogicalPointOf<S>>,
+    shared_child: Option<SharedInFlowPlacement<Node, S>>,
+    clearance_funding: Option<crate::text_layout::scope_alignment::EntryFunding<S>>,
+    introduced_cut: Option<entry::canonical::Separation<Node, S>>,
+}
+
+type InFlowBoxResult<Node, S, M> = ComputeResult<Node, InFlowComputedBox<Node, S>, S, M>;
+
+fn compute_in_flow_box<'input, Tree, S, M>(
+    tree: &mut Tree,
+    computation: InFlowBoxComputation<'_, 'input, Tree::Node, S>,
+    remaining_cut: &mut Option<entry::canonical::Separation<Tree::Node, S>>,
+) -> InFlowBoxResult<Tree::Node, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let InFlowBoxComputation {
+        node,
+        child,
+        index,
+        child_style,
+        constants,
+        prepared,
+        adjoining,
+        baselines,
+        float_exclusions,
+        input,
+        pass_request,
+        child_run_mode,
+        normal_operation,
+        physical_float_context,
+        containing_size,
+        inner_inline,
+        content_inline_size,
+        occupied_block_end,
+    } = computation;
+    let child_indent_context = prepared
+        .input
+        .block_indent_context()
+        .expect("shared child preparation supplies generating context");
+    let unresolved_margin = prepared.unresolved_margin;
+    let child_padding = prepared.padding;
+    let child_border = prepared.border;
+    let parent_logical_unresolved_margin = constants.flow_axes.logical_edges(unresolved_margin);
+    let parent_logical_available = constants.flow_axes.logical_size(pass_request.axes());
+    let mut child_input = prepared
+        .input
+        .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
+        .with_physical_baseline_demand(
+            input.physical_baseline_demand() && child_style.float.is_none(),
+        )
+        .with_named_baseline_demand(if child_style.float.is_none() {
+            baselines.demand_for_following(input.named_baseline_demand())
+        } else {
+            crate::output::NamedBaselineDemand::None
+        });
+    let avoids_float_exclusions =
+        block_child_avoids_float_exclusions(child_style, constants.flow_axes.writing_mode());
+    let inherits_float_exclusions = physical_float_context
+        && float_context::shares_parent_context(
+            tree.node_input(child),
+            constants.flow_axes,
+            ParentFormattingContext::BlockFlow,
+        )
+        && !tree.has_leaf_measurement(child)
+        && (!float_exclusions.is_empty() || tree.block_float_work(child));
+    let mut shared_child = None;
+    let mut clearance_funding = None;
+    let resident_cut = *remaining_cut;
+    let mut introduced_cut =
+        resident_cut.filter(|cut| cut.container == node && cut.node == child && cut.index == index);
+    let mut accepted_float_position = None;
+    let places_against_float_exclusions =
+        physical_float_context && avoids_float_exclusions && !float_exclusions.is_empty();
+    let parent_entry = || scope::ParentEntry {
+        reference: containing_size,
+        cursor: adjoining.cursor,
+        occupied: occupied_block_end,
+        active: adjoining.active,
+        top: adjoining.top,
+        first: adjoining.start_open,
+    };
+    let child_request = scope::Ordinary {
+        node: child,
+        entry: None,
+        input: if inherits_float_exclusions || places_against_float_exclusions {
+            child_input.with_run_mode(RunMode::ComputeSize)
+        } else {
+            child_input
+        },
+    };
+    let child_request = if normal_operation
+        && input.run_mode().is_perform_layout()
+        && (tree.block_scope_child(child) || tree.block_scope_path(child))
+    {
+        let pending = scope::prepare(
+            tree,
+            node,
+            child_request,
+            child_style,
+            constants,
+            prepared,
+            parent_entry(),
+        )?;
+        if tree.block_scope_child(child) {
+            scope::ChildRequest::Scope(pending)
+        } else {
+            scope::ChildRequest::Ordinary(scope::Ordinary {
+                node: child,
+                input: pending.input,
+                entry: Some(pending),
+            })
+        }
+    } else {
+        scope::ChildRequest::Ordinary(child_request)
+    };
+    let mut output = if inherits_float_exclusions {
+        let computed = compute_shared_in_flow_child(
+            tree,
+            SharedInFlowChild {
+                node,
+                child,
+                index,
+                child_input,
+                child_style,
+                constants,
+                prepared,
+                parent_entry: parent_entry(),
+                resident_cut,
+                float_exclusions,
+            },
+        )?;
+        clearance_funding = computed.clearance_funding;
+        introduced_cut = computed.introduced_cut;
+        *remaining_cut = computed.remaining_cut;
+        shared_child = Some(SharedInFlowPlacement {
+            origin: computed.location,
+            floats: computed.accepted.floats,
+        });
+        computed.accepted.output
+    } else {
+        tree.compute_block_child(child_request)?
+    };
+
+    let parent_inline_basis = inner_inline.or(parent_logical_available
+        .inline
+        .space()
+        .definite_size()
+        .map(crate::NonNegativeFiniteOf::get));
+    let mut logical_child_size = constants.flow_axes.logical_size(output.size);
+    let mut logical_child_margin = resolve_logical_in_flow_margin(
+        parent_logical_unresolved_margin,
+        logical_child_size,
+        parent_inline_basis,
+    );
+    let mut child_margin = constants.flow_axes.physical_edges(logical_child_margin);
+    if places_against_float_exclusions {
+        let measured = compute_child_against_floats(
+            tree,
+            FloatAvoidingChild {
+                child,
+                child_style,
+                constants,
+                adjoining,
+                prepared,
+                pass_request,
+                child_run_mode,
+                child_indent_context,
+                parent_inline_basis,
+                containing_scrollbars: input.settled_auto_scrollbars(),
+                float_exclusions,
+                output,
+                child_margin,
+                child_input,
+            },
+        )?;
+        output = measured.output;
+        child_input = measured.input;
+        accepted_float_position = measured.position;
+        logical_child_size = constants.flow_axes.logical_size(output.size);
+        logical_child_margin = resolve_logical_in_flow_margin(
+            parent_logical_unresolved_margin,
+            logical_child_size,
+            parent_inline_basis,
+        );
+        if let Some(position) = accepted_float_position {
+            let inline_offset =
+                position.inline - constants.logical_content_box_inset().inline_start;
+            if matches!(
+                parent_logical_unresolved_margin.inline_start,
+                ResolvedLengthAutoOf::Auto
+            ) {
+                logical_child_margin.inline_start = inline_offset;
+            }
+            if matches!(
+                parent_logical_unresolved_margin.inline_end,
+                ResolvedLengthAutoOf::Auto
+            ) {
+                logical_child_margin.inline_end =
+                    content_inline_size - inline_offset - logical_child_size.inline;
+            }
+        }
+        child_margin = constants.flow_axes.physical_edges(logical_child_margin);
+    }
+    Ok(InFlowComputedBox {
+        output,
+        child_input,
+        child_margin,
+        child_padding,
+        child_border,
+        logical_child_margin,
+        logical_child_size,
+        avoids_float_exclusions,
+        accepted_float_position,
+        shared_child,
+        clearance_funding,
+        introduced_cut,
     })
 }
 
