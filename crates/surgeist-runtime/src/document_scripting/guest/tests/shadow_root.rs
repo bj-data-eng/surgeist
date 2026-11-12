@@ -441,6 +441,8 @@ pub(in crate::document_scripting) fn scripted_shadow_revalidates_after_reentry()
 pub(in crate::document_scripting) fn scripted_shadow_source_refusal_keeps_the_original_state() {
     let (mut host, permit, _) = prepare_root_host(public_node_host(1_000, 1), None);
     let before = host.snapshot().unwrap();
+    let events = host.guest_events().unwrap();
+    let bytes = events.budget.used.get();
     let result = host.in_document(&permit, |scope| {
         scope
             .evaluate(&units("shadowHost.attachShadow({mode: 'open'})"))
@@ -460,4 +462,5 @@ pub(in crate::document_scripting) fn scripted_shadow_source_refusal_keeps_the_or
     assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
     host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
         .unwrap();
+    assert_eq!(events.budget.used.get(), bytes);
 }
