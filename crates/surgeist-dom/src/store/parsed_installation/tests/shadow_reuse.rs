@@ -11,29 +11,15 @@ use surgeist_html::{elements::style::HtmlStyleUpdateAction, values::Namespace};
 use surgeist_html_parser::HtmlFragmentParseRequest;
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};
 
-#[test]
-fn declarative_shadow_reuse_resumes_after_actual_sheet_removal_refusal() {
-    let cancel = AtomicBool::new(false);
-    let limits = DomSourceLimits::new(16_000_000, 200_000, 10_000_000, 64, 64, 64, 2);
-    let mut dom = Dom::new(
-        DomLimits::new(
-            256,
-            65_536,
-            256,
-            1024,
-            1024,
-            16,
-            1_000_000,
-            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
-        )
-        .unwrap(),
-    )
-    .unwrap();
+fn parsed_open_root(
+    dom: &mut Dom,
+    cancel: &AtomicBool,
+) -> (DocumentId, NodeId, NodeId, [NodeId; 2]) {
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let host = batch.create_element_ns(&document, Namespace::html(), "div");
     batch.insert_before(&host, &document, None);
-    let commit = dom.apply(batch, &cancel).unwrap();
+    let commit = dom.apply(batch, cancel).unwrap();
     let document = commit.document(&document).unwrap();
     let host = commit.created(&host).unwrap().unwrap();
     let capture = dom
@@ -43,7 +29,7 @@ fn declarative_shadow_reuse_resumes_after_actual_sheet_removal_refusal() {
             None,
             HtmlCaptureLimits::new(256, 1024, 1024, 65_536, 256, 0, 0, 16_777_216),
             crate::DomHtmlCaptureLimits::new(256, 1_000_000),
-            &cancel,
+            cancel,
         )
         .unwrap();
     let context =
@@ -67,7 +53,7 @@ fn declarative_shadow_reuse_resumes_after_actual_sheet_removal_refusal() {
             parsed,
             &capture,
             Limits::new(256, 10_000_000, 16_000_000, 100_000_000),
-            &cancel,
+            cancel,
         )
         .unwrap();
     let root = installed
@@ -81,6 +67,29 @@ fn declarative_shadow_reuse_resumes_after_actual_sheet_removal_refusal() {
         panic!("expected both originally parsed children");
     };
     assert!(original.state().declarative());
+
+    (document, host, root, [first, last])
+}
+
+#[test]
+fn declarative_shadow_reuse_resumes_after_actual_sheet_removal_refusal() {
+    let cancel = AtomicBool::new(false);
+    let limits = DomSourceLimits::new(16_000_000, 200_000, 10_000_000, 64, 64, 64, 2);
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            65_536,
+            256,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let (document, host, root, [first, last]) = parsed_open_root(&mut dom, &cancel);
 
     let mut batch = DomBatch::new();
     let style = batch.create_element_ns(document, Namespace::html(), "style");
@@ -215,4 +224,98 @@ fn declarative_shadow_reuse_resumes_after_actual_sheet_removal_refusal() {
     assert!(!after.shadow_root(root).unwrap().state().declarative());
     assert_eq!(after.node(last).unwrap().parent(), None);
     assert!(cssom.snapshot().unwrap().sheets().is_empty());
+}
+
+#[test]
+fn synchronous_reuse_never_exposes_an_unserviceable_fullscreen_handoff() {
+    use crate::store::source::operation::fullscreen::native_fixture;
+
+    let cancel = AtomicBool::new(false);
+    let limits = DomSourceLimits::new(16_000_000, 200_000, 10_000_000, 64, 64, 64, 2);
+    let (mut dom, _source, document, previous_fullscreen) = native_fixture(
+        DomLimits::new(
+            256,
+            65_536,
+            256,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_fullscreen_exits(4)
+        .unwrap()
+        .with_fullscreen_events(4)
+        .unwrap(),
+    );
+    let (_, host, root, [first, fullscreen]) = parsed_open_root(&mut dom, &cancel);
+    let parent = dom
+        .snapshot()
+        .node(previous_fullscreen)
+        .unwrap()
+        .parent()
+        .unwrap();
+    let mut batch = DomBatch::new();
+    batch.unfullscreen_element_model(previous_fullscreen);
+    batch.adopt(host, document);
+    batch.insert_before(host, parent, None);
+    batch.fullscreen_element_model(fullscreen);
+    dom.apply(batch, &cancel).unwrap();
+
+    let before = dom.snapshot();
+    let identity = dom.next_fullscreen_exit;
+    let init = DomShadowRootInit::new(HtmlShadowRootMode::Open);
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1_000);
+    let mut inbox = dom.node_retirement_inbox(watch_limits, &cancel).unwrap();
+    for watch in [false, true] {
+        let refusal = if watch {
+            dom.attach_shadow_with_node_retirement_watch(
+                host,
+                init,
+                &inbox,
+                1,
+                (limits, watch_limits),
+                &cancel,
+            )
+            .map(drop)
+        } else {
+            dom.attach_shadow_synchronously(host, init, limits, &cancel)
+                .map(drop)
+        };
+        assert_eq!(
+            refusal.unwrap_err(),
+            crate::DomError::IncompleteSourceOperation
+        );
+        assert!(
+            dom.pending_source_edit().is_none(),
+            "a context-free refusal must release the unpublished Source"
+        );
+        assert_eq!(dom.next_fullscreen_exit, identity);
+        assert!(dom.fullscreen_exits.is_empty());
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+        assert_eq!(
+            dom.snapshot().node(root).unwrap().children(),
+            &[first, fullscreen]
+        );
+        assert!(
+            dom.snapshot()
+                .shadow_root(root)
+                .unwrap()
+                .state()
+                .declarative()
+        );
+        assert!(inbox.take().is_none());
+    }
+
+    let mut lease = dom
+        .begin_source_edit(DomSourceEdit::attach_shadow(host, init), limits, &cancel)
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("the original ordinary Source path must expose the real fullscreen handoff");
+    };
+    assert_eq!(request.operation(), lease.operation());
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
 }

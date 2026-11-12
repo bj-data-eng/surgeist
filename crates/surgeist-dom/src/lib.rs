@@ -79,7 +79,7 @@
 //! batch.insert_before(&root, &document, None);
 //! let committed = dom.apply(batch, &AtomicBool::new(false))?;
 //! let snapshot = dom.snapshot();
-//! let root = snapshot.node(committed.attached_shadow_root(&root)?.unwrap())?;
+//! let root = snapshot.node(committed.created(&root)?.unwrap())?;
 //! assert_eq!(root.node_name().to_utf8()?, "Root");
 //! assert_eq!(root.as_element().unwrap().attributes().len(), 1);
 //! # Ok::<(), Box<dyn std::error::Error>>(())

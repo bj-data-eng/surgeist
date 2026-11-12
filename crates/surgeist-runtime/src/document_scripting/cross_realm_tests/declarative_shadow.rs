@@ -2,10 +2,13 @@
 
 use super::*;
 use surgeist_dom::{
-    DomError, DomHtmlCaptureLimits, DomParsedHtmlInstallLimits, HtmlShadowRootMode,
+    DocumentId, DomError, DomHtmlCapture, DomHtmlCaptureLimits, DomParsedHtmlInstallLimits,
+    DomSnapshot, HtmlShadowRootMode,
 };
 use surgeist_html::parsing::HtmlParserScriptingMode;
-use surgeist_html_parser::{HtmlFragmentParseRequest, HtmlParseLimits, HtmlSource};
+use surgeist_html_parser::{
+    HtmlFragmentParseRequest, HtmlParseLimits, HtmlParseReport, HtmlSource,
+};
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};
 
 fn parse_limits() -> HtmlParseLimits {
@@ -32,6 +35,64 @@ fn parse_limits() -> HtmlParseLimits {
         .work_credits(10_000_000)
         .finish()
         .unwrap()
+}
+
+fn fragment(
+    snapshot: &DomSnapshot,
+    document: DocumentId,
+    element: NodeId,
+    markup: &str,
+    cancel: &AtomicBool,
+) -> (DomHtmlCapture, Arc<HtmlParseReport>) {
+    let capture = snapshot
+        .html_capture(
+            document,
+            None,
+            HtmlCaptureLimits::new(1024, 4096, 4096, 1_000_000, 1024, 4, 0, 16_777_216),
+            DomHtmlCaptureLimits::new(1024, 1_000_000),
+            cancel,
+        )
+        .unwrap();
+    let context =
+        HtmlFragmentContext::element(capture.capture(), &capture.subject(element).unwrap())
+            .unwrap();
+    let report = Arc::new(
+        HtmlFragmentParseRequest::with_options(
+            HtmlSource::utf8(markup),
+            context,
+            parse_limits(),
+            HtmlParserScriptingMode::Inert,
+            true,
+        )
+        .unwrap()
+        .parse()
+        .unwrap(),
+    );
+    (capture, report)
+}
+
+fn attach_window(
+    mut session: DomSession,
+    target: DomHostedTopLevel,
+    cancel: Arc<AtomicBool>,
+) -> DocumentScriptHost {
+    let registry_limits = DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 4,
+        nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
+    };
+    let mut registry = DomEventDispatcher::new(registry_limits).unwrap();
+    registry.bind(&mut session.dom(), &cancel).unwrap();
+    super::super::guest::tests::attach_public_nodes_with_registry(
+        session,
+        target,
+        cancel,
+        1_000,
+        20_000,
+        &mut Some(registry),
+    )
 }
 
 pub(super) fn verify_declarative_shadow_reuse() {
@@ -69,31 +130,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 commit.created(&element).unwrap().unwrap(),
             )
         };
-        let capture = session
-            .snapshot()
-            .html_capture(
-                document,
-                None,
-                HtmlCaptureLimits::new(1024, 4096, 4096, 1_000_000, 1024, 4, 0, 16_777_216),
-                DomHtmlCaptureLimits::new(1024, 1_000_000),
-                &cancel,
-            )
-            .unwrap();
-        let context =
-            HtmlFragmentContext::element(capture.capture(), &capture.subject(element).unwrap())
-                .unwrap();
-        let report = Arc::new(
-            HtmlFragmentParseRequest::with_options(
-                HtmlSource::utf8(markup),
-                context,
-                parse_limits(),
-                HtmlParserScriptingMode::Inert,
-                true,
-            )
-            .unwrap()
-            .parse()
-            .unwrap(),
-        );
+        let (capture, report) = fragment(&session.snapshot(), document, element, markup, &cancel);
         let installed = session
             .install_parsed_html_fragment(
                 report,
@@ -109,24 +146,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
             .hosted_shadow_root()
             .unwrap();
         let child = snapshot.node(root).unwrap().children()[0];
-        let registry_limits = DomEventRegistryLimits {
-            registrations: 8,
-            pending_events: 4,
-            nested_dispatches: 4,
-            storage_bytes: 16_000_000,
-            work: 1_000_000,
-        };
-        let mut registry = DomEventDispatcher::new(registry_limits).unwrap();
-        registry.bind(&mut session.dom(), &cancel).unwrap();
-        let mut registry = Some(registry);
-        let mut host = super::super::guest::tests::attach_public_nodes_with_registry(
-            session,
-            target,
-            cancel.clone(),
-            1_000,
-            20_000,
-            &mut registry,
-        );
+        let mut host = attach_window(session, target, cancel.clone());
         let permit = host.permit().unwrap();
         for (node, name) in [(element, "shadowHost"), (child, "shadowChild")] {
             super::super::guest::tests::expose_public_node_for_source_test(
@@ -209,4 +229,86 @@ pub(super) fn verify_declarative_shadow_reuse() {
             element
         );
     }
+    verify_mode_mismatch_precedes_realm_qualification();
+}
+
+fn verify_mode_mismatch_precedes_realm_qualification() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target, element) = hosted_element(&cancel, "div");
+    let parent = session.snapshot().node(element).unwrap().parent().unwrap();
+    let mut host = attach_window(session, target, cancel.clone());
+    let permit = host.permit().unwrap();
+    super::super::guest::tests::expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        element,
+        "shadowHost",
+    );
+    let root = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let document = batch.create_document();
+            batch.adopt(element, &document);
+            batch.insert_before(element, &document, None);
+            let document = dom
+                .apply(batch, &cancel)
+                .unwrap()
+                .document(&document)
+                .unwrap();
+            let (capture, report) = fragment(
+                &dom.snapshot(),
+                document,
+                element,
+                "<template shadowrootmode=closed><p>original child</p></template>",
+                &cancel,
+            );
+            let parsed = dom
+                .raw_mut()
+                .install_parsed_html_fragment(
+                    report,
+                    &capture,
+                    DomParsedHtmlInstallLimits::new(1024, 10_000_000, 16_000_000, 100_000_000),
+                    &cancel,
+                )
+                .unwrap();
+            let root = parsed
+                .snapshot()
+                .node(element)
+                .unwrap()
+                .hosted_shadow_root()
+                .unwrap();
+            let mut return_to_window = DomBatch::new();
+            return_to_window.adopt(element, target.document());
+            return_to_window.insert_before(element, parent, None);
+            dom.apply(return_to_window, &cancel).unwrap();
+            root
+        })
+        .unwrap();
+    let before = host.snapshot().unwrap();
+    let retained = before.shadow_root(root).unwrap();
+    assert_eq!(retained.node().relevant_global().unwrap(), None);
+    assert!(retained.state().declarative());
+    assert_eq!(retained.node().children().len(), 1);
+    let result = host.in_document(&permit, |scope| {
+        let actual = evaluate(
+            scope,
+            r#"(() => {
+            try { shadowHost.attachShadow({mode: "open"}); }
+            catch (error) { return error.name === "NotSupportedError"; }
+            return false;
+        })()"#,
+        )?;
+        let expected = scope.primitive(Primitive::Boolean(true))?;
+        assert!(scope.strict_equals(&actual, &expected)?);
+        Ok(())
+    });
+    match result {
+        Ok(()) => (),
+        Err(DocumentScriptError::Script(Error::HostFailure(failure))) => panic!(
+            "mode mismatch must precede creation realm lookup: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        ),
+        Err(error) => panic!("mode-mismatch observation failed: {error:?}"),
+    }
+    assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
 }
