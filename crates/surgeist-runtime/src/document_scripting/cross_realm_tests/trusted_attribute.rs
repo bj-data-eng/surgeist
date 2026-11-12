@@ -271,22 +271,19 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     }
     result.expect("the actual guest factory and setter must use the hosted Document's CSP");
     let snapshot = host.snapshot().unwrap();
-    let target = snapshot.node(element).unwrap();
+    let node = snapshot.node(element).unwrap();
     assert_eq!(
-        target.attribute(&"onclick".into()).unwrap().code_units(),
+        node.attribute(&"onclick".into()).unwrap().code_units(),
         &"first"
             .encode_utf16()
             .chain([0xd800, u16::from(b'!')])
             .collect::<Vec<_>>()
     );
     assert_eq!(
-        target.attribute(&"data-entered".into()),
+        node.attribute(&"data-entered".into()),
         Some(&"empty".into())
     );
-    assert_eq!(
-        target.attribute(&"data-coerced".into()),
-        Some(&"yes".into())
-    );
+    assert_eq!(node.attribute(&"data-coerced".into()), Some(&"yes".into()));
     super::super::guest::tests::assert_queued_trusted_types_violations(
         &host,
         &[
@@ -296,8 +293,181 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         ],
     );
 
-    let calls = Rc::new(Cell::new(0));
+    let calls = pause_guest_attribute(
+        &mut host,
+        &permit,
+        &cancel,
+        "protectedTarget.setAttribute('onclick', 'later')",
+    );
+    assert!(matches!(
+        host.resume_pending_attribute_write(&permit, SOURCE),
+        Err(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::Cancelled))
+        ))
+    ));
+    cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+    let parked = host
+        .with_native(|dom, _, _| dom.pending_source_edit())
+        .unwrap()
+        .expect("the converted result must remain available after repeated refusal");
+    let completed = complete_guest_attribute(host.resume_pending_attribute_write(&permit, SOURCE));
+    assert_eq!(completed.operation(), parked.operation());
+    assert_eq!(calls.get(), 1);
+    assert_eq!(
+        host.snapshot()
+            .unwrap()
+            .node(element)
+            .unwrap()
+            .attribute(&"onclick".into()),
+        Some(&"later!".into())
+    );
+    assert!(
+        host.with_native(|dom, _, _| dom.pending_source_edit())
+            .unwrap()
+            .is_none()
+    );
+    assert!(matches!(
+        host.in_document(&permit, |_| Ok(())),
+        Err(DocumentScriptError::Script(Error::HostFailure(_)))
+    ));
+
+    let session = host.stop().into_session().unwrap();
+    let (mut host, permit) =
+        attach_attribute_recovery_fixture(session, target, element, &cancel, 4_500);
     let result = host.in_document(&permit, |scope| {
+        let script = "protectedTarget.setAttribute('onclick', 'outer')";
+        scope
+            .evaluate(&script.encode_utf16().collect::<Vec<_>>())
+            .map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("expected Source work refusal after the nested result, got {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(
+                DomError::SourceWorkLimit { limit: 4_500 }
+            ))
+        ))
+    ));
+    let child = host
+        .with_native(|dom, _, _| dom.pending_source_edit())
+        .unwrap()
+        .unwrap();
+    let parent = child
+        .parent_operation()
+        .expect("the child is inside the original verifier");
+    assert!(matches!(
+        host.with_native(|dom, _, _| dom
+            .resume_source_edit(child.operation(), SOURCE, &cancel)
+            .map(drop))
+            .unwrap(),
+        Err(DomError::SourceWorkLimit { limit: 4_500 })
+    ));
+    let completed = complete_guest_attribute(host.resume_pending_attribute_write(&permit, SOURCE));
+    assert_eq!(completed.operation(), child.operation());
+    let abandoned = complete_guest_attribute(host.resume_pending_attribute_write(&permit, SOURCE));
+    assert_eq!(abandoned.operation(), parent);
+    assert!(abandoned.cancellation_requested());
+    let expected_nested = DocumentString::from_utf16(vec![u16::from(b'z'); 7_500]);
+    let snapshot = host.snapshot().unwrap();
+    let node = snapshot.node(element).unwrap();
+    assert_eq!(node.attribute(&"onclick".into()), Some(&"later!".into()));
+    assert_eq!(node.attribute(&"onload".into()), Some(&expected_nested));
+
+    let session = host.stop().into_session().unwrap();
+    let (mut host, permit) =
+        attach_attribute_recovery_fixture(session, target, element, &cancel, 20_000);
+    let calls = pause_guest_attribute(
+        &mut host,
+        &permit,
+        &cancel,
+        "protectedTarget.setAttribute('onload', 'unpublished')",
+    );
+    let mut stopped = host.stop().into_session().unwrap_err();
+    cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+    let abandoned = complete_guest_attribute(stopped.abandon_pending_attribute_write(SOURCE));
+    assert!(abandoned.cancellation_requested());
+    let mut session = stopped.into_session().unwrap();
+    assert!(session.dom().pending_source_edit().is_none());
+    assert_eq!(
+        session
+            .snapshot()
+            .node(element)
+            .unwrap()
+            .attribute(&"onload".into()),
+        Some(&expected_nested)
+    );
+    assert_eq!(calls.get(), 1);
+}
+
+fn attach_attribute_recovery_fixture(
+    session: DomSession,
+    target: DomHostedTopLevel,
+    element: surgeist_dom::NodeId,
+    cancel: &Arc<AtomicBool>,
+    source_work: u64,
+) -> (DocumentScriptHost, DocumentScriptPermit) {
+    let mut host = super::super::guest::tests::attach_public_nodes(
+        session,
+        target,
+        cancel.clone(),
+        5_000,
+        source_work,
+    );
+    let permit = host.permit().unwrap();
+    super::super::guest::tests::expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        element,
+        "protectedTarget",
+    );
+    host.in_document(&permit, |scope| {
+        let script = r#"
+            trustedTypes.createPolicy('default', {
+                createScript(value) {
+                    if (value === 'outer') {
+                        protectedTarget.setAttribute('onload', 'budget');
+                        return 'unreachable';
+                    }
+                    if (value === 'budget') return 'z'.repeat(7500);
+                    return { toString() {
+                        stopAfterAttributeCallback();
+                        return value + '!';
+                    }};
+                }
+            });
+        "#;
+        scope
+            .evaluate(&script.encode_utf16().collect::<Vec<_>>())
+            .map(drop)
+    })
+    .unwrap();
+    (host, permit)
+}
+
+fn complete_guest_attribute(
+    progress: Result<
+        Result<crate::DomSourceDriveProgress, crate::DomSourceDriveError>,
+        DocumentGuestEventError,
+    >,
+) -> surgeist_dom::DomSourceCompletion {
+    let progress = progress.unwrap().unwrap();
+    let crate::DomSourceDriveProgress::Complete(completion) = progress else {
+        panic!("expected original attribute completion, got {progress:?}");
+    };
+    completion
+}
+
+fn pause_guest_attribute(
+    host: &mut DocumentScriptHost,
+    permit: &DocumentScriptPermit,
+    cancel: &Arc<AtomicBool>,
+    script: &str,
+) -> Rc<Cell<usize>> {
+    let calls = Rc::new(Cell::new(0));
+    let result = host.in_document(permit, |scope| {
         let calls = calls.clone();
         let stop = cancel.clone();
         let function = scope.function(&Callback::new(move |_, _| {
@@ -316,28 +486,20 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
             &function,
         )?;
         scope
-            .evaluate(
-                &"protectedTarget.setAttribute('onclick', 'later')"
-                    .encode_utf16()
-                    .collect::<Vec<_>>(),
-            )
+            .evaluate(&script.encode_utf16().collect::<Vec<_>>())
             .map(drop)
     });
-    cancel.store(false, std::sync::atomic::Ordering::Relaxed);
-    assert!(
-        matches!(
-            result,
-            Err(DocumentScriptError::Script(Error::HostFailure(_)))
-        ),
-        "{result:?}"
-    );
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("expected terminal guest host failure, got {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::Cancelled))
+        ))
+    ));
     assert_eq!(calls.get(), 1);
-    assert!(
-        host.with_native(|dom, _, _| dom.pending_source_edit())
-            .unwrap()
-            .is_some(),
-        "the exact converted callback result must remain available after refusal"
-    );
+    calls
 }
 
 pub(super) fn default_factory_retains_the_real_guest_callback() {

@@ -172,6 +172,7 @@ struct NativeOwner {
     active_source: Cell<Option<source::ActiveSource>>,
     active_attached_event: RefCell<Option<surgeist_dom::DomSourceEventRequest>>,
     active_attribute: Cell<Option<surgeist_dom::DomSourceAttributeVerificationRequest>>,
+    pending_attribute: RefCell<Option<Box<guest::PendingAttribute>>>,
     trusted_types_reports: RefCell<Option<Box<guest::ViolationQueue>>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
@@ -348,11 +349,17 @@ impl NativeOwner {
     }
 
     fn recover(mut owner: Rc<Self>) -> Result<DomSession, Rc<Self>> {
+        if owner.reconcile_pending_attribute().is_err() {
+            return Err(owner);
+        }
         // Do not release the funded target body while an outstanding Weak can
         // keep its allocation alive. The installed hook is the only issuer.
         let Some(native) = Rc::get_mut(&mut owner) else {
             return Err(owner);
         };
+        if native.pending_attribute.get_mut().is_some() {
+            return Err(owner);
+        }
         if let Some(attachment) = native.attachment.get() {
             native
                 .session
@@ -478,6 +485,7 @@ impl PreparedDocumentScriptHost {
                 active_source: Cell::new(None),
                 active_attached_event: RefCell::new(None),
                 active_attribute: Cell::new(None),
+                pending_attribute: RefCell::new(None),
                 trusted_types_reports: RefCell::new(None),
                 cancellation,
                 storage_limit,
@@ -962,6 +970,7 @@ impl Drop for NativeLoanExit<'_> {
         if !self.acquired {
             return;
         }
+        let _ = self.host.native.reconcile_pending_attribute();
         self.host.dispose_retired_engine();
         if let Some(engine) = self.host.engine.as_mut()
             && let Some(attachment) = self.host.native.attachment.get()
@@ -1338,6 +1347,7 @@ impl fmt::Debug for NativeOwner {
 impl StoppedDocumentScriptHost {
     /// Recover the same native Session. Its historical scripting facts remain
     /// usable with their exact historical snapshots.
+    /// A retained attribute write must be settled before recovery.
     pub fn into_session(self) -> Result<DomSession, Self> {
         NativeOwner::recover(self.native).map_err(|native| Self { native })
     }

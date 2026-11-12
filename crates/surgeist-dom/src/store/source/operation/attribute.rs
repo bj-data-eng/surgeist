@@ -694,25 +694,7 @@ impl DomSourceLease<'_> {
         outcome: &mut Option<DomSourceAttributeVerificationOutcome>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let operation = self.attribute_verification_operation(request, registration, cancel)?;
-        let observation = operation
-            .callback_observation()
-            .ok_or(DomError::InvalidSourceOperation)?;
-        if !observation.work.scope_closed() {
-            return Err(DomError::InvalidSourceOperation);
-        }
-        match observation.work.stage.load(Ordering::Relaxed) {
-            0 => operation.qualify_attribute_registration(
-                self.dom,
-                request.global,
-                &registration.0,
-                cancel,
-            )?,
-            // The original live Global was qualified on entry. Its outcome
-            // still belongs to that invocation after nested changes.
-            1 => observation.work.step(cancel)?,
-            _ => return Err(DomError::InvalidSourceOperation),
-        }
+        self.qualify_attribute_reply(request, registration, cancel)?;
         let candidate = outcome.as_ref().ok_or(DomError::InvalidSourceOperation)?;
         let backing = if let DomSourceAttributeVerificationOutcome::Value(value) = candidate {
             let formation = self.dom.source_observation_formation(cancel)?;
@@ -738,9 +720,146 @@ impl DomSourceLease<'_> {
         });
         Ok(())
     }
+
+    /// Admit and copy the exact UTF-16 result of the completed verifier.
+    /// Refusal leaves the borrowed result with the caller for another attempt.
+    pub fn accept_attribute_verification_utf16(
+        &mut self,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &DomDocumentScriptRegistration,
+        value: &[u16],
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let work = self.qualify_attribute_reply(request, registration, cancel)?;
+        if work.stage.load(Ordering::Relaxed) != 1 {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        let backing = self
+            .dom
+            .source_observation_formation(cancel)?
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let value = formation::owned_utf16_copy(value, &backing, cancel)?;
+        let pending = self
+            .dom
+            .source_operation
+            .as_mut()
+            .and_then(|operation| operation.attribute_verification.as_mut())
+            .ok_or(DomError::InvalidSourceOperation)?;
+        pending.outcome = Some(RetainedOutcome {
+            outcome: DomSourceAttributeVerificationOutcome::Value(value),
+            _backing: Some(backing),
+        });
+        Ok(())
+    }
+
+    fn qualify_attribute_reply(
+        &self,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &DomDocumentScriptRegistration,
+        cancel: &AtomicBool,
+    ) -> Result<&CallbackWork, DomError> {
+        let operation = self.attribute_verification_operation(request, registration, cancel)?;
+        let observation = operation
+            .callback_observation()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        if !observation.work.scope_closed() {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        match observation.work.stage.load(Ordering::Relaxed) {
+            0 => operation.qualify_attribute_registration(
+                self.dom,
+                request.global,
+                &registration.0,
+                cancel,
+            )?,
+            // The original live Global was qualified on entry. Its outcome
+            // still belongs to that invocation after nested changes.
+            1 => observation.work.step(cancel)?,
+            _ => return Err(DomError::InvalidSourceOperation),
+        }
+        Ok(&observation.work)
+    }
 }
 
 impl Dom {
+    /// Raise the policy of this exact closed attribute callback, including
+    /// while a child is topmost. This leaves the original work and stack
+    /// intact and grants no verifier or execution authority.
+    pub fn raise_source_attribute_limits(
+        &mut self,
+        request: DomSourceAttributeVerificationRequest,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        check_cancel(cancel)?;
+        if request.operation.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        let mut lookup = 0_u64;
+        let mut located = None;
+        for (depth, operation) in self
+            .source_operation
+            .iter_mut()
+            .chain(self.source_parents.iter_mut().rev())
+            .enumerate()
+        {
+            check_cancel(cancel)?;
+            if lookup == limits.work {
+                return Err(DomError::SourceWorkLimit { limit: limits.work });
+            }
+            lookup += 1;
+            if operation
+                .attribute_verification
+                .as_ref()
+                .is_some_and(|pending| pending.request == request)
+            {
+                located = Some((depth, operation));
+                break;
+            }
+        }
+        let (depth, operation) = located.ok_or(DomError::InvalidSourceOperation)?;
+        let OperationDraft::AttributeObserved(observation) = &operation.draft else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        if observation.work.stage.load(Ordering::Relaxed) != 1 || !observation.work.scope_closed() {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        let old = observation.limits;
+        if limits.retained_bytes < old.retained_bytes
+            || limits.retained_units < old.retained_units
+            || limits.work < old.work
+            || limits.phases < old.phases
+            || limits.outputs < old.outputs
+            || limits.identities < old.identities
+            || limits.nested_operations < old.nested_operations
+        {
+            return Err(DomError::SourceLimitReduction);
+        }
+        if depth >= limits.nested_operations {
+            return Err(DomError::SourceNestedOperationLimit {
+                limit: limits.nested_operations,
+            });
+        }
+        let work = observation.work.clone();
+        let next = work
+            .work
+            .load(Ordering::Relaxed)
+            .checked_add(lookup)
+            .ok_or(DomError::RepresentationExhausted)?;
+        if next > limits.work {
+            return Err(DomError::SourceWorkLimit { limit: limits.work });
+        }
+        operation.admit_observation_limits(limits, cancel)?;
+        // Commit the lookup debit and new policy together. A failed raise
+        // cannot leave charged work above the original limit.
+        work.work.store(next, Ordering::Relaxed);
+        #[cfg(test)]
+        for _ in 0..lookup {
+            SourceStorage::record_step();
+        }
+        Ok(())
+    }
+
     /// Qualify and charge the currently entered verifier's native guest work.
     /// The original callback scope must still be open.
     pub fn source_attribute_callback_step(

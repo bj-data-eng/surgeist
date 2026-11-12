@@ -360,6 +360,87 @@ struct GuestBacking<Canonical = DomHostedRuntimeRetention> {
     _canonical: Canonical,
 }
 
+/// An actual callback result awaiting the original native attribute write.
+pub(super) struct PendingAttribute {
+    request: surgeist_dom::DomSourceAttributeVerificationRequest,
+    reply: AttributeReply,
+    parent: Option<surgeist_dom::DomSourceAttributeVerificationRequest>,
+    interrupted_parent: Option<Box<Self>>,
+    _header: GuestBacking,
+}
+
+enum AttributeReply {
+    Abandon,
+    Converted {
+        result: surgeist_bindings_js::conversion::Converted<
+            Option<surgeist_bindings_js::TrustedTypeData>,
+        >,
+        // Keeps the original setup debit alive if the engine retires first.
+        _account: Rc<interfaces::Callbacks>,
+    },
+    Abrupt(Error),
+    Accepted {
+        abrupt: Option<Error>,
+    },
+}
+
+impl Drop for PendingAttribute {
+    fn drop(&mut self) {
+        let mut parent = self.interrupted_parent.take();
+        while let Some(mut frame) = parent {
+            parent = frame.interrupted_parent.take();
+        }
+    }
+}
+
+impl NativeOwner {
+    pub(super) fn reconcile_pending_attribute(&self) -> Result<(), DocumentScriptNativeError> {
+        let mut pending = self
+            .pending_attribute
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        if pending.is_none() {
+            return Ok(());
+        }
+        let current = self
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .dom()
+            .pending_source_edit();
+        while let Some(mut frame) = pending.take() {
+            if let Some(status) =
+                current.filter(|status| status.operation() == frame.request.operation())
+            {
+                if status.cancellation_requested()
+                    && !matches!(frame.reply, AttributeReply::Accepted { .. })
+                {
+                    frame.reply = AttributeReply::Abandon;
+                }
+                *pending = Some(frame);
+                break;
+            }
+            *pending = frame.interrupted_parent.take();
+        }
+        Ok(())
+    }
+
+    fn retain_interrupted_attribute(&self, parent: Box<PendingAttribute>) {
+        let Ok(mut pending) = self.pending_attribute.try_borrow_mut() else {
+            return;
+        };
+        let Some(mut child) = pending.as_deref_mut() else {
+            return;
+        };
+        while let Some(ref mut next) = child.interrupted_parent {
+            child = next;
+        }
+        if child.parent == Some(parent.request) {
+            child.interrupted_parent = Some(parent);
+        }
+    }
+}
+
 impl GuestBacking {
     fn split_off(&mut self, bytes: usize) -> Result<Self, DocumentScriptNativeError> {
         let remaining = self

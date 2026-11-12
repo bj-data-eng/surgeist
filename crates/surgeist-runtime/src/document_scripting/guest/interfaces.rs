@@ -73,7 +73,7 @@ struct GuestAccess {
     _backing: Rc<GuestFixedBacking>,
 }
 
-struct Callbacks {
+pub(super) struct Callbacks {
     owner: Weak<NativeOwner>,
     permit: DocumentScriptPermit,
     access: OnceCell<GuestAccess>,

@@ -883,12 +883,20 @@ pub(crate) fn owned_copy(
     budget: &Formation,
     cancel: &AtomicBool,
 ) -> Result<DocumentString, DomError> {
+    owned_utf16_copy(value.code_units(), budget, cancel)
+}
+
+pub(super) fn owned_utf16_copy(
+    value: &[u16],
+    budget: &Formation,
+    cancel: &AtomicBool,
+) -> Result<DocumentString, DomError> {
     let mut header = storage::Payload::default();
     header.empty_string()?;
     budget.retain_payload(header, cancel)?;
     let mut units = Vec::new();
     reserve_utf16(&mut units, value.len(), Some(budget), cancel)?;
-    for unit in value.code_units() {
+    for unit in value {
         budget.step(cancel)?;
         units.push(*unit);
     }
