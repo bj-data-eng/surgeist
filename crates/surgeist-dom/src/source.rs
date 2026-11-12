@@ -1169,13 +1169,37 @@ impl DomSourceEdit {
             },
         }
     }
-    /// Attach an already authored native Attr and return the canonical result.
-    /// Web-facing setters supply their own preceding verification step.
-    pub fn attach_native_attribute(node: NodeId, attribute: crate::DomAttrId) -> Self {
+    /// Set an existing Attr's value with standard attribute verification.
+    pub fn set_attribute_value(
+        attribute: crate::DomAttrId,
+        value: impl Into<DocumentString>,
+    ) -> Self {
         Self {
-            command: Command::AttachNativeAttribute {
+            command: Command::SetAttributeValue {
+                attribute,
+                value: value.into(),
+            },
+        }
+    }
+    /// Attach an Attr by expanded name with standard attribute verification.
+    /// Element and NamedNodeMap attachment use this same operation.
+    pub fn attach_attribute(node: NodeId, attribute: crate::DomAttrId) -> Self {
+        Self::attribute_attachment(node, attribute, AttributeSetterMode::Standard)
+    }
+    /// Attach an already authored native Attr and return the canonical result.
+    pub fn attach_native_attribute(node: NodeId, attribute: crate::DomAttrId) -> Self {
+        Self::attribute_attachment(node, attribute, AttributeSetterMode::Native)
+    }
+    fn attribute_attachment(
+        node: NodeId,
+        attribute: crate::DomAttrId,
+        mode: AttributeSetterMode,
+    ) -> Self {
+        Self {
+            command: Command::AttachAttribute {
                 node: node.into(),
                 attribute,
+                mode,
             },
         }
     }

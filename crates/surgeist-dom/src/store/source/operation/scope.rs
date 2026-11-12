@@ -85,6 +85,7 @@ impl OperationRoot {
         }?;
         match command {
             Command::Compound(edit) => Some(edit.receiver()),
+            Command::SetAttributeValue { attribute, .. } => Some(attribute.node()),
             Command::CreateRange { document, .. } | Command::SetActiveRange { document, .. } => {
                 existing(document)
             }
@@ -138,7 +139,7 @@ impl OperationRoot {
             | Command::SetAttribute { node, .. }
             | Command::RemoveAttribute { node, .. }
             | Command::RemoveAttributeNode { node, .. }
-            | Command::AttachNativeAttribute { node, .. }
+            | Command::AttachAttribute { node, .. }
             | Command::SetCustomValidity { node, .. }
             | Command::ShowDialog { node }
             | Command::ShowModalDialog { node }

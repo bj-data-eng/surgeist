@@ -259,6 +259,10 @@ pub(crate) enum Command {
         value: DocumentString,
         mode: AttributeSetterMode,
     },
+    SetAttributeValue {
+        attribute: DomAttrId,
+        value: DocumentString,
+    },
     SetCustomValidity {
         node: NodeOperand,
         value: DocumentString,
@@ -299,9 +303,10 @@ pub(crate) enum Command {
         node: NodeOperand,
         attribute: DomAttrId,
     },
-    AttachNativeAttribute {
+    AttachAttribute {
         node: NodeOperand,
         attribute: DomAttrId,
+        mode: AttributeSetterMode,
     },
     Destroy(NodeOperand),
     ReplaceData {
@@ -1137,9 +1142,10 @@ impl DomBatch {
             index: self.node_outputs,
         };
         self.node_outputs += 1;
-        self.commands.push(Command::AttachNativeAttribute {
+        self.commands.push(Command::AttachAttribute {
             node: node.into(),
             attribute,
+            mode: AttributeSetterMode::Native,
         });
         attached
     }

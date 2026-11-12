@@ -2,8 +2,9 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentString, Dom, DomBatch, DomError, DomLimits, DomNameLimits, DomNodeKind, DomSourceEdit,
-    DomSourceLimits, DomSourceProgress, Namespace, NodeId,
+    DocumentString, Dom, DomAttributeAttachment, DomBatch, DomError, DomLimits, DomNameLimits,
+    DomNodeKind, DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress, Namespace,
+    NodeId,
 };
 
 fn owner() -> Dom {
@@ -145,6 +146,77 @@ fn attached_attr_text_content_verifies_against_its_owner_element() {
     ));
     assert_eq!(
         lease.snapshot().attr(detached).unwrap().value(),
+        &"new".into()
+    );
+}
+
+#[test]
+fn standard_attr_attachment_verifies_before_owner_and_identity_checks() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let first = setup.create_element_ns(&document, Namespace::html(), "div");
+    let second = setup.create_element_ns(&document, Namespace::html(), "div");
+    setup.set_attribute(&first, "onclick", "old");
+    let ordinary = setup.create_attribute(&document, "data-x");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let first = commit.created(&first).unwrap().unwrap();
+    let second = commit.created(&second).unwrap().unwrap();
+    let ordinary = commit.created(&ordinary).unwrap().unwrap();
+    let before = dom.snapshot();
+    let ordinary = before.attr(ordinary).unwrap().id();
+    let handler = before
+        .node(first)
+        .unwrap()
+        .get_attribute_node(&"onclick".into())
+        .unwrap()
+        .id();
+
+    for edit in [
+        DomSourceEdit::attach_attribute(first, handler),
+        DomSourceEdit::attach_attribute(second, handler),
+        DomSourceEdit::set_attribute_value(handler, "replacement"),
+    ] {
+        let mut lease = dom.begin_source_edit(edit, policy(), &cancel).unwrap();
+        assert!(matches!(
+            lease.advance(&cancel),
+            Err(DomError::SourceAttributeGlobalUnavailable)
+        ));
+        assert_eq!(lease.snapshot().stamp(), before.stamp());
+    }
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::attach_attribute(second, ordinary),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Complete(completion) = lease.advance(&cancel).unwrap() else {
+        panic!("an ordinary Attr attaches synchronously");
+    };
+    assert_eq!(
+        completion.output(),
+        Some(DomSourceOutput::AttributeAttachment(
+            DomAttributeAttachment::Appended(ordinary)
+        ))
+    );
+    drop(lease);
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_attribute_value(ordinary, "new"),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    assert_eq!(
+        lease.snapshot().attr(ordinary.node()).unwrap().value(),
         &"new".into()
     );
 }

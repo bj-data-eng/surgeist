@@ -3777,6 +3777,10 @@ impl Draft {
                 let node = self.resolve(node.clone())?;
                 self.set_custom_validity(node, value, limits, cancelled)?;
             }
+            Command::SetAttributeValue { attribute, value } => {
+                let attr = self.resolve(attribute.node().into())?;
+                self.set_existing_attr_value(attr, value, limits, cancelled)?;
+            }
             Command::RequestCloseDialog { node, result } => {
                 let key = self.resolve(node.clone())?;
                 self.dialog_method_boundary(
@@ -3841,10 +3845,14 @@ impl Draft {
                 let attr = self.resolve(attribute.node().into())?;
                 self.remove_attribute_node(node, attr, limits, cancelled)?;
             }
-            Command::AttachNativeAttribute { node, attribute } => {
+            Command::AttachAttribute {
+                node,
+                attribute,
+                mode,
+            } => {
                 let node = self.resolve(node.clone())?;
                 let attr = self.resolve(attribute.node().into())?;
-                self.attach_native_attribute(node, attr, limits, cancelled)?;
+                self.attach_attribute(node, attr, *mode, limits, cancelled)?;
             }
             Command::Destroy(node) => {
                 let node = self.resolve(node.clone())?;

@@ -515,6 +515,7 @@ pub(in crate::store) fn commands(
                 payload.string(name)?;
             }
             Command::ReplaceData { data, .. } => payload.string(data)?,
+            Command::SetAttributeValue { value, .. } => payload.string(value)?,
             // A whole-snapshot Import retains its actual missing controlled
             // frontier through Source InputCapture, not a second payload sum.
             Command::Import { .. } | Command::ConstructDocument(_) | Command::CloneNode { .. } => {}

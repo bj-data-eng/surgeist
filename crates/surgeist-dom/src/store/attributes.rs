@@ -843,10 +843,11 @@ impl Draft {
         )
     }
 
-    pub(super) fn attach_native_attribute(
+    pub(super) fn attach_attribute(
         &mut self,
         node: Key,
         attr: Key,
+        mode: AttributeSetterMode,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -857,6 +858,9 @@ impl Draft {
         let transaction::KindRead::Attr(replacement) = incoming.kind() else {
             return Err(DomError::WrongNodeKind);
         };
+        if mode == AttributeSetterMode::Standard {
+            self.require_attribute_verification(node, replacement.name(), cancel)?;
+        }
         if incoming
             .attr_owner()
             .is_some_and(|owner| self.live_key(owner) != node)
