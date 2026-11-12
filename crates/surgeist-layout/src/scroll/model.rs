@@ -533,7 +533,7 @@ impl<S: LayoutScalar> PhysicalScrollAxisRangeOf<S> {
     }
 
     #[must_use]
-    fn clamp(self, value: S) -> S {
+    pub(super) fn clamp(self, value: S) -> S {
         value.max(self.minimum).min(self.maximum)
     }
 }

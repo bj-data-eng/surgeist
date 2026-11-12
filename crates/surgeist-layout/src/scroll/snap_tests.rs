@@ -1,16 +1,33 @@
 use crate::{
     AvailableSpaceOf, AxisSizingRequestOf, Direction, Display, FlowAxes, LayoutRootRequestOf,
     LayoutScalar, NearestScrollportOf, NodeInputOf, OrthogonalFallbackLimitOf,
-    OrthogonalFallbackOf, PhysicalAxis, Point, PreferredSizeOf, ScrollMarginOf, ScrollRectErrorOf,
-    ScrollRectOf, ScrollSnapAlign, ScrollSnapType, ScrollTargetGeometryOf, Size, SizingOperation,
-    SizingRequestOf, WritingMode, compute_layout, test_support::layout_tree::PublicLayoutTreeOf,
+    OrthogonalFallbackOf, PhysicalAxis, PhysicalScrollOffsetOf, PhysicalScrollRangeOf, Point,
+    PreferredSizeOf, ScrollCoordinateErrorOf, ScrollMarginOf, ScrollRectErrorOf, ScrollRectOf,
+    ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapContextOf, ScrollSnapType,
+    ScrollTargetGeometryOf, Size, SizingOperation, SizingRequestOf, WritingMode, compute_layout,
+    test_support::layout_tree::PublicLayoutTreeOf,
 };
 
 fn target<S: LayoutScalar>(margin: ScrollMarginOf<S>) -> ScrollTargetGeometryOf<S> {
+    configured_target(
+        margin,
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        ScrollSnapAlign::default(),
+    )
+}
+
+fn configured_target<S: LayoutScalar>(
+    margin: ScrollMarginOf<S>,
+    axes: FlowAxes,
+    alignment: ScrollSnapAlign,
+) -> ScrollTargetGeometryOf<S> {
     let tree = PublicLayoutTreeOf::new().style(
         0,
         NodeInputOf {
             display: Display::Block,
+            writing_mode: axes.writing_mode(),
+            direction: axes.direction(),
+            scroll_snap_align: alignment,
             size: Size::new(
                 PreferredSizeOf::px(S::from_f64(30.0)),
                 PreferredSizeOf::px(S::from_f64(30.0)),
@@ -19,7 +36,6 @@ fn target<S: LayoutScalar>(margin: ScrollMarginOf<S>) -> ScrollTargetGeometryOf<
             ..NodeInputOf::default()
         },
     );
-    let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let request = LayoutRootRequestOf::standalone(
         SizingRequestOf::new(
             Size::splat(AxisSizingRequestOf::new(
@@ -45,7 +61,7 @@ fn target<S: LayoutScalar>(margin: ScrollMarginOf<S>) -> ScrollTargetGeometryOf<
         .scroll_geometry
         .unwrap();
     assert_eq!(geometry.scroll_snap_type(), ScrollSnapType::None);
-    assert_eq!(geometry.target().snap_align(), ScrollSnapAlign::default());
+    assert_eq!(geometry.target().snap_align(), alignment);
     geometry.target()
 }
 
@@ -98,4 +114,167 @@ fn assert_snap_area_numeric_boundary<S: LayoutScalar>(maximum: S) {
 fn snap_area_preserves_zero_outsets_and_reports_unrepresentable_origin() {
     assert_snap_area_numeric_boundary(f32::MAX);
     assert_snap_area_numeric_boundary(f64::MAX);
+}
+
+fn snap_context<S: LayoutScalar>(axis: ScrollSnapAxis) -> ScrollSnapContextOf<S> {
+    ScrollSnapContextOf::new(
+        rect(10.0, 20.0, 100.0, 50.0),
+        PhysicalScrollRangeOf::try_new(
+            S::from_f64(-75.0),
+            S::from_f64(120.0),
+            S::from_f64(-20.0),
+            S::from_f64(200.0),
+        )
+        .unwrap(),
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        axis,
+    )
+}
+
+fn assert_alignment_direction<S: LayoutScalar>() {
+    let target = configured_target(
+        ScrollMarginOf::<S>::default(),
+        FlowAxes::new(WritingMode::VerticalRl, Direction::Rtl),
+        ScrollSnapAlign::new(ScrollSnapAlignValue::End, ScrollSnapAlignValue::Start),
+    );
+    for (width, height, expected_x, expected_y) in [
+        // Equality in the target inline axis retains the container's directions.
+        (20.0, 50.0, 50.0, -20.0),
+        // Oversized target block extent alone leaves directions unchanged.
+        (120.0, 50.0, 50.0, -20.0),
+        // Oversized target inline extent flips both physical directions.
+        (20.0, 90.0, -30.0, -20.0),
+    ] {
+        let geometry = target
+            .snap_geometry_in_scroller(
+                rect(60.0, -30.0, width, height),
+                snap_context(ScrollSnapAxis::Both),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            geometry.aligned_offset(PhysicalAxis::Horizontal),
+            Some(S::from_f64(expected_x))
+        );
+        assert_eq!(
+            geometry.aligned_offset(PhysicalAxis::Vertical),
+            Some(S::from_f64(expected_y))
+        );
+    }
+
+    let block_only = target
+        .snap_geometry_in_scroller(
+            rect(60.0, 120.0, 20.0, 40.0),
+            snap_context(ScrollSnapAxis::Block),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(block_only.aligned_offset(PhysicalAxis::Horizontal), None);
+    assert_eq!(
+        block_only.aligned_offset(PhysicalAxis::Vertical),
+        Some(S::from_f64(90.0))
+    );
+}
+
+#[test]
+fn snap_offsets_keep_container_axis_roles_and_use_target_edges_when_oversized() {
+    assert_alignment_direction::<f32>();
+    assert_alignment_direction::<f64>();
+}
+
+fn assert_snap_coverage_and_visibility<S: LayoutScalar>() {
+    let target = configured_target(
+        ScrollMarginOf::<S>::default(),
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Rtl),
+        ScrollSnapAlign::new(ScrollSnapAlignValue::End, ScrollSnapAlignValue::Start),
+    );
+    let geometry = target
+        .snap_geometry_in_scroller(
+            rect(-40.0, 100.0, 120.0, 20.0),
+            snap_context(ScrollSnapAxis::Both),
+        )
+        .unwrap()
+        .unwrap();
+    let axis = PhysicalAxis::Horizontal;
+    assert_eq!(geometry.aligned_offset(axis), Some(S::from_f64(-30.0)));
+    assert_eq!(
+        geometry.aligned_offset(PhysicalAxis::Vertical),
+        Some(S::from_f64(50.0))
+    );
+
+    for (previous, subsequent, expected) in [
+        (Some(-75.0), Some(25.0), None),
+        (Some(-75.0), Some(50.0), Some((-50.0, -30.0))),
+        (Some(-40.0), Some(100.0), Some((-40.0, -30.0))),
+        (None, Some(-40.0), Some((-50.0, -40.0))),
+        (Some(-75.0), Some(-60.0), None),
+    ] {
+        let covering = geometry
+            .covering_offsets(axis, previous.map(S::from_f64), subsequent.map(S::from_f64))
+            .unwrap()
+            .map(|range| (range.minimum().to_f64(), range.maximum().to_f64()));
+        assert_eq!(covering, expected);
+    }
+    assert_eq!(
+        geometry.covering_offsets(PhysicalAxis::Vertical, None, None),
+        Ok(None)
+    );
+
+    assert_eq!(
+        geometry.covering_offsets(axis, None, Some(S::INFINITY)),
+        Err(ScrollCoordinateErrorOf::NonFinitePhysicalRangeMaximum {
+            axis,
+            value: S::INFINITY,
+        }),
+    );
+    assert_eq!(
+        geometry.covering_offsets(axis, Some(S::ONE), Some(S::ZERO)),
+        Err(ScrollCoordinateErrorOf::InvertedPhysicalRange {
+            axis,
+            minimum: S::ONE,
+            maximum: S::ZERO,
+        }),
+    );
+
+    for (offset_y, expected) in [(50.0, true), (100.0, true), (101.0, false)] {
+        let offset =
+            PhysicalScrollOffsetOf::try_new(S::from_f64(-30.0), S::from_f64(offset_y)).unwrap();
+        assert_eq!(geometry.is_visible_at(offset), expected);
+    }
+}
+
+#[test]
+fn snap_covering_offsets_use_adjacent_gap_and_visibility_uses_both_axes() {
+    assert_snap_coverage_and_visibility::<f32>();
+    assert_snap_coverage_and_visibility::<f64>();
+}
+
+fn assert_unreachable_snap_offset<S: LayoutScalar>() {
+    let target = configured_target(
+        ScrollMarginOf::<S>::default(),
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        ScrollSnapAlign::new(ScrollSnapAlignValue::None, ScrollSnapAlignValue::Center),
+    );
+    let geometry = target
+        .snap_geometry_in_scroller(
+            rect(500.0, 35.0, 120.0, 40.0),
+            snap_context(ScrollSnapAxis::Both),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        geometry.aligned_offset(PhysicalAxis::Horizontal),
+        Some(S::from_f64(120.0))
+    );
+    assert_eq!(geometry.aligned_offset(PhysicalAxis::Vertical), None);
+    assert_eq!(
+        geometry.covering_offsets(PhysicalAxis::Horizontal, None, None),
+        Ok(None)
+    );
+}
+
+#[test]
+fn snap_alignment_clamps_unreachable_offsets_without_creating_coverage() {
+    assert_unreachable_snap_offset::<f32>();
+    assert_unreachable_snap_offset::<f64>();
 }
