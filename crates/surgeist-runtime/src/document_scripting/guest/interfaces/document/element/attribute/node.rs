@@ -1,13 +1,20 @@
-//! Element operations over the canonical Attr identities.
+//! Element operations over the canonical attribute list.
 
 use super::*;
 
 #[derive(Clone, Copy)]
 enum Method {
-    Get,
-    GetNs,
+    Read(ReadMethod),
     Set,
     Remove,
+}
+
+#[derive(Clone, Copy)]
+enum ReadMethod {
+    Value,
+    ValueNs,
+    Node,
+    NodeNs,
 }
 
 pub(super) fn install<'scope>(
@@ -16,8 +23,26 @@ pub(super) fn install<'scope>(
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
     for (name, method, length) in [
-        (&ascii(b"getAttributeNode")[..], Method::Get, 1),
-        (&ascii(b"getAttributeNodeNS")[..], Method::GetNs, 2),
+        (
+            &ascii(b"getAttribute")[..],
+            Method::Read(ReadMethod::Value),
+            1,
+        ),
+        (
+            &ascii(b"getAttributeNS")[..],
+            Method::Read(ReadMethod::ValueNs),
+            2,
+        ),
+        (
+            &ascii(b"getAttributeNode")[..],
+            Method::Read(ReadMethod::Node),
+            1,
+        ),
+        (
+            &ascii(b"getAttributeNodeNS")[..],
+            Method::Read(ReadMethod::NodeNs),
+            2,
+        ),
         (&ascii(b"setAttributeNode")[..], Method::Set, 1),
         (&ascii(b"setAttributeNodeNS")[..], Method::Set, 1),
         (&ascii(b"removeAttributeNode")[..], Method::Remove, 1),
@@ -25,7 +50,7 @@ pub(super) fn install<'scope>(
         let handler = capture(size_of::<(Capture, Method)>())?;
         let function = scope.fixed_arity_function(
             &Callback::new(move |scope, arguments| {
-                handler.attribute_node(scope, arguments, method)
+                handler.attribute_entry(scope, arguments, method)
             }),
             FunctionMetadata { name, length },
         )?;
@@ -43,7 +68,7 @@ pub(super) fn install<'scope>(
 }
 
 impl Capture {
-    fn attribute_node<'scope>(
+    fn attribute_entry<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
@@ -56,8 +81,10 @@ impl Capture {
                 scope.type_error(&ascii(b"Element required"))?,
             ));
         };
-        let namespaced = matches!(method, Method::GetNs);
-        let required = if namespaced { 2 } else { 1 };
+        let required = match method {
+            Method::Read(ReadMethod::ValueNs | ReadMethod::NodeNs) => 2,
+            _ => 1,
+        };
         if arguments.len() < required {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"Missing attribute argument"))?,
@@ -65,10 +92,12 @@ impl Capture {
         }
         let (owner, events) = self.active(scope)?;
         match method {
-            Method::Get | Method::GetNs => {
+            Method::Read(method) => {
                 let result = self
-                    .lookup_attribute(scope, &arguments, &owner, &events, element, namespaced)
-                    .and_then(|attribute| project(scope, &owner, &events, attribute));
+                    .lookup_attribute(scope, &arguments, &owner, &events, element, method)
+                    .and_then(|observation| {
+                        self.project_observation(scope, &owner, &events, observation)
+                    });
                 complete(scope, &events, result)
             }
             Method::Set | Method::Remove => {
@@ -120,24 +149,32 @@ impl Capture {
         owner: &NativeOwner,
         events: &GuestEvents,
         element: NodeId,
-        namespaced: bool,
-    ) -> Result<Option<DomAttrId>, DocumentGuestEventError> {
+        method: ReadMethod,
+    ) -> Result<Observation, DocumentGuestEventError> {
+        let (namespace, name) = match method {
+            ReadMethod::Value => (None, declarations::element_get_attribute_0_qualified_name()),
+            ReadMethod::ValueNs => (
+                Some(declarations::element_get_attribute_ns_0_namespace()),
+                declarations::element_get_attribute_ns_0_local_name(),
+            ),
+            ReadMethod::Node => (
+                None,
+                declarations::element_get_attribute_node_0_qualified_name(),
+            ),
+            ReadMethod::NodeNs => (
+                Some(declarations::element_get_attribute_node_ns_0_namespace()),
+                declarations::element_get_attribute_node_ns_0_local_name(),
+            ),
+        };
+        let namespaced = namespace.is_some();
         let (namespace, name) = self
             .callbacks
             .conversion
             .run(scope, |cx| {
-                let (namespace, name) = if namespaced {
-                    let namespace = declarations::element_get_attribute_node_ns_0_namespace();
-                    (
-                        Some(cx.argument(&namespace, arguments.get(namespace.index()))?),
-                        declarations::element_get_attribute_node_ns_0_local_name(),
-                    )
-                } else {
-                    (
-                        None,
-                        declarations::element_get_attribute_node_0_qualified_name(),
-                    )
-                };
+                let namespace = namespace
+                    .as_ref()
+                    .map(|namespace| cx.argument(namespace, arguments.get(namespace.index())))
+                    .transpose()?;
                 Ok((namespace, cx.argument(&name, arguments.get(name.index()))?))
             })
             .map_err(Error::from)?;
@@ -167,23 +204,14 @@ impl Capture {
             } else {
                 attributes.get_named_item_with(&name, || read.step())?
             };
-            Ok(attribute.map(|attribute| attribute.id()))
+            Ok(match method {
+                ReadMethod::Value | ReadMethod::ValueNs => {
+                    Observation::String(attribute.map(|attr| attr.value().clone()))
+                }
+                ReadMethod::Node | ReadMethod::NodeNs => {
+                    Observation::Node(attribute.map(|attr| attr.id().node()))
+                }
+            })
         })
-    }
-}
-
-pub(super) fn project<'scope>(
-    scope: &mut Scope<'scope>,
-    owner: &NativeOwner,
-    events: &GuestEvents,
-    attribute: Option<DomAttrId>,
-) -> Result<Value<'scope>, DocumentGuestEventError> {
-    match attribute {
-        Some(attribute) => events
-            .public
-            .as_ref()
-            .ok_or(Error::ExpiredIdentity)?
-            .project_node(scope, owner, events, attribute.node()),
-        None => Ok(scope.primitive(Primitive::Null)?),
     }
 }

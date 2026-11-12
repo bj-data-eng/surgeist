@@ -231,9 +231,9 @@ impl Capture {
                     Some(DomSourceOutput::AttributeAttachment(DomAttributeAttachment::Replaced(
                         id,
                     ))),
-                ) if id != incoming => {
-                    node::project(scope, owner, events, Some(id)).map(Completion::Return)
-                }
+                ) if id != incoming => self
+                    .project_observation(scope, owner, events, Observation::Node(Some(id.node())))
+                    .map(Completion::Return),
                 _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
             },
             Ok(DomSourceDriveProgress::Failed(failure)) => {
