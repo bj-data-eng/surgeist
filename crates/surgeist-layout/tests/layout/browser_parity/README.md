@@ -126,8 +126,8 @@ now reach an earlier resource or observation-channel check.
 | SourceBodySiblings | 4 | 0 | Stray text follows the root. |
 
 The [Native census](live-native-observations.json) binds the two reports and
-the live ownership ledger. It records 4,522 matches, 118 numeric nonmatches
-across 530 fields, and four analytic-baseline Text refusals. The
+the live ownership ledger. It records 4,526 matches, 114 numeric nonmatches
+across 486 fields, and four analytic-baseline Text refusals. The
 [issue mapping](live-native-owners.json)
 assigns the nonmatches by source. The ordinary suite recomputes the census and
 rejects missing or altered evidence and changed results. A matching census
