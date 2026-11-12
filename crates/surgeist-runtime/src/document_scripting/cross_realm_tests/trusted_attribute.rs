@@ -109,6 +109,17 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
                 check(creationPrototype === originAttrPrototype && creationPrototype !== Attr.prototype
                     && Object.getPrototypeOf(rejectedAttr) === Attr.prototype,
                     'distinct creation realms');
+                const throws = (action, name) => {
+                    try { action(); } catch (error) { return error.name === name; }
+                    return false;
+                };
+                const root = acceptedOwner.attachShadow({mode: 'closed'});
+                check(throws(() => destinationDocument.adoptNode(originalDocument), 'NotSupportedError')
+                    && throws(() => destinationDocument.adoptNode(root), 'HierarchyRequestError')
+                    && throws(() => destinationDocument.adoptNode(), 'TypeError')
+                    && throws(() => destinationDocument.adoptNode(new Proxy(acceptedAttr, {})), 'TypeError')
+                    && throws(() => Document.prototype.adoptNode.call({}, acceptedAttr), 'TypeError'),
+                    'adoptNode brand, arity and native errors');
                 const calls = [];
                 trustedTypes.createPolicy('default', {createScript(value, type, sink) {
                     calls.push(value);
@@ -119,6 +130,11 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
                     check(adoptionTarget.appendChild(owner) === owner, 'same adopted owner');
                     check(owner.ownerDocument === destinationDocument && attr.ownerDocument === destinationDocument
                         && attr.ownerElement === owner, 'live adoption');
+                    check(originalDocument.adoptNode(attr) === attr && attr.ownerDocument === originalDocument
+                        && attr.ownerElement === owner, 'direct adoption changes only the Attr document');
+                    check(Document.prototype.adoptNode.call(destinationDocument, attr) === attr
+                        && attr.ownerDocument === destinationDocument && attr.ownerElement === owner,
+                        'borrowed adoption uses receiving Document');
                     check(owner.removeAttributeNode(attr) === attr && attr.ownerElement === null, 'exact removal');
                     if (value === 'reject') return null;
                     check(replacementOwner.setAttributeNode(attr) === null && attr.ownerElement === replacementOwner, 'new nonsink owner');
