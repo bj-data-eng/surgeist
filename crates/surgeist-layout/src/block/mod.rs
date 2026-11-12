@@ -510,6 +510,15 @@ pub(crate) enum PendingBlockChild<'input, Node, S: LayoutScalar> {
     Positioned(AbsoluteChild<Node, S>),
 }
 
+impl<Node: Copy, S: LayoutScalar> PendingBlockChild<'_, Node, S> {
+    pub(crate) fn shared_request(&self) -> Option<(Node, ComputeInputOf<S>)> {
+        match self {
+            Self::InFlow(Some(child)) => child.shared_request(),
+            _ => None,
+        }
+    }
+}
+
 type BlockChildOutput<'input, Node, S> = (PendingBlockChild<'input, Node, S>, ComputeOutputOf<S>);
 
 impl<'input, Node: Copy, S: LayoutScalar> BlockChild<'input, Node, S> {

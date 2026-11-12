@@ -6,7 +6,7 @@ use crate::block::{BlockComputation, BlockResult, PendingBlockChild, begin_block
 use crate::engine::block_scope::ordinary;
 use crate::engine::hidden::{HiddenChildren, HiddenRequest};
 use crate::{
-    ComputeInputOf, ComputeOutputOf, Display, FlowAxes, LayoutErrorKindOf, LayoutErrorOf,
+    Compute, ComputeInputOf, ComputeOutputOf, Display, FlowAxes, LayoutErrorKindOf, LayoutErrorOf,
     LayoutErrorSiteOf, LayoutOperation, LayoutScalar, LayoutTree, PhysicalAxis, Traverse,
 };
 
@@ -181,6 +181,13 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         mut error: crate::LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError>,
     ) -> crate::LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
         for frame in blocks.into_iter().rev() {
+            if let Some((node, input)) = frame
+                .child
+                .as_ref()
+                .and_then(PendingBlockChild::shared_request)
+            {
+                let _ = self.end_child_float_context(node, input);
+            }
             error = ordinary(frame.computation.finish(self, Err(error.into())))
                 .expect_err("failed child leaves its Block owner failed");
         }
@@ -304,11 +311,11 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     request.entry.is_none(),
                     "ordinary request has no scope entry"
                 );
+                parent.child = Some(child);
                 pending
                     .order
                     .try_reserve(1)
                     .map_err(|_| reserve_error(request.node))?;
-                parent.child = Some(child);
                 pending.order.push(PendingRequest::Block);
                 Ok(Request::Child {
                     node: request.node,
