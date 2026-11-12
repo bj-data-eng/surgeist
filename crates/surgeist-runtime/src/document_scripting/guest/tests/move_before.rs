@@ -129,6 +129,17 @@ pub(in crate::document_scripting) fn parent_node_move_uses_the_live_native_ident
         [reference, moved]
     );
     host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "to.moveBefore(reference, null) === undefined && reference.parentNode === to",
+        )
+    })
+    .unwrap();
+    assert_eq!(
+        host.snapshot().unwrap().node(to).unwrap().children(),
+        [moved, reference]
+    );
+    host.in_document(&permit, |scope| {
         assert_guest(scope, "fromDoc.moveBefore(moveComment, from) === undefined && moveComment.parentNode === fromDoc")
     })
     .unwrap();
@@ -154,7 +165,7 @@ pub(in crate::document_scripting) fn parent_node_move_uses_the_live_native_ident
     let bytes = events.budget.used.get();
     let result = host.in_document(&permit, |scope| {
         scope
-            .evaluate(&units("to.moveBefore(moved, reference)"))
+            .evaluate(&units("to.moveBefore(reference, moved)"))
             .map(drop)
     });
     let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
@@ -172,7 +183,7 @@ pub(in crate::document_scripting) fn parent_node_move_uses_the_live_native_ident
     assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
     assert_eq!(
         host.snapshot().unwrap().node(to).unwrap().children(),
-        [reference, moved]
+        [moved, reference]
     );
     assert_eq!(events.budget.used.get(), bytes);
     host.with_native(|dom, _, _| {
