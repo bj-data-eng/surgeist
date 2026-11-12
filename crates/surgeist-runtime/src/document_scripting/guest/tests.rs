@@ -82,26 +82,23 @@ pub(in crate::document_scripting) fn move_public_registry_for_source_test(
     host.guest_events().unwrap().registry.replace(replacement)
 }
 
-pub(in crate::document_scripting) fn expose_public_comment_for_source_test(
+pub(in crate::document_scripting) fn expose_public_node_for_source_test(
     host: &mut DocumentScriptHost,
     permit: &DocumentScriptPermit,
     node: surgeist_dom::NodeId,
+    name: &str,
 ) {
     let events = host.guest_events().unwrap();
     let owner = host.native.clone();
     host.in_document(permit, |scope| {
-        let comment = events
+        let object = events
             .public
             .as_ref()
             .unwrap()
             .project_node(scope, &owner, &events, node)
             .unwrap();
         let global = scope.global()?;
-        scope.set(
-            &global,
-            PropertyKey::String(&units("publicComment")),
-            &comment,
-        )
+        scope.set(&global, PropertyKey::String(&units(name)), &object)
     })
     .unwrap();
 }
