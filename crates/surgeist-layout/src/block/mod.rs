@@ -57,8 +57,7 @@ mod scroll;
 mod sizing;
 
 pub(crate) use absolute::StaticPositionOf;
-use absolute::layout_absolute_children;
-pub(crate) use in_flow::PendingBox;
+use absolute::{AbsoluteChild, AbsoluteChildren};
 pub(crate) use input::BlockChildProjection;
 use input::{
     BlockContainerProjection, automatic_block_depends_on_ratio, block_container_projection,
@@ -204,7 +203,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockComputation<'input, Node, S>
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         loop {
-            let output = if self.pass.active.is_some() {
+            let output = if self.pass.has_work() {
                 let inherited = self
                     .incoming
                     .as_ref()
@@ -253,7 +252,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockComputation<'input, Node, S>
     pub(crate) fn accept_child<Tree, M>(
         &mut self,
         tree: &mut Tree,
-        pending: Option<in_flow::PendingBox<'input, Node, S>>,
+        pending: PendingBlockChild<'input, Node, S>,
         output: ComputeOutputOf<S>,
     ) -> ComputeResult<Node, (), S, M>
     where
@@ -463,7 +462,10 @@ where
         incoming,
         anonymous,
         formatted,
-        pass: BlockPass { active: None },
+        pass: BlockPass {
+            active: None,
+            positioned: None,
+        },
     }))
 }
 
@@ -496,7 +498,62 @@ where
 type BlockPassStart<'input, Node, S> =
     ControlFlow<BlockResult<Node, S>, BlockPass<'input, Node, S>>;
 pub(crate) type BlockPassStep<'input, Node, S> =
-    ControlFlow<BlockResult<Node, S>, in_flow::InFlowChild<'input, Node, S>>;
+    ControlFlow<BlockResult<Node, S>, BlockChild<'input, Node, S>>;
+
+pub(crate) enum BlockChild<'input, Node, S: LayoutScalar> {
+    InFlow(in_flow::InFlowChild<'input, Node, S>),
+    Positioned(AbsoluteChild<Node, S>),
+}
+
+pub(crate) enum PendingBlockChild<'input, Node, S: LayoutScalar> {
+    InFlow(Option<in_flow::PendingBox<'input, Node, S>>),
+    Positioned(AbsoluteChild<Node, S>),
+}
+
+type BlockChildOutput<'input, Node, S> = (PendingBlockChild<'input, Node, S>, ComputeOutputOf<S>);
+
+impl<'input, Node: Copy, S: LayoutScalar> BlockChild<'input, Node, S> {
+    pub(crate) fn into_request(
+        self,
+    ) -> (
+        scope::ChildRequest<Node, S>,
+        PendingBlockChild<'input, Node, S>,
+    ) {
+        match self {
+            Self::InFlow(child) => {
+                let (request, pending) = child.into_request();
+                (request, PendingBlockChild::InFlow(pending))
+            }
+            Self::Positioned(child) => (
+                scope::ChildRequest {
+                    node: child.node,
+                    input: child.input,
+                    entry: None,
+                },
+                PendingBlockChild::Positioned(child),
+            ),
+        }
+    }
+
+    fn compute<Tree, M>(
+        self,
+        tree: &mut Tree,
+    ) -> ComputeResult<Node, BlockChildOutput<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        match self {
+            Self::InFlow(child) => {
+                let (pending, output) = child.compute(tree)?;
+                Ok((PendingBlockChild::InFlow(pending), output))
+            }
+            Self::Positioned(child) => {
+                let output = tree.compute_child(child.node, child.input)?;
+                Ok((PendingBlockChild::Positioned(child), output))
+            }
+        }
+    }
+}
 
 fn begin_block_pass<'input, Tree, S, M>(
     tree: &mut Tree,
@@ -589,11 +646,19 @@ where
     let active = flow.begin_inline_or_normal(tree, inherited, extent)?;
     Ok(ControlFlow::Continue(BlockPass {
         active: Some(active),
+        positioned: None,
     }))
 }
 
 struct BlockPass<'input, Node, S: LayoutScalar> {
     active: Option<ActiveBlockPass<'input, Node, S>>,
+    positioned: Option<PositionedBlockPass<'input, Node, S>>,
+}
+
+struct PositionedBlockPass<'input, Node, S: LayoutScalar> {
+    flow: BlockFlow<'input, Node, S>,
+    constants: Constants<S>,
+    positioned: PositionedFlow<Node, S>,
 }
 
 struct ActiveBlockPass<'input, Node, S: LayoutScalar> {
@@ -613,6 +678,10 @@ enum BlockPassPhase<S: LayoutScalar> {
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
+    fn has_work(&self) -> bool {
+        self.active.is_some() || self.positioned.is_some()
+    }
+
     fn advance<Tree, M>(
         &mut self,
         tree: &mut Tree,
@@ -622,13 +691,18 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         loop {
+            if self.positioned.is_some() {
+                return self.advance_positioned(tree);
+            }
             let active = self.active.as_mut().expect("active Block pass");
             match active
                 .traversal
                 .step(tree, &active.flow.children, &active.constants)?
             {
                 InFlowStep::Continue => {}
-                InFlowStep::Child(child) => return Ok(ControlFlow::Continue(child)),
+                InFlowStep::Child(child) => {
+                    return Ok(ControlFlow::Continue(BlockChild::InFlow(child)));
+                }
                 InFlowStep::Complete => {
                     if let Some(output) = self.complete_traversal(tree, inherited)? {
                         return Ok(ControlFlow::Break(output));
@@ -636,6 +710,33 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
                 }
             }
         }
+    }
+
+    fn advance_positioned<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+    ) -> ComputeResult<Node, BlockPassStep<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let pass = self.positioned.as_mut().expect("positioned Block pass");
+        if let Some(child) =
+            pass.positioned
+                .next_child(tree, &pass.flow.children, &pass.constants)?
+        {
+            return Ok(ControlFlow::Continue(BlockChild::Positioned(child)));
+        }
+        let PositionedBlockPass {
+            flow,
+            constants,
+            positioned,
+        } = self
+            .positioned
+            .take()
+            .expect("completed positioned Block pass");
+        positioned
+            .finish(tree, flow.node, flow.input, &flow.style, &constants)
+            .map(ControlFlow::Break)
     }
 
     fn complete_traversal<Tree, M>(
@@ -676,43 +777,88 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
                         sizing.ratio_block_outer,
                     )?
                 } else {
-                    return flow
-                        .finish(
-                            tree,
-                            &constants,
-                            completed,
-                            provisional,
-                            sizing.ratio_block_outer,
-                        )
-                        .map(Some);
+                    return self.begin_completion(
+                        tree,
+                        flow,
+                        constants,
+                        completed,
+                        provisional,
+                        sizing.ratio_block_outer,
+                    );
                 }
             }
             BlockPassPhase::Final {
                 provisional,
                 ratio_block_outer,
             } => {
-                return flow
-                    .finish(tree, &constants, completed, provisional, ratio_block_outer)
-                    .map(Some);
+                return self.begin_completion(
+                    tree,
+                    flow,
+                    constants,
+                    completed,
+                    provisional,
+                    ratio_block_outer,
+                );
             }
         };
         self.active = Some(next);
         Ok(None)
     }
 
+    fn begin_completion<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        flow: BlockFlow<'input, Node, S>,
+        constants: Constants<S>,
+        completed: in_flow::InFlowResult<Node, S>,
+        provisional: LogicalSizeOf<S>,
+        ratio_block_outer: Option<S>,
+    ) -> ComputeResult<Node, Option<BlockResult<Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        match flow.prepare_completion(
+            tree,
+            &constants,
+            completed,
+            provisional,
+            ratio_block_outer,
+        )? {
+            ControlFlow::Break(output) => Ok(Some(output)),
+            ControlFlow::Continue(positioned) => {
+                self.positioned = Some(PositionedBlockPass {
+                    flow,
+                    constants,
+                    positioned,
+                });
+                Ok(None)
+            }
+        }
+    }
+
     fn accept_child<Tree, M>(
         &mut self,
         tree: &mut Tree,
-        pending: Option<in_flow::PendingBox<'input, Node, S>>,
+        pending: PendingBlockChild<'input, Node, S>,
         output: ComputeOutputOf<S>,
     ) -> ComputeResult<Node, (), S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        let active = self.active.as_mut().expect("active Block pass");
-        active
-            .traversal
-            .accept_child(tree, &active.constants, pending, output)
+        match pending {
+            PendingBlockChild::InFlow(child) => {
+                let active = self.active.as_mut().expect("active Block pass");
+                active
+                    .traversal
+                    .accept_child(tree, &active.constants, child, output)
+            }
+            PendingBlockChild::Positioned(child) => {
+                let pass = self.positioned.as_mut().expect("positioned Block pass");
+                pass.positioned
+                    .accept_child(tree, pass.flow.node, &pass.constants, child, output)
+                    .map_err(Into::into)
+            }
+        }
     }
 }
 
@@ -874,14 +1020,14 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockFlow<'input, Node, S> {
         })
     }
 
-    fn finish<Tree, M>(
-        self,
+    fn prepare_completion<Tree, M>(
+        &self,
         tree: &mut Tree,
         final_constants: &Constants<S>,
         final_pass: in_flow::InFlowResult<Node, S>,
         provisional_logical_output_size: LogicalSizeOf<S>,
         ratio_block_outer: Option<S>,
-    ) -> ComputeResult<Node, BlockResult<Node, S>, S, M>
+    ) -> ComputeResult<Node, PreparedFlow<Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -893,7 +1039,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockFlow<'input, Node, S> {
             constants,
             float_role,
             ..
-        } = self;
+        } = *self;
         if let Some(text) = tree.text_computation() {
             text.formatted_record_flow(&final_pass.formatted)
                 .map_err(|error| inline_run::text_run_error(node, error.into()))?;
@@ -920,7 +1066,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockFlow<'input, Node, S> {
                 .max(final_constants.logical_padding_border_size().block),
         );
         let output_size = final_constants.flow_axes.physical_size(logical_output_size);
-        finish_flow(
+        prepare_flow_finish(
             tree,
             node,
             input,
@@ -1173,6 +1319,144 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
+    let mut positioned =
+        match prepare_flow_finish(tree, node, input, style, children, final_constants, sized)? {
+            ControlFlow::Break(output) => return Ok(output),
+            ControlFlow::Continue(positioned) => positioned,
+        };
+    while let Some(child) = positioned.next_child(tree, children, final_constants)? {
+        let output = tree.compute_child(child.node, child.input)?;
+        positioned.accept_child(tree, node, final_constants, child, output)?;
+    }
+    positioned.finish(tree, node, input, style, final_constants)
+}
+
+type PreparedFlow<Node, S> = ControlFlow<BlockResult<Node, S>, PositionedFlow<Node, S>>;
+
+struct PositionedFlow<Node, S: LayoutScalar> {
+    output_size: Size<S>,
+    baselines: crate::BaselinesOf<S>,
+    named_baselines: crate::NamedBaselinesOf<S>,
+    block_margin_collapse: PhysicalBlockMarginCollapseOf<S>,
+    contributions: scroll::BlockScrollContributions<S>,
+    static_positions: Vec<(Node, StaticPositionOf<S>)>,
+    absolute: AbsoluteChildren<S>,
+    // Keep funded formatting and placement data alive through publication.
+    _formatted: Option<crate::text_layout::formatted::FormattedFlow<Node, S>>,
+    _pending_floats: Vec<PendingFloat<Node, S>>,
+    float_context: FloatExclusions<S, Node>,
+    inherited_floats: usize,
+    remaining_cut: Option<entry::canonical::Separation<Node, S>>,
+}
+
+impl<Node: Copy + Eq, S: LayoutScalar> PositionedFlow<Node, S> {
+    fn next_child<'input, Tree, M>(
+        &mut self,
+        tree: &Tree,
+        children: &[Node],
+        constants: &Constants<S>,
+    ) -> LayoutResultOf<Node, Option<AbsoluteChild<Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        self.absolute
+            .next_child(tree, children, &self.static_positions, constants)
+    }
+
+    fn accept_child<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        constants: &Constants<S>,
+        child: AbsoluteChild<Node, S>,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        self.absolute.accept_child(
+            tree,
+            node,
+            constants,
+            &mut self.contributions.geometry,
+            child,
+            output,
+        )
+    }
+
+    fn finish<'input, Tree, M>(
+        self,
+        tree: &Tree,
+        node: Node,
+        input: ComputeInputOf<S>,
+        style: &BlockContainerProjection<'_, S>,
+        final_constants: &Constants<S>,
+    ) -> ComputeResult<Node, BlockResult<Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Self {
+            output_size,
+            baselines,
+            named_baselines,
+            block_margin_collapse,
+            contributions,
+            float_context,
+            inherited_floats,
+            remaining_cut,
+            ..
+        } = self;
+        let published_scroll = with_block_scroll_projections::<Tree, M, _>(
+            tree,
+            node,
+            |scroll_box_projection, scroll_target_projection| {
+                finish_scroll_geometry::<Tree, S, M>(
+                    node,
+                    input.run_mode(),
+                    scroll_box_projection,
+                    scroll_target_projection,
+                    final_constants,
+                    output_size,
+                    contributions,
+                )
+            },
+        )?;
+        let mut output = ComputeOutputOf::<S>::from_sizes_and_baselines(
+            output_size,
+            published_scroll.content_size,
+            baselines,
+        )
+        .with_named_baselines(named_block_baselines(
+            node,
+            style,
+            final_constants,
+            output_size,
+            named_baselines,
+        )?);
+        output.scroll_geometry = Some(published_scroll.geometry);
+        output.block_margin_collapse = block_margin_collapse;
+        Ok(BlockResult {
+            output,
+            used: input,
+            floats: Some((float_context, inherited_floats)),
+            remaining_cut,
+        })
+    }
+}
+
+fn prepare_flow_finish<'input, Tree, S, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: ComputeInputOf<S>,
+    style: &BlockContainerProjection<'_, S>,
+    children: &[Tree::Node],
+    final_constants: &Constants<S>,
+    sized: SizedFlow<Tree::Node, S>,
+) -> ComputeResult<Tree::Node, PreparedFlow<Tree::Node, S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
     let SizedFlow {
         size: output_size,
         flow: final_pass,
@@ -1224,12 +1508,12 @@ where
                     named_baselines,
                 )?);
         output.block_margin_collapse = block_margin_collapse;
-        Ok(BlockResult {
+        Ok(ControlFlow::Break(BlockResult {
             output,
             used: input,
             floats: Some((final_pass.float_context, final_pass.inherited_floats)),
             remaining_cut: final_pass.remaining_cut,
-        })
+        }))
     } else {
         let mut accepted_contributions = final_pass.contributions;
         let measured_content_size = Size::new(
@@ -1265,50 +1549,21 @@ where
             final_constants,
             &mut contributions,
         )?;
-        layout_absolute_children(
-            tree,
-            node,
-            children,
-            &final_pass.static_positions,
+        let absolute = AbsoluteChildren::begin(tree, node, output_size, final_constants)?;
+        Ok(ControlFlow::Continue(PositionedFlow {
             output_size,
-            final_constants,
-            &mut contributions.geometry,
-        )?;
-        let published_scroll = with_block_scroll_projections::<Tree, M, _>(
-            tree,
-            node,
-            |scroll_box_projection, scroll_target_projection| {
-                finish_scroll_geometry::<Tree, S, M>(
-                    node,
-                    input.run_mode(),
-                    scroll_box_projection,
-                    scroll_target_projection,
-                    final_constants,
-                    output_size,
-                    contributions,
-                )
-            },
-        )?;
-        let mut output = ComputeOutputOf::<S>::from_sizes_and_baselines(
-            output_size,
-            published_scroll.content_size,
             baselines,
-        )
-        .with_named_baselines(named_block_baselines(
-            node,
-            style,
-            final_constants,
-            output_size,
             named_baselines,
-        )?);
-        output.scroll_geometry = Some(published_scroll.geometry);
-        output.block_margin_collapse = block_margin_collapse;
-        Ok(BlockResult {
-            output,
-            used: input,
-            floats: Some((final_pass.float_context, final_pass.inherited_floats)),
+            block_margin_collapse,
+            contributions,
+            static_positions: final_pass.static_positions,
+            absolute,
+            _formatted: final_pass.formatted,
+            _pending_floats: final_pass.pending_floats,
+            float_context: final_pass.float_context,
+            inherited_floats: final_pass.inherited_floats,
             remaining_cut: final_pass.remaining_cut,
-        })
+        }))
     }
 }
 
