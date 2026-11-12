@@ -113,7 +113,7 @@ impl Draft {
         match edit {
             Edit::TextContent { value, .. } => match self.node(receiver)?.kind() {
                 transaction::KindRead::Attr(_) => {
-                    self.set_detached_attr_value(receiver, value, limits, cancel)
+                    self.set_existing_attr_value(receiver, value, limits, cancel)
                 }
                 transaction::KindRead::Element(_)
                 | transaction::KindRead::DocumentFragment

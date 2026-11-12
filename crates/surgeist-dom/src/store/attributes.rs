@@ -2,7 +2,7 @@ use super::*;
 use crate::element::{ElementFormation, FormedElement, NonceUpdate};
 use crate::names::{attribute_name, name_units, valid_attribute_local_name};
 use crate::{DomAttribute as Attribute, DomQualifiedName as QualifiedName};
-use surgeist_html::values::Namespace;
+use surgeist_html::values::{HtmlNameInput, Namespace};
 use surgeist_html::vocabulary::{
     ElementKey, ElementNamespace, KnownHtmlElement, KnownHtmlEventHandler, KnownSvgElement,
 };
@@ -67,12 +67,9 @@ fn ascii_spelling(units: &[u16], literal: &str) -> bool {
     units.len() == literal.len() && units.iter().copied().eq(literal.bytes().map(u16::from))
 }
 
-fn is_trusted_attribute_sink(
-    element: &QualifiedName,
-    attribute: &surgeist_html::values::QualifiedName,
-) -> bool {
+fn is_trusted_attribute_sink(element: &QualifiedName, attribute: &impl HtmlNameInput) -> bool {
     let element = ElementKey::from_name(element);
-    let namespace = attribute.namespace().uri();
+    let namespace = attribute.namespace_uri();
     let local = attribute.local_name().code_units();
     if namespace.is_none() {
         if element.namespace() != ElementNamespace::Other
@@ -272,7 +269,7 @@ impl Draft {
         Ok(Attribute::from_parts(name, value))
     }
 
-    pub(super) fn set_detached_attr_value(
+    pub(super) fn set_existing_attr_value(
         &mut self,
         key: Key,
         value: &DocumentString,
@@ -283,8 +280,39 @@ impl Draft {
         let transaction::KindRead::Attr(old) = node.kind() else {
             return Err(DomError::WrongNodeKind);
         };
-        if node.attr_owner().is_some() {
-            return Err(DomError::InvalidSourceOperation);
+        if let Some(owner) = node.attr_owner() {
+            self.require_attribute_verification(owner, old.name(), cancel)?;
+        }
+        self.write_existing_attr_value(key, value, limits, cancel)
+    }
+
+    fn write_existing_attr_value(
+        &mut self,
+        key: Key,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let node = self.node(key)?;
+        let transaction::KindRead::Attr(old) = node.kind() else {
+            return Err(DomError::WrongNodeKind);
+        };
+        if let Some(owner) = node.attr_owner() {
+            let position = self.attribute_identity_position(owner, key, cancel)?;
+            let formation = source::formation::Formation::new(self, cancel)?;
+            let name = self.bind_canonical_name(old.name(), formation.as_ref(), cancel)?;
+            return self.write_attribute(
+                AttributeWrite {
+                    node: owner,
+                    position: Some(position),
+                    name,
+                    value,
+                    cause: AttributeCause::Change,
+                    name_formation: formation,
+                },
+                limits,
+                cancel,
+            );
         }
         if same_string(old.value(), value, || self.source_step(cancel))? {
             return Ok(());
@@ -495,21 +523,32 @@ impl Draft {
             value,
             mode,
         } = input;
-        let element = self.element(node)?;
+        self.element(node)?;
         let prepared = self.prepare_attribute_name(node, namespace, name, cancelled)?;
         if mode == AttributeSetterMode::Standard {
-            // The sink table uses bounded vocabulary and literal comparisons.
-            self.source_step(cancelled)?;
-            if is_trusted_attribute_sink(element.language().name(), &prepared.raw_name) {
-                let document = self.node(node)?.document();
-                return Err(if self.node(document)?.relevant_global().is_some() {
-                    DomError::SourceAttributeExecutorUnavailable
-                } else {
-                    DomError::SourceAttributeGlobalUnavailable
-                });
-            }
+            self.require_attribute_verification(node, &prepared.raw_name, cancelled)?;
         }
         self.apply_attribute_name(node, prepared, value, limits, cancelled)
+    }
+
+    fn require_attribute_verification(
+        &self,
+        element: Key,
+        attribute: &impl HtmlNameInput,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let name = self.element(element)?.language().name();
+        // The sink table uses bounded vocabulary and literal comparisons.
+        self.source_step(cancel)?;
+        if is_trusted_attribute_sink(name, attribute) {
+            let document = self.node(element)?.document();
+            return Err(if self.node(document)?.relevant_global().is_some() {
+                DomError::SourceAttributeExecutorUnavailable
+            } else {
+                DomError::SourceAttributeGlobalUnavailable
+            });
+        }
+        Ok(())
     }
     fn prepare_attribute_name(
         &self,
@@ -1143,16 +1182,27 @@ impl Draft {
         if attribute.attr_owner().map(|owner| self.live_key(owner)) != Some(self.live_key(node)) {
             return Err(DomError::NotFound);
         }
-        for (index, entry) in self.node(node)?.attribute_ids().iter().enumerate() {
+        let position = self.attribute_identity_position(node, attr, cancel)?;
+        self.remove_attribute_at(
+            node,
+            position,
+            AttributeRemoval::ReturnIdentity,
+            limits,
+            cancel,
+        )
+    }
+
+    fn attribute_identity_position(
+        &self,
+        owner: Key,
+        attr: Key,
+        cancel: &AtomicBool,
+    ) -> Result<usize, DomError> {
+        let attr = self.live_key(attr);
+        for (index, entry) in self.node(owner)?.attribute_ids().iter().enumerate() {
             self.source_step(cancel)?;
             if self.live_key(entry) == attr {
-                return self.remove_attribute_at(
-                    node,
-                    index,
-                    AttributeRemoval::ReturnIdentity,
-                    limits,
-                    cancel,
-                );
+                return Ok(index);
             }
         }
         Err(DomError::StaleNode)
