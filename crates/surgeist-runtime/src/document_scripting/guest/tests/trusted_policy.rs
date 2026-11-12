@@ -1,5 +1,62 @@
 use super::*;
 
+pub(in crate::document_scripting) fn guest_attribute_writes_reach_the_native_element() {
+    use surgeist_dom::{DomBatch, Namespace};
+
+    let mut host = public_node_host(5_000, 20_000);
+    let permit = host.permit().unwrap();
+    let element = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let element = batch.create_element_ns(permit.document, Namespace::html(), "div");
+            dom.apply(batch, &AtomicBool::new(false))
+                .unwrap()
+                .created(&element)
+                .unwrap()
+                .unwrap()
+        })
+        .unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, element, "attributeTarget");
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "typeof attributeTarget.setAttribute === 'function'")?;
+        assert_guest(scope, r#"
+            (() => {
+                const target = attributeTarget;
+                const policy = trustedTypes.createPolicy('attributes', {createScript: value => value});
+                const branded = policy.createScript('A\ud800\0');
+                branded.toString = () => { throw new Error('coerced branded value'); };
+                if (target.setAttribute('ONCLICK', branded) !== undefined ||
+                    target.setAttribute('DATA-X', 'plain\udc00') !== undefined ||
+                    target.setAttributeNS('urn:example', 'p:value', 'foreign\0') !== undefined) return false;
+                try { target.setAttributeNS(null, 'p:invalid', 'x'); return false; }
+                catch (error) { if (error.name !== 'NamespaceError') return false; }
+                try { target.setAttribute('with space', 'x'); return false; }
+                catch (error) { return error.name === 'InvalidCharacterError'; }
+            })()
+        "#)
+    }).unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let element = snapshot.node(element).unwrap();
+    assert_eq!(
+        element.attribute(&"onclick".into()).unwrap().code_units(),
+        &[b'A' as u16, 0xd800, 0]
+    );
+    assert_eq!(
+        element.attribute(&"data-x".into()).unwrap().code_units(),
+        &units("plain")
+            .into_iter()
+            .chain([0xdc00])
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        element
+            .attribute_ns(&Namespace::from_uri("urn:example"), &"value".into())
+            .unwrap()
+            .code_units(),
+        &units("foreign\0")
+    );
+}
+
 pub(in crate::document_scripting) fn window_factory_creates_the_exact_default_policy() {
     let mut host = public_node_host(5_000, 20_000);
     let permit = host.permit().unwrap();
