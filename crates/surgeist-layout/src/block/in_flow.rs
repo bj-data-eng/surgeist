@@ -12,6 +12,7 @@ mod child_compute;
 mod placement;
 mod traversal;
 
+pub(crate) use traversal::{InFlowChild, PendingBox};
 pub(super) use traversal::{InFlowStep, InFlowTraversal};
 
 use child_compute::{

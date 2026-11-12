@@ -1,5 +1,5 @@
 use crate::engine::block_scope::{ComputeResult, ordinary};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, ops::ControlFlow};
 
 use super::inline::{
     AtomicInlineBoxParticipant, ForcedLineBreakControlOf, InlineBoundaryControlOf, InlineFlowOf,
@@ -58,6 +58,7 @@ mod sizing;
 
 pub(crate) use absolute::StaticPositionOf;
 use absolute::layout_absolute_children;
+pub(crate) use in_flow::PendingBox;
 pub(crate) use input::BlockChildProjection;
 use input::{
     BlockContainerProjection, automatic_block_depends_on_ratio, block_container_projection,
@@ -156,27 +157,30 @@ pub(crate) fn compute_block_scoped<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let incoming = tree
-        .block_float_state()
-        .and_then(|state| state.incoming(node, input));
-    if incoming.is_some()
-        && float_context::Role::for_input(tree.node_input(node), input)
-            != float_context::Role::Shared
-    {
-        return Err(float_context::missing(node).into());
-    }
-
-    compute_block_with_optional_inherited_float_exclusions(tree, node, input, incoming)
+    let mut computation = match begin_block_computation(tree, node, input)? {
+        ControlFlow::Break(output) => return Ok(output),
+        ControlFlow::Continue(computation) => computation,
+    };
+    let result = (|| loop {
+        match computation.advance(tree)? {
+            ControlFlow::Break(output) => return Ok(output),
+            ControlFlow::Continue(child) => {
+                let (pending, output) = child.compute(tree)?;
+                computation.accept_child(tree, pending, output)?;
+            }
+        }
+    })();
+    computation.finish(tree, result)
 }
 
-struct BlockResult<Node, S: LayoutScalar> {
+pub(crate) struct BlockResult<Node, S: LayoutScalar> {
     output: ComputeOutputOf<S>,
     used: ComputeInputOf<S>,
     floats: Option<(FloatExclusions<S, Node>, usize)>,
     remaining_cut: Option<entry::canonical::Separation<Node, S>>,
 }
 
-struct BlockComputation<Node, S: LayoutScalar> {
+pub(crate) struct BlockComputation<'input, Node, S: LayoutScalar> {
     node: Node,
     input: ComputeInputOf<S>,
     pass_input: ComputeInputOf<S>,
@@ -185,9 +189,80 @@ struct BlockComputation<Node, S: LayoutScalar> {
     incoming: Option<float_context::Incoming<Node, S>>,
     anonymous: bool,
     formatted: bool,
+    pass: BlockPass<'input, Node, S>,
 }
 
-impl<Node: Copy + Eq, S: LayoutScalar> BlockComputation<Node, S> {
+impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockComputation<'input, Node, S> {
+    pub(crate) fn request(&self) -> (Node, ComputeInputOf<S>) {
+        (self.node, self.input)
+    }
+
+    pub(crate) fn advance<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+    ) -> ComputeResult<Node, BlockPassStep<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            let output = if self.pass.active.is_some() {
+                let inherited = self
+                    .incoming
+                    .as_ref()
+                    .map(|incoming| incoming.frame.as_ref());
+                match self.pass.advance(tree, inherited)? {
+                    ControlFlow::Break(output) => output,
+                    ControlFlow::Continue(child) => return Ok(ControlFlow::Continue(child)),
+                }
+            } else if let Some(output) = self.start_pass(tree)? {
+                output
+            } else {
+                continue;
+            };
+            if !self.retry_scrollbars(&output)? {
+                return Ok(ControlFlow::Break(output));
+            }
+        }
+    }
+
+    fn start_pass<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+    ) -> ComputeResult<Node, Option<BlockResult<Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let inherited = self
+            .incoming
+            .as_ref()
+            .map(|incoming| incoming.frame.as_ref());
+        match begin_block_pass(
+            tree,
+            self.node,
+            self.pass_input,
+            inherited,
+            self.contained_size,
+        )? {
+            ControlFlow::Break(output) => Ok(Some(output)),
+            ControlFlow::Continue(pass) => {
+                self.pass = pass;
+                Ok(None)
+            }
+        }
+    }
+
+    pub(crate) fn accept_child<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        pending: Option<in_flow::PendingBox<'input, Node, S>>,
+        output: ComputeOutputOf<S>,
+    ) -> ComputeResult<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        self.pass.accept_child(tree, pending, output)
+    }
+
     fn retry_scrollbars<M>(
         &mut self,
         result: &BlockResult<Node, S>,
@@ -213,7 +288,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> BlockComputation<Node, S> {
         Ok(true)
     }
 
-    fn finish<'input, Tree, M>(
+    pub(crate) fn finish<Tree, M>(
         self,
         tree: &mut Tree,
         result: ComputeResult<Node, BlockResult<Node, S>, S, M>,
@@ -227,8 +302,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> BlockComputation<Node, S> {
             incoming,
             anonymous,
             formatted,
+            pass,
             ..
         } = self;
+        drop(pass);
         let formatted_result = if formatted && let Some(text) = tree.text_computation() {
             text.formatted_end_block(node, input, anonymous, result.is_ok())
                 .map_err(|error| inline_run::text_run_error(node, error.into()))
@@ -310,15 +387,34 @@ where
     }))
 }
 
-fn compute_block_with_optional_inherited_float_exclusions<'input, Tree, M>(
+pub(crate) type BlockComputationStart<'input, Tree, M> = ComputeResult<
+    <Tree as Traverse>::Node,
+    ControlFlow<
+        ComputeOutputOf<<Tree as Traverse>::Scalar>,
+        BlockComputation<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    >,
+    <Tree as Traverse>::Scalar,
+    M,
+>;
+
+pub(crate) fn begin_block_computation<'input, Tree, M>(
     tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
+    node: Tree::Node,
     input: ComputeInputOf<Tree::Scalar>,
-    incoming: Option<float_context::Incoming<<Tree as Traverse>::Node, Tree::Scalar>>,
-) -> ComputeResult<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
+) -> BlockComputationStart<'input, Tree, M>
 where
     Tree: Compute<'input, M>,
 {
+    let incoming = tree
+        .block_float_state()
+        .and_then(|state| state.incoming(node, input));
+    if incoming.is_some()
+        && float_context::Role::for_input(tree.node_input(node), input)
+            != float_context::Role::Shared
+    {
+        return Err(float_context::missing(node).into());
+    }
+
     let inherited = incoming.as_ref().map(|incoming| incoming.frame.as_ref());
     let group_style = tree.node_input(node);
     let contained_size = if let Some(containment) =
@@ -341,7 +437,7 @@ where
                 .text_computation()
                 .is_some_and(|text| text.formatted_active())
         {
-            return Ok(containment.empty);
+            return Ok(ControlFlow::Break(containment.empty));
         }
         containment.outer
     } else {
@@ -357,7 +453,7 @@ where
             text.formatted_begin_block(node, input, anonymous)
         })
         .map_err(|error| inline_run::text_run_error(node, error.into()))?;
-    let mut computation = BlockComputation {
+    Ok(ControlFlow::Continue(BlockComputation {
         node,
         input,
         pass_input: input,
@@ -368,24 +464,8 @@ where
         incoming,
         anonymous,
         formatted,
-    };
-    let result = (|| loop {
-        let inherited = computation
-            .incoming
-            .as_ref()
-            .map(|incoming| incoming.frame.as_ref());
-        let output = compute_block_inner::<Tree, Tree::Scalar, M>(
-            tree,
-            computation.node,
-            computation.pass_input,
-            inherited,
-            computation.contained_size,
-        )?;
-        if !computation.retry_scrollbars(&output)? {
-            return Ok(output);
-        }
-    })();
-    computation.finish(tree, result)
+        pass: BlockPass { active: None },
+    }))
 }
 
 fn compute_block_inner<'input, Tree, S, M>(
@@ -395,6 +475,37 @@ fn compute_block_inner<'input, Tree, S, M>(
     inherited: Option<&InheritedFloatExclusions<S, <Tree as Traverse>::Node>>,
     contained_size: Size<Option<S>>,
 ) -> ComputeResult<<Tree as Traverse>::Node, BlockResult<<Tree as Traverse>::Node, S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let mut pass = match begin_block_pass(tree, node, input, inherited, contained_size)? {
+        ControlFlow::Break(output) => return Ok(output),
+        ControlFlow::Continue(pass) => pass,
+    };
+    loop {
+        match pass.advance(tree, inherited)? {
+            ControlFlow::Break(output) => return Ok(output),
+            ControlFlow::Continue(child) => {
+                let (pending, output) = child.compute(tree)?;
+                pass.accept_child(tree, pending, output)?;
+            }
+        }
+    }
+}
+
+type BlockPassStart<'input, Node, S> =
+    ControlFlow<BlockResult<Node, S>, BlockPass<'input, Node, S>>;
+pub(crate) type BlockPassStep<'input, Node, S> =
+    ControlFlow<BlockResult<Node, S>, in_flow::InFlowChild<'input, Node, S>>;
+
+fn begin_block_pass<'input, Tree, S, M>(
+    tree: &mut Tree,
+    node: <Tree as Traverse>::Node,
+    input: ComputeInputOf<S>,
+    inherited: Option<&InheritedFloatExclusions<S, <Tree as Traverse>::Node>>,
+    contained_size: Size<Option<S>>,
+) -> ComputeResult<<Tree as Traverse>::Node, BlockPassStart<'input, Tree::Node, S>, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
@@ -422,7 +533,7 @@ where
             height: Some(height),
         } = constants.node_outer_size
     {
-        return Ok(BlockResult {
+        return Ok(ControlFlow::Break(BlockResult {
             output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
                 .with_named_baselines(named_block_baselines(
                     node,
@@ -434,7 +545,7 @@ where
             used: input,
             floats: None,
             remaining_cut: None,
-        });
+        }));
     }
     if contained_size == Size::NONE
         && input.run_mode() == RunMode::ComputeSize
@@ -448,7 +559,7 @@ where
         } = constants.node_outer_size
         && !normal_flow_children_need_physical_sizing_work(tree, &children)
     {
-        return Ok(BlockResult {
+        return Ok(ControlFlow::Break(BlockResult {
             output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
                 .with_named_baselines(named_block_baselines(
                     node,
@@ -460,7 +571,7 @@ where
             used: input,
             floats: None,
             remaining_cut: None,
-        });
+        }));
     }
     let normal_block_fill = intrinsic::normal_fill(&style, input, tree.node_input(node).float);
     let accepted_inline_outer =
@@ -500,7 +611,7 @@ where
             accepted_inline_outer,
         },
     )?;
-    let mut body = BlockFlow {
+    let flow = BlockFlow {
         node,
         input,
         style,
@@ -510,24 +621,83 @@ where
         sizing,
         final_refit: None,
     };
-    let mut traversal = body.begin_normal(tree, inherited)?;
-    loop {
-        let pass_constants = body.pass_constants();
-        match traversal.step(tree, &body.children, pass_constants)? {
-            InFlowStep::Continue => {}
-            InFlowStep::Child(child) => {
-                let (pending, output) = child.compute(tree)?;
-                traversal.accept_child(tree, pass_constants, pending, output)?;
-            }
-            InFlowStep::Complete => {
-                let completed = traversal.finish(tree)?;
-                if body.final_refit.is_none() && body.sizing.needs_final_pass {
-                    traversal = body.begin_final(tree, inherited, completed)?;
-                } else {
-                    return body.finish(tree, completed);
+    let traversal = flow.begin_normal(tree, inherited)?;
+    Ok(ControlFlow::Continue(BlockPass {
+        active: Some(ActiveBlockPass { flow, traversal }),
+    }))
+}
+
+struct BlockPass<'input, Node, S: LayoutScalar> {
+    active: Option<ActiveBlockPass<'input, Node, S>>,
+}
+
+struct ActiveBlockPass<'input, Node, S: LayoutScalar> {
+    flow: BlockFlow<'input, Node, S>,
+    traversal: InFlowTraversal<Node, S>,
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
+    fn advance<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        inherited: Option<&InheritedFloatExclusions<S, Node>>,
+    ) -> ComputeResult<Node, BlockPassStep<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            let active = self.active.as_mut().expect("active Block pass");
+            match active.traversal.step(
+                tree,
+                &active.flow.children,
+                active.flow.pass_constants(),
+            )? {
+                InFlowStep::Continue => {}
+                InFlowStep::Child(child) => return Ok(ControlFlow::Continue(child)),
+                InFlowStep::Complete => {
+                    if let Some(output) = self.complete_traversal(tree, inherited)? {
+                        return Ok(ControlFlow::Break(output));
+                    }
                 }
             }
         }
+    }
+
+    fn complete_traversal<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        inherited: Option<&InheritedFloatExclusions<S, Node>>,
+    ) -> ComputeResult<Node, Option<BlockResult<Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let ActiveBlockPass {
+            mut flow,
+            traversal,
+        } = self.active.take().expect("completed Block pass");
+        let completed = traversal.finish(tree)?;
+        if flow.final_refit.is_none() && flow.sizing.needs_final_pass {
+            let traversal = flow.begin_final(tree, inherited, completed)?;
+            self.active = Some(ActiveBlockPass { flow, traversal });
+            Ok(None)
+        } else {
+            flow.finish(tree, completed).map(Some)
+        }
+    }
+
+    fn accept_child<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        pending: Option<in_flow::PendingBox<'input, Node, S>>,
+        output: ComputeOutputOf<S>,
+    ) -> ComputeResult<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let active = self.active.as_mut().expect("active Block pass");
+        active
+            .traversal
+            .accept_child(tree, active.flow.pass_constants(), pending, output)
     }
 }
 

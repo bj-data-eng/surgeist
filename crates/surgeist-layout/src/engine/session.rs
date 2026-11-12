@@ -36,6 +36,11 @@ enum ChildAdmission<Node, S: LayoutScalar> {
     },
 }
 
+struct UncachedLayout<'input, S: LayoutScalar> {
+    style: &'input NodeInputOf<S>,
+    leaf: bool,
+}
+
 type CanonicalFrames<Tree> = Vec<
     crate::text_layout::state::CanonicalFrame<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
 >;
@@ -1511,16 +1516,11 @@ where
         super::block_scope::ordinary(self.compute_child_uncached_scoped(node, input))
     }
 
-    fn compute_child_uncached_scoped(
+    fn begin_uncached_layout(
         &mut self,
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
-    ) -> super::block_scope::ComputeResult<
-        Tree::Node,
-        ComputeOutputOf<Tree::Scalar>,
-        Tree::Scalar,
-        Tree::MeasureError,
-    > {
+    ) -> UncachedLayout<'a, Tree::Scalar> {
         if input.run_mode().is_perform_layout()
             && let Some(index) = self.wrapping.context.as_ref().and_then(|context| {
                 context
@@ -1536,8 +1536,66 @@ where
                 .native_completions
                 .retain(|completion| completion.family != index);
         }
-        let style = self.tree.node_input(node);
-        if self.tree.has_leaf_measurement(node) {
+        UncachedLayout {
+            style: self.tree.node_input(node),
+            leaf: self.tree.has_leaf_measurement(node),
+        }
+    }
+
+    fn finish_uncached_layout(
+        &mut self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+        output: ComputeOutputOf<Tree::Scalar>,
+    ) -> SessionResult<Tree, ()> {
+        if input.run_mode().is_perform_layout()
+            && let Some(family) = self.wrapping.context.as_ref().and_then(|context| {
+                context
+                    .families
+                    .iter()
+                    .position(|family| family.formatter() == node)
+            })
+        {
+            self.retain_native_completion(
+                node,
+                crate::inline_wrapping::family::NativeFormatterCompletion {
+                    family,
+                    input,
+                    output,
+                },
+            )?;
+        }
+        self.record_block_body(node, input, output)?;
+        Ok(())
+    }
+
+    fn compute_child_uncached_scoped(
+        &mut self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+    ) -> super::block_scope::ComputeResult<
+        Tree::Node,
+        ComputeOutputOf<Tree::Scalar>,
+        Tree::Scalar,
+        Tree::MeasureError,
+    > {
+        let initial = self.begin_uncached_layout(node, input);
+        self.compute_uncached_layout_body(node, input, initial)
+    }
+
+    fn compute_uncached_layout_body(
+        &mut self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+        initial: UncachedLayout<'a, Tree::Scalar>,
+    ) -> super::block_scope::ComputeResult<
+        Tree::Node,
+        ComputeOutputOf<Tree::Scalar>,
+        Tree::Scalar,
+        Tree::MeasureError,
+    > {
+        let UncachedLayout { style, leaf } = initial;
+        if leaf {
             let icb = self.fragment_intrinsics().map(|context| {
                 context
                     .request
@@ -1648,24 +1706,7 @@ where
                 unreachable!("inner_display removes inline display variants")
             }
         }?;
-        if input.run_mode().is_perform_layout()
-            && let Some(family) = self.wrapping.context.as_ref().and_then(|context| {
-                context
-                    .families
-                    .iter()
-                    .position(|family| family.formatter() == node)
-            })
-        {
-            self.retain_native_completion(
-                node,
-                crate::inline_wrapping::family::NativeFormatterCompletion {
-                    family,
-                    input,
-                    output,
-                },
-            )?;
-        }
-        self.record_block_body(node, input, output)?;
+        self.finish_uncached_layout(node, input, output)?;
         Ok(output)
     }
 }

@@ -6,7 +6,7 @@ pub(in crate::block) enum InFlowStep<'input, Node, S: LayoutScalar> {
     Child(InFlowChild<'input, Node, S>),
 }
 
-pub(in crate::block) struct InFlowChild<'input, Node, S: LayoutScalar> {
+pub(crate) struct InFlowChild<'input, Node, S: LayoutScalar> {
     request: scope::ChildRequest<Node, S>,
     pending: Option<PendingBox<'input, Node, S>>,
 }
@@ -14,6 +14,15 @@ pub(in crate::block) struct InFlowChild<'input, Node, S: LayoutScalar> {
 type ChildCompletion<'input, Node, S> = (Option<PendingBox<'input, Node, S>>, ComputeOutputOf<S>);
 
 impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
+    pub(crate) fn into_request(
+        self,
+    ) -> (
+        scope::ChildRequest<Node, S>,
+        Option<PendingBox<'input, Node, S>>,
+    ) {
+        (self.request, self.pending)
+    }
+
     pub(in crate::block) fn compute<Tree, M>(
         self,
         tree: &mut Tree,
@@ -31,7 +40,7 @@ impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
     }
 }
 
-pub(in crate::block) struct PendingBox<'input, Node, S: LayoutScalar> {
+pub(crate) struct PendingBox<'input, Node, S: LayoutScalar> {
     child: Node,
     style: BlockChildProjection<'input, S>,
     prepared: PreparedChild<S>,
