@@ -341,7 +341,7 @@ impl Capture {
             .ok_or(Error::ExpiredIdentity)?
             .document
             .ordinary;
-        ordinary.project(
+        ordinary.create(
             scope,
             owner,
             events,

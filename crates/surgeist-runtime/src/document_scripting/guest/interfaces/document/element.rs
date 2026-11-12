@@ -422,24 +422,9 @@ impl PublicEventBindings {
         node: GuestNode,
         prototype: &RetainedCallbackObject,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
-        self.document.ordinary.project(
-            scope,
-            owner,
-            events,
-            ordinary::NodePrototype::Creation(prototype),
-            |inbox, key| {
-                self.callbacks.with_native(owner, |session, _| {
-                    let watch = session.dom().raw_mut().watch_node_retirement(
-                        node.node(),
-                        inbox,
-                        key,
-                        events.limits.node_retirement,
-                        &owner.cancellation,
-                    )?;
-                    Ok((node, watch))
-                })
-            },
-        )
+        self.document
+            .ordinary
+            .watch(scope, owner, events, &self.callbacks, node, prototype)
     }
 }
 

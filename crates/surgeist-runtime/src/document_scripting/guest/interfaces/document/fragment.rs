@@ -124,7 +124,7 @@ impl Capture {
             .ok_or(Error::ExpiredIdentity)?
             .document
             .ordinary;
-        bindings.project(scope, owner, events, prototype, |inbox, key| {
+        bindings.create(scope, owner, events, prototype, |inbox, key| {
             self.with_native(owner, |session, _| {
                 let mut batch = DomBatch::new();
                 let ticket = batch.create_fragment(document);
