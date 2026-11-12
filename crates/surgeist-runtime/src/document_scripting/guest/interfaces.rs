@@ -125,8 +125,10 @@ impl OriginCost {
     }
 }
 
+type CaptureFunding<'a> = &'a dyn Fn(usize) -> Result<Capture, DocumentGuestEventError>;
+
 struct OriginInterfaceFunding<'a> {
-    capture: &'a dyn Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+    capture: CaptureFunding<'a>,
     retain: &'a dyn Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
 }
 
@@ -457,13 +459,22 @@ impl PublicEventBindings {
         global: DomHostedGlobalId,
         use_origin: impl FnOnce(&OriginBindings) -> Result<T, DocumentGuestEventError>,
     ) -> Result<T, DocumentGuestEventError> {
+        self.with_origin_with(global, || events.step(), use_origin)
+    }
+
+    fn with_origin_with<T>(
+        &self,
+        global: DomHostedGlobalId,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+        use_origin: impl FnOnce(&OriginBindings) -> Result<T, DocumentGuestEventError>,
+    ) -> Result<T, DocumentGuestEventError> {
         let origins = self
             .origins
             .try_borrow()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let mut next = origins.as_deref();
         while let Some(origin) = next {
-            events.step()?;
+            step()?;
             if origin.global == global {
                 return use_origin(origin);
             }

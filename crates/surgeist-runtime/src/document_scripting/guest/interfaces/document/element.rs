@@ -1,5 +1,6 @@
 //! Element projection over a current canonical Document read.
 
+use super::character_data::CharacterKind;
 use super::*;
 use surgeist_dom::DomQualifiedName;
 use surgeist_html::{
@@ -85,6 +86,7 @@ enum NativeProjection {
     Document(DocumentId),
     Fragment,
     ShadowRoot,
+    Character(CharacterKind),
     Element(ElementInterface),
 }
 
@@ -359,6 +361,8 @@ impl PublicEventBindings {
                     DomNodeKind::Document(_)
                         | DomNodeKind::DocumentFragment
                         | DomNodeKind::ShadowRoot(_)
+                        | DomNodeKind::Text(_)
+                        | DomNodeKind::Comment(_)
                         | DomNodeKind::Element(_)
                 ) {
                     return Err(DocumentScriptNativeError::ProjectionCustody.into());
@@ -383,6 +387,13 @@ impl PublicEventBindings {
                 }
                 if matches!(node.kind(), DomNodeKind::ShadowRoot(_)) {
                     return Ok((origin, attached, NativeProjection::ShadowRoot));
+                }
+                if let Some(kind) = match node.kind() {
+                    DomNodeKind::Text(_) => Some(CharacterKind::Text),
+                    DomNodeKind::Comment(_) => Some(CharacterKind::Comment),
+                    _ => None,
+                } {
+                    return Ok((origin, attached, NativeProjection::Character(kind)));
                 }
                 let element = node
                     .as_element()
@@ -418,6 +429,13 @@ impl PublicEventBindings {
                 events,
                 GuestNode::ShadowRoot(node),
                 &documents.shadow,
+            ),
+            NativeProjection::Character(kind) => self.project_watched_node(
+                scope,
+                owner,
+                events,
+                kind.project(node),
+                documents.character_data.prototype(kind),
             ),
             NativeProjection::Element(interface) => {
                 let prototype = elements.prototype(events, interface)?;

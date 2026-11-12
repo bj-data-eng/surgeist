@@ -76,7 +76,6 @@ pub(super) struct DocumentBindings {
     attached: RetainedCallbackObject,
     documents: RefCell<Option<Box<DocumentPin>>>,
     prototypes: DocumentPrototypes,
-    character_data: character_data::CharacterBindings,
     element: element::ElementBindings,
     ordinary: ordinary::OrdinaryBindings,
 }
@@ -85,6 +84,7 @@ pub(super) struct DocumentPrototypes {
     document: RetainedCallbackObject,
     fragment: RetainedCallbackObject,
     shadow: RetainedCallbackObject,
+    character_data: character_data::CharacterBindings,
 }
 
 impl DocumentPrototypes {
@@ -101,6 +101,7 @@ impl DocumentPrototypes {
             constructor,
             (&unavailable, &unavailable),
             funding,
+            None,
         )?;
         Ok(prototypes)
     }
@@ -111,6 +112,7 @@ impl DocumentPrototypes {
         constructor: &Value<'scope>,
         (document_callback, fragment_callback): (&ConstructorCallback, &ConstructorCallback),
         funding: &OriginInterfaceFunding<'_>,
+        constructors: Option<CaptureFunding<'_>>,
     ) -> Result<(Self, Value<'scope>), DocumentGuestEventError> {
         let (_, document) =
             install_derived_node(scope, node, constructor, DOCUMENT, document_callback)?;
@@ -124,6 +126,14 @@ impl DocumentPrototypes {
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
         fragment::install_factory(scope, &document, &funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
+        let character_data = character_data::CharacterBindings::install(
+            scope,
+            node,
+            constructor,
+            &document,
+            funding,
+            constructors,
+        )?;
         let observed = scope.callback_object(&document)?;
         let retained_document = scope.retain_callback_object(observed, funding.retain)?;
         let observed = scope.callback_object(&fragment)?;
@@ -135,6 +145,7 @@ impl DocumentPrototypes {
                 document: retained_document,
                 fragment: retained_fragment,
                 shadow: retained_shadow,
+                character_data,
             },
             document,
         ))
@@ -197,16 +208,9 @@ impl DocumentBindings {
             &node_constructor,
             (&callback, &fragment),
             &origin,
+            Some(capture),
         )?;
         let global = scope.global()?;
-        let character_data = character_data::CharacterBindings::install(
-            scope,
-            &node,
-            &node_constructor,
-            &prototype,
-            capture,
-            fund,
-        )?;
         let element = element::ElementBindings::install(
             scope,
             &node,
@@ -236,7 +240,6 @@ impl DocumentBindings {
             attached,
             documents: RefCell::new(None),
             prototypes,
-            character_data,
             element,
             ordinary: ordinary::OrdinaryBindings::new(inbox),
         })

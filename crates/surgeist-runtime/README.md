@@ -308,10 +308,13 @@ Element.shadowRoot exposes open roots. Node root reads and event paths use
 canonical identities and preserve closed-root visibility and retargeting.
 `DocumentGuestEventLimits` includes the native watch storage and work limits.
 The `Text` and `Comment` constructors and Document factories use the same
-creation and retirement boundary. The factories require a Document with the
-attached CharacterData profile. `CharacterData` exposes UTF-16 reads and
+creation and retirement boundary. The factories use the receiver Document's
+registered creation realm, including borrowed calls. Native Text and Comment
+use the same exact wrapper custody. `CharacterData` exposes UTF-16 reads and
 edits, with replacements driven by canonical Source under the caller's
 `DocumentGuestEventLimits::source_edits`. Those edits update native Ranges.
+Explicit Source Comment delegation uses the public Comment wrapper when the
+attachment has installed native node interfaces.
 AbortSignal and wider descendant navigation are separate capabilities.
 
 An attachment can enable callable Window timers with `WindowTimerLimits`.

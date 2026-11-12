@@ -1,7 +1,7 @@
 //! Retained custody indexed by exact native node retirement.
 
 use super::*;
-use surgeist_dom::DomNodeRetirementWatch;
+use surgeist_dom::{DomNodeRetirementWatch, DomSourceEventRequest};
 
 pub(super) struct OrdinaryBindings {
     inbox: RefCell<DomNodeRetirementInbox>,
@@ -23,6 +23,60 @@ enum Publication<Publish> {
 enum Projection<'prototype, 'scope, Publish> {
     Create(NodePrototype<'prototype, 'scope>, Publish),
     Watch(&'prototype RetainedCallbackObject, Publish),
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct Admission<'a> {
+    owner: &'a NativeOwner,
+    events: &'a GuestEvents,
+    request: Option<&'a DomSourceEventRequest>,
+}
+
+impl<'a> Admission<'a> {
+    fn ordinary(owner: &'a NativeOwner, events: &'a GuestEvents) -> Self {
+        Self {
+            owner,
+            events,
+            request: None,
+        }
+    }
+
+    pub(super) fn source(
+        owner: &'a NativeOwner,
+        events: &'a GuestEvents,
+        request: &'a DomSourceEventRequest,
+    ) -> Self {
+        Self {
+            owner,
+            events,
+            request: Some(request),
+        }
+    }
+
+    fn source_step(self) -> Result<(), DocumentGuestEventError> {
+        if let Some(request) = self.request {
+            let mut session = self
+                .owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            session
+                .dom()
+                .raw()
+                .source_event_step(request, &self.owner.cancellation)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn step(self) -> Result<(), DocumentGuestEventError> {
+        self.source_step()?;
+        self.events.step()
+    }
+
+    fn reserve(self, bytes: usize) -> Result<GuestBacking, DocumentGuestEventError> {
+        self.source_step()?;
+        self.events.reserve(self.owner, bytes)
+    }
 }
 
 #[derive(Default)]
@@ -115,10 +169,9 @@ impl ReservedSlot<'_> {
 impl OrdinaryPins {
     fn reserve<'a>(
         &'a mut self,
-        owner: &NativeOwner,
-        events: &GuestEvents,
+        admission: Admission<'_>,
     ) -> Result<(usize, ReservedSlot<'a>), DocumentGuestEventError> {
-        events.step()?;
+        admission.step()?;
         if let Some(key) = self.free {
             let slot = self
                 .slots
@@ -146,7 +199,7 @@ impl OrdinaryPins {
             let bytes = capacity
                 .checked_mul(size_of::<Slot>())
                 .ok_or(DocumentScriptNativeError::StorageLimit)?;
-            let backing = events.reserve(owner, bytes)?;
+            let backing = admission.reserve(bytes)?;
             let mut replacement = Vec::new();
             replacement
                 .try_reserve_exact(capacity)
@@ -155,7 +208,7 @@ impl OrdinaryPins {
                 return Err(DocumentScriptNativeError::StorageLimit.into());
             }
             for _ in &self.slots {
-                events.step()?;
+                admission.step()?;
             }
             return Ok((
                 key,
@@ -193,7 +246,11 @@ impl OrdinaryBindings {
         )
             -> Result<(GuestNode, DomNodeRetirementWatch), DocumentGuestEventError>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
-        self.project(scope, owner, events, Projection::Create(prototype, create))
+        self.project(
+            scope,
+            Admission::ordinary(owner, events),
+            Projection::Create(prototype, create),
+        )
     }
 
     pub(super) fn watch<'scope>(
@@ -207,8 +264,7 @@ impl OrdinaryBindings {
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         self.project(
             scope,
-            owner,
-            events,
+            Admission::ordinary(owner, events),
             Projection::Watch(prototype, |inbox: &DomNodeRetirementInbox, key| {
                 let watch = callbacks.with_native(owner, |session, _| {
                     session
@@ -228,11 +284,40 @@ impl OrdinaryBindings {
         )
     }
 
+    pub(super) fn watch_source<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        request: &DomSourceEventRequest,
+        node: GuestNode,
+        prototype: &RetainedCallbackObject,
+        handler: Result<(), Error>,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        self.project(
+            scope,
+            Admission::source(owner, events, request),
+            Projection::Watch(prototype, |inbox: &DomNodeRetirementInbox, key| {
+                let mut session = owner
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                let watch = session.dom().raw_mut().watch_source_event_node_retirement(
+                    request,
+                    node.node(),
+                    inbox,
+                    key,
+                    &owner.cancellation,
+                )?;
+                handler?;
+                Ok((node, watch))
+            }),
+        )
+    }
+
     fn project<'scope, Publish>(
         &self,
         scope: &mut Scope<'scope>,
-        owner: &NativeOwner,
-        events: &GuestEvents,
+        admission: Admission<'_>,
         projection: Projection<'_, 'scope, Publish>,
     ) -> Result<Value<'scope>, DocumentGuestEventError>
     where
@@ -246,14 +331,14 @@ impl OrdinaryBindings {
             .pins
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let (key, reserved) = pins.reserve(owner, events)?;
+        let (key, reserved) = pins.reserve(admission)?;
         let inbox = self
             .inbox
             .try_borrow()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let backing = events.reserve(owner, size_of::<Pin>())?;
+        let backing = admission.reserve(size_of::<Pin>())?;
         let lifetime_backing =
-            events.reserve(owner, size_of::<NodeLifetime>() + 2 * size_of::<usize>())?;
+            admission.reserve(size_of::<NodeLifetime>() + 2 * size_of::<usize>())?;
         let lifetime = Rc::new(NodeLifetime {
             retired: Cell::new(false),
             _backing: lifetime_backing,
@@ -264,26 +349,25 @@ impl OrdinaryBindings {
         };
         let (holder, publication) = match projection {
             Projection::Create(NodePrototype::Selected(prototype), create) => (
-                events.project(owner, scope, ObjectPrototype::Object(prototype), payload)?,
+                admission.events.project(
+                    admission.owner,
+                    scope,
+                    ObjectPrototype::Object(prototype),
+                    payload,
+                )?,
                 Publication::Pending(create),
             ),
             Projection::Create(NodePrototype::Creation(prototype), create) => (
-                Self::form_in_prototype_realm(scope, owner, events, prototype, payload, || Ok(()))?,
+                Self::form_in_prototype_realm(scope, admission, prototype, payload, || Ok(()))?,
                 Publication::Pending(create),
             ),
             Projection::Watch(prototype, watch) => {
                 let mut watched = None;
-                let holder = Self::form_in_prototype_realm(
-                    scope,
-                    owner,
-                    events,
-                    prototype,
-                    payload,
-                    || {
+                let holder =
+                    Self::form_in_prototype_realm(scope, admission, prototype, payload, || {
                         watched = Some(watch(&inbox, key)?);
                         Ok(())
-                    },
-                )?;
+                    })?;
                 let (node, watch) = watched.ok_or(DocumentScriptNativeError::ProjectionCustody)?;
                 (holder, Publication::Watched(node, watch))
             }
@@ -317,7 +401,7 @@ impl OrdinaryBindings {
             Publication::Pending(publish) => match publish(&inbox, key) {
                 Ok(created) => created,
                 Err(error) => {
-                    let first = refuse(scope, &events.refusal, error);
+                    let first = refuse(scope, &admission.events.refusal, error);
                     let pin = {
                         let allocation = pin;
                         *allocation
@@ -338,19 +422,18 @@ impl OrdinaryBindings {
 
     fn form_in_prototype_realm(
         scope: &mut Scope<'_>,
-        owner: &NativeOwner,
-        events: &GuestEvents,
+        admission: Admission<'_>,
         prototype: &RetainedCallbackObject,
         payload: GuestNodeProjection,
         admit_watch: impl FnOnce() -> Result<(), DocumentGuestEventError>,
     ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
-        events.step()?;
+        admission.step()?;
         scope.project_retained_native_object_in_prototype_realm(
             prototype,
             payload,
             |payload, holder| {
-                let payload = events.reserve(owner, payload)?;
-                let holder = events.reserve(owner, holder)?;
+                let payload = admission.reserve(payload)?;
+                let holder = admission.reserve(holder)?;
                 admit_watch()?;
                 Ok((payload, holder))
             },
@@ -363,12 +446,21 @@ impl OrdinaryBindings {
         events: &GuestEvents,
         node: NodeId,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
+        self.open_with(scope, node, || events.step())
+    }
+
+    pub(super) fn open_with<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        node: NodeId,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
         let pins = self
             .pins
             .try_borrow()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         for slot in &pins.slots {
-            events.step()?;
+            step()?;
             if let Slot::Retained(pin) = slot
                 && pin.live.as_ref().is_some_and(|live| live.node == node)
             {
