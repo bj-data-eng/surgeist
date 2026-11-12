@@ -2,7 +2,8 @@ use std::any::{Any, TypeId};
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use crate::{Error, ObjectPrototype, RetainedCallbackObject, Scope, Value};
+use crate::callback_object::CallbackObjectIdentity;
+use crate::{Error, ObjectPrototype, RealmAuthority, RetainedCallbackObject, Scope, Value};
 
 /// One typed native payload and its admitted Rust backing. A lookup can keep
 /// both alive after the original JavaScript object becomes unreachable.
@@ -31,6 +32,42 @@ pub struct NativeObjectToken<T> {
     owner: u64,
     index: u32,
     marker: PhantomData<Rc<T>>,
+}
+
+/// Prototype and creation realm for an unpublished native projection.
+pub enum NativeProjectionPrototype<'value, 'scope> {
+    /// Use the current realm and an ordinary scoped prototype choice.
+    Current(ObjectPrototype<'value, 'scope>),
+    /// Create the object in the retained prototype's own realm.
+    Creation(&'value RetainedCallbackObject),
+}
+
+struct ProjectedNativeObject {
+    holder: Rc<CallbackObjectIdentity>,
+    realm: RealmAuthority,
+    index: u32,
+}
+
+impl ProjectedNativeObject {
+    fn into_holder(self) -> RetainedCallbackObject {
+        RetainedCallbackObject::new(self.holder, self.realm)
+    }
+}
+
+struct AbortProjection<'borrow, 'scope> {
+    scope: &'borrow mut Scope<'scope>,
+    projected: &'borrow ProjectedNativeObject,
+    armed: bool,
+}
+
+impl Drop for AbortProjection<'_, '_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.scope
+                .operations
+                .discard_unpublished_native_object(self.projected.index, &self.projected.holder);
+        }
+    }
 }
 
 impl<'scope> Scope<'scope> {
@@ -74,7 +111,7 @@ impl<'scope> Scope<'scope> {
         let realm = self.realm_authority()?;
         let projection = admit(self.native_projection_bytes::<T, Storage>()?)?;
         let holder_backing = admit(self.callback_object_bytes::<Storage>()?)?;
-        let holder = self.operations.project_retained_native_object(
+        let (holder, _) = self.operations.project_retained_native_object(
             prototype.input(),
             Rc::new(NativeObject::new(payload, projection)),
             Box::new(holder_backing),
@@ -99,21 +136,87 @@ impl<'scope> Scope<'scope> {
         payload: T,
         admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
     ) -> Result<RetainedCallbackObject, E> {
-        let realm = prototype.associated_realm().clone();
-        let prototype = prototype.validated_holder(self)?;
+        self.form_retained_native_object(
+            NativeProjectionPrototype::Creation(prototype),
+            payload,
+            admit,
+        )
+        .map(ProjectedNativeObject::into_holder)
+    }
+
+    /// Form and validate a private retained projection before attempting the
+    /// host operation. The host closure receives only the authenticated Rust
+    /// payload. The guest value and holder escape only after it succeeds.
+    /// Failure releases their admitted Rust backing without a collection.
+    pub fn try_project_retained_native_object<T: 'static, Storage: 'static, R, E: From<Error>>(
+        &mut self,
+        prototype: NativeProjectionPrototype<'_, 'scope>,
+        payload: T,
+        admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
+        commit: impl FnOnce(&T) -> Result<R, E>,
+    ) -> Result<(Value<'scope>, RetainedCallbackObject, R), E> {
+        let projected = self.form_retained_native_object(prototype, payload, admit)?;
+        let mut abort = AbortProjection {
+            scope: self,
+            projected: &projected,
+            armed: true,
+        };
+        let root = abort
+            .scope
+            .operations
+            .open_callback_object(&projected.holder)?;
+        let value = abort.scope.value(root);
+        let native = abort
+            .scope
+            .native_object::<T>(&value)?
+            .ok_or(Error::ExpectedNativeObject)?;
+        let result = commit(native.payload())?;
+        abort.armed = false;
+        drop(abort);
+        Ok((value, projected.into_holder(), result))
+    }
+
+    fn form_retained_native_object<T: 'static, Storage: 'static, E: From<Error>>(
+        &mut self,
+        prototype: NativeProjectionPrototype<'_, 'scope>,
+        payload: T,
+        admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
+    ) -> Result<ProjectedNativeObject, E> {
+        enum Resolved<'value> {
+            Current(crate::backend::ObjectPrototype<'value>),
+            Creation(&'value Rc<CallbackObjectIdentity>),
+        }
+        let (realm, prototype) = match prototype {
+            NativeProjectionPrototype::Current(prototype) => (
+                self.realm_authority()?,
+                Resolved::Current(prototype.input()),
+            ),
+            NativeProjectionPrototype::Creation(prototype) => (
+                prototype.associated_realm().clone(),
+                Resolved::Creation(prototype.validated_holder(self)?),
+            ),
+        };
         let (projection, holder_backing) = admit(
             self.native_projection_bytes::<T, Storage>()?,
             self.callback_object_bytes::<Storage>()?,
         )?;
-        let holder = self
-            .operations
-            .project_retained_native_object_in_prototype_realm(
-                prototype,
-                realm.key,
-                Rc::new(NativeObject::new(payload, projection)),
-                Box::new(holder_backing),
-            )?;
-        Ok(RetainedCallbackObject::new(holder, realm))
+        let payload = Rc::new(NativeObject::new(payload, projection));
+        let backing = Box::new(holder_backing);
+        let (holder, index) = match prototype {
+            Resolved::Current(prototype) => self
+                .operations
+                .project_retained_native_object(prototype, payload, backing)?,
+            Resolved::Creation(prototype) => self
+                .operations
+                .project_retained_native_object_in_prototype_realm(
+                    prototype, realm.key, payload, backing,
+                )?,
+        };
+        Ok(ProjectedNativeObject {
+            holder,
+            realm,
+            index,
+        })
     }
 
     /// Observe the exact branded object's weak identity without retaining it.

@@ -1268,7 +1268,7 @@ impl Operations for Entered<'_, '_, '_> {
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn std::any::Any>,
         backing: Box<dyn std::any::Any>,
-    ) -> Result<Rc<CallbackObjectIdentity>, Error> {
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error> {
         self.project_pinned_payload(prototype, payload, backing)
     }
 
@@ -1278,8 +1278,18 @@ impl Operations for Entered<'_, '_, '_> {
         realm: RealmKey,
         payload: Rc<dyn std::any::Any>,
         backing: Box<dyn std::any::Any>,
-    ) -> Result<Rc<CallbackObjectIdentity>, Error> {
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error> {
         self.project_pinned_payload_in_prototype_realm(prototype, realm, payload, backing)
+    }
+
+    fn discard_unpublished_native_object(
+        &mut self,
+        index: u32,
+        holder: &Rc<CallbackObjectIdentity>,
+    ) {
+        let roots = &self.roots;
+        let _ = roots.callback_objects.release(roots, holder);
+        roots.native_objects.discard_unpublished(roots, index);
     }
 
     fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn std::any::Any>>, Error> {

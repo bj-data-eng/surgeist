@@ -185,14 +185,19 @@ pub(crate) trait Operations {
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
-    ) -> Result<Rc<CallbackObjectIdentity>, Error>;
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error>;
     fn project_retained_native_object_in_prototype_realm(
         &mut self,
         prototype: &Rc<CallbackObjectIdentity>,
         realm: RealmKey,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
-    ) -> Result<Rc<CallbackObjectIdentity>, Error>;
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error>;
+    fn discard_unpublished_native_object(
+        &mut self,
+        index: u32,
+        holder: &Rc<CallbackObjectIdentity>,
+    );
     fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn Any>>, Error>;
     fn native_object_index(&mut self, object: &Root, brand: TypeId) -> Result<Option<u32>, Error>;
     fn open_native_object(&mut self, index: u32, brand: TypeId) -> Result<Option<Root>, Error>;

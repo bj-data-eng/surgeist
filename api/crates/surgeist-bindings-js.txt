@@ -61,6 +61,7 @@ pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_document_type_0_public_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_document_type_0_system_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_html_document_0_title() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::element_attach_shadow_0_init() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::ShadowRootInit>>
 pub fn surgeist_bindings_js::conversion::declarations::element_closest_0_selectors() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::element_get_attribute_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::element_get_attribute_node_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -127,6 +128,7 @@ pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_se
 pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_set_attribute_0_value() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_toggle_attribute_0_force() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<bool>>
 pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_toggle_attribute_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::shadow_root_init() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::ShadowRootInit>
 pub fn surgeist_bindings_js::conversion::declarations::shadow_root_mode() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::ShadowRootMode>
 pub fn surgeist_bindings_js::conversion::declarations::slot_assignment_mode() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::SlotAssignmentMode>
 pub fn surgeist_bindings_js::conversion::declarations::text_constructor_0_data() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -348,6 +350,13 @@ pub struct surgeist_bindings_js::declarations::EventListenerOptions
 pub surgeist_bindings_js::declarations::EventListenerOptions::capture: bool
 pub struct surgeist_bindings_js::declarations::GetRootNodeOptions
 pub surgeist_bindings_js::declarations::GetRootNodeOptions::composed: bool
+pub struct surgeist_bindings_js::declarations::ShadowRootInit
+pub surgeist_bindings_js::declarations::ShadowRootInit::clonable: bool
+pub surgeist_bindings_js::declarations::ShadowRootInit::custom_element_registry_is_null: bool
+pub surgeist_bindings_js::declarations::ShadowRootInit::delegates_focus: bool
+pub surgeist_bindings_js::declarations::ShadowRootInit::mode: surgeist_bindings_js::declarations::ShadowRootMode
+pub surgeist_bindings_js::declarations::ShadowRootInit::serializable: bool
+pub surgeist_bindings_js::declarations::ShadowRootInit::slot_assignment: surgeist_bindings_js::declarations::SlotAssignmentMode
 pub mod surgeist_bindings_js::dom_exception
 #[non_exhaustive] pub enum surgeist_bindings_js::dom_exception::DomExceptionName
 pub surgeist_bindings_js::dom_exception::DomExceptionName::AbortError
@@ -469,6 +478,9 @@ pub surgeist_bindings_js::IntegerValue::UnsignedLongLong(u64)
 pub surgeist_bindings_js::IntegerValue::UnsignedShort(u16)
 #[non_exhaustive] pub enum surgeist_bindings_js::Intrinsic
 pub surgeist_bindings_js::Intrinsic::ArrayValues
+pub enum surgeist_bindings_js::NativeProjectionPrototype<'value, 'scope>
+pub surgeist_bindings_js::NativeProjectionPrototype::Creation(&'value surgeist_bindings_js::RetainedCallbackObject)
+pub surgeist_bindings_js::NativeProjectionPrototype::Current(surgeist_bindings_js::ObjectPrototype<'value, 'scope>)
 pub enum surgeist_bindings_js::ObjectPrototype<'value, 'scope>
 pub surgeist_bindings_js::ObjectPrototype::Default
 pub surgeist_bindings_js::ObjectPrototype::Null
@@ -669,6 +681,7 @@ pub fn surgeist_bindings_js::Scope<'scope>::project_native_object<T: 'static, St
 pub fn surgeist_bindings_js::Scope<'scope>::project_retained_native_object<T: 'static, Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>, payload: T, admit: impl core::ops::function::FnMut(usize) -> core::result::Result<Storage, E>) -> core::result::Result<surgeist_bindings_js::RetainedCallbackObject, E>
 pub fn surgeist_bindings_js::Scope<'scope>::project_retained_native_object_in_prototype_realm<T: 'static, Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: &surgeist_bindings_js::RetainedCallbackObject, payload: T, admit: impl core::ops::function::FnOnce(usize, usize) -> core::result::Result<(Storage, Storage), E>) -> core::result::Result<surgeist_bindings_js::RetainedCallbackObject, E>
 pub fn surgeist_bindings_js::Scope<'scope>::set_native_object_reference<T: 'static>(&mut self, object: &surgeist_bindings_js::Value<'scope>, slot: u32, reference: core::option::Option<&surgeist_bindings_js::Value<'scope>>) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::try_project_retained_native_object<T: 'static, Storage: 'static, R, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::NativeProjectionPrototype<'_, 'scope>, payload: T, admit: impl core::ops::function::FnOnce(usize, usize) -> core::result::Result<(Storage, Storage), E>, commit: impl core::ops::function::FnOnce(&T) -> core::result::Result<R, E>) -> core::result::Result<(surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::RetainedCallbackObject, R), E>
 pub struct surgeist_bindings_js::UsvString(_)
 impl surgeist_bindings_js::UsvString
 pub fn surgeist_bindings_js::UsvString::as_code_units(&self) -> &[u16]

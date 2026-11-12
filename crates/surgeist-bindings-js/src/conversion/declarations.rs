@@ -10,6 +10,7 @@ use crate::declarations::DocumentVisibilityState;
 use crate::declarations::EventInit;
 use crate::declarations::EventListenerOptions;
 use crate::declarations::GetRootNodeOptions;
+use crate::declarations::ShadowRootInit;
 use crate::declarations::ShadowRootMode;
 use crate::declarations::SlotAssignmentMode;
 use crate::{DomString, IntegerKind, IntegerMode, IntegerValue, UsvString, Value};
@@ -52,6 +53,73 @@ fn convert_get_root_node_options<'s>(
         None => false,
     };
     Ok(cx.plain(GetRootNodeOptions { composed }))
+}
+
+/// Complete dictionary conversion for `ShadowRootInit`.
+pub fn shadow_root_init() -> Type<ShadowRootInit> {
+    Type::scalar(convert_shadow_root_init)
+}
+
+fn convert_shadow_root_init<'s>(
+    cx: &mut Conversion<'_, 's>,
+    input: &Value<'s>,
+) -> Result<Converted<ShadowRootInit>, Failure> {
+    let object = cx.dictionary("ShadowRootInit", input)?;
+    let clonable = match cx.member(input, object, &[99, 108, 111, 110, 97, 98, 108, 101])? {
+        Some(value) => *cx.value(&types::BOOLEAN, &value)?.get(),
+        None => false,
+    };
+    let custom_element_registry_is_null = match cx.member(
+        input,
+        object,
+        &[
+            99, 117, 115, 116, 111, 109, 69, 108, 101, 109, 101, 110, 116, 82, 101, 103, 105, 115,
+            116, 114, 121,
+        ],
+    )? {
+        Some(value) => cx.null_interface_member("CustomElementRegistry", &value)?,
+        None => false,
+    };
+    let delegates_focus = match cx.member(
+        input,
+        object,
+        &[
+            100, 101, 108, 101, 103, 97, 116, 101, 115, 70, 111, 99, 117, 115,
+        ],
+    )? {
+        Some(value) => *cx.value(&types::BOOLEAN, &value)?.get(),
+        None => false,
+    };
+    let mode = match cx.member(input, object, &[109, 111, 100, 101])? {
+        Some(value) => *cx.value(&shadow_root_mode().0, &value)?.get(),
+        None => return Err(cx.validation(super::Rule::RequiredMember("ShadowRootInit.mode"))),
+    };
+    let serializable = match cx.member(
+        input,
+        object,
+        &[115, 101, 114, 105, 97, 108, 105, 122, 97, 98, 108, 101],
+    )? {
+        Some(value) => *cx.value(&types::BOOLEAN, &value)?.get(),
+        None => false,
+    };
+    let slot_assignment = match cx.member(
+        input,
+        object,
+        &[
+            115, 108, 111, 116, 65, 115, 115, 105, 103, 110, 109, 101, 110, 116,
+        ],
+    )? {
+        Some(value) => *cx.value(&slot_assignment_mode().0, &value)?.get(),
+        None => SlotAssignmentMode::Named,
+    };
+    Ok(cx.plain(ShadowRootInit {
+        clonable,
+        custom_element_registry_is_null,
+        delegates_focus,
+        mode,
+        serializable,
+        slot_assignment,
+    }))
 }
 
 /// Complete dictionary conversion for `EventInit`.
@@ -739,6 +807,17 @@ pub fn element_get_attribute_node_ns_0_local_name() -> Argument<Type<DomString>>
         1,
         false,
         types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `Element.attachShadow:0/init` (not overload selection).
+pub fn element_attach_shadow_0_init() -> Argument<Type<ShadowRootInit>> {
+    Argument::new(
+        "Element.attachShadow:0/init",
+        0,
+        false,
+        shadow_root_init(),
         None,
     )
 }

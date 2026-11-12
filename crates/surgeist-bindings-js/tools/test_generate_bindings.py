@@ -283,16 +283,33 @@ class DescriptionTests(unittest.TestCase):
 
 
 class ValueLoweringTests(unittest.TestCase):
-    def test_current_dictionary_outputs_are_complete_brand_free_declarations(self):
+    def test_shadow_attachment_argument_includes_the_nullable_registry(self):
+        data = g.load()
+        model = g.lower_values(data)
+        dictionary = next(
+            (d for d in model["dictionaries"] if d["name"] == "ShadowRootInit"),
+            None,
+        )
+        self.assertIsNotNone(dictionary)
+        self.assertEqual(
+            [member["name"] for member in dictionary["members"]],
+            ["clonable", "customElementRegistry", "delegatesFocus", "mode",
+             "serializable", "slotAssignment"],
+        )
+        self.assertIn(
+            "Element.attachShadow:0/init",
+            [argument["id"] for argument in g.lower_arguments(data, model)],
+        )
+
+    def test_current_dictionary_outputs_cover_their_admitted_profiles(self):
         model = g.lower_values(g.load())
         self.assertEqual([d["name"] for d in model["dictionaries"]],
-                         ["GetRootNodeOptions", "EventInit", "EventListenerOptions"])
+                         ["GetRootNodeOptions", "ShadowRootInit", "EventInit", "EventListenerOptions"])
         self.assertEqual([d["name"] for d in model["enumerations"]],
                          ["ShadowRootMode", "SlotAssignmentMode", "DocumentReadyState", "DocumentVisibilityState"])
-        # A dictionary with even one unavailable member is never emitted as a
-        # successful partial value. In particular, signal/registry/source are
-        # not silently discarded to form an apparently brand-free dictionary.
-        for name in ("ShadowRootInit", "AddEventListenerOptions", "ElementCreationOptions",
+        # No member may be discarded. Signal, native registry and source
+        # combinations outside the selected conversion profiles stay unavailable.
+        for name in ("AddEventListenerOptions", "ElementCreationOptions",
                      "ImportNodeOptions", "ShowPopoverOptions", "TogglePopoverOptions"):
             self.assertNotIn(name, [d["name"] for d in model["dictionaries"]])
 

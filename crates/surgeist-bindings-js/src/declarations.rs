@@ -127,6 +127,23 @@ pub struct GetRootNodeOptions {
     pub composed: bool,
 }
 
+/// Complete `ShadowRootInit` dictionary value for the admitted registry profile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShadowRootInit {
+    /// The declared `clonable` member.
+    pub clonable: bool,
+    /// Whether `customElementRegistry` was explicitly supplied as null.
+    pub custom_element_registry_is_null: bool,
+    /// The declared `delegatesFocus` member.
+    pub delegates_focus: bool,
+    /// The declared `mode` member.
+    pub mode: ShadowRootMode,
+    /// The declared `serializable` member.
+    pub serializable: bool,
+    /// The declared `slotAssignment` member.
+    pub slot_assignment: SlotAssignmentMode,
+}
+
 /// Complete brand-free `EventInit` dictionary value.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct EventInit {

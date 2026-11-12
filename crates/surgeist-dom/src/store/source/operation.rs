@@ -25,6 +25,7 @@ mod scope;
 #[cfg(test)]
 mod scope_tests;
 mod script;
+mod shadow;
 mod show_modal;
 mod watcher;
 use super::Invocation;

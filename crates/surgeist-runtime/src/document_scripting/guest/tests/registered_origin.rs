@@ -648,3 +648,94 @@ fn qualify_native_character_projection(
         ))
     ));
 }
+
+pub(in crate::document_scripting) fn scripted_shadow_uses_the_current_document_creation_realm() {
+    use surgeist_html::values::Namespace;
+
+    let RegisteredOrigin {
+        mut host,
+        permit,
+        origin,
+        element,
+        cancellation,
+        ..
+    } = retired_origin_with_moved_element();
+    let document = host
+        .snapshot()
+        .unwrap()
+        .node(element)
+        .unwrap()
+        .owner_document()
+        .unwrap();
+    let shadow_host = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let host = batch.create_element_ns(permit.document(), Namespace::html(), "div");
+            batch.replace_child(&host, document, element);
+            let commit = dom.apply(batch, &cancellation).unwrap();
+            commit.created(&host).unwrap().unwrap()
+        })
+        .unwrap();
+    let before = host.snapshot().unwrap();
+    assert_ne!(
+        before.relevant_global(shadow_host).unwrap(),
+        Some(origin.global())
+    );
+    let (root, expected_realm) = host
+        .in_document(&permit, |scope| {
+            assert_guest(
+                scope,
+                r#"(() => {
+                    const attach = Element.prototype.attachShadow;
+                    try { attach.call(originChild, {mode: "open"}); return false; }
+                    catch (error) {
+                        if (!(error instanceof DOMException) || error.name !== "NotSupportedError")
+                            return false;
+                    }
+                    const target = originChild.ownerDocument.documentElement;
+                    globalThis.borrowedShadow = attach.call(target, {mode: "open"});
+                    return borrowedShadow.host === target && target.shadowRoot === borrowedShadow;
+                })()"#,
+            )?;
+            let document = scope.evaluate(&units("originChild.ownerDocument"))?;
+            let realm = scope
+                .callback_object(&document)?
+                .associated_realm()
+                .identity();
+            assert_ne!(realm, scope.realm_authority()?.identity());
+            let root = scope.evaluate(&units("borrowedShadow"))?;
+            assert_eq!(
+                scope.callback_object(&root)?.associated_realm().identity(),
+                realm
+            );
+            Ok((scope.retain(&root), realm))
+        })
+        .unwrap();
+    let after = host.snapshot().unwrap();
+    let id = after.node(shadow_host).unwrap().shadow_root().unwrap();
+    assert_eq!(after.relevant_global(id).unwrap(), Some(origin.global()));
+    let engine = host.engine.as_mut().unwrap();
+    let realm = engine
+        .creations
+        .find(origin.global(), || Ok::<(), Error>(()))
+        .unwrap()
+        .unwrap();
+    engine
+        .process
+        .execution()
+        .in_realm(realm, |scope| {
+            assert_eq!(scope.realm_authority()?.identity(), expected_realm);
+            let value = scope.import(&root)?;
+            let global = scope.global()?;
+            scope.set(
+                &global,
+                PropertyKey::String(&units("borrowedShadow")),
+                &value,
+            )?;
+            assert_guest(
+                scope,
+                "Object.getPrototypeOf(borrowedShadow) === ShadowRoot.prototype",
+            )
+        })
+        .unwrap();
+}

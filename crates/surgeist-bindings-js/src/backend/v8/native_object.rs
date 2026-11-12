@@ -116,6 +116,17 @@ impl NativeObjects {
             drop(retired);
         }
     }
+
+    pub(super) fn discard_unpublished(&self, roots: &Roots, index: u32) {
+        let entry = {
+            let Ok(mut entries) = self.entries.try_borrow_mut() else {
+                roots.conflict();
+                return;
+            };
+            entries.remove(&index)
+        };
+        drop(entry);
+    }
 }
 
 impl Entered<'_, '_, '_> {
@@ -139,7 +150,7 @@ impl Entered<'_, '_, '_> {
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
-    ) -> Result<Rc<CallbackObjectIdentity>, Error> {
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error> {
         let prepared = self.prepare_payload(prototype, payload)?;
         self.pin_prepared_payload(prepared, self.realm, backing)
     }
@@ -150,7 +161,7 @@ impl Entered<'_, '_, '_> {
         expected_realm: RealmKey,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
-    ) -> Result<Rc<CallbackObjectIdentity>, Error> {
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error> {
         let prepared = self.attempt(ExceptionPhase::Prototype, |scope, roots, _, _| {
             let object = roots.callback_objects.local(scope, roots, prototype)?;
             let (context, realm) = creation_context(scope, roots, object)?;
@@ -168,13 +179,13 @@ impl Entered<'_, '_, '_> {
         prepared: PreparedObject,
         realm: RealmKey,
         backing: Box<dyn Any>,
-    ) -> Result<Rc<CallbackObjectIdentity>, Error> {
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error> {
         let holder = self.pin_callback_object(&prepared.root, realm, backing)?;
         let roots = &self.roots;
         match roots.native_objects.entries.try_borrow_mut() {
             Ok(mut entries) => {
                 entries.insert(prepared.index, prepared.entry);
-                Ok(holder)
+                Ok((holder, prepared.index))
             }
             Err(_) => {
                 let error = roots.conflict();

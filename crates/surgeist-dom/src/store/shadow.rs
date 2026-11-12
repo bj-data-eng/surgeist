@@ -52,23 +52,21 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<Key, DomError> {
-        check_cancel(cancelled)?;
+        self.source_step(cancelled)?;
         let node = self.node(host)?;
         let KindRead::Element(element) = node.kind() else {
             return Err(DomError::WrongNodeKind);
         };
-        if !element.name().namespace_uri().is_some_and(|uri| {
-            uri.code_units()
-                .iter()
-                .copied()
-                .eq("http://www.w3.org/1999/xhtml".encode_utf16())
-        }) {
+        let Some(uri) = element.name().namespace_uri() else {
+            return Err(DomError::NotSupported);
+        };
+        if !self.shadow_name_is(uri, b"http://www.w3.org/1999/xhtml", cancelled)? {
             return Err(DomError::NotSupported);
         }
         let name = element.name().local_name();
         // DOM #valid-shadow-host-name owns this intentionally short list. HTML
         // owns custom-name grammar and actual native-family initialization.
-        let mut valid = false;
+        let mut builtin_host = false;
         for builtin in [
             "article",
             "aside",
@@ -89,15 +87,17 @@ impl Draft {
             "section",
             "span",
         ] {
-            check_cancel(cancelled)?;
-            valid |= name.code_units().iter().copied().eq(builtin.encode_utf16());
+            if self.shadow_name_is(name, builtin.as_bytes(), cancelled)? {
+                builtin_host = true;
+                break;
+            }
         }
-        let custom =
-            surgeist_html::bounded::lexical::validate_custom_element_name_with(name, |_| {
-                check_cancel(cancelled)
+        if !builtin_host
+            && surgeist_html::bounded::lexical::validate_custom_element_name_with(name, |_| {
+                self.source_step(cancelled)
             })?
-            .is_ok();
-        if !valid && !custom {
+            .is_err()
+        {
             return Err(DomError::NotSupported);
         }
         // The controlled complete-empty Global and Null domains both retain a
@@ -112,15 +112,16 @@ impl Draft {
                 | surgeist_html::elements::native::HtmlCustomElementState::Undefined
         ));
         if node.shadow_root().is_some() {
-            // Every admitted root is non-declarative. Declarative reuse has no
-            // native caller toggle and remains an installation capability.
+            // A parsed declarative root can exist. Reusing it through native
+            // attachment requires its own removal and publication contract.
             return Err(DomError::NotSupported);
         }
         let document = node.document();
-        self.document_metadata(document)?;
-        let registry = element.custom_element_registry();
+        let registry = self.document_metadata(document)?.custom_element_registry();
         let mut state = crate::DomShadowRootState::native(init);
-        state.select_global_registry(registry);
+        if !init.null_registry {
+            state.select_global_registry(registry);
+        }
         let root = self.allocate(NewNode::ShadowRoot(state), document, limits, cancelled)?;
         let mut relation = self.host_mut(root, cancelled)?;
         *relation = Some(host);
@@ -129,6 +130,25 @@ impl Draft {
         *relation = Some(root);
         relation.commit(cancelled)?;
         Ok(root)
+    }
+
+    fn shadow_name_is(
+        &self,
+        actual: &DocumentString,
+        expected: &[u8],
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        self.source_step(cancel)?;
+        if actual.len() != expected.len() {
+            return Ok(false);
+        }
+        for (actual, expected) in actual.code_units().iter().zip(expected) {
+            self.source_step(cancel)?;
+            if *actual != u16::from(*expected) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     /// Shadow roots are parentless ordinary roots. For cycle checks only, their

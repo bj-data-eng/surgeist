@@ -67,6 +67,127 @@ fn creation_and_watch_refusal_preserve_the_original_dom_publication() {
 }
 
 #[test]
+fn source_shadow_creation_admits_the_watch_before_publication() {
+    use crate::{DomShadowRootInit, DomSourceLimits, HtmlShadowRootMode};
+    use surgeist_html::values::Namespace;
+
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, _) = fixture(&cancel);
+    let mut setup = DomBatch::new();
+    let host = setup.create_element_ns(document, Namespace::html(), "div");
+    let host = dom
+        .apply(setup, &cancel)
+        .unwrap()
+        .created(&host)
+        .unwrap()
+        .unwrap();
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let before = dom.snapshot();
+    let source = DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2);
+    let init = DomShadowRootInit::new(HtmlShadowRootMode::Closed);
+    dom.custody_registry.reconcile_releases();
+    let retained = bytes(&dom);
+
+    let result = dom.attach_shadow_with_node_retirement_watch(
+        host,
+        init,
+        &inbox,
+        19,
+        (source, DomNodeRetirementLimits::new(16_000_000, 0)),
+        &cancel,
+    );
+    assert!(matches!(
+        result,
+        Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        dom.snapshot().node(host).unwrap().hosted_shadow_root(),
+        None
+    );
+    assert!(dom.pending_source_edit().is_none());
+    assert!(dom.node_retirements.is_none());
+    assert!(inbox.take().is_none());
+    dom.custody_registry.reconcile_releases();
+    assert_eq!(bytes(&dom), retained);
+
+    let (commit, root, watch) = dom
+        .attach_shadow_with_node_retirement_watch(
+            host,
+            init,
+            &inbox,
+            19,
+            (source, GENEROUS),
+            &cancel,
+        )
+        .unwrap()
+        .into_parts();
+    assert_eq!(commit.changes().from(), before.stamp());
+    let after = dom.snapshot();
+    assert_eq!(commit.changes().to(), after.stamp());
+    assert_eq!(after.node(host).unwrap().shadow_root(), None);
+    assert_eq!(after.node(host).unwrap().hosted_shadow_root(), Some(root));
+    assert_eq!(after.shadow_root(root).unwrap().host(), host);
+    let mut retire = DomBatch::new();
+    retire.destroy(host);
+    dom.apply(retire, &cancel).unwrap();
+    let notice = inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (root, 19));
+    assert!(inbox.take().is_none());
+    drop(watch);
+}
+
+#[test]
+fn source_shadow_host_validation_charges_the_complete_native_name_scan() {
+    use crate::{DomShadowRootInit, DomSourceLimits, HtmlShadowRootMode};
+    use surgeist_html::values::Namespace;
+
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, _) = fixture(&cancel);
+    let mut setup = DomBatch::new();
+    let short = setup.create_element_ns(document, Namespace::html(), "x");
+    let long_name = "x".repeat(2_048);
+    let long = setup.create_element_ns(document, Namespace::html(), long_name.as_str());
+    let setup = dom.apply(setup, &cancel).unwrap();
+    let short = setup.created(&short).unwrap().unwrap();
+    let long = setup.created(&long).unwrap().unwrap();
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let before = dom.snapshot();
+    let source = DomSourceLimits::new(16_000_000, 200_000, 512, 64, 64, 64, 2);
+    let init = DomShadowRootInit::new(HtmlShadowRootMode::Open);
+
+    // Both names lack a hyphen. The short scan reaches native name refusal.
+    // The long scan must exhaust the same budget before it reaches that test.
+    assert!(matches!(
+        dom.attach_shadow_with_node_retirement_watch(
+            short,
+            init,
+            &inbox,
+            8,
+            (source, GENEROUS),
+            &cancel
+        ),
+        Err(DomError::NotSupported)
+    ));
+    let long = dom.attach_shadow_with_node_retirement_watch(
+        long,
+        init,
+        &inbox,
+        9,
+        (source, GENEROUS),
+        &cancel,
+    );
+    assert!(
+        matches!(&long, Err(DomError::SourceWorkLimit { limit: 512 })),
+        "long host scan returned {:?}",
+        long.err()
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert!(dom.pending_source_edit().is_none());
+    assert!(inbox.take().is_none());
+}
+
+#[test]
 fn watched_creation_admits_the_exact_peak_and_retires_the_exact_generation() {
     let cancel = AtomicBool::new(false);
     let (mut dom, document, _) = fixture(&cancel);

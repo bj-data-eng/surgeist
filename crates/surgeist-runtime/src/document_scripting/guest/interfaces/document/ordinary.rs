@@ -1,6 +1,7 @@
 //! Retained custody indexed by exact native node retirement.
 
 use super::*;
+use surgeist_bindings_js::NativeProjectionPrototype;
 use surgeist_dom::{DomNodeRetirementWatch, DomSourceEventRequest};
 
 pub(super) struct OrdinaryBindings {
@@ -13,11 +14,6 @@ pub(super) struct OrdinaryBindings {
 pub(super) enum NodePrototype<'value, 'scope> {
     Selected(&'value Value<'scope>),
     Creation(&'value RetainedCallbackObject),
-}
-
-enum Publication<Publish> {
-    Pending(Publish),
-    Watched(GuestNode, DomNodeRetirementWatch),
 }
 
 enum Projection<'prototype, 'scope, Publish> {
@@ -107,7 +103,7 @@ enum Slot {
 
 struct Pin {
     holder: RetainedCallbackObject,
-    live: Option<LivePin>,
+    live: LivePin,
     lifetime: Rc<NodeLifetime>,
     _backing: GuestBacking,
 }
@@ -347,20 +343,35 @@ impl OrdinaryBindings {
             node: Cell::new(None),
             lifetime: Some(lifetime.clone()),
         };
-        let (holder, publication) = match projection {
-            Projection::Create(NodePrototype::Selected(prototype), create) => (
-                admission.events.project(
-                    admission.owner,
-                    scope,
-                    ObjectPrototype::Object(prototype),
+        let allocation = Box::new_uninit();
+        let (value, holder, live) = match projection {
+            Projection::Create(prototype, create) => {
+                let prototype = match prototype {
+                    NodePrototype::Selected(prototype) => {
+                        NativeProjectionPrototype::Current(ObjectPrototype::Object(prototype))
+                    }
+                    NodePrototype::Creation(prototype) => {
+                        NativeProjectionPrototype::Creation(prototype)
+                    }
+                };
+                admission.step()?;
+                scope.try_project_retained_native_object(
+                    prototype,
                     payload,
-                )?,
-                Publication::Pending(create),
-            ),
-            Projection::Create(NodePrototype::Creation(prototype), create) => (
-                Self::form_in_prototype_realm(scope, admission, prototype, payload, || Ok(()))?,
-                Publication::Pending(create),
-            ),
+                    |payload, holder| {
+                        Ok::<_, DocumentGuestEventError>((
+                            admission.reserve(payload)?,
+                            admission.reserve(holder)?,
+                        ))
+                    },
+                    |payload| {
+                        #[cfg(test)]
+                        self.qualify_projection()?;
+                        let (node, watch) = create(&inbox, key)?;
+                        Ok(Self::bind_projection(payload, node, watch))
+                    },
+                )?
+            }
             Projection::Watch(prototype, watch) => {
                 let mut watched = None;
                 let holder =
@@ -369,55 +380,58 @@ impl OrdinaryBindings {
                         Ok(())
                     })?;
                 let (node, watch) = watched.ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                (holder, Publication::Watched(node, watch))
-            }
-        };
-        let validated = (|| {
-            #[cfg(test)]
-            if self.refuse_next_validation.replace(false) {
-                return Err(Error::BackendUnavailable.into());
-            }
-            let value = scope.open_callback_object(&holder)?;
-            let projection = scope
-                .native_object::<GuestNodeProjection>(&value)?
-                .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-            Ok::<_, DocumentGuestEventError>((value, projection))
-        })();
-        let (value, projection) = match validated {
-            Ok(validated) => validated,
-            Err(error) => {
-                let _ = scope.release_callback_object(holder);
-                return Err(error);
-            }
-        };
-        let mut pin = Box::new(Pin {
-            holder,
-            live: None,
-            lifetime,
-            _backing: backing,
-        });
-        let (node, watch) = match publication {
-            Publication::Watched(node, watch) => (node, watch),
-            Publication::Pending(publish) => match publish(&inbox, key) {
-                Ok(created) => created,
-                Err(error) => {
-                    let first = refuse(scope, &admission.events.refusal, error);
-                    let pin = {
-                        let allocation = pin;
-                        *allocation
-                    };
-                    let _ = scope.release_callback_object(pin.holder);
-                    return first.map_err(Into::into);
+                let qualified = (|| {
+                    #[cfg(test)]
+                    self.qualify_projection()?;
+                    let value = scope.open_callback_object(&holder)?;
+                    let projection = scope
+                        .native_object::<GuestNodeProjection>(&value)?
+                        .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+                    Ok::<_, DocumentGuestEventError>((
+                        value,
+                        Self::bind_projection(projection.payload(), node, watch),
+                    ))
+                })();
+                match qualified {
+                    Ok((value, live)) => (value, holder, live),
+                    Err(error) => {
+                        let _ = scope.release_callback_object(holder);
+                        return Err(error);
+                    }
                 }
-            },
+            }
         };
-        projection.payload().node.set(Some(node));
-        pin.live = Some(LivePin {
-            node: node.node(),
-            _watch: watch,
-        });
+        let pin = Box::write(
+            allocation,
+            Pin {
+                holder,
+                live,
+                lifetime,
+                _backing: backing,
+            },
+        );
         reserved.publish(pin);
         Ok(value)
+    }
+
+    #[cfg(test)]
+    fn qualify_projection(&self) -> Result<(), DocumentGuestEventError> {
+        if self.refuse_next_validation.replace(false) {
+            return Err(Error::BackendUnavailable.into());
+        }
+        Ok(())
+    }
+
+    fn bind_projection(
+        payload: &GuestNodeProjection,
+        node: GuestNode,
+        watch: DomNodeRetirementWatch,
+    ) -> LivePin {
+        payload.node.set(Some(node));
+        LivePin {
+            node: node.node(),
+            _watch: watch,
+        }
     }
 
     fn form_in_prototype_realm(
@@ -462,7 +476,7 @@ impl OrdinaryBindings {
         for slot in &pins.slots {
             step()?;
             if let Slot::Retained(pin) = slot
-                && pin.live.as_ref().is_some_and(|live| live.node == node)
+                && pin.live.node == node
             {
                 return Ok(Some(scope.open_callback_object(&pin.holder)?));
             }
@@ -483,7 +497,7 @@ impl OrdinaryBindings {
                 continue;
             };
             if !matches!(slot, Slot::Retained(pin)
-                if pin.live.as_ref().is_some_and(|live| live.node == notice.node()))
+                if pin.live.node == notice.node())
             {
                 continue;
             }
