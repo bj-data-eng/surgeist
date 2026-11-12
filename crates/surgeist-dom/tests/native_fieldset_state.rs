@@ -460,7 +460,7 @@ fn fragment_replacement_shadow_adoption_and_frame_hooks_share_one_atomic_owner()
         c.document(&a).unwrap(),
         c.document(&d).unwrap(),
         id(&top),
-        id(&shadow),
+        c.attached_shadow_root(&shadow).unwrap().unwrap(),
         id(&f),
         id(&frame),
         id(&fragment),

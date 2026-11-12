@@ -79,8 +79,8 @@ fn fixture(mode: HtmlSlotAssignment, closed: bool) -> Fixture {
         top: id(&top),
         h1: id(&h1),
         h2: id(&h2),
-        r1: id(&r1),
-        r2: id(&r2),
+        r1: c.attached_shadow_root(&r1).unwrap().unwrap(),
+        r2: c.attached_shadow_root(&r2).unwrap().unwrap(),
         s1: id(&s1),
         s2: id(&s2),
         x: id(&x),
@@ -987,7 +987,7 @@ fn owned_subtree_retirement_cancels_multiple_slots_without_reordering_surviving_
     b.insert_before(&z, &root, None);
     let c = apply(&mut f.dom, b);
     let victim = c.created(&victim).unwrap().unwrap();
-    let root = c.created(&root).unwrap().unwrap();
+    let root = c.attached_shadow_root(&root).unwrap().unwrap();
     let a = c.created(&a).unwrap().unwrap();
     let z = c.created(&z).unwrap().unwrap();
     slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
@@ -1444,7 +1444,7 @@ fn nested_slot_subtree_insertions_before_between_and_adoption_keep_literal_winne
     let end = id(&end);
     let a = id(&a);
     let z = id(&z);
-    let other_root = id(&other_root);
+    let other_root = c.attached_shadow_root(&other_root).unwrap().unwrap();
     let other_a = id(&other_a);
     let other_z = id(&other_z);
     let other_document = c.document(&other_document).unwrap();

@@ -148,14 +148,14 @@ impl DomNodeRetirementNotice {
     }
 }
 
-/// A canonical publication and the watch of one node it created.
-pub struct DomWatchedCreation {
+/// A canonical node output and its exact retirement watch.
+pub struct DomWatchedNode {
     commit: DomCommit,
     node: NodeId,
     watch: DomNodeRetirementWatch,
 }
 
-impl DomWatchedCreation {
+impl DomWatchedNode {
     pub(super) fn new(commit: DomCommit, node: NodeId, watch: DomNodeRetirementWatch) -> Self {
         Self {
             commit,
@@ -164,12 +164,12 @@ impl DomWatchedCreation {
         }
     }
 
-    /// The exact newly published generation.
+    /// The exact published node generation.
     pub const fn node(&self) -> NodeId {
         self.node
     }
 
-    /// Transfer the publication receipt, created node and affine watch.
+    /// Transfer the publication receipt, node identity and affine watch.
     pub fn into_parts(self) -> (DomCommit, NodeId, DomNodeRetirementWatch) {
         (self.commit, self.node, self.watch)
     }
@@ -755,7 +755,7 @@ impl Dom {
         custody_key: usize,
         limits: DomNodeRetirementLimits,
         cancel: &AtomicBool,
-    ) -> Result<DomWatchedCreation, DomError> {
+    ) -> Result<DomWatchedNode, DomError> {
         if inbox.owner != self.owner {
             return Err(DomError::ForeignOwner);
         }
@@ -782,7 +782,7 @@ impl Dom {
             // Index insertion ends admission. Publication cannot refuse.
             let watch = self.finish_watch(prepared, node);
             let commit = self.publish_prepared(publication);
-            Ok(DomWatchedCreation::new(commit, node, watch))
+            Ok(DomWatchedNode::new(commit, node, watch))
         })();
         if result.is_err() {
             // Abandoned staged frontiers have dropped. Release their registry

@@ -1305,8 +1305,9 @@ impl Operation {
             return Err(DomError::SourceIdentityLimit.into());
         }
         // The persistent assignment map preserves every actually published
-        // creation, including one retired by a later phase. Public ticket rows
-        // are output only at the final close, so materialize that output once.
+        // creation, including one retired by a later phase. An attachment can
+        // also return an existing root. Materialize public ticket rows only
+        // at final close.
         let mut historical = Vec::new();
         if !incomplete {
             formation::reserve(
@@ -1317,10 +1318,10 @@ impl Operation {
             )?;
             for key in &self.draft.tickets {
                 self.draft.source_step(cancel)?;
-                let Key::Created(k) = key else {
-                    unreachable!("creation ticket")
-                };
-                historical.push(ids.get(*k));
+                historical.push(match *key {
+                    Key::Created(index) => ids.get(index),
+                    Key::Existing(node) => Some(node),
+                });
             }
         }
         let dialog = if let PublicationTarget::Dialog(pending) = target {

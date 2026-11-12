@@ -341,7 +341,7 @@ fn owner_destruction_records_shadow_and_template_descendants_in_their_actual_doc
     batch.insert_before(&template, &shadow, None);
     let commit = dom.apply(batch, &cancel).unwrap();
     let host = commit.created(&host).unwrap().unwrap();
-    let shadow = commit.created(&shadow).unwrap().unwrap();
+    let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
     let template = commit.created(&template).unwrap().unwrap();
     let contents = dom
         .snapshot()

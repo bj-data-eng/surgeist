@@ -316,7 +316,7 @@ fn shadow_attachment_uses_retained_registry_with_reciprocal_links_and_atomic_ref
         .dom()
         .apply(batch, &cancel())
         .expect("attachShadow needs the real retained registry, not execution authority");
-    let root = commit.created(&root).unwrap().unwrap();
+    let root = commit.attached_shadow_root(&root).unwrap().unwrap();
     let snapshot = fixture.session.snapshot();
     let shadow = snapshot.shadow_root(root).unwrap();
     assert_eq!(shadow.host(), host);

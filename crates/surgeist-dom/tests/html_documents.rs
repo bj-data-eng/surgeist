@@ -574,7 +574,7 @@ fn shadow_host_class_is_not_used_for_descendants_with_a_different_actual_documen
     batch.insert_before(&old, &target, None);
     let commit = apply(&mut dom, batch);
     let host = commit.created(&host).unwrap().unwrap();
-    let root = commit.created(&root).unwrap().unwrap();
+    let root = commit.attached_shadow_root(&root).unwrap().unwrap();
     let target = commit.created(&target).unwrap().unwrap();
     let old = commit.created(&old).unwrap().unwrap();
     let mut batch = DomBatch::new();

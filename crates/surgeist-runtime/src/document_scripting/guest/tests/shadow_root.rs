@@ -53,7 +53,7 @@ fn prepare_root_host(
             batch.insert_before(&element, document, None);
             let root = mode.map(|mode| batch.attach_shadow(&element, DomShadowRootInit::new(mode)));
             let commit = dom.apply(batch, &cancel).unwrap();
-            root.and_then(|root| commit.created(&root).unwrap())
+            root.and_then(|root| commit.attached_shadow_root(&root).unwrap())
         })
         .unwrap();
     host.in_document(&permit, |scope| {
@@ -130,7 +130,7 @@ pub(in crate::document_scripting) fn closed_root_keeps_identity_and_native_event
             let commit = dom.apply(batch, &cancel).unwrap();
             (
                 commit.created(&element).unwrap().unwrap(),
-                commit.created(&root).unwrap().unwrap(),
+                commit.attached_shadow_root(&root).unwrap().unwrap(),
                 commit.created(&child).unwrap().unwrap(),
             )
         })

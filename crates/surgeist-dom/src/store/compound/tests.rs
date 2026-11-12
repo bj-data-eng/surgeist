@@ -483,9 +483,9 @@ fn text_content_handles_comment_pi_fragment_shadow_and_doctype_by_actual_interfa
     let host = batch.create_element_ns(doc, Namespace::html(), "div");
     let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
     let commit = apply(&mut dom, batch);
-    let ids = [&comment, &pi, &doctype, &fragment, &shadow]
-        .map(|ticket| commit.created(ticket).unwrap().unwrap());
-    let [comment, pi, doctype, fragment, shadow] = ids;
+    let [comment, pi, doctype, fragment] =
+        [&comment, &pi, &doctype, &fragment].map(|ticket| commit.created(ticket).unwrap().unwrap());
+    let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
     complete(
         &mut dom,
         DomSourceEdit::set_text_content(comment, DocumentString::from_utf16(vec![0xdc00, 0])),

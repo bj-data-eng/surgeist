@@ -533,7 +533,7 @@ fn actual_shadow_node_document_controls_preparation_independently_of_host() {
     b.insert_before(&old, &fragment, None);
     let c = apply(&mut dom, b);
     let d2 = c.document(&d2).unwrap();
-    let root = c.created(&root).unwrap().unwrap();
+    let root = c.attached_shadow_root(&root).unwrap().unwrap();
     let fragment = c.created(&fragment).unwrap().unwrap();
     let old = c.created(&old).unwrap().unwrap();
     let mut b = DomBatch::new();

@@ -30,7 +30,7 @@ fn contextual_installation_preserves_replacement_split_shadow_and_host_documents
     let a = commit.document(&a).unwrap();
     let b = commit.document(&b).unwrap();
     let host = commit.created(&host).unwrap().unwrap();
-    let root = commit.created(&root).unwrap().unwrap();
+    let root = commit.attached_shadow_root(&root).unwrap().unwrap();
     let child = commit.created(&child).unwrap().unwrap();
     let target = commit.created(&target).unwrap().unwrap();
     let old = commit.created(&old).unwrap().unwrap();

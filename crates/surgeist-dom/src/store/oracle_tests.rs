@@ -2198,7 +2198,7 @@ fn full_oracle_composes_native_relations_template_and_queued_targets() {
     let details = id(&details);
     let option = id(&option);
     let template = id(&template);
-    let shadow = id(&shadow);
+    let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
     let radio_b = id(&radio_b);
     let old = dom.snapshot();
     let contents = old
@@ -2291,7 +2291,7 @@ fn full_oracle_tracks_slot_order_across_separate_roots_adoption_and_reuse() {
     let branch = commit.created(&branch).unwrap().unwrap();
     let host = commit.created(&host).unwrap().unwrap();
     let template = commit.created(&template).unwrap().unwrap();
-    let shadow = commit.created(&shadow).unwrap().unwrap();
+    let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
     let contents = dom
         .snapshot()
         .node(template)

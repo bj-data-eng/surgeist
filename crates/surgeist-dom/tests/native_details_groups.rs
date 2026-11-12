@@ -234,8 +234,8 @@ fn ordinary_light_shadow_and_template_trees_keep_separate_groups() {
         batch.insert_before(node, f.root, None);
     }
     let commit = apply(&mut f.dom, batch);
-    let shadow_a = commit.created(&shadow_a).unwrap().unwrap();
-    let shadow_b = commit.created(&shadow_b).unwrap().unwrap();
+    let shadow_a = commit.attached_shadow_root(&shadow_a).unwrap().unwrap();
+    let shadow_b = commit.attached_shadow_root(&shadow_b).unwrap().unwrap();
     let template = commit.created(&template).unwrap().unwrap();
     let contents = f
         .dom

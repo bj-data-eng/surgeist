@@ -11,6 +11,14 @@ pub(super) struct Insertion {
     #[cfg(test)]
     _observation: scratch_observation::Moving,
 }
+
+#[derive(Clone, Copy)]
+pub(super) enum AfterRemovingChildren {
+    Complete,
+    Insert(Key),
+    ReuseShadowRoot,
+}
+
 pub(super) enum Frame {
     FullscreenRemoving {
         document: Key,
@@ -50,8 +58,7 @@ pub(super) enum Frame {
     },
     ReplaceAll {
         key: Key,
-        replacement: Option<Key>,
-        inserted: bool,
+        after: AfterRemovingChildren,
     },
 }
 
@@ -134,14 +141,9 @@ impl Frame {
                 before: *before,
                 stage: *stage,
             },
-            Self::ReplaceAll {
-                key,
-                replacement,
-                inserted,
-            } => Self::ReplaceAll {
+            Self::ReplaceAll { key, after } => Self::ReplaceAll {
                 key: *key,
-                replacement: *replacement,
-                inserted: *inserted,
+                after: *after,
             },
         })
     }
@@ -200,16 +202,11 @@ impl Draft {
             Some(self.allocate_charged(NewNode::Text(raw), document, limits, cancel, payload)?)
         };
         // The replacement Text owns the operand before any nested hook can allocate.
-        self.push_effect(
-            select::Effect::Tree(Frame::ReplaceAll {
-                key,
-                replacement,
-                inserted: false,
-            }),
-            self.effect_scoped,
-            cancel,
-        )?;
-        self.run_effects(limits, cancel)
+        let after = replacement.map_or(
+            AfterRemovingChildren::Complete,
+            AfterRemovingChildren::Insert,
+        );
+        self.replace_all_children(key, after, limits, cancel)
     }
 
     pub(super) fn shadow_connected(
@@ -499,12 +496,18 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.ensure_pre_insert(node, parent, None, None, true, cancel)?;
+        self.replace_all_children(parent, AfterRemovingChildren::Insert(node), limits, cancel)
+    }
+
+    pub(super) fn replace_all_children(
+        &mut self,
+        key: Key,
+        after: AfterRemovingChildren,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         self.push_effect(
-            select::Effect::Tree(Frame::ReplaceAll {
-                key: parent,
-                replacement: Some(node),
-                inserted: false,
-            }),
+            select::Effect::Tree(Frame::ReplaceAll { key, after }),
             self.effect_scoped,
             cancel,
         )?;
@@ -787,26 +790,28 @@ impl Draft {
                     self.insert_validated(node, parent, before, limits, cancel)?;
                 }
             }
-            Frame::ReplaceAll {
-                key,
-                replacement,
-                inserted,
-            } => {
-                if let Some(child) = self.node(key)?.children().first().filter(|_| !inserted) {
+            Frame::ReplaceAll { key, after } => {
+                if let Some(child) = self.node(key)?.children().first() {
                     self.push_effect(
-                        select::Effect::Tree(Frame::ReplaceAll {
-                            key,
-                            replacement,
-                            inserted,
-                        }),
+                        select::Effect::Tree(Frame::ReplaceAll { key, after }),
                         self.effect_scoped,
                         cancel,
                     )?;
                     self.remove(child, limits, cancel)?;
-                } else if !inserted && let Some(node) = replacement {
-                    // The named caller established the replacement's validity
-                    // before removal; this is DOM's insert, not pre-insert.
-                    self.insert_validated(node, key, None, limits, cancel)?;
+                } else {
+                    match after {
+                        AfterRemovingChildren::Complete => (),
+                        AfterRemovingChildren::Insert(node) => {
+                            // The named caller qualified the replacement before removal.
+                            self.insert_validated(node, key, None, limits, cancel)?;
+                        }
+                        AfterRemovingChildren::ReuseShadowRoot => {
+                            let mut state = self.shadow_state_mut(key, cancel)?;
+                            state.clear_declarative();
+                            state.commit(cancel)?;
+                            self.register_ticket(key, cancel)?;
+                        }
+                    }
                 }
             }
             Frame::Walk {

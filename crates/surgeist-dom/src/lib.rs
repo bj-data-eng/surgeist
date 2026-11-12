@@ -79,7 +79,7 @@
 //! batch.insert_before(&root, &document, None);
 //! let committed = dom.apply(batch, &AtomicBool::new(false))?;
 //! let snapshot = dom.snapshot();
-//! let root = snapshot.node(committed.created(&root)?.unwrap())?;
+//! let root = snapshot.node(committed.attached_shadow_root(&root)?.unwrap())?;
 //! assert_eq!(root.node_name().to_utf8()?, "Root");
 //! assert_eq!(root.as_element().unwrap().attributes().len(), 1);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
@@ -188,7 +188,7 @@ mod view_transition;
 
 pub use autofocus::DomDocumentAutofocus;
 pub use base::{DomBase, DomBaseFactsError, DomBaseResponse, DomFrozenBase, DomLink};
-pub use batch::{CreatedNode, DomBatch, NodeOperand};
+pub use batch::{AttachedShadowRoot, CreatedNode, DomBatch, NodeOperand};
 pub use details::{
     DomDetails, DomDetailsToggleCancellationReason, DomDetailsToggleIntention,
     DomDetailsToggleIntentionId, DomDetailsToggleTransfer, DomElementTaskAssociation,
@@ -307,7 +307,7 @@ pub use store::source::operation::dialog_queue::{
 pub use store::{
     Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits,
     DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
-    DomNodeRetirementWatch, DomResource, DomUsage, DomWatchedCreation,
+    DomNodeRetirementWatch, DomResource, DomUsage, DomWatchedNode,
 };
 pub use surgeist_html::{
     construction::{

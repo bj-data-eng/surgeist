@@ -912,7 +912,7 @@ fn owned_shadow_and_template_contents_retire_with_their_host_and_preserve_captur
         batch.set_attribute(&keeper, "style", "width: 9px");
         let commit = dom.apply(batch, &cancel()).unwrap();
         let host = commit.created(&host).unwrap().unwrap();
-        let shadow = commit.created(&shadow).unwrap().unwrap();
+        let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
         let template = commit.created(&template).unwrap().unwrap();
         let keeper = commit.created(&keeper).unwrap().unwrap();
         let snapshot = dom.snapshot();

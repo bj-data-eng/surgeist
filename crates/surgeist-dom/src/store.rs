@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use crate::batch::{BatchIdentity, Command, Creation};
+use crate::batch::{AttachedShadowRoot, BatchIdentity, Command, Creation};
 use crate::document::{DomDocumentMetadata, NATIVE_DOCUMENT_STRING_UNITS};
 use crate::{
     CreatedNode, DocumentId, DomBatch, DomDocumentType, DomElement, DomNodeKind, DomOwnerId,
@@ -75,7 +75,7 @@ mod navigable;
 mod node_retirement;
 pub use node_retirement::{
     DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
-    DomNodeRetirementWatch, DomWatchedCreation,
+    DomNodeRetirementWatch, DomWatchedNode,
 };
 #[cfg(test)]
 mod oracle_tests;
@@ -1193,6 +1193,13 @@ impl DomCommit {
     pub fn created(&self, ticket: &CreatedNode) -> Result<Option<NodeId>, DomError> {
         resolve_created_node(&self.owner, &self.created, ticket)
     }
+    /// Return the attached root if it survives this batch's final publication.
+    pub fn attached_shadow_root(
+        &self,
+        ticket: &AttachedShadowRoot,
+    ) -> Result<Option<NodeId>, DomError> {
+        resolve_node_output(&self.owner, &self.created, &ticket.owner, ticket.index)
+    }
     pub fn document(&self, ticket: &CreatedNode) -> Result<DocumentId, DomError> {
         let id = self.created(ticket)?.ok_or(DomError::UnavailableCreation)?;
         if !self.documents[ticket.index] {
@@ -1207,11 +1214,20 @@ fn resolve_created_node(
     created: &[Option<NodeId>],
     ticket: &CreatedNode,
 ) -> Result<Option<NodeId>, DomError> {
-    if !Arc::ptr_eq(&ticket.owner, owner) {
+    resolve_node_output(owner, created, &ticket.owner, ticket.index)
+}
+
+fn resolve_node_output(
+    owner: &Arc<BatchIdentity>,
+    nodes: &[Option<NodeId>],
+    ticket_owner: &Arc<BatchIdentity>,
+    index: usize,
+) -> Result<Option<NodeId>, DomError> {
+    if !Arc::ptr_eq(ticket_owner, owner) {
         return Err(DomError::ForeignBatch);
     }
-    created
-        .get(ticket.index)
+    nodes
+        .get(index)
         .copied()
         .ok_or(DomError::UnavailableCreation)
 }
@@ -2985,12 +3001,13 @@ impl Draft {
                 self.base.node(self.store, id)?;
                 Key::Existing(id)
             }
-            NodeOperand::Created(ticket) => {
-                if !Arc::ptr_eq(&self.owner, &ticket.owner) {
+            NodeOperand::Created(CreatedNode { owner, index })
+            | NodeOperand::AttachedShadowRoot(AttachedShadowRoot { owner, index }) => {
+                if !Arc::ptr_eq(&self.owner, &owner) {
                     return Err(DomError::ForeignBatch);
                 }
                 self.tickets
-                    .get(ticket.index)
+                    .get(index)
                     .copied()
                     .filter(|key| self.node(*key).is_ok())
                     .ok_or(DomError::UnavailableCreation)?
@@ -3393,8 +3410,7 @@ impl Draft {
             }
             Command::AttachShadow { host, init } => {
                 let host = self.resolve(host.clone())?;
-                let root = self.attach_shadow(host, *init, limits, cancelled)?;
-                self.register_ticket(root, cancelled)?;
+                self.attach_shadow_command(host, *init, limits, cancelled)?;
             }
             Command::ViewTransition { basis, edit } => {
                 self.apply_view_transition(*basis, edit, limits, cancelled)?

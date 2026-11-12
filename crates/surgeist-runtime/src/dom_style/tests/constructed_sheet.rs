@@ -54,7 +54,7 @@ fn construct_after_shadow_retirement(root_limit: usize) {
     );
     let created = session.dom().apply(create, &cancel).unwrap();
     let host = created.created(&host).unwrap().unwrap();
-    let shadow = created.created(&shadow).unwrap().unwrap();
+    let shadow = created.attached_shadow_root(&shadow).unwrap().unwrap();
     let shadow_owner = DomStyleCssomRoot::new(
         shadow,
         CssomStore::new(Default::default(), Default::default()).unwrap(),

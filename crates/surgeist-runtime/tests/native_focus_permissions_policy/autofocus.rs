@@ -172,7 +172,7 @@ fn insertion_into_actual_connected_shadow_tree_is_not_document_tree_insertion() 
         .dom()
         .apply(batch, &cancel())
         .unwrap()
-        .created(&root)
+        .attached_shadow_root(&root)
         .unwrap()
         .unwrap();
     let node = detached(&mut session, top.document(), true);

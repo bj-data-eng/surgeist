@@ -818,7 +818,7 @@ fn actual_composed_shadow_paths_retarget_and_filter_both_root_modes() {
         batch.insert_before(&host, body_node, None);
         let commit = session.dom().apply(batch, &cancel()).unwrap();
         let host = commit.created(&host).unwrap().unwrap();
-        let shadow = commit.created(&shadow).unwrap().unwrap();
+        let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
         let inner = commit.created(&inner).unwrap().unwrap();
         let name = units("shadow-boundary");
         let mut registry = new_registry::<Vec<PathObservation>>();

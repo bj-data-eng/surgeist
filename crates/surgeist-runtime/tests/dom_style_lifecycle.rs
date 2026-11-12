@@ -650,7 +650,7 @@ fn retired_shadow_import_wait_releases_last_session_custody_only_after_reconcili
     let made = owner.apply(batch, &cancel()).unwrap();
     let document = made.document(&document).unwrap();
     let host = made.created(&host).unwrap().unwrap();
-    let shadow = made.created(&shadow).unwrap().unwrap();
+    let shadow = made.attached_shadow_root(&shadow).unwrap().unwrap();
     let mut session = DomSession::new(owner, limits()).unwrap();
     let mut context = Context {
         styles: session.style_execution(),

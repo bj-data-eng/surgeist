@@ -3013,7 +3013,7 @@ mod tests {
         let commit = dom.apply(batch, &cancel).unwrap();
         let document = commit.created(&document).unwrap().unwrap();
         let container = commit.created(&container).unwrap().unwrap();
-        let shadow = commit.created(&shadow).unwrap().unwrap();
+        let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
         let mut session = DomSession::new(dom, session_limits(limits())).unwrap();
         let mut styles = session.style_execution();
         let mut source = session.source_execution();
@@ -5185,7 +5185,7 @@ mod tests {
         );
         let done = owner.apply(batch, &cancel).unwrap();
         let host = done.created(&host).unwrap().unwrap();
-        let shadow = done.created(&shadow).unwrap().unwrap();
+        let shadow = done.attached_shadow_root(&shadow).unwrap().unwrap();
         let initial_mode = if initial_quirks {
             CssParserMode::Quirks
         } else {
@@ -5660,7 +5660,7 @@ mod tests {
         let done = owner.apply(batch, &cancel).unwrap();
         let document = done.created(&document).unwrap().unwrap();
         let host = done.created(&host).unwrap().unwrap();
-        let shadow = done.created(&shadow).unwrap().unwrap();
+        let shadow = done.attached_shadow_root(&shadow).unwrap().unwrap();
         let mut session = DomSession::new(owner, session_limits(limits())).unwrap();
         let mut styles = session.style_execution();
         let mut source = session.source_execution();

@@ -175,7 +175,7 @@ fn normalize_visits_ordinary_descendants_in_order_and_respects_comment_pi_and_ow
         commit.created(&nested).unwrap().unwrap(),
         commit.created(&n1).unwrap().unwrap(),
         commit.created(&n2).unwrap().unwrap(),
-        commit.created(&shadow).unwrap().unwrap(),
+        commit.attached_shadow_root(&shadow).unwrap().unwrap(),
         commit.created(&s1).unwrap().unwrap(),
         commit.created(&s2).unwrap().unwrap(),
         commit.created(&a).unwrap().unwrap(),

@@ -122,7 +122,7 @@ fn supplemental_document_known_empty_fact_does_not_require_complete_child_covera
     let commit = dom.apply(batch, &cancel()).unwrap();
     let a = commit.document(&a).unwrap();
     let b = commit.document(&b).unwrap();
-    let root = commit.created(&root).unwrap().unwrap();
+    let root = commit.attached_shadow_root(&root).unwrap().unwrap();
     let target = commit.created(&target).unwrap().unwrap();
     let old = commit.created(&old).unwrap().unwrap();
     let mut batch = DomBatch::new();

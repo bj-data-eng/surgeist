@@ -45,7 +45,7 @@ impl Dom {
         custody_key: usize,
         (source_limits, watch_limits): (DomSourceLimits, DomNodeRetirementLimits),
         cancel: &AtomicBool,
-    ) -> Result<crate::DomWatchedCreation, DomError> {
+    ) -> Result<crate::DomWatchedNode, DomError> {
         let mut lease = self.begin_source_edit(
             DomSourceEdit::attach_shadow(host, init),
             source_limits,
@@ -69,10 +69,6 @@ impl Dom {
             .creation_watch
             .and_then(|watch| watch.output)
             .ok_or(DomError::UnavailableCreation)?;
-        Ok(crate::DomWatchedCreation::new(
-            completion.commit,
-            node,
-            watch,
-        ))
+        Ok(crate::DomWatchedNode::new(completion.commit, node, watch))
     }
 }

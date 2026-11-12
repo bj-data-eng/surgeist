@@ -499,7 +499,7 @@ fn second_idle_root(fixture: &mut IdleDocument) -> NodeId {
         .dom()
         .apply(batch, &cancel())
         .unwrap()
-        .created(&shadow)
+        .attached_shadow_root(&shadow)
         .unwrap()
         .unwrap();
     fixture

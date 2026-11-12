@@ -18,11 +18,20 @@ pub struct CreatedNode {
     pub(crate) index: usize,
 }
 
-/// A published node or a creation in the same batch.
+/// A batch-local shadow attachment. Its result can be a new root or the
+/// matching declarative root already attached to the host.
+#[derive(Clone, Debug)]
+pub struct AttachedShadowRoot {
+    pub(crate) owner: Arc<BatchIdentity>,
+    pub(crate) index: usize,
+}
+
+/// A published node or a node returned by an earlier operation in the batch.
 #[derive(Clone, Debug)]
 pub enum NodeOperand {
     Existing(NodeId),
     Created(CreatedNode),
+    AttachedShadowRoot(AttachedShadowRoot),
 }
 
 impl From<NodeId> for NodeOperand {
@@ -38,6 +47,11 @@ impl From<DocumentId> for NodeOperand {
 impl From<&CreatedNode> for NodeOperand {
     fn from(id: &CreatedNode) -> Self {
         Self::Created(id.clone())
+    }
+}
+impl From<&AttachedShadowRoot> for NodeOperand {
+    fn from(root: &AttachedShadowRoot) -> Self {
+        Self::AttachedShadowRoot(root.clone())
     }
 }
 
@@ -266,7 +280,7 @@ pub(crate) enum Command {
 pub struct DomBatch {
     pub(crate) owner: Arc<BatchIdentity>,
     pub(crate) commands: Vec<Command>,
-    creations: usize,
+    node_outputs: usize,
     transitions: usize,
     transition_records: usize,
     ranges: usize,
@@ -342,7 +356,7 @@ impl DomBatch {
         Self {
             owner: Arc::new(BatchIdentity),
             commands: Vec::new(),
-            creations: 0,
+            node_outputs: 0,
             transitions: 0,
             transition_records: 0,
             ranges: 0,
@@ -541,9 +555,9 @@ impl DomBatch {
     fn ticket(&mut self) -> CreatedNode {
         let ticket = CreatedNode {
             owner: self.owner.clone(),
-            index: self.creations,
+            index: self.node_outputs,
         };
-        self.creations += 1;
+        self.node_outputs += 1;
         ticket
     }
     fn create(&mut self, kind: Creation, document: Option<NodeOperand>) -> CreatedNode {
@@ -654,15 +668,19 @@ impl DomBatch {
         });
         ticket
     }
-    /// Attaches one native root to an admitted HTML host. The canonical owner
-    /// retains closed roots; open-only exposure is a snapshot accessor policy.
-    /// Returns a batch-local ticket, never a guessed or prematurely published ID.
+    /// Attaches a native root or reuses a matching declarative root. A reused
+    /// root keeps its settings and loses its ordinary children in tree order.
+    /// The result resolves only after publication.
     pub fn attach_shadow(
         &mut self,
         host: impl Into<NodeOperand>,
         init: impl Into<crate::DomShadowRootInit>,
-    ) -> CreatedNode {
-        let ticket = self.ticket();
+    ) -> AttachedShadowRoot {
+        let ticket = AttachedShadowRoot {
+            owner: self.owner.clone(),
+            index: self.node_outputs,
+        };
+        self.node_outputs += 1;
         self.commands.push(Command::AttachShadow {
             host: host.into(),
             init: init.into(),

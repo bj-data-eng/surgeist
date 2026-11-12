@@ -413,7 +413,7 @@ fn retirement_releases_only_the_exact_generation_and_preserves_external_owner_cu
         crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Open),
     );
     let commit = dom.apply(batch, &cancel).unwrap();
-    let shadow = commit.created(&shadow).unwrap().unwrap();
+    let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
     let original = cssom_root(shadow);
     retain_fixture_owner(&mut dom, &original);
     let historical = dom.snapshot();
@@ -452,7 +452,7 @@ fn retirement_releases_only_the_exact_generation_and_preserves_external_owner_cu
         crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Open),
     );
     let commit = dom.apply(batch, &cancel).unwrap();
-    let replacement = commit.created(&replacement).unwrap().unwrap();
+    let replacement = commit.attached_shadow_root(&replacement).unwrap().unwrap();
     assert_eq!(replacement.slot, shadow.slot);
     assert_ne!(replacement.generation, shadow.generation);
     assert!(dom.style_cssom_root(replacement).unwrap().is_none());
@@ -486,7 +486,7 @@ fn adopted_shadow_owner_updates_only_its_documents_and_retirement_preserves_othe
         crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Open),
     );
     let commit = dom.apply(batch, &cancel).unwrap();
-    let shadow = commit.created(&shadow).unwrap().unwrap();
+    let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
     let owner = cssom_root(shadow);
     retain_fixture_owner(&mut dom, &owner);
     let historical = dom.snapshot();

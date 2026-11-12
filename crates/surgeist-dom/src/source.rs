@@ -244,7 +244,7 @@ impl DomSourceScriptSettings {
     }
 }
 
-/// The final identity produced by one completed creation operation.
+/// The final identity returned by one completed Source operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceOutput {
     Range(crate::DomRangeId),
@@ -355,7 +355,7 @@ impl DomSourceCompletion {
     pub fn output(&self) -> Option<DomSourceOutput> {
         self.commit.source_output()
     }
-    /// Historical first publication of this operation's root creation.
+    /// Historical identity of the first node output, including a reused root.
     pub fn published_node(&self) -> Option<NodeId> {
         self.published.first().copied().flatten()
     }

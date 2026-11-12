@@ -127,7 +127,7 @@ fn split_fixture() -> Split {
         b: commit.document(&b).unwrap(),
         ancestor: commit.created(&ancestor).unwrap().unwrap(),
         host: commit.created(&host).unwrap().unwrap(),
-        root: commit.created(&root).unwrap().unwrap(),
+        root: commit.attached_shadow_root(&root).unwrap().unwrap(),
         child: commit.created(&child).unwrap().unwrap(),
         target: commit.created(&target).unwrap().unwrap(),
         old: commit.created(&old).unwrap().unwrap(),
@@ -285,9 +285,9 @@ fn nested_open_closed_roots_preserve_actual_properties_language_and_detached_sco
     let commit = apply(&mut dom, batch);
     let document = commit.document(&document).unwrap();
     let host = commit.created(&host).unwrap().unwrap();
-    let outer = commit.created(&outer).unwrap().unwrap();
+    let outer = commit.attached_shadow_root(&outer).unwrap().unwrap();
     let inner_host = commit.created(&inner_host).unwrap().unwrap();
-    let inner = commit.created(&inner).unwrap().unwrap();
+    let inner = commit.attached_shadow_root(&inner).unwrap().unwrap();
     let leaf = commit.created(&leaf).unwrap().unwrap();
     let connected = capture(&dom.snapshot(), document);
     let mut batch = DomBatch::new();

@@ -163,7 +163,7 @@ fn ordinary_document_first_base_ignores_shadow_and_template_and_defers_nonfirst_
     let document = commit.document(&document).unwrap();
     let a = commit.created(&a).unwrap().unwrap();
     let b = commit.created(&b).unwrap().unwrap();
-    let shadow = commit.created(&shadow).unwrap().unwrap();
+    let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
     let template = commit.created(&template).unwrap().unwrap();
     let contents = dom
         .snapshot()

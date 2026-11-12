@@ -202,7 +202,7 @@ mod tests {
         let c = dom.apply(b, &cancel).unwrap();
         let d1 = c.document(&d1).unwrap();
         let d2 = c.document(&d2).unwrap();
-        let root = c.created(&root).unwrap().unwrap();
+        let root = c.attached_shadow_root(&root).unwrap().unwrap();
         let fragment = c.created(&fragment).unwrap().unwrap();
         let old = c.created(&old).unwrap().unwrap();
         let mut b = DomBatch::new();

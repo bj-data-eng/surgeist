@@ -684,7 +684,7 @@ fn owner_destruction_retires_nested_contents_but_preserves_shared_cache_and_encl
     let c = apply(&mut dom, b);
     let nested = c.created(&nested).unwrap().unwrap();
     let sibling = c.created(&sibling).unwrap().unwrap();
-    let root = c.created(&root).unwrap().unwrap();
+    let root = c.attached_shadow_root(&root).unwrap().unwrap();
     let old = dom.snapshot();
     let nf = contents(&old, nested);
     let mut b = DomBatch::new();

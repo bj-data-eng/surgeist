@@ -290,7 +290,7 @@ fn removal_relocates_ordinary_descendants_but_does_not_cross_shadow_host_relatio
     let host = commit.created(&host).unwrap().unwrap();
     let light = commit.created(&light).unwrap().unwrap();
     let deep = commit.created(&deep).unwrap().unwrap();
-    let shadow = commit.created(&shadow).unwrap().unwrap();
+    let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
     let inside = at(&mut dom, document, (light, 1), (light, 4));
     let hosted = at(&mut dom, document, (deep, 1), (deep, 5));
     let equality = at(&mut dom, document, (parent, 1), (parent, 1));
@@ -378,7 +378,7 @@ fn subsequent_setters_and_adoption_keep_the_same_association_across_boundary_roo
     let other = commit.document(&other).unwrap();
     let detached = commit.created(&detached).unwrap().unwrap();
     let text = commit.created(&text).unwrap().unwrap();
-    let shadow = commit.created(&shadow).unwrap().unwrap();
+    let shadow = commit.attached_shadow_root(&shadow).unwrap().unwrap();
     let id = at(&mut dom, document, (parent, 0), (parent, 1));
     associate(&mut dom, document, id);
     let original = dom.snapshot();
@@ -455,7 +455,7 @@ fn initial_association_requires_ordinary_document_root_and_refusal_is_atomic() {
     let roots = [
         commit.created(&detached).unwrap().unwrap(),
         commit.created(&fragment).unwrap().unwrap(),
-        commit.created(&shadow).unwrap().unwrap(),
+        commit.attached_shadow_root(&shadow).unwrap().unwrap(),
         other.node(),
     ];
     let original = at(&mut dom, document, (parent, 0), (parent, 1));

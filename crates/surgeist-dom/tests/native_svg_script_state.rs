@@ -229,7 +229,7 @@ fn actual_shadow_node_document_remains_distinct_from_connected_host_document() {
     b.insert_before(&old, &target, None);
     let c = apply(&mut dom, b);
     let d2 = c.document(&d2).unwrap();
-    let shadow = c.created(&shadow).unwrap().unwrap();
+    let shadow = c.attached_shadow_root(&shadow).unwrap().unwrap();
     let target = c.created(&target).unwrap().unwrap();
     let old = c.created(&old).unwrap().unwrap();
     let mut b = DomBatch::new();

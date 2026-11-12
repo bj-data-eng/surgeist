@@ -639,11 +639,11 @@ impl Draft {
         #[cfg(test)]
         let mut tickets_written = super::sequence::CopyObservation::default();
         for ticket in &self.tickets {
-            let Key::Created(index) = *ticket else {
-                unreachable!("creation ticket")
-            };
             let live = self.node(*ticket).ok();
-            created.push(live.as_ref().and_then(|_| allocated_ids.get(index)));
+            created.push(live.as_ref().and_then(|_| match *ticket {
+                Key::Created(index) => allocated_ids.get(index),
+                Key::Existing(node) => Some(node),
+            }));
             #[cfg(test)]
             tickets_written.pushed::<Option<NodeId>>();
             documents.push(live.is_some_and(|n| matches!(n.kind(), super::KindRead::Document(_))));

@@ -2473,8 +2473,7 @@ mod effect_scope_tests {
             .push_effect(
                 Effect::Tree(super::super::tree::Frame::ReplaceAll {
                     key: outer,
-                    replacement: Some(first),
-                    inserted: false,
+                    after: super::super::tree::AfterRemovingChildren::Insert(first),
                 }),
                 false,
                 &cancel,
@@ -2522,8 +2521,7 @@ mod effect_scope_tests {
             .push_effect(
                 Effect::Tree(super::super::tree::Frame::ReplaceAll {
                     key: outer,
-                    replacement: Some(first),
-                    inserted: false,
+                    after: super::super::tree::AfterRemovingChildren::Insert(first),
                 }),
                 false,
                 &cancel,

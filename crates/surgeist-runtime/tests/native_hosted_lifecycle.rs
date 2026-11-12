@@ -1306,7 +1306,7 @@ fn owned_shadow_retains_the_real_global_registry_and_capture_deduplicates_it() {
         let commit = dom.apply(batch, &cancel()).unwrap();
         (
             commit.created(&host).unwrap().unwrap(),
-            commit.created(&shadow).unwrap().unwrap(),
+            commit.attached_shadow_root(&shadow).unwrap().unwrap(),
             commit.created(&child).unwrap().unwrap(),
         )
     };
