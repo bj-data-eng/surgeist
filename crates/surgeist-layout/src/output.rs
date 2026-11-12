@@ -1365,6 +1365,31 @@ impl<S: LayoutScalar> BaselinesOf<S> {
         }
     }
 
+    pub(crate) fn clamped_to_border(
+        self,
+        size: Size<S>,
+    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        let clamp = |point: Point<Option<S>>| {
+            let on_axis = |axis, coordinate: Option<S>| {
+                coordinate
+                    .map(|offset| {
+                        BaselineCoordinateOf::try_new(axis, offset)?
+                            .clamped_to_border(size)
+                            .map(BaselineCoordinateOf::offset)
+                    })
+                    .transpose()
+            };
+            Ok(Point::new(
+                on_axis(PhysicalAxis::Horizontal, point.x)?,
+                on_axis(PhysicalAxis::Vertical, point.y)?,
+            ))
+        };
+        Ok(Self {
+            first: clamp(self.first)?,
+            last: clamp(self.last)?,
+        })
+    }
+
     pub(crate) fn record_first(&mut self, point: Point<Option<S>>) {
         if self.first.x.is_none() {
             self.first.x = point.x;

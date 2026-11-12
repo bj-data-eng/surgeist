@@ -599,14 +599,13 @@ where
         } = constants.node_outer_size
     {
         return Ok(ControlFlow::Break(BlockResult {
-            output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
-                .with_named_baselines(named_block_baselines(
-                    node,
-                    &style,
-                    &constants,
-                    Size::new(width, height),
-                    crate::NamedBaselinesOf::absent(),
-                )?),
+            output: block_baseline_output(
+                node,
+                &style,
+                &constants,
+                ComputeOutputOf::<S>::from_outer_size(Size::new(width, height)),
+                crate::NamedBaselinesOf::absent(),
+            )?,
             used: input,
             floats: None,
             remaining_cut: None,
@@ -625,14 +624,13 @@ where
         && !normal_flow_children_need_physical_sizing_work(tree, &children)
     {
         return Ok(ControlFlow::Break(BlockResult {
-            output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
-                .with_named_baselines(named_block_baselines(
-                    node,
-                    &style,
-                    &constants,
-                    Size::new(width, height),
-                    crate::NamedBaselinesOf::unknown(),
-                )?),
+            output: block_baseline_output(
+                node,
+                &style,
+                &constants,
+                ComputeOutputOf::<S>::from_outer_size(Size::new(width, height)),
+                crate::NamedBaselinesOf::unknown(),
+            )?,
             used: input,
             floats: None,
             remaining_cut: None,
@@ -1424,18 +1422,17 @@ impl<Node: Copy + Eq, S: LayoutScalar> PositionedFlow<Node, S> {
                 )
             },
         )?;
-        let mut output = ComputeOutputOf::<S>::from_sizes_and_baselines(
-            output_size,
-            published_scroll.content_size,
-            baselines,
-        )
-        .with_named_baselines(named_block_baselines(
+        let mut output = block_baseline_output(
             node,
             style,
             final_constants,
-            output_size,
+            ComputeOutputOf::<S>::from_sizes_and_baselines(
+                output_size,
+                published_scroll.content_size,
+                baselines,
+            ),
             named_baselines,
-        )?);
+        )?;
         output.scroll_geometry = Some(published_scroll.geometry);
         output.block_margin_collapse = block_margin_collapse;
         Ok(BlockResult {
@@ -1501,15 +1498,13 @@ where
         })?;
 
     if input.run_mode() == RunMode::ComputeSize {
-        let mut output =
-            ComputeOutputOf::<S>::from_sizes_and_baselines(output_size, Size::ZERO, baselines)
-                .with_named_baselines(named_block_baselines(
-                    node,
-                    style,
-                    final_constants,
-                    output_size,
-                    named_baselines,
-                )?);
+        let mut output = block_baseline_output(
+            node,
+            style,
+            final_constants,
+            ComputeOutputOf::<S>::from_sizes_and_baselines(output_size, Size::ZERO, baselines),
+            named_baselines,
+        )?;
         output.block_margin_collapse = block_margin_collapse;
         Ok(ControlFlow::Break(BlockResult {
             output,
@@ -2081,20 +2076,22 @@ impl<S: LayoutScalar> Constants<S> {
     }
 }
 
-fn named_block_baselines<Node: Copy, S: LayoutScalar, M>(
+fn block_baseline_output<Node: Copy, S: LayoutScalar, M>(
     node: Node,
     style: &BlockContainerProjection<'_, S>,
     constants: &Constants<S>,
-    size: Size<S>,
+    mut output: ComputeOutputOf<S>,
     mut facts: crate::NamedBaselinesOf<S>,
-) -> LayoutResultOf<Node, crate::NamedBaselinesOf<S>, S, M> {
+) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M> {
     let used = crate::scroll::UsedOverflow::from_computed(
         style.common.overflow,
         style.common.item_is_replaced,
     );
     if !used.is_scroll_container() {
-        return Ok(facts);
+        return Ok(output.with_named_baselines(facts));
     }
+    let size = output.size;
+    let mut baselines = output.baselines();
     let numeric_error = |crate::FiniteScalarErrorOf::NonFinite { value }| {
         crate::LayoutErrorOf::new(
             crate::LayoutErrorSiteOf::Node(node),
@@ -2117,10 +2114,18 @@ fn named_block_baselines<Node: Copy, S: LayoutScalar, M>(
             crate::PhysicalSide::Bottom => size.height + end_margin,
             crate::PhysicalSide::Right => size.width + end_margin,
         };
-        let edge = crate::BaselineFactOf::Available(
+        let coordinate =
             crate::BaselineCoordinateOf::try_new(constants.flow_axes.block_axis(), coordinate)
-                .map_err(numeric_error)?,
+                .map_err(numeric_error)?;
+        baselines.record_last(
+            crate::BaselinesOf::from_block_coordinates(
+                constants.flow_axes,
+                None,
+                Some(coordinate.offset()),
+            )
+            .last,
         );
+        let edge = crate::BaselineFactOf::Available(coordinate);
         for name in [
             crate::BaselineName::Alphabetic,
             crate::BaselineName::Central,
@@ -2133,7 +2138,10 @@ fn named_block_baselines<Node: Copy, S: LayoutScalar, M>(
     }
     // Clamp known content and exceptional coordinates in THIS border frame;
     // a parent subsequently translates them once. Unknown/Absent stay intact.
-    facts.clamped_to_border(size).map_err(numeric_error)
+    let baselines = baselines.clamped_to_border(size).map_err(numeric_error)?;
+    output.first_baselines = baselines.first;
+    output.last_baselines = baselines.last;
+    Ok(output.with_named_baselines(facts.clamped_to_border(size).map_err(numeric_error)?))
 }
 
 #[cfg(test)]
