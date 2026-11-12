@@ -842,7 +842,9 @@ impl Operation {
     fn admit_current_command(&mut self, dom: &Dom, cancel: &AtomicBool) -> Result<(), DomError> {
         let entry = if let Some(select) = &self.select {
             headroom::Entry::Select {
-                target: self.draft.resolve(select.target.into())?,
+                targets: select
+                    .targets
+                    .try_map(|key| self.draft.resolve(key.into()))?,
             }
         } else if let Some(installation) = &self.installation {
             headroom::Entry::Native {
@@ -2096,14 +2098,14 @@ impl DomSourceLease<'_> {
                         .as_ref()
                         .ok_or(DomError::InvalidNativeTask)?;
                     if auth.id != select.operation
-                        || auth.target != select.target
+                        || auth.targets != select.targets
                         || auth.status() != 0
                     {
                         return Err(DomError::InvalidNativeTask);
                     }
-                    let key = op.draft.resolve(select.target.into())?;
+                    let targets = select.targets.try_map(|key| op.draft.resolve(key.into()))?;
                     op.draft
-                        .schedule_selectedcontent(key, self.dom.limits, cancel)
+                        .schedule_select_task(targets, self.dom.limits, cancel)
                 } else if !op.started
                     && !op.cancelled
                     && let Some(installation) = &op.installation
@@ -2664,8 +2666,14 @@ impl DomSourceLease<'_> {
                         let select_finished = op.select.is_some() && (!op.cancelled || op.started);
                         if select_finished {
                             let select = op.select.as_ref().expect("actual Select root");
-                            if !matches!(op.draft.native_tasks.first(), Some(select::Pending::Update {serial:Some(serial),target}) if serial==select.operation.serial && op.draft.resolve(select.target.into()).is_ok_and(|key|key==target))
-                            {
+                            let targets =
+                                select.targets.try_map(|key| op.draft.resolve(key.into()))?;
+                            if !matches!(
+                                op.draft.native_tasks.first(),
+                                Some(select::Pending::Update { serial: Some(serial), targets: head })
+                                    if serial == select.operation.serial
+                                        && targets == head.map(|key| op.draft.live_key(key))
+                            ) {
                                 return Err(DomError::InvalidNativeTask.into());
                             }
                             op.draft.queue_native_remove(0, 1, cancel)?;
@@ -3403,13 +3411,17 @@ fn stage_cssom_acknowledgment(
 
 struct SelectRoot {
     operation: crate::DomNativeTaskId,
-    target: NodeId,
+    targets: crate::select::TaskTargets<NodeId>,
 }
 impl Operation {
-    pub(in crate::store) fn allows_select_checkpoint(&self, serial: u64, target: NodeId) -> bool {
+    pub(in crate::store) fn allows_select_checkpoint(
+        &self,
+        serial: u64,
+        targets: crate::select::TaskTargets<NodeId>,
+    ) -> bool {
         self.select
             .as_ref()
-            .is_some_and(|s| s.operation.serial == serial && s.target == target)
+            .is_some_and(|s| s.operation.serial == serial && s.targets == targets)
     }
 }
 impl Dom {
@@ -3426,7 +3438,7 @@ impl Dom {
             return Ok(crate::DomSelectCompletionStart::Skipped(completion));
         }
         let mut lease = self.begin_source_root(
-            OperationRoot::SelectCompletion(task.select()),
+            OperationRoot::SelectCompletion(task.selectedcontent().unwrap_or(task.select())),
             formation::allocated_arc(BatchIdentity),
             limits,
             cancel,
@@ -3436,7 +3448,7 @@ impl Dom {
         op.draft.select_work_limit = checkpoint.work;
         op.select = Some(SelectRoot {
             operation: task.operation(),
-            target: task.select(),
+            targets: task.authorization.targets,
         });
         lease.select_authorization = Some(task.authorization.clone());
         Ok(crate::DomSelectCompletionStart::Source(lease))
@@ -3454,7 +3466,7 @@ impl Dom {
             .as_ref()
             .filter(|o| o.id == id)
             .ok_or(DomError::InvalidSourceOperation)?;
-        if !op.allows_select_checkpoint(task.operation().serial, task.select()) {
+        if !op.allows_select_checkpoint(task.operation().serial, task.authorization.targets) {
             return Err(DomError::InvalidNativeTask);
         }
         let mut lease = self.resume_source_permission(id, limits, cancel)?;
@@ -6265,7 +6277,7 @@ pub(in crate::store) mod accounting_tests {
         );
         assert_eq!(lease.dom.state.next_task, u64::MAX);
         assert!(
-            matches!(lease.dom.state.native_tasks.as_slice(), [select::Task::Update { serial, target }] if *serial == u64::MAX - 1 && *target == select)
+            matches!(lease.dom.state.native_tasks.as_slice(), [select::Task::Update { serial, targets }] if *serial == u64::MAX - 1 && *targets == crate::select::TaskTargets::whole(select))
         );
         let remove = lease
             .qualify_cssom(&remove, root.root(), &root.snapshot().unwrap())

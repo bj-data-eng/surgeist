@@ -451,6 +451,22 @@ impl Draft {
         }
         Ok(())
     }
+
+    pub(super) fn hyperlink_moving_node(
+        &self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let node = self.node(key)?;
+        if node.hyperlink().is_some()
+            && surgeist_html::elements::link::hyperlink_tree_considers_speculative_loads(
+                HtmlHyperlinkTreeMutation::Moving,
+            )
+        {
+            self.hyperlink_speculation(node.document(), cancel)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

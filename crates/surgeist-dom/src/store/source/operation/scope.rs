@@ -96,9 +96,9 @@ impl OperationRoot {
             Command::BindEncodingUrlFacts { basis, .. }
             | Command::BindBaseFacts { basis, .. }
             | Command::ViewTransition { basis, .. } => Some(basis.document().node()),
-            Command::Insert { parent, .. } | Command::ReplaceChild { parent, .. } => {
-                existing(parent)
-            }
+            Command::Insert { parent, .. }
+            | Command::MoveBefore { parent, .. }
+            | Command::ReplaceChild { parent, .. } => existing(parent),
             Command::ConstructDocument(context) => Some(context.document.node()),
             Command::CloneNode { source, .. } => existing(source),
             Command::SplitText { node, .. } => existing(node),

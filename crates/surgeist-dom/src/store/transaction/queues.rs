@@ -55,14 +55,16 @@ fn no_document<S>(_: S) -> DocumentSource {
 fn current_document<S>(_: S) -> DocumentSource {
     DocumentSource::CurrentTarget
 }
+type TargetKeys = [Option<Key>; 2];
+
 struct Model<C, S> {
     map: fn(&C) -> S,
     measure: fn(S) -> QueueCounts,
-    target: fn(S) -> Option<Key>,
+    target: fn(S) -> TargetKeys,
     document: fn(S) -> DocumentSource,
 }
-fn no_target<S>(_: S) -> Option<Key> {
-    None
+fn no_target<S>(_: S) -> TargetKeys {
+    [None, None]
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -110,7 +112,7 @@ pub(in crate::store) struct LazyQueue<C, S> {
     map: fn(&C) -> S,
     counts: QueueCounts,
     measure: fn(S) -> QueueCounts,
-    target: fn(S) -> Option<Key>,
+    target: fn(S) -> TargetKeys,
     document: fn(S) -> DocumentSource,
     targets: Option<Targets>,
     published: Option<Published<C>>,
@@ -153,8 +155,8 @@ impl<C, S> QueueInverse<C, S> {
 
 enum IncomingTargets {
     None,
-    One(Option<Key>),
-    Many(custody::Held<Vec<Option<Key>>>),
+    One(TargetKeys),
+    Many(custody::Held<Vec<TargetKeys>>),
 }
 struct PreparedInsert<C, S> {
     index: usize,
@@ -357,7 +359,7 @@ pub(in crate::store) fn assert_details_backing_boundary(values: [details::Pendin
             .prepare_insert(
                 0,
                 &values[..1],
-                |_| Ok(None),
+                |_, _| Ok(None),
                 registry.ledger(),
                 accept,
                 || Ok(()),
@@ -374,7 +376,7 @@ pub(in crate::store) fn assert_details_backing_boundary(values: [details::Pendin
         let prepared = queue.prepare_insert(
             1,
             &values[1..],
-            |_| Ok(None),
+            |_, _| Ok(None),
             registry.ledger(),
             |usage| admit(usage.bytes(), limit, DomResource::SourceRetainedBytes),
             || Ok(()),
@@ -560,11 +562,27 @@ impl<C, S: Copy> LazyQueue<C, S> {
         }
         Ok(Some(Backing::Staged(next)))
     }
+    fn projected_targets(
+        &self,
+        values: impl Iterator<Item = S>,
+        mut document: impl FnMut(S, Key) -> Result<Option<Key>, DomError>,
+    ) -> impl Iterator<Item = Result<(Key, Option<Key>), DomError>> {
+        let project = self.target;
+        values
+            .flat_map(move |value| {
+                project(value)
+                    .into_iter()
+                    .flatten()
+                    .map(move |key| (value, key))
+            })
+            .map(move |(value, key)| document(value, key).map(|document| (key, document)))
+    }
+
     fn prepare_insert(
         &self,
         index: usize,
         values: &[S],
-        mut document: impl FnMut(S) -> Result<Option<Key>, DomError>,
+        document: impl FnMut(S, Key) -> Result<Option<Key>, DomError>,
         ledger: &custody::Ledger,
         mut admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
         mut step: impl FnMut() -> Result<(), DomError>,
@@ -601,16 +619,14 @@ impl<C, S: Copy> LazyQueue<C, S> {
                 targets.value_mut().push((self.target)(*value));
                 #[cfg(test)]
                 {
-                    copied.0 += size_of::<Option<Key>>();
+                    copied.0 += size_of::<TargetKeys>();
                 }
             }
             IncomingTargets::Many(targets)
         };
         let targets = match &self.targets {
             Some(targets) => Some(targets.updated(
-                values.iter().copied().filter_map(|value| {
-                    (self.target)(value).map(|key| document(value).map(|document| (key, document)))
-                }),
+                self.projected_targets(values.iter().copied(), document),
                 true,
                 &mut admit,
                 &mut step,
@@ -718,13 +734,13 @@ impl<C, S: Copy> LazyQueue<C, S> {
         admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
         step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<Option<QueueInverse<C, S>>, DomError> {
-        let prepared = self.prepare_insert(index, values, |_| Ok(None), ledger, admit, step)?;
+        let prepared = self.prepare_insert(index, values, |_, _| Ok(None), ledger, admit, step)?;
         Ok(self.commit_insert(prepared, values, retain_undo))
     }
     fn prepare_remove(
         &self,
         removal: Removal,
-        mut document: impl FnMut(S) -> Result<Option<Key>, DomError>,
+        document: impl FnMut(S, Key) -> Result<Option<Key>, DomError>,
         mut association: impl FnMut(S) -> Result<Option<(Key, Key)>, DomError>,
         ledger: &custody::Ledger,
         mut admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
@@ -749,9 +765,7 @@ impl<C, S: Copy> LazyQueue<C, S> {
         }
         let targets = match &self.targets {
             Some(targets) => Some(targets.updated(
-                self.iter().skip(index).take(count).filter_map(|value| {
-                    (self.target)(value).map(|key| document(value).map(|document| (key, document)))
-                }),
+                self.projected_targets(self.iter().skip(index).take(count), document),
                 false,
                 &mut admit,
                 &mut step,
@@ -917,7 +931,7 @@ impl<C, S: Copy> LazyQueue<C, S> {
     fn prepare_retain(
         &self,
         keep: impl Fn(S) -> bool,
-        mut document: impl FnMut(S) -> Result<Option<Key>, DomError>,
+        document: impl FnMut(S, Key) -> Result<Option<Key>, DomError>,
         mut association: impl FnMut(S) -> Result<Option<(Key, Key)>, DomError>,
         ledger: &custody::Ledger,
         mut admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
@@ -950,12 +964,14 @@ impl<C, S: Copy> LazyQueue<C, S> {
         }
         let targets = match &self.targets {
             Some(targets) => Some(targets.updated(
-                removed.value().iter().filter_map(|(_, value)| {
-                    #[cfg(test)]
-                    metric(scale_metrics::Event::QueueRecordVisited);
-                    (self.target)(*value)
-                        .map(|key| document(*value).map(|document| (key, document)))
-                }),
+                self.projected_targets(
+                    removed.value().iter().map(|(_, value)| {
+                        #[cfg(test)]
+                        metric(scale_metrics::Event::QueueRecordVisited);
+                        *value
+                    }),
+                    document,
+                ),
                 false,
                 &mut admit,
                 &mut step,
@@ -1057,7 +1073,7 @@ impl<C, S: Copy> LazyQueue<C, S> {
         step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<Option<QueueInverse<C, S>>, DomError> {
         let Some(prepared) =
-            self.prepare_retain(keep, |_| Ok(None), |_| Ok(None), ledger, admit, step)?
+            self.prepare_retain(keep, |_, _| Ok(None), |_| Ok(None), ledger, admit, step)?
         else {
             return Ok(None);
         };
@@ -1105,20 +1121,20 @@ impl<C, S: Copy> LazyQueue<C, S> {
     }
 }
 
-fn signal_target(key: Key) -> Option<Key> {
-    Some(key)
+fn signal_target(key: Key) -> TargetKeys {
+    [Some(key), None]
 }
-fn native_target(value: select::Pending) -> Option<Key> {
+fn native_target(value: select::Pending) -> TargetKeys {
     match value {
-        select::Pending::Update { target, .. } => Some(target),
-        select::Pending::MutationNotification => None,
+        select::Pending::Update { targets, .. } => [Some(targets.select), targets.selectedcontent],
+        select::Pending::MutationNotification => [None, None],
     }
 }
 fn details_document(value: details::Pending<Key>) -> DocumentSource {
     DocumentSource::Fixed(value.queue_document())
 }
-fn details_target(value: details::Pending<Key>) -> Option<Key> {
-    Some(value.target())
+fn details_target(value: details::Pending<Key>) -> TargetKeys {
+    [Some(value.target()), None]
 }
 fn signal(value: &NodeId) -> Key {
     Key::Existing(*value)
@@ -1126,9 +1142,9 @@ fn signal(value: &NodeId) -> Key {
 fn native(value: &select::Task<NodeId>) -> select::Pending {
     match *value {
         select::Task::MutationNotification => select::Pending::MutationNotification,
-        select::Task::Update { serial, target } => select::Pending::Update {
+        select::Task::Update { serial, targets } => select::Pending::Update {
             serial: Some(serial),
-            target: Key::Existing(target),
+            targets: targets.map(Key::Existing),
         },
     }
 }
@@ -1159,7 +1175,9 @@ fn detail_count<K>(value: details::Pending<K>) -> QueueCounts {
         unissued: u64::from(value.is_unissued()),
     }
 }
-fn cancelled_select_count(value: (Option<u64>, NodeId)) -> QueueCounts {
+type SelectCancellation = (Option<u64>, crate::select::TaskTargets<NodeId>);
+
+fn cancelled_select_count(value: SelectCancellation) -> QueueCounts {
     QueueCounts {
         selected: 1,
         unissued: u64::from(value.0.is_none()),
@@ -1206,9 +1224,9 @@ wrapper!(
 );
 wrapper!(
     CancelledSelects,
-    (Option<u64>, NodeId),
-    (Option<u64>, NodeId),
-    copy::<(Option<u64>, NodeId)>,
+    SelectCancellation,
+    SelectCancellation,
+    copy::<SelectCancellation>,
     cancelled_select_count
 );
 wrapper!(
@@ -1297,7 +1315,7 @@ capture_wrapper!(
 empty_wrapper!(CancelledSignals, copy::<NodeId>, one::<NodeId>);
 empty_wrapper!(
     CancelledSelects,
-    copy::<(Option<u64>, NodeId)>,
+    copy::<SelectCancellation>,
     cancelled_select_count
 );
 empty_wrapper!(
@@ -1343,7 +1361,7 @@ pub(in crate::store) enum QueueUndo {
     Native(QueueInverse<select::Task<NodeId>, select::Pending>),
     Details(QueueInverse<crate::DomDetailsToggleIntention, details::Pending<Key>>),
     CancelledSignals(QueueInverse<NodeId, NodeId>),
-    CancelledSelects(QueueInverse<(Option<u64>, NodeId), (Option<u64>, NodeId)>),
+    CancelledSelects(QueueInverse<SelectCancellation, SelectCancellation>),
     CancelledDetails(QueueInverse<details::Pending<NodeId>, details::Pending<NodeId>>),
 }
 impl QueueUndo {
@@ -1412,7 +1430,7 @@ macro_rules! insert_operation {
                 let prepared = self.$field.prepare_insert(
                     index,
                     values,
-                    |value| self.queue_document(&self.$field, value, cancel),
+                    |value, target| self.queue_document(&self.$field, value, target, cancel),
                     &ledger,
                     |usage| match &formation {
                         Some(budget) => budget.admit_custody_usage(usage, cancel),
@@ -1452,7 +1470,7 @@ macro_rules! remove_operation {
                         count,
                         retain_undo: undo,
                     },
-                    |value| self.queue_document(&self.$field, value, cancel),
+                    |value, target| self.queue_document(&self.$field, value, target, cancel),
                     |value| self.queue_association(&self.$field, value, cancel),
                     &ledger,
                     |usage| match &formation {
@@ -1486,7 +1504,7 @@ macro_rules! retain_operation {
                 let ledger = self.custody_ledger().clone();
                 let prepared = self.$field.prepare_retain(
                     keep,
-                    |value| self.queue_document(&self.$field, value, cancel),
+                    |value, target| self.queue_document(&self.$field, value, target, cancel),
                     |value| self.queue_association(&self.$field, value, cancel),
                     &ledger,
                     |usage| match &formation {
@@ -1534,7 +1552,7 @@ insert_operation!(
 insert_operation!(
     queue_cancelled_selects_insert,
     cancelled_selects,
-    (Option<u64>, NodeId),
+    SelectCancellation,
     CancelledSelects
 );
 insert_operation!(
@@ -1558,7 +1576,7 @@ macro_rules! prepared_operation {
                 let prepared = self.$field.prepare_insert(
                     index,
                     values,
-                    |value| self.queue_document(&self.$field, value, cancel),
+                    |value, target| self.queue_document(&self.$field, value, target, cancel),
                     &ledger,
                     |usage| match &formation {
                         Some(budget) => budget.admit_custody_usage(usage, cancel),
@@ -1781,7 +1799,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<Option<(Key, Key)>, DomError> {
         self.source_step(cancel)?;
-        let Some(target) = (queue.target)(value) else {
+        let [Some(target), None] = (queue.target)(value) else {
             return Ok(None);
         };
         Ok(match (queue.document)(value) {
@@ -1796,11 +1814,9 @@ impl Draft {
         &self,
         queue: &LazyQueue<C, S>,
         value: S,
+        target: Key,
         cancel: &AtomicBool,
     ) -> Result<Option<Key>, DomError> {
-        let Some(target) = (queue.target)(value) else {
-            return Ok(None);
-        };
         self.source_step(cancel)?;
         if self.is_private(self.live_key(target)) {
             return Ok(None);
@@ -1886,7 +1902,7 @@ impl Draft {
                 count: 1,
                 retain_undo: undo,
             },
-            |value| {
+            |value, _| {
                 assert_eq!(value, target);
                 self.source_step(cancel)?;
                 Ok(document)
@@ -2274,7 +2290,14 @@ mod tests {
             .unwrap()
             .unwrap();
         let prepared = queue
-            .prepare_insert(1, &[9], |_| Ok(None), registry.ledger(), accept, || Ok(()))
+            .prepare_insert(
+                1,
+                &[9],
+                |_, _| Ok(None),
+                registry.ledger(),
+                accept,
+                || Ok(()),
+            )
             .unwrap();
         let observation = Measurement::begin().unwrap();
         queue.commit_insert(prepared, &[9], false);
@@ -2292,7 +2315,7 @@ mod tests {
                     count: 1,
                     retain_undo: false,
                 },
-                |_| Ok(None),
+                |_, _| Ok(None),
                 |_| Ok(None),
                 registry.ledger(),
                 accept,
@@ -2333,7 +2356,7 @@ mod tests {
         let refused = signals.prepare_insert(
             0,
             &incoming,
-            |_| Ok(None),
+            |_, _| Ok(None),
             registry.ledger(),
             accept,
             || {
@@ -2349,7 +2372,7 @@ mod tests {
         let counters = observation.finish(Hooks::one(Domain::Transaction)).unwrap();
         assert_eq!(
             counters.sequence_materialized_bytes,
-            size_of::<Option<Key>>(),
+            size_of::<TargetKeys>(),
             "one target scratch row was completed before refusal"
         );
         assert_eq!(signals.len(), 0);
@@ -2358,7 +2381,7 @@ mod tests {
             .prepare_insert(
                 0,
                 &incoming,
-                |_| Ok(None),
+                |_, _| Ok(None),
                 registry.ledger(),
                 accept,
                 || Ok(()),
@@ -2367,7 +2390,7 @@ mod tests {
         let counters = observation.finish(Hooks::one(Domain::Transaction)).unwrap();
         assert_eq!(
             counters.sequence_materialized_bytes,
-            2 * size_of::<Option<Key>>(),
+            2 * size_of::<TargetKeys>(),
             "scratch target rows are initialized; reserved empty queue slots are not"
         );
         drop(prepared);
@@ -2386,7 +2409,7 @@ mod tests {
                 count: 2,
                 retain_undo: true,
             },
-            |_| Ok(None),
+            |_, _| Ok(None),
             |_| Ok(None),
             registry.ledger(),
             accept,
@@ -2415,7 +2438,7 @@ mod tests {
                     count: 1,
                     retain_undo: true,
                 },
-                |_| Ok(None),
+                |_, _| Ok(None),
                 |_| Ok(None),
                 registry.ledger(),
                 accept,
@@ -2445,7 +2468,7 @@ mod tests {
         let prepared = queue
             .prepare_retain(
                 |value| value != 2,
-                |_| Ok(None),
+                |_, _| Ok(None),
                 |_| Ok(None),
                 registry.ledger(),
                 accept,
@@ -2580,6 +2603,89 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn selectedcontent_task_obligations_follow_both_captured_documents() {
+        let cancel = AtomicBool::new(false);
+        let limits = DomLimits::new(
+            32,
+            4096,
+            64,
+            32,
+            32,
+            8,
+            65536,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(16, 1_000_000, 1_000_000)
+        .unwrap();
+        let mut dom = Dom::new(limits).unwrap();
+        let mut setup = DomBatch::new();
+        let first = setup.create_document();
+        let second = setup.create_document();
+        let html = surgeist_html::values::Namespace::html;
+        let root = setup.create_element_ns(&first, html(), "div");
+        let select = setup.create_element_ns(&first, html(), "select");
+        let target = setup.create_element_ns(&first, html(), "selectedcontent");
+        setup.insert_before(&select, &root, None);
+        setup.insert_before(&target, &root, None);
+        let commit = dom.apply(setup, &cancel).unwrap();
+        let first = commit.document(&first).unwrap();
+        let second = commit.document(&second).unwrap();
+        let select = commit.created(&select).unwrap().unwrap();
+        let target = commit.created(&target).unwrap().unwrap();
+        let mut lease = dom
+            .begin_source_edit(
+                crate::DomSourceEdit::move_before(target, select, None),
+                crate::DomSourceLimits::new(64_000_000, 1_000_000, 20_000_000, 128, 4096, 4096, 8),
+                &cancel,
+            )
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancel).unwrap(),
+            crate::DomSourceProgress::Complete(_)
+        ));
+        drop(lease);
+        let before = dom.snapshot();
+        assert!(before.state.native_targets.has_document_obligations(first));
+        assert!(!before.state.native_targets.has_document_obligations(second));
+
+        let mut adopt = DomBatch::new();
+        adopt.adopt(target, second.node());
+        dom.apply(adopt, &cancel).unwrap();
+        assert_eq!(
+            dom.snapshot().node(target).unwrap().owner_document(),
+            Some(second)
+        );
+        assert_eq!(
+            dom.snapshot().node(select).unwrap().owner_document(),
+            Some(first)
+        );
+        assert!(dom.state.native_targets.has_document_obligations(first));
+        assert!(dom.state.native_targets.has_document_obligations(second));
+        assert!(!before.state.native_targets.has_document_obligations(second));
+
+        let checkpoint = crate::DomNativeCheckpointLimits::new(
+            1_000_000,
+            1_000_000,
+            crate::DomSlotQueryLimits::new(32, 32).unwrap(),
+        )
+        .unwrap();
+        let crate::DomNativeCheckpoint::Select(task) =
+            dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+        else {
+            panic!("the captured pair remains pending across adoption");
+        };
+        assert_eq!(
+            (task.select(), task.selectedcontent()),
+            (select, Some(target))
+        );
+        dom.complete_select_task(&task, checkpoint, &cancel)
+            .unwrap();
+        assert!(!dom.state.native_targets.has_document_obligations(first));
+        assert!(!dom.state.native_targets.has_document_obligations(second));
+    }
+
     #[test]
     fn actual_signal_and_select_obligations_follow_adoption_and_exact_retirement() {
         let cancel = AtomicBool::new(false);
@@ -2725,7 +2831,7 @@ mod tests {
                 0,
                 &[select::Pending::Update {
                     serial: None,
-                    target,
+                    targets: crate::select::TaskTargets::whole(target),
                 }],
                 &cancel,
             )
@@ -3257,7 +3363,14 @@ mod tests {
         let (registry, canonical, mut queue) = fixture(vec![Affine(3), Affine(5)]);
         let before = registry.total();
         let prepared = queue
-            .prepare_insert(2, &[8], |_| Ok(None), registry.ledger(), accept, || Ok(()))
+            .prepare_insert(
+                2,
+                &[8],
+                |_, _| Ok(None),
+                registry.ledger(),
+                accept,
+                || Ok(()),
+            )
             .unwrap();
         assert!(registry.total().bytes() > before.bytes());
         assert!(queue.canonical_backing().unwrap().same_storage(&canonical));
@@ -3272,7 +3385,14 @@ mod tests {
             }
         );
         let prepared = queue
-            .prepare_insert(2, &[8], |_| Ok(None), registry.ledger(), accept, || Ok(()))
+            .prepare_insert(
+                2,
+                &[8],
+                |_, _| Ok(None),
+                registry.ledger(),
+                accept,
+                || Ok(()),
+            )
             .unwrap();
         queue.commit_insert(prepared, &[8], false);
         assert_eq!(queue.staged_values().unwrap(), [3, 5, 8]);
@@ -3419,7 +3539,7 @@ mod tests {
                     select::Pending::MutationNotification,
                     select::Pending::Update {
                         serial: None,
-                        target,
+                        targets: crate::select::TaskTargets::whole(target),
                     },
                 ],
                 false,
@@ -3434,7 +3554,7 @@ mod tests {
             1,
             select::Pending::Update {
                 serial: Some(23),
-                target,
+                targets: crate::select::TaskTargets::whole(target),
             },
         );
         queue.apply_ack(ack, &PublicationCommitted::at_fence());
@@ -3446,7 +3566,10 @@ mod tests {
             queue.get(1),
             Some(select::Pending::Update {
                 serial: Some(23),
-                target: Key::Created(7)
+                targets: crate::select::TaskTargets {
+                    select: Key::Created(7),
+                    selectedcontent: None
+                }
             })
         ));
         assert_eq!(

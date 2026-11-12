@@ -1108,6 +1108,12 @@ pub enum DomChange {
         select: NodeId,
         reason: crate::DomSelectTaskCancellationReason,
     },
+    SelectedcontentTaskCancelled {
+        operation: crate::DomNativeTaskId,
+        select: NodeId,
+        target: NodeId,
+        reason: crate::DomSelectTaskCancellationReason,
+    },
     /// Native destruction canceled this exact-generation pending recipient.
     SlotSignalCancelled {
         slot: NodeId,
@@ -2027,10 +2033,23 @@ impl Dom {
             (self.state.clone(), self.state_custody.clone())
         };
         let retired_authority = self.active_task.upgrade().filter(|auth| {
-            changes.iter().any(|change| matches!(change,
-                DomChange::SelectTaskCancelled { operation, select, reason: crate::DomSelectTaskCancellationReason::TargetDestroyed }
-                if *operation == auth.id && *select == auth.target
-            ))
+            changes.iter().any(|change| {
+                let (operation, select, selectedcontent) = match *change {
+                    DomChange::SelectTaskCancelled {
+                        operation, select, ..
+                    } => (operation, select, None),
+                    DomChange::SelectedcontentTaskCancelled {
+                        operation,
+                        select,
+                        target,
+                        ..
+                    } => (operation, select, Some(target)),
+                    _ => return false,
+                };
+                operation == auth.id
+                    && select == auth.targets.select
+                    && selectedcontent == auth.targets.selectedcontent
+            })
         });
         let retirement_publication = self.dispatch_custody.prepare_publication(
             &retirements,
@@ -3881,6 +3900,19 @@ impl Draft {
                     .map(|id| self.resolve(id.clone()))
                     .transpose()?;
                 self.pre_insert(node, parent, before, limits, cancelled)?;
+            }
+            Command::MoveBefore {
+                node,
+                parent,
+                before,
+            } => {
+                let node = self.resolve(node.clone())?;
+                let parent = self.resolve(parent.clone())?;
+                let before = before
+                    .as_ref()
+                    .map(|id| self.resolve(id.clone()))
+                    .transpose()?;
+                self.move_before(node, parent, before, limits, cancelled)?;
             }
             Command::ReplaceChild {
                 node,

@@ -626,15 +626,26 @@ impl Draft {
             image::publication_cancellation::at_evidence(cancel);
         }
         let (cancellations, cancellations_debit) = cancellations.into_parts();
-        for (operation, select) in cancellations {
+        for (operation, targets) in cancellations {
             source::formation::reserve(&mut changes, 1, budget, cancel)?;
-            changes.push(DomChange::SelectTaskCancelled {
-                operation: crate::DomNativeTaskId {
-                    owner: dom.owner,
-                    serial: operation,
+            let operation = crate::DomNativeTaskId {
+                owner: dom.owner,
+                serial: operation,
+            };
+            let select = targets.select;
+            let reason = crate::DomSelectTaskCancellationReason::TargetDestroyed;
+            changes.push(match targets.selectedcontent {
+                Some(target) => DomChange::SelectedcontentTaskCancelled {
+                    operation,
+                    select,
+                    target,
+                    reason,
                 },
-                select,
-                reason: crate::DomSelectTaskCancellationReason::TargetDestroyed,
+                None => DomChange::SelectTaskCancelled {
+                    operation,
+                    select,
+                    reason,
+                },
             });
             #[cfg(test)]
             changes_written.pushed::<DomChange>();

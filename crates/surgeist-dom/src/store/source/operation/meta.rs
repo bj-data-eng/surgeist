@@ -267,7 +267,7 @@ impl DomSourceLease<'_> {
                 .as_ref()
                 .ok_or(DomError::InvalidNativeTask)?;
             if authorization.id != select.operation
-                || authorization.target != select.target
+                || authorization.targets != select.targets
                 || authorization.status() != 0
             {
                 return Err(DomError::InvalidNativeTask);

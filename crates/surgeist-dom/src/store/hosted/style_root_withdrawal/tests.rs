@@ -114,6 +114,110 @@ fn constructor_with_meta_work(meta_work: u64) -> (Dom, DomHostedSource, Document
     (dom, source, document)
 }
 
+#[test]
+fn hosted_cleanup_waits_for_selectedcontent_when_its_select_was_adopted_away() {
+    let cancel = cancel();
+    let (mut dom, mut source, hosted) = constructor();
+    dom.set_limits(
+        dom.limits()
+            .with_select_processing(8, 1_000_000, 1_000_000)
+            .unwrap(),
+    )
+    .unwrap();
+    let mut setup = DomBatch::new();
+    let closed = setup.create_document();
+    let html = surgeist_html::values::Namespace::html;
+    let root = setup.create_element_ns(hosted, html(), "div");
+    let select = setup.create_element_ns(hosted, html(), "select");
+    let target = setup.create_element_ns(hosted, html(), "selectedcontent");
+    setup.insert_before(&select, &root, None);
+    setup.insert_before(&target, &root, None);
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let closed = commit.document(&closed).unwrap();
+    let select = commit.created(&select).unwrap().unwrap();
+    let target = commit.created(&target).unwrap().unwrap();
+    let mut move_edit = dom
+        .begin_source_edit(
+            DomSourceEdit::move_before(target, select, None),
+            source_limits(),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        move_edit.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(move_edit);
+
+    let mut adopt = DomBatch::new();
+    adopt.detach(target);
+    adopt.adopt(select, closed.node());
+    dom.apply(adopt, &cancel).unwrap();
+    assert_eq!(
+        dom.snapshot().node(target).unwrap().owner_document(),
+        Some(hosted)
+    );
+    assert_eq!(
+        dom.snapshot().node(select).unwrap().owner_document(),
+        Some(closed)
+    );
+
+    let navigable = dom
+        .snapshot()
+        .document(hosted)
+        .unwrap()
+        .navigable()
+        .unwrap();
+    let mut invocation = dom
+        .begin_hosted_top_level_destruction(&mut source, navigable, &cancel)
+        .unwrap();
+    let mut lease = invocation.cleanup(&mut dom, &mut source, &cancel).unwrap();
+    let DomHostedDestructionStep::EnqueueParentTask(request) = lease.step(&dom).unwrap() else {
+        panic!("actual destruction task");
+    };
+    let mut queued = Some(source.seal_destruction_queued(request, &cancel).unwrap());
+    lease
+        .accept_publication(&mut dom, &mut source, &mut queued, &cancel)
+        .unwrap();
+    let DomHostedDestructionStep::Cleanup(request) = lease.step(&dom).unwrap() else {
+        panic!("actual cleanup request");
+    };
+    let mut cleanup = Some(source.seal_top_level_cleanup(request, &cancel).unwrap());
+    let before = dom.snapshot().stamp();
+    assert_eq!(
+        lease.accept_publication(&mut dom, &mut source, &mut cleanup, &cancel),
+        Err(DomHostedError::PendingDocumentObligations)
+    );
+    assert!(cleanup.is_some());
+    assert_eq!(dom.snapshot().stamp(), before);
+
+    let checkpoint = crate::DomNativeCheckpointLimits::new(
+        1_000_000,
+        1_000_000,
+        crate::DomSlotQueryLimits::new(32, 32).unwrap(),
+    )
+    .unwrap();
+    let crate::DomNativeCheckpoint::Select(task) =
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+    else {
+        panic!("actual pair task");
+    };
+    assert_eq!(
+        (task.select(), task.selectedcontent()),
+        (select, Some(target))
+    );
+    dom.complete_select_task(&task, checkpoint, &cancel)
+        .unwrap();
+    lease
+        .accept_publication(&mut dom, &mut source, &mut cleanup, &cancel)
+        .unwrap();
+    assert!(cleanup.is_none());
+    assert!(matches!(
+        lease.step(&dom).unwrap(),
+        DomHostedDestructionStep::Complete
+    ));
+}
+
 fn publish_style_sheet(
     lease: &mut crate::DomSourceLease<'_>,
     root: &DomStyleCssomRoot,

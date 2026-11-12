@@ -64,10 +64,23 @@ nodes' parent links; no garbage-collection policy is guessed.
 
 ## Separate move operation
 
-`moveBefore` is unavailable pending its distinct state-preserving move producer
-(#2296). DOM3071's move algorithm has its own root/kind checks, Range/Slot work
-and moving hooks, and explicitly skips insertion/removal hooks. Ordinary
-`insert_before` does not implement that operation.
+`DomSourceEdit::move_before` retains one invocation of DOM3071's state-preserving
+move. It validates the shared shadow-including root, ancestry, reference child,
+and node kind before relinking the existing identity. The old position supplies
+Range and NodeIterator adjustments, Slot updates, and transient registrations.
+The new position supplies Range and Slot adjustments. Dedicated HTML moving
+hooks run in shadow-including order, followed by the removal and insertion
+records. The operation skips ordinary insertion and removal hooks.
+
+Option moving hooks queue each reached Select update in order. Selectedcontent
+moving hooks queue a single update with the captured Select and Selectedcontent
+identities. The native checkpoint executes each task against current state.
+Each captured identity contributes an obligation in its current Document.
+Retiring either captured identity cancels that task and preserves the original
+identities in the cancellation evidence.
+
+Reached media resource selection and hosted hyperlink speculation retain their
+typed refusals pending their respective producers. [Media resource selection](https://github.com/bj-data-eng/surgeist/issues/2657) · [Hyperlink speculation](https://github.com/bj-data-eng/surgeist/issues/2658)
 
 ## Source basis
 

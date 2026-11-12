@@ -574,7 +574,7 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
         .native_tasks
         .iter()
         .filter_map(|task| match task {
-            super::select::Task::Update { target, .. } => Some(*target),
+            super::select::Task::Update { targets, .. } => Some(targets.select),
             super::select::Task::MutationNotification => None,
         })
         .collect();

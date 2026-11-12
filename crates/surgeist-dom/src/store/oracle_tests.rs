@@ -688,11 +688,16 @@ fn assert_queue_targets(owner: DomOwnerId, state: &State) {
             }
             1 => {
                 for task in state.native_tasks.iter() {
-                    if let super::select::Task::Update { target, .. } = task {
-                        add_target(
-                            *target,
-                            Some(state.node(owner, *target).unwrap().document().node()),
-                        );
+                    if let super::select::Task::Update { targets, .. } = task {
+                        for target in [Some(targets.select), targets.selectedcontent]
+                            .into_iter()
+                            .flatten()
+                        {
+                            add_target(
+                                target,
+                                Some(state.node(owner, target).unwrap().document().node()),
+                            );
+                        }
                     }
                 }
             }

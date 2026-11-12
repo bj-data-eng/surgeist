@@ -1,5 +1,6 @@
 //! Source-ordered Select-family adaptation over the canonical staged tree.
 use super::*;
+use crate::select::TaskTargets;
 use surgeist_html::bounded::{
     numeric::HtmlIntegerPrefixScanner,
     select::{
@@ -28,12 +29,18 @@ pub(in crate::store) use source::scratch::ScratchVec;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Task<K> {
-    Update { serial: u64, target: K },
+    Update {
+        serial: u64,
+        targets: TaskTargets<K>,
+    },
     MutationNotification,
 }
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Pending {
-    Update { serial: Option<u64>, target: Key },
+    Update {
+        serial: Option<u64>,
+        targets: TaskTargets<Key>,
+    },
     MutationNotification,
 }
 pub(super) struct FinishedTasks {
@@ -42,7 +49,7 @@ pub(super) struct FinishedTasks {
     pub selected: usize,
     pub ack: Option<transaction::queues::QueueAck<Pending, Task<NodeId>>>,
     pub next: u64,
-    pub cancellations: custody::Held<Vec<(u64, NodeId)>>,
+    pub cancellations: custody::Held<Vec<(u64, TaskTargets<NodeId>)>>,
 }
 pub(in crate::store) enum CompletionAdmission {
     Live,
@@ -64,7 +71,31 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let target = self.live_key(target);
+        self.queue_select_update(TaskTargets::whole(target), limits, cancel)
+    }
+    fn queue_selectedcontent_target(
+        &mut self,
+        select: Key,
+        target: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.queue_select_update(
+            TaskTargets {
+                select,
+                selectedcontent: Some(target),
+            },
+            limits,
+            cancel,
+        )
+    }
+    fn queue_select_update(
+        &mut self,
+        targets: TaskTargets<Key>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let targets = targets.map(|key| self.live_key(key));
         self.select_step(cancel)?;
         let count = self
             .native_tasks
@@ -85,7 +116,7 @@ impl Draft {
         };
         let values = [Pending::Update {
             serial: None,
-            target,
+            targets,
         }];
         let prepared =
             self.queue_native_prepare_insert(self.native_tasks.len(), &values, cancel)?;
@@ -118,9 +149,16 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let key = self.live_key(key);
+        let canonical = self.canonical_key(key);
         self.source_step(cancel)?;
         if self.native_tasks.target_count(key) == 0 {
-            return Ok(());
+            if key == canonical {
+                return Ok(());
+            }
+            self.source_step(cancel)?;
+            if self.native_tasks.target_count(canonical) == 0 {
+                return Ok(());
+            }
         }
         for index in 0..self.native_tasks.len() {
             self.source_step(cancel)?;
@@ -131,19 +169,19 @@ impl Draft {
             if matches!(task, Pending::Update { .. }) {
                 self.select_step(cancel)?;
             }
-            if let Pending::Update { serial, target } = task
-                && target == key
-                && let Some(id) = self.published_id(key)
+            if let Pending::Update { serial, targets } = task
+                && (targets.contains(key) || targets.contains(canonical))
+                && let Ok(targets) = targets.try_map(|key| self.published_id(key).ok_or(()))
             {
                 self.queue_cancelled_selects_insert(
                     self.cancelled_selects.len(),
-                    &[(serial, id)],
+                    &[(serial, targets)],
                     cancel,
                 )?;
             }
         }
         self.queue_native_retain(
-            |task| !matches!(task,Pending::Update{target,..} if target==key),
+            |task| !matches!(task, Pending::Update { targets, .. } if targets.contains(key) || targets.contains(canonical)),
             cancel,
         )?;
         Ok(())
@@ -195,16 +233,16 @@ impl Draft {
                         Pending::MutationNotification => out.push(Task::MutationNotification),
                         Pending::Update {
                             serial: old,
-                            target,
+                            targets,
                         } => {
-                            if self.is_private(target) {
+                            if targets.any(|key| self.is_private(key)) {
                                 continue;
                             }
                             let value = serial(old)?;
                             selected += 1;
                             out.push(Task::Update {
                                 serial: value,
-                                target: id(target),
+                                targets: targets.map(id),
                             });
                             if old.is_none() {
                                 ack.as_mut()
@@ -213,7 +251,7 @@ impl Draft {
                                         index,
                                         Pending::Update {
                                             serial: Some(value),
-                                            target,
+                                            targets,
                                         },
                                     );
                             }
@@ -262,8 +300,8 @@ impl Dom {
     ) -> Result<crate::DomNativeCheckpoint, DomError> {
         if let Some(op) = &self.source_operation {
             match self.state.native_tasks.first() {
-                Some(Task::Update { serial, target })
-                    if op.allows_select_checkpoint(*serial, *target) => {}
+                Some(Task::Update { serial, targets })
+                    if op.allows_select_checkpoint(*serial, *targets) => {}
                 _ => return Err(DomError::SourceOperationPending),
             }
         }
@@ -287,7 +325,7 @@ impl Dom {
         }
         match self.state.native_tasks.first().copied() {
             None => Ok(crate::DomNativeCheckpoint::Idle),
-            Some(Task::Update { serial, target }) => {
+            Some(Task::Update { serial, targets }) => {
                 if limits.work == 0 {
                     return Err(DomError::SelectWorkLimit { limit: 0 });
                 }
@@ -299,7 +337,7 @@ impl Dom {
                     DomResource::SelectScratch,
                 )?;
                 let auth = if let Some(auth) = self.active_task.upgrade() {
-                    if auth.id.serial != serial || auth.target != target || auth.status() != 0 {
+                    if auth.id.serial != serial || auth.targets != targets || auth.status() != 0 {
                         return Err(DomError::InvalidNativeTask);
                     }
                     auth
@@ -309,7 +347,7 @@ impl Dom {
                             owner: self.owner,
                             serial,
                         },
-                        target,
+                        targets,
                         self.snapshot(),
                     ));
                     self.active_task = Arc::downgrade(&auth);
@@ -345,8 +383,8 @@ impl Dom {
         let mut draft = Draft::new(self, DomBatch::new().owner, cancel)?;
         draft.select_scratch_limit = limits.scratch;
         draft.select_work_limit = limits.work;
-        let key = draft.resolve(auth.target.into())?;
-        draft.schedule_selectedcontent(key, self.limits, cancel)?;
+        let targets = auth.targets.try_map(|key| draft.resolve(key.into()))?;
+        draft.schedule_select_task(targets, self.limits, cancel)?;
         // The head stays owned through every fallible effect and output allocation.
         draft.queue_native_remove(0, 1, cancel)?;
         let prepared = draft.finish(self, cancel)?;
@@ -383,10 +421,10 @@ impl Dom {
                 limits.scratch,
                 DomResource::SelectScratch,
             )?;
-            if !matches!(
-                self.state.node(self.owner, auth.target),
-                Err(DomError::StaleNode)
-            ) {
+            if !auth
+                .targets
+                .any(|key| matches!(self.state.node(self.owner, key), Err(DomError::StaleNode)))
+            {
                 return Err(DomError::InvalidNativeTask);
             }
             check_cancel(cancel)?;
@@ -414,8 +452,10 @@ impl Dom {
                 .active_task
                 .upgrade()
                 .is_some_and(|a| Arc::ptr_eq(&a, auth))
-            || !matches!(self.state.native_tasks.first(),Some(Task::Update{serial,target}) if *serial==auth.id.serial && *target==auth.target)
-            || self.state.node(self.owner, auth.target).is_err()
+            || !matches!(self.state.native_tasks.first(), Some(Task::Update { serial, targets }) if *serial == auth.id.serial && *targets == auth.targets)
+            || auth
+                .targets
+                .any(|key| self.state.node(self.owner, key).is_err())
         {
             return Err(DomError::InvalidNativeTask);
         }
@@ -712,11 +752,40 @@ impl Draft {
             HtmlSelectAction::Complete {
                 normalization_changed,
             } => {
-                if let SelectAfter::OptionCache { option, removing } = after
-                    && removing
-                    && (self.selected(option)? || normalization_changed)
-                {
-                    self.queue_select(key, limits, cancel)?;
+                match after {
+                    SelectAfter::OptionCache { option, removing }
+                        if removing && (self.selected(option)? || normalization_changed) =>
+                    {
+                        self.queue_select(key, limits, cancel)?;
+                    }
+                    SelectAfter::MovingOption {
+                        option,
+                        next,
+                        first,
+                    } => {
+                        let selected =
+                            (self.selected(option)? || normalization_changed).then_some(key);
+                        if let Some(next) = next {
+                            self.push_effect(
+                                Effect::SelectStart {
+                                    key: next,
+                                    operation: HtmlSelectOperation::Normalize,
+                                    after: SelectAfter::MovingOption {
+                                        option,
+                                        next: None,
+                                        first: selected,
+                                    },
+                                },
+                                true,
+                                cancel,
+                            )?;
+                        } else {
+                            for target in [first, selected].into_iter().flatten() {
+                                self.queue_select(target, limits, cancel)?;
+                            }
+                        }
+                    }
+                    _ => {}
                 }
                 return Ok(());
             }
@@ -752,13 +821,11 @@ impl Draft {
         cursor.finish_complete();
         Ok(None)
     }
-    fn option_cache(
+    fn update_option_cache(
         &mut self,
         key: Key,
-        removing: bool,
-        limits: DomLimits,
         cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
+    ) -> Result<[Option<Key>; 2], DomError> {
         let old = self.node(key)?.option_select();
         let new = self.nearest_option_select(key, cancel)?;
         {
@@ -766,9 +833,16 @@ impl Draft {
             (*fields) = new;
             fields.commit(cancel)
         }?;
-        if old == new {
-            return Ok(());
-        }
+        Ok(if old == new { [None, None] } else { [old, new] })
+    }
+    fn option_cache(
+        &mut self,
+        key: Key,
+        removing: bool,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let [old, new] = self.update_option_cache(key, cancel)?;
         // LIFO continuations start the new Select only after the old Select's
         // complete refresh, including every nested clone/removal hook.
         for select in [new, old].into_iter().flatten() {
@@ -786,6 +860,47 @@ impl Draft {
             )?;
         }
         self.run_effects(limits, cancel)?;
+        Ok(())
+    }
+    pub(super) fn select_moving_node(
+        &mut self,
+        key: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        match self.tag(key)? {
+            Some(Tag::Option) => {
+                let [old, new] = self.update_option_cache(key, cancel)?;
+                let (first, next) = match old {
+                    Some(old) => (Some(old), new),
+                    None => (new, None),
+                };
+                if let Some(first) = first {
+                    self.push_effect(
+                        Effect::SelectStart {
+                            key: first,
+                            operation: HtmlSelectOperation::Normalize,
+                            after: SelectAfter::MovingOption {
+                                option: key,
+                                next,
+                                first: None,
+                            },
+                        },
+                        true,
+                        cancel,
+                    )?;
+                }
+            }
+            Some(Tag::Selectedcontent) => {
+                if let Some(select) = self.selectedcontent_ancestors(key, cancel)?
+                    && self.element(key)?.language().selectedcontent_disabled() == Some(false)
+                    && !self.multiple(select, cancel)?
+                {
+                    self.queue_selectedcontent_target(select, key, limits, cancel)?;
+                }
+            }
+            _ => {}
+        }
         Ok(())
     }
     fn selectedcontent_ancestors(
@@ -878,7 +993,15 @@ impl Draft {
 #[derive(Clone, Copy)]
 pub(super) enum SelectAfter {
     None,
-    OptionCache { option: Key, removing: bool },
+    OptionCache {
+        option: Key,
+        removing: bool,
+    },
+    MovingOption {
+        option: Key,
+        next: Option<Key>,
+        first: Option<Key>,
+    },
 }
 pub(super) enum Effect {
     AutofocusInsertion(super::autofocus::Frame),
@@ -1538,6 +1661,27 @@ impl Draft {
         self.effect_scoped = false;
         result
     }
+    pub(in crate::store) fn schedule_select_task(
+        &mut self,
+        targets: TaskTargets<Key>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if let Some(target) = targets.selectedcontent {
+            self.push_effect(
+                Effect::Target {
+                    select: targets.select,
+                    target,
+                },
+                true,
+                cancel,
+            )?;
+            self.run_effects(limits, cancel)
+        } else {
+            self.schedule_selectedcontent(targets.select, limits, cancel)
+        }
+    }
+
     pub(super) fn schedule_selectedcontent(
         &mut self,
         select: Key,
@@ -2251,7 +2395,9 @@ mod tests {
         let original = before.state.native_tasks.clone();
         assert_eq!(original.len(), 4);
         for (row, expected) in original.iter().zip([select, survivor, select, survivor]) {
-            assert!(matches!(row, Task::Update { target, .. } if *target == expected));
+            assert!(
+                matches!(row, Task::Update { targets, .. } if *targets == TaskTargets::whole(expected))
+            );
         }
         let Task::Update { serial: first, .. } = original[0] else {
             panic!("S1")
@@ -2368,10 +2514,13 @@ mod tests {
             else {
                 panic!("surviving T occurrence")
             };
-            let Task::Update { serial, target } = expected else {
+            let Task::Update { serial, targets } = expected else {
                 panic!("T")
             };
-            assert_eq!((task.operation().serial, task.select()), (serial, target));
+            assert_eq!(
+                (task.operation().serial, task.select()),
+                (serial, targets.select)
+            );
             dom.complete_select_task(&task, checkpoint, &cancel)
                 .unwrap();
         }
