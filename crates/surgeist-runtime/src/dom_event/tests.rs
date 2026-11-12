@@ -44,6 +44,7 @@ impl<C> DomEventDispatcher<C> {
                 host: DispatchHost::Unavailable,
                 funding: DispatchFunding(Funding::Fixture),
             },
+            &mut DispatchUsage::default(),
         )
     }
 
@@ -65,6 +66,7 @@ impl<C> DomEventDispatcher<C> {
                 host: DispatchHost::Unavailable,
                 funding: DispatchFunding(Funding::Fixture),
             },
+            &mut DispatchUsage::default(),
         )
     }
 

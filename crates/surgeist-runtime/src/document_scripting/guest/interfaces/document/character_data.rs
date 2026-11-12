@@ -423,9 +423,8 @@ impl Capture {
         id: GuestNode,
     ) -> Result<DocumentString, DocumentGuestEventError> {
         events.step()?;
-        self.with_native(owner, |session, _| {
-            let snapshot = session.snapshot();
-            let node = snapshot.node_with(id.node(), || events.step())?;
+        self.callbacks.with_read(owner, events, |read, _| {
+            let node = read.node(id.node())?;
             match (id, node.kind()) {
                 (GuestNode::Text(_), DomNodeKind::Text(data))
                 | (GuestNode::Comment(_), DomNodeKind::Comment(data)) => Ok(data.clone()),

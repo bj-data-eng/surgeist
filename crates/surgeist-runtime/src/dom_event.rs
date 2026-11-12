@@ -521,6 +521,8 @@ pub struct DomEventHostInvocation {
     guest: Option<Rc<crate::document_scripting::guest::RegisteredGuestListener>>,
     #[cfg(feature = "document-scripting")]
     once_removed: bool,
+    #[cfg(feature = "document-scripting")]
+    in_shadow_tree: bool,
     reported: bool,
 }
 impl std::fmt::Debug for DomEventHostInvocation {
@@ -555,6 +557,11 @@ impl DomEventHostInvocation {
     #[cfg(feature = "document-scripting")]
     pub(crate) const fn once_removed(&self) -> bool {
         self.once_removed
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) const fn in_shadow_tree(&self) -> bool {
+        self.in_shadow_tree
     }
 
     /// Record ordinary guest completion once. A guest error joins normal
@@ -1130,10 +1137,21 @@ impl<C> DomEventDispatcher<C> {
         event: &EventDispatchObservation,
         call: DispatchCall<'_>,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        self.deliver_with_usage(dom, context, event, call, &mut DispatchUsage::default())
+    }
+
+    pub(crate) fn deliver_with_usage(
+        &mut self,
+        dom: &mut Dom,
+        context: &mut C,
+        event: &EventDispatchObservation,
+        call: DispatchCall<'_>,
+        usage: &mut DispatchUsage,
+    ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
         if event.state().status.get() != Status::Ready {
-            self.continue_dispatch(dom, context, event, call)
+            self.continue_dispatch(dom, context, event, call, usage)
         } else {
-            self.start_dispatch(dom, context, event, call)
+            self.start_dispatch(dom, context, event, call, usage)
         }
     }
 
@@ -1152,6 +1170,7 @@ impl<C> DomEventDispatcher<C> {
         context: &mut C,
         event: &EventDispatchObservation,
         call: DispatchCall<'_>,
+        usage: &mut DispatchUsage,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
         let DispatchCall {
             limits,
@@ -1180,7 +1199,7 @@ impl<C> DomEventDispatcher<C> {
                 DomEventResource::PendingEvents,
             ));
         }
-        let mut budget = Budget::new(limits, cancel);
+        let mut budget = Budget::new(limits, cancel, usage);
         let snapshot = dom.snapshot();
         if dom.source_dispatch_blocker().is_some() {
             return Err(DomEventDispatchError::Dom(
@@ -1210,7 +1229,7 @@ impl<C> DomEventDispatcher<C> {
                 node,
                 &event_type,
                 event.composed(),
-                state.origin.cause(),
+                (state.origin.cause(), host),
                 &mut budget,
             )?;
             let final_target = path
@@ -1307,6 +1326,7 @@ impl<C> DomEventDispatcher<C> {
         context: &mut C,
         event: &EventDispatchObservation,
         call: DispatchCall<'_>,
+        usage: &mut DispatchUsage,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
         let DispatchCall {
             limits,
@@ -1338,7 +1358,7 @@ impl<C> DomEventDispatcher<C> {
         if !Rc::ptr_eq(&dispatch._reservation.0, &self.owner) {
             return Err(DomEventDispatchError::WrongContinuation);
         }
-        let mut budget = Budget::new(limits, cancel);
+        let mut budget = Budget::new(limits, cancel, usage);
         if dom.source_dispatch_blocker().is_none()
             && dom.snapshot().incomplete_hosted_operation().is_none()
         {
@@ -1422,6 +1442,8 @@ impl<C> DomEventDispatcher<C> {
             key,
             #[cfg(feature = "document-scripting")]
             guest,
+            #[cfg(feature = "document-scripting")]
+            in_shadow_tree,
             passive,
             once,
         })) = result
@@ -1460,6 +1482,8 @@ impl<C> DomEventDispatcher<C> {
                     guest,
                     #[cfg(feature = "document-scripting")]
                     once_removed: once,
+                    #[cfg(feature = "document-scripting")]
+                    in_shadow_tree,
                     reported: false,
                 },
             ));
@@ -1667,7 +1691,7 @@ impl<C> DomEventDispatcher<C> {
                     }
                     continue;
                 }
-                if budget.callbacks >= budget.limits.callbacks {
+                if budget.usage.callbacks >= budget.limits.callbacks {
                     return Err(DomEventResource::Callbacks.into());
                 }
                 if dispatch.failures.len() >= budget.limits.failure_records {
@@ -1678,7 +1702,11 @@ impl<C> DomEventDispatcher<C> {
                         return Err(RunStop::HostUnavailable);
                     }
                     #[cfg(feature = "document-scripting")]
-                    CallbackKind::Guest(_) if host != DispatchHost::Guest => {
+                    CallbackKind::Guest(_)
+                        if host != DispatchHost::Guest
+                            && (host != DispatchHost::AttachedSource
+                                || event.0.toggle.is_some()) =>
+                    {
                         return Err(RunStop::HostUnavailable);
                     }
                     _ => (),
@@ -1694,7 +1722,7 @@ impl<C> DomEventDispatcher<C> {
                     .ok_or(DomEventResource::Callbacks)?;
                 dispatch.listener += 1;
                 dispatch.callbacks = callbacks;
-                budget.callbacks += 1;
+                budget.usage.callbacks += 1;
                 let callback = match &callback.0 {
                     CallbackKind::Native(callback) => {
                         if once {
@@ -1710,6 +1738,8 @@ impl<C> DomEventDispatcher<C> {
                             key: **key,
                             #[cfg(feature = "document-scripting")]
                             guest: None,
+                            #[cfg(feature = "document-scripting")]
+                            in_shadow_tree: false,
                             passive,
                             once,
                         });
@@ -1721,6 +1751,7 @@ impl<C> DomEventDispatcher<C> {
                             current_target: item.invocation.clone(),
                             key: callback.code,
                             guest: Some(callback.clone()),
+                            in_shadow_tree: item.in_shadow_tree,
                             passive,
                             once,
                         });
@@ -1874,6 +1905,14 @@ struct Event {
     trusted: Cell<bool>,
     creation: Result<DomEventCreationObservation, DomEventTimestampUnavailable>,
     toggle: Option<DomToggleEvent>,
+    #[cfg(feature = "document-scripting")]
+    source_projection: RefCell<
+        Option<
+            surgeist_bindings_js::NativeObjectToken<
+                crate::document_scripting::guest::GuestEventProjection,
+            >,
+        >,
+    >,
     storage: EventStorage,
     target: RefCell<Option<DomEventTarget>>,
     stop: Cell<bool>,
@@ -2363,6 +2402,8 @@ pub(crate) enum DispatchHost {
     Source,
     #[cfg(feature = "document-scripting")]
     Guest,
+    #[cfg(feature = "document-scripting")]
+    AttachedSource,
 }
 
 fn snapshot_formation_bytes(limits: DomEventDispatchLimits) -> Option<usize> {
@@ -2414,6 +2455,8 @@ impl EventInvocationOwner {
                 trusted: Cell::new(true),
                 creation: creation.map(EventCreation::into_observation),
                 toggle,
+                #[cfg(feature = "document-scripting")]
+                source_projection: RefCell::new(None),
                 storage: backing.storage,
                 target: RefCell::new(None),
                 stop: Cell::new(false),
@@ -2661,6 +2704,19 @@ impl std::fmt::Debug for NativeDomEvent {
     }
 }
 impl NativeDomEvent {
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn source_projection(
+        &self,
+    ) -> &RefCell<
+        Option<
+            surgeist_bindings_js::NativeObjectToken<
+                crate::document_scripting::guest::GuestEventProjection,
+            >,
+        >,
+    > {
+        &self.0.source_projection
+    }
+
     fn continuation(&self) -> Option<Rc<EventContinuation>> {
         self.0.invocation()?.upgrade()
     }
@@ -2929,6 +2985,8 @@ struct PathItem {
     at_target: bool,
     closed_root: bool,
     closed_slot: bool,
+    #[cfg(feature = "document-scripting")]
+    in_shadow_tree: bool,
     // Exact row in this Dispatch's original affine canonical association scope.
     // Non-Node targets use their own actual relevant Global authority.
     custody_row: Option<usize>,
@@ -3105,6 +3163,8 @@ enum RunStop {
         key: u64,
         #[cfg(feature = "document-scripting")]
         guest: Option<Rc<crate::document_scripting::guest::RegisteredGuestListener>>,
+        #[cfg(feature = "document-scripting")]
+        in_shadow_tree: bool,
         passive: bool,
         once: bool,
     },
@@ -3241,26 +3301,35 @@ fn dispatch_ready(
     }
     Ok(())
 }
-struct Budget<'a> {
-    cancel: &'a AtomicBool,
-    limits: DomEventDispatchLimits,
+#[derive(Default)]
+pub(crate) struct DispatchUsage {
     work: u64,
     callbacks: usize,
 }
+
+struct Budget<'a> {
+    cancel: &'a AtomicBool,
+    limits: DomEventDispatchLimits,
+    usage: &'a mut DispatchUsage,
+}
 impl<'a> Budget<'a> {
-    fn new(limits: DomEventDispatchLimits, cancel: &'a AtomicBool) -> Self {
+    fn new(
+        limits: DomEventDispatchLimits,
+        cancel: &'a AtomicBool,
+        usage: &'a mut DispatchUsage,
+    ) -> Self {
         Self {
             cancel,
             limits,
-            work: 0,
-            callbacks: 0,
+            usage,
         }
     }
+
     fn tick(&mut self) -> Result<(), DomEventResource> {
-        if self.work >= self.limits.work {
+        if self.usage.work >= self.limits.work {
             return Err(DomEventResource::Work);
         }
-        self.work += 1;
+        self.usage.work += 1;
         Ok(())
     }
 }
@@ -3312,6 +3381,8 @@ fn build_direct_path(
         at_target: true,
         closed_root: false,
         closed_slot: false,
+        #[cfg(feature = "document-scripting")]
+        in_shadow_tree: false,
         custody_row: None,
     });
     Ok(path)
@@ -3349,13 +3420,22 @@ fn build_node_path(
     original: NodeId,
     event_type: &DomEventType,
     composed: bool,
-    native: Option<NativeEventCause>,
+    (native, _host): (Option<NativeEventCause>, DispatchHost),
     budget: &mut Budget<'_>,
 ) -> Result<Vec<PathItem>, DomEventDispatchError> {
     snapshot
         .node(original)
         .map_err(DomEventDispatchError::Dom)?;
     let first_root = root(snapshot, original, budget)?;
+    #[cfg(feature = "document-scripting")]
+    let observes_window_event = matches!(_host, DispatchHost::Guest | DispatchHost::AttachedSource);
+    #[cfg(feature = "document-scripting")]
+    let mut in_shadow_tree = if observes_window_event {
+        source_tick(budget)?;
+        snapshot.node(first_root)?.as_shadow_root().is_some()
+    } else {
+        false
+    };
     let mut path: Vec<PathItem> = Vec::new();
     source_tick(budget)?;
     path.try_reserve_exact(budget.limits.path_items)
@@ -3393,6 +3473,8 @@ fn build_node_path(
             at_target,
             closed_root,
             closed_slot,
+            #[cfg(feature = "document-scripting")]
+            in_shadow_tree,
             custody_row: None,
         });
         let cancel = budget.cancel;
@@ -3421,6 +3503,8 @@ fn build_node_path(
                     at_target: false,
                     closed_root: false,
                     closed_slot: false,
+                    #[cfg(feature = "document-scripting")]
+                    in_shadow_tree: false,
                     custody_row: None,
                 });
                 // A native Global's default EventTarget parent is null.
@@ -3443,12 +3527,26 @@ fn build_node_path(
                 break;
             }
         };
-        closed_slot = via_assigned_slot
-            && snapshot
-                .node(root(snapshot, parent, budget)?)
-                .map_err(DomEventDispatchError::Dom)?
+        let crosses_tree = via_assigned_slot;
+        #[cfg(feature = "document-scripting")]
+        // Physical parents share their root. A slot or shadow host can change
+        // it for the next invocation target.
+        let crosses_tree = crosses_tree
+            || (observes_window_event
+                && (view.parent() != Some(parent) || view.as_shadow_root().is_some()));
+        let shadow_mode = if crosses_tree {
+            snapshot
+                .node(root(snapshot, parent, budget)?)?
                 .as_shadow_root()
-                .is_some_and(|r| r.state().mode() == HtmlShadowRootMode::Closed);
+                .map(|root| root.state().mode())
+        } else {
+            None
+        };
+        closed_slot = via_assigned_slot && shadow_mode == Some(HtmlShadowRootMode::Closed);
+        #[cfg(feature = "document-scripting")]
+        if observes_window_event && crosses_tree {
+            in_shadow_tree = shadow_mode.is_some();
+        }
         at_target = !in_adjusted_target_tree;
         if at_target {
             target = parent;

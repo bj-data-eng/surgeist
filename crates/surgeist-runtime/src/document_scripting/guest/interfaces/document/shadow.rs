@@ -211,13 +211,12 @@ impl Capture {
         };
         let (owner, events) = self.active(scope)?;
         let result = (|| {
-            let observation = self.with_native(&owner, |session, _| {
-                let snapshot = session.snapshot();
-                let node = snapshot.node_with(root, || events.step())?;
+            let observation = self.callbacks.with_read(&owner, &events, |read, _| {
+                let node = read.node(root)?;
                 let DomNodeKind::ShadowRoot(state) = node.kind() else {
                     return Err(DocumentScriptNativeError::ProjectionCustody.into());
                 };
-                events.step()?;
+                read.step()?;
                 Ok(match member {
                     Member::Mode => Observation::Keyword(match state.mode() {
                         HtmlShadowRootMode::Open => OPEN,

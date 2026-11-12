@@ -247,8 +247,8 @@ fn qualify(
     attachment: &super::Attachment,
     session: &mut DomSession,
 ) -> Result<(), DocumentScriptNativeError> {
-    let status = match native.active_source() {
-        Some(active) => native.qualify_event(attachment, session, active.request())?,
+    let status = match native.active_event_request() {
+        Some(request) => native.qualify_event(attachment, session, &request)?,
         None => native.observe(attachment, session)?.status(),
     };
     if status != HtmlScriptingStatus::Enabled {

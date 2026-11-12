@@ -4,9 +4,10 @@
 //! caller-selected domains. This owner neither runs the Dialog tail nor owns a
 //! second canonical operation, listener registry or task loop.
 use crate::dom_event::{
-    DispatchCall, DispatchFunding, DispatchHost, DomEventDispatchError, DomEventDispatchLimits,
-    DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
-    DomEventTimestampUnavailable, EventInvocationOwner, NativeDomEvent, NativeEventCause,
+    DispatchCall, DispatchFunding, DispatchHost, DispatchUsage, DomEventDispatchError,
+    DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
+    DomEventDom, DomEventTimestampUnavailable, EventInvocationOwner, NativeDomEvent,
+    NativeEventCause,
 };
 use std::{
     cell::RefCell,
@@ -555,6 +556,29 @@ impl SourceEventRuntime {
         limits: DomSourceEventServiceLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceEventServiceProgress, DomSourceEventRuntimeError> {
+        self.service_event_with_host(
+            dom,
+            request,
+            dispatcher,
+            context,
+            (limits, DispatchHost::Source, &mut DispatchUsage::default()),
+            cancel,
+        )
+    }
+
+    pub(crate) fn service_event_with_host<C>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        request: &DomSourceEventRequest,
+        dispatcher: &mut DomEventDispatcher<C>,
+        context: &mut C,
+        (limits, host, usage): (
+            DomSourceEventServiceLimits,
+            DispatchHost,
+            &mut DispatchUsage,
+        ),
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceEventServiceProgress, DomSourceEventRuntimeError> {
         let original = self
             .state
             .upgrade()
@@ -622,16 +646,17 @@ impl SourceEventRuntime {
                 (row.event.dispatch_observation(), scope, funding)
             };
             let outcome = dispatcher
-                .deliver(
+                .deliver_with_usage(
                     dom.raw_mut(),
                     context,
                     &event,
                     DispatchCall {
                         limits: limits.dispatch,
                         cancel,
-                        host: DispatchHost::Source,
+                        host,
                         funding,
                     },
+                    usage,
                 )
                 .map_err(DomSourceEventRuntimeError::Dispatch)?;
             if let DomEventDispatchOutcome::HostInvocation(invocation) = &outcome {

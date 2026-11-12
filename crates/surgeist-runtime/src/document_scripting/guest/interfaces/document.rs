@@ -248,22 +248,22 @@ impl DocumentBindings {
     fn find<'scope>(
         &self,
         scope: &mut Scope<'scope>,
-        events: &GuestEvents,
-        node: surgeist_dom::NodeId,
+        admission: ordinary::Admission<'_>,
+        node: NodeId,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
-        if let Some(value) = self.open_document(scope, events, node)? {
+        if let Some(value) = self.open_document(scope, node, || admission.step())? {
             return Ok(Some(value));
         }
-        self.ordinary.open(scope, events, node)
+        self.ordinary.open_with(scope, node, || admission.step())
     }
 
     fn open_document<'scope>(
         &self,
         scope: &mut Scope<'scope>,
-        events: &GuestEvents,
         node: NodeId,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
-        events.step()?;
+        step()?;
         if node == self.attached_id.node() {
             return Ok(Some(scope.open_callback_object(&self.attached)?));
         }
@@ -273,7 +273,7 @@ impl DocumentBindings {
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let mut next = pins.as_deref();
         while let Some(pin) = next {
-            events.step()?;
+            step()?;
             if pin.document.node() == node {
                 return Ok(Some(scope.open_callback_object(&pin.holder)?));
             }
@@ -285,8 +285,7 @@ impl DocumentBindings {
     fn publish_document<'scope>(
         &self,
         scope: &mut Scope<'scope>,
-        owner: &NativeOwner,
-        events: &GuestEvents,
+        admission: ordinary::Admission<'_>,
         prototype: ordinary::NodePrototype<'_, 'scope>,
         resolve: impl FnOnce() -> Result<DocumentId, DocumentGuestEventError>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
@@ -294,20 +293,20 @@ impl DocumentBindings {
             .documents
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let backing = events.reserve(owner, size_of::<DocumentPin>())?;
+        let backing = admission.reserve(size_of::<DocumentPin>())?;
         let payload = GuestNodeProjection {
             node: Cell::new(None),
             lifetime: None,
         };
-        events.step()?;
+        admission.step()?;
         let allocation = Box::new_uninit();
         let (value, holder, document) = scope.try_project_retained_native_object(
             prototype.projection(),
             payload,
             |payload, holder| {
                 Ok::<_, DocumentGuestEventError>((
-                    events.reserve(owner, payload)?,
-                    events.reserve(owner, holder)?,
+                    admission.reserve(payload)?,
+                    admission.reserve(holder)?,
                 ))
             },
             |payload| {
@@ -599,15 +598,14 @@ impl Capture {
                 .as_ref()
                 .ok_or(Error::ExpiredIdentity)?
                 .document;
-            self.with_native(&owner, |session, _| {
-                session
-                    .snapshot()
-                    .document(bindings.attached_id)
-                    .map_err(DocumentScriptNativeError::from)?;
+            self.callbacks.with_read(&owner, &events, |read, _| {
+                read.node(bindings.attached_id.node())?
+                    .as_document()
+                    .ok_or(DomError::WrongNodeKind)?;
                 Ok(())
             })?;
             bindings
-                .open_document(scope, &events, bindings.attached_id.node())?
+                .open_document(scope, bindings.attached_id.node(), || events.step())?
                 .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
         })();
         complete(scope, &events, result)
@@ -632,13 +630,12 @@ impl Capture {
                 .id()
                 .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
             events.step()?;
-            let observation = self.with_native(&owner, |session, _| {
-                let snapshot = session.snapshot();
-                let node = snapshot.node_with(id.node(), || events.step())?;
+            let observation = self.callbacks.with_read(&owner, &events, |read, _| {
+                let node = read.node(id.node())?;
                 let node_type = id.node_type(node.kind())?;
                 Ok(match member {
                     NodeMember::Type => Observation::Number(node_type),
-                    NodeMember::Name => match node.tag_name_spelling_with(|| events.step())? {
+                    NodeMember::Name => match node.tag_name_spelling_with(|| read.step())? {
                         Some(name) => Observation::TagName(name),
                         None => Observation::String(node.node_name()),
                     },
@@ -647,7 +644,7 @@ impl Capture {
                     }
                     NodeMember::Parent => Observation::Node(node.parent()),
                     NodeMember::Connected => Observation::Boolean(
-                        node.root_with(true, || events.step())?
+                        node.root_with(true, || read.step())?
                             .as_document()
                             .is_some(),
                     ),
@@ -693,8 +690,8 @@ impl Capture {
                 .id()
                 .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
             events.step()?;
-            self.with_native(&owner, |session, _| {
-                session.snapshot().node_with(id.node(), || events.step())?;
+            self.callbacks.with_read(&owner, &events, |read, _| {
+                read.node(id.node())?;
                 Ok(())
             })?;
             let options = node_get_root_node_0_options();
@@ -710,10 +707,9 @@ impl Capture {
             };
             scope.check_active()?;
             events.step()?;
-            let root = self.with_native(&owner, |session, _| {
-                let snapshot = session.snapshot();
-                let node = snapshot.node_with(id.node(), || events.step())?;
-                Ok(node.root_with(options.composed, || events.step())?.id())
+            let root = self.callbacks.with_read(&owner, &events, |read, _| {
+                let node = read.node(id.node())?;
+                Ok(node.root_with(options.composed, || read.step())?.id())
             })?;
             if root == id.node() {
                 let receiver = scope.retain(arguments.receiver());
@@ -750,8 +746,7 @@ impl Capture {
                 .target;
             bindings.publish_document(
                 scope,
-                &owner,
-                &events,
+                ordinary::Admission::ordinary(&owner, &events),
                 ordinary::NodePrototype::Selected(selected.prototype()),
                 || {
                     self.with_native(&owner, |session, global| {

@@ -44,7 +44,15 @@ impl GuestExceptionReports {
         events: &GuestEvents,
         owner: &NativeOwner,
     ) -> Result<ReportReservation<'a>, DocumentGuestEventError> {
-        let count = events.limits.dispatch.failure_records;
+        self.reserve_count(events, owner, events.limits.dispatch.failure_records)
+    }
+
+    pub(super) fn reserve_count<'a>(
+        &'a self,
+        events: &GuestEvents,
+        owner: &NativeOwner,
+        count: usize,
+    ) -> Result<ReportReservation<'a>, DocumentGuestEventError> {
         let reserved = self
             .reserved
             .get()

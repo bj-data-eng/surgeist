@@ -319,6 +319,34 @@ impl DomSourceRuntime {
             .service_event(dom, request, dispatcher, context, limits, cancel)
             .map_err(DomSourceRuntimeError::SourceEvent)
     }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn service_attached_event(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        request: &surgeist_dom::DomSourceEventRequest,
+        dispatcher: &mut DomEventDispatcher<()>,
+        (limits, usage): (
+            DomSourceEventServiceLimits,
+            &mut crate::dom_event::DispatchUsage,
+        ),
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceEventServiceProgress, DomSourceRuntimeError> {
+        self.events
+            .service_event_with_host(
+                dom,
+                request,
+                dispatcher,
+                &mut (),
+                (
+                    limits,
+                    crate::dom_event::DispatchHost::AttachedSource,
+                    usage,
+                ),
+                cancel,
+            )
+            .map_err(DomSourceRuntimeError::SourceEvent)
+    }
     /// Monotonically raise the original event operation's policy limits, even
     /// while a retained child is topmost. This performs no dispatch, resume or
     /// Source-tail execution and preserves the original cumulative counters.

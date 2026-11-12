@@ -124,7 +124,7 @@ impl Capture {
         }
         scope.check_active()?;
         events.step()?;
-        self.with_native(owner, |_, _| Ok(()))?;
+        self.callbacks.qualify_listener_registry(owner)?;
         let native_target = target.target();
         let key = ListenerMatch {
             receiver: arguments.receiver(),

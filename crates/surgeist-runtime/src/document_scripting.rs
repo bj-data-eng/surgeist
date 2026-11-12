@@ -163,6 +163,7 @@ struct NativeOwner {
     attachment: OnceCell<Attachment>,
     session: RefCell<DomSession>,
     active_source: Cell<Option<source::ActiveSource>>,
+    active_attached_event: RefCell<Option<surgeist_dom::DomSourceEventRequest>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
     css_limits: Cell<CssNamespaceLimits>,
@@ -301,6 +302,7 @@ impl PreparedDocumentScriptHost {
                 attachment: OnceCell::new(),
                 session: RefCell::new(session),
                 active_source: Cell::new(None),
+                active_attached_event: RefCell::new(None),
                 cancellation,
                 storage_limit,
                 css_limits: Cell::new(CssNamespaceLimits::default()),
@@ -1198,8 +1200,8 @@ fn read_child_count<'scope>(
             .session
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let status = match native.active_source() {
-            Some(active) => native.qualify_event(attachment, &mut session, active.request())?,
+        let status = match native.active_event_request() {
+            Some(request) => native.qualify_event(attachment, &mut session, &request)?,
             None => native.observe(attachment, &mut session)?.status(),
         };
         if status != HtmlScriptingStatus::Enabled {

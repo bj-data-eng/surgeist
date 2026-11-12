@@ -122,10 +122,10 @@ pub(super) struct Interface(Option<usize>);
 
 pub(super) fn interface(
     local: &DocumentString,
-    events: &GuestEvents,
+    mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
 ) -> Result<Interface, DocumentGuestEventError> {
     for (index, &(name, _, _)) in ELEMENTS.iter().enumerate() {
-        events.step()?;
+        step()?;
         if local
             .code_units()
             .iter()
