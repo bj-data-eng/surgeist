@@ -289,6 +289,43 @@ fn an_actual_external_native_policy_can_block_only_the_selected_original_occurre
 }
 
 #[test]
+fn parsed_meta_trusted_types_policies_survive_canonical_installation_in_order() {
+    use crate::trusted_types_csp::{Decision, PolicyDelivery, PolicyProcessor};
+
+    let mut processor = PolicyProcessor::new_with(&mut allow, &mut |_| unreachable!()).unwrap();
+    let report = Arc::new(
+        HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(concat!(
+                "<!doctype html><meta http-equiv=content-security-policy ",
+                "content=\"report-uri ignored; trusted-types first\">",
+                "<meta http-equiv=content-security-policy ",
+                "content=\"require-trusted-types-for 'script'\"><p>text",
+            )),
+            parsing(),
+        )
+        .parse_with_meta_csp(&mut processor)
+        .unwrap(),
+    );
+    let (session, installation) = installed(report);
+    let snapshot = session.snapshot();
+    let document = snapshot.document(installation.document()).unwrap();
+    let state = document.metadata().policy_container().csp();
+    let list = processor
+        .document_policies_with(state, &mut allow)
+        .unwrap()
+        .unwrap();
+    assert_eq!(list.len(), 2);
+    assert_eq!(list[0].delivery(), PolicyDelivery::Meta);
+    let mut decision = Decision::script_mismatch(list);
+    let violation = decision
+        .next_violation(&mut || Ok::<_, Infallible>(()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(violation.policy_index(), 1);
+    assert_eq!(decision.blocked(), Some(true));
+}
+
+#[test]
 fn an_unavailable_supplier_is_a_missing_observation_without_an_implicit_allow() {
     let (mut session, installation) =
         installed(report("<!doctype html><style>x{color:red}</style>"));

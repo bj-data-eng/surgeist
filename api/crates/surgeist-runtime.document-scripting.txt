@@ -246,6 +246,27 @@ pub enum surgeist_runtime::trusted_types_csp::PolicyDelivery
 pub surgeist_runtime::trusted_types_csp::PolicyDelivery::EnforcingHeader
 pub surgeist_runtime::trusted_types_csp::PolicyDelivery::Meta
 pub surgeist_runtime::trusted_types_csp::PolicyDelivery::ReportOnlyHeader
+pub enum surgeist_runtime::trusted_types_csp::PolicyListCapacity
+pub surgeist_runtime::trusted_types_csp::PolicyListCapacity::Allocation
+pub surgeist_runtime::trusted_types_csp::PolicyListCapacity::Representation
+impl core::error::Error for surgeist_runtime::trusted_types_csp::PolicyListCapacity
+impl core::fmt::Display for surgeist_runtime::trusted_types_csp::PolicyListCapacity
+pub fn surgeist_runtime::trusted_types_csp::PolicyListCapacity::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::convert::From<surgeist_runtime::trusted_types_csp::PolicyListCapacity> for surgeist_runtime::trusted_types_csp::PolicyListError<E>
+pub fn surgeist_runtime::trusted_types_csp::PolicyListError<E>::from(error: surgeist_runtime::trusted_types_csp::PolicyListCapacity) -> Self
+pub enum surgeist_runtime::trusted_types_csp::PolicyListError<E>
+pub surgeist_runtime::trusted_types_csp::PolicyListError::Capacity(surgeist_runtime::trusted_types_csp::PolicyListCapacity)
+pub surgeist_runtime::trusted_types_csp::PolicyListError::Csp(surgeist_html::internal::security::csp_policy::HtmlCspError<E>)
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_runtime::trusted_types_csp::PolicyListError<E>
+pub fn surgeist_runtime::trusted_types_csp::PolicyListError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E> core::convert::From<surgeist_html::internal::security::csp_policy::HtmlCspError<E>> for surgeist_runtime::trusted_types_csp::PolicyListError<E>
+pub fn surgeist_runtime::trusted_types_csp::PolicyListError<E>::from(error: surgeist_html::internal::security::csp_policy::HtmlCspError<E>) -> Self
+impl<E> core::convert::From<surgeist_html::internal::security::csp_policy::HtmlCspProtocolError> for surgeist_runtime::trusted_types_csp::PolicyListError<E>
+pub fn surgeist_runtime::trusted_types_csp::PolicyListError<E>::from(error: surgeist_html::internal::security::csp_policy::HtmlCspProtocolError) -> Self
+impl<E> core::convert::From<surgeist_runtime::trusted_types_csp::PolicyListCapacity> for surgeist_runtime::trusted_types_csp::PolicyListError<E>
+pub fn surgeist_runtime::trusted_types_csp::PolicyListError<E>::from(error: surgeist_runtime::trusted_types_csp::PolicyListCapacity) -> Self
+impl<E> core::fmt::Display for surgeist_runtime::trusted_types_csp::PolicyListError<E>
+pub fn surgeist_runtime::trusted_types_csp::PolicyListError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>
 impl<'policy, 'name> surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>
 pub fn surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>::blocked(&self) -> core::option::Option<bool>
@@ -258,6 +279,15 @@ pub const fn surgeist_runtime::trusted_types_csp::Policy::delivery(&self) -> sur
 pub fn surgeist_runtime::trusted_types_csp::Policy::directives(&self) -> surgeist_html::internal::security::csp_directives::HtmlCspDirectives<'_>
 pub fn surgeist_runtime::trusted_types_csp::Policy::parse<E>(serialized: surgeist_html::internal::values::document_string::DocumentString, delivery: surgeist_runtime::trusted_types_csp::PolicyDelivery, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<Self, E>
 pub fn surgeist_runtime::trusted_types_csp::Policy::serialized(&self) -> &surgeist_html::internal::values::document_string::DocumentString
+pub struct surgeist_runtime::trusted_types_csp::PolicyProcessor
+impl surgeist_runtime::trusted_types_csp::PolicyProcessor
+pub fn surgeist_runtime::trusted_types_csp::PolicyProcessor::document_policies_with<'a, E>(&self, state: surgeist_dom::meta::DomDocumentCspState<'a>, admit: &mut impl core::ops::function::FnMut(surgeist_html::internal::security::csp_policy::accounting::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<&'a [surgeist_runtime::trusted_types_csp::Policy]>, surgeist_html::internal::security::csp_policy::HtmlCspError<E>>
+pub fn surgeist_runtime::trusted_types_csp::PolicyProcessor::new_with<E>(admit: &mut impl core::ops::function::FnMut(surgeist_html::internal::security::csp_policy::accounting::HtmlCspLayout) -> core::result::Result<(), E>, release: &mut impl core::ops::function::FnMut(surgeist_html::internal::security::csp_policy::accounting::HtmlCspStorage)) -> core::result::Result<Self, surgeist_html::internal::security::csp_policy::HtmlCspError<E>>
+pub fn surgeist_runtime::trusted_types_csp::PolicyProcessor::response_with<E>(&mut self, owner: &mut surgeist_html::internal::security::csp_policy::transition::HtmlCspOwner, enforcing: &[surgeist_html::internal::values::document_string::DocumentString], report_only: &[surgeist_html::internal::values::document_string::DocumentString], admit: &mut impl core::ops::function::FnMut(surgeist_html::internal::security::csp_policy::accounting::HtmlCspLayout) -> core::result::Result<(), E>, release: &mut impl core::ops::function::FnMut(surgeist_html::internal::security::csp_policy::accounting::HtmlCspStorage)) -> core::result::Result<surgeist_html::internal::security::csp_policy::transition::HtmlCspAssociation, surgeist_runtime::trusted_types_csp::PolicyListError<E>>
+impl surgeist_html::internal::security::csp_policy::HtmlMetaCspProcessor for surgeist_runtime::trusted_types_csp::PolicyProcessor
+pub type surgeist_runtime::trusted_types_csp::PolicyProcessor::Error = surgeist_runtime::trusted_types_csp::PolicyListCapacity
+pub fn surgeist_runtime::trusted_types_csp::PolicyProcessor::prepare<E>(&mut self, request: &surgeist_html::internal::security::csp_policy::transition::HtmlMetaCspRequest, admit: &mut impl core::ops::function::FnMut(surgeist_html::internal::security::csp_policy::accounting::HtmlCspLayout) -> core::result::Result<(), E>, release: &mut impl core::ops::function::FnMut(surgeist_html::internal::security::csp_policy::accounting::HtmlCspStorage)) -> core::result::Result<surgeist_html::internal::security::csp_policy::HtmlMetaCspOutcome<Self::Error>, surgeist_html::internal::security::csp_policy::HtmlCspError<E>>
+pub fn surgeist_runtime::trusted_types_csp::PolicyProcessor::profile(&self) -> &surgeist_html::internal::security::csp_policy::identity::HtmlCspProcessorProfile
 pub struct surgeist_runtime::trusted_types_csp::Violation<'a>
 impl<'a> surgeist_runtime::trusted_types_csp::Violation<'a>
 pub const fn surgeist_runtime::trusted_types_csp::Violation<'a>::directive(self) -> surgeist_runtime::trusted_types_csp::Directive

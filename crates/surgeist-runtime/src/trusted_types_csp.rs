@@ -12,6 +12,9 @@ use surgeist_html::{
     values::DocumentString,
 };
 
+mod provider;
+pub use provider::{PolicyListCapacity, PolicyListError, PolicyProcessor};
+
 /// The source and disposition of one delivered CSP policy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PolicyDelivery {
@@ -37,7 +40,7 @@ impl PolicyDelivery {
 }
 
 /// The two Trusted Types directives of one original serialized policy.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Policy {
     serialized: DocumentString,
     delivery: PolicyDelivery,
