@@ -34,6 +34,36 @@ pub(in crate::document_scripting) fn window_factory_creates_the_exact_default_po
         "#))?;
         let status = String::from_utf16_lossy(&scope.to_utf16(&result)?);
         assert_eq!(status, "ok");
+        assert_guest(scope, "typeof trustedTypes.createPolicy('method probe').createHTML === 'function'")?;
+        assert_guest(scope, r#"
+            (() => {
+                const marker = {};
+                let coercions = 0;
+                const policy = trustedTypes.createPolicy('methods', {
+                    createHTML(input, extra) {
+                        'use strict';
+                        if (this !== undefined || input !== 'A\ud800\0' ||
+                            extra !== marker || arguments.length !== 2) throw marker;
+                        return {toString() { return input; }};
+                    },
+                    createScript() { return null; },
+                    createScriptURL() { return '\ud800\0'; }
+                });
+                const html = policy.createHTML({toString() { coercions++; return 'A\ud800\0'; }}, marker);
+                if (coercions !== 1 || String(html) !== 'A\ud800\0' ||
+                    String(policy.createScript('')) !== '' || String(policy.createScriptURL('')) !== '\ufffd\0') return false;
+                globalThis.policyHtml = html;
+                const throwing = trustedTypes.createPolicy('throwing', {createHTML() { throw marker; }});
+                try { throwing.createHTML(''); return false; }
+                catch (error) { if (error !== marker) return false; }
+                try { throwing.createScript(''); return false; }
+                catch (error) { return error instanceof TypeError; }
+            })()
+        "#)?;
+        let html = scope.evaluate(&units("policyHtml"))?;
+        let brand = scope.trusted_type(&html)?.unwrap();
+        assert_eq!(brand.kind(), surgeist_bindings_js::TrustedTypeKind::Html);
+        assert_eq!(brand.as_code_units(), [b'A' as u16, 0xd800, 0]);
         Ok(())
     })
     .unwrap();
