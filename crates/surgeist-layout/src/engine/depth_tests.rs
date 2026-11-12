@@ -136,3 +136,16 @@ fn deep_hidden_layout_clears_descendants_on_bounded_stack() {
         },
     );
 }
+
+#[test]
+fn deep_block_layout_returns_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_block_layout_returns_on_bounded_stack",
+        || {
+            let control = chain::<f64>(Display::Block, 3);
+            compute_layout(&control, 0, standalone()).expect("shallow control must lay out");
+            let deep = chain::<f64>(Display::Block, 1024);
+            let _ = compute_layout(&deep, 0, standalone());
+        },
+    );
+}
