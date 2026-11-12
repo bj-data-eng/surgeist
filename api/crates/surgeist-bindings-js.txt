@@ -232,6 +232,8 @@ pub fn surgeist_bindings_js::conversion::Conversion<'_, 'scope>::event_listener_
 pub fn surgeist_bindings_js::conversion::Conversion<'_, 'scope>::event_listener_removal_capture(&mut self, input: core::option::Option<&surgeist_bindings_js::Value<'scope>>) -> core::result::Result<bool, surgeist_bindings_js::conversion::Failure>
 pub fn surgeist_bindings_js::conversion::Conversion<'_, 'scope>::standalone_add_listener_options(&mut self, input: core::option::Option<&surgeist_bindings_js::Value<'scope>>) -> core::result::Result<surgeist_bindings_js::conversion::StandaloneListenerOptions, surgeist_bindings_js::conversion::Failure>
 impl<'scope> surgeist_bindings_js::conversion::Conversion<'_, 'scope>
+pub fn surgeist_bindings_js::conversion::Conversion<'_, 'scope>::invoke_default_policy(&mut self, callback: &surgeist_bindings_js::TrustedPolicyCallback, kind: surgeist_bindings_js::TrustedTypeKind, input: &[u16], sink: &[u16]) -> core::result::Result<surgeist_bindings_js::conversion::Converted<core::option::Option<surgeist_bindings_js::TrustedTypeData>>, surgeist_bindings_js::conversion::Failure>
+impl<'scope> surgeist_bindings_js::conversion::Conversion<'_, 'scope>
 pub fn surgeist_bindings_js::conversion::Conversion<'_, 'scope>::toggle_event_init<Projection: 'static, Element>(&mut self, input: core::option::Option<&surgeist_bindings_js::Value<'scope>>, select_element: impl core::ops::function::FnOnce(&Projection) -> core::option::Option<Element>) -> core::result::Result<surgeist_bindings_js::conversion::ToggleEventOptions<'scope, Element>, surgeist_bindings_js::conversion::Failure>
 pub struct surgeist_bindings_js::conversion::ConversionAccount(_)
 impl surgeist_bindings_js::conversion::ConversionAccount
@@ -639,6 +641,8 @@ pub fn surgeist_bindings_js::Process::realm_storage_bytes(&self) -> usize
 pub fn surgeist_bindings_js::Process::release_managed_object(&mut self, object: surgeist_bindings_js::ManagedObject) -> core::result::Result<(), surgeist_bindings_js::Error>
 impl surgeist_bindings_js::Process
 pub fn surgeist_bindings_js::Process::release_callback_object(&mut self, callback: surgeist_bindings_js::RetainedCallbackObject) -> core::result::Result<(), surgeist_bindings_js::Error>
+impl surgeist_bindings_js::Process
+pub fn surgeist_bindings_js::Process::release_trusted_policy_callback(&mut self, callback: surgeist_bindings_js::TrustedPolicyCallback) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub struct surgeist_bindings_js::Realm(_)
 pub struct surgeist_bindings_js::RealmAuthority
 impl surgeist_bindings_js::RealmAuthority
@@ -715,7 +719,12 @@ pub fn surgeist_bindings_js::Scope<'scope>::try_project_retained_native_object<T
 impl<'scope> surgeist_bindings_js::Scope<'scope>
 pub fn surgeist_bindings_js::Scope<'scope>::project_trusted_type<Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>, data: surgeist_bindings_js::conversion::Converted<core::option::Option<surgeist_bindings_js::TrustedTypeData>>, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<Storage, E>) -> core::result::Result<core::option::Option<surgeist_bindings_js::Value<'scope>>, E>
 impl<'scope> surgeist_bindings_js::Scope<'scope>
+pub fn surgeist_bindings_js::Scope<'scope>::release_trusted_policy_callback(&mut self, callback: surgeist_bindings_js::TrustedPolicyCallback) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::retain_trusted_policy_callback<Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, value: &surgeist_bindings_js::Value<'scope>, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<Storage, E>) -> core::result::Result<core::option::Option<surgeist_bindings_js::TrustedPolicyCallback>, E>
 pub fn surgeist_bindings_js::Scope<'scope>::trusted_type(&mut self, object: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<core::option::Option<surgeist_bindings_js::TrustedType>, surgeist_bindings_js::Error>
+pub struct surgeist_bindings_js::TrustedPolicyCallback(_)
+impl surgeist_bindings_js::TrustedPolicyCallback
+pub fn surgeist_bindings_js::TrustedPolicyCallback::associated_realm(&self) -> &surgeist_bindings_js::RealmAuthority
 pub struct surgeist_bindings_js::TrustedType(_)
 impl surgeist_bindings_js::TrustedType
 pub fn surgeist_bindings_js::TrustedType::as_code_units(&self) -> &[u16]

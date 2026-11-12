@@ -1,10 +1,47 @@
 //! Scoped conversions for the attribute union and policy callback results.
 use crate::{
-    Error, ObjectPrototype, Scope, TrustedAttributeValue, TrustedTypeData, TrustedTypeKind, Value,
+    Error, ObjectPrototype, Primitive, Scope, TrustedAttributeValue, TrustedPolicyCallback,
+    TrustedTypeData, TrustedTypeKind, Value,
 };
 use std::rc::Rc;
 
-use super::{Conversion, Converted, Failure, Nullable, Type, dom_string, usv_string};
+use super::{Conversion, Converted, Failure, Nullable, Type, Work, dom_string, usv_string};
+
+impl<'scope> Conversion<'_, 'scope> {
+    /// Invoke a selected default-policy option with the original input, the
+    /// expected interface name, and the sink name. The caller retains any
+    /// native callback scope through this call and its return coercion.
+    pub fn invoke_default_policy(
+        &mut self,
+        callback: &TrustedPolicyCallback,
+        kind: TrustedTypeKind,
+        input: &[u16],
+        sink: &[u16],
+    ) -> Result<Converted<Option<TrustedTypeData>>, Failure> {
+        let function = self.scope.open_callback_object(&callback.0);
+        let function = self.core(function)?;
+        self.work(Work::Argument, 3).map_err(Failure)?;
+        let type_name = match kind {
+            TrustedTypeKind::Html => &b"TrustedHTML".map(u16::from)[..],
+            TrustedTypeKind::Script => &b"TrustedScript".map(u16::from)[..],
+            TrustedTypeKind::ScriptUrl => &b"TrustedScriptURL".map(u16::from)[..],
+        };
+        let arguments = [
+            self.copy_to_js(input)?,
+            self.copy_to_js(type_name)?,
+            self.copy_to_js(sink)?,
+        ];
+        let receiver = self.scope.primitive(Primitive::Undefined);
+        let receiver = self.core(receiver)?;
+        let bytes = self.core(self.scope.argument_copy_storage_bytes(arguments.len()))?;
+        let bytes = u64::try_from(bytes).map_err(|_| self.host(Error::Allocation))?;
+        let backing = self.reserve(bytes).map_err(Failure)?;
+        let result = self.scope.call(&function, &receiver, &arguments);
+        drop(backing);
+        let result = self.core(result)?;
+        self.value(&trusted_policy_callback_result(kind), &result)
+    }
+}
 
 pub(super) fn attribute_value<'scope>(
     cx: &mut Conversion<'_, 'scope>,

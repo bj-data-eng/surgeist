@@ -1,4 +1,5 @@
 use super::{TestResult, account, new_ledger, units};
+use std::{cell::Cell, rc::Rc};
 use surgeist_bindings_js::conversion::{
     ArgumentValue, declarations, trusted_policy_callback_result, types,
 };
@@ -72,6 +73,51 @@ pub(super) fn run(process: &mut Process) -> TestResult {
         let original = scope.evaluate(&units("original"))?;
         let thrown = scope.import(failure.exception().expect("exact guest throw").value())?;
         assert!(scope.strict_equals(&original, &thrown)?);
+
+        let noncallable = scope.object(ObjectPrototype::Default)?;
+        assert!(scope.retain_trusted_policy_callback(&noncallable, |_| -> Result<(), Error> {
+            panic!("a noncallable option cannot acquire a callback holder");
+        })?.is_none());
+        let callback = scope.evaluate(&units(concat!(
+            "globalThis.conversions = 0; ",
+            "(function(value, type, sink) { 'use strict'; ",
+            "if (this !== undefined || arguments.length !== 3 || ",
+            "value !== '\\ud800\\0' || type !== 'TrustedScriptURL' || ",
+            "sink !== 'HTMLScriptElement src') throw new Error('invalid callback arguments'); ",
+            "return {toString() { conversions++; return '\\ud800\\0'; }}; })",
+        )))?;
+        let released = Rc::new(Cell::new(false));
+        let retained = scope.retain_trusted_policy_callback(&callback, |bytes| {
+            assert!(bytes > 0);
+            Ok::<_, Error>(Release(released.clone()))
+        })?.expect("callable option has a holder");
+        assert_eq!(retained.associated_realm().identity(), scope.realm_authority()?.identity());
+        let output = account.run(scope, |cx| cx.invoke_default_policy(
+            &retained, TrustedTypeKind::ScriptUrl, &[0xd800, 0], &units("HTMLScriptElement src"),
+        ))?;
+        assert_eq!(output.get().as_ref().unwrap().as_code_units(), [0xfffd, 0]);
+        assert_eq!(ledger.usage(ledger.root()).unwrap().live(super::Resource::BufferBytes), 4);
+        drop(output);
+        assert_eq!(ledger.usage(ledger.root()).unwrap().live(super::Resource::BufferBytes), 0);
+        let count = scope.evaluate(&units("conversions"))?;
+        let once = scope.primitive(surgeist_bindings_js::Primitive::Number(1.0))?;
+        assert!(scope.strict_equals(&count, &once)?);
+        assert!(!released.get());
+        scope.release_trusted_policy_callback(retained)?;
+        assert!(released.get());
+
+        for source in ["() => {throw original}", "() => ({toString(){throw original}})"] {
+            let callback = scope.evaluate(&units(source))?;
+            let retained = scope.retain_trusted_policy_callback(&callback, |_| Ok::<_, Error>(()))?.unwrap();
+            let Err(failure) = account.run(scope, |cx| cx.invoke_default_policy(
+                &retained, TrustedTypeKind::Html, &[], &units("HTMLIFrameElement srcdoc"),
+            )) else {
+                panic!("the original callback or conversion throws");
+            };
+            let thrown = scope.import(failure.exception().unwrap().value())?;
+            assert!(scope.strict_equals(&original, &thrown)?);
+            scope.release_trusted_policy_callback(retained)?;
+        }
         Ok(scope.retain(&branded))
     })?;
     process.execution().in_realm(&other, |scope| {
@@ -86,4 +132,12 @@ pub(super) fn run(process: &mut Process) -> TestResult {
         Ok(())
     })?;
     Ok(())
+}
+
+struct Release(Rc<Cell<bool>>);
+
+impl Drop for Release {
+    fn drop(&mut self) {
+        self.0.set(true);
+    }
 }

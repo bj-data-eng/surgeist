@@ -1,7 +1,9 @@
 //! Native brands for the string-valued Trusted Types interfaces.
 use std::rc::Rc;
 
-use crate::{DomString, Error, NativeObject, Scope, UsvString, Value};
+use crate::{
+    DomString, Error, NativeObject, RealmAuthority, RetainedCallbackObject, Scope, UsvString, Value,
+};
 
 /// The exact interface selected by a Trusted Types policy or sink.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -61,6 +63,48 @@ impl<'scope> Scope<'scope> {
     /// Read the exact original object's Trusted Type brand without guest code.
     pub fn trusted_type(&mut self, object: &Value<'scope>) -> Result<Option<TrustedType>, Error> {
         Ok(self.native_object::<Brand>(object)?.map(TrustedType))
+    }
+
+    /// Retain a callable policy option in its original heap. A noncallable
+    /// value yields no handle and performs no native backing admission.
+    pub fn retain_trusted_policy_callback<Storage: 'static, E: From<Error>>(
+        &mut self,
+        value: &Value<'scope>,
+        admit: impl FnOnce(usize) -> Result<Storage, E>,
+    ) -> Result<Option<TrustedPolicyCallback>, E> {
+        if !self.is_callable(value)? {
+            return Ok(None);
+        }
+        let callback = self.callback_object(value)?;
+        self.retain_callback_object(callback, admit)
+            .map(|retained| Some(TrustedPolicyCallback(retained)))
+    }
+
+    /// Release this exact managed callback and its admitted backing.
+    pub fn release_trusted_policy_callback(
+        &mut self,
+        callback: TrustedPolicyCallback,
+    ) -> Result<(), Error> {
+        self.release_callback_object(callback.0)
+    }
+}
+
+/// A checked callable guest option with original-realm and managed backing custody.
+pub struct TrustedPolicyCallback(pub(crate) RetainedCallbackObject);
+
+impl TrustedPolicyCallback {
+    pub fn associated_realm(&self) -> &RealmAuthority {
+        self.0.associated_realm()
+    }
+}
+
+impl crate::Process {
+    /// Release the policy callback's managed backing without guest entry.
+    pub fn release_trusted_policy_callback(
+        &mut self,
+        callback: TrustedPolicyCallback,
+    ) -> Result<(), Error> {
+        self.release_callback_object(callback.0)
     }
 }
 
