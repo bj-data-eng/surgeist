@@ -254,7 +254,13 @@ pub(in crate::document_scripting) fn native_document_and_fragment_use_their_regi
 }
 
 pub(in crate::document_scripting) fn registered_origin_refusals_preserve_state() {
-    assert_projection_admission();
+    assert_native_projection_admission(
+        || {
+            let RegisteredOrigin { host, permit, .. } = retired_origin_with_moved_element();
+            (host, permit)
+        },
+        "originChild.ownerDocument",
+    );
 
     let RegisteredOrigin {
         mut host, permit, ..
@@ -315,62 +321,81 @@ pub(in crate::document_scripting) fn borrowed_fragment_factory_keeps_dom_on_wrap
     assert_eq!(after.nodes().count(), before.nodes().count());
 }
 
-fn assert_projection_admission() {
-    let read = |scope: &mut Scope<'_>| {
-        scope
-            .evaluate(&units("originChild.ownerDocument"))
-            .map(drop)
-    };
-    let (work, bytes) = {
-        let RegisteredOrigin {
-            mut host, permit, ..
-        } = retired_origin_with_moved_element();
-        let events = host.guest_events().unwrap();
-        let before = (events.budget.work.get(), events.budget.used.get());
-        host.in_document(&permit, read).unwrap();
-        (
-            events.budget.work.get() - before.0,
-            events.budget.used.get() - before.1,
+pub(in crate::document_scripting) fn shadow_root_keeps_its_registered_creation_realm() {
+    use surgeist_dom::{DomShadowRootInit, HtmlShadowRootMode};
+    use surgeist_html::values::Namespace;
+
+    let RegisteredOrigin {
+        mut host,
+        permit,
+        origin,
+        element,
+        cancellation,
+        ..
+    } = retired_origin_with_moved_element();
+    let document = host
+        .snapshot()
+        .unwrap()
+        .node(element)
+        .unwrap()
+        .owner_document()
+        .unwrap();
+    let shadow_host = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let host = batch.create_element_ns(document, Namespace::html(), "div");
+            batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+            batch.replace_child(&host, document, element);
+            let commit = dom.apply(batch, &cancellation).unwrap();
+            commit.created(&host).unwrap().unwrap()
+        })
+        .unwrap();
+    let (realm, root) = host
+        .in_document(&permit, |scope| {
+            let root = scope.evaluate(&units(
+                "globalThis.originShadow = originChild.ownerDocument.documentElement.shadowRoot",
+            ))?;
+            let realm = scope.callback_object(&root)?.associated_realm().identity();
+            assert_ne!(realm, scope.realm_authority()?.identity());
+            Ok((realm, scope.retain(&root)))
+        })
+        .unwrap();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.adopt(shadow_host, permit.document);
+        batch.insert_before(shadow_host, permit.document, None);
+        dom.apply(batch, &cancellation).unwrap();
+    })
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "window.document.documentElement === originShadow.host \
+             && window.document.documentElement.shadowRoot === originShadow \
+             && originShadow.ownerDocument === window.document \
+             && originShadow.getRootNode({composed: true}) === window.document",
         )
-    };
-    assert!(work > 0 && bytes > 0);
-    for (work_available, bytes_available) in [(work, bytes), (work - 1, bytes), (work, bytes - 1)] {
-        let RegisteredOrigin {
-            mut host, permit, ..
-        } = retired_origin_with_moved_element();
-        let events = host.guest_events().unwrap();
-        let stamp = host.snapshot().unwrap().stamp();
-        let original_bytes = events.budget.used.get();
-        let reserve = events.limits.storage_bytes - original_bytes - bytes_available;
-        let reservation = events.reserve(&host.native, reserve).unwrap();
-        events.budget.work.set(events.limits.work - work_available);
-        let before = events.budget.used.get();
-        let result = host.in_document(&permit, read);
-        assert_eq!(host.snapshot().unwrap().stamp(), stamp);
-        if work_available == work && bytes_available == bytes {
-            result.unwrap();
-            assert_eq!(events.budget.work.get(), events.limits.work);
-            assert_eq!(events.budget.used.get(), events.limits.storage_bytes);
-            continue;
-        }
-        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
-            panic!("one-short Document projection must refuse");
-        };
-        assert!(matches!(
-            (
-                work_available < work,
-                failure.cause::<DocumentGuestEventError>()
-            ),
-            (true, Some(DocumentGuestEventError::WorkLimit))
-                | (
-                    false,
-                    Some(DocumentGuestEventError::Document(
-                        DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
-                    ))
-                )
-        ));
-        assert_eq!(events.budget.used.get(), before);
-        drop(reservation);
-        assert_eq!(events.budget.used.get(), original_bytes);
-    }
+    })
+    .unwrap();
+    let engine = host.engine.as_mut().unwrap();
+    let original = engine
+        .creations
+        .find(origin.global(), || Ok::<(), Error>(()))
+        .unwrap()
+        .unwrap();
+    engine
+        .process
+        .execution()
+        .in_realm(original, |scope| {
+            assert_eq!(scope.realm_authority()?.identity(), realm);
+            let value = scope.import(&root)?;
+            let global = scope.global()?;
+            scope.set(&global, PropertyKey::String(&units("originShadow")), &value)?;
+            assert_guest(
+                scope,
+                "Object.getPrototypeOf(originShadow) === ShadowRoot.prototype \
+                 && originShadow instanceof DocumentFragment",
+            )
+        })
+        .unwrap();
 }

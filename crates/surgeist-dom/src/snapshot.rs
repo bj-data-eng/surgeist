@@ -360,13 +360,26 @@ impl<'a> DomNode<'a> {
     }
     /// Source Element.shadowRoot presentation: a closed root is not exposed.
     pub fn shadow_root(self) -> Option<NodeId> {
-        let root = self.hosted_shadow_root()?;
-        let state = self
-            .snapshot
-            .shadow_root(root)
-            .expect("canonical root")
-            .state();
-        (state.mode() == surgeist_html::construction::HtmlShadowRootMode::Open).then_some(root)
+        self.shadow_root_with(|| Ok::<(), DomError>(()))
+            .unwrap_or_default()
+    }
+    /// Read the open-only shadow root with work admission.
+    ///
+    /// Admit the host relation and the canonical lookup of any root whose
+    /// mode determines visibility. Return the first admission failure.
+    pub fn shadow_root_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<NodeId>, E> {
+        step()?;
+        let Some(root) = self.hosted_shadow_root() else {
+            return Ok(None);
+        };
+        let node = self.snapshot.node_with(root, step)?;
+        let DomNodeKind::ShadowRoot(state) = node.kind() else {
+            return Err(DomError::WrongNodeKind.into());
+        };
+        Ok((state.mode() == surgeist_html::construction::HtmlShadowRootMode::Open).then_some(root))
     }
     /// The exact ShadowRoot's host. Template contents instead use fragment_host().
     pub fn shadow_host(self) -> Option<NodeId> {

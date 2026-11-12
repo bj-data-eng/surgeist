@@ -72,16 +72,19 @@ enum ElementMember {
     Prefix,
     LocalName,
     TagName,
+    ShadowRoot,
 }
 
 enum ElementObservation {
     Raw(Option<DocumentString>),
     TagName(DomTagName),
+    ShadowRoot(Option<NodeId>),
 }
 
 enum NativeProjection {
     Document(DocumentId),
     Fragment,
+    ShadowRoot,
     Element(ElementInterface),
 }
 
@@ -159,6 +162,11 @@ impl ElementBindings {
                 ElementMember::TagName,
                 &ascii(b"tagName")[..],
                 &ascii(b"get tagName")[..],
+            ),
+            (
+                ElementMember::ShadowRoot,
+                &ascii(b"shadowRoot")[..],
+                &ascii(b"get shadowRoot")[..],
             ),
         ] {
             let handler = capture(size_of::<(Capture, ElementMember)>())?;
@@ -350,6 +358,7 @@ impl PublicEventBindings {
                     node.kind(),
                     DomNodeKind::Document(_)
                         | DomNodeKind::DocumentFragment
+                        | DomNodeKind::ShadowRoot(_)
                         | DomNodeKind::Element(_)
                 ) {
                     return Err(DocumentScriptNativeError::ProjectionCustody.into());
@@ -371,6 +380,9 @@ impl PublicEventBindings {
                 let origin = origin.ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
                 if matches!(node.kind(), DomNodeKind::DocumentFragment) {
                     return Ok((origin, attached, NativeProjection::Fragment));
+                }
+                if matches!(node.kind(), DomNodeKind::ShadowRoot(_)) {
+                    return Ok((origin, attached, NativeProjection::ShadowRoot));
                 }
                 let element = node
                     .as_element()
@@ -399,6 +411,13 @@ impl PublicEventBindings {
                 events,
                 GuestNode::Fragment(node),
                 &documents.fragment,
+            ),
+            NativeProjection::ShadowRoot => self.project_watched_node(
+                scope,
+                owner,
+                events,
+                GuestNode::ShadowRoot(node),
+                &documents.shadow,
             ),
             NativeProjection::Element(interface) => {
                 let prototype = elements.prototype(events, interface)?;
@@ -530,6 +549,9 @@ impl Capture {
                         node.tag_name_spelling_with(|| events.step())?
                             .ok_or(DocumentScriptNativeError::ProjectionCustody)?,
                     ),
+                    ElementMember::ShadowRoot => {
+                        ElementObservation::ShadowRoot(node.shadow_root_with(|| events.step())?)
+                    }
                 })
             })?;
             match value {
@@ -544,6 +566,12 @@ impl Capture {
                 ElementObservation::TagName(name) => {
                     self.copy_tag_name(scope, &owner, &events, &name)
                 }
+                ElementObservation::ShadowRoot(None) => Ok(scope.primitive(Primitive::Null)?),
+                ElementObservation::ShadowRoot(Some(root)) => events
+                    .public
+                    .as_ref()
+                    .ok_or(Error::ExpiredIdentity)?
+                    .project_node(scope, &owner, &events, root),
             }
         })();
         complete(scope, &events, result)

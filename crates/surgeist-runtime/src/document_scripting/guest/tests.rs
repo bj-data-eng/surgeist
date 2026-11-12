@@ -1,6 +1,7 @@
 use super::*;
 
 pub(in crate::document_scripting) mod registered_origin;
+pub(in crate::document_scripting) mod shadow_root;
 
 fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
     let cancellation = Arc::new(AtomicBool::new(false));
@@ -1567,6 +1568,62 @@ fn proxy_in_scope(scope: &mut Scope<'_>, target: &Root) -> Result<Root, Error> {
     let receiver = scope.primitive(Primitive::Undefined)?;
     let proxy = scope.call(&create, &receiver, &[target])?;
     Ok(scope.retain(&proxy))
+}
+
+fn assert_native_projection_admission(
+    mut make_host: impl FnMut() -> (DocumentScriptHost, DocumentScriptPermit),
+    source: &str,
+) {
+    let source = units(source);
+    let read = |scope: &mut Scope<'_>| scope.evaluate(&source).map(drop);
+    let (work, bytes) = {
+        let (mut host, permit) = make_host();
+        let events = host.guest_events().unwrap();
+        let before = (events.budget.work.get(), events.budget.used.get());
+        host.in_document(&permit, read).unwrap();
+        (
+            events.budget.work.get() - before.0,
+            events.budget.used.get() - before.1,
+        )
+    };
+    assert!(work > 0 && bytes > 0);
+    for (work_available, bytes_available) in [(work, bytes), (work - 1, bytes), (work, bytes - 1)] {
+        let (mut host, permit) = make_host();
+        let events = host.guest_events().unwrap();
+        let stamp = host.snapshot().unwrap().stamp();
+        let original_bytes = events.budget.used.get();
+        let reserve = events.limits.storage_bytes - original_bytes - bytes_available;
+        let reservation = events.reserve(&host.native, reserve).unwrap();
+        events.budget.work.set(events.limits.work - work_available);
+        let before = events.budget.used.get();
+        let result = host.in_document(&permit, read);
+        assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+        if work_available == work && bytes_available == bytes {
+            result.unwrap();
+            assert_eq!(events.budget.work.get(), events.limits.work);
+            assert_eq!(events.budget.used.get(), events.limits.storage_bytes);
+            continue;
+        }
+        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+            panic!("one-short native projection must refuse");
+        };
+        assert!(matches!(
+            (
+                work_available < work,
+                failure.cause::<DocumentGuestEventError>()
+            ),
+            (true, Some(DocumentGuestEventError::WorkLimit))
+                | (
+                    false,
+                    Some(DocumentGuestEventError::Document(
+                        DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+                    ))
+                )
+        ));
+        assert_eq!(events.budget.used.get(), before);
+        drop(reservation);
+        assert_eq!(events.budget.used.get(), original_bytes);
+    }
 }
 
 fn assert_guest(scope: &mut Scope<'_>, expression: &str) -> Result<(), Error> {
