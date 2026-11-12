@@ -877,6 +877,49 @@ fn replacing_an_attribute_value_by_an_equal_one_keeps_the_published_value_and_it
     assert_eq!(dom.custody_registry.listed_blocks(), 1);
 }
 
+#[test]
+fn source_import_of_an_attr_charges_its_occurrence_in_an_already_listed_block() {
+    let block = spare_block();
+    let value = block.string(0..4).unwrap();
+    let (mut dom, node) = store_with_attribute("div", "data-a", value.clone());
+    let before = dom.snapshot();
+    let original = before
+        .node(node)
+        .unwrap()
+        .get_attribute_node(&"data-a".into())
+        .unwrap();
+    let margin = 96;
+    assert!(block.capacity() > margin);
+    let limits = crate::DomSourceLimits::new(
+        16_000_000,
+        total(&dom).units() + margin,
+        1_000_000,
+        32,
+        4096,
+        4096,
+        1,
+    );
+    let cancel = AtomicBool::new(false);
+    let edit = crate::DomSourceEdit::import_node(
+        &before,
+        original.id().node(),
+        original.owner_document().node(),
+        false,
+    );
+    let mut lease = dom.begin_source_edit(edit, limits, &cancel).unwrap();
+    let crate::DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("a detached Attr import completes without a service request");
+    };
+    let id = done.published_node().unwrap();
+    drop(lease);
+    assert_eq!(dom.custody_registry.listed_blocks(), 1);
+    let after = dom.snapshot();
+    let imported = after.attr(id).unwrap();
+    assert_ne!(imported.id(), original.id());
+    assert_eq!(imported.owner_element(), None);
+    assert!(imported.value().shares_storage_with(&value));
+}
+
 /// Removes the `name` attribute, whose value is `value`, from an HTML `tag` element in a source
 /// operation that retains at most `margin` units beyond the store, and gives whether the
 /// operation completed.
