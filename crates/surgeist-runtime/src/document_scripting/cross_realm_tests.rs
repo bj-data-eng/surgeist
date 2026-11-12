@@ -236,6 +236,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     element_tasks::verify_attached_element_tasks();
     nested_dispatch::verify_nested_authored_dispatch();
     authored_toggle::verify_authored_toggle_constructor();
+    super::guest::tests::attributes::detached_attribute_keeps_its_live_native_identity();
     trusted_attribute::hosted_attribute_policy_reads_charge_the_parked_source_and_preserve_exact_input();
     trusted_attribute::hosted_meta_source_publishes_ordered_csp_for_the_registered_attribute_verifier();
     trusted_attribute::default_factory_retains_the_real_guest_callback();

@@ -667,21 +667,9 @@ impl DomSourceLease<'_> {
             &registration.0,
             cancel,
         )?;
-        let external = self.dom.source_observation_external(cancel)?;
-        let debit = self.dom.custody_registry.ledger().retain(
-            custody::Usage::new(bytes, units),
-            |next| {
-                let total =
-                    next.checked_add(custody::Usage::new(external.bytes, external.units))?;
-                self.dom.admit_source_observers(
-                    storage::Payload {
-                        bytes: total.bytes(),
-                        units: total.units(),
-                    },
-                    cancel,
-                )
-            },
-        )?;
+        let debit = self
+            .dom
+            .retain_source_attribute_observer_payload(custody::Usage::new(bytes, units), cancel)?;
         Ok(DomSourceAttributePayloadRetention { _debit: debit })
     }
 
@@ -868,6 +856,16 @@ impl Dom {
         registration: &DomDocumentScriptRegistration,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.active_source_attribute_callback_work(request, registration, cancel)?
+            .step(cancel)
+    }
+
+    pub(in crate::store) fn active_source_attribute_callback_work(
+        &self,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &DomDocumentScriptRegistration,
+        cancel: &AtomicBool,
+    ) -> Result<&CallbackWork, DomError> {
         check_cancel(cancel)?;
         let operation = self
             .source_operation
@@ -879,6 +877,25 @@ impl Dom {
             .filter(|observation| observation.work.active())
             .ok_or(DomError::InvalidSourceOperation)?;
         operation.qualify_attribute_registration(self, request.global, &registration.0, cancel)?;
-        observation.work.step(cancel)
+        Ok(&observation.work)
+    }
+
+    // The caller has qualified the original request in its required scope.
+    pub(in crate::store) fn retain_source_attribute_observer_payload(
+        &self,
+        usage: custody::Usage,
+        cancel: &AtomicBool,
+    ) -> Result<custody::Debit, DomError> {
+        let external = self.source_observation_external(cancel)?;
+        self.custody_registry.ledger().retain(usage, |next| {
+            let total = next.checked_add(custody::Usage::new(external.bytes, external.units))?;
+            self.admit_source_observers(
+                storage::Payload {
+                    bytes: total.bytes(),
+                    units: total.units(),
+                },
+                cancel,
+            )
+        })
     }
 }

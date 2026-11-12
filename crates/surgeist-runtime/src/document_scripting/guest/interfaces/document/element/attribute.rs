@@ -113,7 +113,11 @@ impl Capture {
             } else {
                 DomSourceEdit::set_attribute(element, name, text)
             };
-            self.apply_attribute(scope, &owner, &events, edit, value)
+            let brand = match value {
+                TrustedAttributeValue::Trusted(brand) => Some(brand.kind()),
+                TrustedAttributeValue::String(_) => None,
+            };
+            self.apply_attribute(scope, &owner, &events, edit, brand)
         })();
         match result {
             Ok(completion) => Ok(completion),
@@ -124,13 +128,13 @@ impl Capture {
         }
     }
 
-    fn apply_attribute<'scope>(
+    pub(in crate::document_scripting::guest::interfaces::document) fn apply_attribute<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
         edit: DomSourceEdit,
-        value: &TrustedAttributeValue,
+        brand: Option<TrustedTypeKind>,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
         let attachment = owner
             .attachment
@@ -152,7 +156,7 @@ impl Capture {
             ..
         }) = result
         {
-            let retained = match self.verify_attribute(scope, owner, events, request, value) {
+            let retained = match self.verify_attribute(scope, owner, events, request, brand) {
                 Ok(retained) => retained,
                 Err(error) => {
                     let cleanup = AtomicBool::new(false);
@@ -206,7 +210,7 @@ impl Capture {
         owner: &NativeOwner,
         events: &GuestEvents,
         request: DomSourceAttributeVerificationRequest,
-        value: &TrustedAttributeValue,
+        brand: Option<TrustedTypeKind>,
     ) -> Result<Option<Box<PendingAttribute>>, DocumentGuestEventError> {
         let registration = owner
             .attachment
@@ -233,9 +237,7 @@ impl Capture {
             request,
             cancel,
             |lease| {
-                let branded =
-                    matches!(value, TrustedAttributeValue::Trusted(brand) if brand.kind() == kind);
-                if !branded {
+                if brand != Some(kind) {
                     let processor = processor
                         .as_ref()
                         .map(|owner| owner.processor.try_borrow())
@@ -284,13 +286,18 @@ impl Capture {
             return Ok(Some(retained));
         };
         let (sink, _sink_backing) = callback_sink(owner, events, request.sink())?;
-        let callback_scope = with_attribute_lease(
+        let (input, callback_scope) = with_attribute_lease(
             owner,
             events.limits.source_edits,
             request,
             cancel,
             |lease| {
-                Ok(lease.open_attribute_verification_callback(request, &registration, cancel)?)
+                let input = lease
+                    .attribute_verification_input(request, &registration, cancel)?
+                    .clone();
+                let callback =
+                    lease.open_attribute_verification_callback(request, &registration, cancel)?;
+                Ok((input, callback))
             },
         )?;
         let active = ActiveAttribute {
@@ -298,7 +305,7 @@ impl Capture {
             previous: owner.active_attribute.replace(Some(request)),
         };
         let result = self.callbacks.conversion.run(scope, |conversion| {
-            conversion.invoke_default_policy(callback, kind, value.as_code_units(), &sink)
+            conversion.invoke_default_policy(callback, kind, input.code_units(), &sink)
         });
         drop(active);
         drop(callback_scope);

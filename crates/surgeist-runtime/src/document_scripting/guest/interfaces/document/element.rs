@@ -2,7 +2,7 @@
 
 use super::character_data::CharacterKind;
 use super::*;
-use surgeist_dom::DomQualifiedName;
+use surgeist_dom::DomAttrId;
 use surgeist_html::{
     bounded::lexical::validate_custom_element_name_with, vocabulary::KnownHtmlElement,
 };
@@ -89,6 +89,7 @@ enum NativeProjection {
     ShadowRoot,
     Character(CharacterKind),
     Element(ElementInterface),
+    Attr(DomAttrId),
 }
 
 impl ElementBindings {
@@ -359,9 +360,13 @@ impl PublicEventBindings {
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let bindings = &self.document;
         let request = owner.attached_event_request();
-        let admission = match &request {
-            Some(request) => ordinary::Admission::source(owner, events, request),
-            None => ordinary::Admission::ordinary(owner, events),
+        let attribute = owner.active_attribute_registration()?;
+        let admission = match (&attribute, &request) {
+            (Some((request, registration)), _) => {
+                ordinary::Admission::attribute(owner, events, *request, registration)
+            }
+            (None, Some(request)) => ordinary::Admission::source(owner, events, request),
+            (None, None) => ordinary::Admission::ordinary(owner, events),
         };
         if let Some(value) = bindings.find(scope, admission, node)? {
             return Ok(value);
@@ -377,6 +382,7 @@ impl PublicEventBindings {
                         | DomNodeKind::Text(_)
                         | DomNodeKind::Comment(_)
                         | DomNodeKind::Element(_)
+                        | DomNodeKind::Attr(_)
                 ) {
                     return Err(DocumentScriptNativeError::ProjectionCustody.into());
                 }
@@ -408,6 +414,9 @@ impl PublicEventBindings {
                 } {
                     return Ok((origin, attached, NativeProjection::Character(kind)));
                 }
+                if let Some(attribute) = node.as_attr() {
+                    return Ok((origin, attached, NativeProjection::Attr(attribute.id())));
+                }
                 let element = node
                     .as_element()
                     .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
@@ -417,22 +426,26 @@ impl PublicEventBindings {
                     NativeProjection::Element(element_interface(element.name(), || read.step())?),
                 ))
             })?;
-        let watch =
-            |scope: &mut Scope<'scope>, node, prototype: &RetainedCallbackObject| match &request {
-                Some(request) => bindings.ordinary.watch_source(
-                    scope,
-                    (owner, events),
-                    request,
-                    node,
-                    prototype,
-                    Ok(()),
-                ),
-                None => {
-                    bindings
-                        .ordinary
-                        .watch(scope, owner, events, &self.callbacks, node, prototype)
-                }
-            };
+        let watch = |scope: &mut Scope<'scope>, node, prototype: &RetainedCallbackObject| match (
+            &attribute, &request,
+        ) {
+            (Some(_), _) => bindings
+                .ordinary
+                .watch_attribute(scope, admission, node, prototype),
+            (None, Some(request)) => bindings.ordinary.watch_source(
+                scope,
+                (owner, events),
+                request,
+                node,
+                prototype,
+                Ok(()),
+            ),
+            (None, None) => {
+                bindings
+                    .ordinary
+                    .watch(scope, owner, events, &self.callbacks, node, prototype)
+            }
+        };
         let project = |documents: &DocumentPrototypes, elements: &ElementBindings| match projection
         {
             NativeProjection::Document(document) => {
@@ -459,6 +472,9 @@ impl PublicEventBindings {
                 let prototype = elements.prototype(interface, || admission.step())?;
                 watch(scope, GuestNode::Element(node), prototype)
             }
+            NativeProjection::Attr(attribute) => {
+                watch(scope, GuestNode::Attr(attribute.node()), &documents.attr)
+            }
         };
         if origin == attached {
             project(&bindings.prototypes, &bindings.element)
@@ -480,33 +496,17 @@ impl Capture {
         events: &GuestEvents,
         name: &DomTagName,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
-        let _backing;
-        let buffer;
-        let units = if let Some(units) = name.contiguous_units() {
-            units
+        if let Some(units) = name.contiguous_units() {
+            self.copy_dom_units(scope, units)
         } else {
-            let length = name.code_unit_len();
-            let bytes = length
-                .checked_mul(size_of::<u16>())
-                .ok_or(Error::Allocation)?;
-            _backing = events.reserve(owner, bytes)?;
-            events.charge_work(u64::try_from(length).map_err(|_| Error::StringTooLong)?)?;
-            let mut allocated = Vec::new();
-            allocated
-                .try_reserve_exact(length)
-                .map_err(|_| Error::Allocation)?;
-            if allocated.capacity() != length {
-                return Err(Error::Allocation.into());
-            }
-            allocated.extend(name.code_units());
-            buffer = allocated;
-            &buffer
-        };
-        Ok(self
-            .callbacks
-            .conversion
-            .run(scope, |conversion| conversion.copy_to_js(units))
-            .map_err(Error::from)?)
+            self.copy_name_units(
+                scope,
+                owner,
+                events,
+                name.code_unit_len(),
+                name.code_units(),
+            )
+        }
     }
 
     fn document_element<'scope>(

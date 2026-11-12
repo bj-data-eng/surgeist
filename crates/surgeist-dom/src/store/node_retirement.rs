@@ -4,7 +4,10 @@ use std::cell::Cell;
 use std::sync::{Mutex, MutexGuard};
 
 use super::*;
-use crate::{DomSourceEventRequest, DomSourceEventRetention};
+use crate::{
+    DomDocumentScriptRegistration, DomSourceAttributeVerificationRequest, DomSourceEventRequest,
+    DomSourceEventRetention, source::callback::CallbackWork,
+};
 
 use custody::{Debit, Usage};
 
@@ -504,12 +507,13 @@ impl Index {
 
 enum Funding<'a> {
     Source(&'a Dom, &'a DomSourceEventRequest),
+    SourceAttribute(&'a Dom, &'a CallbackWork),
     Ordinary(OrdinaryAdmission<'a>),
 }
 
 enum Reserved {
     Source(DomSourceEventRetention),
-    Ordinary(Debit),
+    Canonical(Debit),
 }
 
 impl Reserved {
@@ -518,7 +522,7 @@ impl Reserved {
             Self::Source(retained) => retained
                 .split_payload(bytes, 0)
                 .map(|part| part.into_debit()),
-            Self::Ordinary(retained) => retained.split(Usage::new(bytes, 0)),
+            Self::Canonical(retained) => retained.split(Usage::new(bytes, 0)),
         }
     }
 }
@@ -539,6 +543,7 @@ impl WatchAdmission<'_> {
     fn step(&self) -> Result<(), DomError> {
         match &self.funding {
             Funding::Source(dom, request) => dom.source_event_step(request, self.cancel),
+            Funding::SourceAttribute(_, work) => work.step(self.cancel),
             Funding::Ordinary(admission) => admission.admit_work(1),
         }
     }
@@ -558,9 +563,17 @@ impl WatchAdmission<'_> {
                 }
                 Reserved::Source(retained)
             }
+            Funding::SourceAttribute(dom, work) => {
+                let retained = dom
+                    .retain_source_attribute_observer_payload(Usage::new(bytes, 0), self.cancel)?;
+                for _ in 0..RADIX_DISARM_WORK {
+                    work.step(self.cancel)?;
+                }
+                Reserved::Canonical(retained)
+            }
             Funding::Ordinary(admission) => {
                 admission.admit_work(u64::from(RADIX_DISARM_WORK))?;
-                Reserved::Ordinary(admission.retain(bytes)?)
+                Reserved::Canonical(admission.retain(bytes)?)
             }
         };
         let backing = retained.take(leaf)?;
@@ -712,6 +725,36 @@ impl Dom {
         })?;
         let admission = WatchAdmission {
             funding: Funding::Source(self, request),
+            inbox,
+            node,
+            custody_key,
+            cancel,
+        };
+        let prepared = arm(self.node_retirements.as_ref(), &admission, None)?;
+        Ok(self.finish_watch(prepared, node))
+    }
+
+    /// Watch the exact live generation during the registered attribute
+    /// verification callback. Admission uses the original Source limits.
+    /// The watch survives callback closure and reports only committed retirement.
+    pub fn watch_source_attribute_node_retirement(
+        &mut self,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &DomDocumentScriptRegistration,
+        node: NodeId,
+        inbox: &DomNodeRetirementInbox,
+        custody_key: usize,
+        cancel: &AtomicBool,
+    ) -> Result<DomNodeRetirementWatch, DomError> {
+        if inbox.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        let work = self.active_source_attribute_callback_work(request, registration, cancel)?;
+        work.step(cancel)?;
+        self.state
+            .node_with(self.owner, node, &mut || work.step(cancel))?;
+        let admission = WatchAdmission {
+            funding: Funding::SourceAttribute(self, work),
             inbox,
             node,
             custody_key,

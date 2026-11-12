@@ -2,7 +2,10 @@
 
 use super::*;
 use surgeist_bindings_js::NativeProjectionPrototype;
-use surgeist_dom::{DomNodeRetirementWatch, DomSourceEventRequest};
+use surgeist_dom::{
+    DomDocumentScriptRegistration, DomNodeRetirementWatch, DomSourceAttributeVerificationRequest,
+    DomSourceEventRequest,
+};
 
 pub(super) struct OrdinaryBindings {
     inbox: RefCell<DomNodeRetirementInbox>,
@@ -36,7 +39,17 @@ enum Projection<'prototype, 'scope, Publish> {
 pub(super) struct Admission<'a> {
     owner: &'a NativeOwner,
     events: &'a GuestEvents,
-    request: Option<&'a DomSourceEventRequest>,
+    route: AdmissionRoute<'a>,
+}
+
+#[derive(Clone, Copy)]
+enum AdmissionRoute<'a> {
+    Ordinary,
+    Event(&'a DomSourceEventRequest),
+    Attribute(
+        DomSourceAttributeVerificationRequest,
+        &'a DomDocumentScriptRegistration,
+    ),
 }
 
 impl<'a> Admission<'a> {
@@ -44,7 +57,7 @@ impl<'a> Admission<'a> {
         Self {
             owner,
             events,
-            request: None,
+            route: AdmissionRoute::Ordinary,
         }
     }
 
@@ -56,21 +69,41 @@ impl<'a> Admission<'a> {
         Self {
             owner,
             events,
-            request: Some(request),
+            route: AdmissionRoute::Event(request),
+        }
+    }
+
+    pub(super) fn attribute(
+        owner: &'a NativeOwner,
+        events: &'a GuestEvents,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &'a DomDocumentScriptRegistration,
+    ) -> Self {
+        Self {
+            owner,
+            events,
+            route: AdmissionRoute::Attribute(request, registration),
         }
     }
 
     fn source_step(self) -> Result<(), DocumentGuestEventError> {
-        if let Some(request) = self.request {
-            let mut session = self
-                .owner
-                .session
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            session
-                .dom()
-                .raw()
-                .source_event_step(request, &self.owner.cancellation)?;
+        if matches!(self.route, AdmissionRoute::Ordinary) {
+            return Ok(());
+        }
+        let mut session = self
+            .owner
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let dom = session.dom();
+        let cancel = &self.owner.cancellation;
+        match self.route {
+            AdmissionRoute::Ordinary => (),
+            AdmissionRoute::Event(request) => dom.raw().source_event_step(request, cancel)?,
+            AdmissionRoute::Attribute(request, registration) => {
+                dom.raw()
+                    .source_attribute_callback_step(request, registration, cancel)?;
+            }
         }
         Ok(())
     }
@@ -316,6 +349,41 @@ impl OrdinaryBindings {
                     &owner.cancellation,
                 )?;
                 handler?;
+                Ok((node, watch))
+            }),
+        )
+    }
+
+    pub(super) fn watch_attribute<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        admission: Admission<'_>,
+        node: GuestNode,
+        prototype: &RetainedCallbackObject,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let AdmissionRoute::Attribute(request, registration) = admission.route else {
+            return Err(DocumentScriptNativeError::SourceAccess.into());
+        };
+        self.project(
+            scope,
+            admission,
+            Projection::Watch(prototype, |inbox: &DomNodeRetirementInbox, key| {
+                let mut session = admission
+                    .owner
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                let watch = session
+                    .dom()
+                    .raw_mut()
+                    .watch_source_attribute_node_retirement(
+                        request,
+                        registration,
+                        node.node(),
+                        inbox,
+                        key,
+                        &admission.owner.cancellation,
+                    )?;
                 Ok((node, watch))
             }),
         )

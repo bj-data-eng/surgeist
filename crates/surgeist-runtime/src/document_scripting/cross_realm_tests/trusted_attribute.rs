@@ -253,6 +253,10 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
                     createScript(value, type, sink) {
                         if (type !== 'TrustedScript' || sink !== 'Element onclick') throw new Error('incorrect sink');
                         if (protectedTarget.nodeType !== 1) throw new Error('unavailable native read');
+                        if (value === 'expose-owner') {
+                            globalThis.firstOwner = hiddenOwnerAttr.ownerElement;
+                            if (!(firstOwner instanceof Element)) throw new Error('unavailable Attr owner');
+                        }
                         protectedTarget.setAttribute('data-entered', value);
                         if (value === 'throw') throw marker;
                         if (value === 'empty') return null;
@@ -434,6 +438,88 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         assert!(scope.boolean(&value)?);
         Ok(())
     }).unwrap();
+
+    let snapshot = host.snapshot().unwrap();
+    let handler = snapshot
+        .node(element)
+        .unwrap()
+        .attributes()
+        .unwrap()
+        .get_named_item(&"onclick".into())
+        .unwrap()
+        .id()
+        .node();
+    super::super::guest::tests::expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        handler,
+        "protectedAttr",
+    );
+    host.in_document(&permit, |scope| {
+        let source = r#"
+            protectedAttr.value = 'attr-write\ud800';
+            protectedAttr.ownerElement === protectedTarget && protectedAttr.value === 'attr-write\ud800!'
+        "#;
+        let value = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
+        assert!(scope.boolean(&value)?);
+        Ok(())
+    }).unwrap();
+    assert_eq!(
+        host.snapshot()
+            .unwrap()
+            .attr(handler)
+            .unwrap()
+            .value()
+            .code_units(),
+        &"attr-write"
+            .encode_utf16()
+            .chain([0xd800, u16::from(b'!')])
+            .collect::<Vec<_>>(),
+    );
+    let hidden_owner = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let ticket = batch.create_element_ns(document, Namespace::html(), "span");
+            batch.set_attribute(&ticket, "onclick", "original");
+            dom.apply(batch, &cancel)
+                .unwrap()
+                .created(&ticket)
+                .unwrap()
+                .unwrap()
+        })
+        .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let hidden_attr = snapshot
+        .node(hidden_owner)
+        .unwrap()
+        .attributes()
+        .unwrap()
+        .get_named_item(&"onclick".into())
+        .unwrap()
+        .id()
+        .node();
+    super::super::guest::tests::expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        hidden_attr,
+        "hiddenOwnerAttr",
+    );
+    let result = host.in_document(&permit, |scope| {
+        let source = r#"
+            hiddenOwnerAttr.value = 'expose-owner';
+            hiddenOwnerAttr.ownerElement === firstOwner && hiddenOwnerAttr.value === 'expose-owner!'
+        "#;
+        let value = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
+        assert!(scope.boolean(&value)?);
+        Ok(())
+    });
+    if let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = &result {
+        panic!(
+            "the original policy could not project the live Attr owner: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        );
+    }
+    result.unwrap();
 
     let calls = pause_guest_attribute(
         &mut host,

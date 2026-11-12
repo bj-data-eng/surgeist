@@ -2,11 +2,15 @@
 
 use super::*;
 use surgeist_bindings_js::conversion::declarations::node_get_root_node_0_options;
-use surgeist_dom::{DomBatch, DomNodeKind, DomNodeRetirementInbox, DomTagName, NodeId};
+use surgeist_dom::{
+    DomBatch, DomNodeKind, DomNodeRetirementInbox, DomQualifiedName, DomTagName, NodeId,
+};
 use surgeist_html::values::DocumentString;
 
 const NODE: &[u16] = &ascii(b"Node");
 const DOCUMENT: &[u16] = &ascii(b"Document");
+mod attr;
+mod attr_factory;
 mod character_data;
 pub(super) mod element;
 mod fragment;
@@ -23,6 +27,7 @@ pub(in crate::document_scripting::guest) enum GuestNode {
     Text(NodeId),
     Comment(NodeId),
     Element(NodeId),
+    Attr(NodeId),
 }
 
 impl GuestNode {
@@ -33,7 +38,8 @@ impl GuestNode {
             | Self::ShadowRoot(id)
             | Self::Text(id)
             | Self::Comment(id)
-            | Self::Element(id) => id,
+            | Self::Element(id)
+            | Self::Attr(id) => id,
         }
     }
 
@@ -45,6 +51,7 @@ impl GuestNode {
             (Self::Text(_), DomNodeKind::Text(_)) => Ok(3.0),
             (Self::Comment(_), DomNodeKind::Comment(_)) => Ok(8.0),
             (Self::Element(_), DomNodeKind::Element(_)) => Ok(1.0),
+            (Self::Attr(_), DomNodeKind::Attr(_)) => Ok(2.0),
             _ => Err(DocumentScriptNativeError::ProjectionCustody),
         }
     }
@@ -85,6 +92,7 @@ pub(super) struct DocumentPrototypes {
     document: RetainedCallbackObject,
     fragment: RetainedCallbackObject,
     shadow: RetainedCallbackObject,
+    attr: RetainedCallbackObject,
     character_data: character_data::CharacterBindings,
 }
 
@@ -137,6 +145,7 @@ impl DocumentPrototypes {
         )?;
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
         fragment::install_factory(scope, &document, &funding.capture)?;
+        attr_factory::install(scope, &document, &funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
         parent_node::install(
             scope,
@@ -158,6 +167,7 @@ impl DocumentPrototypes {
             funding,
             constructors,
         )?;
+        let attr = attr::install(scope, node, constructor, funding)?;
         let observed = scope.callback_object(&document)?;
         let retained_document = scope.retain_callback_object(observed, funding.retain)?;
         let observed = scope.callback_object(&fragment)?;
@@ -169,6 +179,7 @@ impl DocumentPrototypes {
                 document: retained_document,
                 fragment: retained_fragment,
                 shadow: retained_shadow,
+                attr,
                 character_data,
             },
             document,
@@ -197,8 +208,9 @@ enum NodeMember {
 
 enum Observation {
     Number(f64),
-    String(DocumentString),
+    String(Option<DocumentString>),
     TagName(DomTagName),
+    AttrName(DomQualifiedName),
     Boolean(bool),
     Node(Option<NodeId>),
 }
@@ -659,10 +671,15 @@ impl Capture {
                 let node_type = id.node_type(node.kind())?;
                 Ok(match member {
                     NodeMember::Type => Observation::Number(node_type),
-                    NodeMember::Name => match node.tag_name_spelling_with(|| read.step())? {
-                        Some(name) => Observation::TagName(name),
-                        None => Observation::String(node.node_name()),
-                    },
+                    NodeMember::Name => {
+                        if let Some(attribute) = node.as_attr() {
+                            Observation::AttrName(attribute.name().clone())
+                        } else if let Some(name) = node.tag_name_spelling_with(|| read.step())? {
+                            Observation::TagName(name)
+                        } else {
+                            Observation::String(Some(node.node_name()))
+                        }
+                    }
                     NodeMember::OwnerDocument => {
                         Observation::Node(node.owner_document().map(DocumentId::node))
                     }
@@ -674,26 +691,69 @@ impl Capture {
                     ),
                 })
             })?;
-            match observation {
-                Observation::Number(value) => Ok(scope.primitive(Primitive::Number(value))?),
-                Observation::Boolean(value) => Ok(scope.primitive(Primitive::Boolean(value))?),
-                Observation::String(value) => Ok(self
-                    .callbacks
-                    .conversion
-                    .run(scope, |conversion| {
-                        conversion.copy_to_js(value.code_units())
-                    })
-                    .map_err(Error::from)?),
-                Observation::TagName(name) => self.copy_tag_name(scope, &owner, &events, &name),
-                Observation::Node(None) => Ok(scope.primitive(Primitive::Null)?),
-                Observation::Node(Some(node)) => events
-                    .public
-                    .as_ref()
-                    .ok_or(Error::ExpiredIdentity)?
-                    .project_node(scope, &owner, &events, node),
-            }
+            self.project_observation(scope, &owner, &events, observation)
         })();
         complete(scope, &events, result)
+    }
+
+    fn project_observation<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        observation: Observation,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        match observation {
+            Observation::Number(value) => Ok(scope.primitive(Primitive::Number(value))?),
+            Observation::Boolean(value) => Ok(scope.primitive(Primitive::Boolean(value))?),
+            Observation::String(Some(value)) => self.copy_dom_units(scope, value.code_units()),
+            Observation::TagName(name) => self.copy_tag_name(scope, owner, events, &name),
+            Observation::AttrName(name) => self.copy_attr_name(scope, owner, events, &name),
+            Observation::String(None) | Observation::Node(None) => {
+                Ok(scope.primitive(Primitive::Null)?)
+            }
+            Observation::Node(Some(node)) => events
+                .public
+                .as_ref()
+                .ok_or(Error::ExpiredIdentity)?
+                .project_node(scope, owner, events, node),
+        }
+    }
+
+    fn copy_dom_units<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        units: &[u16],
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        Ok(self
+            .callbacks
+            .conversion
+            .run(scope, |conversion| conversion.copy_to_js(units))
+            .map_err(Error::from)?)
+    }
+
+    fn copy_name_units<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        length: usize,
+        units: impl Iterator<Item = u16>,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let bytes = length
+            .checked_mul(size_of::<u16>())
+            .ok_or(Error::Allocation)?;
+        let _backing = events.reserve(owner, bytes)?;
+        events.charge_work(u64::try_from(length).map_err(|_| Error::StringTooLong)?)?;
+        let mut buffer = Vec::new();
+        buffer
+            .try_reserve_exact(length)
+            .map_err(|_| Error::Allocation)?;
+        if buffer.capacity() != length {
+            return Err(Error::Allocation.into());
+        }
+        buffer.extend(units);
+        self.copy_dom_units(scope, &buffer)
     }
 
     fn root_node<'scope>(
