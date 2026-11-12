@@ -82,6 +82,34 @@ fn attribute_units(attribute: &Attribute) -> Result<usize, DomError> {
         .ok_or(DomError::RepresentationExhausted)
 }
 
+fn same_code_units(
+    left: &[u16],
+    right: &[u16],
+    mut step: impl FnMut() -> Result<(), DomError>,
+) -> Result<bool, DomError> {
+    if left.len() != right.len() {
+        return Ok(false);
+    }
+    for (left, right) in left.iter().zip(right) {
+        step()?;
+        if left != right {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+pub(super) fn same_string(
+    left: &DocumentString,
+    right: &DocumentString,
+    step: impl FnMut() -> Result<(), DomError>,
+) -> Result<bool, DomError> {
+    if left.shares_storage_with(right) {
+        return Ok(true);
+    }
+    same_code_units(left.code_units(), right.code_units(), step)
+}
+
 fn retain_string(
     value: &DocumentString,
     budget: Option<&source::formation::Formation>,
@@ -196,7 +224,7 @@ impl Draft {
         if node.attr_owner().is_some() {
             return Err(DomError::InvalidSourceOperation);
         }
-        if self.attribute_string_equal(old.value().code_units(), value.code_units(), cancel)? {
+        if same_string(old.value(), value, || self.source_step(cancel))? {
             return Ok(());
         }
         let units = self
@@ -213,22 +241,13 @@ impl Draft {
         Ok(())
     }
 
-    fn attribute_string_equal(
+    fn attribute_name_equal(
         &self,
         left: &[u16],
         right: &[u16],
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
-        if left.len() != right.len() {
-            return Ok(false);
-        }
-        for (left, right) in left.iter().zip(right) {
-            self.name_step(cancel)?;
-            if left != right {
-                return Ok(false);
-            }
-        }
-        Ok(true)
+        same_code_units(left, right, || self.name_step(cancel))
     }
     fn attribute_namespace_equal(
         &self,
@@ -239,7 +258,7 @@ impl Draft {
         match (left, right) {
             (None, None) => Ok(true),
             (Some(left), Some(right)) => {
-                self.attribute_string_equal(left.code_units(), right.code_units(), cancel)
+                self.attribute_name_equal(left.code_units(), right.code_units(), cancel)
             }
             _ => Ok(false),
         }
@@ -264,7 +283,7 @@ impl Draft {
             return Ok(false);
         }
         if let Some(prefix) = prefix {
-            if !self.attribute_string_equal(
+            if !self.attribute_name_equal(
                 prefix.code_units(),
                 &value.code_units()[..prefix.len()],
                 cancel,
@@ -276,7 +295,7 @@ impl Draft {
                 return Ok(false);
             }
         }
-        self.attribute_string_equal(
+        self.attribute_name_equal(
             name.local_name().code_units(),
             &value.code_units()[offset..],
             cancel,
@@ -299,7 +318,7 @@ impl Draft {
                         attribute.name().namespace_uri(),
                         namespace,
                         cancel,
-                    )? && self.attribute_string_equal(
+                    )? && self.attribute_name_equal(
                         attribute.name().local_name().code_units(),
                         local_name.code_units(),
                         cancel,
@@ -604,10 +623,10 @@ impl Draft {
                 .attribute_ids()
                 .get(position)
                 .ok_or(DomError::StaleNode)?;
-            if !self.attribute_string_equal(
-                old_value.as_ref().ok_or(DomError::StaleNode)?.code_units(),
-                value.code_units(),
-                cancel,
+            if !same_string(
+                old_value.as_ref().ok_or(DomError::StaleNode)?,
+                value,
+                || self.source_step(cancel),
             )? {
                 self.replace_attr_value_formed(attr, replacement, name_formation, cancel)?;
                 self.units = if deferred_element.is_some() {

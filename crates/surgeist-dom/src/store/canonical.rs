@@ -226,17 +226,8 @@ impl<K> AttrNode<K> {
                 (Some(left), Some(right)) => (left, right),
                 _ => return Ok(false),
             };
-            if left.shares_storage_with(right) {
-                continue;
-            }
-            if left.len() != right.len() {
+            if !attributes::same_string(left, right, &mut step)? {
                 return Ok(false);
-            }
-            for (left, right) in left.code_units().iter().zip(right.code_units()) {
-                step()?;
-                if left != right {
-                    return Ok(false);
-                }
             }
         }
         Ok(true)
