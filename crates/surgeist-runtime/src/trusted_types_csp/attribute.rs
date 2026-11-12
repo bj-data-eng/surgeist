@@ -150,20 +150,20 @@ impl<'policies> AttributeMismatch<'_, 'policies> {
     }
 
     /// Prepare the next report from the original registered Source request.
-    pub fn next_report<Backing>(
+    pub fn next_report<Backing, E: From<DomError>>(
         &mut self,
         lease: &DomSourceLease<'_>,
         registration: &DomDocumentScriptRegistration,
         cancel: &AtomicBool,
-        admit: impl FnOnce(usize) -> Result<Backing, DomError>,
-    ) -> Result<Option<ViolationReport<Backing>>, ReportError<DomError>> {
+        admit: impl FnOnce(usize) -> Result<Backing, E>,
+    ) -> Result<Option<ViolationReport<Backing>>, ReportError<E>> {
         let input = lease
             .attribute_verification_input(self.request, registration, cancel)
-            .map_err(ReportError::Stopped)?;
+            .map_err(|error| ReportError::Stopped(error.into()))?;
         let attribute = AttributeReport::new(self.request.sink(), input.code_units());
         self.decision.next_report(
             Sample::Attribute(attribute),
-            &mut || self.read.step(cancel),
+            &mut || self.read.step(cancel).map_err(E::from),
             admit,
         )
     }

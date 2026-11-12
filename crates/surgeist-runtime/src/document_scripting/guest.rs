@@ -354,10 +354,10 @@ impl From<DocumentGuestEventError> for DocumentGuestEventDispatchFailure {
     }
 }
 
-struct GuestBacking {
+struct GuestBacking<Canonical = DomHostedRuntimeRetention> {
     used: Rc<Cell<usize>>,
     bytes: usize,
-    _canonical: DomHostedRuntimeRetention,
+    _canonical: Canonical,
 }
 
 impl GuestBacking {
@@ -376,7 +376,7 @@ impl GuestBacking {
     }
 }
 
-impl Drop for GuestBacking {
+impl<Canonical> Drop for GuestBacking<Canonical> {
     fn drop(&mut self) {
         self.used.set(self.used.get() - self.bytes);
     }
@@ -488,6 +488,24 @@ impl GuestBudget {
         limits: DocumentGuestEventLimits,
         bytes: usize,
     ) -> Result<GuestBacking, DocumentGuestEventError> {
+        self.reserve_with(limits, bytes, || {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            Ok(session
+                .hosted_execution()
+                .retain_script_payload(&mut session.dom(), bytes, &owner.cancellation)
+                .map_err(DocumentScriptNativeError::from)?)
+        })
+    }
+
+    fn reserve_with<Canonical>(
+        &self,
+        limits: DocumentGuestEventLimits,
+        bytes: usize,
+        admit: impl FnOnce() -> Result<Canonical, DocumentGuestEventError>,
+    ) -> Result<GuestBacking<Canonical>, DocumentGuestEventError> {
         self.charge_work(limits.work, 1)?;
         let total = self
             .used
@@ -497,14 +515,7 @@ impl GuestBudget {
         if total > limits.storage_bytes {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
-        let mut session = owner
-            .session
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let canonical = session
-            .hosted_execution()
-            .retain_script_payload(&mut session.dom(), bytes, &owner.cancellation)
-            .map_err(DocumentScriptNativeError::from)?;
+        let canonical = admit()?;
         self.used.set(total);
         Ok(GuestBacking {
             used: self.used.clone(),

@@ -1066,7 +1066,7 @@ impl Dom {
             self.source_operation.as_ref().map(|operation| operation.id),
         );
     }
-    fn source_observation_external(
+    pub(super) fn source_observation_external(
         &self,
         cancel: &AtomicBool,
     ) -> Result<storage::Payload, DomError> {
@@ -1103,7 +1103,7 @@ impl Dom {
         payload.append(extra)?;
         Ok(payload)
     }
-    fn admit_source_observers(
+    pub(super) fn admit_source_observers(
         &self,
         total: storage::Payload,
         cancel: &AtomicBool,

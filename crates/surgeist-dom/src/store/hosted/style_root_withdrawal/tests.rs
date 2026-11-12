@@ -1217,6 +1217,10 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
         Err(DomError::InvalidSourceOperation)
     );
     assert!(early.is_some());
+    assert!(matches!(
+        lease.retain_attribute_verification_payload(request, &registration, 8, 4, &cancel),
+        Err(DomError::InvalidSourceOperation)
+    ));
     drop(lease);
     let spent = dom.pending_source_edit().unwrap().spent_work();
     assert_eq!(
@@ -1268,6 +1272,14 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
         lease.open_attribute_verification_callback(request, &registration, &cancel),
         Err(DomError::InvalidSourceOperation)
     ));
+    assert!(matches!(
+        lease.retain_attribute_verification_payload(request, &registration, 1, 1, &cancel),
+        Err(DomError::RepresentationExhausted)
+    ));
+    let report = lease
+        .retain_attribute_verification_payload(request, &registration, 8, 4, &cancel)
+        .unwrap();
+    drop(report);
     let verified = crate::DocumentString::from_utf16(vec![0xdc00, 0x62]);
     assert_eq!(
         lease

@@ -52,6 +52,13 @@ pub enum DomSourceAttributeVerificationOutcome {
     Abrupt,
 }
 
+/// Admitted retained payload from the exact Source attribute verification.
+/// This storage receipt grants no callback authority and may outlive the request.
+#[derive(Debug)]
+pub struct DomSourceAttributePayloadRetention {
+    pub(crate) _debit: crate::store::custody::Debit,
+}
+
 /// The original verifier's live callback scope. Dropping it closes reentry.
 #[must_use = "keep the scope only while running the verifier callback"]
 #[derive(Debug)]

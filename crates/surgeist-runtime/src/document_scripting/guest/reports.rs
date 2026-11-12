@@ -1,31 +1,59 @@
 use std::{any::Any, collections::VecDeque};
 
 use super::*;
-use crate::trusted_types_csp::ViolationReport;
+use crate::trusted_types_csp::{ReportError, ViolationReport};
+
+pub(super) fn violation_error(
+    error: ReportError<DocumentGuestEventError>,
+) -> DocumentGuestEventError {
+    match error {
+        ReportError::Stopped(error) => error,
+        ReportError::RepresentationExhausted => {
+            DocumentScriptNativeError::RepresentationExhausted.into()
+        }
+        ReportError::Allocation => Error::Allocation.into(),
+    }
+}
+
+pub(super) enum ViolationBacking {
+    Guest {
+        _backing: GuestBacking,
+    },
+    Attribute {
+        _backing: GuestBacking<surgeist_dom::DomSourceAttributePayloadRetention>,
+    },
+}
 
 pub(in crate::document_scripting) struct ViolationQueue {
-    reports: VecDeque<ViolationReport<GuestBacking>>,
-    backing: Option<GuestBacking>,
-    _header: GuestBacking,
+    reports: VecDeque<ViolationReport<ViolationBacking>>,
+    backing: Option<ViolationBacking>,
+    _header: ViolationBacking,
 }
 
 impl ViolationQueue {
-    pub(super) fn new(
-        owner: &NativeOwner,
-        events: &GuestEvents,
-    ) -> Result<Box<Self>, DocumentGuestEventError> {
-        let header = events.reserve(owner, size_of::<Self>())?;
-        Ok(Box::new(Self {
-            reports: VecDeque::new(),
-            backing: None,
-            _header: header,
-        }))
+    pub(super) fn admit_report(
+        queue: &mut Option<Box<Self>>,
+        bytes: usize,
+        mut reserve: impl FnMut(usize, usize) -> Result<ViolationBacking, DocumentGuestEventError>,
+        charge_copy: impl FnOnce(u64) -> Result<(), DocumentGuestEventError>,
+    ) -> Result<ViolationBacking, DocumentGuestEventError> {
+        if queue.is_none() {
+            let header = reserve(size_of::<Self>(), 0)?;
+            *queue = Some(Box::new(Self {
+                reports: VecDeque::new(),
+                backing: None,
+                _header: header,
+            }));
+        }
+        let queue = queue.as_mut().ok_or(DocumentScriptNativeError::Busy)?;
+        queue.reserve(&mut reserve, charge_copy)?;
+        reserve(bytes, bytes / size_of::<u16>())
     }
 
-    pub(super) fn reserve(
+    fn reserve(
         &mut self,
-        owner: &NativeOwner,
-        events: &GuestEvents,
+        reserve: &mut impl FnMut(usize, usize) -> Result<ViolationBacking, DocumentGuestEventError>,
+        charge_copy: impl FnOnce(u64) -> Result<(), DocumentGuestEventError>,
     ) -> Result<(), DocumentGuestEventError> {
         if self.reports.len() < self.reports.capacity() {
             return Ok(());
@@ -37,9 +65,9 @@ impl ViolationQueue {
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?
             .max(1);
         let bytes = capacity
-            .checked_mul(size_of::<ViolationReport<GuestBacking>>())
+            .checked_mul(size_of::<ViolationReport<ViolationBacking>>())
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-        let backing = events.reserve(owner, bytes)?;
+        let backing = reserve(bytes, 0)?;
         let mut reports = VecDeque::new();
         reports
             .try_reserve_exact(capacity)
@@ -47,7 +75,7 @@ impl ViolationQueue {
         if reports.capacity() != capacity {
             return Err(Error::Allocation.into());
         }
-        events.charge_work(
+        charge_copy(
             u64::try_from(self.reports.len())
                 .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?,
         )?;
@@ -57,13 +85,13 @@ impl ViolationQueue {
         Ok(())
     }
 
-    pub(super) fn push(&mut self, report: ViolationReport<GuestBacking>) {
+    pub(super) fn push(&mut self, report: ViolationReport<ViolationBacking>) {
         self.reports.push_back(report);
     }
 
     #[cfg(test)]
-    pub(super) fn front(&self) -> Option<&ViolationReport<GuestBacking>> {
-        self.reports.front()
+    pub(super) fn iter(&self) -> impl Iterator<Item = &ViolationReport<ViolationBacking>> {
+        self.reports.iter()
     }
 }
 

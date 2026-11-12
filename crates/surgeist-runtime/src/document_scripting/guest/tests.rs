@@ -5,15 +5,19 @@ pub(in crate::document_scripting) mod registered_origin;
 pub(in crate::document_scripting) mod shadow_root;
 pub(in crate::document_scripting) mod trusted_policy;
 
-pub(in crate::document_scripting) fn assert_queued_policy_name(
+pub(in crate::document_scripting) fn assert_queued_trusted_types_violations(
     host: &DocumentScriptHost,
-    name: &str,
+    expected: &[(usize, &str, &str)],
 ) {
     let queue = host.native.trusted_types_reports.borrow();
-    let report = queue.as_ref().unwrap().front().unwrap();
-    assert_eq!(report.policy_index(), 0);
-    assert_eq!(report.resource(), "trusted-types-policy");
-    assert_eq!(report.sample(), units(name));
+    let mut reports = queue.as_ref().unwrap().iter();
+    for &(policy, resource, sample) in expected {
+        let report = reports.next().unwrap();
+        assert_eq!(report.policy_index(), policy);
+        assert_eq!(report.resource(), resource);
+        assert_eq!(report.sample(), units(sample));
+    }
+    assert!(reports.next().is_none());
 }
 
 fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {

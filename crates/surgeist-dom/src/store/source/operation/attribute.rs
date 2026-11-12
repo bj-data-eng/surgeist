@@ -638,6 +638,53 @@ impl DomSourceLease<'_> {
         })
     }
 
+    /// Admit storage for a retained report from this verified original request.
+    /// The debit remains live after Source completion until the report is dropped.
+    pub fn retain_attribute_verification_payload(
+        &self,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &DomDocumentScriptRegistration,
+        bytes: usize,
+        units: usize,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceAttributePayloadRetention, DomError> {
+        let operation = self.attribute_verification_operation(request, registration, cancel)?;
+        let observation = operation
+            .callback_observation()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        if !observation.work.scope_closed() {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        if units
+            .checked_mul(size_of::<u16>())
+            .is_none_or(|extent| extent > bytes)
+        {
+            return Err(DomError::RepresentationExhausted);
+        }
+        operation.qualify_attribute_registration(
+            self.dom,
+            request.global,
+            &registration.0,
+            cancel,
+        )?;
+        let external = self.dom.source_observation_external(cancel)?;
+        let debit = self.dom.custody_registry.ledger().retain(
+            custody::Usage::new(bytes, units),
+            |next| {
+                let total =
+                    next.checked_add(custody::Usage::new(external.bytes, external.units))?;
+                self.dom.admit_source_observers(
+                    storage::Payload {
+                        bytes: total.bytes(),
+                        units: total.units(),
+                    },
+                    cancel,
+                )
+            },
+        )?;
+        Ok(DomSourceAttributePayloadRetention { _debit: debit })
+    }
+
     /// Admit the registered verifier's reply once. On refusal the caller still
     /// owns the reply, including any rooted abrupt outcome it represents.
     pub fn accept_attribute_verification(

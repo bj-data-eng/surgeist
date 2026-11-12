@@ -281,7 +281,14 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         target.attribute(&"data-coerced".into()),
         Some(&"yes".into())
     );
-    super::super::guest::tests::assert_queued_policy_name(&host, "denied");
+    super::super::guest::tests::assert_queued_trusted_types_violations(
+        &host,
+        &[
+            (1, "trusted-types-sink", "Element onclick|missing"),
+            (1, "trusted-types-sink", "Element onclick|empty"),
+            (0, "trusted-types-policy", "denied"),
+        ],
+    );
 }
 
 pub(super) fn default_factory_retains_the_real_guest_callback() {

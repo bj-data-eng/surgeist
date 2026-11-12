@@ -2,8 +2,9 @@
 
 mod methods;
 
+use super::super::reports::{ViolationBacking, ViolationQueue, violation_error};
 use super::*;
-use crate::trusted_types_csp::{PolicyCreationError, PolicyFactory, ReportError};
+use crate::trusted_types_csp::{PolicyCreationError, PolicyFactory};
 use surgeist_bindings_js::{
     NativeObject, TrustedPolicyCallback, TrustedTypeKind, ValueKind,
     conversion::{Converted, types},
@@ -400,22 +401,18 @@ fn publish<'scope>(
         .map_err(|_| DocumentScriptNativeError::Busy)?;
     while let Some(report) = attempt
         .next_report(&mut step, |bytes| {
-            if reports.is_none() {
-                *reports = Some(super::super::reports::ViolationQueue::new(owner, events)?);
-            }
-            reports
-                .as_mut()
-                .ok_or(DocumentScriptNativeError::Busy)?
-                .reserve(owner, events)?;
-            events.reserve(owner, bytes)
+            ViolationQueue::admit_report(
+                &mut reports,
+                bytes,
+                |bytes, _| {
+                    Ok(ViolationBacking::Guest {
+                        _backing: events.reserve(owner, bytes)?,
+                    })
+                },
+                |work| events.charge_work(work),
+            )
         })
-        .map_err(|error| match error {
-            ReportError::Stopped(error) => error,
-            ReportError::RepresentationExhausted => {
-                DocumentScriptNativeError::RepresentationExhausted.into()
-            }
-            ReportError::Allocation => Error::Allocation.into(),
-        })?
+        .map_err(violation_error)?
     {
         reports
             .as_mut()

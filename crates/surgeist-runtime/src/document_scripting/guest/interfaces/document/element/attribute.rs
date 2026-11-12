@@ -3,6 +3,10 @@
 use super::{super::character_data::copy_native_data, *};
 use crate::{
     DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
+    document_scripting::{
+        HostedPolicyProcessor,
+        guest::reports::{ViolationBacking, ViolationQueue, violation_error},
+    },
     trusted_types_csp::{AttributePolicies, AttributePolicyError},
 };
 use surgeist_bindings_js::{
@@ -11,7 +15,7 @@ use surgeist_bindings_js::{
     dom_exception::DomExceptionName,
 };
 use surgeist_dom::{
-    DomSourceAttributeSink, DomSourceAttributeVerificationOutcome,
+    DomDocumentScriptRegistration, DomSourceAttributeSink, DomSourceAttributeVerificationOutcome,
     DomSourceAttributeVerificationRequest, DomSourceEdit, DomSourceLease, DomSourceRequest,
     Namespace,
 };
@@ -246,10 +250,7 @@ impl Capture {
                     processor.as_deref(),
                     cancel,
                 )
-                .map_err(|error| match error {
-                    AttributePolicyError::Dom(error) => DocumentGuestEventError::from(error),
-                    _ => DocumentScriptNativeError::TrustedTypesPolicyUnavailable.into(),
-                })?;
+                .map_err(attribute_policy_error)?;
                 if policies.requires_default_policy(cancel)? {
                     return Ok(true);
                 }
@@ -265,11 +266,11 @@ impl Capture {
             return Ok(None);
         }
 
-        let policy = trusted_policy::current_default_policy(scope, events)?
-            .ok_or(DocumentScriptNativeError::TrustedTypesPolicyUnavailable)?;
-        let callback = policy
-            .callback(kind)
-            .ok_or(DocumentScriptNativeError::TrustedTypesPolicyUnavailable)?;
+        let policy = trusted_policy::current_default_policy(scope, events)?;
+        let Some(callback) = policy.as_ref().and_then(|policy| policy.callback(kind)) else {
+            accept_mismatch(owner, events, request, &registration, processor.as_deref())?;
+            return Ok(None);
+        };
         let (sink, _sink_backing) = callback_sink(owner, events, request.sink())?;
         let callback_scope = with_attribute_lease(owner, events, request, cancel, |lease| {
             Ok(lease.open_attribute_verification_callback(request, &registration, cancel)?)
@@ -285,10 +286,10 @@ impl Capture {
         drop(callback_scope);
         let (outcome, abrupt, _output_backing) = match result {
             Ok(result) => {
-                let output = result
-                    .get()
-                    .as_ref()
-                    .ok_or(DocumentScriptNativeError::TrustedTypesPolicyUnavailable)?;
+                let Some(output) = result.get().as_ref() else {
+                    accept_mismatch(owner, events, request, &registration, processor.as_deref())?;
+                    return Ok(None);
+                };
                 let (output, backing) = copy_native_data(owner, events, output.as_code_units())?;
                 (
                     DomSourceAttributeVerificationOutcome::Value(output),
@@ -311,6 +312,88 @@ impl Capture {
             Ok(())
         })?;
         Ok(abrupt)
+    }
+}
+
+fn accept_mismatch(
+    owner: &NativeOwner,
+    events: &GuestEvents,
+    request: DomSourceAttributeVerificationRequest,
+    registration: &DomDocumentScriptRegistration,
+    processor: Option<&HostedPolicyProcessor>,
+) -> Result<(), DocumentGuestEventError> {
+    let cancel = &owner.cancellation;
+    with_attribute_lease(owner, events, request, cancel, |lease| {
+        let processor = processor
+            .map(|owner| owner.processor.try_borrow())
+            .transpose()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let policies =
+            AttributePolicies::read(lease, request, registration, processor.as_deref(), cancel)
+                .map_err(attribute_policy_error)?;
+        let mut mismatch = policies.mismatch();
+        let mut reports = owner
+            .trusted_types_reports
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        while let Some(report) = mismatch
+            .next_report(lease, registration, cancel, |bytes| {
+                ViolationQueue::admit_report(
+                    &mut reports,
+                    bytes,
+                    |bytes, units| {
+                        let backing = events.budget.reserve_with(events.limits, bytes, || {
+                            Ok(lease.retain_attribute_verification_payload(
+                                request,
+                                registration,
+                                bytes,
+                                units,
+                                cancel,
+                            )?)
+                        })?;
+                        Ok(ViolationBacking::Attribute { _backing: backing })
+                    },
+                    |work| {
+                        events.charge_work(work)?;
+                        if work != 0 {
+                            let read = lease.attribute_verification_policy(
+                                request,
+                                registration,
+                                cancel,
+                            )?;
+                            for _ in 0..work {
+                                read.step(cancel)?;
+                            }
+                        }
+                        Ok(())
+                    },
+                )
+            })
+            .map_err(violation_error)?
+        {
+            reports
+                .as_mut()
+                .ok_or(DocumentScriptNativeError::Busy)?
+                .push(report);
+        }
+        let outcome = match mismatch.blocked() {
+            Some(true) => DomSourceAttributeVerificationOutcome::Rejected,
+            Some(false) => DomSourceAttributeVerificationOutcome::Value(
+                lease
+                    .attribute_verification_input(request, registration, cancel)?
+                    .clone(),
+            ),
+            None => return Err(DomError::InvalidSourceOperation.into()),
+        };
+        lease.accept_attribute_verification(request, registration, &mut Some(outcome), cancel)?;
+        Ok(())
+    })
+}
+
+fn attribute_policy_error(error: AttributePolicyError) -> DocumentGuestEventError {
+    match error {
+        AttributePolicyError::Dom(error) => error.into(),
+        _ => DocumentScriptNativeError::TrustedTypesPolicyUnavailable.into(),
     }
 }
 
@@ -384,6 +467,11 @@ fn attribute_failure<'scope>(
     scope: &mut Scope<'scope>,
     error: DomError,
 ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+    if error == DomError::SourceAttributeVerificationRejected {
+        return Ok(Completion::Throw(
+            scope.type_error(&ascii(b"Trusted Types attribute blocked by CSP"))?,
+        ));
+    }
     match attribute_exception(&error) {
         Some(name) => Ok(Completion::Throw(scope.dom_exception(name, &[])?)),
         None => Err(error.into()),
