@@ -136,11 +136,13 @@ where
     Ok(())
 }
 
+type RoundNodeResult<Node, S, M> = LayoutResultOf<Node, Option<RoundingFrames<S>>, S, M>;
+
 fn round_node<Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
     ancestors: RoundingFrames<Tree::Scalar>,
-) -> LayoutResultOf<Tree::Node, Option<RoundingFrames<Tree::Scalar>>, Tree::Scalar, M>
+) -> RoundNodeResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Round<M>,
 {
