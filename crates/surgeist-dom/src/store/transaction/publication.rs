@@ -432,6 +432,7 @@ impl Draft {
             || self.source_step(cancel),
         )?;
         let ranges = self.finish_ranges(&id, cancel)?;
+        let iterators = self.finish_node_iterators(participant_id, cancel)?;
         let mut created_ranges = Vec::new();
         source::formation::reserve(
             &mut created_ranges,
@@ -518,6 +519,7 @@ impl Draft {
                 details_targets,
                 slots,
                 ranges: ranges.ranges,
+                node_iterators: iterators.value,
                 incomplete_source: None,
                 incomplete_hosted: dom.state.incomplete_hosted,
                 registries: self.registries.clone(),
@@ -541,6 +543,7 @@ impl Draft {
             frontiers: super::StateFrontiers {
                 slots: slots_custody,
                 ranges: ranges.custody,
+                node_iterators: iterators.custody,
                 inbound: inbound_custody,
                 controls: controls.custody,
                 slot_index: slot_index.custody,
@@ -566,6 +569,7 @@ impl Draft {
             &touched,
             self.ranges.touched(),
         )?;
+        self.node_iterator_changes(&dom.state, state, &mut changes, budget, cancel)?;
         #[cfg(test)]
         let mut changes_written = super::sequence::CopyObservation::default();
         // Transition-domain changes precede the exact Document-origin closure.
@@ -702,6 +706,7 @@ impl Draft {
                 state_frontiers: candidate.frontiers,
                 root_debit: candidate.retained,
                 semantic_changed,
+                iterator_state_changed: iterators.state_changed,
                 owner: self.owner.clone(),
                 created,
                 documents,
@@ -800,6 +805,7 @@ impl Draft {
         self.containers
             .mark_published(&self.base.container_index, &self.base_custody.containers);
         self.ranges = super::ranges::Ranges::new(&self.base, &self.base_custody);
+        self.node_iterators = node_iterator::DraftIterators::new(&self.base, &self.base_custody);
         let base = self.base.clone();
         let custody = self.base_custody.clone();
         self.acknowledge_queue_targets_publication(

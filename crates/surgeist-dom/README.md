@@ -45,7 +45,7 @@ capacity accounting, exact UTF-16 values and publication behavior.
 
 | Work | Owning explanation |
 | --- | --- |
-| Tree, values, identities and publication | [Canonical tree](docs/canonical-tree.md), [compound mutations](docs/compound-mutations.md), [storage/admission](docs/storage.md), [Document construction/clone/import](docs/document-creation.md), [Ranges/designMode](docs/ranges-and-editing.md) |
+| Tree, values, identities and publication | [Canonical tree](docs/canonical-tree.md), [compound mutations](docs/compound-mutations.md), [storage/admission](docs/storage.md), [Document construction/clone/import](docs/document-creation.md), [Ranges/designMode](docs/ranges-and-editing.md), [NodeIterator](docs/node-iterators.md) |
 | Native controls | [Forms/Select](docs/forms-and-select.md), [Input](docs/input.md), [Output/Textarea](docs/text-controls.md) |
 | Embedded content and scripts | [Canvas/Marquee/Frame/Iframe/Img](docs/embedded-content.md), [HTML/SVG Script](docs/scripts.md) |
 | Document environment | [Base/Link/A/Area/Meta](docs/urls-and-metadata.md), [host observations and hosted documents](docs/hosted-documents.md) |

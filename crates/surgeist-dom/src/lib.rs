@@ -162,6 +162,7 @@ mod meta_atomic;
 mod name;
 mod name_limits;
 mod names;
+mod node_iterator;
 pub use name::{DomAttribute, DomNameAtom, DomQualifiedName};
 pub use name_limits::DomNameLimits;
 mod node_values;
@@ -252,6 +253,10 @@ pub use meta::{
     DomMetaError, DomMetaThemeColorState,
 };
 pub use meta_atomic::*;
+pub use node_iterator::{
+    DomNodeFilterDecision, DomNodeIterator, DomNodeIteratorFilter, DomNodeIteratorId,
+    DomNodeIteratorProgress,
+};
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
 pub use output::{DomOutput, DomOutputState};
 pub use parsed_installation::{
@@ -284,6 +289,7 @@ pub use snapshot::{
     DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomShadowRoot, DomSnapshot, DomTagName,
     DomTreeOrder, DomTreeScope,
 };
+pub use store::DomNodeIteratorFilterRequest;
 pub use store::meta_atomic::{DomMetaOrdinaryPreparation, DomMetaOrdinaryPublished};
 mod parsed_association;
 pub use parsed_association::*;

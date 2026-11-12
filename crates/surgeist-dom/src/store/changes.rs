@@ -882,6 +882,7 @@ pub(super) fn full_difference(
         source::formation::reserve(&mut changes, 1, budget, cancelled)?;
         changes.push(DomChange::SlotQueries);
     }
+    node_iterator::full_changes(owner, old, new, &mut changes, cancelled)?;
     new.view_transitions
         .changes(&old.view_transitions, &mut changes, budget, cancelled)?;
     // Complete pseudo origins derive from ordinary Document children. Report

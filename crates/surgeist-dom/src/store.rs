@@ -72,7 +72,9 @@ pub(crate) mod meta_atomic;
 mod method;
 mod name_registry;
 mod navigable;
+mod node_iterator;
 mod node_retirement;
+pub use node_iterator::DomNodeIteratorFilterRequest;
 pub use node_retirement::{
     DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
     DomNodeRetirementWatch, DomWatchedNode,
@@ -135,6 +137,7 @@ pub enum DomResource {
     FullscreenExits,
     FullscreenEvents,
     Ranges,
+    NodeIterators,
     ManagedNodes,
     SlotReferences,
     AutofocusCandidates,
@@ -263,6 +266,12 @@ pub enum DomError {
         old_document: Option<DocumentId>,
     },
     StaleRange,
+    StaleNodeIterator,
+    NodeIteratorFilterActive,
+    NodeIteratorPublicationUnavailable,
+    NodeIteratorWorkLimit {
+        limit: u64,
+    },
     RangeAssociationIneligible,
     RangePublicationUnavailable,
     /// A reached operation needs a current live hosted owner association.
@@ -509,6 +518,7 @@ pub struct DomLimits {
     fullscreen_exits: usize,
     fullscreen_events: usize,
     ranges: usize,
+    node_iterators: usize,
     dispatch_custody: crate::DomDispatchCustodyLimits,
     event_recipients: crate::DomEventRecipientLimits,
     nodes: usize,
@@ -602,6 +612,14 @@ impl DomLimits {
     pub fn ranges(self) -> usize {
         self.ranges
     }
+    /// Maximum retained iterator slots, including vacant slots.
+    pub fn with_node_iterators(mut self, slots: usize) -> Self {
+        self.node_iterators = slots;
+        self
+    }
+    pub fn node_iterators(self) -> usize {
+        self.node_iterators
+    }
     /// Aggregate installed candidate references across all Document histories.
     /// Native empty state needs no allowance; each growing insertion does.
     pub fn with_autofocus_candidates(mut self, candidates: usize) -> Result<Self, DomError> {
@@ -679,6 +697,7 @@ impl DomLimits {
             fullscreen_exits: 0,
             fullscreen_events: 0,
             ranges: 0,
+            node_iterators: 0,
             dispatch_custody: crate::DomDispatchCustodyLimits::default(),
             event_recipients: crate::DomEventRecipientLimits::default(),
             nodes,
@@ -952,6 +971,7 @@ pub struct DomUsage {
     parsed_association_bytes: usize,
     parsed_association_units: usize,
     ranges: usize,
+    node_iterators: usize,
     meta_color_scheme_bytes: usize,
     autofocus_candidates: usize,
     slot_references: usize,
@@ -973,6 +993,9 @@ impl DomUsage {
 
     pub fn ranges(self) -> usize {
         self.ranges
+    }
+    pub fn node_iterators(self) -> usize {
+        self.node_iterators
     }
     pub const fn meta_color_scheme_retained_bytes(self) -> usize {
         self.meta_color_scheme_bytes
@@ -1011,6 +1034,9 @@ impl DomUsage {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomChange {
     RangeCreated(crate::DomRangeId),
+    NodeIteratorCreated(crate::DomNodeIteratorId),
+    NodeIteratorReference(crate::DomNodeIteratorId),
+    NodeIteratorRetired(crate::DomNodeIteratorId),
     RangeBoundary(crate::DomRangeId),
     RangeRetired(crate::DomRangeId),
     DocumentActiveRange(DocumentId),
@@ -1274,6 +1300,7 @@ pub(crate) struct State {
     native_targets: transaction::queues::CanonicalTargets,
     details_targets: transaction::queues::CanonicalTargets,
     pub(crate) ranges: bank::Bank<crate::range::Slot<NodeId>>,
+    node_iterators: node_iterator::Iterators,
     pub(crate) incomplete_source: Option<crate::DomSourceOperationId>,
     pub(crate) incomplete_hosted: Option<crate::hosted::DomHostedOperationId>,
     pub(crate) slots: bank::Bank<Slot>,
@@ -1293,6 +1320,7 @@ pub(crate) struct State {
 impl PartialEq for State {
     fn eq(&self, other: &Self) -> bool {
         self.ranges == other.ranges
+            && self.node_iterators == other.node_iterators
             && self.incomplete_source == other.incomplete_source
             && self.incomplete_hosted == other.incomplete_hosted
             && self.slots == other.slots
@@ -1404,6 +1432,7 @@ impl Dom {
             native_targets: transaction::queues::CanonicalTargets::default(),
             details_targets: transaction::queues::CanonicalTargets::default(),
             ranges: bank::Bank::default(),
+            node_iterators: node_iterator::Iterators::default(),
             incomplete_source: None,
             incomplete_hosted: None,
             slots: bank::Bank::default(),
@@ -1495,6 +1524,7 @@ impl Dom {
                 .values()
                 .filter(|slot| slot.record.is_some())
                 .count(),
+            node_iterators: self.state.node_iterators.live_slots(),
             meta_color_scheme_bytes: self
                 .state
                 .slots
@@ -1559,6 +1589,11 @@ impl Dom {
             owner.admit_limits(limits.event_recipients())?;
         }
         admit(self.state.ranges.len(), limits.ranges, DomResource::Ranges)?;
+        admit(
+            self.state.node_iterators.retained_slots(),
+            limits.node_iterators,
+            DomResource::NodeIterators,
+        )?;
         admit(
             self.fullscreen_exits.len(),
             limits.fullscreen_exits,
@@ -1842,6 +1877,7 @@ impl Dom {
             state_frontiers: _,
             root_debit: _,
             semantic_changed: _,
+            iterator_state_changed,
             signal_ack,
             native_ack,
             details_ack,
@@ -1923,7 +1959,7 @@ impl Dom {
             },
             || source::formation::step(formation.as_ref(), cancelled),
         )?;
-        let (state, state_custody) = if changed {
+        let (state, state_custody) = if changed || iterator_state_changed {
             let state = Arc::new(state);
             #[cfg(test)]
             if scale_metrics::ENABLED {
@@ -2133,8 +2169,12 @@ impl PublicationFields<'_> {
             if scale_metrics::ENABLED {
                 scale_metrics::record(scale_metrics::Event::PublishedRoot);
             }
+        }
+        if !Arc::ptr_eq(self.state, &state) {
             *self.state = state;
             *self.state_custody = state_custody;
+        }
+        if changed {
             if let Some(plan) = inline_retirement {
                 plan.publish(
                     self.inline_objects
@@ -2243,6 +2283,7 @@ struct Draft {
     // An actual published parallel invocation retains this same Work atom.
     fullscreen_work_custody: Option<crate::DomFullscreenExitId>,
     ranges: transaction::ranges::Ranges,
+    node_iterators: node_iterator::DraftIterators,
     range_tickets: Vec<crate::DomRangeId>,
     range_tickets_charge: custody::Debit,
     owner: Arc<BatchIdentity>,
@@ -2388,6 +2429,7 @@ struct Prepared {
     record_ids: Vec<Option<DomViewTransitionRecordId>>,
     changes: Vec<DomChange>,
     semantic_changed: bool,
+    iterator_state_changed: bool,
     allocation_ids: source::AllocationIds,
     signal_ack: Option<transaction::queues::QueueAck<Key, NodeId>>,
     native_ack: Option<transaction::queues::QueueAck<select::Pending, select::Task<NodeId>>>,
@@ -2802,6 +2844,7 @@ impl Draft {
         let cancelled_details =
             transaction::queues::CancelledDetails::empty(&registry, &mut admit_initial)?;
         let ranges = transaction::ranges::Ranges::new(&dom.state, &dom.state_custody);
+        let node_iterators = node_iterator::DraftIterators::new(&dom.state, &dom.state_custody);
         Ok(Self {
             base: dom.state.clone(),
             event_recipients: dom.event_recipients.clone(),
@@ -2822,6 +2865,7 @@ impl Draft {
             journal,
             _header_custody: header,
             ranges,
+            node_iterators,
             range_tickets: Vec::new(),
             range_tickets_charge,
             owner,
@@ -3024,6 +3068,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         if let Some(parent) = self.node(node)?.parent() {
             self.range_pre_remove(node, parent, cancelled)?;
+            self.node_iterator_pre_remove(node, parent, cancelled)?;
             self.relations_retain(
                 parent,
                 transaction::RelationField::Children,
