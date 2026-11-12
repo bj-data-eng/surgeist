@@ -204,11 +204,7 @@ impl Capture {
                     return Err(error);
                 }
             };
-            if let Some(retained) = retained {
-                ((result, pending), abrupt) = continue_attribute(owner, retained, limits)?;
-            } else {
-                (result, pending) = resume_attribute_source(owner, request, limits)?;
-            }
+            ((result, pending), abrupt) = continue_attribute(owner, retained, limits)?;
         }
         match result {
             Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
@@ -275,7 +271,7 @@ impl Capture {
         events: &GuestEvents,
         request: DomSourceAttributeVerificationRequest,
         brand: Option<TrustedTypeKind>,
-    ) -> Result<Option<Box<PendingAttribute>>, DocumentGuestEventError> {
+    ) -> Result<Box<PendingAttribute>, DocumentGuestEventError> {
         let registration = owner
             .attachment
             .get()
@@ -319,24 +315,9 @@ impl Capture {
                         return Ok(true);
                     }
                 }
-                let input = lease
-                    .attribute_verification_input(request, &registration, cancel)?
-                    .clone();
-                let mut outcome = Some(DomSourceAttributeVerificationOutcome::Value(input));
-                lease.accept_attribute_verification(
-                    request,
-                    &registration,
-                    &mut outcome,
-                    cancel,
-                )?;
                 Ok(false)
             },
         )?;
-        if !requires_callback {
-            return Ok(None);
-        }
-
-        let policy = trusted_policy::current_default_policy(scope, events)?;
         let header = events.reserve(owner, size_of::<PendingAttribute>())?;
         let mut retained = Box::new(PendingAttribute {
             request,
@@ -345,9 +326,14 @@ impl Capture {
             interrupted_parent: None,
             _header: header,
         });
+        if !requires_callback {
+            retained.reply = AttributeReply::OriginalValue;
+            return Ok(retained);
+        }
+        let policy = trusted_policy::current_default_policy(scope, events)?;
         let Some(callback) = policy.as_ref().and_then(|policy| policy.callback(kind)) else {
             retained.reply = AttributeReply::Mismatch(AttributeMismatchProgress::default());
-            return Ok(Some(retained));
+            return Ok(retained);
         };
         let (sink, _sink_backing) = callback_sink(owner, events, request.sink())?;
         let (input, callback_scope) = with_attribute_lease(
@@ -387,7 +373,7 @@ impl Capture {
                 }
             },
         };
-        Ok(Some(retained))
+        Ok(retained)
     }
 }
 
@@ -546,6 +532,19 @@ impl PendingAttribute {
                     .ok_or(DocumentScriptNativeError::Revoked)?;
                 with_attribute_lease(owner, limits, self.request, cancel, |lease| {
                     match reply {
+                        AttributeReply::OriginalValue => {
+                            let input = lease
+                                .attribute_verification_input(self.request, &registration, cancel)?
+                                .clone();
+                            let mut outcome =
+                                Some(DomSourceAttributeVerificationOutcome::Value(input));
+                            lease.accept_attribute_verification(
+                                self.request,
+                                &registration,
+                                &mut outcome,
+                                cancel,
+                            )?;
+                        }
                         AttributeReply::Converted { result, .. } => {
                             let output = result
                                 .get()

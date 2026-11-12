@@ -374,6 +374,7 @@ pub(super) struct PendingAttribute {
 
 enum AttributeReply {
     Abandon,
+    OriginalValue,
     Mismatch(crate::trusted_types_csp::AttributeMismatchProgress),
     Converted {
         result: surgeist_bindings_js::conversion::Converted<
