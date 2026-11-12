@@ -142,9 +142,9 @@ impl Draft {
         if actual.len() != expected.len() {
             return Ok(false);
         }
-        for (&actual, &expected) in actual.code_units().iter().zip(expected) {
+        for (actual, expected) in actual.code_units().iter().zip(expected) {
             self.source_step(cancel)?;
-            if actual != u16::from(expected) {
+            if *actual != u16::from(*expected) {
                 return Ok(false);
             }
         }
