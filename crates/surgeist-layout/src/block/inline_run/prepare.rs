@@ -3,7 +3,7 @@ use super::*;
 
 type PreparedInlineRunResult<'input, Node, S, M> =
     LayoutResultOf<Node, PreparedInlineRun<'input, Node, S>, S, M>;
-type InlineRunControl<Node, S> = (Node, usize, Option<crate::VerticalAlignOf<S>>);
+pub(super) type InlineRunControl<Node, S> = (Node, usize, Option<crate::VerticalAlignOf<S>>);
 
 pub(super) struct PreparedInlineRun<'input, Node, S: LayoutScalar> {
     pub(super) cursor_block: S,
