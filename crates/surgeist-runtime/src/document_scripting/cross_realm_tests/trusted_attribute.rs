@@ -1,5 +1,143 @@
 use super::*;
 
+pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
+    use crate::document_scripting::guest::tests::{
+        assert_queued_trusted_types_violations, attach_public_nodes,
+        expose_public_node_for_source_test,
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
+        limits.with_meta_processing_work(1_000_000)
+    });
+    let other = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted.create_headless_host(&mut dom, &cancel).unwrap();
+        hosted.create_top_level(&mut dom, owner, &cancel).unwrap()
+    };
+    let accepted = insert_hosted_element(&mut session, target, "div", &cancel);
+    let rejected = insert_hosted_element(&mut session, target, "div", &cancel);
+    let destination = insert_hosted_element(&mut session, other, "div", &cancel);
+    let original = session.snapshot();
+    let root = original
+        .document(target.document())
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let head = original.node(root).unwrap().children()[0];
+    let mut batch = DomBatch::new();
+    let receiver = batch.create_element_ns(
+        other.document(),
+        Namespace::from_uri("urn:fixture"),
+        "receiver",
+    );
+    batch.insert_before(&receiver, destination, None);
+    for owner in [accepted, rejected] {
+        batch.set_attribute(owner, "onclick", "old");
+    }
+    let meta = batch.create_element_ns(target.document(), Namespace::html(), "meta");
+    batch.set_attribute(&meta, "http-equiv", "content-security-policy");
+    batch.set_attribute(&meta, "content", "require-trusted-types-for 'script'");
+    let commit = session.dom().apply(batch, &cancel).unwrap();
+    let receiver = commit.created(&receiver).unwrap().unwrap();
+    let meta = commit.created(&meta).unwrap().unwrap();
+    let snapshot = session.snapshot();
+    let [accepted_attr, rejected_attr] = [accepted, rejected].map(|owner| {
+        snapshot
+            .node(owner)
+            .unwrap()
+            .get_attribute_node(&"onclick".into())
+            .unwrap()
+            .id()
+            .node()
+    });
+    // The sink's initial policy comes from its owner Element even when the
+    // Attr already belongs to a different node document.
+    let mut adopt = DomBatch::new();
+    adopt.adopt(accepted_attr, other.document());
+    session.dom().apply(adopt, &cancel).unwrap();
+    session.enable_trusted_types_csp(&cancel).unwrap();
+    let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    host.register_node_creation_realm(&permit, other).unwrap();
+    for (node, name) in [
+        (head, "adoptionHead"),
+        (meta, "adoptionMeta"),
+        (accepted, "acceptedOwner"),
+        (accepted_attr, "acceptedAttr"),
+        (rejected, "rejectedOwner"),
+        (rejected_attr, "rejectedAttr"),
+        (destination, "adoptionTarget"),
+        (receiver, "replacementOwner"),
+    ] {
+        expose_public_node_for_source_test(&mut host, &permit, node, name);
+    }
+    let result = host.in_document(&permit, |scope| {
+        evaluate(scope, r#"
+            (() => {
+                const check = (ok, label) => { if (!ok) throw new Error(label); };
+                adoptionHead.appendChild(adoptionMeta);
+                const originalDocument = document;
+                const destinationDocument = adoptionTarget.ownerDocument;
+                check(originalDocument !== destinationDocument, 'distinct hosted documents');
+                check(acceptedAttr.ownerDocument === destinationDocument && acceptedAttr.ownerElement === acceptedOwner,
+                    'distinct initial Attr and owner documents');
+                const calls = [];
+                trustedTypes.createPolicy('default', {createScript(value, type, sink) {
+                    calls.push(value);
+                    check(type === 'TrustedScript' && sink === 'Element onclick', 'original selected sink');
+                    const [owner, attr] = value === 'move\ud800'
+                        ? [acceptedOwner, acceptedAttr] : [rejectedOwner, rejectedAttr];
+                    check(owner.ownerDocument === originalDocument && attr.ownerElement === owner, 'original owner');
+                    check(adoptionTarget.appendChild(owner) === owner, 'same adopted owner');
+                    check(owner.ownerDocument === destinationDocument && attr.ownerDocument === destinationDocument
+                        && attr.ownerElement === owner, 'live adoption');
+                    check(owner.removeAttributeNode(attr) === attr && attr.ownerElement === null, 'exact removal');
+                    if (value === 'reject') return null;
+                    check(replacementOwner.setAttributeNode(attr) === null && attr.ownerElement === replacementOwner, 'new nonsink owner');
+                    return value + '!';
+                }});
+                acceptedAttr.value = 'move\ud800';
+                check(acceptedAttr.value === 'move\ud800!' && replacementOwner.getAttributeNode('onclick') === acceptedAttr
+                    && acceptedOwner.getAttributeNode('onclick') === null, 'verified write uses new owner');
+                let blocked = false;
+                try { rejectedAttr.value = 'reject'; }
+                catch (error) { blocked = error instanceof TypeError; }
+                check(blocked && rejectedAttr.value === 'old' && rejectedAttr.ownerElement === null, 'original policy rejects after adoption');
+                check(calls.length === 2 && calls[0] === 'move\ud800' && calls[1] === 'reject', 'callbacks run once');
+            })()
+        "#).map(drop)
+    });
+    if let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = &result {
+        panic!(
+            "adoption callback refused: {:?}, {:?}",
+            failure.cause::<DocumentGuestEventError>(),
+            failure.cause::<crate::DomSourceDriveError>()
+        );
+    }
+    result.unwrap();
+    assert_queued_trusted_types_violations(
+        &host,
+        &[(0, "trusted-types-sink", "Element onclick|reject")],
+    );
+    let snapshot = host.snapshot().unwrap();
+    assert_eq!(
+        snapshot.node(destination).unwrap().children(),
+        &[receiver, accepted, rejected]
+    );
+    let accepted = snapshot.attr(accepted_attr).unwrap();
+    assert_eq!(accepted.owner_document(), other.document());
+    assert_eq!(accepted.owner_element(), Some(receiver));
+    assert_eq!(
+        accepted.value().code_units(),
+        &[109, 111, 118, 101, 0xd800, 33]
+    );
+    let rejected = snapshot.attr(rejected_attr).unwrap();
+    assert_eq!(rejected.owner_document(), other.document());
+    assert_eq!(rejected.owner_element(), None);
+    assert_eq!(rejected.value(), &"old".into());
+}
+
 pub(super) fn guest_meta_retry_preserves_accepted_first_policy() {
     use crate::{DomSourceDriveError, DomSourceRuntimeError};
     use surgeist_dom::{DomResource, DomSourceMetaCspError, DomSourcePhase};
