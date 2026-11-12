@@ -3,14 +3,18 @@
 use std::sync::Arc;
 
 use crate::{
-    Alignment, AnalysisTypography, AnalyzedSource, FinalizedFragmentView, FinalizedGlyphView,
-    FinalizedLine, FinalizedRunView, FormattedLineContext, LineAlignmentInsets, LineAllocations,
-    LineBoxDirection, LineContext, LineEdgeUnitView, LineEnd, LineOrientation,
-    LineSelectionRequest, LineStart, ParagraphBaseDirection, ParagraphOriginKind,
+    Affinity, Alignment, AnalysisTypography, AnalyzedSource, ContextualSourceInput,
+    DocumentSegmentBreaks, FinalizedFragmentView, FinalizedGlyphView, FinalizedLine,
+    FinalizedRunView, FormattedLineContext, LineAlignmentInsets, LineAllocations, LineBoxDirection,
+    LineContext, LineEdgeUnitView, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
+    ParagraphBaseDirection, ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
     ParagraphTabReference, ParagraphTerminalEdge, PreparationOptions, PreparedBreakKind,
-    PreparedTermination, PreparedText, ProcessedSource, ProtocolError, Result, ScopeAllocations,
-    SelectedMappingView, Source, SourceIdentity, SpacingAllocations, SpacingPolicy, Style,
-    TabContext, TabPreparation, Text, Wrap, WrappingPolicy,
+    PreparedTermination, PreparedText, ProcessedSource, ProtocolError, Range, Result,
+    ScopeAlignmentLimits, ScopeAllocations, ScopeFontReference, SelectedMappingView, Source,
+    SourceIdentity, SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+    SourceProcessingScope, SourceProcessingTopology, SourceWritingAxis, SpacingAllocations,
+    SpacingPolicy, Style, TabContext, TabPreparation, Text, TextCombineUpright, WhiteSpaceTrim,
+    Wrap, WrappingPolicy,
     protocol::{
         paragraph::ParagraphData,
         protocol_error,
@@ -31,19 +35,30 @@ pub enum LeaderPattern {
 
 /// Used Text context for one isolated leader pattern.
 ///
-/// A literal contains decoded code units. The caller supplies the used bidi
-/// base and typography for the pattern. A retained nonzero CSS tab consumes
-/// the supplied reference metrics and uses the pattern's start as its origin.
+/// A literal contains decoded code units. The source writing axis governs
+/// combination independently of the physical shaping orientation. A retained
+/// nonzero CSS tab uses the supplied reference metrics and the pattern's start.
 #[derive(Clone, Debug)]
 pub struct LeaderPatternInput {
     pub pattern: LeaderPattern,
     pub source_identity: SourceIdentity,
     pub style: Style,
     pub direction: ParagraphBaseDirection,
+    pub writing_axis: SourceWritingAxis,
     pub typography: AnalysisTypography,
     pub orientation: LineOrientation,
     pub scale: f32,
     pub tab_reference: Option<ParagraphTabReference>,
+    /// Context consumed when a vertical pattern selects a combined cell.
+    pub combination: Option<LeaderCombinationContext>,
+}
+
+/// Actual generated inline context for horizontal-in-vertical composition.
+#[derive(Clone, Copy, Debug)]
+pub struct LeaderCombinationContext {
+    pub horizontal_inner_direction: ParagraphBaseDirection,
+    pub font_reference: ScopeFontReference,
+    pub limits: ScopeAlignmentLimits,
 }
 
 /// One finalized repetition unit with its original source and actual fonts.
@@ -173,31 +188,37 @@ impl LeaderClusterView<'_> {
 pub(crate) fn analyze(input: LeaderPatternInput) -> Result<(AnalyzedSource, PreparationOptions)> {
     let options = PreparationOptions::try_new(input.scale, TabPreparation::CssStops)?
         .with_orientation(input.orientation);
-    let text = match input.pattern {
+    let text = match &input.pattern {
         LeaderPattern::Dotted => ".".into(),
         LeaderPattern::Solid => "_".into(),
         LeaderPattern::Space => " ".into(),
-        LeaderPattern::Literal(text) => text,
+        LeaderPattern::Literal(text) => text.clone(),
     };
     let mut source = Source::new(text);
     source.set_identity(
         input.source_identity.id(),
         input.source_identity.revision().get(),
     );
-    let mut paragraph = ParagraphData::standalone(&source);
-    paragraph.context.terminal_edge = ParagraphTerminalEdge::NonBlockBoundary;
-    paragraph.context.base_direction = Some(input.direction);
-    paragraph.context.tab_reference = input.tab_reference;
-    paragraph.context.origins[0].kind = ParagraphOriginKind::Generated;
-    let processed = Arc::new(crate::processing::process_leader_pattern(
-        source,
-        input.style,
-    )?);
-    let analyzed = AnalyzedSource::from_inner(super::analyze_paragraph(
-        processed,
-        paragraph,
-        input.typography,
-    )?);
+    let analyzed = if input.writing_axis == SourceWritingAxis::Vertical
+        && input.style.text_combine_upright != TextCombineUpright::None
+    {
+        analyze_combination(source, input)?
+    } else {
+        let mut paragraph = ParagraphData::standalone(&source);
+        paragraph.context.terminal_edge = ParagraphTerminalEdge::NonBlockBoundary;
+        paragraph.context.base_direction = Some(input.direction);
+        paragraph.context.tab_reference = input.tab_reference;
+        paragraph.context.origins[0].kind = ParagraphOriginKind::Generated;
+        let processed = Arc::new(crate::processing::process_leader_pattern(
+            source,
+            input.style,
+        )?);
+        AnalyzedSource::from_inner(super::analyze_paragraph(
+            processed,
+            paragraph,
+            input.typography,
+        )?)
+    };
     let policies =
         storage::collect(
             analyzed
@@ -208,6 +229,75 @@ pub(crate) fn analyze(input: LeaderPatternInput) -> Result<(AnalyzedSource, Prep
                 }),
         )?;
     Ok((analyzed.with_wrapping_policies(policies)?, options))
+}
+
+fn analyze_combination(source: Source, input: LeaderPatternInput) -> Result<AnalyzedSource> {
+    let range = Range::new(0, source.text().len());
+    let capture = ContextualSourceInput {
+        scope_alignment_limits: input.combination.map(|context| context.limits),
+        computed_line_boundaries: Vec::new(),
+        origins: vec![ParagraphOrigin {
+            source: source.clone(),
+            local: range,
+            aggregate: range,
+            kind: ParagraphOriginKind::Generated,
+            text_node: None,
+        }],
+        source,
+        segment_breaks: DocumentSegmentBreaks::Defined(Vec::new()),
+        envelope: SourceProcessingEnvelope::Complete,
+        connections: Vec::new(),
+        controls: Vec::new(),
+        boundary_policies: Vec::new(),
+        replacements: Vec::new(),
+        scopes: vec![
+            SourceProcessingScope::Block {
+                topology: SourceProcessingTopology::Complete,
+                trim: WhiteSpaceTrim::default(),
+                base_style: input.style.clone(),
+                used_direction: input.direction,
+                writing_axis: Some(input.writing_axis),
+                horizontal_inner_direction: None,
+                font_reference: None,
+            },
+            SourceProcessingScope::Inline {
+                trim: WhiteSpaceTrim::default(),
+                style: Some(input.style),
+                boundaries: None,
+                alignment_boundary: None,
+                font_reference: input.combination.map(|context| context.font_reference),
+                horizontal_inner_direction: input
+                    .combination
+                    .map(|context| context.horizontal_inner_direction),
+            },
+        ],
+        paragraphs: vec![SourceProcessingParagraph {
+            base_direction: input.direction,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+        }],
+        joint_flows: Vec::new(),
+        events: vec![
+            SourceProcessingEvent::EnterScope(0),
+            SourceProcessingEvent::EnterParagraph(0),
+            SourceProcessingEvent::EnterScope(1),
+            SourceProcessingEvent::Origin {
+                origin: 0,
+                affinity: Affinity::After,
+            },
+            SourceProcessingEvent::ExitScope(1),
+            SourceProcessingEvent::ExitParagraph(0),
+            SourceProcessingEvent::ExitScope(0),
+        ],
+    };
+    let processed = Arc::new(crate::processing::process_leader_capture(
+        capture,
+        input.tab_reference,
+    )?);
+    let paragraph = processed
+        .paragraphs()
+        .next()
+        .expect("one isolated paragraph");
+    AnalyzedSource::from_processed_paragraph(paragraph, input.typography)
 }
 
 pub(crate) fn finalize(
@@ -269,7 +359,7 @@ pub(crate) fn finalize(
 mod tests {
     use super::*;
     use crate::{
-        Affinity, Font, Id, PresentationMappingKind, Range, SourceRevision, TabSize, WhiteSpace,
+        Font, Id, PresentationMappingKind, SourceRevision, TabSize, WhiteSpace,
         test_fonts::{AHEM, FONT_LIMITS},
     };
 
@@ -294,9 +384,11 @@ mod tests {
             tab_reference: Some(ParagraphTabReference::new(style.clone(), direction).unwrap()),
             style,
             direction,
+            writing_axis: SourceWritingAxis::Horizontal,
             typography: AnalysisTypography::HorizontalComposition,
             orientation: LineOrientation::Horizontal,
             scale: 1.0,
+            combination: None,
         }
     }
 
@@ -488,11 +580,160 @@ mod tests {
             let pattern = system.prepare_leader_pattern(request).unwrap();
             assert_eq!(pattern.metrics().advance, 40.0);
             assert_eq!(glyphs(&pattern), glyphs(&ordinary));
+            assert_eq!(
+                pattern.processed_source().base_style().text_combine_upright,
+                combination
+            );
             assert_eq!(pattern.cluster_views().len(), 2);
             for (index, cluster) in pattern.cluster_views().enumerate() {
                 assert!(cluster.source_pieces().eq([Range::new(index, index + 1)]));
             }
         }
+    }
+
+    fn combined_input(
+        text: &str,
+        orientation: LineOrientation,
+        mode: TextCombineUpright,
+    ) -> LeaderPatternInput {
+        let mut request = input(LeaderPattern::Literal(text.into()), WhiteSpace::Collapse);
+        request.writing_axis = SourceWritingAxis::Vertical;
+        request.orientation = orientation;
+        request.style.text_combine_upright = mode;
+        let (axis, baseline) = if orientation == LineOrientation::Vertical {
+            request.typography = AnalysisTypography::Mixed;
+            (
+                crate::FontBaselineAxis::VerticalX,
+                crate::FontBaseline::Central,
+            )
+        } else {
+            (
+                crate::FontBaselineAxis::HorizontalY,
+                crate::FontBaseline::Alphabetic,
+            )
+        };
+        request.combination = Some(LeaderCombinationContext {
+            horizontal_inner_direction: ParagraphBaseDirection::LeftToRight,
+            font_reference: ScopeFontReference {
+                script: crate::FontBaselineScript::from_iso15924(*b"Latn").unwrap(),
+                axis,
+                baseline,
+            },
+            limits: ScopeAlignmentLimits::new(4096, 4096, 1_000_000, 16_777_216),
+        });
+        request
+    }
+
+    #[test]
+    fn isolated_digits_combine_on_the_vertical_axis_and_retain_one_paint_group() {
+        let mut system = crate::System::default();
+        system
+            .register_fonts(crate::vertical_test_fonts::native(), FONT_LIMITS)
+            .unwrap();
+        let digits = TextCombineUpright::Digits(crate::TextCombineUprightDigits::Two);
+        for orientation in [
+            LineOrientation::Vertical,
+            LineOrientation::SidewaysCounterclockwise,
+        ] {
+            let pattern = system
+                .prepare_leader_pattern(combined_input("1\r\n2", orientation, digits))
+                .unwrap();
+            assert_eq!(pattern.metrics().advance, 20.0);
+            assert_eq!(pattern.cluster_views().len(), 1);
+            let cluster = pattern.cluster_views().next().unwrap();
+            let group = cluster.paint_group().unwrap();
+            assert_eq!(cluster.advance(), 20.0);
+            let run = pattern.run_views().next().unwrap();
+            let cell = run.run().cell().unwrap();
+            assert_eq!(cell.source_cell().mode(), digits);
+            assert!(cell.source_cell().used_code_points().eq([49, 50]));
+            assert_eq!(cell.square().size, crate::Size::new(20.0, 20.0));
+            assert_eq!(run.glyphs().len(), 2);
+            for ((glyph, painted), original) in
+                run.glyphs().zip([Range::new(0, 1), Range::new(3, 4)])
+            {
+                assert_eq!(glyph.range(), original);
+                assert_eq!(painted, group);
+            }
+            let processed = pattern.processed_source();
+            assert_eq!(processed.processed_text().code_units(), [49, 50]);
+            let cut = processed.position(1).unwrap();
+            assert_eq!(
+                processed
+                    .processed_to_source(cut, Affinity::Before)
+                    .unwrap()
+                    .get(),
+                1
+            );
+            assert_eq!(
+                processed
+                    .processed_to_source(cut, Affinity::After)
+                    .unwrap()
+                    .get(),
+                3
+            );
+
+            let over_limit = system
+                .prepare_leader_pattern(combined_input("123", orientation, digits))
+                .unwrap();
+            assert!(over_limit.run_views().all(|run| run.run().cell().is_none()));
+            assert_eq!(over_limit.cluster_views().len(), 3);
+
+            let mixed = system
+                .prepare_leader_pattern(combined_input("A12B", orientation, digits))
+                .unwrap();
+            let groups: Vec<_> = mixed
+                .cluster_views()
+                .map(|cluster| cluster.paint_group().unwrap())
+                .collect();
+            assert_eq!(groups.len(), 3);
+            assert_ne!(groups[0], groups[1]);
+            assert_ne!(groups[1], groups[2]);
+            let mut glyph_groups = Vec::new();
+            for run in mixed.run_views() {
+                glyph_groups.extend(run.glyphs().map(|(_, group)| group));
+            }
+            assert_eq!(glyph_groups, [groups[0], groups[1], groups[1], groups[2]]);
+        }
+    }
+
+    #[test]
+    fn combined_pattern_applies_inner_whitespace_to_outer_phase_one_survivors() {
+        let mut system = system();
+        let pattern = system
+            .prepare_leader_pattern(combined_input(
+                " 12 ",
+                LineOrientation::SidewaysClockwise,
+                TextCombineUpright::All,
+            ))
+            .unwrap();
+        assert_eq!(
+            pattern.processed_source().processed_text().code_units(),
+            [32, 49, 50, 32]
+        );
+        assert_eq!(pattern.metrics().advance, 20.0);
+        let run = pattern.run_views().next().unwrap();
+        let cell = run.run().cell().unwrap();
+        let source = cell.source_cell();
+        assert!(source.used_code_points().eq([49, 50]));
+        assert!(
+            source
+                .source_pieces()
+                .filter(|piece| !piece.is_used())
+                .map(|piece| piece.aggregate())
+                .eq([Range::new(0, 1), Range::new(3, 4)])
+        );
+
+        let mut space = combined_input(
+            " ",
+            LineOrientation::SidewaysClockwise,
+            TextCombineUpright::All,
+        );
+        space.pattern = LeaderPattern::Space;
+        let space = system.prepare_leader_pattern(space).unwrap();
+        assert_eq!(space.processed_source().processed_text().code_units(), [32]);
+        assert_eq!(space.metrics().advance, 20.0);
+        assert!(space.run_views().all(|run| run.glyphs().next().is_none()));
     }
 
     #[test]
