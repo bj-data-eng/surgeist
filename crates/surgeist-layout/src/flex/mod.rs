@@ -43,7 +43,7 @@ use alignment::{
 };
 use distribution_number::DistributionNumber;
 use flexible_lengths::resolve_flexible_lengths;
-use input::{FlexContainerProjection, with_flex_item_projection};
+use input::{FlexContainerProjection, with_flex_container_projection, with_flex_item_projection};
 use intrinsic::{
     intrinsic_content_main_size, resolved_cross_layout_constants, resolved_layout_constants,
 };
@@ -181,8 +181,8 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    let (constants, own_ratio_cross) =
-        self::input::with_flex_container_projection::<Tree, M, _>(tree, node, |style| {
+    let (constants, own_ratio_cross, used_overflow) =
+        with_flex_container_projection::<Tree, M, _>(tree, node, |style| {
             self::input::with_flex_scroll_projections::<Tree, M, _>(tree, node, |scroll_box, _| {
                 let constants = Constants::new::<Tree, M>(
                     tree,
@@ -193,7 +193,7 @@ where
                     contained_size,
                 )?;
                 let own_ratio_cross = OwnRatioCross::for_preferred_inline(&constants, &style);
-                Ok((constants, own_ratio_cross))
+                Ok((constants, own_ratio_cross, scroll_box.used_overflow()))
             })
         })?;
     if input.run_mode() == RunMode::ComputeSize
@@ -411,6 +411,18 @@ where
                 )
             })?;
         sizes.intrinsic_content
+    };
+    let baselines = if used_overflow.is_scroll_container() {
+        baselines.clamped_to_border(sizes.output).map_err(
+            |crate::FiniteScalarErrorOf::NonFinite { value }| {
+                crate::error::value_resolution_error(
+                    node,
+                    LengthResolutionStatus::InvalidNumeric { value },
+                )
+            },
+        )?
+    } else {
+        baselines
     };
     let output = ComputeOutputOf::from_sizes_and_baselines(sizes.output, content_size, baselines);
     // Inspect the original eligible collection, not the resolved lines: a

@@ -1091,6 +1091,20 @@ where
         final_scroll_geometry = Some(geometry);
     }
 
+    let used_overflow =
+        crate::scroll::UsedOverflow::from_computed(style.overflow, style.item_is_replaced);
+    let baselines = if used_overflow.is_scroll_container() {
+        baselines.clamped_to_border(output_size).map_err(
+            |crate::FiniteScalarErrorOf::NonFinite { value }| {
+                crate::error::value_resolution_error(
+                    node,
+                    LengthResolutionStatus::InvalidNumeric { value },
+                )
+            },
+        )?
+    } else {
+        baselines
+    };
     let output = if input.run_mode() == RunMode::ComputeSize {
         ComputeOutputOf::from_sizes_and_baselines(output_size, Size::ZERO, baselines)
     } else {
