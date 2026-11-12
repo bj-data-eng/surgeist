@@ -1,22 +1,44 @@
 use super::*;
 
-pub(super) enum InFlowStep<'input, Node, S: LayoutScalar> {
+pub(in crate::block) enum InFlowStep<'input, Node, S: LayoutScalar> {
     Continue,
     Complete,
-    Child {
-        request: scope::ChildRequest<Node, S>,
-        pending: Option<PendingBox<'input, Node, S>>,
-    },
+    Child(InFlowChild<'input, Node, S>),
 }
 
-pub(super) struct PendingBox<'input, Node, S: LayoutScalar> {
+pub(in crate::block) struct InFlowChild<'input, Node, S: LayoutScalar> {
+    request: scope::ChildRequest<Node, S>,
+    pending: Option<PendingBox<'input, Node, S>>,
+}
+
+type ChildCompletion<'input, Node, S> = (Option<PendingBox<'input, Node, S>>, ComputeOutputOf<S>);
+
+impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
+    pub(in crate::block) fn compute<Tree, M>(
+        self,
+        tree: &mut Tree,
+    ) -> ComputeResult<Node, ChildCompletion<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Self { request, pending } = self;
+        let output = if pending.is_some() {
+            tree.compute_block_child(request)?
+        } else {
+            tree.compute_child(request.node, request.input)?
+        };
+        Ok((pending, output))
+    }
+}
+
+pub(in crate::block) struct PendingBox<'input, Node, S: LayoutScalar> {
     child: Node,
     style: BlockChildProjection<'input, S>,
     prepared: PreparedChild<S>,
     preparation: InFlowBoxPreparation<S>,
 }
 
-pub(super) struct InFlowTraversal<Node, S: LayoutScalar> {
+pub(in crate::block) struct InFlowTraversal<Node, S: LayoutScalar> {
     node: Node,
     input: ComputeInputOf<S>,
     inline_operation: crate::SizingOperation,
@@ -59,7 +81,7 @@ pub(super) struct InFlowTraversal<Node, S: LayoutScalar> {
 }
 
 impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
-    pub(super) fn begin<'input, Tree, M>(
+    pub(in crate::block) fn begin<'input, Tree, M>(
         tree: &mut Tree,
         node: Node,
         constants: &Constants<S>,
@@ -260,7 +282,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         })
     }
 
-    pub(super) fn step<'input, Tree, M>(
+    pub(in crate::block) fn step<'input, Tree, M>(
         &mut self,
         tree: &mut Tree,
         children: &[Node],
@@ -301,7 +323,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                         NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(source_index)),
                     ));
                     if compute_box {
-                        return Ok(InFlowStep::Child {
+                        return Ok(InFlowStep::Child(InFlowChild {
                             request: scope::ChildRequest {
                                 node: child,
                                 input: ComputeInputOf::<S>::hidden_in_containing_pass(
@@ -314,7 +336,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                                 entry: None,
                             },
                             pending: None,
-                        });
+                        }));
                     }
                 }
                 self.index += 1;
@@ -436,7 +458,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
             self.index += 1;
             return Ok(InFlowStep::Continue);
         }
-        Ok(InFlowStep::Child {
+        Ok(InFlowStep::Child(InFlowChild {
             request,
             pending: Some(PendingBox {
                 child,
@@ -444,7 +466,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                 prepared,
                 preparation,
             }),
-        })
+        }))
     }
 
     fn box_computation<'a, 'input>(
@@ -476,7 +498,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         }
     }
 
-    pub(super) fn accept_child<'input, Tree, M>(
+    pub(in crate::block) fn accept_child<'input, Tree, M>(
         &mut self,
         tree: &mut Tree,
         constants: &Constants<S>,
@@ -701,7 +723,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         Ok(())
     }
 
-    pub(super) fn finish<'input, Tree, M>(
+    pub(in crate::block) fn finish<'input, Tree, M>(
         self,
         tree: &mut Tree,
     ) -> ComputeResult<Node, InFlowResult<Node, S>, S, M>

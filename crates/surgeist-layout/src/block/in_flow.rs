@@ -12,6 +12,8 @@ mod child_compute;
 mod placement;
 mod traversal;
 
+pub(super) use traversal::{InFlowStep, InFlowTraversal};
+
 use child_compute::{
     InFlowBoxComputation, InFlowBoxPreparation, InFlowComputedBox, compute_shared_box,
     finish_requested_box, prepare_in_flow_box,
@@ -239,16 +241,13 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    let mut traversal = traversal::InFlowTraversal::begin(tree, node, constants, input, pass)?;
+    let mut traversal = InFlowTraversal::begin(tree, node, constants, input, pass)?;
     loop {
         match traversal.step(tree, children, constants)? {
-            traversal::InFlowStep::Continue => {}
-            traversal::InFlowStep::Complete => return traversal.finish(tree),
-            traversal::InFlowStep::Child { request, pending } => {
-                let output = match &pending {
-                    Some(_) => tree.compute_block_child(request)?,
-                    None => tree.compute_child(request.node, request.input)?,
-                };
+            InFlowStep::Continue => {}
+            InFlowStep::Complete => return traversal.finish(tree),
+            InFlowStep::Child(child) => {
+                let (pending, output) = child.compute(tree)?;
                 traversal.accept_child(tree, constants, pending, output)?;
             }
         }
