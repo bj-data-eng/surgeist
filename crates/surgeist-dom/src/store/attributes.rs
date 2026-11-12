@@ -287,17 +287,30 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let node = self.node(key)?;
-        let transaction::KindRead::Attr(old) = node.kind() else {
-            return Err(DomError::WrongNodeKind);
-        };
-        if let Some(owner) = node.attr_owner() {
-            self.require_attribute_verification(owner, old.name(), cancel)?;
+        if let Some((owner, _)) = self.existing_attr_sink(key, cancel)? {
+            return self.refuse_unserviced_attribute_sink(owner);
         }
         self.write_existing_attr_value(key, value, limits, cancel)
     }
 
-    fn write_existing_attr_value(
+    pub(super) fn existing_attr_sink(
+        &self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<Option<(Key, DomSourceAttributeSink)>, DomError> {
+        let node = self.node(key)?;
+        let transaction::KindRead::Attr(old) = node.kind() else {
+            return Err(DomError::WrongNodeKind);
+        };
+        let Some(owner) = node.attr_owner() else {
+            return Ok(None);
+        };
+        Ok(self
+            .classify_attribute_sink(owner, old.name(), cancel)?
+            .map(|sink| (owner, sink)))
+    }
+
+    pub(super) fn write_existing_attr_value(
         &mut self,
         key: Key,
         value: &DocumentString,
@@ -552,15 +565,20 @@ impl Draft {
             .classify_attribute_sink(element, attribute, cancel)?
             .is_some()
         {
-            let document = self.node(element)?.document();
-            return Err(if self.node(document)?.relevant_global().is_some() {
-                DomError::SourceAttributeExecutorUnavailable
-            } else {
-                DomError::SourceAttributeGlobalUnavailable
-            });
+            return self.refuse_unserviced_attribute_sink(element);
         }
         Ok(())
     }
+
+    fn refuse_unserviced_attribute_sink(&self, element: Key) -> Result<(), DomError> {
+        let document = self.node(element)?.document();
+        Err(if self.node(document)?.relevant_global().is_some() {
+            DomError::SourceAttributeExecutorUnavailable
+        } else {
+            DomError::SourceAttributeGlobalUnavailable
+        })
+    }
+
     fn classify_attribute_sink(
         &self,
         element: Key,
@@ -933,6 +951,37 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        if mode == AttributeSetterMode::Standard
+            && self.attachment_sink(node, attr, cancel)?.is_some()
+        {
+            return self.refuse_unserviced_attribute_sink(node);
+        }
+        self.write_attribute_attachment(node, attr, None, limits, cancel)
+    }
+
+    pub(super) fn attachment_sink(
+        &self,
+        node: Key,
+        attr: Key,
+        cancel: &AtomicBool,
+    ) -> Result<Option<(DomSourceAttributeSink, &DocumentString)>, DomError> {
+        self.element(node)?;
+        let transaction::KindRead::Attr(incoming) = self.node(attr)?.kind() else {
+            return Err(DomError::WrongNodeKind);
+        };
+        Ok(self
+            .classify_attribute_sink(node, incoming.name(), cancel)?
+            .map(|sink| (sink, incoming.value())))
+    }
+
+    pub(super) fn write_attribute_attachment(
+        &mut self,
+        node: Key,
+        attr: Key,
+        verified: Option<&DocumentString>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         let node = self.live_key(node);
         let attr = self.live_key(attr);
         let read = self.element(node)?;
@@ -940,9 +989,6 @@ impl Draft {
         let transaction::KindRead::Attr(replacement) = incoming.kind() else {
             return Err(DomError::WrongNodeKind);
         };
-        if mode == AttributeSetterMode::Standard {
-            self.require_attribute_verification(node, replacement.name(), cancel)?;
-        }
         if incoming
             .attr_owner()
             .is_some_and(|owner| self.live_key(owner) != node)
@@ -972,6 +1018,29 @@ impl Draft {
                 cancel,
             );
         }
+        let (verified_record, attr_formation) = if let Some(value) = verified
+            && !same_string(replacement.value(), value, || self.source_step(cancel))?
+        {
+            let units = self
+                .units
+                .checked_sub(replacement.value().len())
+                .and_then(|units| units.checked_add(value.len()))
+                .ok_or(DomError::RepresentationExhausted)?;
+            let formation = source::formation::Formation::new(self, cancel)?;
+            let value = retain_attribute_value(self, value, formation.as_ref(), cancel)?;
+            (
+                Some((
+                    Attribute::from_parts(replacement.name().clone(), value),
+                    units,
+                )),
+                formation,
+            )
+        } else {
+            (None, None)
+        };
+        let replacement = verified_record
+            .as_ref()
+            .map_or(replacement, |(record, _)| record);
         let previous_value = position
             .map(|index| previous.get(index).ok_or(DomError::StaleNode))
             .transpose()?;
@@ -1015,6 +1084,10 @@ impl Draft {
             );
             element.with_attribute_effect(&previous, &next, &changed, nonce, context)?
         };
+        if let Some((record, units)) = verified_record {
+            self.replace_attr_value_formed(attr, record, attr_formation, cancel)?;
+            self.units = units;
+        }
         self.attach_attribute_identity(node, index, previous_id, attr, cancel)?;
         self.publish_element(node, old_units, formed, formation, limits, cancel)?;
         let (result, kind) = previous_id.map_or((attr, AttachmentKind::Appended), |old| {

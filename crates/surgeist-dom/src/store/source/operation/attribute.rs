@@ -6,8 +6,21 @@ use crate::{DomDocumentScriptRegistration, DomHostedError};
 
 pub(in crate::store) struct Pending {
     request: DomSourceAttributeVerificationRequest,
-    name: PreparedAttributeName,
+    operands: Operands,
     outcome: Option<RetainedOutcome>,
+}
+
+enum Target {
+    Named,
+    Value(NodeId),
+    Attachment(NodeId),
+}
+
+struct Operands {
+    target: Target,
+    name: Option<PreparedAttributeName>,
+    input: DocumentString,
+    _input_backing: Option<checkpoint::Charge>,
 }
 
 struct RetainedOutcome {
@@ -33,9 +46,36 @@ impl Pending {
             .ok_or(DomError::InvalidSourceOperation)?;
         let error = match &retained.outcome {
             Value(value) => {
-                let element = draft.resolve(self.request.element.into())?;
-                return draft
-                    .apply_verified_attribute_name(element, &self.name, value, limits, cancel);
+                let result = match self.operands.target {
+                    Target::Named => {
+                        let element = draft.resolve(self.request.element.into())?;
+                        let name = self
+                            .operands
+                            .name
+                            .as_ref()
+                            .ok_or(DomError::InvalidSourceOperation)?;
+                        draft.apply_verified_attribute_name(element, name, value, limits, cancel)
+                    }
+                    Target::Value(attribute) => {
+                        let attribute = draft.resolve(attribute.into())?;
+                        draft.write_existing_attr_value(attribute, value, limits, cancel)
+                    }
+                    Target::Attachment(attribute) => {
+                        let element = draft.resolve(self.request.element.into())?;
+                        let attribute = draft.resolve(attribute.into())?;
+                        draft.write_attribute_attachment(
+                            element,
+                            attribute,
+                            Some(value),
+                            limits,
+                            cancel,
+                        )
+                    }
+                };
+                match result {
+                    Err(DomError::InUseAttribute) => DomError::InUseAttribute,
+                    other => return other,
+                }
             }
             Rejected => DomError::SourceAttributeVerificationRejected,
             Abrupt => DomError::SourceAttributeVerificationAbrupt,
@@ -45,6 +85,30 @@ impl Pending {
             cancel,
         )
     }
+}
+
+fn prepare_attr_value(
+    draft: &mut Draft,
+    id: NodeId,
+    attr: Key,
+    input: &DocumentString,
+    limits: DomLimits,
+    cancel: &AtomicBool,
+) -> Result<Option<(Key, DomSourceAttributeSink, Operands)>, DomError> {
+    let Some((owner, sink)) = draft.existing_attr_sink(attr, cancel)? else {
+        draft.write_existing_attr_value(attr, input, limits, cancel)?;
+        return Ok(None);
+    };
+    Ok(Some((
+        owner,
+        sink,
+        Operands {
+            target: Target::Value(id),
+            name: None,
+            input: input.clone(),
+            _input_backing: None,
+        },
+    )))
 }
 
 impl Operation {
@@ -62,31 +126,109 @@ impl Operation {
         dom: &Dom,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let Some(Command::SetAttribute {
-            node,
-            namespace,
-            name,
-            value,
-            mode: AttributeSetterMode::Standard,
-        }) = self.commands.get(self.index)
-        else {
-            return self.apply_command(dom.limits, cancel);
-        };
-        self.draft.source_step(cancel)?;
         if let Some(pending) = &self.attribute_verification {
+            self.draft.source_step(cancel)?;
             return pending.apply(&mut self.draft, dom.limits, cancel);
         }
-        let element = self.draft.resolve(node.clone())?;
-        let (name, sink) = self.draft.prepare_standard_attribute_name(
-            element,
-            namespace.as_ref(),
-            name,
-            cancel,
-        )?;
-        let Some(sink) = sink else {
-            return self
-                .draft
-                .apply_attribute_name(element, name, value, dom.limits, cancel);
+        let command = self
+            .commands
+            .get(self.index)
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let (element, sink, operands) = match command {
+            Command::SetAttribute {
+                node,
+                namespace,
+                name,
+                value,
+                mode: AttributeSetterMode::Standard,
+            } => {
+                self.draft.source_step(cancel)?;
+                let element = self.draft.resolve(node.clone())?;
+                let (name, sink) = self.draft.prepare_standard_attribute_name(
+                    element,
+                    namespace.as_ref(),
+                    name,
+                    cancel,
+                )?;
+                let Some(sink) = sink else {
+                    return self
+                        .draft
+                        .apply_attribute_name(element, name, value, dom.limits, cancel);
+                };
+                (
+                    element,
+                    sink,
+                    Operands {
+                        target: Target::Named,
+                        name: Some(name),
+                        input: value.clone(),
+                        _input_backing: None,
+                    },
+                )
+            }
+            Command::SetAttributeValue { attribute, value } => {
+                self.draft.source_step(cancel)?;
+                let id = attribute.node();
+                let attr = self.draft.resolve(id.into())?;
+                let Some(pending) =
+                    prepare_attr_value(&mut self.draft, id, attr, value, dom.limits, cancel)?
+                else {
+                    return Ok(());
+                };
+                pending
+            }
+            Command::Compound(crate::compound::Edit::TextContent { receiver, value }) => {
+                self.draft.source_step(cancel)?;
+                self.draft.source_step(cancel)?;
+                let attr = self.draft.resolve((*receiver).into())?;
+                if !matches!(
+                    self.draft.node(attr)?.kind(),
+                    transaction::KindRead::Attr(_)
+                ) {
+                    return self
+                        .draft
+                        .compound_text_content(attr, value, dom.limits, cancel);
+                }
+                let Some(pending) = prepare_attr_value(
+                    &mut self.draft,
+                    *receiver,
+                    attr,
+                    value,
+                    dom.limits,
+                    cancel,
+                )?
+                else {
+                    return Ok(());
+                };
+                pending
+            }
+            Command::AttachAttribute {
+                node,
+                attribute,
+                mode: AttributeSetterMode::Standard,
+            } => {
+                self.draft.source_step(cancel)?;
+                let element = self.draft.resolve(node.clone())?;
+                let id = attribute.node();
+                let attr = self.draft.resolve(id.into())?;
+                let Some((sink, value)) = self.draft.attachment_sink(element, attr, cancel)? else {
+                    return self
+                        .draft
+                        .write_attribute_attachment(element, attr, None, dom.limits, cancel);
+                };
+                let (input, backing) = formation::shared_string(&self.draft, value, cancel)?;
+                (
+                    element,
+                    sink,
+                    Operands {
+                        target: Target::Attachment(id),
+                        name: None,
+                        input,
+                        _input_backing: backing,
+                    },
+                )
+            }
+            _ => return self.apply_command(dom.limits, cancel),
         };
         let document = self.draft.node(element)?.document();
         let global = self
@@ -111,7 +253,7 @@ impl Operation {
                 global,
                 sink,
             },
-            name,
+            operands,
             outcome: None,
         });
         Ok(())
@@ -185,11 +327,11 @@ impl DomSourceLease<'_> {
         cancel: &AtomicBool,
     ) -> Result<&DocumentString, DomError> {
         let operation = self.qualify_attribute_verification(request, registration, cancel)?;
-        let Some(Command::SetAttribute { value, .. }) = operation.commands.get(operation.index)
-        else {
-            return Err(DomError::InvalidSourceOperation);
-        };
-        Ok(value)
+        let pending = operation
+            .attribute_verification
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        Ok(&pending.operands.input)
     }
 
     /// Admit the registered verifier's reply once. On refusal the caller still
