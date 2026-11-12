@@ -11,7 +11,7 @@ fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
     attach_public_nodes(session, target, cancellation, node_work, source_work)
 }
 
-fn attach_public_nodes(
+pub(in crate::document_scripting) fn attach_public_nodes(
     mut session: DomSession,
     target: DomHostedTopLevel,
     cancellation: Arc<AtomicBool>,

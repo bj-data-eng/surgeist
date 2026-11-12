@@ -199,6 +199,32 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     let violation = mismatch.next_violation(&cancel).unwrap().unwrap();
     assert_eq!(violation.policy_index(), 1);
     assert_eq!(mismatch.blocked(), Some(true));
+    lease.request_cancel();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
+    drop(session);
+
+    let session = host.stop().into_session().unwrap();
+    let mut host =
+        super::super::guest::tests::attach_public_nodes(session, target, cancel, 5_000, 20_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        let expression: Vec<_> = r#"
+            (() => {
+                const policy = trustedTypes.createPolicy('default');
+                if (policy.name !== 'default' || trustedTypes.defaultPolicy !== policy) return false;
+                try { trustedTypes.createPolicy('denied'); }
+                catch (error) { return error instanceof TypeError; }
+                return false;
+            })()
+        "#.encode_utf16().collect();
+        let result = scope.evaluate(&expression)?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    }).expect("the actual guest factory must use the hosted Document's CSP");
 }
 
 pub(super) fn default_factory_retains_the_real_guest_callback() {
