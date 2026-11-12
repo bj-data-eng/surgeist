@@ -20,7 +20,7 @@ const CREATE_TEXT: &[u16] = &ascii(b"createTextNode");
 const CREATE_COMMENT: &[u16] = &ascii(b"createComment");
 
 #[derive(Clone, Copy)]
-enum CharacterKind {
+pub(super) enum CharacterKind {
     Text,
     Comment,
 }
@@ -59,7 +59,7 @@ impl CharacterKind {
         }
     }
 
-    fn project(self, node: NodeId) -> GuestNode {
+    pub(super) fn project(self, node: NodeId) -> GuestNode {
         match self {
             Self::Text => GuestNode::Text(node),
             Self::Comment => GuestNode::Comment(node),
@@ -78,37 +78,21 @@ impl CharacterBindings {
         node: &Value<'scope>,
         node_constructor: &Value<'scope>,
         document: &Value<'scope>,
-        capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
-        fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
+        funding: &OriginInterfaceFunding<'_>,
+        constructors: Option<CaptureFunding<'_>>,
     ) -> Result<Self, DocumentGuestEventError> {
-        let prototype = scope.object(ObjectPrototype::Object(node))?;
-        let interface = scope.constructor(
-            &ConstructorCallback::bounded(
-                0,
-                |_| Err(Error::BackendUnavailable),
-                |scope, _| {
-                    Ok(ConstructorCompletion::Throw(
-                        scope.type_error(&ascii(b"Illegal constructor"))?,
-                    ))
-                },
-            ),
-            FunctionMetadata {
-                name: CHARACTER_DATA,
-                length: 0,
-            },
-        )?;
-        install_derived(
+        let (interface, prototype) = install_derived_node(
             scope,
+            node,
             node_constructor,
             CHARACTER_DATA,
-            &interface,
-            &prototype,
+            &illegal_node_constructor(),
         )?;
         for (length, key, name) in [
             (false, &ascii(b"data")[..], &ascii(b"get data")[..]),
             (true, &ascii(b"length")[..], &ascii(b"get length")[..]),
         ] {
-            let getter = capture(size_of::<(Capture, bool)>())?;
+            let getter = (funding.capture)(size_of::<(Capture, bool)>())?;
             let get = scope.fixed_arity_function(
                 &Callback::new(move |scope, arguments| {
                     getter.character_member(scope, arguments, length)
@@ -118,7 +102,7 @@ impl CharacterBindings {
             let set = if length {
                 None
             } else {
-                Some(mutations::data_setter(scope, capture)?)
+                Some(mutations::data_setter(scope, &funding.capture)?)
             };
             scope.define_new_property(
                 &prototype,
@@ -131,15 +115,15 @@ impl CharacterBindings {
                 },
             )?;
         }
-        mutations::install_methods(scope, &prototype, capture)?;
+        mutations::install_methods(scope, &prototype, &funding.capture)?;
         let text = Self::install_kind(
             scope,
             &interface,
             &prototype,
             document,
             CharacterKind::Text,
-            capture,
-            fund,
+            funding,
+            constructors,
         )?;
         let comment = Self::install_kind(
             scope,
@@ -147,8 +131,8 @@ impl CharacterBindings {
             &prototype,
             document,
             CharacterKind::Comment,
-            capture,
-            fund,
+            funding,
+            constructors,
         )?;
         Ok(Self { text, comment })
     }
@@ -159,37 +143,35 @@ impl CharacterBindings {
         parent_prototype: &Value<'scope>,
         document: &Value<'scope>,
         kind: CharacterKind,
-        capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
-        fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
+        funding: &OriginInterfaceFunding<'_>,
+        constructors: Option<CaptureFunding<'_>>,
     ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
-        let prototype = scope.object(ObjectPrototype::Object(parent_prototype))?;
-        let fallback = capture(size_of::<(Capture, CharacterKind)>())?;
-        let construct = capture(size_of::<(Capture, CharacterKind)>())?;
-        let callback = ConstructorCallback::bounded(
-            1,
-            move |scope| {
-                let (_, events) = fallback.active(scope)?;
-                let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-                scope.open_callback_object(public.document.character_data.prototype(kind))
-            },
-            move |scope, arguments| construct.construct_character(scope, arguments, kind),
-        );
-        let interface = scope.constructor(
-            &callback,
-            FunctionMetadata {
-                name: kind.name(),
-                length: 0,
-            },
-        )?;
-        install_derived(
+        let callback = if let Some(capture) = constructors {
+            let fallback = capture(size_of::<(Capture, CharacterKind)>())?;
+            let construct = capture(size_of::<(Capture, CharacterKind)>())?;
+            ConstructorCallback::bounded(
+                1,
+                move |scope| {
+                    let (_, events) = fallback.active(scope)?;
+                    let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+                    scope.open_callback_object(
+                        public.document.prototypes.character_data.prototype(kind),
+                    )
+                },
+                move |scope, arguments| construct.construct_character(scope, arguments, kind),
+            )
+        } else {
+            illegal_node_constructor()
+        };
+        let (_, prototype) = install_derived_node(
             scope,
+            parent_prototype,
             parent_constructor,
             kind.name(),
-            &interface,
-            &prototype,
+            &callback,
         )?;
         let (name, _) = kind.factory();
-        let factory = capture(size_of::<(Capture, CharacterKind)>())?;
+        let factory = (funding.capture)(size_of::<(Capture, CharacterKind)>())?;
         let function = scope.fixed_arity_function(
             &Callback::new(move |scope, arguments| {
                 factory.create_character(scope, arguments, kind)
@@ -206,37 +188,15 @@ impl CharacterBindings {
             true,
         )?;
         let observed = scope.callback_object(&prototype)?;
-        scope.retain_callback_object(observed, fund)
+        scope.retain_callback_object(observed, funding.retain)
     }
 
-    fn prototype(&self, kind: CharacterKind) -> &RetainedCallbackObject {
+    pub(super) fn prototype(&self, kind: CharacterKind) -> &RetainedCallbackObject {
         match kind {
             CharacterKind::Text => &self.text,
             CharacterKind::Comment => &self.comment,
         }
     }
-}
-
-fn install_derived<'scope>(
-    scope: &mut Scope<'scope>,
-    parent: &Value<'scope>,
-    name: &[u16],
-    interface: &Value<'scope>,
-    prototype: &Value<'scope>,
-) -> Result<(), Error> {
-    scope.set_prototype(interface, ObjectPrototype::Object(parent))?;
-    scope.define_property(
-        interface,
-        PropertyKey::String(PROTOTYPE),
-        PropertyDescriptor::Data {
-            value: prototype,
-            writable: false,
-            enumerable: false,
-            configurable: false,
-        },
-    )?;
-    let global = scope.global()?;
-    install_interface(scope, &global, name, interface, prototype)
 }
 
 impl Capture {
@@ -263,7 +223,7 @@ impl Capture {
                 scope,
                 &owner,
                 &events,
-                selected.prototype(),
+                ordinary::NodePrototype::Selected(selected.prototype()),
                 (kind, document),
                 &data,
             )
@@ -297,15 +257,21 @@ impl Capture {
                 self.character_argument(scope, &descriptor, arguments.get(descriptor.index()))?;
             scope.check_active()?;
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-            if public
-                .other_document_origin(&owner, &events, document)?
-                .is_some()
-            {
-                return Err(DocumentScriptNativeError::CreationGlobalUnavailable.into());
+            let mut project = |prototypes: &DocumentPrototypes| {
+                self.publish_character(
+                    scope,
+                    &owner,
+                    &events,
+                    ordinary::NodePrototype::Creation(prototypes.character_data.prototype(kind)),
+                    (kind, document),
+                    &data,
+                )
+            };
+            if let Some(global) = public.other_document_origin(&owner, &events, document)? {
+                public.with_origin(&events, global, |origin| project(&origin.documents))
+            } else {
+                project(&public.document.prototypes)
             }
-            let prototype =
-                scope.open_callback_object(public.document.character_data.prototype(kind))?;
-            self.publish_character(scope, &owner, &events, &prototype, (kind, document), &data)
         })();
         complete(scope, &events, result)
     }
@@ -327,7 +293,7 @@ impl Capture {
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        prototype: &Value<'scope>,
+        prototype: ordinary::NodePrototype<'_, 'scope>,
         (kind, document): (CharacterKind, DocumentId),
         data: &Converted<ArgumentValue<DomString>>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
@@ -341,32 +307,26 @@ impl Capture {
             .ok_or(Error::ExpiredIdentity)?
             .document
             .ordinary;
-        ordinary.create(
-            scope,
-            owner,
-            events,
-            ordinary::NodePrototype::Selected(prototype),
-            |inbox, key| {
-                self.with_native(owner, |session, _| {
-                    let mut batch = DomBatch::new();
-                    let ticket = kind.create(&mut batch, document, data);
-                    let (_, node, watch) = session
-                        .dom()
-                        .raw_mut()
-                        .apply_with_node_retirement_watch(
-                            batch,
-                            &ticket,
-                            inbox,
-                            key,
-                            events.limits.node_retirement,
-                            &owner.cancellation,
-                        )
-                        .map_err(DocumentScriptNativeError::from)?
-                        .into_parts();
-                    Ok((kind.project(node), watch))
-                })
-            },
-        )
+        ordinary.create(scope, owner, events, prototype, |inbox, key| {
+            self.with_native(owner, |session, _| {
+                let mut batch = DomBatch::new();
+                let ticket = kind.create(&mut batch, document, data);
+                let (_, node, watch) = session
+                    .dom()
+                    .raw_mut()
+                    .apply_with_node_retirement_watch(
+                        batch,
+                        &ticket,
+                        inbox,
+                        key,
+                        events.limits.node_retirement,
+                        &owner.cancellation,
+                    )
+                    .map_err(DocumentScriptNativeError::from)?
+                    .into_parts();
+                Ok((kind.project(node), watch))
+            })
+        })
     }
 
     fn character_member<'scope>(
@@ -406,9 +366,7 @@ impl Capture {
         events.step()?;
         self.with_native(owner, |session, _| {
             let snapshot = session.snapshot();
-            let node = snapshot
-                .node(id.node())
-                .map_err(DocumentScriptNativeError::from)?;
+            let node = snapshot.node_with(id.node(), || events.step())?;
             match (id, node.kind()) {
                 (GuestNode::Text(_), DomNodeKind::Text(data))
                 | (GuestNode::Comment(_), DomNodeKind::Comment(data)) => Ok(data.clone()),

@@ -261,29 +261,6 @@ pub(in crate::document_scripting) fn registered_origin_refusals_preserve_state()
         },
         "originChild.ownerDocument",
     );
-
-    let RegisteredOrigin {
-        mut host, permit, ..
-    } = retired_origin_with_moved_element();
-    let before = host.snapshot().unwrap().stamp();
-    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
-        host.in_document(&permit, |scope| {
-            scope
-                .evaluate(&units(
-                    "Document.prototype.createTextNode.call(originChild.ownerDocument, 'text')",
-                ))
-                .map(drop)
-        })
-    else {
-        panic!("a borrowed factory requires its receiver's CharacterData profile");
-    };
-    assert!(matches!(
-        failure.cause::<DocumentGuestEventError>(),
-        Some(DocumentGuestEventError::Document(
-            DocumentScriptError::Native(DocumentScriptNativeError::CreationGlobalUnavailable)
-        ))
-    ));
-    assert_eq!(host.snapshot().unwrap().stamp(), before);
 }
 
 pub(in crate::document_scripting) fn borrowed_fragment_factory_keeps_dom_on_wrapper_refusal() {
@@ -450,6 +427,8 @@ pub(in crate::document_scripting) fn registered_origin_character_factories_use_r
         mut host,
         permit,
         origin,
+        element,
+        cancellation,
         ..
     } = retired_origin_with_moved_element();
     let result = host.in_document(&permit, |scope| {
@@ -502,11 +481,18 @@ pub(in crate::document_scripting) fn registered_origin_character_factories_use_r
             assert_eq!(scope.realm_authority()?.identity(), realm);
             assert_guest(
                 scope,
-                "Object.getPrototypeOf(nativeText) === Text.prototype \
-             && Object.getPrototypeOf(nativeComment) === Comment.prototype \
-             && Object.getPrototypeOf(Text.prototype) === CharacterData.prototype \
-             && Object.getPrototypeOf(Comment.prototype) === CharacterData.prototype \
-             && typeof window === 'undefined'",
+                r#"(() => {
+                    const refused = [Text, Comment].every(Interface => {
+                        try { new Interface("unauthorized"); }
+                        catch (error) { return error instanceof TypeError; }
+                        return false;
+                    });
+                    return Object.getPrototypeOf(nativeText) === Text.prototype
+                        && Object.getPrototypeOf(nativeComment) === Comment.prototype
+                        && Object.getPrototypeOf(Text.prototype) === CharacterData.prototype
+                        && Object.getPrototypeOf(Comment.prototype) === CharacterData.prototype
+                        && typeof window === "undefined" && refused;
+                })()"#,
             )?;
             scope.evaluate(&units("nativeText.replaceData(2, 1, 'C')"))?;
             Ok(())
@@ -519,4 +505,146 @@ pub(in crate::document_scripting) fn registered_origin_character_factories_use_r
         )
     })
     .unwrap();
+    qualify_native_character_projection(&mut host, &permit, element, &cancellation);
+}
+
+pub(in crate::document_scripting) fn registered_character_factory_refuses_without_publication() {
+    let RegisteredOrigin {
+        mut host, permit, ..
+    } = retired_origin_with_moved_element();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+                let converted = false;
+                try {
+                    Document.prototype.createTextNode.call(
+                        Object.create(Document.prototype),
+                        { toString() { converted = true; return "unreachable"; } });
+                } catch (error) {
+                    return error instanceof TypeError && !converted;
+                }
+                return false;
+            })()"#,
+        )?;
+        scope
+            .evaluate(&units(
+                "globalThis.factoryDocument = originChild.ownerDocument",
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let events = host.guest_events().unwrap();
+    let spare = events.limits.storage_bytes - events.budget.used.get();
+    let backing = events.reserve(&host.native, spare).unwrap();
+    let before = host.snapshot().unwrap();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "Document.prototype.createTextNode.call(factoryDocument, 'refused')",
+            ))
+            .map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("CharacterData creation must refuse without backing: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+        ))
+    ));
+    let after = host.snapshot().unwrap();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.nodes().count(), before.nodes().count());
+    assert_eq!(events.budget.used.get(), events.limits.storage_bytes);
+    drop(backing);
+}
+
+fn qualify_native_character_projection(
+    host: &mut DocumentScriptHost,
+    permit: &DocumentScriptPermit,
+    element: NodeId,
+    cancellation: &AtomicBool,
+) {
+    let document = host
+        .snapshot()
+        .unwrap()
+        .node(element)
+        .unwrap()
+        .owner_document()
+        .unwrap();
+    let (text, comment) = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let text = batch.create_text(document, "native text");
+            let comment = batch.create_comment(document, "native comment");
+            batch.insert_before(&text, element, None);
+            batch.insert_before(&comment, element, None);
+            let result = dom.apply(batch, cancellation).unwrap();
+            (
+                result.created(&text).unwrap().unwrap(),
+                result.created(&comment).unwrap().unwrap(),
+            )
+        })
+        .unwrap();
+    let events = host.guest_events().unwrap();
+    let owner = host.native.clone();
+    let public = events.public.as_ref().unwrap();
+    host.in_document(permit, |scope| {
+        let global = scope.global()?;
+        for (name, node) in [("exposedText", text), ("exposedComment", comment)] {
+            let value = public.project_node(scope, &owner, &events, node).unwrap();
+            let repeated = public.project_node(scope, &owner, &events, node).unwrap();
+            assert!(scope.strict_equals(&value, &repeated)?);
+            scope.set(&global, PropertyKey::String(&units(name)), &value)?;
+        }
+        assert_guest(
+            scope,
+            r#"(() => {
+                let observed = false;
+                originChild.addEventListener("native-character", event => {
+                    observed = event.target === exposedText && event.composedPath()[0] === exposedText;
+                }, { once: true });
+                return Object.getPrototypeOf(exposedText) === Object.getPrototypeOf(originText)
+                    && Object.getPrototypeOf(exposedComment) === Object.getPrototypeOf(originComment)
+                    && exposedText.parentNode === originChild && exposedComment.parentNode === originChild
+                    && exposedText.data === "native text" && exposedComment.data === "native comment"
+                    && exposedText.dispatchEvent(new Event("native-character", { bubbles: true }))
+                    && observed;
+            })()"#,
+        )
+    })
+    .unwrap();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.adopt(text, permit.document);
+        batch.detach(comment);
+        batch.destroy(comment);
+        dom.apply(batch, cancellation).unwrap();
+    })
+    .unwrap();
+    host.in_document(permit, |scope| {
+        let repeated = public.project_node(scope, &owner, &events, text).unwrap();
+        let original = scope.evaluate(&units("exposedText"))?;
+        assert!(scope.strict_equals(&repeated, &original)?);
+        assert_guest(
+            scope,
+            "exposedText.ownerDocument === window.document && exposedText.getRootNode() === exposedText",
+        )
+    })
+    .unwrap();
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = host
+        .in_document(permit, |scope| {
+            scope.evaluate(&units("exposedComment.length")).map(drop)
+        })
+    else {
+        panic!("the original Comment wrapper must observe native retirement");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
+        ))
+    ));
 }

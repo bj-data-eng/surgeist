@@ -125,8 +125,10 @@ impl OriginCost {
     }
 }
 
+type CaptureFunding<'a> = &'a dyn Fn(usize) -> Result<Capture, DocumentGuestEventError>;
+
 struct OriginInterfaceFunding<'a> {
-    capture: &'a dyn Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+    capture: CaptureFunding<'a>,
     retain: &'a dyn Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
 }
 
