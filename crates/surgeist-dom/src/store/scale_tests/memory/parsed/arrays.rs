@@ -1,6 +1,5 @@
-//! The simultaneously held HTML and DOM attribute arrays only. String targets,
-//! element bindings, indexes, pool Weak targets, Arc headers and allocator data
-//! are outside this inventory; scratch maps retain no semantic owners.
+//! The HTML report's attribute rows and DOM snapshots' Attr identity sequences.
+//! The inventory borrows the owners and measures their respective containers.
 
 use std::collections::BTreeMap;
 use std::mem::size_of_val;
@@ -67,28 +66,26 @@ pub(super) fn report(
     for snapshot in snapshots {
         let mut occurrences = 0;
         for id in snapshot.nodes() {
-            if let DomNodeKind::Element(element) = snapshot.node(id).unwrap().kind() {
-                occurrences += element.attributes().len();
-                if let Some(bank) = element
-                    .attributes_backing()
-                    .and_then(crate::name::AttributeStorage::payload)
-                {
-                    dom.record(
-                        Arc::as_ptr(bank) as usize,
-                        bank.value.entries().len(),
-                        bank.value.capacity(),
-                        size_of_val(bank.as_ref()),
-                    );
-                }
+            let node = snapshot.node(id).unwrap();
+            if let crate::store::Node::Element(element) = node.node
+                && let Some(order) = &element.value.attributes
+            {
+                let values = &order.value.values;
+                occurrences += values.len();
+                dom.record(
+                    Arc::as_ptr(order) as usize,
+                    values.len(),
+                    values.capacity(),
+                    size_of_val(order.as_ref()),
+                );
             }
         }
         assert_eq!(occurrences, expected_occurrences);
     }
-    // These are actual simultaneous array targets of different owned element
-    // types. UTF-16 child sharing does not make the arrays the same allocation.
+    // The producer retains attribute rows and DOM retains identity sequences.
     assert!(html.targets.keys().all(|id| !dom.targets.contains_key(id)));
     eprintln!(
-        "memory_parsed_arrays stage={stage} report_held={} snapshot_holders={} authored_attributes_per_document={expected_occurrences} inventory=strongly_reachable_attribute_arrays_only exclusions=UTF16_children,element_bindings,indexes,pool_Weak_targets,Arc_headers,allocator_metadata,instrumentation_storage",
+        "memory_parsed_arrays stage={stage} report_held={} snapshot_holders={} authored_attributes_per_document={expected_occurrences} inventory=HTML_attribute_rows_and_DOM_attribute_order exclusions=DOM_Attr_payloads,UTF16_children,indexes,Arc_headers,allocator_metadata,instrumentation_storage",
         parsed.is_some(),
         snapshots.len()
     );
@@ -97,9 +94,5 @@ pub(super) fn report(
         stage,
         size_of::<surgeist_html::values::Attribute>(),
     );
-    dom.report(
-        "dom_snapshot_union",
-        stage,
-        size_of::<crate::DomAttribute>(),
-    );
+    dom.report("dom_snapshot_union", stage, size_of::<NodeId>());
 }

@@ -372,10 +372,12 @@ fn nested_close_inputs_and_callback_input_remain_distinct_until_their_real_owner
 #[test]
 fn native_close_queue_preparation_reserves_the_actual_remaining_phases_and_outputs() {
     let cancel = AtomicBool::new(false);
+    // The tracker and start marker precede the order and Attr owner changes,
+    // and the operation still owes its final marker release.
     for (phases, outputs, expected) in [
         (2, 4096, Some(DomError::SourcePublicationLimit)),
-        (3, 3, Some(DomError::SourceOutputLimit)),
-        (3, 4, None),
+        (3, 4, Some(DomError::SourceOutputLimit)),
+        (3, 5, None),
     ] {
         let (mut dom, executor, _, first, _) = fixture();
         let source = dom.bind_element_task_source(&cancel).unwrap();

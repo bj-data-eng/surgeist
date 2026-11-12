@@ -366,8 +366,6 @@ fn controlled_original_focus_candidate() -> (Dom, DocumentId, NodeId, NodeId) {
         snapshot
             .node(subject)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attribute(&"tabindex".into()),
         Some(&"0".into())
     );

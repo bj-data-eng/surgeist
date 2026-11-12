@@ -1,4 +1,4 @@
-//! Optional sharing through real Source restoration, publication and reentry.
+//! Immutable values through real Source restoration, publication and reentry.
 //! Public backing observations accompany literal state and protocol outcomes.
 use std::{
     cell::Cell,
@@ -42,13 +42,21 @@ fn owner() -> (Dom, DocumentId) {
     let document = commit.document(&document).unwrap();
     (dom, document)
 }
-fn bank(snapshot: &DomSnapshot, node: NodeId) -> &[DomAttribute] {
-    snapshot
-        .node(node)
-        .unwrap()
-        .as_element()
-        .unwrap()
-        .attributes()
+fn attrs(snapshot: &DomSnapshot, node: NodeId) -> DomNamedNodeMap<'_> {
+    snapshot.node(node).unwrap().attributes().unwrap()
+}
+fn same_attributes(before: DomNamedNodeMap<'_>, after: DomNamedNodeMap<'_>) -> bool {
+    before
+        .iter()
+        .map(|a| (a.id(), a.name(), a.value()))
+        .eq(after.iter().map(|a| (a.id(), a.name(), a.value())))
+}
+fn distinct_attributes(left: DomNamedNodeMap<'_>, right: DomNamedNodeMap<'_>) -> bool {
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(right.iter())
+            .all(|(a, b)| a.id() != b.id() && a.name() == b.name() && a.value() == b.value())
 }
 fn text(snapshot: &DomSnapshot, node: NodeId) -> &DocumentString {
     snapshot.node(node).unwrap().data().unwrap()
@@ -112,7 +120,7 @@ fn blocked_style_source(dom: &mut Dom, edit: DomSourceEdit, style: NodeId) {
 }
 
 #[test]
-fn source_attribute_banks_share_and_text_survives_preflight_restore_and_replay() {
+fn source_attributes_and_text_survive_preflight_restore_and_replay() {
     let (mut dom, document) = owner();
     let mut setup = DomBatch::new();
     let seed = setup.create_element_ns(document, Namespace::html(), "div");
@@ -132,24 +140,37 @@ fn source_attribute_banks_share_and_text_survives_preflight_restore_and_replay()
     let seed_text = done.created(&seed_text).unwrap().unwrap();
     let before = dom.snapshot();
 
-    // Changing type changes the canonical bank but does not itself trigger
+    // Changing type updates the canonical Attr but does not itself trigger
     // Style processing. The subsequent actual Text edit owns that update.
     complete_local(
         &mut dom,
         DomSourceEdit::set_attribute(style, "type", raw("text/css")),
     );
     let after_attribute = dom.snapshot();
-    assert_eq!(bank(&after_attribute, style).len(), 2);
+    assert_eq!(attrs(&after_attribute, style).len(), 2);
     assert_eq!(
-        bank(&after_attribute, style)[0].name().local_name(),
+        attrs(&after_attribute, style)
+            .item(0)
+            .unwrap()
+            .name()
+            .local_name(),
         &raw("type")
     );
-    assert_eq!(bank(&after_attribute, style)[0].value(), &raw("text/css"));
-    assert_eq!(bank(&after_attribute, style)[1].value(), &raw("kept"));
-    assert_eq!(bank(&before, style)[0].value(), &raw("text/plain"));
-    assert!(std::ptr::eq(
-        bank(&after_attribute, style),
-        bank(&after_attribute, seed)
+    assert_eq!(
+        attrs(&after_attribute, style).item(0).unwrap().value(),
+        &raw("text/css")
+    );
+    assert_eq!(
+        attrs(&after_attribute, style).item(1).unwrap().value(),
+        &raw("kept")
+    );
+    assert_eq!(
+        attrs(&before, style).item(0).unwrap().value(),
+        &raw("text/plain")
+    );
+    assert!(distinct_attributes(
+        attrs(&after_attribute, style),
+        attrs(&after_attribute, seed)
     ));
     assert!(
         after_attribute
@@ -183,9 +204,9 @@ fn source_attribute_banks_share_and_text_survives_preflight_restore_and_replay()
     assert_eq!(text(&before, child).code_units(), [97, 123, 125]);
     assert_eq!(text(&after_attribute, child).code_units(), [97, 123, 125]);
     assert!(!text(&after_text, child).shares_storage_with(text(&after_text, seed_text)));
-    assert!(std::ptr::eq(
-        bank(&after_attribute, style),
-        bank(&after_text, style)
+    assert!(same_attributes(
+        attrs(&after_attribute, style),
+        attrs(&after_text, style)
     ));
     assert!(
         after_text
@@ -202,7 +223,7 @@ fn source_attribute_banks_share_and_text_survives_preflight_restore_and_replay()
 }
 
 #[test]
-fn prepared_close_publication_drop_and_unwind_preserve_original_tail_and_shared_bank() {
+fn prepared_close_publication_drop_and_unwind_preserve_original_tail_and_shared_attrs() {
     for unwind in [false, true] {
         let (mut dom, document) = owner();
         let executor = dom.bind_source_event_executor(&cancel()).unwrap();
@@ -358,9 +379,12 @@ fn prepared_close_publication_drop_and_unwind_preserve_original_tail_and_shared_
             before.node(dialog).unwrap().attribute(&raw("open")),
             Some(&raw(""))
         );
-        assert_eq!(bank(&after, dialog).len(), 1);
-        assert_eq!(bank(&after, dialog)[0].value(), &raw("kept"));
-        assert!(std::ptr::eq(bank(&after, dialog), bank(&after, seed)));
+        assert_eq!(attrs(&after, dialog).len(), 1);
+        assert_eq!(attrs(&after, dialog).item(0).unwrap().value(), &raw("kept"));
+        assert!(distinct_attributes(
+            attrs(&after, dialog),
+            attrs(&after, seed)
+        ));
         assert_eq!(tasks[0].as_ref().unwrap().info().id().target(), dialog);
         assert_eq!(tasks[1].as_ref().unwrap().info().id().target(), dialog);
         drop(tasks);
@@ -418,7 +442,10 @@ fn reentrant_child_values_survive_parent_observation_discard_and_canceled_resume
     let child = dom.snapshot();
     assert_eq!(dom.pending_source_edit().unwrap().operation(), parent);
     assert!(dom.pending_source_edit().unwrap().spent_work() > work_before);
-    assert!(std::ptr::eq(bank(&child, target), bank(&child, seed)));
+    assert!(distinct_attributes(
+        attrs(&child, target),
+        attrs(&child, seed)
+    ));
     assert!(!text(&child, target_text).shares_storage_with(text(&child, seed_text)));
     drop(scope);
     assert_eq!(dom.source_dispatch_blocker(), Some(parent));
@@ -457,13 +484,19 @@ fn reentrant_child_values_survive_parent_observation_discard_and_canceled_resume
     assert!(dom.pending_source_edit().is_none());
     assert_eq!(after.node(dialog).unwrap().attribute(&raw("open")), None);
     assert_eq!(text(&before, target_text), &raw("before"));
-    assert!(bank(&before, target).is_empty());
-    assert_eq!(bank(&after, target)[0].value(), &raw("child"));
+    assert!(attrs(&before, target).is_empty());
+    assert_eq!(
+        attrs(&after, target).item(0).unwrap().value(),
+        &raw("child")
+    );
     assert_eq!(text(&after, target_text), &raw("child-text"));
-    assert!(std::ptr::eq(bank(&child, target), bank(&after, target)));
-    assert!(std::ptr::eq(
-        bank(&after, target),
-        bank(&after, later_element)
+    assert!(same_attributes(
+        attrs(&child, target),
+        attrs(&after, target)
+    ));
+    assert!(distinct_attributes(
+        attrs(&after, target),
+        attrs(&after, later_element)
     ));
     assert!(!text(&child, target_text).shares_storage_with(text(&after, later_text)));
 }
@@ -504,7 +537,7 @@ fn refused_source_candidates_cancel_cleanly_and_semantic_noops_preserve_backing(
         assert!(dom.pending_source_edit().is_none());
         assert!(
             weak.upgrade().is_none(),
-            "optional weak membership must not retain the discarded strong input"
+            "refused edits release the discarded input"
         );
         let after_refusal = dom.snapshot();
         assert_eq!(after_refusal.stamp(), before.stamp());
@@ -514,9 +547,9 @@ fn refused_source_candidates_cancel_cleanly_and_semantic_noops_preserve_backing(
                 .changes()
                 .is_empty()
         );
-        assert!(std::ptr::eq(
-            bank(&before, element),
-            bank(&after_refusal, element)
+        assert!(same_attributes(
+            attrs(&before, element),
+            attrs(&after_refusal, element)
         ));
         assert!(text(&before, node).shares_storage_with(text(&after_refusal, node)));
         let edit = if attribute {
@@ -527,7 +560,10 @@ fn refused_source_candidates_cancel_cleanly_and_semantic_noops_preserve_backing(
         complete_local(&mut dom, edit);
         let published = dom.snapshot();
         if attribute {
-            assert_eq!(bank(&published, element)[0].value(), &raw("kept"));
+            assert_eq!(
+                attrs(&published, element).item(0).unwrap().value(),
+                &raw("kept")
+            );
         } else {
             assert_eq!(text(&published, node), &raw("kept"));
         }
@@ -535,7 +571,7 @@ fn refused_source_candidates_cancel_cleanly_and_semantic_noops_preserve_backing(
         spare.extend("kept".encode_utf16());
         let equal_with_spare = DocumentString::from_utf16(spare);
         let current = if attribute {
-            bank(&published, element)[0].value()
+            attrs(&published, element).item(0).unwrap().value()
         } else {
             text(&published, node)
         };
@@ -554,9 +590,9 @@ fn refused_source_candidates_cancel_cleanly_and_semantic_noops_preserve_backing(
                 .changes()
                 .is_empty()
         );
-        assert!(std::ptr::eq(
-            bank(&published, element),
-            bank(&after_noop, element)
+        assert!(same_attributes(
+            attrs(&published, element),
+            attrs(&after_noop, element)
         ));
         assert!(text(&published, node).shares_storage_with(text(&after_noop, node)));
     }

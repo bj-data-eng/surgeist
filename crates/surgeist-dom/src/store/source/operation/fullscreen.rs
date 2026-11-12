@@ -114,7 +114,7 @@ impl DomFullscreenExitHandoffCommit<'_, '_> {
             .segment
             .take()
             .expect("prepared original publication")
-            .publish(&mut operation, self.lease.dom, self.checkpoint.as_ref());
+            .publish(&mut operation, self.lease.dom);
         // No allocation, callback or cancellation can interrupt this fence.
         self.lease.dom.fullscreen_exits = bank;
         operation
@@ -470,14 +470,7 @@ impl<'dom> DomSourceLease<'dom> {
                 return Err(DomError::SourcePublicationLimit);
             }
             let mut segment = op
-                .prepare_segment(
-                    self.dom,
-                    true,
-                    PublicationTarget::None,
-                    None,
-                    Some(&checkpoint),
-                    cancel,
-                )
+                .prepare_segment(self.dom, true, PublicationTarget::None, None, cancel)
                 .map_err(|error| match error {
                     crate::DomHostedError::Dom(error) => error,
                     _ => DomError::HostedSourceUnavailable,

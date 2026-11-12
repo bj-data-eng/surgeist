@@ -3,8 +3,8 @@
 //! Every population and edit uses the ordinary public DOM entry points.
 
 use super::{
-    CHUNK, Context, Duration, Fixture, Instant, SAMPLES, WARMUPS, apply, attribute, black_box,
-    fixture, fixture_with_capacity, report, require_release, scale_metrics,
+    CHUNK, Context, Duration, FIXTURE_BASE_NODES, Fixture, Instant, SAMPLES, WARMUPS, apply,
+    attribute, black_box, fixture, fixture_with_capacity, report, require_release, scale_metrics,
 };
 use crate::{DomBatch, DomChange, DomNodeKind, DomSnapshot, NodeId};
 use surgeist_html::values::DocumentString;
@@ -17,7 +17,7 @@ mod selection;
 mod sharing;
 
 const MANAGED: usize = 1000;
-const SEED_NODES: usize = 5;
+const SEED_NODES: usize = FIXTURE_BASE_NODES;
 const MAX_CONSTRUCTION: usize = 1_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,6 +55,7 @@ struct Counts {
     elements: usize,
     text: usize,
     comments: usize,
+    attrs: usize,
     other: usize,
     parent_edges: usize,
     data_units: usize,
@@ -71,6 +72,7 @@ fn traverse(snapshot: &DomSnapshot) -> Counts {
             DomNodeKind::Element(_) => counts.elements += 1,
             DomNodeKind::Text(_) => counts.text += 1,
             DomNodeKind::Comment(_) => counts.comments += 1,
+            DomNodeKind::Attr(_) => counts.attrs += 1,
             _ => counts.other += 1,
         }
         counts.parent_edges += usize::from(node.parent().is_some());
@@ -145,6 +147,7 @@ fn check_population(snapshot: &DomSnapshot, fixture: &Fixture, population: Popul
     let counts = traverse(snapshot);
     let additional = fixture.managed - SEED_NODES;
     assert_eq!(counts.documents, 2);
+    assert_eq!(counts.attrs, 1);
     assert_eq!(counts.other, 0);
     assert_eq!(
         counts.elements,
@@ -180,11 +183,21 @@ fn check_population(snapshot: &DomSnapshot, fixture: &Fixture, population: Popul
         snapshot.node(parent).unwrap().children().len(),
         expected_children
     );
+    let seed_attr = snapshot
+        .node(fixture.target)
+        .unwrap()
+        .get_attribute_node(&"data-local".into())
+        .unwrap();
+    assert_eq!(seed_attr.owner_element(), Some(fixture.target));
+    assert_eq!(
+        Some(seed_attr.owner_document()),
+        snapshot.node(fixture.target).unwrap().owner_document()
+    );
     for id in snapshot.nodes() {
-        // These five real seed IDs are independently identifiable via the
-        // public two-Document topology and the selected target/Text IDs.
+        // Identify the seed through its actual tree topology and Attr owner.
         if id == fixture.target
             || id == fixture.text
+            || id == seed_attr.id().node()
             || id == fixture.other_document.node()
             || id == parent
             || snapshot.node(id).unwrap().as_document().is_some()
@@ -326,15 +339,24 @@ fn run_sample(
     let mut batch = DomBatch::new();
     let expected = if population.text() {
         batch.replace_data(fixture.text, 0, usize::MAX, "next");
-        DomChange::Data(fixture.text)
+        vec![DomChange::Data(fixture.text)]
     } else {
+        let attr = old
+            .node(fixture.target)
+            .unwrap()
+            .get_attribute_node(&"data-local".into())
+            .unwrap()
+            .id();
         batch.set_attribute(fixture.target, "data-local", "next");
-        DomChange::Attributes(fixture.target)
+        vec![
+            DomChange::Attributes(fixture.target),
+            DomChange::AttrValue(attr),
+        ]
     };
     let started = Instant::now();
     let commit = apply(&mut fixture.dom, batch);
     let edit = started.elapsed();
-    assert_eq!(commit.changes().changes(), [expected]);
+    assert_eq!(commit.changes().changes(), expected);
     // Release the commit's current snapshot before explicitly holding the
     // two snapshots whose destruction order this pilot characterizes.
     drop(commit);

@@ -163,9 +163,14 @@ fn read_name(
     if reuse && let Some(cached) = cached {
         return Ok((cached.value.clone(), cached.usage));
     }
-    let name = crate::slot::name_admitted(kind.into(), attribute, &mut || step())?
-        .filter(|name| !name.is_empty())
-        .cloned();
+    let name = match kind {
+        KindRead::Element(element) => {
+            crate::slot::name_admitted(element.attributes().iter(), attribute, &mut || step())?
+                .filter(|name| !name.is_empty())
+                .cloned()
+        }
+        _ => None,
+    };
     let mut payload = source::storage::Payload::default();
     if let Some(name) = &name {
         // The callers list the block of the name (`Fact::list_names`), so the name is priced by
@@ -593,9 +598,7 @@ impl Names {
                     after: Some(after),
                     ..
                 }) => match (before.kind(), after.kind()) {
-                    (KindRead::Element(a), KindRead::Element(b)) => {
-                        a.language().same_attribute_storage(b.language())
-                    }
+                    (KindRead::Element(a), KindRead::Element(b)) => a.same_attributes(b),
                     _ => false,
                 },
                 None => true,

@@ -1551,8 +1551,8 @@ impl DomSourceLease<'_> {
         let commit = DomCommit {
             created_ranges: Vec::new(),
             owner: observation.owner.clone(),
-            created: Vec::new(),
-            documents: Vec::new(),
+            node_outputs: Vec::new(),
+            node_output_kinds: Vec::new(),
             transition_ids: Vec::new(),
             record_ids: Vec::new(),
             changes: DomChanges {

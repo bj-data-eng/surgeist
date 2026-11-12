@@ -319,15 +319,7 @@ fn document_element_focus_is_a_real_atomic_refusal_without_partial_flag_or_range
     assert!(!enabled(&after, document));
     assert_eq!(bounds(&after, range), ((text, 1), (text, 4)));
     assert_eq!(active(&after, document), Some(range));
-    assert!(
-        after
-            .node(root)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes()
-            .is_empty()
-    );
+    assert!(after.node(root).unwrap().attributes().unwrap().is_empty());
     assert_eq!(after.node(root).unwrap().parent(), Some(document.node()));
     assert!(dom.pending_source_edit().is_none());
     // Off and invalid inputs never enter the element's focus dependency.

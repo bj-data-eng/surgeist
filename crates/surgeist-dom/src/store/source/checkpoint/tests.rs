@@ -150,7 +150,10 @@ fn original_dialog_interpreter_mark_restores_an_unstarted_method_after_its_event
         draft
             .element(Key::Existing(dialog))
             .unwrap()
-            .attribute(&"open".into()),
+            .attributes()
+            .iter()
+            .find(|attr| attr.name().local_name() == &DocumentString::from("open"))
+            .map(crate::DomAttribute::value),
         None
     );
 }

@@ -373,12 +373,13 @@ impl Draft {
 
 /// One fixed position per scalar reference occurrence. Duplicates in different
 /// fields deliberately remain distinct, so clearing one cannot lose another.
-fn scalar_refs(node: &NodeRead<'_>) -> [Option<Key>; 24] {
+fn scalar_refs(node: &NodeRead<'_>) -> [Option<Key>; 25] {
     use crate::reflected::ReflectedTarget;
     let patch = node.template_patch();
     [
         Some(node.document()),
         node.parent(),
+        node.attr_owner(),
         node.shadow_root(),
         node.host(),
         node.template_contents(),
@@ -447,7 +448,12 @@ fn visit_node(
             visit(name.target)?;
         }
     }
-    for values in [node.children(), node.manual_nodes(), node.assigned_nodes()] {
+    for values in [
+        node.children(),
+        node.attribute_ids(),
+        node.manual_nodes(),
+        node.assigned_nodes(),
+    ] {
         for target in values.iter() {
             visit(target)?;
         }
@@ -496,6 +502,33 @@ impl Draft {
             }
         };
         let normalized_owner = normalize(owner);
+        if let Some((removed, added)) = candidate.attribute_membership_delta() {
+            let mut adjust = |key, delta| {
+                next.adjust_owner(
+                    private,
+                    Change {
+                        group: normalize(key),
+                        member: normalized_owner,
+                        delta,
+                    },
+                    self.custody_registry(),
+                    &mut |usage| self.admit_custody_usage(usage, cancel),
+                    &mut || self.source_step(cancel),
+                )
+            };
+            for &key in removed {
+                adjust(key, Delta::Remove(1))?;
+            }
+            if let Some(added) = added {
+                for &key in added {
+                    adjust(key, Delta::Add(1))?;
+                }
+            } else {
+                for key in candidate.attribute_ids().iter() {
+                    adjust(key, Delta::Add(1))?;
+                }
+            }
+        }
         for (old, new) in scalar_refs(&current)
             .into_iter()
             .zip(scalar_refs(&candidate))
@@ -641,10 +674,6 @@ mod tests {
         let prepared = draft.finish_segment(dom, cancel).unwrap();
         let mut publication = dom.prepare_publication(prepared, cancel).unwrap();
         let rebase = draft.prepare_rebase(&mut publication, cancel).unwrap();
-        let sharing = draft
-            .prepare_sharing_publication(publication.changed, None, cancel)
-            .unwrap();
-        draft.close_sharing_publication(&mut publication, sharing, None);
         let publication = dom.publish_prepared_with_proof(publication);
         draft.commit_publication(rebase, &publication.committed);
         crate::store::oracle_tests::assert_full_canonical(dom);

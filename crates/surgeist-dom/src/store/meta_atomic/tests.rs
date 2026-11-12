@@ -254,8 +254,6 @@ fn unchanged(f: &Fixture, before: &(DomStamp, Vec<CssomSnapshot>, CssomSnapshot)
             .snapshot()
             .node(f.element)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attribute(&"style".into())
             .is_none()
     );

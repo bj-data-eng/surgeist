@@ -500,7 +500,6 @@ impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
             style.commit(cancel)?;
             let prepared = draft.finish(self.dom, cancel)?;
             let mut publication = self.dom.prepare_publication(prepared, cancel)?;
-            publication.close_ordinary_sharing(cancel)?;
             let history = self.dom.history.retain_evictions(
                 &publication.history_plan,
                 self.dom.custody_registry.ledger(),

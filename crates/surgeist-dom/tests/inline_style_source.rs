@@ -194,9 +194,8 @@ fn real_setter_returns_paired_original_publication_and_preserves_utf16() {
     let attr = snapshot
         .node(f.first)
         .unwrap()
-        .as_element()
-        .unwrap()
         .attributes()
+        .unwrap()
         .iter()
         .find(|a| a.name().local_name().to_utf8().unwrap() == "style")
         .unwrap();

@@ -54,48 +54,38 @@ fn full_element_units(element: &crate::DomElement) -> usize {
         element.saved_is().map_or(0, DocumentString::len),
     );
     add(&mut units, element.nonce().map_or(0, DocumentString::len));
-    add(&mut units, element.family_units().unwrap());
-    for attribute in element.attributes().iter() {
-        add(&mut units, qualified_units(attribute.name()));
-        add(&mut units, attribute.value().len());
-    }
+    add(&mut units, element.native_family().units().unwrap());
     units
 }
 
-fn assert_element_value_receipts(element: &crate::DomElement) {
-    let Some(attributes) = element.attributes_backing() else {
-        assert!(element.attributes().is_empty());
-        assert!(element.attribute_binding().is_none());
-        return;
-    };
-    let mut text = source::storage::Payload::default();
-    let mut units = 0;
-    for attribute in attributes.entries() {
-        text.name(attribute.name()).unwrap();
-        text.string(attribute.value()).unwrap();
-        add(&mut units, qualified_units(attribute.name()));
-        add(&mut units, attribute.value().len());
+fn attributes<'a>(
+    state: &'a State,
+    owner: DomOwnerId,
+    node: &'a super::Node,
+) -> impl Iterator<Item = &'a crate::DomAttribute> + 'a {
+    node.attribute_ids()
+        .iter()
+        .map(move |id| state.node(owner, *id).unwrap().attribute_node().unwrap().0)
+}
+
+fn assert_attribute_relations(state: &State, owner: DomOwnerId, id: NodeId, node: &super::Node) {
+    let mut seen = HashSet::new();
+    for &attr in node.attribute_ids() {
+        assert!(seen.insert(attr));
+        let attribute = state.node(owner, attr).unwrap();
+        assert!(attribute.parent().is_none());
+        assert!(attribute.children().is_empty());
+        assert_eq!(attribute.attribute_node().unwrap().1, Some(id));
     }
-    let cached_text = attributes.text_payload();
-    assert_eq!(
-        (cached_text.bytes, cached_text.units),
-        (text.bytes, text.units)
-    );
-    assert_eq!(attributes.logical_units(), units);
-    let expected = if let Some(payload) = attributes.payload() {
-        assert_eq!(payload.value.entries(), element.attributes());
-        assert_eq!(payload.value.capacity(), attributes.capacity());
-        custody::Usage::new(
-            size_of::<super::payload::Payload<crate::name::AttributeValues>>()
-                + payload.value.capacity() * size_of::<crate::DomAttribute>(),
-            0,
-        )
-    } else {
-        assert!(element.attributes().is_empty());
-        assert_eq!(attributes.capacity(), 0);
-        custody::Usage::ZERO
-    };
-    assert_eq!(attributes.own_usage(), expected);
+    if let Some((_, Some(element))) = node.attribute_node() {
+        assert!(
+            state
+                .node(owner, element)
+                .unwrap()
+                .attribute_ids()
+                .contains(&id)
+        );
+    }
 }
 
 fn full_names_payload(node: &super::Node) -> source::storage::Payload {
@@ -305,6 +295,12 @@ fn full_usage(dom: &Dom) -> DomUsage {
                 full_document_units(metadata)
             }
             DomNodeKind::Element(element) => full_element_units(element),
+            DomNodeKind::Attr(attr) => {
+                attr.name().namespace_uri().map_or(0, DocumentString::len)
+                    + attr.name().prefix().map_or(0, DocumentString::len)
+                    + attr.name().local_name().len()
+                    + attr.value().len()
+            }
             DomNodeKind::Text(value) | DomNodeKind::Comment(value) => value.len(),
             DomNodeKind::ProcessingInstruction(pi) => pi.units().unwrap(),
             DomNodeKind::DocumentType(doctype) => doctype.units().unwrap(),
@@ -551,6 +547,7 @@ fn assert_inbound(owner: DomOwnerId, state: &State) {
         reference(node.document().node());
         for target in [
             node.parent(),
+            node.attribute_node().and_then(|(_, element)| element),
             node.shadow_root(),
             node.host(),
             node.template_contents(),
@@ -600,7 +597,12 @@ fn assert_inbound(owner: DomOwnerId, state: &State) {
         {
             reference(target);
         }
-        for values in [node.children(), node.manual_nodes(), node.assigned_nodes()] {
+        for values in [
+            node.children(),
+            node.attribute_ids(),
+            node.manual_nodes(),
+            node.assigned_nodes(),
+        ] {
             for target in values.iter().copied() {
                 reference(target);
             }
@@ -773,7 +775,7 @@ fn assert_control_index(owner: DomOwnerId, state: &State) {
         let root = *ancestor_path(state, owner, id).first().unwrap();
         let mut form_present = false;
         let mut name = None;
-        for attribute in element.attributes().iter() {
+        for attribute in attributes(state, owner, node) {
             if attribute.name().namespace_uri().is_some() {
                 continue;
             }
@@ -1015,20 +1017,15 @@ fn assert_slot_participants(owner: DomOwnerId, state: &State) {
 /// missing names share the default group; physical field occurrences are
 /// independently checked by the raw graph inspector.
 fn assert_slot_names(owner: DomOwnerId, state: &State) {
-    fn name(node: &super::Node, attribute: &[u16]) -> Option<DocumentString> {
-        let DomNodeKind::Element(element) = &node.kind() else {
-            return None;
-        };
-        element
-            .attributes()
-            .iter()
+    let name = |node: &super::Node, attribute: &[u16]| {
+        attributes(state, owner, node)
             .find(|value| {
                 value.name().namespace_uri().is_none()
                     && value.name().local_name().code_units() == attribute
             })
             .map(|value| value.value().clone())
             .filter(|value| !value.is_empty())
-    }
+    };
     let order = |id| {
         ancestor_path(state, owner, id)
             .windows(2)
@@ -1247,9 +1244,7 @@ fn assert_family_discovery(owner: DomOwnerId, state: &State) {
         let mut select = None;
         let kind = match Tag::from_name(element.name()) {
             Some(Tag::Details) => {
-                name = element
-                    .attributes()
-                    .iter()
+                name = attributes(state, owner, node)
                     .find(|attribute| {
                         attribute.name().namespace_uri().is_none()
                             && attribute.name().local_name().code_units() == [110, 97, 109, 101]
@@ -1705,9 +1700,7 @@ fn validate_full_state(owner: DomOwnerId, state: &State) {
             slot: slot_index,
             generation: slot.generation,
         };
-        if let DomNodeKind::Element(element) = &node.kind() {
-            assert_element_value_receipts(element);
-        }
+        assert_attribute_relations(state, owner, id, node);
         super::compact_tests::typed_graph::assert_node_receipts(node);
         let names = full_names_payload(node);
         assert_eq!(
@@ -1855,37 +1848,22 @@ fn assert_name_attribute_custody(dom: &Dom) {
     let mut raw = Vec::new();
     for (_, slot) in dom.state.slots.iter() {
         let Some(node) = &slot.node else { continue };
-        let DomNodeKind::Element(element) = &node.kind() else {
-            continue;
+        let name = match node.kind() {
+            DomNodeKind::Element(element) => element.name(),
+            DomNodeKind::Attr(attribute) => attribute.name(),
+            _ => continue,
         };
-        if let Some(payload) = element
-            .attributes_backing()
-            .and_then(|attributes| attributes.payload())
-        {
+        for atom in name.namespace().into_iter().chain([name.local_name_atom()]) {
+            let value = atom.text();
             raw.push((
-                payload.identity,
+                atom.identity(),
                 custody::Usage::new(
-                    size_of::<super::payload::Payload<crate::name::AttributeValues>>()
-                        + payload.value.capacity() * size_of::<crate::DomAttribute>(),
-                    0,
+                    size_of::<crate::name::NameRecord>()
+                        + size_of::<Vec<u16>>()
+                        + value.retained_units() * size_of::<u16>(),
+                    value.retained_units(),
                 ),
             ));
-        }
-        for name in std::iter::once(element.name())
-            .chain(element.attributes().iter().map(crate::DomAttribute::name))
-        {
-            for atom in name.namespace().into_iter().chain([name.local_name_atom()]) {
-                let value = atom.text();
-                raw.push((
-                    atom.identity(),
-                    custody::Usage::new(
-                        size_of::<crate::name::NameRecord>()
-                            + size_of::<Vec<u16>>()
-                            + value.retained_units() * size_of::<u16>(),
-                        value.retained_units(),
-                    ),
-                ));
-            }
         }
     }
     let claimed = super::payload::inspect_slot_name_custody(&dom.state_custody.slots);
@@ -2024,14 +2002,15 @@ fn full_oracle_covers_tickets_retirement_and_exact_semantic_noop() {
     let (mut dom, document, parent, _) = fixture();
     let mut batch = DomBatch::new();
     let old = batch.create_comment(document, "equal");
+    batch.set_attribute(parent, "data-local", "original");
     let old = apply(&mut dom, batch).created(&old).unwrap().unwrap();
     let before = dom.snapshot();
     let usage = dom.usage();
     let mut batch = DomBatch::new();
     let private = batch.create_comment(document, "private");
     batch.destroy(&private);
-    batch.set_attribute(parent, "temporary", "value");
-    batch.remove_attribute(parent, "temporary");
+    batch.set_attribute(parent, "data-local", "temporary");
+    batch.set_attribute(parent, "data-local", "original");
     let commit = apply(&mut dom, batch);
     assert_eq!(commit.created(&private).unwrap(), None);
     assert!(commit.changes().changes().is_empty());
@@ -2073,7 +2052,21 @@ fn source_attribute_publication_matches_full_oracle_and_unpublished_drop_preserv
         };
         done.commit().changes().changes().to_vec()
     };
-    assert_eq!(changes, [DomChange::Attributes(parent)]);
+    let snapshot = dom.snapshot();
+    let attr = snapshot
+        .node(parent)
+        .unwrap()
+        .attributes()
+        .unwrap()
+        .get_named_item(&"data-local".into())
+        .unwrap();
+    assert_eq!(
+        changes,
+        [
+            DomChange::Attributes(parent),
+            DomChange::Created(attr.id().node())
+        ]
+    );
     assert_full_delta(&dom, &before, &changes);
     let before = dom.snapshot();
     let usage = dom.usage();
@@ -2229,14 +2222,7 @@ fn full_oracle_composes_native_relations_template_and_queued_targets() {
             .iter()
             .any(|task| matches!(task, super::select::Task::Update { .. }))
     );
-    assert!(
-        old.node(details)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes()
-            .is_empty()
-    );
+    assert!(old.node(details).unwrap().attributes().unwrap().is_empty());
     let mut batch = DomBatch::new();
     batch.assign_slot(slot, Vec::new());
     batch.set_attribute(details, "data-local", "after");

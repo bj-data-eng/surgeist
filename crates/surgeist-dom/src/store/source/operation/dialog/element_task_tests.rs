@@ -160,14 +160,32 @@ fn manipulation_allocation_survives_original_child_close_and_releases_under_same
 #[test]
 fn queue_preparation_requires_known_prefix_and_closing_phase_headroom_before_effect() {
     let cancel = AtomicBool::new(false);
-    // Queue changes ElementState + the incomplete marker. Reserve both known
-    // possible prefix changes and one final close: five output records total.
-    for (phases, outputs, failure) in [
-        (2, 4096, Some(DomError::SourcePublicationLimit)),
-        (3, 4, Some(DomError::SourceOutputLimit)),
-        (3, 5, None),
+    // Queue publishes the tracker and the incomplete marker. The known
+    // prefix includes a new Attr and the operation still owes its close.
+    for (phases, outputs, identities, has_node_room, failure) in [
+        (2, 4096, 1, true, Some(DomError::SourcePublicationLimit)),
+        (3, 5, 1, true, Some(DomError::SourceOutputLimit)),
+        (3, 6, 0, true, Some(DomError::SourceIdentityLimit)),
+        (3, 6, 1, false, None),
+        (3, 6, 1, true, None),
     ] {
         let (mut dom, executor, _, first, _) = fixture();
+        let managed = dom.usage().managed_nodes();
+        if !has_node_room {
+            dom.set_limits(crate::DomLimits {
+                nodes: managed,
+                ..dom.limits()
+            })
+            .unwrap();
+        }
+        let failure = if has_node_room {
+            failure
+        } else {
+            Some(DomError::ResourceLimit {
+                resource: crate::DomResource::ManagedNodes,
+                limit: managed,
+            })
+        };
         let owner = owner(&mut dom);
         let event = request(&mut dom, first);
         attest(
@@ -179,6 +197,7 @@ fn queue_preparation_requires_known_prefix_and_closing_phase_headroom_before_eff
         let mut policy = limits();
         policy.phases = phases;
         policy.outputs = outputs;
+        policy.identities = identities;
         let stamp = dom.snapshot().stamp();
         let mut lease = dom
             .resume_source_edit(event.operation(), policy, &cancel)

@@ -462,8 +462,6 @@ fn inline_setter_returns_original_complete_with_receipt_and_releases_source_owne
             .snapshot()
             .node(element)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attribute(&"style".into()),
         Some(&";".into())
     );
@@ -659,8 +657,6 @@ fn bound_retirement_returns_original_pair_and_releases_runtime_source_owner() {
         session
             .snapshot()
             .node(keeper)
-            .unwrap()
-            .as_element()
             .unwrap()
             .attribute(&"id".into()),
         Some(&"still-live".into())

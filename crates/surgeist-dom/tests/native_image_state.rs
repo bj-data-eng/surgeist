@@ -78,10 +78,16 @@ fn superseded_wholly_inactive_waits_use_one_fixed_node_slot_and_latest_exact_fla
     dom.apply(b, &cancel()).unwrap();
     let before = dom.snapshot();
     let initial = wait(&dom, img);
+    let src = before
+        .node(img)
+        .unwrap()
+        .get_attribute_node(&"src".into())
+        .unwrap()
+        .id();
     // Exact canonical live-node and string bounds are sufficient for any
     // admitted number of wholly inactive superseding invocations.
     let units = dom.usage().string_code_units();
-    dom.set_limits(limits(2, units)).unwrap();
+    dom.set_limits(limits(3, units)).unwrap();
     let mut b = DomBatch::new();
     for _ in 0..512 {
         b.set_attribute(img, "src", "x");
@@ -91,7 +97,16 @@ fn superseded_wholly_inactive_waits_use_one_fixed_node_slot_and_latest_exact_fla
     assert_ne!(latest.id(), initial.id());
     assert_eq!(latest.flags(), HtmlImageUpdateFlags::new(true, false));
     assert_eq!(dom.usage().string_code_units(), units);
-    assert_eq!(dom.usage().managed_nodes(), 2);
+    assert_eq!(dom.usage().managed_nodes(), 3);
+    assert_eq!(
+        dom.snapshot()
+            .node(img)
+            .unwrap()
+            .get_attribute_node(&"src".into())
+            .unwrap()
+            .id(),
+        src
+    );
     assert_eq!(c.changes().changes(), [DomChange::ElementState(img)]);
     assert_eq!(
         before
@@ -105,7 +120,7 @@ fn superseded_wholly_inactive_waits_use_one_fixed_node_slot_and_latest_exact_fla
             .id(),
         initial.id()
     );
-    dom.set_limits(limits(2, units + 64)).unwrap();
+    dom.set_limits(limits(4, units + 64)).unwrap();
     let mut b = DomBatch::new();
     b.set_attribute(img, "sizes", "100vw");
     dom.apply(b, &cancel()).unwrap();

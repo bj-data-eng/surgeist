@@ -137,7 +137,6 @@ pub struct DomDialogTaskQueueCommit<'a, 'dom> {
     lease: &'a mut DomSourceLease<'dom>,
     prepared: Option<crate::store::PreparedPublication>,
     rebase: Option<transaction::PreparedRebase>,
-    sharing: Option<value_sharing::CloseReady>,
     plan: DomDialogTaskQueuePlan,
     task: Option<DomDialogTask>,
     outputs: usize,
@@ -148,22 +147,11 @@ impl DomDialogTaskQueueCommit<'_, '_> {
     /// Publish the already admitted canonical tracker after the actual owner
     /// removes/clears/appends/stores its prepared task. This fence cannot fail.
     pub fn publish(mut self) -> (DomDialogTask, DomDialogTaskQueuePublication) {
-        let mut prepared = self.prepared.take().expect("prepared fence");
+        let prepared = self.prepared.take().expect("prepared fence");
         let rebase = self
             .rebase
             .take()
             .expect("prepared current-root continuation");
-        self.lease
-            .dom
-            .source_operation
-            .as_mut()
-            .expect("exclusive original operation")
-            .draft
-            .close_sharing_publication(
-                &mut prepared,
-                self.sharing.take(),
-                self.checkpoint.as_ref(),
-            );
         let crate::store::CommittedPublication { commit, committed } =
             self.lease.dom.publish_prepared_with_proof(prepared);
         let op = self
@@ -384,8 +372,8 @@ impl<'dom> DomSourceLease<'dom> {
                 )?;
                 prepared.changes.push(DomChange::SourceOperation);
             }
-            let (required_phases, future_outputs) = match (plan.info, locals) {
-                (DomDialogTaskInfo::Close(_), _) => (1 + headroom::FINAL_PUBLICATION, 1),
+            let (required_phases, future_outputs, future_identities) = match (plan.info, locals) {
+                (DomDialogTaskInfo::Close(_), _) => (1 + headroom::FINAL_PUBLICATION, 1, 0),
                 (DomDialogTaskInfo::Toggle(_), crate::store::dialog::MethodLocals::Close) => {
                     let state = op.draft.dialog_state(subject)?;
                     let watcher = state.watcher.is_some();
@@ -450,12 +438,14 @@ impl<'dom> DomSourceLease<'dom> {
                     };
                     (
                         headroom::dialog_close(watcher),
-                        2 + usize::from(member)
+                        // Detach retains the Attr and publishes its owner change.
+                        3 + usize::from(member)
                             + usize::from(watcher || changed_result || modal)
                             // A watcher stop publishes open-list removal first.
                             // Without that stop the same Document row coalesces
                             // with its ordinary open-list change when present.
                             + usize::from(request_changes_pending && (watcher || !member)),
+                        0,
                     )
                 }
                 (
@@ -495,11 +485,11 @@ impl<'dom> DomSourceLease<'dom> {
                         cancel,
                     )?;
                     let future_outputs = if op.is_show_modal_method() && !reached_hook {
-                        // Actual inactive hook: open attribute, then own marker
-                        // release. This prefix has no remembered-focus write.
-                        2
+                        // Add the open Attr and its order entry, then release
+                        // the marker. Inactive documents skip remembered focus.
+                        3
                     } else {
-                        3 + usize::from(active_hook)
+                        4 + usize::from(active_hook)
                     };
                     let modal_outputs = if structural_modal {
                         let document_node = op.draft.node(document)?;
@@ -524,6 +514,7 @@ impl<'dom> DomSourceLease<'dom> {
                             // Autofocus history is a distinct canonical domain,
                             // possibly on a different captured top Document.
                             + op.draft.dialog_autofocus_tail_outputs(subject, cancel)?,
+                        1,
                     )
                 }
             };
@@ -552,6 +543,25 @@ impl<'dom> DomSourceLease<'dom> {
             {
                 return Err(DomError::SourceOutputLimit);
             }
+            if op
+                .identities
+                .checked_add(future_identities)
+                .is_none_or(|identities| identities > op.limits.identities)
+            {
+                return Err(DomError::SourceIdentityLimit);
+            }
+            if future_identities != 0 {
+                let nodes = op
+                    .draft
+                    .nodes
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                admit(
+                    nodes,
+                    self.dom.limits.nodes,
+                    crate::DomResource::ManagedNodes,
+                )?;
+            }
             // Checkpoint already admits its fixed header. The wrapper's remaining
             // inline fields were admitted above; the selected Dialog guard
             // owns its separate native body through the exclusive fence.
@@ -560,12 +570,7 @@ impl<'dom> DomSourceLease<'dom> {
             }
             let mut prepared = self.dom.prepare_publication(prepared, cancel)?;
             let rebase = op.draft.prepare_rebase(&mut prepared, cancel)?;
-            let sharing = op.draft.prepare_sharing_publication(
-                prepared.changed,
-                Some(&checkpoint),
-                cancel,
-            )?;
-            Ok((prepared, rebase, sharing, outputs, required_phases - 1))
+            Ok((prepared, rebase, outputs, required_phases - 1))
         })();
         if result.is_err() {
             checkpoint.restore(&mut op.draft);
@@ -573,13 +578,11 @@ impl<'dom> DomSourceLease<'dom> {
             return Err(result.err().expect("failure"));
         }
         self.dom.source_operation = Some(op);
-        let (prepared, rebase, sharing, outputs, remaining_phases) =
-            result.expect("formed publication");
+        let (prepared, rebase, outputs, remaining_phases) = result.expect("formed publication");
         Ok(DomDialogTaskQueueCommit {
             lease: self,
             prepared: Some(prepared),
             rebase: Some(rebase),
-            sharing,
             plan,
             task: Some(DomDialogTask {
                 info: plan.info,

@@ -606,7 +606,7 @@ impl DomSnapshot {
                 slot: index,
                 generation: slot.generation,
             };
-            if value.document() == document {
+            if value.document() == document && !matches!(value.kind(), DomNodeKind::Attr(_)) {
                 planned.include(&mut control, node, true)?;
             }
         }
@@ -751,6 +751,7 @@ impl DomSnapshot {
             let root = planned.subject(&mut control, node.node.document().node())?;
             control.reserve(&mut staged, 1)?;
             let subject = match node.kind() {
+                DomNodeKind::Attr(_) => continue,
                 DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_) => {
                     unreachable!("handled in document and shadow passes")
                 }
@@ -776,7 +777,7 @@ impl DomSnapshot {
                         .add_element_from_inputs(
                             &root,
                             element.name(),
-                            element.attributes(),
+                            &node.attributes().ok_or(DomError::WrongNodeKind)?,
                             saved_is,
                             registry,
                             || control.charge(1),
@@ -928,6 +929,7 @@ impl DomSnapshot {
                     }
                 }
                 DomNodeKind::Text(_)
+                | DomNodeKind::Attr(_)
                 | DomNodeKind::Comment(_)
                 | DomNodeKind::ProcessingInstruction(_)
                 | DomNodeKind::DocumentType(_) => {}
@@ -940,6 +942,7 @@ impl DomSnapshot {
                     | DomNodeKind::ProcessingInstruction(_)
                     | DomNodeKind::DocumentType(_) => builder.establish_root(&subject)?,
                     DomNodeKind::Document(_)
+                    | DomNodeKind::Attr(_)
                     | DomNodeKind::DocumentFragment
                     | DomNodeKind::ShadowRoot(_) => {}
                 }
@@ -1131,9 +1134,9 @@ mod tests {
     fn canonical_capture_exports_admitted_html_array_with_shared_text_and_retained_snapshot() {
         let (dom, snapshot, document, element) = fixture();
         let stamp = snapshot.stamp();
-        let DomNodeKind::Element(source) = snapshot.node(element).unwrap().kind() else {
-            panic!("literal element")
-        };
+        let source = snapshot.node(element).unwrap();
+        let source_attributes = source.attributes().unwrap();
+        let source = source.as_element().unwrap();
         let captured = snapshot
             .html_capture(
                 document,
@@ -1165,12 +1168,12 @@ mod tests {
         assert_eq!(output.attributes().len(), 2);
         assert!(
             !std::ptr::eq(
-                source.attributes().as_ptr().cast::<()>(),
+                std::ptr::from_ref(source_attributes.item(0).unwrap().data).cast::<()>(),
                 output.attributes().as_slice().as_ptr().cast::<()>()
             ),
             "two simultaneously retained nonempty arrays belong to their separate owners"
         );
-        for (input, output) in source.attributes().iter().zip(output.attributes().iter()) {
+        for (input, output) in source_attributes.iter().zip(output.attributes().iter()) {
             assert_name(input.name(), output.name());
             assert_eq!(input.value(), output.value());
             assert!(input.value().shares_storage_with(output.value()));
@@ -1193,8 +1196,7 @@ mod tests {
         let bytes = size_of::<Vec<Attribute>>()
             + output.attributes().shared_attributes().capacity() * size_of::<Attribute>()
             + name_bytes(source.name())
-            + source
-                .attributes()
+            + source_attributes
                 .iter()
                 .map(|a| name_bytes(a.name()) + string_bytes(a.value()))
                 .sum::<usize>();
@@ -1226,9 +1228,9 @@ mod tests {
     #[test]
     fn borrowed_element_export_preserves_first_adapter_work_and_cancellation_errors() {
         let (_dom, snapshot, _document, element) = fixture();
-        let DomNodeKind::Element(source) = snapshot.node(element).unwrap().kind() else {
-            panic!("literal element")
-        };
+        let source = snapshot.node(element).unwrap();
+        let source_attributes = source.attributes().unwrap();
+        let source = source.as_element().unwrap();
         for cancelled in [false, true] {
             let mut builder =
                 HtmlCaptureBuilder::new(limits(1_000_000), HtmlHostFactsRevision::fresh());
@@ -1246,13 +1248,13 @@ mod tests {
                 work: 0,
                 cancellation: &cancellation,
             };
-            let backing = source.attributes()[0].value().block();
+            let backing = source_attributes.item(0).unwrap().value().block();
             let strong = backing.holders();
             let result = builder
                 .add_element_from_inputs(
                     &document,
                     source.name(),
-                    source.attributes(),
+                    &source_attributes,
                     HtmlCapturedIsValue::Absent,
                     HtmlCaptureRegistryInput::Null,
                     || control.charge(1),

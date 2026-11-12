@@ -86,11 +86,7 @@ fn parsed_mixed_style_history_establishes_only_original_no_effect_subjects() {
     for binding in installed.bindings() {
         let node = installed.snapshot().node(binding.node()).unwrap();
         if let Some(style) = node.as_style() {
-            let title = node
-                .as_element()
-                .unwrap()
-                .attribute(&DocumentString::from("title"))
-                .unwrap();
+            let title = node.attribute(&DocumentString::from("title")).unwrap();
             let pending = title == &DocumentString::from("pending");
             if pending {
                 assert!(matches!(

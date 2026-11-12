@@ -383,10 +383,8 @@ fn settled_a_meta_c_d_ack_publishes_exact_readiness_preserves_snapshots_and_enab
         .nodes()
         .find(|node| {
             before.node(*node).is_ok_and(|node| {
-                node.as_element().is_some_and(|e| {
-                    e.attribute(&DocumentString::from("title"))
-                        == Some(&DocumentString::from("ignored"))
-                })
+                node.attribute(&DocumentString::from("title"))
+                    == Some(&DocumentString::from("ignored"))
             })
         })
         .unwrap();

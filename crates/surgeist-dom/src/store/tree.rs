@@ -410,8 +410,12 @@ impl Draft {
                 self.select_reserve(&mut pending, 1, cancelled)?;
                 pending.push(contents);
             }
-            // Attributes are value records owned by this Element, not Attr
-            // nodes. Their node-document is consequently this same relation.
+            let attributes = self.node(node)?.attribute_ids();
+            self.select_reserve(&mut pending, attributes.len(), cancelled)?;
+            for attribute in attributes.iter().rev() {
+                self.source_step(cancelled)?;
+                pending.push((attribute, document));
+            }
         }
         Ok(())
     }
@@ -452,7 +456,7 @@ impl Draft {
             return Err(DomError::NotFound);
         }
         let kind = self.node(node)?.kind();
-        if matches!(kind, KindRead::Document(_)) {
+        if matches!(kind, KindRead::Document(_) | KindRead::Attr(_)) {
             return Err(DomError::HierarchyRequest);
         }
         if !matches!(self.node(parent)?.kind(), KindRead::Document(_)) {

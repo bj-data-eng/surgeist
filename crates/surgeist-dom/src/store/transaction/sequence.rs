@@ -548,22 +548,20 @@ mod tests {
         ledger: &Ledger,
     ) -> (
         Sequence<u32, u64>,
-        super::super::super::payload::Sealed<
-            super::super::super::canonical::ContainerChildren<u32>,
-        >,
+        super::super::super::payload::Sealed<super::super::super::canonical::NodeSequence<u32>>,
         super::super::super::bank::CustodyRegistry,
     ) {
-        use super::super::super::{bank::CustodyRegistry, canonical::ContainerChildren, payload};
+        use super::super::super::{bank::CustodyRegistry, canonical::NodeSequence, payload};
         let registry = CustodyRegistry::new(ledger, accept).unwrap();
         let usage = Usage::new(
-            size_of::<payload::Payload<ContainerChildren<u32>>>()
+            size_of::<payload::Payload<NodeSequence<u32>>>()
                 + size_of::<Vec<u32>>()
                 + values.capacity() * size_of::<u32>(),
             0,
         );
         let group = payload::Pending::new(
             Held::new(
-                ContainerChildren {
+                NodeSequence {
                     values: values.clone(),
                 },
                 ledger.retain(Usage::ZERO, accept).unwrap(),
@@ -592,14 +590,14 @@ mod tests {
 
     #[test]
     fn captured_group_alias_retains_original_backing_without_a_second_occurrence() {
-        use super::super::super::{bank::CustodyRegistry, canonical::ContainerChildren, payload};
+        use super::super::super::{bank::CustodyRegistry, canonical::NodeSequence, payload};
         let ledger = Ledger::default();
         let registry = CustodyRegistry::new(&ledger, accept).unwrap();
         let mut values = Vec::with_capacity(4096);
         values.extend([3u32, 5, 8]);
         let values = SharedVec::from(values);
         let usage = Usage::new(
-            size_of::<payload::Payload<ContainerChildren<u32>>>()
+            size_of::<payload::Payload<NodeSequence<u32>>>()
                 + size_of::<Vec<u32>>()
                 + values.capacity() * size_of::<u32>(),
             0,
@@ -607,7 +605,7 @@ mod tests {
         let debit = ledger.retain(Usage::ZERO, accept).unwrap();
         let original = payload::Pending::new(
             super::super::super::custody::Held::new(
-                ContainerChildren {
+                NodeSequence {
                     values: values.clone(),
                 },
                 debit,

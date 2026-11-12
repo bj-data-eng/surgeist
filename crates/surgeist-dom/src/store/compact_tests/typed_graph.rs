@@ -113,7 +113,7 @@ impl Walker<'_> {
         self.text(out, value.local_name());
         self.atom(value.local_name_atom());
     }
-    fn container<K>(&mut self, value: &Option<Arc<Target<canonical::ContainerChildren<K>>>>) {
+    fn container<K>(&mut self, value: &Option<Arc<Target<canonical::NodeSequence<K>>>>) {
         if let Some(value) = value {
             let mut raw = Raw::default();
             self.sequence(&mut raw, &value.value.values);
@@ -176,23 +176,6 @@ impl Walker<'_> {
         let mut raw = Raw::default();
         self.qualified(&mut raw, &name.value.value);
         self.object(name, raw, "element.name");
-        if let Some(binding) = element.attribute_binding() {
-            let mut text = Raw::default();
-            let storage = &binding.value.storage;
-            for attribute in storage.entries() {
-                self.qualified(&mut text, attribute.name());
-                self.text(&mut text, attribute.value());
-            }
-            self.object(binding, text, "element.attributes");
-            if let Some(bank) = storage.payload() {
-                let mut raw = Raw::default();
-                raw.bytes(bank.value.capacity() * size_of::<crate::DomAttribute>());
-                self.object(bank, raw, "attributes.target");
-                if let Some(graph) = &mut self.graph {
-                    storage.inspect_allocations(graph);
-                }
-            }
-        }
         if let Some(custom) = element.custom_payload() {
             let mut raw = Raw::default();
             if let Some(text) = &custom.value.saved_is {
@@ -407,6 +390,18 @@ impl Walker<'_> {
                 self.root(v, "node.element");
                 let v = &v.value;
                 self.element(&v.element);
+                if let Some(attributes) = &v.attributes {
+                    let mut raw = Raw::default();
+                    raw.sequence(&attributes.value.values);
+                    self.object(attributes, raw, "attributes.target");
+                    if let Some(graph) = &mut self.graph {
+                        attributes.value.values.inspect_named_allocations(
+                            graph,
+                            "attributes.vector",
+                            "attributes.buffer",
+                        );
+                    }
+                }
                 self.container(&v.children);
                 if let Some(v) = &v.slottable {
                     self.fixed(v, "node.slottable");
@@ -415,6 +410,14 @@ impl Walker<'_> {
                     self.fixed(v, "node.shadow.host");
                 }
                 self.association(&v.associations);
+            }
+            Node::Attr(v) => {
+                self.root(v, "node.attr");
+                let mut raw = Raw::default();
+                let data = &v.value.data;
+                self.qualified(&mut raw, data.value.name());
+                self.text(&mut raw, data.value.value());
+                self.object(data, raw, "attr.data");
             }
             Node::DocumentFragment(v) => {
                 self.root(v, "node.fragment");
@@ -498,6 +501,7 @@ pub(in crate::store) fn slot_payload(slot: &Slot) -> custody::Usage {
     let root = slot.node.as_ref().map_or(0, |node| match node {
         Node::Document(_) => size_of::<Target<canonical::DocumentNode<NodeId>>>(),
         Node::Element(_) => size_of::<Target<canonical::ElementNode<NodeId>>>(),
+        Node::Attr(_) => size_of::<Target<canonical::AttrNode<NodeId>>>(),
         Node::DocumentFragment(_) => size_of::<Target<canonical::FragmentNode<NodeId>>>(),
         Node::ShadowRoot(_) => size_of::<Target<canonical::ShadowNode<NodeId>>>(),
         Node::Text(_) => size_of::<Target<canonical::TextNode<NodeId>>>(),

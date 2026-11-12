@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::DomDocumentStamp;
 use crate::view_transition::*;
-use crate::{DocumentId, DomSnapshot, NodeId};
+use crate::{DocumentId, DomAttrId, DomSnapshot, NodeId};
 use surgeist_css::values::view_transition::CssViewTransitionIdent;
 use surgeist_html::values::{DocumentString, Namespace};
 
@@ -22,6 +22,20 @@ pub struct CreatedNode {
 /// matching declarative root already attached to the host.
 #[derive(Clone, Debug)]
 pub struct AttachedShadowRoot {
+    pub(crate) owner: Arc<BatchIdentity>,
+    pub(crate) index: usize,
+}
+
+/// A removal result that can be resolved only by this batch's commit.
+#[derive(Clone, Debug)]
+pub struct RemovedAttribute {
+    pub(crate) owner: Arc<BatchIdentity>,
+    pub(crate) index: usize,
+}
+
+/// A native attachment result that can be resolved only by this batch's commit.
+#[derive(Clone, Debug)]
+pub struct AttachedAttribute {
     pub(crate) owner: Arc<BatchIdentity>,
     pub(crate) index: usize,
 }
@@ -62,6 +76,10 @@ pub(crate) enum Creation {
     Element(DocumentString),
     ElementNs {
         namespace: Namespace,
+        name: DocumentString,
+    },
+    Attr {
+        namespace: Option<Namespace>,
         name: DocumentString,
     },
     Text(DocumentString),
@@ -268,6 +286,15 @@ pub(crate) enum Command {
         node: NodeOperand,
         namespace: Option<Namespace>,
         name: DocumentString,
+        return_identity: bool,
+    },
+    RemoveAttributeNode {
+        node: NodeOperand,
+        attribute: DomAttrId,
+    },
+    AttachNativeAttribute {
+        node: NodeOperand,
+        attribute: DomAttrId,
     },
     Destroy(NodeOperand),
     ReplaceData {
@@ -722,6 +749,35 @@ impl DomBatch {
             Some(document.into()),
         )
     }
+    /// Create an empty detached Attr in the selected Document.
+    pub fn create_attribute(
+        &mut self,
+        document: impl Into<NodeOperand>,
+        local_name: impl Into<DocumentString>,
+    ) -> CreatedNode {
+        self.create(
+            Creation::Attr {
+                namespace: None,
+                name: local_name.into(),
+            },
+            Some(document.into()),
+        )
+    }
+    /// Create an empty detached Attr with an exact namespace and qualified name.
+    pub fn create_attribute_ns(
+        &mut self,
+        document: impl Into<NodeOperand>,
+        namespace: Namespace,
+        qualified_name: impl Into<DocumentString>,
+    ) -> CreatedNode {
+        self.create(
+            Creation::Attr {
+                namespace: Some(namespace),
+                name: qualified_name.into(),
+            },
+            Some(document.into()),
+        )
+    }
     /// Sets the actual weak commandForElement reference of a native Button.
     /// The target may be a same-batch Element, detached, self or another document.
     pub fn set_command_for_element(
@@ -1029,6 +1085,7 @@ impl DomBatch {
             node: node.into(),
             namespace: None,
             name: qualified_name.into(),
+            return_identity: false,
         });
     }
     /// Removes by exact namespace/local identity. Removal performs no name
@@ -1043,7 +1100,77 @@ impl DomBatch {
             node: node.into(),
             namespace: Some(namespace),
             name: local_name.into(),
+            return_identity: false,
         });
+    }
+    /// Detach the specified Attr from this Element. A live Attr owned by
+    /// another Element or already detached refuses with NotFound.
+    pub fn remove_attribute_node(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        attribute: DomAttrId,
+    ) -> RemovedAttribute {
+        self.attribute_removal(Command::RemoveAttributeNode {
+            node: node.into(),
+            attribute,
+        })
+    }
+    /// Attach an already authored native Attr by expanded name. This operation
+    /// changes canonical state and runs native hooks. Web-facing setters use
+    /// their separate policy verification boundary before canonical attachment.
+    pub fn attach_native_attribute(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        attribute: DomAttrId,
+    ) -> AttachedAttribute {
+        let attached = AttachedAttribute {
+            owner: self.owner.clone(),
+            index: self.node_outputs,
+        };
+        self.node_outputs += 1;
+        self.commands.push(Command::AttachNativeAttribute {
+            node: node.into(),
+            attribute,
+        });
+        attached
+    }
+    /// Remove the current NamedNodeMap item by qualified name or refuse with
+    /// NotFound when the name is absent.
+    pub fn remove_named_item(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        qualified_name: impl Into<DocumentString>,
+    ) -> RemovedAttribute {
+        self.attribute_removal(Command::RemoveAttribute {
+            node: node.into(),
+            namespace: None,
+            name: qualified_name.into(),
+            return_identity: true,
+        })
+    }
+    /// Remove the current NamedNodeMap item by expanded name or refuse with
+    /// NotFound when the name is absent.
+    pub fn remove_named_item_ns(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        namespace: Namespace,
+        local_name: impl Into<DocumentString>,
+    ) -> RemovedAttribute {
+        self.attribute_removal(Command::RemoveAttribute {
+            node: node.into(),
+            namespace: Some(namespace),
+            name: local_name.into(),
+            return_identity: true,
+        })
+    }
+    fn attribute_removal(&mut self, command: Command) -> RemovedAttribute {
+        let removed = RemovedAttribute {
+            owner: self.owner.clone(),
+            index: self.node_outputs,
+        };
+        self.node_outputs += 1;
+        self.commands.push(command);
+        removed
     }
     /// Destroys a detached non-Document, non-ShadowRoot subtree, including owned
     /// shadow trees, retiring published identities.

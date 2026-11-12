@@ -819,7 +819,7 @@ impl Families {
         let unchanged_attributes = match (change.before, change.after) {
             (Some(before), Some(after)) => match (before.kind(), after.kind()) {
                 (KindRead::Element(before), KindRead::Element(after)) => {
-                    before.language().same_attribute_storage(after.language())
+                    before.same_attributes(after)
                         && surgeist_html::vocabulary::KnownHtmlElement::from_name(before.name())
                             == surgeist_html::vocabulary::KnownHtmlElement::from_name(after.name())
                 }

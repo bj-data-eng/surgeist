@@ -1299,8 +1299,11 @@ mod movement_metrics_tests {
 
             let (result, counters) = measured(|| draft.register_ticket(created, &cancel));
             result.unwrap();
-            assert_eq!(draft.tickets, [created]);
-            assert_eq!(counters.sequence_materialized_bytes, size_of::<Key>());
+            assert_eq!(draft.tickets, [NodeTicket::Node(created)]);
+            assert_eq!(
+                counters.sequence_materialized_bytes,
+                size_of::<NodeTicket>()
+            );
             assert_eq!(counters.relation_sequence_materialized_bytes, 0);
 
             let Key::Existing(target) = document else {

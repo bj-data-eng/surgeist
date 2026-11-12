@@ -404,11 +404,7 @@ fn clone_copies_only_started_after_actual_copied_async_and_import_reads_old_snap
     assert_eq!(script(&s, imported).preparation_document(), None);
     assert_eq!(script(&s, imported).script_type(), None);
     assert_eq!(
-        s.node(imported)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"src".into()),
+        s.node(imported).unwrap().attribute(&"src".into()),
         Some(&"old".into())
     );
     assert_eq!(

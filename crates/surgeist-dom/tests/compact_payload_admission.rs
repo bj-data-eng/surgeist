@@ -91,15 +91,15 @@ fn topology_value(snapshot: &DomSnapshot, target: NodeId, element: bool) -> &Doc
             element.name().local_name().code_units(),
             [99, 101, 108, 108]
         );
-        let attributes = element.attributes();
+        let attributes = node.attributes().unwrap();
         assert_eq!(attributes.len(), 1);
-        assert!(attributes[0].name().namespace_uri().is_none());
-        assert!(attributes[0].name().prefix().is_none());
+        assert!(attributes.item(0).unwrap().name().namespace_uri().is_none());
+        assert!(attributes.item(0).unwrap().name().prefix().is_none());
         assert_eq!(
-            attributes[0].name().local_name().code_units(),
+            attributes.item(0).unwrap().name().local_name().code_units(),
             [112, 97, 121, 108, 111, 97, 100]
         );
-        attributes[0].value()
+        attributes.item(0).unwrap().value()
     } else {
         assert!(node.as_element().is_none());
         node.data().unwrap()
@@ -126,7 +126,7 @@ fn move_unchanged_payload(element: bool) {
         let to = created.created(&to).unwrap().unwrap();
         let target = created.created(&target).unwrap().unwrap();
         let old = dom.snapshot();
-        assert_eq!(old.nodes().count(), 4);
+        assert_eq!(old.nodes().count(), 4 + usize::from(element));
         assert_eq!(old.node(from).unwrap().children(), [target]);
         assert!(old.node(to).unwrap().children().is_empty());
         assert_eq!(old.node(target).unwrap().parent(), Some(from));
@@ -149,7 +149,7 @@ fn move_unchanged_payload(element: bool) {
             ]
         );
         let now = dom.snapshot();
-        assert_eq!(now.nodes().count(), 4);
+        assert_eq!(now.nodes().count(), 4 + usize::from(element));
         assert!(now.node(from).unwrap().children().is_empty());
         assert_eq!(now.node(to).unwrap().children(), [target]);
         assert_eq!(now.node(target).unwrap().id(), target);
@@ -215,7 +215,7 @@ fn source_attribute_edit_shares_large_unchanged_native_value_and_children_under_
         let native_backing = native.state().current_value().clone();
         let native_capacity = native_backing.retained_units();
         assert!(native_capacity < SOURCE_UNITS);
-        assert!(node.as_element().unwrap().attributes().is_empty());
+        assert!(node.attributes().unwrap().is_empty());
         eprintln!("native Input premise extent={extent} actual_capacity={native_capacity}");
 
         let done = complete(
@@ -223,28 +223,35 @@ fn source_attribute_edit_shares_large_unchanged_native_value_and_children_under_
             DomSourceEdit::set_attribute(input, "id", "changed"),
             extent,
         );
+        let now = dom.snapshot();
+        assert_eq!(now.nodes().count(), 67);
+        let current = now.node(input).unwrap();
+        let attr = current.get_attribute_node(&"id".into()).unwrap();
         assert_eq!(
             done.commit().changes().changes(),
-            [DomChange::Attributes(input)]
+            [
+                DomChange::Attributes(input),
+                DomChange::Created(attr.id().node())
+            ]
         );
-        let now = dom.snapshot();
-        assert_eq!(now.nodes().count(), 66);
-        let current = now.node(input).unwrap();
         assert_eq!(current.id(), input);
         assert_eq!(current.owner_document(), Some(document));
         assert_eq!(current.parent(), None);
         assert_eq!(current.children(), children);
         assert!(std::ptr::eq(node.children(), current.children()));
-        let attributes = current.as_element().unwrap().attributes();
+        let attributes = current.attributes().unwrap();
         assert_eq!(attributes.len(), 1);
-        assert!(attributes[0].name().namespace_uri().is_none());
-        assert!(attributes[0].name().prefix().is_none());
-        assert_eq!(attributes[0].name().local_name().code_units(), [105, 100]);
+        assert!(attributes.item(0).unwrap().name().namespace_uri().is_none());
+        assert!(attributes.item(0).unwrap().name().prefix().is_none());
         assert_eq!(
-            attributes[0].value().code_units(),
+            attributes.item(0).unwrap().name().local_name().code_units(),
+            [105, 100]
+        );
+        assert_eq!(
+            attributes.item(0).unwrap().value().code_units(),
             [99, 104, 97, 110, 103, 101, 100]
         );
-        assert!(node.as_element().unwrap().attributes().is_empty());
+        assert!(node.attributes().unwrap().is_empty());
         assert_eq!(node.children(), children);
         for snapshot in [&old, &now] {
             let node = snapshot.node(input).unwrap();

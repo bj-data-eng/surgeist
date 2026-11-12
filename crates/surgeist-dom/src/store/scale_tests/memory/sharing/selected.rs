@@ -38,16 +38,14 @@ impl Selection {
         let managed: usize = dimensions[2]
             .parse()
             .map_err(|_| "invalid SURGEIST_MEMORY_MANAGED")?;
-        let geometry = match (rows, columns, managed) {
-            (2, 3, 16) => Geometry::Tiny,
-            (8, 32, 522) => Geometry::Representative,
-            _ => return Err("the layered fixture requires 2x3/16 nodes or 8x32/522 nodes"),
+        let geometry = match (rows, columns) {
+            (2, 3) => Geometry::Tiny,
+            (8, 32) => Geometry::Representative,
+            _ => return Err("the layered fixture requires a 2x3 or 8x32 grid"),
         };
         let mode = match mode {
             "independent" => Mode::Independent,
             "caller-shared" => Mode::CallerShared,
-            "banks-only" => Mode::BanksOnly,
-            "combined" => Mode::Combined,
             _ => return Err("invalid SURGEIST_MEMORY_MODE"),
         };
         let unique = match ids {
@@ -61,6 +59,9 @@ impl Selection {
             "unique-short" => ValuePattern::UniqueShort,
             _ => return Err("invalid SURGEIST_MEMORY_VALUES"),
         };
+        if managed != geometry.managed_nodes(unique) {
+            return Err("SURGEIST_MEMORY_MANAGED must count tree nodes and authored Attr nodes");
+        }
         values.validate(mode, unique)?;
         Ok(Self {
             geometry,
@@ -79,7 +80,7 @@ impl Selection {
             rows: self.geometry.rows(),
             columns: self.geometry.columns(),
             cells: self.geometry.cells(),
-            managed: self.geometry.nodes(),
+            managed: self.geometry.managed_nodes(self.unique),
             sample: self.sample,
         }
     }
@@ -124,7 +125,10 @@ fn configuration() -> (Selection, Vec<HolderStage>, Option<Config>) {
     if let Some(existing) = optional("SURGEIST_SCALE_SIZES") {
         assert_eq!(
             existing,
-            selection.geometry.nodes().to_string(),
+            selection
+                .geometry
+                .managed_nodes(selection.unique)
+                .to_string(),
             "conflicting inherited scale size selection"
         );
     }
@@ -148,7 +152,6 @@ struct Holders {
     old: bool,
     current: bool,
     inputs: bool,
-    guard: bool,
     ids: bool,
 }
 
@@ -168,7 +171,6 @@ fn holders(stage: HolderStage) -> Holders {
         old: !matches!(stage, HolderStage::HarnessOnly | HolderStage::Released),
         current: matches!(stage, HolderStage::Edited | HolderStage::OwnerDropped),
         inputs: stage == HolderStage::CallerInputsHeld,
-        guard: owner,
         ids: !matches!(stage, HolderStage::HarnessOnly | HolderStage::Released),
     }
 }
@@ -191,7 +193,7 @@ fn native_layered_selected_holder_stages() {
     let rows = selection.geometry.rows();
     let columns = selection.geometry.columns();
     let cells = selection.geometry.cells();
-    let managed = selection.geometry.nodes();
+    let managed = selection.geometry.managed_nodes(selection.unique);
     let authored_attributes = selection.geometry.attributes(selection.unique);
     eprintln!(
         "memory_layered_selected profile=release pid={pid} population=native-layered rows={rows} columns={columns} cells={cells} managed={managed} authored_attributes={authored_attributes} mode={} ids={} values={} sample={} counters_enabled={} counters_build_value={:?} revision={} toolchain={} machine={} os={} arch={} stage_gate_enabled={stage_gate} pointer_inventory=false physical_backend=external_not_run_by_fixture timings_exclude_callbacks=true setup_includes_inputs_batch_apply_identity_lookup=true setup_excludes_oracles=true edit_intervals_include_batch_apply=true edit_intervals_exclude_oracles_commit_drop=true tool_inspected_runs_are_perturbed=true mutation_peak_not_established=true",
@@ -210,7 +212,7 @@ fn native_layered_selected_holder_stages() {
     let mut observe = |at| {
         let held = holders(at);
         eprintln!(
-            "memory_layered_selected_stage pid={pid} population=native-layered rows={rows} columns={columns} cells={cells} managed={managed} authored_attributes={authored_attributes} mode={} ids={} values={} sample={} stage={} owner_live={} old_snapshot_live={} current_snapshot_live={} caller_inputs_live={} control_weak_live={} creation_commit_live=false edit_commit_live=false id_scratch_live={} instrumentation_storage_not_subtracted=true allocator_reclamation_not_observed=true",
+            "memory_layered_selected_stage pid={pid} population=native-layered rows={rows} columns={columns} cells={cells} managed={managed} authored_attributes={authored_attributes} mode={} ids={} values={} sample={} stage={} owner_live={} old_snapshot_live={} current_snapshot_live={} caller_inputs_live={} creation_commit_live=false edit_commit_live=false id_scratch_live={} instrumentation_storage_not_subtracted=true allocator_reclamation_not_observed=true",
             selection.mode.name(),
             selection.unique.name(),
             selection.values.name(),
@@ -220,7 +222,6 @@ fn native_layered_selected_holder_stages() {
             held.old,
             held.current,
             held.inputs,
-            held.guard,
             held.ids
         );
         if let Some(gate) = &mut gate {
@@ -279,22 +280,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn layered_selection_accepts_twelve_cases_per_supported_geometry() {
-        for (rows, columns, managed, geometry) in [
-            ("2", "3", "16", Geometry::Tiny),
-            ("8", "32", "522", Geometry::Representative),
+    fn layered_selection_accepts_six_cases_per_supported_geometry() {
+        for (rows, columns, geometry, counts) in [
+            ("2", "3", Geometry::Tiny, ["28", "30", "34"]),
+            (
+                "8",
+                "32",
+                Geometry::Representative,
+                ["1034", "1042", "1290"],
+            ),
         ] {
             for (mode_name, mode) in [
                 ("independent", Mode::Independent),
                 ("caller-shared", Mode::CallerShared),
-                ("banks-only", Mode::BanksOnly),
-                ("combined", Mode::Combined),
             ] {
-                for (ids, unique) in [
+                for ((ids, unique), managed) in [
                     ("repeated", Unique::None),
                     ("row-ids", Unique::Rows),
                     ("cell-ids", Unique::Cells),
-                ] {
+                ]
+                .into_iter()
+                .zip(counts)
+                {
                     assert_eq!(
                         Selection::parse(
                             "native-layered",
@@ -317,13 +324,21 @@ mod tests {
             }
         }
         for values in [
-            ["parsed-table", "2", "3", "16", "combined", "repeated", "0"],
+            [
+                "parsed-table",
+                "2",
+                "3",
+                "28",
+                "independent",
+                "repeated",
+                "0",
+            ],
             [
                 "native-layered",
                 "3",
                 "3",
-                "16",
-                "combined",
+                "28",
+                "independent",
                 "repeated",
                 "0",
             ],
@@ -331,8 +346,8 @@ mod tests {
                 "native-layered",
                 "2",
                 "4",
-                "16",
-                "combined",
+                "28",
+                "independent",
                 "repeated",
                 "0",
             ],
@@ -341,18 +356,18 @@ mod tests {
                 "2",
                 "3",
                 "1000",
-                "combined",
+                "independent",
                 "repeated",
                 "0",
             ],
-            ["native-layered", "2", "3", "16", "all", "repeated", "0"],
-            ["native-layered", "2", "3", "16", "combined", "all", "0"],
+            ["native-layered", "2", "3", "28", "all", "repeated", "0"],
+            ["native-layered", "2", "3", "28", "independent", "all", "0"],
             [
                 "native-layered",
                 "8",
                 "32",
-                "16",
-                "combined",
+                "28",
+                "independent",
                 "repeated",
                 "0",
             ],
@@ -361,7 +376,7 @@ mod tests {
                 "8",
                 "32",
                 "523",
-                "combined",
+                "independent",
                 "repeated",
                 "0",
             ],
@@ -369,8 +384,8 @@ mod tests {
                 "native-layered",
                 "8",
                 "33",
-                "522",
-                "combined",
+                "1034",
+                "independent",
                 "repeated",
                 "0",
             ],
@@ -379,7 +394,7 @@ mod tests {
                 "32",
                 "32",
                 "2082",
-                "combined",
+                "independent",
                 "repeated",
                 "0",
             ],
@@ -387,8 +402,8 @@ mod tests {
                 "native-layered",
                 "2",
                 "3",
-                "16",
-                "combined",
+                "28",
+                "independent",
                 "repeated",
                 "3",
             ],
@@ -409,45 +424,51 @@ mod tests {
 
     #[test]
     fn unique_short_selection_requires_distinct_inputs_and_no_extra_id_pattern() {
-        for (dimensions, geometry) in [
-            (["2", "3", "16"], Geometry::Tiny),
-            (["8", "32", "522"], Geometry::Representative),
+        for (rows, columns, geometry, [repeated, row_ids, cell_ids]) in [
+            ("2", "3", Geometry::Tiny, ["28", "30", "34"]),
+            (
+                "8",
+                "32",
+                Geometry::Representative,
+                ["1034", "1042", "1290"],
+            ),
         ] {
-            for (name, mode) in [
-                ("independent", Mode::Independent),
-                ("banks-only", Mode::BanksOnly),
-                ("combined", Mode::Combined),
-            ] {
-                assert_eq!(
-                    Selection::parse(
-                        "native-layered",
-                        dimensions,
-                        name,
-                        "repeated",
-                        "unique-short",
-                        "0"
-                    )
-                    .unwrap(),
-                    Selection {
-                        geometry,
-                        mode,
-                        unique: Unique::None,
-                        values: ValuePattern::UniqueShort,
-                        sample: Sample::First,
-                    }
-                );
-            }
-            for (mode, ids, values) in [
-                ("caller-shared", "repeated", "unique-short"),
-                ("independent", "row-ids", "unique-short"),
-                ("banks-only", "cell-ids", "unique-short"),
-                ("combined", "row-ids", "unique-short"),
-                ("combined", "repeated", ""),
-                ("combined", "repeated", "unique"),
-                ("combined", "repeated", "all"),
+            assert_eq!(
+                Selection::parse(
+                    "native-layered",
+                    [rows, columns, repeated],
+                    "independent",
+                    "repeated",
+                    "unique-short",
+                    "0",
+                )
+                .unwrap(),
+                Selection {
+                    geometry,
+                    mode: Mode::Independent,
+                    unique: Unique::None,
+                    values: ValuePattern::UniqueShort,
+                    sample: Sample::First,
+                }
+            );
+            for (mode, ids, values, managed) in [
+                ("caller-shared", "repeated", "unique-short", repeated),
+                ("independent", "row-ids", "unique-short", row_ids),
+                ("independent", "cell-ids", "unique-short", cell_ids),
+                ("independent", "repeated", "", repeated),
+                ("independent", "repeated", "unique", repeated),
+                ("independent", "repeated", "all", repeated),
             ] {
                 assert!(
-                    Selection::parse("native-layered", dimensions, mode, ids, values, "0").is_err()
+                    Selection::parse(
+                        "native-layered",
+                        [rows, columns, managed],
+                        mode,
+                        ids,
+                        values,
+                        "0",
+                    )
+                    .is_err()
                 );
             }
         }
@@ -484,7 +505,7 @@ mod tests {
             geometry.rows(),
             geometry.columns(),
             geometry.cells(),
-            geometry.nodes(),
+            geometry.managed_nodes(unique),
             mode.name(),
             unique.name(),
             values.name(),
@@ -519,12 +540,7 @@ mod tests {
     }
 
     fn check_all_modes_and_id_patterns(geometry: Geometry) {
-        for mode in [
-            Mode::Independent,
-            Mode::CallerShared,
-            Mode::BanksOnly,
-            Mode::Combined,
-        ] {
+        for mode in [Mode::Independent, Mode::CallerShared] {
             for unique in [Unique::None, Unique::Rows, Unique::Cells] {
                 check_case(geometry, mode, unique, ValuePattern::RepeatedShort);
             }
@@ -560,14 +576,15 @@ mod tests {
     }
 
     #[test]
-    fn unique_short_payloads_preserve_three_layer_modes_and_release_stages() {
+    fn unique_short_payloads_preserve_independent_values_and_release_stages() {
         for (geometry, payloads, attributes) in [
             (Geometry::Tiny, 18, 12),
             (Geometry::Representative, 768, 512),
         ] {
             assert_eq!(geometry.cells() * 3, payloads);
             assert_eq!(geometry.attributes(Unique::None), attributes);
-            for mode in [Mode::Independent, Mode::BanksOnly, Mode::Combined] {
+            {
+                let mode = Mode::Independent;
                 check_case(geometry, mode, Unique::None, ValuePattern::UniqueShort);
             }
         }

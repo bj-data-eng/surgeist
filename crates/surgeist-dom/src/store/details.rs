@@ -230,7 +230,14 @@ impl Draft {
                 // appends its own transition and requests no further closing.
                 let operand = source::formation::Formation::new(self, cancel)?;
                 let name = source::formation::string("open", operand.as_ref(), cancel)?;
-                return self.remove_attribute(close, None, &name, limits, cancel);
+                return self.remove_attribute(
+                    close,
+                    None,
+                    &name,
+                    attributes::AttributeRemoval::IgnoreMissing,
+                    limits,
+                    cancel,
+                );
             }
             next = self
                 .families
@@ -629,7 +636,12 @@ mod tests {
     fn actual_source_retirement_growth(bytes: usize) -> Option<source_observation::Growth> {
         let (mut dom, _, a, _) = fixture();
         let cancel = AtomicBool::new(false);
-        dom.set_limits(policy(1024)).unwrap();
+        // Each removal keeps a detached Attr alongside the queued intentions.
+        dom.set_limits(DomLimits {
+            nodes: 3 + 16 * 16,
+            ..policy(1024)
+        })
+        .unwrap();
         for _ in 0..16 {
             let mut setup = DomBatch::new();
             for _ in 0..16 {
@@ -759,8 +771,7 @@ mod tests {
         units.push(u16::from(b'g'));
         let block = surgeist_html::values::TextBlock::from_utf16(units);
         let (mut draft, key) = draft_named(block.string(0..1).unwrap());
-        // No path has listed the block when the exclusivity step reads the name, as when the
-        // attribute bank had not: the read lists it itself, once.
+        // Isolate the exclusivity read by removing the Attr value's listing.
         draft.custody_registry().unlist_block(&block);
         assert_eq!(draft.custody_registry().listed_blocks(), 0);
         source_budget(&mut draft, 1_000_000, 10_000);
@@ -1273,7 +1284,6 @@ mod tests {
         let mut b = DomBatch::new();
         let n = b.create_element_ns(doc, Namespace::html(), "details");
         b.set_attribute(&n, "open", "");
-        b.remove_attribute(&n, "open");
         b.destroy(&n);
         let c = dom.apply(b, &cancel).unwrap();
         assert_eq!(c.created(&n).unwrap(), None);

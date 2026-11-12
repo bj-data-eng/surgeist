@@ -197,9 +197,10 @@ fn exact_canonical_utf16_is_untouched_while_css_retains_its_preprocessing_map() 
         dom.snapshot()
             .node(element)
             .unwrap()
-            .as_element()
+            .attributes()
             .unwrap()
-            .attributes()[0]
+            .item(0)
+            .unwrap()
             .value()
             .code_units(),
         units

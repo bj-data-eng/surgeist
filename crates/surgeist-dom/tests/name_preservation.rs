@@ -78,9 +78,9 @@ fn assert_values(snapshot: &DomSnapshot, id: NodeId, document: DocumentId) {
     );
     assert_eq!(name.prefix().unwrap().code_units(), [80, 114]);
     assert_eq!(name.local_name().code_units(), [65, 0xd800]);
-    let attributes = element.attributes();
+    let attributes = node.attributes().unwrap();
     assert_eq!(attributes.len(), 3);
-    let first = &attributes[0];
+    let first = attributes.item(0).unwrap();
     assert_eq!(
         first.name().namespace_uri().unwrap().code_units(),
         [117, 114, 110, 58, 0xd800]
@@ -88,12 +88,12 @@ fn assert_values(snapshot: &DomSnapshot, id: NodeId, document: DocumentId) {
     assert_eq!(first.name().prefix().unwrap().code_units(), [113]);
     assert_eq!(first.name().local_name().code_units(), [75, 0xdfff]);
     assert_eq!(first.value().code_units(), [0, 0xd800, 13, 10, 0xdc00]);
-    let second = &attributes[1];
+    let second = attributes.item(1).unwrap();
     assert!(second.name().namespace_uri().is_none());
     assert!(second.name().prefix().is_none());
     assert_eq!(second.name().local_name().code_units(), [112, 58, 120]);
     assert_eq!(second.value().code_units(), [101, 0x301]);
-    let third = &attributes[2];
+    let third = attributes.item(2).unwrap();
     assert_eq!(
         third.name().namespace_uri().unwrap().code_units(),
         [117, 114, 110, 58, 0xdc00]
@@ -170,7 +170,7 @@ fn raw_names_and_attribute_order_survive_cross_document_copy_adoption_and_owner_
 }
 
 #[test]
-fn restored_expanded_attribute_values_keep_original_bank_and_empty_history() {
+fn restored_expanded_attribute_values_keep_identity_and_empty_history() {
     let (mut dom, document, _, root) = fixture();
     let before = dom.snapshot();
     let usage = dom.usage();
@@ -187,8 +187,6 @@ fn restored_expanded_attribute_values_keep_original_bank_and_empty_history() {
         units(&[122, 58, 75, 0xdfff]),
         units(&[0, 0xd800, 13, 10, 0xdc00]),
     );
-    batch.set_attribute(root, "transient", "gone");
-    batch.remove_attribute(root, "transient");
     let done = apply(&mut dom, batch);
     assert!(done.changes().changes().is_empty());
     assert_eq!(dom.snapshot().stamp(), before.stamp());
@@ -202,15 +200,40 @@ fn restored_expanded_attribute_values_keep_original_bank_and_empty_history() {
     let after = dom.snapshot();
     assert_values(&after, root, document);
     assert_values(&before, root, document);
-    assert!(std::ptr::eq(
-        before
+    let before = before.node(root).unwrap().attributes().unwrap();
+    let after = after.node(root).unwrap().attributes().unwrap();
+    assert!(before.iter().zip(after.iter()).all(|(before, after)| {
+        before.id() == after.id()
+            && std::ptr::eq(before.name(), after.name())
+            && std::ptr::eq(before.value(), after.value())
+    }));
+}
+
+#[test]
+fn removing_a_same_batch_attribute_publishes_its_detached_identity() {
+    let (mut dom, document, _, root) = fixture();
+    let before = dom.snapshot();
+    let mut batch = DomBatch::new();
+    batch.set_attribute(root, "transient", "gone");
+    batch.remove_attribute(root, "transient");
+    let commit = apply(&mut dom, batch);
+    let after = dom.snapshot();
+    let [surgeist_dom::DomChange::Created(id)] = commit.changes().changes() else {
+        panic!("expected the detached Attr creation");
+    };
+    let attr = after.attr(*id).unwrap();
+    assert_eq!(attr.owner_element(), None);
+    assert_eq!(attr.owner_document(), document);
+    assert_eq!(attr.name().local_name(), &"transient".into());
+    assert_eq!(attr.value(), &"gone".into());
+    assert!(before.attr(*id).is_err());
+    assert!(
+        after
             .node(root)
             .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes(),
-        after.node(root).unwrap().as_element().unwrap().attributes(),
-    ));
+            .attribute(&"transient".into())
+            .is_none()
+    );
 }
 
 const BOUND_TEXTS: [&[u16]; 5] = [
@@ -231,8 +254,11 @@ fn bind_fixture_names(dom: &mut Dom) -> [DomNameAtom; 5] {
 fn assert_fixture_bindings(snapshot: &DomSnapshot, root: NodeId, names: &[DomNameAtom; 5]) {
     let node = snapshot.node(root).unwrap();
     let element = node.as_element().unwrap();
+    let attributes = node.attributes().unwrap();
     assert_eq!(
-        element.attributes()[1]
+        attributes
+            .item(1)
+            .unwrap()
             .name()
             .local_name_atom()
             .same_identity(&names[4]),
@@ -248,7 +274,9 @@ fn assert_fixture_bindings(snapshot: &DomSnapshot, root: NodeId, names: &[DomNam
     );
     for index in [0, 2] {
         assert_eq!(
-            element.attributes()[index]
+            attributes
+                .item(index)
+                .unwrap()
                 .name()
                 .local_name_atom()
                 .same_identity(&names[1]),
@@ -256,7 +284,9 @@ fn assert_fixture_bindings(snapshot: &DomSnapshot, root: NodeId, names: &[DomNam
         );
     }
     assert_eq!(
-        element.attributes()[0]
+        attributes
+            .item(0)
+            .unwrap()
             .name()
             .namespace()
             .unwrap()
@@ -264,7 +294,9 @@ fn assert_fixture_bindings(snapshot: &DomSnapshot, root: NodeId, names: &[DomNam
         Ok(true)
     );
     assert_eq!(
-        element.attributes()[2]
+        attributes
+            .item(2)
+            .unwrap()
             .name()
             .namespace()
             .unwrap()
@@ -313,7 +345,12 @@ fn prebound_identity_follows_owner_domains_while_values_survive_import_and_owner
         let element = before.node(same_local).unwrap();
         let attribute_owner = before.node(root).unwrap();
         let element_name = element.as_element().unwrap().name();
-        let attribute_name = attribute_owner.as_element().unwrap().attributes()[0].name();
+        let attribute_name = attribute_owner
+            .attributes()
+            .unwrap()
+            .item(0)
+            .unwrap()
+            .name();
         assert_eq!(element_name.local_name().code_units(), [75, 0xdfff]);
         assert!(element_name.prefix().is_none());
         assert_eq!(attribute_name.prefix().unwrap().code_units(), [113]);
@@ -370,19 +407,25 @@ fn prebound_identity_follows_owner_domains_while_values_survive_import_and_owner
     assert_values(&after, imported, document);
     assert_fixture_bindings(&after, imported, &destination_names);
     {
-        let source = before.node(root).unwrap();
-        let target = after.node(imported).unwrap();
-        let source = source.as_element().unwrap();
-        let target = target.as_element().unwrap();
+        let source_node = before.node(root).unwrap();
+        let target_node = after.node(imported).unwrap();
+        let source = source_node.as_element().unwrap();
+        let target = target_node.as_element().unwrap();
         assert_eq!(source.name(), target.name());
         assert_eq!(value_hash(source.name()), value_hash(target.name()));
         assert_eq!(
             source.name().same_expanded_identity(target.name()),
             Err(DomError::ForeignOwner)
         );
-        for (source, target) in source.attributes().iter().zip(target.attributes()) {
-            assert_eq!(source, target);
-            assert_eq!(value_hash(source), value_hash(target));
+        let source = source_node.attributes().unwrap();
+        let target = target_node.attributes().unwrap();
+        for (source, target) in source.iter().zip(target.iter()) {
+            assert_ne!(source.id(), target.id());
+            assert_eq!(source.value(), target.value());
+            assert_eq!(
+                value_hash(&(source.name(), source.value())),
+                value_hash(&(target.name(), target.value()))
+            );
             assert_eq!(source.name(), target.name());
             assert_eq!(value_hash(source.name()), value_hash(target.name()));
             assert_eq!(

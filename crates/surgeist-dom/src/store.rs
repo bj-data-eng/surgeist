@@ -6,7 +6,9 @@ use std::{
     },
 };
 
-use crate::batch::{AttachedShadowRoot, BatchIdentity, Command, Creation};
+use crate::batch::{
+    AttachedAttribute, AttachedShadowRoot, BatchIdentity, Command, Creation, RemovedAttribute,
+};
 use crate::document::{DomDocumentMetadata, NATIVE_DOCUMENT_STRING_UNITS};
 use crate::{
     CreatedNode, DocumentId, DomBatch, DomDocumentType, DomElement, DomNodeKind, DomOwnerId,
@@ -110,11 +112,8 @@ mod textarea;
 mod transaction;
 #[cfg(test)]
 pub(crate) use transaction::CopyObservation;
+mod text_custody_ingress;
 mod tree;
-mod value_sharing;
-mod value_sharing_ingress;
-#[cfg(test)]
-mod value_sharing_lifecycle_tests;
 mod view_transition;
 use crate::view_transition::*;
 pub(crate) use bank::owned::{EmptyPath, OwnedBank};
@@ -461,6 +460,7 @@ pub enum DomError {
     SlotInapplicable,
     NonceEnvironmentUnavailable(surgeist_html::security::nonce::HtmlNonceMissing),
     NotFound,
+    InUseAttribute,
     InvalidDestruction,
     IndexSize,
     Cancelled,
@@ -1122,6 +1122,8 @@ pub enum DomChange {
     Created(NodeId),
     Destroyed(NodeId),
     Data(NodeId),
+    AttrValue(crate::DomAttrId),
+    AttrOwner(crate::DomAttrId),
     Attributes(NodeId),
     ElementState(NodeId),
     NodeDocument(NodeId),
@@ -1172,12 +1174,56 @@ impl std::fmt::Display for DomHistoryError {
 }
 impl std::error::Error for DomHistoryError {}
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NodeOutputKind {
+    Node,
+    Document,
+    RemovedAttribute,
+    AttributeAttachment(AttachmentKind),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AttachmentKind {
+    Appended,
+    Unchanged,
+    Replaced,
+}
+
+impl AttachmentKind {
+    fn published(self, node: NodeId) -> crate::DomAttributeAttachment {
+        use crate::DomAttributeAttachment;
+        let id = crate::DomAttrId(node);
+        match self {
+            Self::Appended => DomAttributeAttachment::Appended(id),
+            Self::Unchanged => DomAttributeAttachment::Unchanged(id),
+            Self::Replaced => DomAttributeAttachment::Replaced(id),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NodeTicket {
+    Node(Key),
+    RemovedAttribute(Key),
+    AttributeAttachment(Key, AttachmentKind),
+}
+
+impl NodeTicket {
+    fn key(self) -> Key {
+        match self {
+            Self::Node(key) | Self::RemovedAttribute(key) | Self::AttributeAttachment(key, _) => {
+                key
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct DomCommit {
     created_ranges: Vec<Option<crate::DomRangeId>>,
     owner: Arc<BatchIdentity>,
-    created: Vec<Option<NodeId>>,
-    documents: Vec<bool>,
+    node_outputs: Vec<Option<NodeId>>,
+    node_output_kinds: Vec<NodeOutputKind>,
     transition_ids: Vec<Option<DomViewTransitionId>>,
     record_ids: Vec<Option<DomViewTransitionRecordId>>,
     changes: DomChanges,
@@ -1203,11 +1249,16 @@ impl DomCommit {
         if let Some(Some(range)) = self.created_ranges.first() {
             return Some(crate::DomSourceOutput::Range(*range));
         }
-        if let Some(Some(node)) = self.created.first() {
-            return Some(if self.documents.first() == Some(&true) {
-                crate::DomSourceOutput::Document(DocumentId(*node))
-            } else {
-                crate::DomSourceOutput::Node(*node)
+        if let Some(Some(node)) = self.node_outputs.first() {
+            return Some(match self.node_output_kinds.first()? {
+                NodeOutputKind::Document => crate::DomSourceOutput::Document(DocumentId(*node)),
+                NodeOutputKind::Node => crate::DomSourceOutput::Node(*node),
+                NodeOutputKind::RemovedAttribute => {
+                    crate::DomSourceOutput::RemovedAttribute(crate::DomAttrId(*node))
+                }
+                NodeOutputKind::AttributeAttachment(kind) => {
+                    crate::DomSourceOutput::AttributeAttachment(kind.published(*node))
+                }
             });
         }
         if let Some(Some(id)) = self.transition_ids.first() {
@@ -1248,18 +1299,44 @@ impl DomCommit {
     }
     /// None means the batch destroyed its own unpublished creation.
     pub fn created(&self, ticket: &CreatedNode) -> Result<Option<NodeId>, DomError> {
-        resolve_created_node(&self.owner, &self.created, ticket)
+        resolve_created_node(&self.owner, &self.node_outputs, ticket)
     }
     /// Return the attached root if it survives this batch's final publication.
     pub fn attached_shadow_root(
         &self,
         ticket: &AttachedShadowRoot,
     ) -> Result<Option<NodeId>, DomError> {
-        resolve_node_output(&self.owner, &self.created, &ticket.owner, ticket.index)
+        resolve_node_output(&self.owner, &self.node_outputs, &ticket.owner, ticket.index)
+    }
+    /// Return the exact Attr removed by this batch, even if a later command retired it.
+    pub fn removed_attribute(
+        &self,
+        ticket: &RemovedAttribute,
+    ) -> Result<crate::DomAttrId, DomError> {
+        let id = resolve_node_output(&self.owner, &self.node_outputs, &ticket.owner, ticket.index)?
+            .ok_or(DomError::UnavailableCreation)?;
+        if self.node_output_kinds.get(ticket.index) != Some(&NodeOutputKind::RemovedAttribute) {
+            return Err(DomError::WrongNodeKind);
+        }
+        Ok(crate::DomAttrId(id))
+    }
+    /// Resolve this batch's exact native attachment result.
+    pub fn attribute_attachment(
+        &self,
+        ticket: &AttachedAttribute,
+    ) -> Result<crate::DomAttributeAttachment, DomError> {
+        let id = resolve_node_output(&self.owner, &self.node_outputs, &ticket.owner, ticket.index)?
+            .ok_or(DomError::UnavailableCreation)?;
+        let Some(NodeOutputKind::AttributeAttachment(kind)) =
+            self.node_output_kinds.get(ticket.index)
+        else {
+            return Err(DomError::WrongNodeKind);
+        };
+        Ok(kind.published(id))
     }
     pub fn document(&self, ticket: &CreatedNode) -> Result<DocumentId, DomError> {
         let id = self.created(ticket)?.ok_or(DomError::UnavailableCreation)?;
-        if !self.documents[ticket.index] {
+        if self.node_output_kinds.get(ticket.index) != Some(&NodeOutputKind::Document) {
             return Err(DomError::WrongNodeKind);
         }
         Ok(DocumentId(id))
@@ -1301,6 +1378,7 @@ pub(crate) use canonical::Node;
 pub(in crate::store) enum NewNode {
     Document(DomDocumentMetadata),
     Element(DomElement),
+    Attr(crate::DomAttribute),
     DocumentFragment,
     ShadowRoot(crate::DomShadowRootState),
     Text(DocumentString),
@@ -1434,7 +1512,6 @@ pub struct Dom {
     details_transferred: bool,
     hosted_operations: hosted::operations::Operations,
     hosted_revisions: u64,
-    value_sharing: value_sharing::Owner,
     csp_owner: custody::Held<std::cell::RefCell<surgeist_html::security::csp::HtmlCspOwner>>,
     _custody_administration: custody::Debit,
 }
@@ -1495,14 +1572,6 @@ impl Dom {
                 step: &mut || Ok(()),
             },
         )?;
-        let value_sharing = value_sharing::Owner::new(
-            owner,
-            ledger.clone(),
-            &mut value_sharing::Admission {
-                global: &mut |_| Ok(()),
-                step: &mut || Ok(()),
-            },
-        )?;
         Ok(Self {
             child_list_turn: None,
             style_cssom_roots: style_custody::Bank::new(&registry),
@@ -1517,7 +1586,6 @@ impl Dom {
             element_tasks: None,
             owner,
             names,
-            value_sharing,
             csp_owner,
             revision: DomRevision(0),
             limits,
@@ -1885,8 +1953,7 @@ impl Dom {
         prepared: Prepared,
         cancelled: &AtomicBool,
     ) -> Result<DomCommit, DomError> {
-        let mut publication = self.prepare_publication(prepared, cancelled)?;
-        publication.close_ordinary_sharing(cancelled)?;
+        let publication = self.prepare_publication(prepared, cancelled)?;
         Ok(self.publish_prepared(publication))
     }
     fn prepare_publication(
@@ -1928,7 +1995,6 @@ impl Dom {
         let Prepared {
             blocks,
             inline_echo: _,
-            sharing,
             inline_positions: _,
             inline_recording,
             name_promotions,
@@ -1948,8 +2014,8 @@ impl Dom {
             state,
             allocation_ids,
             owner,
-            created,
-            documents,
+            node_outputs,
+            node_output_kinds,
             transition_ids,
             record_ids,
             changes,
@@ -2093,7 +2159,6 @@ impl Dom {
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
         Ok(PreparedPublication {
-            sharing: sharing.map(SharingPublication::Open),
             name_promotions,
             state_custody,
             allocation_ids,
@@ -2115,8 +2180,8 @@ impl Dom {
             inline_recording,
             retired_authority,
             owner,
-            created,
-            documents,
+            node_outputs,
+            node_output_kinds,
             transition_ids,
             record_ids,
             from,
@@ -2195,7 +2260,6 @@ struct PublicationFields<'a> {
 impl PublicationFields<'_> {
     fn publish(mut self, publication: PreparedPublication) -> CommittedPublication {
         let PreparedPublication {
-            sharing,
             name_promotions,
             state_custody,
             allocation_ids: _,
@@ -2217,8 +2281,8 @@ impl PublicationFields<'_> {
             inline_recording: _,
             retired_authority,
             owner,
-            created,
-            documents,
+            node_outputs,
+            node_output_kinds,
             transition_ids,
             record_ids,
             from,
@@ -2227,14 +2291,6 @@ impl PublicationFields<'_> {
             _formation,
             blocks: _,
         } = publication;
-        if let Some(sharing) = sharing {
-            match sharing {
-                SharingPublication::Prepared(prepared) => prepared.commit(),
-                SharingPublication::Open(_) => {
-                    unreachable!("value sharing closes before publication")
-                }
-            }
-        }
         if changed {
             name_promotions.commit();
             #[cfg(test)]
@@ -2281,8 +2337,8 @@ impl PublicationFields<'_> {
             commit: DomCommit {
                 created_ranges,
                 owner,
-                created,
-                documents,
+                node_outputs,
+                node_output_kinds,
                 transition_ids,
                 record_ids,
                 changes: DomChanges { from, to, changes },
@@ -2432,7 +2488,7 @@ struct Draft {
     private_counts: transaction::Counts,
     // Caller creation tickets exclude private allocations such as imported
     // descendants. They must not be interpreted as allocation indices.
-    tickets: Vec<Key>,
+    tickets: Vec<NodeTicket>,
     tickets_charge: custody::Debit,
     nodes: usize,
     units: usize,
@@ -2445,12 +2501,7 @@ struct Draft {
     source_mirrors: source::formation::SourceMirrors,
     source_ancestor_custody: Option<Arc<source::formation::EventWorkCustody>>,
     names: name_registry::Operation,
-    sharing: Option<value_sharing::Session>,
     _header_custody: custody::Debit,
-}
-enum SharingPublication {
-    Open(value_sharing::Session),
-    Prepared(value_sharing::Prepared),
 }
 pub(crate) struct PreparedPublication {
     created_ranges: Vec<Option<crate::DomRangeId>>,
@@ -2466,8 +2517,8 @@ pub(crate) struct PreparedPublication {
     inline_recording: Option<inline_style::recording::Recording>,
     retired_authority: Option<Arc<crate::select::Authorization>>,
     owner: Arc<BatchIdentity>,
-    created: Vec<Option<NodeId>>,
-    documents: Vec<bool>,
+    node_outputs: Vec<Option<NodeId>>,
+    node_output_kinds: Vec<NodeOutputKind>,
     transition_ids: Vec<Option<DomViewTransitionId>>,
     record_ids: Vec<Option<DomViewTransitionRecordId>>,
     from: DomStamp,
@@ -2484,7 +2535,6 @@ pub(crate) struct PreparedPublication {
     _transition_outputs: custody::Debit,
     _formation: Option<source::formation::Formation>,
     name_promotions: name_registry::Promotions,
-    sharing: Option<SharingPublication>,
     blocks: Arc<block_custody::BlockAdoptions>,
 }
 struct Prepared {
@@ -2496,8 +2546,8 @@ struct Prepared {
     created_ranges: Vec<Option<crate::DomRangeId>>,
     retirements: Vec<dispatch::Retirement>,
     owner: Arc<BatchIdentity>,
-    created: Vec<Option<NodeId>>,
-    documents: Vec<bool>,
+    node_outputs: Vec<Option<NodeId>>,
+    node_output_kinds: Vec<NodeOutputKind>,
     transition_ids: Vec<Option<DomViewTransitionId>>,
     record_ids: Vec<Option<DomViewTransitionRecordId>>,
     changes: Vec<DomChange>,
@@ -2515,7 +2565,6 @@ struct Prepared {
     _transition_outputs: custody::Debit,
     formation: Option<source::formation::Formation>,
     name_promotions: name_registry::Promotions,
-    sharing: Option<value_sharing::Session>,
     blocks: Arc<block_custody::BlockAdoptions>,
 }
 
@@ -2535,107 +2584,7 @@ impl Prepared {
     }
 }
 
-impl PreparedPublication {
-    fn close_ordinary_sharing(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
-        let Some(SharingPublication::Open(session)) = &self.sharing else {
-            return Ok(());
-        };
-        let ready = if self.changed {
-            Some(session.prepare_close(
-                &[],
-                &mut value_sharing::Admission {
-                    global: &mut |usage| match &self._formation {
-                        Some(formation) => formation.admit_custody_usage(usage, cancel),
-                        None => check_cancel(cancel),
-                    },
-                    step: &mut || source::formation::step(self._formation.as_ref(), cancel),
-                },
-            )?)
-        } else {
-            None
-        };
-        let Some(SharingPublication::Open(session)) = self.sharing.take() else {
-            unreachable!("exclusive ordinary sharing preparation")
-        };
-        if let Some(ready) = ready {
-            self.sharing = Some(SharingPublication::Prepared(session.close(ready, &[])));
-        } else {
-            drop(session);
-        }
-        Ok(())
-    }
-}
-
 impl Draft {
-    pub(in crate::store) fn sharing_session(&self) -> Option<&value_sharing::Session> {
-        self.sharing.as_ref()
-    }
-
-    pub(in crate::store) fn with_sharing_admission<T>(
-        &self,
-        cancel: &AtomicBool,
-        action: impl FnOnce(&mut value_sharing::Admission<'_>) -> Result<T, DomError>,
-    ) -> Result<T, DomError> {
-        action(&mut value_sharing::Admission {
-            global: &mut |usage| self.admit_custody_usage(usage, cancel),
-            step: &mut || self.source_step(cancel),
-        })
-    }
-
-    fn ensure_sharing(
-        &mut self,
-        owner: &value_sharing::Owner,
-        cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
-        if self.sharing.is_none() {
-            self.sharing =
-                Some(self.with_sharing_admission(cancel, |admission| owner.attach(admission))?);
-        }
-        Ok(())
-    }
-
-    fn prepare_sharing_publication(
-        &self,
-        changed: bool,
-        checkpoint: Option<&source::checkpoint::Checkpoint>,
-        cancel: &AtomicBool,
-    ) -> Result<Option<value_sharing::CloseReady>, DomError> {
-        let Some(session) = self.sharing.as_ref().filter(|_| changed) else {
-            return Ok(None);
-        };
-        let mark = checkpoint.and_then(source::checkpoint::Checkpoint::sharing);
-        self.with_sharing_admission(cancel, |admission| {
-            session.prepare_close(mark.as_slice(), admission).map(Some)
-        })
-    }
-
-    fn close_sharing_publication(
-        &mut self,
-        publication: &mut PreparedPublication,
-        ready: Option<value_sharing::CloseReady>,
-        checkpoint: Option<&source::checkpoint::Checkpoint>,
-    ) {
-        let Some(session) = self.sharing.take() else {
-            assert!(ready.is_none(), "no closing plan without a sharing session");
-            return;
-        };
-        if publication.changed {
-            let mark = checkpoint.and_then(source::checkpoint::Checkpoint::sharing);
-            let prepared = session.close(
-                ready.expect("all sharing close admission precedes the fence"),
-                mark.as_slice(),
-            );
-            assert!(
-                publication.sharing.is_none(),
-                "one value root per publication"
-            );
-            publication.sharing = Some(SharingPublication::Prepared(prepared));
-        } else {
-            assert!(ready.is_none(), "a whole no-op aborts optional sharing");
-            drop(session);
-        }
-    }
-
     pub(in crate::store) fn source_work_custody(&self) -> source::formation::SourceWorkCustody {
         self.source_work.source_custody()
     }
@@ -2871,10 +2820,6 @@ impl Draft {
                 )?
             }
         };
-        let sharing = dom.value_sharing.attach(&mut value_sharing::Admission {
-            global: &mut admit_initial,
-            step: &mut || admission.step(cancelled),
-        })?;
         let existing = bank::Bank::default();
         let existing_custody = bank::BankCustody::default();
         let records_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
@@ -2934,7 +2879,6 @@ impl Draft {
             blocks: block_custody::BlockAdoptions::new(registry.clone()),
             custody_registry: registry,
             names,
-            sharing: Some(sharing),
             journal,
             _header_custody: header,
             ranges,
@@ -3086,6 +3030,7 @@ impl Draft {
         Ok(self.alias_node_read(read))
     }
     fn alias_node_read<'a>(&'a self, read: transaction::NodeRead<'a>) -> transaction::NodeRead<'a> {
+        let read = read.in_draft(self);
         match &self.phase_map {
             Some(map) => read.aliases(&map.ids),
             None => read,
@@ -3127,6 +3072,7 @@ impl Draft {
                 self.tickets
                     .get(index)
                     .copied()
+                    .map(NodeTicket::key)
                     .filter(|key| self.node(*key).is_ok())
                     .ok_or(DomError::UnavailableCreation)?
             }
@@ -3359,6 +3305,13 @@ impl Draft {
         Ok(key)
     }
     fn register_ticket(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.register_node_ticket(NodeTicket::Node(key), cancel)
+    }
+    fn register_node_ticket(
+        &mut self,
+        ticket: NodeTicket,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         let undo = self.prepare_undo_slots(2, cancel)?;
         if let Some(next) = self.prepare_output_buffer(&self.tickets, 1, cancel)? {
             let (values, debit) = next.into_parts();
@@ -3372,11 +3325,11 @@ impl Draft {
         }
         let len = self.tickets.len();
         self.source_step(cancel)?;
-        self.tickets.push(key);
+        self.tickets.push(ticket);
         #[cfg(test)]
         {
             let mut copied = transaction::CopyObservation::default();
-            copied.pushed::<Key>();
+            copied.pushed::<NodeTicket>();
         }
         if undo {
             self.journal
@@ -3588,6 +3541,17 @@ impl Draft {
                         .len()
                         .saturating_sub(1)
                         .checked_add(namespace.uri().map_or(0, DocumentString::len)),
+                    Creation::Attr {
+                        namespace: None,
+                        name,
+                    } => Some(name.len()),
+                    Creation::Attr {
+                        namespace: Some(namespace),
+                        name,
+                    } => name
+                        .len()
+                        .saturating_sub(1)
+                        .checked_add(namespace.uri().map_or(0, DocumentString::len)),
                     Creation::Text(data) | Creation::Comment(data) => Some(data.len()),
                     Creation::ProcessingInstruction { target, data } => {
                         target.len().checked_add(data.len())
@@ -3665,6 +3629,13 @@ impl Draft {
                         },
                     )?),
                     Creation::Fragment => NewNode::DocumentFragment,
+                    Creation::Attr { namespace, name } => NewNode::Attr(self.form_detached_attr(
+                        document,
+                        namespace.as_ref(),
+                        name,
+                        metadata_formation.as_ref(),
+                        cancelled,
+                    )?),
                     Creation::Element(_) | Creation::ElementNs { .. } => {
                         unreachable!("Element was allocated through formed ingress")
                     }
@@ -3828,14 +3799,31 @@ impl Draft {
                 node,
                 namespace,
                 name,
+                return_identity,
             } => {
                 let node = self.resolve(node.clone())?;
-                self.remove_attribute(node, namespace.as_ref(), name, limits, cancelled)?;
+                let removal = if *return_identity {
+                    attributes::AttributeRemoval::ReturnIdentity
+                } else {
+                    attributes::AttributeRemoval::IgnoreMissing
+                };
+                self.remove_attribute(node, namespace.as_ref(), name, removal, limits, cancelled)?;
+            }
+            Command::RemoveAttributeNode { node, attribute } => {
+                let node = self.resolve(node.clone())?;
+                let attr = self.resolve(attribute.node().into())?;
+                self.remove_attribute_node(node, attr, limits, cancelled)?;
+            }
+            Command::AttachNativeAttribute { node, attribute } => {
+                let node = self.resolve(node.clone())?;
+                let attr = self.resolve(attribute.node().into())?;
+                self.attach_native_attribute(node, attr, limits, cancelled)?;
             }
             Command::Destroy(node) => {
                 let node = self.resolve(node.clone())?;
                 if self.node(node)?.parent().is_some()
                     || self.node(node)?.host().is_some()
+                    || self.node(node)?.attr_owner().is_some()
                     || matches!(
                         self.node(node)?.kind(),
                         transaction::KindRead::Document(_) | transaction::KindRead::ShadowRoot(_)
@@ -3855,6 +3843,7 @@ impl Draft {
                     self.select_reserve(
                         &mut pending,
                         current.children().len()
+                            + current.attribute_ids().len()
                             + usize::from(current.shadow_root().is_some())
                             + usize::from(contents.is_some()),
                         cancelled,
@@ -3863,6 +3852,10 @@ impl Draft {
                     for child in current.children().iter().rev() {
                         self.source_step(cancelled)?;
                         pending.push(child);
+                    }
+                    for attribute in current.attribute_ids().iter().rev() {
+                        self.source_step(cancelled)?;
+                        pending.push(attribute);
                     }
                     pending.extend(current.shadow_root());
                     pending.extend(contents);
@@ -3943,19 +3936,18 @@ impl Draft {
         cancelled: &AtomicBool,
         requested: impl ExactSizeIterator<Item = Key>,
     ) -> Result<(Prepared, Vec<NodeId>), DomError> {
-        let (mut prepared, mapped) = self.finish_sparse(dom, cancelled, requested)?;
-        prepared.sharing = self.sharing.take();
-        Ok((prepared, mapped))
+        self.finish_sparse(dom, cancelled, requested)
     }
 }
 fn new_kind_units(kind: &NewNode) -> Result<usize, DomError> {
     match kind {
         NewNode::Document(v) => v.units().ok_or(DomError::RepresentationExhausted),
         NewNode::Element(v) => v.units().ok_or(DomError::RepresentationExhausted),
+        NewNode::Attr(v) => v.logical_units().ok_or(DomError::RepresentationExhausted),
         NewNode::Text(v) | NewNode::Comment(v) => Ok(v.len()),
         NewNode::ProcessingInstruction(v) => v.units().ok_or(DomError::RepresentationExhausted),
         NewNode::DocumentType(v) => v.units().ok_or(DomError::RepresentationExhausted),
-        _ => Ok(0),
+        NewNode::DocumentFragment | NewNode::ShadowRoot(_) => Ok(0),
     }
 }
 

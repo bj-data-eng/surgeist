@@ -229,9 +229,8 @@ fn setters_same_value_and_removal_keep_real_block_and_return_both_publications()
             .dom()
             .node(element)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attributes()
+            .unwrap()
             .iter()
             .all(|a| a.name().local_name().to_utf8().unwrap() != "style")
     );
@@ -563,10 +562,11 @@ fn assert_unchanged(dom: &Dom, old: &DomInlineStyleCapture) {
         c.dom()
             .node(c.element())
             .unwrap()
-            .as_element()
-            .unwrap()
             .attributes()
-            .to_vec()
+            .unwrap()
+            .iter()
+            .map(|attr| (attr.id(), attr.name().clone(), attr.value().clone()))
+            .collect::<Vec<_>>()
     };
     assert_eq!(attributes(&current), attributes(old));
 }
@@ -732,9 +732,10 @@ fn notification_uses_exact_utf16_and_css_preprocessing_without_rewriting_dom() {
             .dom()
             .node(element)
             .unwrap()
-            .as_element()
+            .attributes()
             .unwrap()
-            .attributes()[0]
+            .item(0)
+            .unwrap()
             .value()
             .code_units(),
         units

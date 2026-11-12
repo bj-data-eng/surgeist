@@ -159,8 +159,15 @@ fn production_session_local_source_scale() {
         let other = batch.create_document();
         let commit = dom.apply(batch, &cancel).unwrap();
         let target = commit.created(&target).unwrap().unwrap();
+        let local_attr = dom
+            .snapshot()
+            .node(target)
+            .unwrap()
+            .get_attribute_node(&"data-local".into())
+            .unwrap()
+            .id();
         let other = commit.document(&other).unwrap();
-        let mut remaining = managed - 3;
+        let mut remaining = managed - 4;
         while remaining > 0 {
             let count = remaining.min(CHUNK);
             let mut batch = DomBatch::new();
@@ -179,7 +186,7 @@ fn production_session_local_source_scale() {
         let adoption = started.elapsed();
         eprintln!(
             "runtime_scale fixture managed={managed} unrelated={} setup_ns={} session_admission_ns={} canonical_limits={limits:?} session_limits={admitted:?} canonical_usage={:?} source_work_limit={SOURCE_WORK}",
-            managed - 3,
+            managed - 4,
             construction.as_nanos(),
             adoption.as_nanos(),
             session.dom().usage()
@@ -239,16 +246,15 @@ fn production_session_local_source_scale() {
             };
             assert_eq!(
                 done.commit().changes().changes(),
-                &[DomChange::Attributes(target)]
+                &[
+                    DomChange::Attributes(target),
+                    DomChange::AttrValue(local_attr)
+                ]
             );
             let now = session.snapshot();
             assert_eq!(now.revision().get(), before.revision().get() + 1);
             assert_eq!(
-                now.node(target)
-                    .unwrap()
-                    .as_element()
-                    .unwrap()
-                    .attribute(&"data-local".into()),
+                now.node(target).unwrap().attribute(&"data-local".into()),
                 Some(&DocumentString::from(next))
             );
             assert_eq!(session.dom().usage().managed_nodes(), managed);
@@ -261,8 +267,6 @@ fn production_session_local_source_scale() {
         assert_eq!(
             original
                 .node(target)
-                .unwrap()
-                .as_element()
                 .unwrap()
                 .attribute(&"data-local".into()),
             Some(&DocumentString::from("base"))
@@ -317,7 +321,7 @@ fn production_session_parked_source_reentry_scale() {
     for managed in selected_sizes() {
         let setup = Instant::now();
         let limits = DomLimits::new(
-            managed + 1,
+            managed + 2,
             managed * 128,
             CHUNK * 4,
             0,
@@ -342,8 +346,15 @@ fn production_session_parked_source_reentry_scale() {
         let commit = dom.apply(batch, &cancel).unwrap();
         let subject = commit.created(&subject).unwrap().unwrap();
         let target = commit.created(&target).unwrap().unwrap();
+        let local_attr = dom
+            .snapshot()
+            .node(target)
+            .unwrap()
+            .get_attribute_node(&"data-local".into())
+            .unwrap()
+            .id();
         let other = commit.document(&other).unwrap();
-        let mut remaining = managed - 4;
+        let mut remaining = managed - 5;
         while remaining > 0 {
             let mut batch = DomBatch::new();
             let count = remaining.min(CHUNK);
@@ -399,7 +410,10 @@ fn production_session_parked_source_reentry_scale() {
                     };
                     assert_eq!(
                         changed.commit().changes().changes(),
-                        &[DomChange::Attributes(target)]
+                        &[
+                            DomChange::Attributes(target),
+                            DomChange::AttrValue(local_attr)
+                        ]
                     );
                     let DomSourceDriveProgress::Complete(created) = context
                         .source
@@ -436,9 +450,19 @@ fn production_session_parked_source_reentry_scale() {
                     else {
                         panic!("real callback setter completes through its own Source");
                     };
+                    let open = dom
+                        .snapshot()
+                        .node(subject)
+                        .unwrap()
+                        .get_attribute_node(&"open".into())
+                        .unwrap()
+                        .id();
                     assert_eq!(
                         opened.commit().changes().changes(),
-                        &[DomChange::Attributes(subject)]
+                        &[
+                            DomChange::Attributes(subject),
+                            DomChange::Created(open.node())
+                        ]
                     );
                     Ok(())
                 }),
@@ -568,18 +592,11 @@ fn production_session_parked_source_reentry_scale() {
                     .snapshot()
                     .node(target)
                     .unwrap()
-                    .as_element()
-                    .unwrap()
                     .attribute(&"data-local".into()),
                 Some(&DocumentString::from(callback.next))
             );
             assert_eq!(
-                before
-                    .node(subject)
-                    .unwrap()
-                    .as_element()
-                    .unwrap()
-                    .attribute(&"open".into()),
+                before.node(subject).unwrap().attribute(&"open".into()),
                 None
             );
             assert!(session.dom().pending_source_edit().is_none());
@@ -620,7 +637,14 @@ fn production_session_parked_source_reentry_scale() {
             }
             // Reset through the real owner outside the measured interval.
             let mut cleanup = DomBatch::new();
+            let open = published
+                .node(subject)
+                .unwrap()
+                .get_attribute_node(&"open".into())
+                .unwrap()
+                .id();
             cleanup.remove_attribute(subject, "open");
+            cleanup.destroy(open.node());
             cleanup.destroy(id);
             session.dom().apply(cleanup, &cancel).unwrap();
             assert_eq!(session.dom().usage().managed_nodes(), managed);
@@ -632,8 +656,6 @@ fn production_session_parked_source_reentry_scale() {
         assert_eq!(
             original
                 .node(target)
-                .unwrap()
-                .as_element()
                 .unwrap()
                 .attribute(&"data-local".into()),
             Some(&"base".into())

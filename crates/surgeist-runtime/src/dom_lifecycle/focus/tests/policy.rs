@@ -588,10 +588,11 @@ fn real_modal_close_reserves_its_post_watcher_pending_removal_output_before_queu
         )
     };
     // QueueToggle publishes tracker + Source start (2). The actual remaining
-    // rows are open attribute, open-list removal, watcher/modal state, the
+    // rows are the open attribute order and Attr owner, open-list removal,
+    // watcher/modal state, the
     // distinct post-watcher Document pending-removal change, and Source close
-    // (5). No changed return-value row or other receiver contributes here.
-    const EXACT_OUTPUTS: usize = 2 + 5;
+    // (6). No changed return-value row or other receiver contributes here.
+    const EXACT_OUTPUTS: usize = 2 + 6;
     let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
         registrations: 1,
         pending_events: 1,

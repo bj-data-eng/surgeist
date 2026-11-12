@@ -642,17 +642,28 @@ fn a_block_is_released_once_no_attribute_holds_it() {
     let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();
     let node = done.created(&element).unwrap().unwrap();
     assert!(dom.custody_registry.block_listed(&block));
+    let [first, second] = ["data-a", "data-b"].map(|name| {
+        dom.snapshot()
+            .node(node)
+            .unwrap()
+            .get_attribute_node(&name.into())
+            .unwrap()
+            .id()
+    });
     drop(done);
     drop(block);
-    // Removing one attribute leaves the block with the other.
+    // A detached Attr still owns its value.
     let mut batch = crate::DomBatch::new();
     batch.remove_attribute(node, "data-a");
-    dom.apply(batch, &AtomicBool::new(false)).unwrap();
-    assert_eq!(dom.custody_registry.listed_blocks(), 1);
-    let mut batch = crate::DomBatch::new();
     batch.remove_attribute(node, "data-b");
     dom.apply(batch, &AtomicBool::new(false)).unwrap();
-    assert_eq!(dom.custody_registry.listed_blocks(), 0);
+    assert_eq!(dom.custody_registry.listed_blocks(), 1);
+    for (attr, blocks) in [(first, 1), (second, 0)] {
+        let mut batch = crate::DomBatch::new();
+        batch.destroy(attr.node());
+        dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        assert_eq!(dom.custody_registry.listed_blocks(), blocks);
+    }
 }
 
 /// A store whose element and group limits admit the families the attribute tests build.
@@ -794,7 +805,7 @@ fn store_with_attribute(tag: &str, name: &str, value: DocumentString) -> (Dom, c
 }
 
 #[test]
-fn removing_the_attribute_of_each_retention_releases_the_block() {
+fn destroying_the_detached_attr_of_each_retention_releases_the_block() {
     for (tag, name) in [
         ("script", "nonce"),
         ("input", "name"),
@@ -804,10 +815,21 @@ fn removing_the_attribute_of_each_retention_releases_the_block() {
         let block = spare_block();
         let weak = block.downgrade();
         let (mut dom, node) = store_with_attribute(tag, name, block.string(0..4).unwrap());
+        let attr = dom
+            .snapshot()
+            .node(node)
+            .unwrap()
+            .get_attribute_node(&name.into())
+            .unwrap()
+            .id();
         assert!(dom.custody_registry.block_listed(&block), "{tag} {name}");
         drop(block);
         let mut batch = crate::DomBatch::new();
         batch.remove_attribute(node, name);
+        dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        assert!(weak.holders() > 0, "{tag} {name}");
+        let mut batch = crate::DomBatch::new();
+        batch.destroy(attr.node());
         dom.apply(batch, &AtomicBool::new(false)).unwrap();
         // The attribute, the nonce slot, the control facts and the input value no longer hold
         // the block, so the next sweep gives its charge back.
@@ -853,6 +875,49 @@ fn replacing_an_attribute_value_by_an_equal_one_keeps_the_published_value_and_it
     dom.apply(crate::DomBatch::new(), &AtomicBool::new(false))
         .unwrap();
     assert_eq!(dom.custody_registry.listed_blocks(), 1);
+}
+
+#[test]
+fn source_import_of_an_attr_charges_its_occurrence_in_an_already_listed_block() {
+    let block = spare_block();
+    let value = block.string(0..4).unwrap();
+    let (mut dom, node) = store_with_attribute("div", "data-a", value.clone());
+    let before = dom.snapshot();
+    let original = before
+        .node(node)
+        .unwrap()
+        .get_attribute_node(&"data-a".into())
+        .unwrap();
+    let margin = 96;
+    assert!(block.capacity() > margin);
+    let limits = crate::DomSourceLimits::new(
+        16_000_000,
+        total(&dom).units() + margin,
+        1_000_000,
+        32,
+        4096,
+        4096,
+        1,
+    );
+    let cancel = AtomicBool::new(false);
+    let edit = crate::DomSourceEdit::import_node(
+        &before,
+        original.id().node(),
+        original.owner_document().node(),
+        false,
+    );
+    let mut lease = dom.begin_source_edit(edit, limits, &cancel).unwrap();
+    let crate::DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("a detached Attr import completes without a service request");
+    };
+    let id = done.published_node().unwrap();
+    drop(lease);
+    assert_eq!(dom.custody_registry.listed_blocks(), 1);
+    let after = dom.snapshot();
+    let imported = after.attr(id).unwrap();
+    assert_ne!(imported.id(), original.id());
+    assert_eq!(imported.owner_element(), None);
+    assert!(imported.value().shares_storage_with(&value));
 }
 
 /// Removes the `name` attribute, whose value is `value`, from an HTML `tag` element in a source

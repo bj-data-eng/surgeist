@@ -13,6 +13,7 @@ pub(super) struct DocumentChildren {
 }
 pub(super) struct ElementRootChildren {
     pub(super) _element: bank::ObjectCustody,
+    _attributes: Option<bank::ObjectCustody>,
     _children: Option<bank::ObjectCustody>,
     _slottable: Option<bank::ObjectCustody>,
     _shadow: Option<bank::ObjectCustody>,
@@ -169,6 +170,7 @@ pub(in crate::store) fn element_node_dependency(
         |admit| element_dependency(&value.element.value, registry, names, admit),
         &mut *admit,
     )?;
+    let attributes = optional_leaf(value.attributes.as_ref(), registry, admit)?;
     let children = optional_leaf(value.children.as_ref(), registry, admit)?;
     let slottable = optional_leaf(value.slottable.as_ref(), registry, admit)?;
     let shadow = optional_leaf(value.shadow.as_ref(), registry, admit)?;
@@ -176,6 +178,7 @@ pub(in crate::store) fn element_node_dependency(
     bank::Dependency::new(
         ElementRootChildren {
             _element: element,
+            _attributes: attributes,
             _children: children,
             _slottable: slottable,
             _shadow: shadow,
@@ -250,6 +253,7 @@ pub(super) fn node_children(
     match node {
         Node::Document(value) => document_dependency(&value.value, registry, admit),
         Node::Element(value) => element_node_dependency(&value.value, registry, names, admit),
+        Node::Attr(value) => attr_data_dependency(&value.value.data, registry, names, admit),
         Node::DocumentFragment(value) => fragment_dependency(&value.value, registry, admit),
         Node::ShadowRoot(value) => shadow_dependency(&value.value, registry, admit),
         Node::Text(value) => text_dependency(&value.value, registry, admit),
@@ -264,6 +268,21 @@ pub(in crate::store) fn data_dependency<T>(
     admit: &mut dyn FnMut(Usage) -> Result<(), DomError>,
 ) -> Result<Option<bank::Dependency>, DomError> {
     let data = leaf(value, registry, admit)?;
+    bank::Dependency::new(DataChild { _data: data }, registry.ledger(), admit).map(Some)
+}
+
+pub(in crate::store) fn attr_data_dependency(
+    value: &Arc<Payload<crate::DomAttribute>>,
+    registry: &bank::CustodyRegistry,
+    names: Option<&super::super::name_registry::Operation>,
+    admit: &mut dyn FnMut(Usage) -> Result<(), DomError>,
+) -> Result<Option<bank::Dependency>, DomError> {
+    let data = registry.adopt_object_with_children(
+        value.identity,
+        value.own_usage,
+        |admit| super::attr_dependency(&value.value, registry, names, admit),
+        &mut *admit,
+    )?;
     bank::Dependency::new(DataChild { _data: data }, registry.ledger(), admit).map(Some)
 }
 
@@ -341,32 +360,15 @@ pub(in crate::store) fn inspect_slot_typed_custody(
         }
         if let Some(d) = value.inspect_dependency::<ElementLanguageChildren>() {
             visit(&d._name, out);
-            for child in [
-                &d._attributes,
-                &d._native,
-                &d._custom,
-                &d._nonce,
-                &d._focus,
-                &d._hosted,
-            ]
-            .into_iter()
-            .flatten()
+            for child in [&d._native, &d._custom, &d._nonce, &d._focus, &d._hosted]
+                .into_iter()
+                .flatten()
             {
                 visit(child, out);
             }
         }
         if let Some(d) = value.inspect_dependency::<ElementNameChildren>() {
             names(&d._names, out);
-        }
-        if let Some(d) = value.inspect_dependency::<AttributeBindingChildren>()
-            && let Some(child) = &d._bank
-        {
-            visit(child, out);
-        }
-        if let Some(d) = value.inspect_dependency::<AttributeChildren>() {
-            for child in &d._names {
-                names(child, out);
-            }
         }
     }
     let mut out = std::collections::BTreeMap::new();
@@ -395,9 +397,15 @@ pub(in crate::store) fn inspect_slot_typed_custody(
             }
             SlotDependency::Element(d) => {
                 visit(&d._element, &mut out);
-                for child in [&d._children, &d._slottable, &d._shadow, &d._association]
-                    .into_iter()
-                    .flatten()
+                for child in [
+                    &d._attributes,
+                    &d._children,
+                    &d._slottable,
+                    &d._shadow,
+                    &d._association,
+                ]
+                .into_iter()
+                .flatten()
                 {
                     visit(child, &mut out);
                 }

@@ -65,8 +65,23 @@ impl Draft {
         mut formed: FormedSlot,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if slots.get(index) == Some(formed.value.value()) {
-            return Ok(());
+        if let Some(old) = slots.get(index) {
+            let new = formed.value.value();
+            let unchanged = match (&old.node, &new.node) {
+                (Some(Node::Attr(old_attr)), Some(Node::Attr(new_attr))) => {
+                    old.generation == new.generation
+                        && old.retired == new.retired
+                        && old_attr.value.common == new_attr.value.common
+                        && old_attr.value.owner == new_attr.value.owner
+                        && old_attr
+                            .value
+                            .same_data(&new_attr.value, || self.source_step(cancel))?
+                }
+                _ => old == new,
+            };
+            if unchanged {
+                return Ok(());
+            }
         }
         let payload =
             source::storage::canonical_slot(formed.value.value(), || self.source_step(cancel))?;
@@ -675,23 +690,43 @@ impl Draft {
             #[cfg(test)]
             changes_written.pushed::<DomChange>();
         }
-        let mut created = Vec::new();
-        let mut documents = Vec::new();
-        source::formation::reserve(&mut created, self.tickets.len(), budget, cancel)?;
-        source::formation::reserve(&mut documents, self.tickets.len(), budget, cancel)?;
+        let mut node_outputs = Vec::new();
+        let mut node_output_kinds = Vec::new();
+        source::formation::reserve(&mut node_outputs, self.tickets.len(), budget, cancel)?;
+        source::formation::reserve(&mut node_output_kinds, self.tickets.len(), budget, cancel)?;
         #[cfg(test)]
         let mut tickets_written = super::sequence::CopyObservation::default();
         for ticket in &self.tickets {
-            let live = self.node(*ticket).ok();
-            created.push(live.as_ref().and_then(|_| match *ticket {
+            let key = ticket.key();
+            let live = self.node(key).ok();
+            let kind = match ticket {
+                NodeTicket::RemovedAttribute(_) => NodeOutputKind::RemovedAttribute,
+                NodeTicket::AttributeAttachment(_, kind) => {
+                    NodeOutputKind::AttributeAttachment(*kind)
+                }
+                NodeTicket::Node(_)
+                    if live.is_some_and(|n| matches!(n.kind(), super::KindRead::Document(_))) =>
+                {
+                    NodeOutputKind::Document
+                }
+                NodeTicket::Node(_) => NodeOutputKind::Node,
+            };
+            let id = match key {
                 Key::Created(index) => allocated_ids.get(index),
                 Key::Existing(node) => Some(node),
+            };
+            node_outputs.push(id.filter(|_| {
+                live.is_some()
+                    || matches!(
+                        kind,
+                        NodeOutputKind::RemovedAttribute | NodeOutputKind::AttributeAttachment(_)
+                    )
             }));
             #[cfg(test)]
             tickets_written.pushed::<Option<NodeId>>();
-            documents.push(live.is_some_and(|n| matches!(n.kind(), super::KindRead::Document(_))));
+            node_output_kinds.push(kind);
             #[cfg(test)]
-            tickets_written.pushed::<bool>();
+            tickets_written.pushed::<NodeOutputKind>();
         }
         let mut retirements = Vec::new();
         source::formation::reserve(
@@ -730,7 +765,6 @@ impl Draft {
                 blocks: self.blocks.clone(),
                 node_retirement_candidates,
                 inline_echo: self.inline_echo.clone(),
-                sharing: None,
                 inline_recording: self.inline_recording.clone(),
                 inline_positions: self
                     .inline_membership
@@ -747,8 +781,8 @@ impl Draft {
                 semantic_changed,
                 iterator_state_changed: iterators.state_changed,
                 owner: self.owner.clone(),
-                created,
-                documents,
+                node_outputs,
+                node_output_kinds,
                 transition_ids: finished.transition_ids,
                 record_ids: finished.record_ids,
                 changes,
@@ -1054,6 +1088,58 @@ mod tests {
     }
 
     #[test]
+    fn publishing_an_attached_attr_charges_the_utf16_prefix_it_compares() {
+        const UNITS: usize = 1024;
+        let (mut dom, _, _, button) = fixture();
+        let cancel = AtomicBool::new(false);
+        let mut setup = DomBatch::new();
+        setup.set_attribute(
+            button,
+            "data-x",
+            DocumentString::from_utf16(vec![0xd800; UNITS]),
+        );
+        dom.apply(setup, &cancel).unwrap();
+
+        let publication_work = |mismatch| {
+            let batch = DomBatch::new();
+            let limits =
+                crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
+            let (mut draft, _) =
+                Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel)
+                    .unwrap();
+            let mut units = vec![0xd800; UNITS];
+            units[mismatch] = 0xdc00;
+            draft
+                .set_attribute(
+                    Key::Existing(button),
+                    None,
+                    &"data-x".into(),
+                    &DocumentString::from_utf16(units),
+                    dom.limits,
+                    &cancel,
+                )
+                .unwrap();
+            // Exclude staging, which already meters the edit's own comparison.
+            let before = draft.source_work.load(Ordering::Relaxed);
+            let prepared = draft.finish_segment(&dom, &cancel).unwrap();
+            assert!(prepared.changes.contains(&DomChange::Attributes(button)));
+            assert!(
+                prepared
+                    .changes
+                    .iter()
+                    .any(|row| matches!(row, DomChange::AttrValue(_)))
+            );
+            draft.source_work.load(Ordering::Relaxed) - before
+        };
+        let early = publication_work(0);
+        let late = publication_work(UNITS - 1);
+        assert!(
+            late >= early + (UNITS - 1) as u64,
+            "publishing the early mismatch used {early} work and the late mismatch used {late}"
+        );
+    }
+
+    #[test]
     fn finish_reports_initialized_selection_changes_and_public_receipts() {
         if !scale_metrics::ENABLED {
             return;
@@ -1074,8 +1160,8 @@ mod tests {
             measured(|| draft.finish_sparse(&dom, &cancel, std::iter::once(key)));
         let (prepared, mapped) = result.unwrap();
         assert_eq!(mapped.len(), 1);
-        assert_eq!(prepared.created, [Some(mapped[0])]);
-        assert_eq!(prepared.documents, [false]);
+        assert_eq!(prepared.node_outputs, [Some(mapped[0])]);
+        assert_eq!(prepared.node_output_kinds, [NodeOutputKind::Node]);
         assert_eq!(prepared.changes, [DomChange::Created(mapped[0])]);
         // One selected slot, one change, one requested ID and the two actual
         // public ticket fields are initialized. Empty relation fields alias
@@ -1086,7 +1172,7 @@ mod tests {
                 + size_of::<DomChange>()
                 + size_of::<NodeId>()
                 + size_of::<Option<NodeId>>()
-                + size_of::<bool>()
+                + size_of::<NodeOutputKind>()
         );
         assert_eq!(counters.relation_sequence_materialized_bytes, 0);
     }

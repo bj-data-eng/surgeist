@@ -92,9 +92,12 @@ fn frame_slottable_clone_and_adoption_preserve_both_canonical_families() {
         s.slot(cloned_slot).unwrap().assigned_nodes(),
         &[cloned_frame]
     );
-    let element = s.node(cloned_frame).unwrap().as_element().unwrap();
-    assert_eq!(element.child_navigable_presence(), Some(state));
-    assert_eq!(element.attribute(&"src".into()), Some(&"literal".into()));
+    let frame_copy = s.node(cloned_frame).unwrap();
+    assert_eq!(
+        frame_copy.as_element().unwrap().child_navigable_presence(),
+        Some(state)
+    );
+    assert_eq!(frame_copy.attribute(&"src".into()), Some(&"literal".into()));
 
     let mut b = DomBatch::new();
     b.adopt(frame, target);

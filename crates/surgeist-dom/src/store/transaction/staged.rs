@@ -40,7 +40,7 @@ impl<C, S> Group<C, S> {
         }
     }
 }
-pub(in crate::store) struct Children {
+pub(in crate::store) struct NodeSequenceFields {
     pub values: Sequence<NodeId, Key>,
 }
 pub(in crate::store) struct SlotFields {
@@ -117,7 +117,7 @@ pub(in crate::store) enum Associations {
 pub(in crate::store) struct DocumentFields {
     pub common: Common<Key>,
     pub metadata: Controlled<DomDocumentMetadata>,
-    pub children: Option<Group<ContainerChildren<NodeId>, Children>>,
+    pub children: Option<Group<NodeSequence<NodeId>, NodeSequenceFields>>,
     pub active_range: crate::DomActiveRangeState,
     pub focused_area_designation: crate::DomFocusedAreaDesignation,
     pub fullscreen: Option<
@@ -132,7 +132,9 @@ pub(in crate::store) struct DocumentFields {
 pub(in crate::store) struct ElementFields {
     pub common: Common<Key>,
     pub element: Controlled<DomElement>,
-    pub children: Option<Group<ContainerChildren<NodeId>, Children>>,
+    pub attributes: Option<Group<NodeSequence<NodeId>, NodeSequenceFields>>,
+    pub attribute_revision: Option<custody::MaterializationId>,
+    pub children: Option<Group<NodeSequence<NodeId>, NodeSequenceFields>>,
     pub slottable: Option<Group<Slottable<NodeId>, Slottable<Key>>>,
     pub shadow: Option<Group<ShadowHost<NodeId>, ShadowHost<Key>>>,
     pub associations: Associations,
@@ -146,13 +148,13 @@ pub(in crate::store) enum FocusVersion {
 }
 pub(in crate::store) struct FragmentFields {
     pub common: Common<Key>,
-    pub children: Option<Group<ContainerChildren<NodeId>, Children>>,
+    pub children: Option<Group<NodeSequence<NodeId>, NodeSequenceFields>>,
     pub host: Option<Key>,
 }
 pub(in crate::store) struct ShadowFields {
     pub common: Common<Key>,
     pub state: Controlled<crate::DomShadowRootState>,
-    pub children: Option<Group<ContainerChildren<NodeId>, Children>>,
+    pub children: Option<Group<NodeSequence<NodeId>, NodeSequenceFields>>,
     pub host: Option<Key>,
 }
 pub(in crate::store) struct TextFields {
@@ -172,9 +174,15 @@ pub(in crate::store) struct DocumentTypeFields {
     pub common: Common<Key>,
     pub data: Controlled<crate::DomDocumentType>,
 }
+pub(in crate::store) struct AttrFields {
+    pub common: Common<Key>,
+    pub data: Controlled<crate::DomAttribute>,
+    pub owner: Option<Key>,
+}
 pub(in crate::store) enum DraftNode {
     Document(custody::Held<Box<DocumentFields>>),
     Element(custody::Held<Box<ElementFields>>),
+    Attr(custody::Held<Box<AttrFields>>),
     DocumentFragment(custody::Held<Box<FragmentFields>>),
     ShadowRoot(custody::Held<Box<ShadowFields>>),
     Text(custody::Held<Box<TextFields>>),
@@ -187,6 +195,7 @@ macro_rules! common {
         match $self {
             DraftNode::Document($n) => $e,
             DraftNode::Element($n) => $e,
+            DraftNode::Attr($n) => $e,
             DraftNode::DocumentFragment($n) => $e,
             DraftNode::ShadowRoot($n) => $e,
             DraftNode::Text($n) => $e,
@@ -227,7 +236,7 @@ impl DraftNode {
             _ => None,
         }
     }
-    pub fn children(&self) -> Option<&Group<ContainerChildren<NodeId>, Children>> {
+    pub fn children(&self) -> Option<&Group<NodeSequence<NodeId>, NodeSequenceFields>> {
         match self {
             Self::Document(n) => n.value().children.as_ref(),
             Self::Element(n) => n.value().children.as_ref(),
@@ -238,7 +247,7 @@ impl DraftNode {
     }
     pub fn children_mut(
         &mut self,
-    ) -> Option<&mut Option<Group<ContainerChildren<NodeId>, Children>>> {
+    ) -> Option<&mut Option<Group<NodeSequence<NodeId>, NodeSequenceFields>>> {
         match self {
             Self::Document(n) => Some(&mut n.value_mut().children),
             Self::Element(n) => Some(&mut n.value_mut().children),
@@ -478,6 +487,11 @@ impl DraftNode {
             Node::Element(n) => {
                 let value = &n.value;
                 let element = controlled(&value.element, registry, &mut admit)?;
+                let attributes = value
+                    .attributes
+                    .as_ref()
+                    .map(|v| captured(v, registry, &mut admit))
+                    .transpose()?;
                 let children = value
                     .children
                     .as_ref()
@@ -534,6 +548,8 @@ impl DraftNode {
                     Ok(ElementFields {
                         common: common(&value.common),
                         element,
+                        attributes,
+                        attribute_revision: value.attribute_revision,
                         children,
                         slottable,
                         shadow,
@@ -614,6 +630,16 @@ impl DraftNode {
                     Ok(DocumentTypeFields {
                         common: common(&n.value.common),
                         data,
+                    })
+                })?)
+            }
+            Node::Attr(n) => {
+                let data = controlled(&n.value.data, registry, &mut admit)?;
+                Self::Attr(boxed(registry, &mut admit, || {
+                    Ok(AttrFields {
+                        common: common(&n.value.common),
+                        data,
+                        owner: n.value.owner.map(Key::Existing),
                     })
                 })?)
             }
@@ -841,6 +867,8 @@ impl DraftNode {
                     Ok(ElementFields {
                         common,
                         element,
+                        attributes: None,
+                        attribute_revision: None,
                         children: None,
                         slottable: None,
                         shadow: None,
@@ -968,6 +996,27 @@ impl DraftNode {
                 )?;
                 Self::DocumentType(boxed(registry, &mut admit, || {
                     Ok(DocumentTypeFields { common, data })
+                })?)
+            }
+            NewNode::Attr(value) => {
+                let children = payload::attr_dependency(value, registry, Some(names), &mut admit)?;
+                let usage = storage::attr(value)?;
+                let value = value.clone();
+                let data = fresh_language(
+                    input,
+                    retained_occurrence,
+                    usage,
+                    registry,
+                    &mut admit,
+                    children,
+                    |_| value,
+                )?;
+                Self::Attr(boxed(registry, &mut admit, || {
+                    Ok(AttrFields {
+                        common,
+                        data,
+                        owner: None,
+                    })
                 })?)
             }
         })

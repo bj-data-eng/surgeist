@@ -19,7 +19,7 @@ impl Selection {
             .parse()
             .map_err(|_| "invalid SURGEIST_MEMORY_MANAGED")?;
         if managed != COMBINED_NODES {
-            return Err("native-features requires exactly 13 combined node identities");
+            return Err("native-features requires exactly 20 combined node identities");
         }
         Ok(Self {
             sample: Sample::parse(sample)?,
@@ -78,7 +78,7 @@ fn configuration() -> (Selection, Vec<Stage>, Option<Config>) {
 }
 
 #[test]
-#[ignore = "explicit fresh-process release fixture; select native-features/13/sample and optional holder checkpoints"]
+#[ignore = "explicit fresh-process release fixture; select native-features/20/sample and optional holder checkpoints"]
 fn native_feature_selected_source_import_lifecycle() {
     require_release();
     let (selection, stages, config) = configuration();
@@ -89,7 +89,7 @@ fn native_feature_selected_source_import_lifecycle() {
     drop(stages);
     let pid = std::process::id();
     eprintln!(
-        "native_features_selected profile=release pid={pid} sample={} source_nodes=10 target_nodes=3 managed=13 managed_means_combined_source_target_node_identities=true held_graph_identity_peak=13 controlled_owner_peak=10 style_sheet_cssom_publication=true style_outside_import=true form_history_empty_not_growable_by_public_front=true hosted_families_not_populated=true clock_enabled={} no_timing_slo=true observers_oracles_excluded_from_call_clocks=true batch_authoring_and_protocol_input_preparation_outside_clocks=true parser_interrupt_poll_inside_parse_call=true physical_backend=external_not_run_by_fixture all_zones_include_harness=true kernel_peak_since_launch=true logger_complete_process_peak_coverage=false",
+        "native_features_selected profile=release pid={pid} sample={} source_nodes={SOURCE_NODES} target_nodes={TARGET_NODES} managed={COMBINED_NODES} managed_means_combined_source_target_node_identities=true held_graph_identity_peak={COMBINED_NODES} controlled_owner_peak={SOURCE_NODES} style_sheet_cssom_publication=true style_outside_import=true form_history_empty_not_growable_by_public_front=true hosted_families_not_populated=true clock_enabled={} no_timing_slo=true observers_oracles_excluded_from_call_clocks=true batch_authoring_and_protocol_input_preparation_outside_clocks=true parser_interrupt_poll_inside_parse_call=true physical_backend=external_not_run_by_fixture all_zones_include_harness=true kernel_peak_since_launch=true logger_complete_process_peak_coverage=false",
         selection.sample.name(),
         !scale_metrics::ENABLED,
     );
@@ -141,13 +141,13 @@ mod tests {
     #[test]
     fn feature_selection_requires_the_exact_small_geometry_and_ordered_stages() {
         for sample in ["warmup", "0", "1", "2"] {
-            assert!(Selection::parse("native-features", "13", sample).is_ok());
+            assert!(Selection::parse("native-features", "20", sample).is_ok());
         }
         for size in ["0", "10", "12", "14", "1000"] {
             assert!(Selection::parse("native-features", size, "0").is_err());
         }
-        assert!(Selection::parse("all", "13", "0").is_err());
-        assert!(Selection::parse("native-features", "13", "3").is_err());
+        assert!(Selection::parse("all", "20", "0").is_err());
+        assert!(Selection::parse("native-features", "20", "3").is_err());
         assert_eq!(checkpoints("all").unwrap(), Stage::ALL);
         assert!(checkpoints("none").unwrap().is_empty());
         assert_eq!(

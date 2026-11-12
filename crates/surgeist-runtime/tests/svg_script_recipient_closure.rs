@@ -160,8 +160,6 @@ fn unchanged(dom: &Dom, before: &DomSnapshot, usage: DomUsage, prefix_target: No
             snapshot
                 .node(prefix_target)
                 .unwrap()
-                .as_element()
-                .unwrap()
                 .attribute(&DocumentString::from("data-unpublished"))
                 .is_none()
         );

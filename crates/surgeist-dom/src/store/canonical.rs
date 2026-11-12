@@ -12,7 +12,7 @@ pub(crate) struct Common<K> {
     pub parent: Option<K>,
 }
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ContainerChildren<K> {
+pub(crate) struct NodeSequence<K> {
     pub values: SharedVec<K>,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -140,7 +140,7 @@ pub(crate) struct FullscreenQueue {
 pub(crate) struct DocumentNode<K> {
     pub common: Common<K>,
     pub metadata: Arc<Payload<DomDocumentMetadata>>,
-    pub children: Option<Arc<Payload<ContainerChildren<K>>>>,
+    pub children: Option<Arc<Payload<NodeSequence<K>>>>,
     pub active_range: crate::DomActiveRangeState,
     pub focused_area_designation: crate::DomFocusedAreaDesignation,
     pub fullscreen_events: Option<Arc<Payload<FullscreenQueue>>>,
@@ -154,7 +154,9 @@ pub(crate) struct DocumentNode<K> {
 pub(crate) struct ElementNode<K> {
     pub common: Common<K>,
     pub element: Arc<Payload<DomElement>>,
-    pub children: Option<Arc<Payload<ContainerChildren<K>>>>,
+    pub attributes: Option<Arc<Payload<NodeSequence<K>>>>,
+    pub attribute_revision: Option<custody::MaterializationId>,
+    pub children: Option<Arc<Payload<NodeSequence<K>>>>,
     pub slottable: Option<Arc<Payload<Slottable<K>>>>,
     pub shadow: Option<Arc<Payload<ShadowHost<K>>>>,
     pub associations: ElementAssociations<K>,
@@ -162,14 +164,14 @@ pub(crate) struct ElementNode<K> {
 #[derive(Clone, Debug)]
 pub(crate) struct FragmentNode<K> {
     pub common: Common<K>,
-    pub children: Option<Arc<Payload<ContainerChildren<K>>>>,
+    pub children: Option<Arc<Payload<NodeSequence<K>>>>,
     pub host: Option<K>,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct ShadowNode<K> {
     pub common: Common<K>,
     pub state: Arc<Payload<crate::DomShadowRootState>>,
-    pub children: Option<Arc<Payload<ContainerChildren<K>>>>,
+    pub children: Option<Arc<Payload<NodeSequence<K>>>>,
     pub host: Option<K>,
 }
 #[derive(Clone, Debug)]
@@ -193,11 +195,50 @@ pub(crate) struct DocumentTypeNode<K> {
     pub common: Common<K>,
     pub data: Arc<Payload<crate::DomDocumentType>>,
 }
+#[derive(Clone, Debug)]
+pub(crate) struct AttrNode<K> {
+    pub common: Common<K>,
+    pub data: Arc<Payload<crate::DomAttribute>>,
+    pub owner: Option<K>,
+}
+impl<K> AttrNode<K> {
+    pub(super) fn same_data(
+        &self,
+        other: &Self,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<bool, DomError> {
+        if Arc::ptr_eq(&self.data, &other.data) {
+            return Ok(true);
+        }
+        let left = &self.data.value;
+        let right = &other.data.value;
+        for (left, right) in [
+            (left.name().namespace_uri(), right.name().namespace_uri()),
+            (left.name().prefix(), right.name().prefix()),
+            (
+                Some(left.name().local_name()),
+                Some(right.name().local_name()),
+            ),
+            (Some(left.value()), Some(right.value())),
+        ] {
+            let (left, right) = match (left, right) {
+                (None, None) => continue,
+                (Some(left), Some(right)) => (left, right),
+                _ => return Ok(false),
+            };
+            if !attributes::same_string(left, right, &mut step)? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+}
 #[cfg_attr(test, derive(Clone))]
 #[derive(Debug)]
 pub(crate) enum Node {
     Document(Arc<Payload<DocumentNode<NodeId>>>),
     Element(Arc<Payload<ElementNode<NodeId>>>),
+    Attr(Arc<Payload<AttrNode<NodeId>>>),
     DocumentFragment(Arc<Payload<FragmentNode<NodeId>>>),
     ShadowRoot(Arc<Payload<ShadowNode<NodeId>>>),
     Text(Arc<Payload<TextNode<NodeId>>>),
@@ -210,6 +251,7 @@ macro_rules! common {
         match $node {
             Node::Document($n) => $body,
             Node::Element($n) => $body,
+            Node::Attr($n) => $body,
             Node::DocumentFragment($n) => $body,
             Node::ShadowRoot($n) => $body,
             Node::Text($n) => $body,
@@ -243,6 +285,7 @@ impl Node {
         match self {
             Self::Document(n) => DomNodeKind::Document(&n.value.metadata.value),
             Self::Element(n) => DomNodeKind::Element(&n.value.element.value),
+            Self::Attr(n) => DomNodeKind::Attr(&n.value.data.value),
             Self::DocumentFragment(_) => DomNodeKind::DocumentFragment,
             Self::ShadowRoot(n) => DomNodeKind::ShadowRoot(&n.value.state.value),
             Self::Text(n) => DomNodeKind::Text(&n.value.data.value.value),
@@ -257,6 +300,22 @@ impl Node {
         match self {
             Self::Element(n) => Some(&n.value.element.value),
             _ => None,
+        }
+    }
+    pub(crate) fn attribute_node(&self) -> Option<(&crate::DomAttribute, Option<NodeId>)> {
+        match self {
+            Self::Attr(node) => Some((&node.value.data.value, node.value.owner)),
+            _ => None,
+        }
+    }
+    pub(crate) fn attribute_ids(&self) -> &[NodeId] {
+        match self {
+            Self::Element(node) => node
+                .value
+                .attributes
+                .as_ref()
+                .map_or(&[], |attributes| attributes.value.values.as_slice()),
+            _ => &[],
         }
     }
     pub(crate) fn children_backing(&self) -> Option<&SharedVec<NodeId>> {
@@ -624,8 +683,8 @@ impl<K: PartialEq> PartialEq for Autofocus<K> {
     }
 }
 fn same_children<K: PartialEq>(
-    a: &Option<Arc<Payload<ContainerChildren<K>>>>,
-    b: &Option<Arc<Payload<ContainerChildren<K>>>>,
+    a: &Option<Arc<Payload<NodeSequence<K>>>>,
+    b: &Option<Arc<Payload<NodeSequence<K>>>>,
 ) -> bool {
     match (a, b) {
         (None, Some(v)) | (Some(v), None) => v.value.values.is_empty(),
@@ -671,6 +730,8 @@ impl<K: PartialEq> PartialEq for ElementNode<K> {
     fn eq(&self, other: &Self) -> bool {
         self.common == other.common
             && same_payload(&self.element, &other.element)
+            && self.attribute_revision == other.attribute_revision
+            && same_children(&self.attributes, &other.attributes)
             && same_children(&self.children, &other.children)
             && same_slottable(&self.slottable, &other.slottable)
             && same_optional(&self.shadow, &other.shadow)
@@ -714,11 +775,19 @@ impl<K: PartialEq> PartialEq for DocumentTypeNode<K> {
         self.common == other.common && same_payload(&self.data, &other.data)
     }
 }
+impl<K: PartialEq> PartialEq for AttrNode<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.common == other.common
+            && self.owner == other.owner
+            && same_payload(&self.data, &other.data)
+    }
+}
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Document(a), Self::Document(b)) => same_payload(a, b),
             (Self::Element(a), Self::Element(b)) => same_payload(a, b),
+            (Self::Attr(a), Self::Attr(b)) => same_payload(a, b),
             (Self::DocumentFragment(a), Self::DocumentFragment(b)) => same_payload(a, b),
             (Self::ShadowRoot(a), Self::ShadowRoot(b)) => same_payload(a, b),
             (Self::Text(a), Self::Text(b)) => same_payload(a, b),

@@ -419,8 +419,6 @@ fn actual_parsed_document_history_supports_native_dialog_cleanup_without_resetti
         current
             .node(node)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attribute(&DocumentString::from("open")),
         None
     );
@@ -432,8 +430,6 @@ fn actual_parsed_document_history_supports_native_dialog_cleanup_without_resetti
     assert!(
         before
             .node(node)
-            .unwrap()
-            .as_element()
             .unwrap()
             .attribute(&DocumentString::from("open"))
             .is_some()

@@ -81,7 +81,7 @@
 //! let snapshot = dom.snapshot();
 //! let root = snapshot.node(committed.created(&root)?.unwrap())?;
 //! assert_eq!(root.node_name().to_utf8()?, "Root");
-//! assert_eq!(root.as_element().unwrap().attributes().len(), 1);
+//! assert_eq!(root.attributes().unwrap().len(), 1);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
@@ -114,6 +114,7 @@
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
 
+mod attr;
 mod base;
 mod batch;
 mod button;
@@ -188,9 +189,12 @@ mod template;
 mod textarea;
 mod view_transition;
 
+pub use attr::{DomAttr, DomAttributeAttachment, DomNamedNodeMap};
 pub use autofocus::DomDocumentAutofocus;
 pub use base::{DomBase, DomBaseFactsError, DomBaseResponse, DomFrozenBase, DomLink};
-pub use batch::{AttachedShadowRoot, CreatedNode, DomBatch, NodeOperand};
+pub use batch::{
+    AttachedAttribute, AttachedShadowRoot, CreatedNode, DomBatch, NodeOperand, RemovedAttribute,
+};
 pub use child_list::{DomChildListObservationLimits, DomChildListObserverId, DomChildListRecord};
 pub use details::{
     DomDetails, DomDetailsToggleCancellationReason, DomDetailsToggleIntention,
@@ -242,7 +246,7 @@ pub use hosted::{
     DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile, DomPermissionsPolicyValue,
 };
 pub use hyperlink::{DomEncodingUrlFactsError, DomHyperlink};
-pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
+pub use identity::{DocumentId, DomAttrId, DomOwnerId, DomRevision, DomStamp, NodeId};
 pub use image::{DomImageUpdate, DomImageUpdateCancellationReason, DomImageUpdateId, DomImg};
 pub use input::{DomInput, DomInputState};
 pub use installation::{

@@ -250,6 +250,8 @@ pub enum DomSourceOutput {
     Range(crate::DomRangeId),
     Node(NodeId),
     Document(crate::DocumentId),
+    RemovedAttribute(crate::DomAttrId),
+    AttributeAttachment(crate::DomAttributeAttachment),
     ViewTransition(DomViewTransitionId),
     ViewTransitionRecord(DomViewTransitionRecordId),
 }
@@ -782,6 +784,33 @@ impl DomSourceEdit {
             Some(document.into()),
         )
     }
+    /// Request creation of one empty detached Attr in the selected Document.
+    pub fn create_attribute(
+        document: crate::DocumentId,
+        local_name: impl Into<DocumentString>,
+    ) -> Self {
+        Self::create(
+            Creation::Attr {
+                namespace: None,
+                name: local_name.into(),
+            },
+            Some(document.into()),
+        )
+    }
+    /// Request creation of one empty detached Attr with an exact qualified name.
+    pub fn create_attribute_ns(
+        document: crate::DocumentId,
+        namespace: Namespace,
+        qualified_name: impl Into<DocumentString>,
+    ) -> Self {
+        Self::create(
+            Creation::Attr {
+                namespace: Some(namespace),
+                name: qualified_name.into(),
+            },
+            Some(document.into()),
+        )
+    }
     /// Request one `set_command_for_element` operation on the canonical owner.
     pub fn set_command_for_element(node: NodeId, target: Option<NodeId>) -> Self {
         let target = target.map(crate::NodeOperand::Existing);
@@ -1078,6 +1107,7 @@ impl DomSourceEdit {
                 node: node.into(),
                 namespace: None,
                 name: qualified_name.into(),
+                return_identity: false,
             },
         }
     }
@@ -1092,6 +1122,52 @@ impl DomSourceEdit {
                 node: node.into(),
                 namespace: Some(namespace),
                 name: local_name.into(),
+                return_identity: false,
+            },
+        }
+    }
+    /// Request removal of the exact currently attached Attr.
+    pub fn remove_attribute_node(node: NodeId, attribute: crate::DomAttrId) -> Self {
+        Self {
+            command: Command::RemoveAttributeNode {
+                node: node.into(),
+                attribute,
+            },
+        }
+    }
+    /// Attach an already authored native Attr and return the canonical result.
+    /// Web-facing setters supply their own preceding verification step.
+    pub fn attach_native_attribute(node: NodeId, attribute: crate::DomAttrId) -> Self {
+        Self {
+            command: Command::AttachNativeAttribute {
+                node: node.into(),
+                attribute,
+            },
+        }
+    }
+    /// Remove the current NamedNodeMap item and return its detached identity.
+    pub fn remove_named_item(node: NodeId, qualified_name: impl Into<DocumentString>) -> Self {
+        Self {
+            command: Command::RemoveAttribute {
+                node: node.into(),
+                namespace: None,
+                name: qualified_name.into(),
+                return_identity: true,
+            },
+        }
+    }
+    /// Remove the current NamedNodeMap item by expanded name.
+    pub fn remove_named_item_ns(
+        node: NodeId,
+        namespace: Namespace,
+        local_name: impl Into<DocumentString>,
+    ) -> Self {
+        Self {
+            command: Command::RemoveAttribute {
+                node: node.into(),
+                namespace: Some(namespace),
+                name: local_name.into(),
+                return_identity: true,
             },
         }
     }

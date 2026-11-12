@@ -11,6 +11,7 @@ use surgeist_html::values::DocumentString;
 pub enum DomNodeKind<'a> {
     Document(&'a DomDocumentMetadata),
     Element(&'a DomElement),
+    Attr(&'a crate::DomAttribute),
     DocumentFragment,
     ShadowRoot(&'a crate::DomShadowRootState),
     Text(&'a DocumentString),
@@ -115,6 +116,9 @@ impl DomSnapshot {
             return Err(DomError::WrongNodeKind);
         }
         Ok(DomDocument { snapshot: self, id })
+    }
+    pub fn attr(&self, id: NodeId) -> Result<crate::DomAttr<'_>, DomError> {
+        self.node(id)?.as_attr().ok_or(DomError::WrongNodeKind)
     }
 
     /// Find the first Element child of the exact captured Document.
@@ -538,6 +542,7 @@ impl<'a> DomNode<'a> {
         match self.kind() {
             DomNodeKind::Document(_) => "#document".into(),
             DomNodeKind::Element(_) => self.tag_name().expect("Element tag name"),
+            DomNodeKind::Attr(value) => value.name().qualified_spelling(),
             DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_) => {
                 "#document-fragment".into()
             }
@@ -556,6 +561,15 @@ impl<'a> DomNode<'a> {
     }
     pub fn as_element(self) -> Option<&'a DomElement> {
         self.node.element()
+    }
+    pub fn as_attr(self) -> Option<crate::DomAttr<'a>> {
+        let (data, owner) = self.node.attribute_node()?;
+        Some(crate::DomAttr {
+            id: crate::DomAttrId(self.id),
+            document: self.node.document(),
+            owner,
+            data,
+        })
     }
     /// Select the exact tag spelling without copying its code units. Any
     /// lookup of the current node-document pays the visited native pages.
@@ -607,7 +621,7 @@ impl<'a> DomNode<'a> {
             DocumentString::from_utf16(spelling.code_units().collect::<Vec<_>>())
         })
     }
-    fn html_element_in_html_document(self) -> bool {
+    pub(crate) fn html_element_in_html_document(self) -> bool {
         self.as_element()
             .is_some_and(|element| crate::names::in_html_namespace(element.name()))
             && self
@@ -618,22 +632,25 @@ impl<'a> DomNode<'a> {
                 .class()
                 == crate::DomDocumentClass::Html
     }
+    pub fn attributes(self) -> Option<crate::DomNamedNodeMap<'a>> {
+        self.as_element()?;
+        Some(crate::DomNamedNodeMap { element: self })
+    }
+    pub fn get_attribute_node(self, qualified_name: &DocumentString) -> Option<crate::DomAttr<'a>> {
+        self.attributes()?.get_named_item(qualified_name)
+    }
+    pub fn get_attribute_node_ns(
+        self,
+        namespace: &surgeist_html::values::Namespace,
+        local_name: &DocumentString,
+    ) -> Option<crate::DomAttr<'a>> {
+        self.attributes()?.get_named_item_ns(namespace, local_name)
+    }
     /// DOM getAttribute lookup, including HTML input casing from this exact
-    /// captured node-document. The intrinsic DomElement lookup stays exact.
+    /// captured node-document.
     pub fn attribute(self, qualified_name: &DocumentString) -> Option<&'a DocumentString> {
-        let element = self.as_element()?;
-        let html = self.html_element_in_html_document();
-        element
-            .attributes()
-            .iter()
-            .find(|attribute| {
-                if html {
-                    crate::names::qualified_equals_lowercase_input(attribute.name(), qualified_name)
-                } else {
-                    crate::names::qualified_equals(attribute.name(), qualified_name)
-                }
-            })
-            .map(|attribute| attribute.value())
+        self.get_attribute_node(qualified_name)
+            .map(crate::DomAttr::value)
     }
     /// Exact namespace/local-name lookup; HTML input casing does not apply.
     pub fn attribute_ns(
@@ -641,7 +658,8 @@ impl<'a> DomNode<'a> {
         namespace: &surgeist_html::values::Namespace,
         local_name: &DocumentString,
     ) -> Option<&'a DocumentString> {
-        self.as_element()?.attribute_ns(namespace, local_name)
+        self.get_attribute_node_ns(namespace, local_name)
+            .map(crate::DomAttr::value)
     }
     pub fn parent_element(self) -> Option<NodeId> {
         self.parent().filter(|id| {

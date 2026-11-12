@@ -28,7 +28,8 @@ const CELLS: usize = ROWS * COLUMNS;
 const SELECTED: usize = COLUMNS + 3;
 // Document + doctype + html/head/body/table/tbody + rows + td/Text pairs.
 const PARSED_NODES: usize = 2 + 5 + ROWS + 2 * CELLS;
-const MANAGED_NODES: usize = PARSED_NODES + 1; // Actual origin-source Document.
+// One origin-source Document, one id per row, and class and style per cell.
+const MANAGED_NODES: usize = PARSED_NODES + 1 + ROWS + 2 * CELLS;
 
 mod arrays;
 mod selected;
@@ -126,7 +127,7 @@ fn markup() -> String {
     for row in 0..ROWS {
         source.push_str(&format!("<tr id=\"r{row}\">"));
         for _ in 0..COLUMNS {
-            // Separate source occurrences, not caller-shared attribute banks.
+            // Each cell has its own authored attribute occurrences.
             source.push_str("<td class=\"cell\" style=\"color: red\">cell</td>");
         }
         source.push_str("</tr>");
@@ -364,8 +365,9 @@ fn check_dom(
     let mut cell_ids = Vec::new();
     let mut text_ids = Vec::new();
     for (row_index, row) in rows.iter().enumerate() {
-        let row_element = element(snapshot, *row, "tr");
-        assert_eq!(row_element.attributes().len(), 1);
+        element(snapshot, *row, "tr");
+        let row_element = snapshot.node(*row).unwrap();
+        assert_eq!(row_element.attributes().unwrap().len(), 1);
         assert_eq!(
             row_element.attribute(&"id".into()),
             Some(&DocumentString::from(format!("r{row_index}")))
@@ -389,12 +391,10 @@ fn check_dom(
             } else {
                 "cell"
             };
-            let value = element(snapshot, *cell, "td");
-            assert_eq!(value.attributes().len(), 2);
-            for (actual, (name, expected)) in value
-                .attributes()
-                .iter()
-                .zip([("class", class), ("style", style)])
+            element(snapshot, *cell, "td");
+            let attrs = snapshot.node(*cell).unwrap().attributes().unwrap();
+            assert_eq!(attrs.len(), 2);
+            for (actual, (name, expected)) in attrs.iter().zip([("class", class), ("style", style)])
             {
                 assert_eq!(actual.name().local_name(), &DocumentString::from(name));
                 assert!(actual.name().namespace_uri().is_none());
@@ -532,6 +532,9 @@ fn run_sample(
         times.installation_result_drop = drop_time;
     }
     observe(&mut observer, HolderStage::Populated);
+    let selected = old.node(cells[SELECTED]).unwrap().attributes().unwrap();
+    let class = selected.get_named_item(&"class".into()).unwrap().id();
+    let style = selected.get_named_item(&"style".into()).unwrap().id();
     for stage in [Stage::Text, Stage::Class, Stage::Style] {
         observe(&mut observer, stage.before());
         let revision = dom.revision();
@@ -539,15 +542,21 @@ fn run_sample(
         let expected = match stage {
             Stage::Text => {
                 batch.replace_data(text[SELECTED], 0, usize::MAX, "edited");
-                DomChange::Data(text[SELECTED])
+                vec![DomChange::Data(text[SELECTED])]
             }
             Stage::Class => {
                 batch.set_attribute(cells[SELECTED], "class", "chosen");
-                DomChange::Attributes(cells[SELECTED])
+                vec![
+                    DomChange::Attributes(cells[SELECTED]),
+                    DomChange::AttrValue(class),
+                ]
             }
             Stage::Style => {
                 batch.set_attribute(cells[SELECTED], "style", "color: blue");
-                DomChange::Attributes(cells[SELECTED])
+                vec![
+                    DomChange::Attributes(cells[SELECTED]),
+                    DomChange::AttrValue(style),
+                ]
             }
             Stage::Original => unreachable!(),
         };
@@ -564,7 +573,7 @@ fn run_sample(
                 Stage::Original => unreachable!(),
             }
         }
-        assert_eq!(commit.changes().changes(), [expected]);
+        assert_eq!(commit.changes().changes(), expected);
         drop(commit);
         assert_eq!(dom.revision().get(), revision.get() + 1);
         // No current-snapshot clone or full oracle runs inside this bracket.

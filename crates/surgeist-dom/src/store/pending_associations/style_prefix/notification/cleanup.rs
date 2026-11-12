@@ -113,7 +113,6 @@ impl Dom {
         )?;
         let prepared = draft.finish(self, cancel)?;
         let mut publication = self.prepare_publication(prepared, cancel)?;
-        publication.close_ordinary_sharing(cancel)?;
         let history = self.history.retain_evictions(
             &publication.history_plan,
             self.custody_registry.ledger(),

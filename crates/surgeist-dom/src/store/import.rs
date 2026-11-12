@@ -475,6 +475,16 @@ impl Draft {
             )?;
             formed.children.name = Some(name.custody);
             self.allocate_element_formed(formed, document, limits, cancel, formation)?
+        } else if let transaction::KindRead::Attr(attr) = original.kind() {
+            let name = self.bind_canonical_name(attr.name(), formation.as_ref(), cancel)?;
+            let value = source::formation::share_listed(attr.value(), formation.as_ref(), cancel)?;
+            self.allocate_formed(
+                NewNode::Attr(crate::DomAttribute::from_parts(name, value)),
+                document,
+                limits,
+                cancel,
+                formation,
+            )?
         } else {
             if matches!(original.kind(), transaction::KindRead::ShadowRoot(_)) {
                 return Err(DomError::NotSupported);
@@ -488,7 +498,8 @@ impl Draft {
             let kind = match original.kind() {
                 transaction::KindRead::Element(_)
                 | transaction::KindRead::Document(_)
-                | transaction::KindRead::ShadowRoot(_) => unreachable!("handled kind"),
+                | transaction::KindRead::Attr(_)
+                | transaction::KindRead::ShadowRoot(_) => return Err(DomError::WrongNodeKind),
                 transaction::KindRead::DocumentFragment => NewNode::DocumentFragment,
                 transaction::KindRead::Text(value) => NewNode::Text(value.clone()),
                 transaction::KindRead::Comment(value) => NewNode::Comment(value.clone()),
@@ -509,9 +520,34 @@ impl Draft {
             } else {
                 attributes::AttributeCause::Change
             };
-            for attribute in element.attributes().iter() {
-                check_cancel(cancel)?;
-                self.append_canonical_attribute(copy, attribute, cause, limits, cancel)?;
+            match source {
+                Source::Published(snapshot, id, _) => {
+                    let map = snapshot
+                        .node(*id)?
+                        .attributes()
+                        .ok_or(DomError::WrongNodeKind)?;
+                    for index in 0..map.len() {
+                        self.source_step(cancel)?;
+                        let attr = map.item(index).ok_or(DomError::StaleNode)?;
+                        self.append_canonical_attribute(copy, attr.data, cause, limits, cancel)?;
+                    }
+                }
+                Source::Staged(id) => {
+                    let count = self.node(*id)?.attribute_ids().len();
+                    for index in 0..count {
+                        self.source_step(cancel)?;
+                        let id = self
+                            .node(*id)?
+                            .attribute_ids()
+                            .get(index)
+                            .ok_or(DomError::StaleNode)?;
+                        let input = self.freeze_node_input(id, cancel)?;
+                        let transaction::KindRead::Attr(attr) = input.kind() else {
+                            return Err(DomError::WrongNodeKind);
+                        };
+                        self.append_canonical_attribute(copy, attr, cause, limits, cancel)?;
+                    }
+                }
             }
             if let Some(nonce) = element.nonce() {
                 self.set_nonce(copy, nonce, limits, cancel)?;

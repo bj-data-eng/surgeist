@@ -597,14 +597,18 @@ fn public_binding_precedes_insertion_and_changes_only_operational_state() {
     );
     let commit = dom.apply(setup, &cancel).unwrap();
     let snapshot = dom.snapshot();
-    let element = snapshot
-        .node(commit.created(&element).unwrap().unwrap())
-        .unwrap()
-        .as_element()
-        .unwrap();
+    let element_id = commit.created(&element).unwrap().unwrap();
+    let element = snapshot.node(element_id).unwrap().as_element().unwrap();
     assert_eq!(element.name().local_name_atom(), &bound);
-    assert_eq!(element.attributes()[0].name().local_name_atom(), &bound);
-    assert_eq!(element.attributes()[0].name().prefix(), Some(&"p".into()));
+    let attr = snapshot
+        .node(element_id)
+        .unwrap()
+        .attributes()
+        .unwrap()
+        .item(0)
+        .unwrap();
+    assert_eq!(attr.name().local_name_atom(), &bound);
+    assert_eq!(attr.name().prefix(), Some(&"p".into()));
     let old_row = bound.record().row();
     let identity = bound.identity();
     let mut unrelated = Vec::new();

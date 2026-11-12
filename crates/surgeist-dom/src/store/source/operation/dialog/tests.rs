@@ -893,8 +893,7 @@ fn node_retirement_notice_requires_the_exact_committed_generation() {
     let mut destroy = DomBatch::new();
     destroy.destroy(surviving);
     let prepared = dom.prepare(destroy, &cancel).unwrap();
-    let mut publication = dom.prepare_publication(prepared, &cancel).unwrap();
-    publication.close_ordinary_sharing(&cancel).unwrap();
+    let publication = dom.prepare_publication(prepared, &cancel).unwrap();
     drop(surviving_watch);
     dom.publish_prepared(publication);
     assert!(inbox.take().is_none());

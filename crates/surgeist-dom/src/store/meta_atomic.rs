@@ -857,7 +857,6 @@ fn prepare_ordinary<'dom, 'caps>(
         envelope,
     } = recording.expect("explicit ordinary Meta recording");
     let mut publication = dom.prepare_publication(prepared, cancel)?;
-    publication.close_ordinary_sharing(cancel)?;
     let inline = match resolver {
         Some((limits, resolver)) => {
             envelope.step(cancel)?;

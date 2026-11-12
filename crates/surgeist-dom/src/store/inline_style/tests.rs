@@ -179,20 +179,22 @@ fn callback_first_binding_survives_original_completion_and_guards_a_later_source
             change: DomInlineStyleChange::Attribute
         }
     );
-    assert_eq!(
-        lease
-            .snapshot()
+    let after = lease.snapshot();
+    assert!(
+        after
             .node(target)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes(),
-        before
-            .node(target)
-            .unwrap()
-            .as_element()
             .unwrap()
             .attributes()
+            .unwrap()
+            .iter()
+            .map(|attr| (attr.id(), attr.name(), attr.value()))
+            .eq(before
+                .node(target)
+                .unwrap()
+                .attributes()
+                .unwrap()
+                .iter()
+                .map(|attr| (attr.id(), attr.name(), attr.value())))
     );
     drop(lease);
     let after = dom.capture_inline_style(target).unwrap().unwrap();

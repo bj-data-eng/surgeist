@@ -154,6 +154,7 @@ impl Draft {
                     transaction::KindRead::Text(data) => Some(data.len()),
                     transaction::KindRead::Document(_)
                     | transaction::KindRead::Element(_)
+                    | transaction::KindRead::Attr(_)
                     | transaction::KindRead::DocumentFragment
                     | transaction::KindRead::ShadowRoot(_)
                     | transaction::KindRead::Comment(_)

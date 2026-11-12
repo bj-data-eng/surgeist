@@ -776,9 +776,7 @@ fn listed(kind: KindRead<'_>) -> bool {
 }
 fn attributes_same(a: KindRead<'_>, b: KindRead<'_>) -> bool {
     match (a, b) {
-        (KindRead::Element(a), KindRead::Element(b)) => {
-            a.language().same_attribute_storage(b.language())
-        }
+        (KindRead::Element(a), KindRead::Element(b)) => a.same_attributes(b),
         _ => true,
     }
 }
@@ -1486,10 +1484,6 @@ mod tests {
         let prepared = draft.finish_segment(dom, cancel).unwrap();
         let mut publication = dom.prepare_publication(prepared, cancel).unwrap();
         let rebase = draft.prepare_rebase(&mut publication, cancel).unwrap();
-        let sharing = draft
-            .prepare_sharing_publication(publication.changed, None, cancel)
-            .unwrap();
-        draft.close_sharing_publication(&mut publication, sharing, None);
         let committed = dom.publish_prepared_with_proof(publication);
         draft.commit_publication(rebase, &committed.committed);
     }

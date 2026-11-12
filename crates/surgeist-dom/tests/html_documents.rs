@@ -86,7 +86,7 @@ fn skeleton(snapshot: &DomSnapshot, document: DocumentId) -> (NodeId, NodeId, No
         assert_eq!(node.node_name(), DocumentString::from(tag));
         assert_eq!(node.owner_document(), Some(document));
         assert!(node.is_connected());
-        assert!(element.attributes().is_empty());
+        assert!(node.attributes().unwrap().is_empty());
         assert_eq!(element.nonce(), Some(&"".into()));
     }
     assert!(snapshot.node(body).unwrap().children().is_empty());
@@ -312,7 +312,7 @@ fn folded_builtin_names_require_actual_family_initialization_and_validation_stil
     );
 }
 #[test]
-fn html_non_ns_attributes_fold_only_input_while_ns_attributes_and_intrinsic_reads_stay_exact() {
+fn html_non_ns_attributes_fold_only_input_while_ns_reads_stay_exact() {
     let mut dom = new_dom();
     let (_, html) = documents(&mut dom);
     let mut batch = DomBatch::new();
@@ -326,10 +326,6 @@ fn html_non_ns_attributes_fold_only_input_while_ns_attributes_and_intrinsic_read
     assert_eq!(node.attribute(&"ID".into()), None);
     assert_eq!(
         node.attribute_ns(&Namespace::none(), &"ID".into()),
-        Some(&"upper".into())
-    );
-    assert_eq!(
-        node.as_element().unwrap().attribute(&"ID".into()),
         Some(&"upper".into())
     );
     assert_eq!(node.attribute(&"ÉTAT".into()), Some(&"accent".into()));
@@ -399,7 +395,7 @@ fn qualified_non_ns_operations_select_first_matching_attribute_preserving_its_na
     let element = commit.created(&element).unwrap().unwrap();
     let snapshot = dom.snapshot();
     let node = snapshot.node(element).unwrap();
-    assert_eq!(node.as_element().unwrap().attributes().len(), 3);
+    assert_eq!(node.attributes().unwrap().len(), 3);
     assert_eq!(node.attribute(&"P:KEY".into()), Some(&"changed".into()));
     assert_eq!(
         node.attribute_ns(&Namespace::from_uri("urn:a"), &"key".into()),
@@ -467,18 +463,27 @@ fn adoption_changes_contextual_getters_and_next_write_without_rewriting_raw_name
         node.as_element().unwrap().name(),
         old.node(element).unwrap().as_element().unwrap().name()
     );
-    assert_eq!(
-        node.as_element().unwrap().attributes(),
-        old.node(element)
+    assert!(
+        node.attributes()
             .unwrap()
-            .as_element()
+            .iter()
+            .map(|a| (a.id(), a.name(), a.value()))
+            .eq(old
+                .node(element)
+                .unwrap()
+                .attributes()
+                .unwrap()
+                .iter()
+                .map(|a| (a.id(), a.name(), a.value())))
+    );
+    let mut expected = vec![DomChange::NodeDocument(element)];
+    expected.extend(
+        node.attributes()
             .unwrap()
-            .attributes()
+            .iter()
+            .map(|attr| DomChange::NodeDocument(attr.id().node())),
     );
-    assert_eq!(
-        commit.changes().changes(),
-        &[DomChange::NodeDocument(element)]
-    );
+    assert_eq!(commit.changes().changes(), expected);
     assert_eq!(old.node(element).unwrap().node_name(), "p:MiXeD".into());
     assert_eq!(
         old.node(element).unwrap().attribute(&"ID".into()),
@@ -538,14 +543,18 @@ fn import_preserves_actual_qnames_and_attribute_case_while_target_context_change
                 .unwrap()
                 .name()
         );
-        assert_eq!(
-            node.as_element().unwrap().attributes(),
-            captured
-                .node(source_id)
+        assert!(
+            node.attributes()
                 .unwrap()
-                .as_element()
-                .unwrap()
-                .attributes()
+                .iter()
+                .map(|a| (a.name(), a.value()))
+                .eq(captured
+                    .node(source_id)
+                    .unwrap()
+                    .attributes()
+                    .unwrap()
+                    .iter()
+                    .map(|a| (a.name(), a.value())))
         );
     }
     assert_eq!(
@@ -590,12 +599,7 @@ fn shadow_host_class_is_not_used_for_descendants_with_a_different_actual_documen
     assert_eq!(snapshot.node(host).unwrap().node_name(), "div".into());
     assert_eq!(snapshot.node(child).unwrap().node_name(), "MIXED".into());
     assert_eq!(
-        snapshot
-            .node(child)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attribute(&"id".into()),
+        snapshot.node(child).unwrap().attribute(&"id".into()),
         Some(&"value".into())
     );
 }

@@ -329,6 +329,21 @@ fn persistent_bank_usage_survives_old_retirement_and_later_real_install_remove()
     drop(old_retirement);
     assert_eq!(dom.usage().parsed_association_bytes(), native_persistent);
     assert_eq!(drops.load(Ordering::Relaxed), 0);
+    let index_bytes = |dom: &Dom| {
+        let bank = &dom.pending_associations;
+        bank.entries
+            .inspect_graph(|_| Ok(crate::store::bank::Totals::default()))
+            .unwrap()
+            .index_charge()
+            .bytes
+            + bank
+                .documents
+                .inspect_graph(|_| Ok(crate::store::bank::Totals::default()))
+                .unwrap()
+                .index_charge()
+                .bytes
+    };
+    let prior_index = index_bytes(&dom);
     let (third, id) = install(
         &mut dom,
         parse("<!doctype html><meta http-equiv=default-style content=B>"),
@@ -345,7 +360,13 @@ fn persistent_bank_usage_survives_old_retirement_and_later_real_install_remove()
         let (_, dead) = p.commit(&flag()).unwrap().into_parts();
         drop(dead);
     }
-    assert_eq!(dom.usage().parsed_association_bytes(), native_persistent);
+    // The third installation can extend the sparse index to later slots.
+    // Retirement still releases its rows, report and retained payloads.
+    assert_eq!(
+        dom.usage().parsed_association_bytes() - index_bytes(&dom),
+        native_persistent - prior_index
+    );
+    assert!(dom.pending_associations.document(third).is_none());
     assert!(
         dom.parsed_html_style_prefix(style)
             .unwrap()

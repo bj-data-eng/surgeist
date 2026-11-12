@@ -151,7 +151,6 @@ pub(in crate::store) fn node_storage(state: &Arc<State>) -> AllocationGraph {
 fn report(label: &str, dom: &Dom, graph: &AllocationGraph) {
     let mut controls = AllocationGraph::default();
     dom.custody_registry.inspect_raw_allocations(&mut controls);
-    payload::inspect_attribute_child_allocations(&dom.state_custody.slots, &mut controls);
     let mut measured_union = graph.clone();
     measured_union.merge(&controls);
     eprintln!(
@@ -225,11 +224,12 @@ fn assert_plain_element(
     assert_eq!(element.name().namespace_uri(), None);
     assert_eq!(element.name().prefix(), None);
     assert_eq!(element.name().local_name(), &DocumentString::from("plain"));
+    let attributes = node.attributes().unwrap();
     match attribute {
-        None => assert!(element.attributes().is_empty()),
+        None => assert!(attributes.is_empty()),
         Some((name, value)) => {
-            assert_eq!(element.attributes().len(), 1);
-            let actual = &element.attributes()[0];
+            assert_eq!(attributes.len(), 1);
+            let actual = attributes.item(0).unwrap();
             assert_eq!(actual.name().namespace_uri(), None);
             assert_eq!(actual.name().local_name(), &DocumentString::from(name));
             assert_eq!(actual.value(), &DocumentString::from(value));
@@ -513,7 +513,7 @@ fn native_node_graphs_retain_real_banks_payloads_and_snapshot_union() {
     assert_eq!(before.count("bank.record"), 9);
     assert!(before.count("bank.page") > 0 && before.count("bank.leaf") > 0);
     assert_eq!(before.count("native.canvas"), 1);
-    // Four freshly created Elements have no attribute bank allocation. Their
+    // Four freshly created Elements have no attribute order allocation. Their
     // four local atoms share one additional HTML namespace atom across the three
     // HTML names in this DOM, without atomizing the PI/doctype names.
     assert_eq!(before.count("attributes.target"), 0);
@@ -527,27 +527,20 @@ fn native_node_graphs_retain_real_banks_payloads_and_snapshot_union() {
     let after = node_storage(&dom.state);
     assert_eq!(after.count("attributes.target"), 1);
     assert_eq!(after.count("attributes.buffer"), 1);
+    assert_eq!(after.count("node.attr"), 1);
+    assert_eq!(after.count("attr.data"), 1);
     assert_eq!(after.count("name.record"), 6); // The independently interned id.
     let mut union = before.clone();
     union.merge(&after);
     assert!(union.bytes() >= before.bytes() && union.bytes() >= after.bytes());
     assert_eq!(node_storage(&held.state), before);
-    assert_eq!(
-        held.node(plain)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes()
-            .len(),
-        0
-    );
+    assert_eq!(held.node(plain).unwrap().attributes().unwrap().len(), 0);
     assert_eq!(
         dom.snapshot()
             .node(plain)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attributes()
+            .unwrap()
             .len(),
         1
     );
@@ -574,7 +567,7 @@ fn native_node_graphs_retain_real_banks_payloads_and_snapshot_union() {
         DomNodeKind::Text(_)
     ));
     let vacant = node_storage(&dom.state);
-    assert_eq!(vacant.count("bank.record"), 9);
+    assert_eq!(vacant.count("bank.record"), 10);
     report("vacant Slot", &dom, &vacant);
     let mut batch = DomBatch::new();
     let replacement = batch.create_text(document, "replacement");
@@ -871,22 +864,13 @@ fn known_empty_form_snapshot_and_source_rollback_keep_original_root() {
         crate::DomSourceProgress::Complete(_)
     ));
     drop(source);
-    assert_eq!(
-        held.node(form)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes()
-            .len(),
-        0
-    );
+    assert_eq!(held.node(form).unwrap().attributes().unwrap().len(), 0);
     assert_eq!(
         dom.snapshot()
             .node(form)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attributes()
+            .unwrap()
             .len(),
         1
     );

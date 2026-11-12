@@ -140,12 +140,12 @@ impl Draft {
         }
     }
 
-    fn project_children(
+    fn project_node_sequence(
         &self,
-        group: Option<&Group<ContainerChildren<NodeId>, Children>>,
+        group: Option<&Group<NodeSequence<NodeId>, NodeSequenceFields>>,
         map: &impl Fn(Key) -> NodeId,
         cancel: &AtomicBool,
-    ) -> Result<Option<Controlled<ContainerChildren<NodeId>>>, DomError> {
+    ) -> Result<Option<Controlled<NodeSequence<NodeId>>>, DomError> {
         let Some(group) = group else { return Ok(None) };
         match group {
             Group::Canonical(value) => Ok(Some(value.clone())),
@@ -155,16 +155,14 @@ impl Draft {
                 if backing == custody::Usage::ZERO {
                     return Ok(None);
                 }
-                let usage = custody::Usage::new(
-                    size_of::<payload::Payload<ContainerChildren<NodeId>>>(),
-                    0,
-                )
-                .checked_add(backing)?;
+                let usage =
+                    custody::Usage::new(size_of::<payload::Payload<NodeSequence<NodeId>>>(), 0)
+                        .checked_add(backing)?;
                 self.seal_projection(
                     usage,
                     cancel,
                     |debit| {
-                        Ok(ContainerChildren {
+                        Ok(NodeSequence {
                             values: projected_values(view, map, debit, self, cancel)?,
                         })
                     },
@@ -666,7 +664,7 @@ impl Draft {
         Ok(match self.records_for(key) {
             DraftNode::Document(value) => {
                 let value = value.value();
-                let children = self.project_children(value.children.as_ref(), &map, cancel)?;
+                let children = self.project_node_sequence(value.children.as_ref(), &map, cancel)?;
                 let fullscreen = self.project_fullscreen(value.fullscreen.as_ref(), cancel)?;
                 let base = self.project_base_document(&value.base, &map, cancel)?;
                 let interactive = self.project_interactive(&value.interactive, &map, cancel)?;
@@ -701,7 +699,9 @@ impl Draft {
             }
             DraftNode::Element(value) => {
                 let value = value.value();
-                let children = self.project_children(value.children.as_ref(), &map, cancel)?;
+                let attributes =
+                    self.project_node_sequence(value.attributes.as_ref(), &map, cancel)?;
+                let children = self.project_node_sequence(value.children.as_ref(), &map, cancel)?;
                 let slottable = self.project_slottable(value.slottable.as_ref(), &map, cancel)?;
                 let shadow = value
                     .shadow
@@ -777,6 +777,8 @@ impl Draft {
                     ElementNode {
                         common: common(&value.common),
                         element: element.value.clone(),
+                        attributes: attributes.as_ref().map(|v| v.value.clone()),
+                        attribute_revision: value.attribute_revision,
                         children: children.as_ref().map(|v| v.value.clone()),
                         slottable: slottable.as_ref().map(|v| v.value.clone()),
                         shadow: shadow.as_ref().map(|v| v.value.clone()),
@@ -792,7 +794,7 @@ impl Draft {
             }
             DraftNode::DocumentFragment(value) => {
                 let value = value.value();
-                let children = self.project_children(value.children.as_ref(), &map, cancel)?;
+                let children = self.project_node_sequence(value.children.as_ref(), &map, cancel)?;
                 root!(
                     DocumentFragment,
                     FragmentNode<NodeId>,
@@ -810,7 +812,7 @@ impl Draft {
             }
             DraftNode::ShadowRoot(value) => {
                 let value = value.value();
-                let children = self.project_children(value.children.as_ref(), &map, cancel)?;
+                let children = self.project_node_sequence(value.children.as_ref(), &map, cancel)?;
                 root!(
                     ShadowRoot,
                     ShadowNode<NodeId>,
@@ -885,6 +887,24 @@ impl Draft {
                     |value: &DocumentTypeNode<NodeId>, admit| payload::data_dependency(
                         &value.data,
                         self.custody_registry(),
+                        admit
+                    )
+                )
+            }
+            DraftNode::Attr(value) => {
+                let value = value.value();
+                root!(
+                    Attr,
+                    AttrNode<NodeId>,
+                    AttrNode {
+                        common: common(&value.common),
+                        data: value.data.value.clone(),
+                        owner: value.owner.map(map),
+                    },
+                    |value: &AttrNode<NodeId>, admit| payload::attr_data_dependency(
+                        &value.data,
+                        self.custody_registry(),
+                        Some(&self.names),
                         admit
                     )
                 )

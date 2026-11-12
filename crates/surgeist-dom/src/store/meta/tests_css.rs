@@ -378,8 +378,6 @@ fn theme_empty_media_guard_preserves_non_ascii_and_nul_unavailability() {
             dom.snapshot()
                 .node(meta)
                 .unwrap()
-                .as_element()
-                .unwrap()
                 .attribute(&"name".into())
                 .is_none()
         );

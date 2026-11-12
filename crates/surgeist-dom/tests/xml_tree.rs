@@ -284,6 +284,13 @@ fn explicit_adoption_preserves_subtree_ids_and_reports_document_only_changes_for
     let child = commit.created(&child).unwrap().unwrap();
     let text = commit.created(&text).unwrap().unwrap();
     let before = dom.snapshot();
+    let attr = before
+        .node(child)
+        .unwrap()
+        .get_attribute_node_ns(&Namespace::from_uri("urn:x"), &"name".into())
+        .unwrap()
+        .id()
+        .node();
     let mut batch = DomBatch::new();
     batch.adopt(root, target);
     let report = apply(&mut dom, batch);
@@ -292,13 +299,14 @@ fn explicit_adoption_preserves_subtree_ids_and_reports_document_only_changes_for
         [
             DomChange::NodeDocument(root),
             DomChange::NodeDocument(child),
-            DomChange::NodeDocument(text)
+            DomChange::NodeDocument(text),
+            DomChange::NodeDocument(attr)
         ]
     );
     let after = dom.snapshot();
     assert_eq!(after.node(root).unwrap().parent(), None);
     assert_eq!(after.node(root).unwrap().children(), [child]);
-    for id in [root, child, text] {
+    for id in [root, child, text, attr] {
         assert_eq!(after.node(id).unwrap().id(), id);
         assert_eq!(after.node(id).unwrap().owner_document(), Some(target));
         assert_eq!(before.node(id).unwrap().owner_document(), Some(source));
@@ -307,6 +315,7 @@ fn explicit_adoption_preserves_subtree_ids_and_reports_document_only_changes_for
             before.node(id).unwrap().kind()
         );
     }
+    assert_eq!(after.attr(attr).unwrap().owner_element(), Some(child));
     assert_eq!(
         after.document(source).unwrap().node(root).unwrap_err(),
         DomError::WrongDocument

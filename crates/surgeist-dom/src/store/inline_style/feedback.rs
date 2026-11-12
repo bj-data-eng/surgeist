@@ -594,8 +594,7 @@ impl Dom {
         )?;
         let mut prepared = draft.finish(self, cancel)?;
         prepared.state.incomplete_source = self.state.incomplete_source;
-        let mut publication = self.prepare_publication(prepared, cancel)?;
-        publication.close_ordinary_sharing(cancel)?;
+        let publication = self.prepare_publication(prepared, cancel)?;
         if publication
             .changes
             .len()

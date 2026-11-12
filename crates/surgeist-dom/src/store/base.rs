@@ -174,7 +174,7 @@ impl Draft {
         let transaction::KindRead::Element(e) = &self.node(key)?.kind() else {
             return Ok(None);
         };
-        for attr in e.language().attributes().iter() {
+        for attr in e.attributes().iter() {
             self.base_step(cancel)?;
             if attr.name().namespace_uri().is_none()
                 && self.base_ascii(attr.name().local_name(), name.local_name(), cancel)?

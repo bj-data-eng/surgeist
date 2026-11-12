@@ -483,7 +483,7 @@ mod tests {
             assert_eq!(actual.children().len(), 1);
             assert_eq!(
                 actual.document().node(),
-                prepared.created[newdoc.index].unwrap()
+                prepared.node_outputs[newdoc.index].unwrap()
             );
             if !exhausted {
                 cancel.store(true, Ordering::Release);

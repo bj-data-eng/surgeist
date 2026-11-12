@@ -139,8 +139,8 @@ fn the_closedby_report_lists_the_block_it_borrows_for_the_operation() {
     let mut units = Vec::with_capacity(8192);
     units.extend([97_u16, 98, 99, 100, 101, 102, 103, 104]);
     let block = TextBlock::from_utf16(units);
-    // No path has listed the block when the report is retained, as when the attribute bank had
-    // not: the report lists it itself, so the operation holds the block once.
+    // Isolate the report by removing the Attr value's listing. The report lists
+    // the block once.
     let (outcome, listed) = enabled_within(&block.string(0..4).unwrap(), 100_000, Some(&block));
     assert!(outcome.is_ok(), "{outcome:?}");
     assert_eq!(listed, 1);

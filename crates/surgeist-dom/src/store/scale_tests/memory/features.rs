@@ -28,8 +28,8 @@ use surgeist_html::values::{DocumentString, Namespace};
 
 mod selected;
 
-const SOURCE_NODES: usize = 10;
-const TARGET_NODES: usize = 3;
+const SOURCE_NODES: usize = 10 + 4; // Style, Form and Input attributes.
+const TARGET_NODES: usize = 3 + 3; // Imported Form and Input attributes.
 const COMBINED_NODES: usize = SOURCE_NODES + TARGET_NODES;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -435,18 +435,24 @@ fn check_source(snapshot: &DomSnapshot, ids: SourceIds, value: &[u16], dirty: bo
         ]
     );
     assert_eq!(input.form_owner().unwrap(), Some(ids.form));
-    let attributes = input_node.as_element().unwrap().attributes();
+    let attributes = input_node.attributes().unwrap();
     assert_eq!(attributes.len(), 2);
     assert_eq!(
-        attributes[0].name().local_name().code_units(),
+        attributes.item(0).unwrap().name().local_name().code_units(),
         &[116, 121, 112, 101]
     );
-    assert_eq!(attributes[0].value().code_units(), &[116, 101, 120, 116]);
     assert_eq!(
-        attributes[1].name().local_name().code_units(),
+        attributes.item(0).unwrap().value().code_units(),
+        &[116, 101, 120, 116]
+    );
+    assert_eq!(
+        attributes.item(1).unwrap().name().local_name().code_units(),
         &[118, 97, 108, 117, 101]
     );
-    assert_eq!(attributes[1].value().code_units(), &[115, 101, 101, 100]);
+    assert_eq!(
+        attributes.item(1).unwrap().value().code_units(),
+        &[115, 101, 101, 100]
+    );
     let form = snapshot.node(ids.form).unwrap().as_form().unwrap();
     assert_eq!(form.past_names().len(), 0);
     let style = snapshot.node(ids.style).unwrap().as_style().unwrap();
@@ -478,13 +484,21 @@ fn check_import(
     assert_eq!(root.children(), &[input]);
     assert_eq!(root.node_name(), DocumentString::from("form"));
     assert_eq!(root.as_form().unwrap().past_names().len(), 0);
-    let form_attributes = root.as_element().unwrap().attributes();
+    let form_attributes = root.attributes().unwrap();
     assert_eq!(form_attributes.len(), 1);
     assert_eq!(
-        form_attributes[0].name().local_name().code_units(),
+        form_attributes
+            .item(0)
+            .unwrap()
+            .name()
+            .local_name()
+            .code_units(),
         &[105, 100]
     );
-    assert_eq!(form_attributes[0].value().code_units(), &[102]);
+    assert_eq!(
+        form_attributes.item(0).unwrap().value().code_units(),
+        &[102]
+    );
     let node = snapshot.node(input).unwrap();
     assert_eq!(node.parent(), Some(form));
     assert_eq!(node.owner_document(), Some(document));
@@ -501,18 +515,24 @@ fn check_import(
     assert_eq!(selection.cursor_position(), Some(cursor));
     assert_eq!(selection.direction(), HtmlInputSelectionDirection::Forward);
     assert_eq!(native.explicit_popover_target(), None);
-    let attributes = node.as_element().unwrap().attributes();
+    let attributes = node.attributes().unwrap();
     assert_eq!(attributes.len(), 2);
     assert_eq!(
-        attributes[0].name().local_name().code_units(),
+        attributes.item(0).unwrap().name().local_name().code_units(),
         &[116, 121, 112, 101]
     );
-    assert_eq!(attributes[0].value().code_units(), &[116, 101, 120, 116]);
     assert_eq!(
-        attributes[1].name().local_name().code_units(),
+        attributes.item(0).unwrap().value().code_units(),
+        &[116, 101, 120, 116]
+    );
+    assert_eq!(
+        attributes.item(1).unwrap().name().local_name().code_units(),
         &[118, 97, 108, 117, 101]
     );
-    assert_eq!(attributes[1].value().code_units(), &[115, 101, 101, 100]);
+    assert_eq!(
+        attributes.item(1).unwrap().value().code_units(),
+        &[115, 101, 101, 100]
+    );
 }
 
 fn run_sample(mut observer: Option<&mut dyn FnMut(Stage)>) -> Times {
@@ -524,7 +544,10 @@ fn run_sample(mut observer: Option<&mut dyn FnMut(Stage)>) -> Times {
     {
         let snapshot = source.snapshot();
         check_source(&snapshot, ids, &[115, 101, 101, 100], false);
-        assert_eq!(timed(&mut times.traversal, || snapshot.nodes().count()), 10);
+        assert_eq!(
+            timed(&mut times.traversal, || snapshot.nodes().count()),
+            SOURCE_NODES
+        );
     }
     observe(&mut observer, Stage::FeaturesPopulated);
     let source_old = timed(&mut times.retained_snapshot_acquire, || source.snapshot());
@@ -551,20 +574,22 @@ fn run_sample(mut observer: Option<&mut dyn FnMut(Stage)>) -> Times {
         &[112, 114, 105, 118, 97, 116, 101],
         true,
     );
-    assert!(std::ptr::eq(
+    assert!(
         source_old
             .node(ids.input)
             .unwrap()
-            .as_element()
+            .attributes()
             .unwrap()
-            .attributes(),
-        source_current
-            .node(ids.input)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes(),
-    ));
+            .iter()
+            .map(|a| (a.id(), a.name(), a.value()))
+            .eq(source_current
+                .node(ids.input)
+                .unwrap()
+                .attributes()
+                .unwrap()
+                .iter()
+                .map(|a| (a.id(), a.name(), a.value())))
+    );
     assert_eq!(
         source_old
             .node(ids.style)
@@ -635,7 +660,7 @@ fn run_sample(mut observer: Option<&mut dyn FnMut(Stage)>) -> Times {
     );
     assert_eq!(
         timed(&mut times.traversal, || target_old.nodes().count()),
-        3
+        TARGET_NODES
     );
     observe(&mut observer, Stage::ImportComplete);
 
@@ -671,20 +696,22 @@ fn run_sample(mut observer: Option<&mut dyn FnMut(Stage)>) -> Times {
         &[112, 114, 105, 118, 97, 116, 101],
         0,
     );
-    assert!(std::ptr::eq(
+    assert!(
         target_old
             .node(input)
             .unwrap()
-            .as_element()
+            .attributes()
             .unwrap()
-            .attributes(),
-        target_current
-            .node(input)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes(),
-    ));
+            .iter()
+            .map(|a| (a.id(), a.name(), a.value()))
+            .eq(target_current
+                .node(input)
+                .unwrap()
+                .attributes()
+                .unwrap()
+                .iter()
+                .map(|a| (a.id(), a.name(), a.value())))
+    );
     check_source(
         &source_current,
         ids,

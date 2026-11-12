@@ -137,6 +137,8 @@ impl OperationRoot {
             | Command::Destroy(node)
             | Command::SetAttribute { node, .. }
             | Command::RemoveAttribute { node, .. }
+            | Command::RemoveAttributeNode { node, .. }
+            | Command::AttachNativeAttribute { node, .. }
             | Command::SetCustomValidity { node, .. }
             | Command::ShowDialog { node }
             | Command::ShowModalDialog { node }

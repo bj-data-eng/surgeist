@@ -12,11 +12,16 @@ impl DomDetails<'_> {
     }
     /// Actual no-namespace open presence, never a second stored Boolean.
     pub fn state(self) -> HtmlDetailsState {
-        self.node
-            .as_element()
-            .expect("Details")
-            .details_state()
-            .expect("Details")
+        if self.node.attributes().is_some_and(|attributes| {
+            attributes.iter().any(|attr| {
+                attr.name().namespace_uri().is_none()
+                    && attr.name().local_name().code_units() == [0x6f, 0x70, 0x65, 0x6e]
+            })
+        }) {
+            HtmlDetailsState::Open
+        } else {
+            HtmlDetailsState::Closed
+        }
     }
 }
 

@@ -569,14 +569,20 @@ fn shallow_and_deep_import_copy_clonable_shadow_descendants_after_ordinary_child
                 .state()
                 .properties()
         );
-        let element = snapshot.node(copy_inner).unwrap().as_element().unwrap();
-        assert_eq!(element.nonce(), Some(&"private".into()));
+        let element = snapshot.node(copy_inner).unwrap();
+        assert_eq!(
+            element.as_element().unwrap().nonce(),
+            Some(&"private".into())
+        );
         assert_eq!(element.attribute(&"nonce".into()), Some(&"public".into()));
         for id in copy.shadow_including_tree_order() {
             assert_eq!(snapshot.node(id).unwrap().owner_document(), Some(doc));
             assert!(captured.node(id).is_err());
         }
-        assert_eq!(target.usage().managed_nodes(), 7 + usize::from(subtree));
+        let attr = element.get_attribute_node(&"nonce".into()).unwrap();
+        assert_eq!(attr.owner_element(), Some(copy_inner));
+        assert_eq!(attr.owner_document(), doc);
+        assert_eq!(target.usage().managed_nodes(), 8 + usize::from(subtree));
     }
 }
 #[test]

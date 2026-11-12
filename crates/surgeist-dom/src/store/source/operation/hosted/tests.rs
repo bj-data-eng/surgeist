@@ -795,7 +795,7 @@ fn the_embedder_policy_inputs_list_the_block_they_borrow_for_the_operation() {
         Some((Isolate::Policy, &block)),
         None,
     );
-    // The block is charged once again, as when the attribute bank listed it.
+    // The policy input lists the block once, just as the Attr value did.
     let (kept, kept_count) = total_at(&attributes, Stop::Policy);
     assert_eq!((count, kept_count), (1, 1));
     assert_eq!(listed.units(), kept.units());

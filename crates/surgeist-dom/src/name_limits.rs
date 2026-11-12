@@ -6,8 +6,8 @@ use std::mem::size_of;
 /// Finite admission for one owner's exact-name registry.
 ///
 /// Retention covers directly owned records, strings, index capacity and name
-/// operation receipts, including canonical attribute-array storage and its
-/// name-owned custody capsules. Attribute-value text keeps its separate payload
+/// operation receipts, including the local attribution of canonical name and
+/// Attr payloads and their controls. Attribute-value text keeps its separate payload
 /// admission. Shared custody administration remains charged to its
 /// existing owner and any enclosing Source allowance. This is not a total DOM
 /// memory ceiling. Work and scratch apply to an ordinary batch or explicit

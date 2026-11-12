@@ -1,10 +1,10 @@
-//! Optional immutable sharing through public DOM construction and edits.
+//! Immutable attribute and text ownership through public DOM edits.
 //! Pointer observations accompany exact content, native hooks and snapshots.
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
     DocumentId, DocumentString, Dom, DomBatch, DomChange, DomCommit, DomLimits, DomNameLimits,
-    DomSnapshot, Namespace, NodeId,
+    DomNamedNodeMap, DomSnapshot, Namespace, NodeId,
 };
 
 const RAW: &[u16] = &[107, 0xd800, 0, 0xdc00];
@@ -38,24 +38,92 @@ fn document(dom: &mut Dom) -> DocumentId {
     let document = batch.create_document();
     apply(dom, batch).document(&document).unwrap()
 }
+fn distinct_attributes(left: DomNamedNodeMap<'_>, right: DomNamedNodeMap<'_>) -> bool {
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(right.iter())
+            .all(|(a, b)| a.id() != b.id() && a.name() == b.name() && a.value() == b.value())
+}
+fn same_backing(left: DomNamedNodeMap<'_>, right: DomNamedNodeMap<'_>) -> bool {
+    left.len() == right.len()
+        && left.iter().zip(right.iter()).all(|(a, b)| {
+            a.id() == b.id()
+                && std::ptr::eq(a.name(), b.name())
+                && std::ptr::eq(a.value(), b.value())
+        })
+}
+
+#[test]
+fn restoring_an_attr_value_in_a_published_batch_keeps_its_original_backing() {
+    let mut dom = owner();
+    let document = document(&mut dom);
+    let original = units(RAW);
+    let mut setup = DomBatch::new();
+    let element = setup.create_element(document, "div");
+    setup.set_attribute(&element, "data-x", original.clone());
+    let element = apply(&mut dom, setup).created(&element).unwrap().unwrap();
+    let before = dom.snapshot();
+    let id = before
+        .node(element)
+        .unwrap()
+        .get_attribute_node(&"data-x".into())
+        .unwrap()
+        .id();
+
+    let restored = units(RAW);
+    assert!(!restored.shares_storage_with(&original));
+    let mut edit = DomBatch::new();
+    edit.set_attribute(element, "data-x", "changed");
+    edit.set_attribute(element, "data-x", restored);
+    edit.create_comment(document, "publish this change");
+    let commit = apply(&mut dom, edit);
+    let after = dom.snapshot();
+
+    assert_ne!(after.stamp(), before.stamp());
+    assert!(
+        !commit
+            .changes()
+            .changes()
+            .contains(&DomChange::Attributes(element))
+    );
+    assert!(
+        !commit
+            .changes()
+            .changes()
+            .contains(&DomChange::AttrValue(id))
+    );
+    assert!(
+        after
+            .attr(id.node())
+            .unwrap()
+            .value()
+            .shares_storage_with(&original)
+    );
+}
+
 fn assert_input_attributes(snapshot: &DomSnapshot, input: NodeId, value: &[u16]) {
     let node = snapshot.node(input).unwrap();
-    let attributes = node.as_element().unwrap().attributes();
+    let attributes = node.attributes().unwrap();
     assert_eq!(attributes.len(), 3);
     for (attribute, local, expected) in [
         (
-            &attributes[0],
+            &attributes.item(0).unwrap(),
             &[116, 121, 112, 101][..],
             &[116, 101, 120, 116][..],
         ),
-        (&attributes[1], &[118, 97, 108, 117, 101][..], value),
+        (
+            &attributes.item(1).unwrap(),
+            &[118, 97, 108, 117, 101][..],
+            value,
+        ),
     ] {
         assert!(attribute.name().namespace_uri().is_none());
         assert!(attribute.name().prefix().is_none());
         assert_eq!(attribute.name().local_name().code_units(), local);
         assert_eq!(attribute.value().code_units(), expected);
     }
-    let label = &attributes[2];
+    let label = &attributes.item(2).unwrap();
     assert_eq!(
         label.name().namespace_uri().unwrap().code_units(),
         [117, 114, 110, 58, 115, 104, 97, 114, 101]
@@ -69,7 +137,7 @@ fn assert_input_attributes(snapshot: &DomSnapshot, input: NodeId, value: &[u16])
 }
 
 #[test]
-fn equal_native_and_imported_banks_share_without_merging_input_state() {
+fn equal_native_and_imported_attributes_have_distinct_identity_and_input_state() {
     let mut dom = owner();
     let document = document(&mut dom);
     let mut batch = DomBatch::new();
@@ -156,31 +224,16 @@ fn equal_native_and_imported_banks_share_without_merging_input_state() {
             .flags()
             .dirty_value()
     );
-    let first_bank = copied
-        .node(first)
-        .unwrap()
-        .as_element()
-        .unwrap()
-        .attributes();
-    let second_bank = copied
-        .node(second)
-        .unwrap()
-        .as_element()
-        .unwrap()
-        .attributes();
-    let imported_bank = copied
-        .node(imported)
-        .unwrap()
-        .as_element()
-        .unwrap()
-        .attributes();
+    let first_bank = copied.node(first).unwrap().attributes().unwrap();
+    let second_bank = copied.node(second).unwrap().attributes().unwrap();
+    let imported_bank = copied.node(imported).unwrap().attributes().unwrap();
     assert!(
-        std::ptr::eq(first_bank, second_bank),
-        "separately authored equal canonical banks must share"
+        distinct_attributes(first_bank, second_bank),
+        "separately authored attributes have distinct identities"
     );
     assert!(
-        std::ptr::eq(first_bank, imported_bank),
-        "same-owner import must reuse the equal canonical bank"
+        distinct_attributes(first_bank, imported_bank),
+        "same-owner import creates fresh Attr identities"
     );
 }
 
@@ -285,38 +338,55 @@ fn different_ordered_banks_keep_equal_strings_separate_and_keep_order_prefixes_a
     let first = done.created(&first).unwrap().unwrap();
     let second = done.created(&second).unwrap().unwrap();
     let snapshot = dom.snapshot();
-    let left = snapshot
-        .node(first)
-        .unwrap()
-        .as_element()
-        .unwrap()
-        .attributes();
-    let right = snapshot
-        .node(second)
-        .unwrap()
-        .as_element()
-        .unwrap()
-        .attributes();
+    let left = snapshot.node(first).unwrap().attributes().unwrap();
+    let right = snapshot.node(second).unwrap().attributes().unwrap();
     assert_eq!((left.len(), right.len()), (3, 3));
-    assert_eq!(left[0].name().local_name().code_units(), [105, 100]);
-    assert_eq!(left[0].value().code_units(), [111, 110, 101]);
     assert_eq!(
-        right[0].name().local_name().code_units(),
+        left.item(0).unwrap().name().local_name().code_units(),
+        [105, 100]
+    );
+    assert_eq!(left.item(0).unwrap().value().code_units(), [111, 110, 101]);
+    assert_eq!(
+        right.item(0).unwrap().name().local_name().code_units(),
         [99, 108, 97, 115, 115]
     );
-    assert_eq!(right[1].name().local_name().code_units(), [105, 100]);
-    assert_eq!(right[1].value().code_units(), [116, 119, 111]);
-    assert_eq!(left[2].name().prefix().unwrap().code_units(), [112]);
-    assert_eq!(right[2].name().prefix().unwrap().code_units(), [113]);
-    for attribute in [&left[1], &left[2], &right[0], &right[2]] {
+    assert_eq!(
+        right.item(1).unwrap().name().local_name().code_units(),
+        [105, 100]
+    );
+    assert_eq!(right.item(1).unwrap().value().code_units(), [116, 119, 111]);
+    assert_eq!(
+        left.item(2).unwrap().name().prefix().unwrap().code_units(),
+        [112]
+    );
+    assert_eq!(
+        right.item(2).unwrap().name().prefix().unwrap().code_units(),
+        [113]
+    );
+    for attribute in [
+        &left.item(1).unwrap(),
+        &left.item(2).unwrap(),
+        &right.item(0).unwrap(),
+        &right.item(2).unwrap(),
+    ] {
         assert_eq!(attribute.value().code_units(), RAW);
     }
-    assert!(!std::ptr::eq(left, right));
+    assert_ne!(left.item(0).unwrap().id(), right.item(0).unwrap().id());
     assert!(
-        !left[1].value().shares_storage_with(right[0].value()),
+        !left
+            .item(1)
+            .unwrap()
+            .value()
+            .shares_storage_with(right.item(0).unwrap().value()),
         "equal value strings of different banks keep separate backings"
     );
-    assert!(!left[2].value().shares_storage_with(right[2].value()));
+    assert!(
+        !left
+            .item(2)
+            .unwrap()
+            .value()
+            .shares_storage_with(right.item(2).unwrap().value())
+    );
 }
 
 fn padded(value: &str, capacity: usize) -> DocumentString {
@@ -358,24 +428,20 @@ fn equal_smaller_noop_candidates_keep_original_backings_usage_and_history() {
             .changes()
             .is_empty()
     );
-    let old_bank = before
-        .node(element)
-        .unwrap()
-        .as_element()
-        .unwrap()
-        .attributes();
-    let new_bank = after
-        .node(element)
-        .unwrap()
-        .as_element()
-        .unwrap()
-        .attributes();
+    let old_bank = before.node(element).unwrap().attributes().unwrap();
+    let new_bank = after.node(element).unwrap().attributes().unwrap();
     assert_eq!(
-        new_bank[0].value().code_units(),
+        new_bank.item(0).unwrap().value().code_units(),
         [114, 101, 112, 101, 97, 116, 45, 118, 97, 108, 117, 101]
     );
-    assert!(std::ptr::eq(old_bank, new_bank));
-    assert!(new_bank[0].value().shares_storage_with(&original_attribute));
+    assert!(same_backing(old_bank, new_bank));
+    assert!(
+        new_bank
+            .item(0)
+            .unwrap()
+            .value()
+            .shares_storage_with(&original_attribute)
+    );
     assert_eq!(
         after.node(text).unwrap().data().unwrap().code_units(),
         [114, 101, 112, 101, 97, 116, 45, 116, 101, 120, 116]
@@ -391,10 +457,10 @@ fn equal_smaller_noop_candidates_keep_original_backings_usage_and_history() {
 }
 
 #[test]
-fn one_long_native_transaction_reuses_banks_for_late_hot_patterns() {
+fn one_long_native_transaction_preserves_late_equal_attribute_identities() {
     let mut dom = Dom::new(
         DomLimits::new(
-            1_500,
+            3_300,
             1_000_000,
             8_192,
             0,
@@ -437,16 +503,24 @@ fn one_long_native_transaction_reuses_banks_for_late_hot_patterns() {
         let input = done.created(input).unwrap().unwrap();
         let text = done.created(text).unwrap().unwrap();
         let node = snapshot.node(input).unwrap();
-        let attributes = node.as_element().unwrap().attributes();
+        let attributes = node.attributes().unwrap();
         assert_eq!(attributes.len(), 3);
         assert_eq!(
-            attributes[0].name().local_name().code_units(),
+            attributes.item(0).unwrap().name().local_name().code_units(),
             [116, 121, 112, 101]
         );
-        assert_eq!(attributes[0].value().code_units(), [116, 101, 120, 116]);
-        assert_eq!(attributes[1].name().local_name().code_units(), [105, 100]);
+        assert_eq!(
+            attributes.item(0).unwrap().value().code_units(),
+            [116, 101, 120, 116]
+        );
+        assert_eq!(
+            attributes.item(1).unwrap().name().local_name().code_units(),
+            [105, 100]
+        );
         assert!(
-            attributes[1]
+            attributes
+                .item(1)
+                .unwrap()
                 .value()
                 .code_units()
                 .iter()
@@ -454,10 +528,13 @@ fn one_long_native_transaction_reuses_banks_for_late_hot_patterns() {
                 .eq(format!("c{index:03}").encode_utf16())
         );
         assert_eq!(
-            attributes[2].name().local_name().code_units(),
+            attributes.item(2).unwrap().name().local_name().code_units(),
             [118, 97, 108, 117, 101]
         );
-        assert_eq!(attributes[2].value().code_units(), [99, 111, 108, 100]);
+        assert_eq!(
+            attributes.item(2).unwrap().value().code_units(),
+            [99, 111, 108, 100]
+        );
         assert_eq!(node.as_input().unwrap().value(), [99, 111, 108, 100]);
         assert!(!node.as_input().unwrap().state().flags().dirty_value());
         assert!(
@@ -480,20 +557,32 @@ fn one_long_native_transaction_reuses_banks_for_late_hot_patterns() {
     assert_ne!(first_text, second_text);
     for input in [first, second] {
         let node = snapshot.node(input).unwrap();
-        let attributes = node.as_element().unwrap().attributes();
+        let attributes = node.attributes().unwrap();
         assert_eq!(attributes.len(), 3);
         assert_eq!(
-            attributes[0].name().local_name().code_units(),
+            attributes.item(0).unwrap().name().local_name().code_units(),
             [116, 121, 112, 101]
         );
-        assert_eq!(attributes[0].value().code_units(), [116, 101, 120, 116]);
-        assert_eq!(attributes[1].name().local_name().code_units(), [105, 100]);
-        assert_eq!(attributes[1].value().code_units(), [104, 111, 116]);
         assert_eq!(
-            attributes[2].name().local_name().code_units(),
+            attributes.item(0).unwrap().value().code_units(),
+            [116, 101, 120, 116]
+        );
+        assert_eq!(
+            attributes.item(1).unwrap().name().local_name().code_units(),
+            [105, 100]
+        );
+        assert_eq!(
+            attributes.item(1).unwrap().value().code_units(),
+            [104, 111, 116]
+        );
+        assert_eq!(
+            attributes.item(2).unwrap().name().local_name().code_units(),
             [118, 97, 108, 117, 101]
         );
-        assert_eq!(attributes[2].value().code_units(), [115, 101, 101, 100]);
+        assert_eq!(
+            attributes.item(2).unwrap().value().code_units(),
+            [115, 101, 101, 100]
+        );
         assert_eq!(node.as_input().unwrap().value(), [115, 101, 101, 100]);
         assert!(!node.as_input().unwrap().state().flags().dirty_value());
     }
@@ -503,19 +592,9 @@ fn one_long_native_transaction_reuses_banks_for_late_hot_patterns() {
             RAW
         );
     }
-    let bank_shared = std::ptr::eq(
-        snapshot
-            .node(first)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes(),
-        snapshot
-            .node(second)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes(),
+    let attrs_distinct = distinct_attributes(
+        snapshot.node(first).unwrap().attributes().unwrap(),
+        snapshot.node(second).unwrap().attributes().unwrap(),
     );
     let text_shared = snapshot
         .node(first_text)
@@ -524,8 +603,8 @@ fn one_long_native_transaction_reuses_banks_for_late_hot_patterns() {
         .unwrap()
         .shares_storage_with(snapshot.node(second_text).unwrap().data().unwrap());
     assert!(
-        bank_shared && !text_shared,
-        "late hot patterns in one transaction reuse the bank, not the Text backing: bank={bank_shared}, Text={text_shared}"
+        attrs_distinct && !text_shared,
+        "late equal patterns retain distinct Attr identities and Text backing"
     );
 }
 
@@ -547,7 +626,7 @@ fn later_values_and_text_keep_their_own_backing_beside_canonical_name_text_witho
     assert_eq!(namespace.text().code_units(), URI);
     assert_eq!(local.text().code_units(), LOCAL);
     assert!(old_name.prefix().is_none());
-    assert!(old_node.as_element().unwrap().attributes().is_empty());
+    assert!(old_node.attributes().unwrap().is_empty());
 
     let mut batch = DomBatch::new();
     batch.set_attribute(element, "namespace-value", units(URI));
@@ -572,10 +651,12 @@ fn later_values_and_text_keep_their_own_backing_beside_canonical_name_text_witho
     assert_eq!(value.name().namespace_uri().unwrap().code_units(), URI);
     assert_eq!(value.name().local_name().code_units(), LOCAL);
     assert!(value.name().prefix().is_none());
-    let attributes = value.attributes();
+    let attributes = node.attributes().unwrap();
     assert_eq!(attributes.len(), 2);
     assert!(
-        attributes[0]
+        attributes
+            .item(0)
+            .unwrap()
             .name()
             .local_name()
             .code_units()
@@ -584,7 +665,9 @@ fn later_values_and_text_keep_their_own_backing_beside_canonical_name_text_witho
             .eq("namespace-value".encode_utf16())
     );
     assert!(
-        attributes[1]
+        attributes
+            .item(1)
+            .unwrap()
             .name()
             .local_name()
             .code_units()
@@ -592,8 +675,8 @@ fn later_values_and_text_keep_their_own_backing_beside_canonical_name_text_witho
             .copied()
             .eq("local-value".encode_utf16())
     );
-    assert_eq!(attributes[0].value().code_units(), URI);
-    assert_eq!(attributes[1].value().code_units(), LOCAL);
+    assert_eq!(attributes.item(0).unwrap().value().code_units(), URI);
+    assert_eq!(attributes.item(1).unwrap().value().code_units(), LOCAL);
     assert_eq!(
         after
             .node(namespace_text)
@@ -611,17 +694,20 @@ fn later_values_and_text_keep_their_own_backing_beside_canonical_name_text_witho
         before
             .node(element)
             .unwrap()
-            .as_element()
-            .unwrap()
             .attributes()
+            .unwrap()
             .is_empty()
     );
     assert!(
-        !namespace.text().shares_storage_with(attributes[0].value()),
+        !namespace
+            .text()
+            .shares_storage_with(attributes.item(0).unwrap().value()),
         "a later value keeps its own backing beside the canonical namespace text"
     );
     assert!(
-        !local.text().shares_storage_with(attributes[1].value()),
+        !local
+            .text()
+            .shares_storage_with(attributes.item(1).unwrap().value()),
         "a later value keeps its own backing beside the canonical local-name text"
     );
     assert!(
@@ -660,25 +746,43 @@ fn assert_prefixed_values(snapshot: &DomSnapshot, element: NodeId) {
         value.name().local_name().code_units(),
         [116, 97, 114, 103, 101, 116]
     );
-    let attributes = value.attributes();
+    let attributes = node.attributes().unwrap();
     assert_eq!(attributes.len(), 2);
     assert_eq!(
-        attributes[0].name().namespace_uri().unwrap().code_units(),
+        attributes
+            .item(0)
+            .unwrap()
+            .name()
+            .namespace_uri()
+            .unwrap()
+            .code_units(),
         [117, 114, 110, 58, 97, 116, 116, 114]
     );
-    assert_eq!(attributes[0].name().prefix().unwrap().code_units(), [112]);
     assert_eq!(
-        attributes[0].name().local_name().code_units(),
+        attributes
+            .item(0)
+            .unwrap()
+            .name()
+            .prefix()
+            .unwrap()
+            .code_units(),
+        [112]
+    );
+    assert_eq!(
+        attributes.item(0).unwrap().name().local_name().code_units(),
         [108, 97, 98, 101, 108]
     );
-    assert_eq!(attributes[0].value().code_units(), [112]);
-    assert!(attributes[1].name().namespace_uri().is_none());
-    assert!(attributes[1].name().prefix().is_none());
+    assert_eq!(attributes.item(0).unwrap().value().code_units(), [112]);
+    assert!(attributes.item(1).unwrap().name().namespace_uri().is_none());
+    assert!(attributes.item(1).unwrap().name().prefix().is_none());
     assert_eq!(
-        attributes[1].name().local_name().code_units(),
+        attributes.item(1).unwrap().name().local_name().code_units(),
         [111, 116, 104, 101, 114]
     );
-    assert_eq!(attributes[1].value().code_units(), [107, 101, 112, 116]);
+    assert_eq!(
+        attributes.item(1).unwrap().value().code_units(),
+        [107, 101, 112, 116]
+    );
 }
 
 #[test]
@@ -688,7 +792,7 @@ fn new_and_imported_prefixes_keep_their_own_backing_without_merging_names_or_mut
     let (seed, text) = prefix_seed(&mut dom, source_document);
     let seeded = dom.snapshot();
     let seed_node = seeded.node(seed).unwrap();
-    let seeded_value = seed_node.as_element().unwrap().attributes()[0].value();
+    let seeded_value = seed_node.attributes().unwrap().item(0).unwrap().value();
     let seeded_text = seeded.node(text).unwrap().data().unwrap();
     assert_eq!(seeded_value.code_units(), [112]);
     assert_eq!(seeded_text.code_units(), [112]);
@@ -795,7 +899,11 @@ fn new_and_imported_prefixes_keep_their_own_backing_without_merging_names_or_mut
     );
     let target_seed_node = imported_snapshot.node(target_seed).unwrap();
     assert!(
-        !target_seed_node.as_element().unwrap().attributes()[0]
+        !target_seed_node
+            .attributes()
+            .unwrap()
+            .item(0)
+            .unwrap()
             .value()
             .shares_storage_with(target_text_value)
     );
@@ -829,24 +937,50 @@ fn new_and_imported_prefixes_keep_their_own_backing_without_merging_names_or_mut
             .unwrap()
             .shares_storage_with(seeded_text)
     );
-    assert_eq!(changed.attributes().len(), 2);
+    assert_eq!(changed_node.attributes().unwrap().len(), 2);
     assert_eq!(
-        changed.attributes()[0].name().local_name().code_units(),
+        changed_node
+            .attributes()
+            .unwrap()
+            .item(0)
+            .unwrap()
+            .name()
+            .local_name()
+            .code_units(),
         [111, 116, 104, 101, 114]
     );
     assert_eq!(
-        changed.attributes()[0].value().code_units(),
+        changed_node
+            .attributes()
+            .unwrap()
+            .item(0)
+            .unwrap()
+            .value()
+            .code_units(),
         [107, 101, 112, 116]
     );
     assert_eq!(
-        changed.attributes()[1]
+        changed_node
+            .attributes()
+            .unwrap()
+            .item(1)
+            .unwrap()
             .name()
             .prefix()
             .unwrap()
             .code_units(),
         [113]
     );
-    assert_eq!(changed.attributes()[1].value().code_units(), [113]);
+    assert_eq!(
+        changed_node
+            .attributes()
+            .unwrap()
+            .item(1)
+            .unwrap()
+            .value()
+            .code_units(),
+        [113]
+    );
     assert_prefixed_values(&before, element);
     assert_prefixed_values(&after, copy);
     assert_prefixed_values(&imported_snapshot, imported);
@@ -855,7 +989,13 @@ fn new_and_imported_prefixes_keep_their_own_backing_without_merging_names_or_mut
         [112]
     );
     assert_eq!(
-        after.node(seed).unwrap().as_element().unwrap().attributes()[0]
+        after
+            .node(seed)
+            .unwrap()
+            .attributes()
+            .unwrap()
+            .item(0)
+            .unwrap()
             .value()
             .code_units(),
         [112]
@@ -881,36 +1021,54 @@ fn assert_readoption_values(snapshot: &DomSnapshot, element: NodeId, title: &[u1
     assert!(value.name().namespace_uri().is_none());
     assert!(value.name().prefix().is_none());
     assert_eq!(value.name().local_name().code_units(), [99, 101, 108, 108]);
-    let attributes = value.attributes();
+    let attributes = node.attributes().unwrap();
     assert_eq!(attributes.len(), 3);
-    assert!(attributes[0].name().namespace_uri().is_none());
-    assert!(attributes[0].name().prefix().is_none());
+    assert!(attributes.item(0).unwrap().name().namespace_uri().is_none());
+    assert!(attributes.item(0).unwrap().name().prefix().is_none());
     assert_eq!(
-        attributes[0].name().local_name().code_units(),
+        attributes.item(0).unwrap().name().local_name().code_units(),
         [116, 105, 116, 108, 101]
     );
-    assert_eq!(attributes[0].value().code_units(), title);
+    assert_eq!(attributes.item(0).unwrap().value().code_units(), title);
     assert_eq!(
-        attributes[1].name().namespace_uri().unwrap().code_units(),
+        attributes
+            .item(1)
+            .unwrap()
+            .name()
+            .namespace_uri()
+            .unwrap()
+            .code_units(),
         [117, 114, 110, 58, 114, 101, 97, 100, 111, 112, 116]
     );
-    assert_eq!(attributes[1].name().prefix().unwrap().code_units(), [112]);
     assert_eq!(
-        attributes[1].name().local_name().code_units(),
+        attributes
+            .item(1)
+            .unwrap()
+            .name()
+            .prefix()
+            .unwrap()
+            .code_units(),
+        [112]
+    );
+    assert_eq!(
+        attributes.item(1).unwrap().name().local_name().code_units(),
         [108, 97, 98, 101, 108]
     );
-    assert_eq!(attributes[1].value().code_units(), RAW);
-    assert!(attributes[2].name().namespace_uri().is_none());
-    assert!(attributes[2].name().prefix().is_none());
+    assert_eq!(attributes.item(1).unwrap().value().code_units(), RAW);
+    assert!(attributes.item(2).unwrap().name().namespace_uri().is_none());
+    assert!(attributes.item(2).unwrap().name().prefix().is_none());
     assert_eq!(
-        attributes[2].name().local_name().code_units(),
+        attributes.item(2).unwrap().name().local_name().code_units(),
         [99, 108, 97, 115, 115]
     );
-    assert_eq!(attributes[2].value().code_units(), [107, 101, 112, 116]);
+    assert_eq!(
+        attributes.item(2).unwrap().value().code_units(),
+        [107, 101, 112, 116]
+    );
 }
 
 #[test]
-fn historical_weak_bank_is_readopted_by_fresh_creation_before_snapshot_import() {
+fn historical_attributes_survive_fresh_creation_and_snapshot_import() {
     let mut dom = owner();
     let document = document(&mut dom);
     let original = {
@@ -929,7 +1087,7 @@ fn historical_weak_bank_is_readopted_by_fresh_creation_before_snapshot_import() 
     );
 
     // This independently authored creation receives no historical snapshot or
-    // borrowed old attributes. Only that snapshot keeps the retired bank alive.
+    // borrowed old attributes. The historical snapshot still observes its Attr identities.
     let fresh = {
         let mut batch = DomBatch::new();
         let element = readoption_element(&mut batch, document);
@@ -943,16 +1101,22 @@ fn historical_weak_bank_is_readopted_by_fresh_creation_before_snapshot_import() 
     let old = original_node.as_element().unwrap();
     let new = fresh_node.as_element().unwrap();
     assert_eq!(old.name().same_expanded_identity(new.name()), Ok(true));
-    for (old, new) in old.attributes().iter().zip(new.attributes()) {
+    for (old, new) in original_node
+        .attributes()
+        .unwrap()
+        .iter()
+        .zip(fresh_node.attributes().unwrap().iter())
+    {
         assert_eq!(old.name().same_expanded_identity(new.name()), Ok(true));
     }
     assert!(
-        std::ptr::eq(old.attributes(), new.attributes()),
-        "fresh independent creation must readopt the externally surviving equal bank"
+        distinct_attributes(
+            original_node.attributes().unwrap(),
+            fresh_node.attributes().unwrap()
+        ),
+        "fresh independent creation has distinct Attr identities"
     );
 
-    // Snapshot ingress is deliberately later: it must not preadmit the old
-    // bank/name graph before the fresh-creation readoption above.
     let imported = {
         let mut batch = DomBatch::new();
         let element = batch.import_node(&historical, original, document, true);
@@ -967,10 +1131,18 @@ fn historical_weak_bank_is_readopted_by_fresh_creation_before_snapshot_import() 
         old.name().same_expanded_identity(imported_value.name()),
         Ok(true)
     );
-    for (old, imported) in old.attributes().iter().zip(imported_value.attributes()) {
+    for (old, imported) in original_node
+        .attributes()
+        .unwrap()
+        .iter()
+        .zip(imported_node.attributes().unwrap().iter())
+    {
         assert_eq!(old.name().same_expanded_identity(imported.name()), Ok(true));
     }
-    assert!(std::ptr::eq(old.attributes(), imported_value.attributes()));
+    assert!(distinct_attributes(
+        original_node.attributes().unwrap(),
+        imported_node.attributes().unwrap()
+    ));
 
     let mut batch = DomBatch::new();
     batch.set_attribute(fresh, "title", "changed");
@@ -980,14 +1152,9 @@ fn historical_weak_bank_is_readopted_by_fresh_creation_before_snapshot_import() 
     assert_readoption_values(&after, imported, &[111, 108, 100]);
     assert_readoption_values(&historical, original, &[111, 108, 100]);
     assert_readoption_values(&recreated, fresh, &[111, 108, 100]);
-    assert!(std::ptr::eq(
-        old.attributes(),
-        after
-            .node(imported)
-            .unwrap()
-            .as_element()
-            .unwrap()
-            .attributes()
+    assert!(same_backing(
+        imported_node.attributes().unwrap(),
+        after.node(imported).unwrap().attributes().unwrap()
     ));
 
     let mut batch = DomBatch::new();
@@ -1012,7 +1179,7 @@ fn historical_weak_bank_is_readopted_by_fresh_creation_before_snapshot_import() 
 }
 
 #[test]
-fn distinct_rows_keep_parentage_and_ids_and_share_banks_but_not_equal_child_values() {
+fn distinct_rows_keep_parentage_and_attribute_identities() {
     let mut dom = owner();
     let document = document(&mut dom);
     let mut batch = DomBatch::new();
@@ -1063,13 +1230,16 @@ fn distinct_rows_keep_parentage_and_ids_and_share_banks_but_not_equal_child_valu
         assert_eq!(node.children(), &cells[index * 2..index * 2 + 2]);
         let element = node.as_element().unwrap();
         assert_eq!(element.name().local_name().code_units(), [114, 111, 119]);
-        let attributes = element.attributes();
+        let attributes = node.attributes().unwrap();
         assert_eq!(attributes.len(), 1);
-        assert!(attributes[0].name().namespace_uri().is_none());
-        assert!(attributes[0].name().prefix().is_none());
-        assert_eq!(attributes[0].name().local_name().code_units(), [105, 100]);
+        assert!(attributes.item(0).unwrap().name().namespace_uri().is_none());
+        assert!(attributes.item(0).unwrap().name().prefix().is_none());
         assert_eq!(
-            attributes[0].value().code_units(),
+            attributes.item(0).unwrap().name().local_name().code_units(),
+            [105, 100]
+        );
+        assert_eq!(
+            attributes.item(0).unwrap().value().code_units(),
             if index == 0 {
                 &[114, 111, 119, 45, 97][..]
             } else {
@@ -1089,42 +1259,54 @@ fn distinct_rows_keep_parentage_and_ids_and_share_banks_but_not_equal_child_valu
             element.name().local_name().code_units(),
             [99, 101, 108, 108]
         );
-        let attributes = element.attributes();
+        let attributes = node.attributes().unwrap();
         assert_eq!(attributes.len(), 2);
-        assert!(attributes[0].name().namespace_uri().is_none());
-        assert!(attributes[0].name().prefix().is_none());
+        assert!(attributes.item(0).unwrap().name().namespace_uri().is_none());
+        assert!(attributes.item(0).unwrap().name().prefix().is_none());
         assert_eq!(
-            attributes[0].name().local_name().code_units(),
+            attributes.item(0).unwrap().name().local_name().code_units(),
             [99, 108, 97, 115, 115]
         );
         assert_eq!(
-            attributes[0].value().code_units(),
+            attributes.item(0).unwrap().value().code_units(),
             [114, 101, 112, 101, 97, 116]
         );
         assert_eq!(
-            attributes[1].name().namespace_uri().unwrap().code_units(),
+            attributes
+                .item(1)
+                .unwrap()
+                .name()
+                .namespace_uri()
+                .unwrap()
+                .code_units(),
             [117, 114, 110, 58, 114, 111, 119]
         );
-        assert_eq!(attributes[1].name().prefix().unwrap().code_units(), [112]);
         assert_eq!(
-            attributes[1].name().local_name().code_units(),
+            attributes
+                .item(1)
+                .unwrap()
+                .name()
+                .prefix()
+                .unwrap()
+                .code_units(),
+            [112]
+        );
+        assert_eq!(
+            attributes.item(1).unwrap().name().local_name().code_units(),
             [108, 97, 98, 101, 108]
         );
-        assert_eq!(attributes[1].value().code_units(), RAW);
+        assert_eq!(attributes.item(1).unwrap().value().code_units(), RAW);
         let text = snapshot.node(texts[index]).unwrap();
         assert_eq!(text.parent(), Some(cell));
         assert_eq!(text.owner_document(), Some(document));
         assert_eq!(text.data().unwrap().code_units(), RAW);
     }
     let first_cell = snapshot.node(cells[0]).unwrap();
-    let first_bank = first_cell.as_element().unwrap().attributes();
+    let first_bank = first_cell.attributes().unwrap();
     let first_text = snapshot.node(texts[0]).unwrap().data().unwrap();
     for index in 1..4 {
         let cell = snapshot.node(cells[index]).unwrap();
-        assert!(std::ptr::eq(
-            first_bank,
-            cell.as_element().unwrap().attributes()
-        ));
+        assert!(distinct_attributes(first_bank, cell.attributes().unwrap()));
         let text = snapshot.node(texts[index]).unwrap().data().unwrap();
         assert!(!first_text.shares_storage_with(text));
     }
@@ -1159,16 +1341,35 @@ fn large_caller_shared_values_keep_backing_capacity_and_snapshot_edit_isolation(
     let text = done.created(&text).unwrap().unwrap();
     let before = dom.snapshot();
     let original_node = before.node(element).unwrap();
-    let original_attributes = original_node.as_element().unwrap().attributes();
+    let original_attributes = original_node.attributes().unwrap();
     assert_eq!(original_attributes.len(), 1);
     assert_eq!(
-        original_attributes[0].name().local_name().code_units(),
+        original_attributes
+            .item(0)
+            .unwrap()
+            .name()
+            .local_name()
+            .code_units(),
         [112, 97, 121, 108, 111, 97, 100]
     );
-    assert!(original_attributes[0].name().namespace_uri().is_none());
-    assert!(original_attributes[0].name().prefix().is_none());
+    assert!(
+        original_attributes
+            .item(0)
+            .unwrap()
+            .name()
+            .namespace_uri()
+            .is_none()
+    );
+    assert!(
+        original_attributes
+            .item(0)
+            .unwrap()
+            .name()
+            .prefix()
+            .is_none()
+    );
     let original_text = before.node(text).unwrap().data().unwrap();
-    for value in [original_attributes[0].value(), original_text] {
+    for value in [original_attributes.item(0).unwrap().value(), original_text] {
         assert_large_pattern(value);
         assert_eq!(value.retained_units(), capacity);
         assert!(caller.shares_storage_with(value));
@@ -1180,7 +1381,10 @@ fn large_caller_shared_values_keep_backing_capacity_and_snapshot_edit_isolation(
     let attribute_changed = dom.snapshot();
     let node = attribute_changed.node(element).unwrap();
     assert_eq!(
-        node.as_element().unwrap().attributes()[0]
+        node.attributes()
+            .unwrap()
+            .item(0)
+            .unwrap()
             .value()
             .code_units(),
         [99, 104, 97, 110, 103, 101, 100]
@@ -1189,7 +1393,7 @@ fn large_caller_shared_values_keep_backing_capacity_and_snapshot_edit_isolation(
     assert_large_pattern(unchanged_text);
     assert_eq!(unchanged_text.retained_units(), capacity);
     assert!(caller.shares_storage_with(unchanged_text));
-    assert_large_pattern(original_attributes[0].value());
+    assert_large_pattern(original_attributes.item(0).unwrap().value());
 
     let mut batch = DomBatch::new();
     batch.replace_data(text, 0, 1, "B");
@@ -1209,14 +1413,17 @@ fn large_caller_shared_values_keep_backing_capacity_and_snapshot_edit_isolation(
     }
     let node = after.node(element).unwrap();
     assert_eq!(
-        node.as_element().unwrap().attributes()[0]
+        node.attributes()
+            .unwrap()
+            .item(0)
+            .unwrap()
             .value()
             .code_units(),
         [99, 104, 97, 110, 103, 101, 100]
     );
     for value in [
         &caller,
-        original_attributes[0].value(),
+        original_attributes.item(0).unwrap().value(),
         original_text,
         unchanged_text,
     ] {

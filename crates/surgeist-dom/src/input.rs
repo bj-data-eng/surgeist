@@ -95,10 +95,11 @@ impl<'a> DomInput<'a> {
     }
     /// HTML's value-mode getter: exact current/default/on/empty-file readback.
     pub fn value(self) -> &'a [u16] {
-        let element = self.node.as_element().expect("checked Input");
-        let content = element
+        let content = self
+            .node
             .attributes()
-            .iter()
+            .into_iter()
+            .flat_map(crate::DomNamedNodeMap::iter)
             .find(|a| {
                 a.name().namespace_uri().is_none()
                     && a.name()
