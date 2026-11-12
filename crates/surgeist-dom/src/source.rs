@@ -250,6 +250,7 @@ pub enum DomSourceOutput {
     Range(crate::DomRangeId),
     Node(NodeId),
     Document(crate::DocumentId),
+    RemovedAttribute(crate::DomAttrId),
     ViewTransition(DomViewTransitionId),
     ViewTransitionRecord(DomViewTransitionRecordId),
 }
@@ -1105,6 +1106,7 @@ impl DomSourceEdit {
                 node: node.into(),
                 namespace: None,
                 name: qualified_name.into(),
+                return_identity: false,
             },
         }
     }
@@ -1119,6 +1121,42 @@ impl DomSourceEdit {
                 node: node.into(),
                 namespace: Some(namespace),
                 name: local_name.into(),
+                return_identity: false,
+            },
+        }
+    }
+    /// Request removal of the exact currently attached Attr.
+    pub fn remove_attribute_node(node: NodeId, attribute: crate::DomAttrId) -> Self {
+        Self {
+            command: Command::RemoveAttributeNode {
+                node: node.into(),
+                attribute,
+            },
+        }
+    }
+    /// Remove the current NamedNodeMap item and return its detached identity.
+    pub fn remove_named_item(node: NodeId, qualified_name: impl Into<DocumentString>) -> Self {
+        Self {
+            command: Command::RemoveAttribute {
+                node: node.into(),
+                namespace: None,
+                name: qualified_name.into(),
+                return_identity: true,
+            },
+        }
+    }
+    /// Remove the current NamedNodeMap item by expanded name.
+    pub fn remove_named_item_ns(
+        node: NodeId,
+        namespace: Namespace,
+        local_name: impl Into<DocumentString>,
+    ) -> Self {
+        Self {
+            command: Command::RemoveAttribute {
+                node: node.into(),
+                namespace: Some(namespace),
+                name: local_name.into(),
+                return_identity: true,
             },
         }
     }

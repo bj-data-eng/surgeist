@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use crate::batch::{AttachedShadowRoot, BatchIdentity, Command, Creation};
+use crate::batch::{AttachedShadowRoot, BatchIdentity, Command, Creation, RemovedAttribute};
 use crate::document::{DomDocumentMetadata, NATIVE_DOCUMENT_STRING_UNITS};
 use crate::{
     CreatedNode, DocumentId, DomBatch, DomDocumentType, DomElement, DomNodeKind, DomOwnerId,
@@ -1171,12 +1171,33 @@ impl std::fmt::Display for DomHistoryError {
 }
 impl std::error::Error for DomHistoryError {}
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NodeOutputKind {
+    Node,
+    Document,
+    RemovedAttribute,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NodeTicket {
+    Node(Key),
+    RemovedAttribute(Key),
+}
+
+impl NodeTicket {
+    fn key(self) -> Key {
+        match self {
+            Self::Node(key) | Self::RemovedAttribute(key) => key,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct DomCommit {
     created_ranges: Vec<Option<crate::DomRangeId>>,
     owner: Arc<BatchIdentity>,
-    created: Vec<Option<NodeId>>,
-    documents: Vec<bool>,
+    node_outputs: Vec<Option<NodeId>>,
+    node_output_kinds: Vec<NodeOutputKind>,
     transition_ids: Vec<Option<DomViewTransitionId>>,
     record_ids: Vec<Option<DomViewTransitionRecordId>>,
     changes: DomChanges,
@@ -1202,11 +1223,13 @@ impl DomCommit {
         if let Some(Some(range)) = self.created_ranges.first() {
             return Some(crate::DomSourceOutput::Range(*range));
         }
-        if let Some(Some(node)) = self.created.first() {
-            return Some(if self.documents.first() == Some(&true) {
-                crate::DomSourceOutput::Document(DocumentId(*node))
-            } else {
-                crate::DomSourceOutput::Node(*node)
+        if let Some(Some(node)) = self.node_outputs.first() {
+            return Some(match self.node_output_kinds.first()? {
+                NodeOutputKind::Document => crate::DomSourceOutput::Document(DocumentId(*node)),
+                NodeOutputKind::Node => crate::DomSourceOutput::Node(*node),
+                NodeOutputKind::RemovedAttribute => {
+                    crate::DomSourceOutput::RemovedAttribute(crate::DomAttrId(*node))
+                }
             });
         }
         if let Some(Some(id)) = self.transition_ids.first() {
@@ -1247,18 +1270,30 @@ impl DomCommit {
     }
     /// None means the batch destroyed its own unpublished creation.
     pub fn created(&self, ticket: &CreatedNode) -> Result<Option<NodeId>, DomError> {
-        resolve_created_node(&self.owner, &self.created, ticket)
+        resolve_created_node(&self.owner, &self.node_outputs, ticket)
     }
     /// Return the attached root if it survives this batch's final publication.
     pub fn attached_shadow_root(
         &self,
         ticket: &AttachedShadowRoot,
     ) -> Result<Option<NodeId>, DomError> {
-        resolve_node_output(&self.owner, &self.created, &ticket.owner, ticket.index)
+        resolve_node_output(&self.owner, &self.node_outputs, &ticket.owner, ticket.index)
+    }
+    /// Return the exact Attr removed by this batch, even if a later command retired it.
+    pub fn removed_attribute(
+        &self,
+        ticket: &RemovedAttribute,
+    ) -> Result<crate::DomAttrId, DomError> {
+        let id = resolve_node_output(&self.owner, &self.node_outputs, &ticket.owner, ticket.index)?
+            .ok_or(DomError::UnavailableCreation)?;
+        if self.node_output_kinds.get(ticket.index) != Some(&NodeOutputKind::RemovedAttribute) {
+            return Err(DomError::WrongNodeKind);
+        }
+        Ok(crate::DomAttrId(id))
     }
     pub fn document(&self, ticket: &CreatedNode) -> Result<DocumentId, DomError> {
         let id = self.created(ticket)?.ok_or(DomError::UnavailableCreation)?;
-        if !self.documents[ticket.index] {
+        if self.node_output_kinds.get(ticket.index) != Some(&NodeOutputKind::Document) {
             return Err(DomError::WrongNodeKind);
         }
         Ok(DocumentId(id))
@@ -1936,8 +1971,8 @@ impl Dom {
             state,
             allocation_ids,
             owner,
-            created,
-            documents,
+            node_outputs,
+            node_output_kinds,
             transition_ids,
             record_ids,
             changes,
@@ -2102,8 +2137,8 @@ impl Dom {
             inline_recording,
             retired_authority,
             owner,
-            created,
-            documents,
+            node_outputs,
+            node_output_kinds,
             transition_ids,
             record_ids,
             from,
@@ -2203,8 +2238,8 @@ impl PublicationFields<'_> {
             inline_recording: _,
             retired_authority,
             owner,
-            created,
-            documents,
+            node_outputs,
+            node_output_kinds,
             transition_ids,
             record_ids,
             from,
@@ -2259,8 +2294,8 @@ impl PublicationFields<'_> {
             commit: DomCommit {
                 created_ranges,
                 owner,
-                created,
-                documents,
+                node_outputs,
+                node_output_kinds,
                 transition_ids,
                 record_ids,
                 changes: DomChanges { from, to, changes },
@@ -2410,7 +2445,7 @@ struct Draft {
     private_counts: transaction::Counts,
     // Caller creation tickets exclude private allocations such as imported
     // descendants. They must not be interpreted as allocation indices.
-    tickets: Vec<Key>,
+    tickets: Vec<NodeTicket>,
     tickets_charge: custody::Debit,
     nodes: usize,
     units: usize,
@@ -2439,8 +2474,8 @@ pub(crate) struct PreparedPublication {
     inline_recording: Option<inline_style::recording::Recording>,
     retired_authority: Option<Arc<crate::select::Authorization>>,
     owner: Arc<BatchIdentity>,
-    created: Vec<Option<NodeId>>,
-    documents: Vec<bool>,
+    node_outputs: Vec<Option<NodeId>>,
+    node_output_kinds: Vec<NodeOutputKind>,
     transition_ids: Vec<Option<DomViewTransitionId>>,
     record_ids: Vec<Option<DomViewTransitionRecordId>>,
     from: DomStamp,
@@ -2468,8 +2503,8 @@ struct Prepared {
     created_ranges: Vec<Option<crate::DomRangeId>>,
     retirements: Vec<dispatch::Retirement>,
     owner: Arc<BatchIdentity>,
-    created: Vec<Option<NodeId>>,
-    documents: Vec<bool>,
+    node_outputs: Vec<Option<NodeId>>,
+    node_output_kinds: Vec<NodeOutputKind>,
     transition_ids: Vec<Option<DomViewTransitionId>>,
     record_ids: Vec<Option<DomViewTransitionRecordId>>,
     changes: Vec<DomChange>,
@@ -2994,6 +3029,7 @@ impl Draft {
                 self.tickets
                     .get(index)
                     .copied()
+                    .map(NodeTicket::key)
                     .filter(|key| self.node(*key).is_ok())
                     .ok_or(DomError::UnavailableCreation)?
             }
@@ -3226,6 +3262,13 @@ impl Draft {
         Ok(key)
     }
     fn register_ticket(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.register_node_ticket(NodeTicket::Node(key), cancel)
+    }
+    fn register_node_ticket(
+        &mut self,
+        ticket: NodeTicket,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         let undo = self.prepare_undo_slots(2, cancel)?;
         if let Some(next) = self.prepare_output_buffer(&self.tickets, 1, cancel)? {
             let (values, debit) = next.into_parts();
@@ -3239,11 +3282,11 @@ impl Draft {
         }
         let len = self.tickets.len();
         self.source_step(cancel)?;
-        self.tickets.push(key);
+        self.tickets.push(ticket);
         #[cfg(test)]
         {
             let mut copied = transaction::CopyObservation::default();
-            copied.pushed::<Key>();
+            copied.pushed::<NodeTicket>();
         }
         if undo {
             self.journal
@@ -3713,9 +3756,21 @@ impl Draft {
                 node,
                 namespace,
                 name,
+                return_identity,
             } => {
                 let node = self.resolve(node.clone())?;
-                self.remove_attribute(node, namespace.as_ref(), name, limits, cancelled)?;
+                let removed =
+                    self.remove_attribute(node, namespace.as_ref(), name, limits, cancelled)?;
+                if *return_identity {
+                    let attr = removed.ok_or(DomError::NotFound)?;
+                    self.register_node_ticket(NodeTicket::RemovedAttribute(attr), cancelled)?;
+                }
+            }
+            Command::RemoveAttributeNode { node, attribute } => {
+                let node = self.resolve(node.clone())?;
+                let attr = self.resolve(attribute.node().into())?;
+                let attr = self.remove_attribute_node(node, attr, limits, cancelled)?;
+                self.register_node_ticket(NodeTicket::RemovedAttribute(attr), cancelled)?;
             }
             Command::Destroy(node) => {
                 let node = self.resolve(node.clone())?;

@@ -1352,9 +1352,9 @@ impl Operation {
                 prepared.formation.as_ref(),
                 cancel,
             )?;
-            for key in &self.draft.tickets {
+            for ticket in &self.draft.tickets {
                 self.draft.source_step(cancel)?;
-                historical.push(match *key {
+                historical.push(match ticket.key() {
                     Key::Created(index) => ids.get(index),
                     Key::Existing(node) => Some(node),
                 });
@@ -2018,8 +2018,8 @@ impl DomSourceLease<'_> {
             let commit = DomCommit {
                 created_ranges: Vec::new(),
                 owner: op.draft.owner.clone(),
-                created: Vec::new(),
-                documents: Vec::new(),
+                node_outputs: Vec::new(),
+                node_output_kinds: Vec::new(),
                 transition_ids: Vec::new(),
                 record_ids: Vec::new(),
                 changes: DomChanges {
@@ -5162,7 +5162,7 @@ pub(in crate::store) mod accounting_tests {
         };
         let published = {
             let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
-            let Key::Created(index) = draft.tickets[transient.index] else {
+            let Key::Created(index) = draft.tickets[transient.index].key() else {
                 panic!("original creation ticket")
             };
             draft.phase_map.as_ref().unwrap().ids.get(index).unwrap()

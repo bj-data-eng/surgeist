@@ -776,12 +776,10 @@ impl Draft {
         name: &DocumentString,
         limits: DomLimits,
         cancelled: &AtomicBool,
-    ) -> Result<(), DomError> {
+    ) -> Result<Option<Key>, DomError> {
         #[cfg(test)]
         transaction::queues::admission_observation::before_payload(self);
-        let read = self.element(node)?;
-        let element = read.language();
-        let previous = read.attributes();
+        let previous = self.element(node)?.attributes();
         let name_formation = source::formation::Formation::new(self, cancelled)?;
         let mut normalized = name_registry::Normalized::new(&self.names);
         let name = if namespace.is_none() && self.html_element_in_html_document(node)? {
@@ -801,8 +799,47 @@ impl Draft {
         drop(normalized);
         drop(name_formation);
         let Some(position) = position else {
-            return Ok(());
+            return Ok(None);
         };
+        self.remove_attribute_at(node, position, limits, cancelled)
+            .map(Some)
+    }
+
+    pub(super) fn remove_attribute_node(
+        &mut self,
+        node: Key,
+        attr: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Key, DomError> {
+        self.element(node)?;
+        let attr = self.live_key(attr);
+        let attribute = self.node(attr)?;
+        if !matches!(attribute.kind(), transaction::KindRead::Attr(_)) {
+            return Err(DomError::WrongNodeKind);
+        }
+        if attribute.attr_owner().map(|owner| self.live_key(owner)) != Some(self.live_key(node)) {
+            return Err(DomError::NotFound);
+        }
+        for (index, entry) in self.node(node)?.attribute_ids().iter().enumerate() {
+            self.source_step(cancel)?;
+            if self.live_key(entry) == attr {
+                return self.remove_attribute_at(node, index, limits, cancel);
+            }
+        }
+        Err(DomError::StaleNode)
+    }
+
+    fn remove_attribute_at(
+        &mut self,
+        node: Key,
+        position: usize,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<Key, DomError> {
+        let read = self.element(node)?;
+        let element = read.language();
+        let previous = read.attributes();
         let removed = previous.get(position).ok_or(DomError::StaleNode)?;
         let hook = source::formation::Formation::new(self, cancelled)?;
         let changed = retain_name(removed.name(), hook.as_ref(), cancelled)?;
@@ -846,7 +883,8 @@ impl Draft {
             hook.map(source::formation::Formation::into_charge),
             limits,
             cancelled,
-        )
+        )?;
+        Ok(attr)
     }
     fn publish_element(
         &mut self,

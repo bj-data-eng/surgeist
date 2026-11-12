@@ -412,8 +412,8 @@ mod tests {
             b.adopt(&script, d);
             b.insert_before(&script, root, None);
             let prepared = dom.prepare(b, &cancel).unwrap();
-            let script_id = prepared.created[script.index].unwrap();
-            let document_id = prepared.created[new_document.index].unwrap();
+            let script_id = prepared.node_outputs[script.index].unwrap();
+            let document_id = prepared.node_outputs[new_document.index].unwrap();
             let actual = prepared.state.slots[script_id.slot]
                 .node
                 .as_ref()

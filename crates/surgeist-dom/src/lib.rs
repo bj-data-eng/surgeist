@@ -192,7 +192,7 @@ mod view_transition;
 pub use attr::{DomAttr, DomNamedNodeMap};
 pub use autofocus::DomDocumentAutofocus;
 pub use base::{DomBase, DomBaseFactsError, DomBaseResponse, DomFrozenBase, DomLink};
-pub use batch::{AttachedShadowRoot, CreatedNode, DomBatch, NodeOperand};
+pub use batch::{AttachedShadowRoot, CreatedNode, DomBatch, NodeOperand, RemovedAttribute};
 pub use child_list::{DomChildListObservationLimits, DomChildListObserverId, DomChildListRecord};
 pub use details::{
     DomDetails, DomDetailsToggleCancellationReason, DomDetailsToggleIntention,

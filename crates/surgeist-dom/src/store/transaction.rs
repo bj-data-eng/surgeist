@@ -109,7 +109,7 @@ pub(in crate::store) enum Undo {
     Roles(role_facts::Undo),
     Containers(super::hosted::containers::ContainerUndo),
     TicketsLength(usize),
-    TicketsCapacity(custody::Held<Vec<super::Key>>),
+    TicketsCapacity(custody::Held<Vec<super::NodeTicket>>),
     RetirementsLength(usize),
     RetirementsCapacity(custody::Held<Vec<(super::NodeId, super::Key)>>),
     Range(ranges::RangeUndo),

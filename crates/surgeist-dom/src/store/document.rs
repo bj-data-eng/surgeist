@@ -415,7 +415,7 @@ mod tests {
         let created = batch.create_html_document(source, Some("title".into()));
         let prepared = dom.prepare(batch, &AtomicBool::new(false)).unwrap();
         assert_eq!(prepared.state.nodes, 8);
-        let document = prepared.created[created.index].unwrap();
+        let document = prepared.node_outputs[created.index].unwrap();
         let node = prepared.state.node(dom.owner, document).unwrap();
         let DomNodeKind::Document(metadata) = node.kind() else {
             panic!("prepared Document")

@@ -106,6 +106,12 @@ preserves its identity and order. Removing it from the Element preserves the
 Attr and its retained value until explicit destruction. Destroying an Element
 also retires its attached Attr nodes.
 
+Identity-based and NamedNodeMap removals return the exact detached Attr.
+A batch's `DomCommit` resolves its removal ticket, and a Source edit returns
+the identity in its completed output. These operations
+report `NotFound` when the requested Attr does not belong to the Element or the
+requested name is absent.
+
 Snapshot and transaction aliases can retain the same immutable Attr payload.
 Cloning or importing an Element allocates fresh Attr identities and can share
 immutable name or UTF-16 backing. Direct parsed installation keeps the parser's

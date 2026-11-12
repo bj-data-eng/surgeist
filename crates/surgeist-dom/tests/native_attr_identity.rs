@@ -138,6 +138,35 @@ fn remove_attribute_node_returns_the_exact_detached_identity_after_atomic_public
         original.attr(attr.node()).unwrap().owner_element(),
         Some(element)
     );
+
+    let mut recreate = DomBatch::new();
+    recreate.set_attribute(element, "value", "new");
+    dom.apply(recreate, &cancel).unwrap();
+    let current = dom
+        .snapshot()
+        .node(element)
+        .unwrap()
+        .get_attribute_node(&"value".into())
+        .unwrap()
+        .id();
+    assert_ne!(current, attr);
+
+    let mut retire = DomBatch::new();
+    let removed = retire.remove_attribute_node(element, current);
+    retire.destroy(current.node());
+    let commit = dom.apply(retire, &cancel).unwrap();
+    assert_eq!(commit.removed_attribute(&removed), Ok(current));
+    assert!(matches!(
+        dom.snapshot().attr(current.node()),
+        Err(DomError::StaleNode)
+    ));
+
+    let mut stale = DomBatch::new();
+    stale.remove_attribute_node(element, current);
+    assert!(matches!(
+        dom.apply(stale, &cancel),
+        Err(DomError::StaleNode)
+    ));
 }
 
 #[test]
@@ -194,6 +223,31 @@ fn named_node_map_removal_resolves_each_current_qualified_or_expanded_name() {
         assert_eq!(detached.value(), &value.into());
         assert_eq!(old.attr(id.node()).unwrap().owner_element(), Some(element));
     }
+
+    let document = now.node(element).unwrap().owner_document().unwrap();
+    let mut mixed = DomBatch::new();
+    let comment = mixed.create_comment(document, "first");
+    mixed.set_attribute(element, "item", "new");
+    let removed = mixed.remove_named_item(element, "item");
+    let text = mixed.create_text(document, "last");
+    let commit = dom.apply(mixed, &cancel).unwrap();
+    let now = dom.snapshot();
+    assert_eq!(
+        now.node(commit.created(&comment).unwrap().unwrap())
+            .unwrap()
+            .data(),
+        Some(&"first".into())
+    );
+    let removed = commit.removed_attribute(&removed).unwrap();
+    assert_ne!(removed, ordinary);
+    assert_eq!(now.attr(removed.node()).unwrap().value(), &"new".into());
+    assert_eq!(now.attr(removed.node()).unwrap().owner_element(), None);
+    assert_eq!(
+        now.node(commit.created(&text).unwrap().unwrap())
+            .unwrap()
+            .data(),
+        Some(&"last".into())
+    );
 }
 
 #[test]

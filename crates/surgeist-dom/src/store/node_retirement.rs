@@ -762,7 +762,7 @@ impl Dom {
         self.require_source_idle()?;
         let result = (|| {
             let prepared = self.prepare(batch, cancel)?;
-            let node = resolve_created_node(&prepared.owner, &prepared.created, ticket)?
+            let node = resolve_created_node(&prepared.owner, &prepared.node_outputs, ticket)?
                 .ok_or(DomError::UnavailableCreation)?;
             let publication = self.prepare_publication(prepared, cancel)?;
             let admission = self.ordinary_watch_admission(

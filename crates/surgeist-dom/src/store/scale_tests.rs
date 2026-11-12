@@ -1805,8 +1805,11 @@ impl BulkEnvelope {
         // final change-Arc copying remains in the separate output allowance.
         let initialized_per_record = bulk_add(
             bulk_add(
-                size_of::<super::Key>(),
-                bulk_add(size_of::<Option<NodeId>>(), size_of::<bool>()),
+                size_of::<super::NodeTicket>(),
+                bulk_add(
+                    size_of::<Option<NodeId>>(),
+                    size_of::<super::NodeOutputKind>(),
+                ),
             ),
             bulk_add(
                 bulk_add(size_of::<NodeId>(), size_of::<usize>()),
@@ -3773,9 +3776,9 @@ fn style_sequence_bounds() -> (usize, usize) {
         bulk_mul(
             participants,
             [
-                size_of::<super::Key>(),
+                size_of::<super::NodeTicket>(),
                 size_of::<Option<NodeId>>(),
-                size_of::<bool>(),
+                size_of::<super::NodeOutputKind>(),
                 size_of::<NodeId>(),
                 size_of::<usize>(),
                 size_of::<DomChange>(),

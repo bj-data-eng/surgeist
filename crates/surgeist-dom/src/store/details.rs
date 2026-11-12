@@ -230,7 +230,9 @@ impl Draft {
                 // appends its own transition and requests no further closing.
                 let operand = source::formation::Formation::new(self, cancel)?;
                 let name = source::formation::string("open", operand.as_ref(), cancel)?;
-                return self.remove_attribute(close, None, &name, limits, cancel);
+                return self
+                    .remove_attribute(close, None, &name, limits, cancel)
+                    .map(drop);
             }
             next = self
                 .families

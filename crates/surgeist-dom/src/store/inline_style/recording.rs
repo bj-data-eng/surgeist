@@ -409,9 +409,10 @@ impl Recording {
         let operand = |operand: &NodeOperand| match operand {
             NodeOperand::Existing(id) => Some(draft.live_key(Key::Existing(*id))),
             NodeOperand::Created(crate::CreatedNode { index, .. })
-            | NodeOperand::AttachedShadowRoot(crate::AttachedShadowRoot { index, .. }) => {
-                draft.tickets.get(*index).map(|key| draft.live_key(*key))
-            }
+            | NodeOperand::AttachedShadowRoot(crate::AttachedShadowRoot { index, .. }) => draft
+                .tickets
+                .get(*index)
+                .map(|ticket| draft.live_key(ticket.key())),
         };
         let mut found = None;
         for (index, row) in self.inputs().context.profiles.iter().enumerate() {
