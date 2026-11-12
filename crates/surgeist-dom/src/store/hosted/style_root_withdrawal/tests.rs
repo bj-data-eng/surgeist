@@ -1349,10 +1349,18 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
         Err(DomError::InvalidSourceOperation)
     );
     assert!(duplicate.is_some());
-    assert!(matches!(
-        lease.advance(&cancel).unwrap(),
-        DomSourceProgress::Complete(_)
-    ));
+    lease.request_cancel();
+    assert!(!lease.status().cancellation_requested());
+    let meta_limits =
+        crate::DomMetaAtomicLimits::new(64_000_000, 1_000_000, 4_000_000, 256).unwrap();
+    let mut hold = lease.begin_meta_runtime(meta_limits, &cancel).unwrap();
+    hold.request_cancel().unwrap();
+    drop(hold);
+    assert!(!lease.status().cancellation_requested());
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("the accepted verification must publish its original result");
+    };
+    assert!(!done.cancellation_requested());
     assert_eq!(
         lease
             .snapshot()
