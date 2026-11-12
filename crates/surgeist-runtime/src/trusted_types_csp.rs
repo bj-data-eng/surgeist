@@ -16,6 +16,8 @@ mod attribute;
 mod factory;
 mod provider;
 mod reports;
+#[cfg(feature = "document-scripting")]
+pub(crate) use attribute::AttributeMismatchProgress;
 pub use attribute::{AttributeMismatch, AttributePolicies, AttributePolicyError};
 pub use factory::{AdmittedPolicyCreation, PolicyCreation, PolicyCreationError, PolicyFactory};
 pub use provider::{PolicyListCapacity, PolicyListError, PolicyProcessor};

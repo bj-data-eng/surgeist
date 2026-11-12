@@ -354,13 +354,13 @@ impl From<DocumentGuestEventError> for DocumentGuestEventDispatchFailure {
     }
 }
 
-struct GuestBacking<Canonical = DomHostedRuntimeRetention> {
+struct GuestBacking {
     used: Rc<Cell<usize>>,
     bytes: usize,
-    _canonical: Canonical,
+    _canonical: DomHostedRuntimeRetention,
 }
 
-/// An actual callback result awaiting the original native attribute write.
+/// A retained verification decision for the original native attribute write.
 pub(super) struct PendingAttribute {
     request: surgeist_dom::DomSourceAttributeVerificationRequest,
     reply: AttributeReply,
@@ -371,6 +371,7 @@ pub(super) struct PendingAttribute {
 
 enum AttributeReply {
     Abandon,
+    Mismatch(crate::trusted_types_csp::AttributeMismatchProgress),
     Converted {
         result: surgeist_bindings_js::conversion::Converted<
             Option<surgeist_bindings_js::TrustedTypeData>,
@@ -457,7 +458,7 @@ impl GuestBacking {
     }
 }
 
-impl<Canonical> Drop for GuestBacking<Canonical> {
+impl Drop for GuestBacking {
     fn drop(&mut self) {
         self.used.set(self.used.get() - self.bytes);
     }
@@ -569,24 +570,6 @@ impl GuestBudget {
         limits: DocumentGuestEventLimits,
         bytes: usize,
     ) -> Result<GuestBacking, DocumentGuestEventError> {
-        self.reserve_with(limits, bytes, || {
-            let mut session = owner
-                .session
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            Ok(session
-                .hosted_execution()
-                .retain_script_payload(&mut session.dom(), bytes, &owner.cancellation)
-                .map_err(DocumentScriptNativeError::from)?)
-        })
-    }
-
-    fn reserve_with<Canonical>(
-        &self,
-        limits: DocumentGuestEventLimits,
-        bytes: usize,
-        admit: impl FnOnce() -> Result<Canonical, DocumentGuestEventError>,
-    ) -> Result<GuestBacking<Canonical>, DocumentGuestEventError> {
         self.charge_work(limits.work, 1)?;
         let total = self
             .used
@@ -596,7 +579,14 @@ impl GuestBudget {
         if total > limits.storage_bytes {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
-        let canonical = admit()?;
+        let mut session = owner
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let canonical = session
+            .hosted_execution()
+            .retain_script_payload(&mut session.dom(), bytes, &owner.cancellation)
+            .map_err(DocumentScriptNativeError::from)?;
         self.used.set(total);
         Ok(GuestBacking {
             used: self.used.clone(),

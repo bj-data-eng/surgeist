@@ -20,7 +20,7 @@ pub(super) enum ViolationBacking {
         _backing: GuestBacking,
     },
     Attribute {
-        _backing: GuestBacking<surgeist_dom::DomSourceAttributePayloadRetention>,
+        _backing: surgeist_dom::DomSourceAttributePayloadRetention,
     },
 }
 

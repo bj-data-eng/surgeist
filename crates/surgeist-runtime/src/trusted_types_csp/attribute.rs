@@ -10,6 +10,8 @@ use surgeist_dom::{
     DocumentId, DomDocumentCspState, DomDocumentScriptRegistration, DomError,
     DomSourceAttributePolicyRead, DomSourceAttributeVerificationRequest, DomSourceLease,
 };
+#[cfg(feature = "document-scripting")]
+use surgeist_html::security::csp::HtmlCspAssociationGeneration;
 use surgeist_html::security::csp::{HtmlCspError, HtmlCspProtocolError};
 
 /// Why the registered Global's current CSP could not be used.
@@ -130,6 +132,46 @@ impl<'a> AttributePolicies<'a> {
             request: self.request,
         }
     }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn resume_mismatch(
+        &self,
+        progress: &mut AttributeMismatchProgress,
+    ) -> Result<AttributeMismatch<'_, 'a>, DomError> {
+        let policy = match self.read.state() {
+            DomDocumentCspState::ConstructorInitialEmpty => PolicyOccurrence::ConstructorEmpty,
+            DomDocumentCspState::Associated(association) => {
+                PolicyOccurrence::Associated(association.generation().clone())
+            }
+            DomDocumentCspState::Unavailable => return Err(DomError::InvalidSourceOperation),
+        };
+        if let Some(original) = &progress.policy {
+            if original != &policy {
+                return Err(DomError::InvalidSourceOperation);
+            }
+        } else {
+            progress.policy = Some(policy);
+        }
+        let mut mismatch = self.mismatch();
+        mismatch.decision.index = progress.index;
+        mismatch.decision.blocked = progress.blocked;
+        Ok(mismatch)
+    }
+}
+
+#[cfg(feature = "document-scripting")]
+#[derive(Default)]
+pub(crate) struct AttributeMismatchProgress {
+    policy: Option<PolicyOccurrence>,
+    index: usize,
+    blocked: bool,
+}
+
+#[cfg(feature = "document-scripting")]
+#[derive(PartialEq, Eq)]
+enum PolicyOccurrence {
+    ConstructorEmpty,
+    Associated(HtmlCspAssociationGeneration),
 }
 
 /// The original Source operation's ordered mismatch decision.
@@ -140,6 +182,12 @@ pub struct AttributeMismatch<'read, 'policies> {
 }
 
 impl<'policies> AttributeMismatch<'_, 'policies> {
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn save(&self, progress: &mut AttributeMismatchProgress) {
+        progress.index = self.decision.index;
+        progress.blocked = self.decision.blocked;
+    }
+
     /// Returns the next violation candidate under the original Source controller.
     pub fn next_violation(
         &mut self,

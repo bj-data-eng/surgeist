@@ -3,14 +3,11 @@
 use super::{super::character_data::copy_native_data, *};
 use crate::{
     DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
-    document_scripting::{
-        HostedPolicyProcessor,
-        guest::{
-            AttributeReply, PendingAttribute,
-            reports::{ViolationBacking, ViolationQueue, violation_error},
-        },
+    document_scripting::guest::{
+        AttributeReply, PendingAttribute,
+        reports::{ViolationBacking, ViolationQueue, violation_error},
     },
-    trusted_types_csp::{AttributePolicies, AttributePolicyError},
+    trusted_types_csp::{AttributeMismatchProgress, AttributePolicies, AttributePolicyError},
 };
 use surgeist_bindings_js::{
     TrustedAttributeValue, TrustedTypeKind,
@@ -18,7 +15,7 @@ use surgeist_bindings_js::{
     dom_exception::DomExceptionName,
 };
 use surgeist_dom::{
-    DomDocumentScriptRegistration, DomSourceAttributeSink, DomSourceAttributeVerificationOutcome,
+    DomSourceAttributeSink, DomSourceAttributeVerificationOutcome,
     DomSourceAttributeVerificationRequest, DomSourceEdit, DomSourceLease, DomSourceLimits,
     DomSourceRequest, DomSourceStatus, Namespace,
 };
@@ -274,10 +271,6 @@ impl Capture {
         }
 
         let policy = trusted_policy::current_default_policy(scope, events)?;
-        let Some(callback) = policy.as_ref().and_then(|policy| policy.callback(kind)) else {
-            accept_mismatch(owner, events, request, &registration, processor.as_deref())?;
-            return Ok(None);
-        };
         let header = events.reserve(owner, size_of::<PendingAttribute>())?;
         let mut retained = Box::new(PendingAttribute {
             request,
@@ -286,6 +279,10 @@ impl Capture {
             interrupted_parent: None,
             _header: header,
         });
+        let Some(callback) = policy.as_ref().and_then(|policy| policy.callback(kind)) else {
+            retained.reply = AttributeReply::Mismatch(AttributeMismatchProgress::default());
+            return Ok(Some(retained));
+        };
         let (sink, _sink_backing) = callback_sink(owner, events, request.sink())?;
         let callback_scope = with_attribute_lease(
             owner,
@@ -310,10 +307,7 @@ impl Capture {
                 result,
                 _account: self.callbacks.clone(),
             },
-            Ok(_) => {
-                accept_mismatch(owner, events, request, &registration, processor.as_deref())?;
-                return Ok(None);
-            }
+            Ok(_) => AttributeReply::Mismatch(AttributeMismatchProgress::default()),
             Err(failure) => match Error::from(failure) {
                 error @ Error::Exception(_) => AttributeReply::Abrupt(error),
                 error => {
@@ -332,9 +326,10 @@ type NativeAttributeProgress = (
 );
 
 impl DocumentScriptHost {
-    /// Resume the original attribute write whose guest callback already
-    /// completed. The outer error carries admission or the original guest
-    /// exception. The inner result is the original native Source progress.
+    /// Resume the original attribute write after policy callback selection
+    /// and any guest invocation have finished. The outer error carries
+    /// admission or the original guest exception. The inner result is the
+    /// original native Source progress.
     /// This entry never invokes a guest callback or a microtask checkpoint.
     /// Nested recovery applies the supplied limits monotonically to interrupted
     /// attribute ancestors. Each successful raise survives a later refusal.
@@ -461,13 +456,16 @@ impl PendingAttribute {
         limits: DomSourceLimits,
     ) -> Result<(), DocumentGuestEventError> {
         let cancel = &owner.cancellation;
-        match &self.reply {
+        match &mut self.reply {
             AttributeReply::Accepted { .. } => return Ok(()),
             AttributeReply::Abandon => {
                 with_attribute_lease(owner, limits, self.request, cancel, |lease| {
                     lease.request_cancel();
                     Ok(())
                 })?;
+            }
+            AttributeReply::Mismatch(progress) => {
+                accept_mismatch(owner, self.request, limits, progress)?;
             }
             reply => {
                 let registration = owner
@@ -551,89 +549,87 @@ fn attribute_services(
 
 fn accept_mismatch(
     owner: &NativeOwner,
-    events: &GuestEvents,
     request: DomSourceAttributeVerificationRequest,
-    registration: &DomDocumentScriptRegistration,
-    processor: Option<&HostedPolicyProcessor>,
+    limits: DomSourceLimits,
+    progress: &mut AttributeMismatchProgress,
 ) -> Result<(), DocumentGuestEventError> {
     let cancel = &owner.cancellation;
-    with_attribute_lease(
-        owner,
-        events.limits.source_edits,
-        request,
-        cancel,
-        |lease| {
-            let processor = processor
-                .map(|owner| owner.processor.try_borrow())
-                .transpose()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            let policies =
-                AttributePolicies::read(lease, request, registration, processor.as_deref(), cancel)
-                    .map_err(attribute_policy_error)?;
-            let mut mismatch = policies.mismatch();
-            let mut reports = owner
-                .trusted_types_reports
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            while let Some(report) = mismatch
-                .next_report(lease, registration, cancel, |bytes| {
-                    ViolationQueue::admit_report(
-                        &mut reports,
-                        bytes,
-                        |bytes, units| {
-                            let backing =
-                                events.budget.reserve_with(events.limits, bytes, || {
-                                    Ok(lease.retain_attribute_verification_payload(
-                                        request,
-                                        registration,
-                                        bytes,
-                                        units,
-                                        cancel,
-                                    )?)
-                                })?;
-                            Ok(ViolationBacking::Attribute { _backing: backing })
-                        },
-                        |work| {
-                            events.charge_work(work)?;
-                            if work != 0 {
-                                let read = lease.attribute_verification_policy(
-                                    request,
-                                    registration,
-                                    cancel,
-                                )?;
-                                for _ in 0..work {
-                                    read.step(cancel)?;
-                                }
+    let registration = owner
+        .attachment
+        .get()
+        .and_then(|attachment| attachment.registration.upgrade())
+        .ok_or(DocumentScriptNativeError::Revoked)?;
+    let processor = owner
+        .session
+        .try_borrow()
+        .map_err(|_| DocumentScriptNativeError::Busy)?
+        .trusted_types_csp
+        .clone();
+    with_attribute_lease(owner, limits, request, cancel, |lease| {
+        let processor = processor
+            .as_ref()
+            .map(|owner| owner.processor.try_borrow())
+            .transpose()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let policies =
+            AttributePolicies::read(lease, request, &registration, processor.as_deref(), cancel)
+                .map_err(attribute_policy_error)?;
+        let mut mismatch = policies.resume_mismatch(progress)?;
+        let mut reports = owner
+            .trusted_types_reports
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        loop {
+            let next = mismatch.next_report(lease, &registration, cancel, |bytes| {
+                ViolationQueue::admit_report(
+                    &mut reports,
+                    bytes,
+                    |bytes, units| {
+                        let backing = lease.retain_attribute_verification_payload(
+                            request,
+                            &registration,
+                            bytes,
+                            units,
+                            cancel,
+                        )?;
+                        Ok(ViolationBacking::Attribute { _backing: backing })
+                    },
+                    |work| {
+                        if work != 0 {
+                            let read = lease.attribute_verification_policy(
+                                request,
+                                &registration,
+                                cancel,
+                            )?;
+                            for _ in 0..work {
+                                read.step(cancel)?;
                             }
-                            Ok(())
-                        },
-                    )
-                })
-                .map_err(violation_error)?
-            {
-                reports
-                    .as_mut()
-                    .ok_or(DocumentScriptNativeError::Busy)?
-                    .push(report);
-            }
-            let outcome = match mismatch.blocked() {
-                Some(true) => DomSourceAttributeVerificationOutcome::Rejected,
-                Some(false) => DomSourceAttributeVerificationOutcome::Value(
-                    lease
-                        .attribute_verification_input(request, registration, cancel)?
-                        .clone(),
-                ),
-                None => return Err(DomError::InvalidSourceOperation.into()),
+                        }
+                        Ok(())
+                    },
+                )
+            });
+            mismatch.save(progress);
+            let Some(report) = next.map_err(violation_error)? else {
+                break;
             };
-            lease.accept_attribute_verification(
-                request,
-                registration,
-                &mut Some(outcome),
-                cancel,
-            )?;
-            Ok(())
-        },
-    )
+            reports
+                .as_mut()
+                .ok_or(DocumentScriptNativeError::Busy)?
+                .push(report);
+        }
+        let outcome = match mismatch.blocked() {
+            Some(true) => DomSourceAttributeVerificationOutcome::Rejected,
+            Some(false) => DomSourceAttributeVerificationOutcome::Value(
+                lease
+                    .attribute_verification_input(request, &registration, cancel)?
+                    .clone(),
+            ),
+            None => return Err(DomError::InvalidSourceOperation.into()),
+        };
+        lease.accept_attribute_verification(request, &registration, &mut Some(outcome), cancel)?;
+        Ok(())
+    })
 }
 
 fn attribute_policy_error(error: AttributePolicyError) -> DocumentGuestEventError {

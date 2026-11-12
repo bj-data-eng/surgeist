@@ -401,6 +401,53 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     );
     assert_eq!(calls.get(), 1);
 
+    let mut batch = DomBatch::new();
+    let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+    batch.set_attribute(&meta, "http-equiv", "content-security-policy");
+    let policy = format!(
+        "require-trusted-types-for 'script'; extension {}",
+        "x".repeat(2_000)
+    );
+    batch.set_attribute(&meta, "content", policy.as_str());
+    let meta = session
+        .dom()
+        .apply(batch, &cancel)
+        .unwrap()
+        .created(&meta)
+        .unwrap()
+        .unwrap();
+    let mut source = session.source_execution();
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::MetaCsp(request),
+        ..
+    } = source
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::insert_before(meta, head, None),
+            SOURCE,
+            &mut services,
+            &cancel,
+        )
+        .unwrap()
+    else {
+        panic!("the third real Meta policy must reach its native service");
+    };
+    session
+        .service_trusted_types_meta_csp(request, SOURCE, &cancel)
+        .unwrap();
+    assert!(matches!(
+        source
+            .resume(
+                &mut session.dom(),
+                request.operation(),
+                SOURCE,
+                &mut services,
+                &cancel
+            )
+            .unwrap(),
+        DomSourceDriveProgress::Complete(_)
+    ));
+
     let (mut host, permit) =
         attach_attribute_recovery_fixture(session, target, element, &cancel, 20_000);
     let calls = pause_guest_attribute(
@@ -415,6 +462,23 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         .with_native(|dom, _, _| dom.pending_source_edit())
         .unwrap()
         .expect("a null callback result must survive refusal before its mismatch reports");
+    let partial = DomSourceLimits::new(32_000_000, 1_000_000, 1_000, 128, 4096, 4096, 8);
+    let refusal = host.resume_pending_attribute_write(&permit, partial);
+    assert!(
+        matches!(
+            refusal,
+            Err(DocumentGuestEventError::Document(
+                DocumentScriptError::Native(DocumentScriptNativeError::Dom(
+                    DomError::SourceWorkLimit { limit: 1_000 }
+                ))
+            ))
+        ),
+        "{refusal:?}"
+    );
+    super::super::guest::tests::assert_queued_trusted_types_violations(
+        &host,
+        &[(1, "trusted-types-sink", "Element onclick|null-later")],
+    );
     let progress = host
         .resume_pending_attribute_write(&permit, SOURCE)
         .unwrap()
@@ -428,9 +492,23 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         &DomError::SourceAttributeVerificationRejected
     );
     assert_eq!(calls.get(), 1);
+    assert!(
+        host.with_native(|dom, _, _| dom.pending_source_edit())
+            .unwrap()
+            .is_none()
+    );
+    assert!(matches!(
+        host.resume_pending_attribute_write(&permit, SOURCE),
+        Err(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::SourceAccess)
+        ))
+    ));
     super::super::guest::tests::assert_queued_trusted_types_violations(
         &host,
-        &[(1, "trusted-types-sink", "Element onclick|null-later")],
+        &[
+            (1, "trusted-types-sink", "Element onclick|null-later"),
+            (2, "trusted-types-sink", "Element onclick|null-later"),
+        ],
     );
     assert_eq!(
         host.snapshot()
