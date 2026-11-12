@@ -475,6 +475,27 @@ mod tests {
     }
 
     #[test]
+    fn horizontal_pattern_keeps_normal_shaping_with_inherited_combination() {
+        let mut system = system();
+        let request = input(LeaderPattern::Literal("12".into()), WhiteSpace::Collapse);
+        let ordinary = system.prepare_leader_pattern(request.clone()).unwrap();
+        for combination in [
+            crate::TextCombineUpright::All,
+            crate::TextCombineUpright::Digits(crate::TextCombineUprightDigits::Two),
+        ] {
+            let mut request = request.clone();
+            request.style.text_combine_upright = combination;
+            let pattern = system.prepare_leader_pattern(request).unwrap();
+            assert_eq!(pattern.metrics().advance, 40.0);
+            assert_eq!(glyphs(&pattern), glyphs(&ordinary));
+            assert_eq!(pattern.cluster_views().len(), 2);
+            for (index, cluster) in pattern.cluster_views().enumerate() {
+                assert!(cluster.source_pieces().eq([Range::new(index, index + 1)]));
+            }
+        }
+    }
+
+    #[test]
     fn punctuation_at_pattern_edges_retains_its_complete_advance() {
         let mut system = system();
         let mut request = input(LeaderPattern::Literal("\"A.".into()), WhiteSpace::Collapse);
