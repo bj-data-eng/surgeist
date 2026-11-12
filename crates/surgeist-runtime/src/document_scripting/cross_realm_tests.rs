@@ -204,6 +204,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::registered_character_factory_refuses_without_publication(
     );
     public_and_source_comment_projection_share_identity();
+    source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
     );
     super::guest::tests::shadow_root::native_open_shadow_root_uses_the_canonical_interface();
@@ -422,6 +423,16 @@ impl Projection {
                 Ok(scope.retain(&handler))
             })
             .unwrap();
+        self.invoke_root(&handler, limits, cancel, observe)
+    }
+
+    fn invoke_root<T>(
+        &mut self,
+        handler: &Root,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+        observe: impl FnOnce(&DocumentScriptGuestResult) -> T,
+    ) -> (DomSourceEventRequest, T) {
         let mut services = DomSourceServices {
             meta: None,
             execution_scope: Some(&self.execution),
@@ -478,7 +489,7 @@ impl Projection {
         let DocumentScriptEventProgress::Selected(selected) = progress else {
             panic!("actual native listener must be selected");
         };
-        let mut report = selected.invoke(&handler, self.comment, limits);
+        let mut report = selected.invoke(handler, self.comment, limits);
         let outcome = observe(report.outcome());
         report.report(&self.dispatcher).unwrap();
         (request, outcome)
@@ -530,12 +541,13 @@ impl Projection {
 }
 
 fn native_projection(cancel: Arc<AtomicBool>) -> (Projection, DomHostedTopLevel) {
-    native_projection_with_registry_route(cancel, false)
+    native_projection_with_registry_route(cancel, false, true)
 }
 
 fn native_projection_with_registry_route(
     cancel: Arc<AtomicBool>,
     public: bool,
+    register_origin: bool,
 ) -> (Projection, DomHostedTopLevel) {
     let (mut session, receiving) = hosted_session(&cancel, 8);
     let execution = session
@@ -614,7 +626,9 @@ fn native_projection_with_registry_route(
         (enable(session, receiving, cancel), dispatcher)
     };
     let permit = host.permit().unwrap();
-    host.register_node_creation_realm(&permit, origin).unwrap();
+    if register_origin {
+        host.register_node_creation_realm(&permit, origin).unwrap();
+    }
     (
         Projection {
             host,
@@ -631,7 +645,7 @@ fn native_projection_with_registry_route(
 fn public_and_source_comment_projection_share_identity() {
     for public_first in [true, false] {
         let cancel = Arc::new(AtomicBool::new(false));
-        let (mut projection, _) = native_projection_with_registry_route(cancel.clone(), true);
+        let (mut projection, _) = native_projection_with_registry_route(cancel.clone(), true, true);
         let expose_public = |projection: &mut Projection| {
             super::guest::tests::expose_public_comment_for_source_test(
                 &mut projection.host,
@@ -694,6 +708,43 @@ fn public_and_source_comment_projection_share_identity() {
                 ))
             ));
         }
+    }
+}
+
+fn source_comment_qualification_precedes_foreign_handler() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let foreign_handler = {
+        let (mut projection, _) = native_projection(cancel.clone());
+        projection
+            .host
+            .in_document(&projection.permit, |scope| {
+                let handler = evaluate(scope, "() => {}")?;
+                Ok(scope.retain(&handler))
+            })
+            .unwrap()
+    };
+
+    for public in [false, true] {
+        let (mut projection, _) =
+            native_projection_with_registry_route(cancel.clone(), public, false);
+        let (request, ()) = projection.invoke_root(&foreign_handler, SOURCE, &cancel, |outcome| {
+            let DocumentScriptGuestResult::Refused(Error::HostFailure(failure)) = outcome else {
+                panic!("the unavailable Comment realm must refuse first: {outcome:?}");
+            };
+            assert!(matches!(
+                failure.cause::<DocumentScriptNativeError>(),
+                Some(DocumentScriptNativeError::CreationGlobalUnavailable)
+            ));
+        });
+        assert_eq!(
+            projection.parent(),
+            Some(projection.permit.document().node())
+        );
+        let mut session = projection.host.stop().into_session().unwrap();
+        assert_eq!(
+            session.dom().pending_source_edit().unwrap().operation(),
+            request.operation()
+        );
     }
 }
 
