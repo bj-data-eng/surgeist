@@ -126,9 +126,91 @@ pub(super) struct InFlowPassContext<'a, S: LayoutScalar, Node> {
     pub(super) projection: Option<content::Projection<S>>,
 }
 
-enum InFlowChildStart<'a, S: LayoutScalar> {
+enum InFlowChildStart<'input, Node, S: LayoutScalar> {
     VisibleInlineRun(VisibleInlineRunTransition),
-    FlowBox(BlockChildProjection<'a, S>),
+    FlowBox {
+        child: Node,
+        style: BlockChildProjection<'input, S>,
+    },
+    Hidden {
+        child: Node,
+        compute_box: bool,
+    },
+    Positioned {
+        child: Node,
+        geometry: StaticPositionGeometry,
+    },
+}
+
+type InFlowChildStartResult<'input, Node, S, M> =
+    LayoutResultOf<Node, InFlowChildStart<'input, Node, S>, S, M>;
+
+fn start_native_child<'input, Tree, S, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    children: &[Tree::Node],
+    constants: &Constants<S>,
+    index: usize,
+    semantic_end: usize,
+) -> InFlowChildStartResult<'input, Tree::Node, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let child = children[index];
+    let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
+    // The captured run owns transparent-leading children and their effects.
+    let captured_start = tree
+        .text_computation()
+        .is_some_and(|state| state.run_starting(node, &children[index..]).is_some());
+    if !captured_start {
+        match projection.kind() {
+            InlineParticipantKindOf::Box(style) => {
+                if style.display == crate::Display::None {
+                    return Ok(InFlowChildStart::Hidden {
+                        child,
+                        compute_box: true,
+                    });
+                }
+                if style.common.position == Position::Absolute {
+                    let geometry = if style.display.is_inline_level() {
+                        StaticPositionGeometry::Point
+                    } else {
+                        StaticPositionGeometry::BlockStart
+                    };
+                    return Ok(InFlowChildStart::Positioned { child, geometry });
+                }
+                if !crate::inline::starts_run(tree.layout_input(child)) {
+                    return Ok(InFlowChildStart::FlowBox { child, style });
+                }
+            }
+            InlineParticipantKindOf::InlineText(_) | InlineParticipantKindOf::TextControl(_) => {}
+            InlineParticipantKindOf::LineBreak(line_break) => {
+                if line_break.display().is_none() {
+                    return Ok(InFlowChildStart::Hidden {
+                        child,
+                        compute_box: false,
+                    });
+                }
+                visible_line_break_in_flow(tree, node, child, constants.flow_axes)?;
+            }
+            InlineParticipantKindOf::InlineBoundary(_) => {
+                visible_inline_boundary_in_flow(tree, node, child, constants.flow_axes)?;
+            }
+        }
+    }
+    let end = inline_run_end(
+        tree,
+        node,
+        children,
+        constants,
+        index + 1,
+        semantic_end,
+        None,
+    )?;
+    Ok(InFlowChildStart::VisibleInlineRun(
+        VisibleInlineRunTransition::new(index, end),
+    ))
 }
 
 /// Amount and border have distinct floating-point associations. The common
@@ -304,176 +386,57 @@ where
         let semantic_end = slots
             .get(slot_cursor)
             .map_or(children.len(), |slot| slot.gap);
-        let (child_start, native_child) = if let Some(slot) =
-            slots.get(slot_cursor).filter(|slot| slot.gap == index)
-        {
-            slot_cursor += 1;
-            (
-                InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::semantic(slot)),
-                None,
-            )
-        } else {
-            let child = children[index];
-            let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
-            // Dispatch the complete admitted capture before transparent-leading
-            // nodes are handled individually. The run owner retains their normal
-            // hidden computation and absolute static-position side effects.
-            let captured_start = tree
-                .text_computation()
-                .is_some_and(|state| state.run_starting(node, &children[index..]).is_some());
-            let child_start = if captured_start {
-                let run_start = index;
-                index = inline_run_end(
-                    tree,
-                    node,
-                    children,
-                    constants,
-                    index + 1,
-                    semantic_end,
-                    None,
-                )?;
-                InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                    run_start, index,
-                ))
+        let child_start =
+            if let Some(slot) = slots.get(slot_cursor).filter(|slot| slot.gap == index) {
+                slot_cursor += 1;
+                InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::semantic(slot))
             } else {
-                match projection.kind() {
-                    InlineParticipantKindOf::Box(style) => {
-                        if style.display == crate::Display::None {
-                            if set_layout {
-                                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-                                    child,
-                                    crate::output::NormalGeometryOf::metadata(
-                                        crate::Point::ZERO,
-                                        crate::Size::ZERO,
-                                    ),
-                                    NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
-                                        source_index,
-                                    )),
-                                ));
-                                tree.compute_child(
-                                    child,
-                                    ComputeInputOf::<S>::hidden_in_containing_pass(
-                                        ContainingLayoutContext::new(
-                                            constants.flow_axes,
-                                            ParentFormattingContext::BlockFlow,
-                                        ),
-                                        input.settled_auto_scrollbars(),
-                                    ),
-                                )?;
-                            }
-                            index += 1;
-                            continue;
-                        }
-                        if style.common.position == Position::Absolute {
-                            let geometry = if style.display.is_inline_level() {
-                                StaticPositionGeometry::Point
-                            } else {
-                                StaticPositionGeometry::BlockStart
-                            };
-                            static_positions.push((
-                                child,
-                                absolute_static_position(
-                                    adjoining.cursor + adjoining.active.resolve(),
-                                    constants,
-                                    containing_size,
-                                    geometry,
+                start_native_child(tree, node, children, constants, index, semantic_end)?
+            };
+        let (child, child_style) = match child_start {
+            InFlowChildStart::Hidden { child, compute_box } => {
+                if set_layout {
+                    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+                        child,
+                        crate::output::NormalGeometryOf::metadata(
+                            crate::Point::ZERO,
+                            crate::Size::ZERO,
+                        ),
+                        NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(source_index)),
+                    ));
+                    if compute_box {
+                        tree.compute_child(
+                            child,
+                            ComputeInputOf::<S>::hidden_in_containing_pass(
+                                ContainingLayoutContext::new(
+                                    constants.flow_axes,
+                                    ParentFormattingContext::BlockFlow,
                                 ),
-                            ));
-                            index += 1;
-                            continue;
-                        }
-                        if crate::inline::starts_run(tree.layout_input(child)) {
-                            let run_start = index;
-                            index = inline_run_end(
-                                tree,
-                                node,
-                                children,
-                                constants,
-                                index + 1,
-                                semantic_end,
-                                None,
-                            )?;
-                            InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                                run_start, index,
-                            ))
-                        } else {
-                            InFlowChildStart::FlowBox(style)
-                        }
-                    }
-                    InlineParticipantKindOf::InlineText(_)
-                    | InlineParticipantKindOf::TextControl(_) => {
-                        let run_start = index;
-                        index = inline_run_end(
-                            tree,
-                            node,
-                            children,
-                            constants,
-                            index + 1,
-                            semantic_end,
-                            None,
+                                input.settled_auto_scrollbars(),
+                            ),
                         )?;
-                        InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                            run_start, index,
-                        ))
-                    }
-                    InlineParticipantKindOf::LineBreak(line_break) => {
-                        if line_break.display().is_none() {
-                            if set_layout {
-                                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-                                    child,
-                                    crate::output::NormalGeometryOf::metadata(
-                                        crate::Point::ZERO,
-                                        crate::Size::ZERO,
-                                    ),
-                                    NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
-                                        source_index,
-                                    )),
-                                ));
-                            }
-                            index += 1;
-                            continue;
-                        }
-                        visible_line_break_in_flow(tree, node, child, constants.flow_axes)?;
-
-                        let run_start = index;
-                        index = inline_run_end(
-                            tree,
-                            node,
-                            children,
-                            constants,
-                            index + 1,
-                            semantic_end,
-                            None,
-                        )?;
-                        InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                            run_start, index,
-                        ))
-                    }
-                    InlineParticipantKindOf::InlineBoundary(_) => {
-                        visible_inline_boundary_in_flow(tree, node, child, constants.flow_axes)?;
-
-                        let run_start = index;
-                        index = inline_run_end(
-                            tree,
-                            node,
-                            children,
-                            constants,
-                            index + 1,
-                            semantic_end,
-                            None,
-                        )?;
-                        InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                            run_start, index,
-                        ))
                     }
                 }
-            };
-            (child_start, Some(child))
-        };
-        let child_style = match child_start {
+                index += 1;
+                continue;
+            }
+            InFlowChildStart::Positioned { child, geometry } => {
+                static_positions.push((
+                    child,
+                    absolute_static_position(
+                        adjoining.cursor + adjoining.active.resolve(),
+                        constants,
+                        containing_size,
+                        geometry,
+                    ),
+                ));
+                index += 1;
+                continue;
+            }
             InFlowChildStart::VisibleInlineRun(transition) => {
                 let run_start = transition.start;
                 let run_end = transition.end;
+                index = run_end;
                 transition.apply(
                     tree,
                     node,
@@ -540,10 +503,8 @@ where
                 first_in_flow &= inline_indent_state.is_none();
                 continue;
             }
-            InFlowChildStart::FlowBox(style) => style,
+            InFlowChildStart::FlowBox { child, style } => (child, style),
         };
-
-        let child = native_child.expect("only a real native child reaches block-box dispatch");
         if child_style.float.is_none() {
             if tail_active {
                 tail_ledger.child_block();
