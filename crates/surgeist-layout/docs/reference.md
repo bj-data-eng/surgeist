@@ -238,12 +238,12 @@ Its existing sideways-lr refusal remains in effect.
 A Block container that scrolls on its block axis uses its signed block-end
 margin edge for the last baseline set when `baseline_source` is `Auto`.
 Explicit `First` or `Last` uses content-derived facts. Layout clamps generic
-and named exports to the owning scroll container's border interval. It also
-clamps a synthesized named fallback when consumed. The overflow-pair model
-determines whether clipping provides a scroll container.
-A scrolling Block descendant exports its baselines in its own border frame
-before the parent translates them. Both frames use the canonical initial
-placement. See the pinned
+exports from Block, Flex, Grid, and Grid Lanes to the owning scroll container's
+border interval. Named Block exports and consumed named fallbacks use the
+same interval. Clip-only boxes retain their ordinary exports.
+An in-flow child exports its baselines in its own border frame before the
+parent translates them. Both frames use canonical initial placement. See the
+pinned
 [baseline export rules](../../../references/css-align-3--WD-css-align-3-20260130--7361249cbb73.md#baseline-export)
 and [source selection](../../../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#baseline-source).
 
