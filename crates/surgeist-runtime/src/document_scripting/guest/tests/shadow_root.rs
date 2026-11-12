@@ -258,3 +258,71 @@ pub(in crate::document_scripting) fn closed_root_visibility_admits_the_canonical
     assert_eq!(events.budget.used.get(), bytes);
     assert_eq!(host.snapshot().unwrap().stamp(), snapshot.stamp());
 }
+
+pub(in crate::document_scripting) fn scripted_attach_publishes_the_exact_native_shadow_root() {
+    let (mut host, permit, _) = root_host(None);
+    let before = host.snapshot().unwrap();
+    host.in_document(&permit, |scope| {
+        let method = scope.evaluate(&units("Element.prototype.attachShadow"))?;
+        assert!(scope.is_callable(&method)?, "Element.attachShadow is missing");
+        assert_guest(
+            scope,
+            r#"(() => {
+                const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, "attachShadow");
+                const root = descriptor.value.call(shadowHost, {
+                    mode: "open",
+                    delegatesFocus: true,
+                    slotAssignment: "manual",
+                    clonable: true,
+                    serializable: true,
+                });
+                globalThis.scriptedRoot = root;
+                return descriptor.value.length === 1 && descriptor.value.name === "attachShadow"
+                    && descriptor.writable && descriptor.enumerable && descriptor.configurable
+                    && root === shadowHost.shadowRoot && root.host === shadowHost
+                    && Object.getPrototypeOf(root) === ShadowRoot.prototype
+                    && root.mode === "open" && root.delegatesFocus && root.clonable
+                    && root.serializable && root.slotAssignment === "manual";
+            })()"#,
+        )
+    })
+    .unwrap();
+    let after = host.snapshot().unwrap();
+    assert_ne!(after.stamp(), before.stamp());
+    let mut created = after.nodes().filter(|node| before.node(*node).is_err());
+    let root = after.shadow_root(created.next().unwrap()).unwrap();
+    assert!(created.next().is_none());
+    assert_eq!(root.state().mode(), HtmlShadowRootMode::Open);
+    assert_eq!(root.state().slot_assignment(), HtmlSlotAssignment::Manual);
+    assert!(root.state().delegates_focus());
+    assert!(root.state().clonable());
+    assert!(root.state().serializable());
+    assert_eq!(
+        after.node(root.host()).unwrap().shadow_root(),
+        Some(root.id())
+    );
+    let cancel = host.native.cancellation.clone();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.detach(root.host());
+        batch.destroy(root.host());
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    assert!(matches!(
+        host.snapshot().unwrap().node(root.id()),
+        Err(DomError::StaleNode)
+    ));
+    let refused = host.in_document(&permit, |scope| {
+        scope.evaluate(&units("scriptedRoot.mode")).map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = refused else {
+        panic!("the scripted ShadowRoot must observe native retirement: {refused:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
+        ))
+    ));
+}

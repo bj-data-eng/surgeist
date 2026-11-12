@@ -208,6 +208,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
     );
     super::guest::tests::shadow_root::native_open_shadow_root_uses_the_canonical_interface();
+    super::guest::tests::shadow_root::scripted_attach_publishes_the_exact_native_shadow_root();
     super::guest::tests::shadow_root::closed_root_keeps_identity_and_native_event_visibility();
     super::guest::tests::shadow_root::shadow_projection_admits_exact_work_and_backing();
     super::guest::tests::shadow_root::closed_root_visibility_admits_the_canonical_lookup();
