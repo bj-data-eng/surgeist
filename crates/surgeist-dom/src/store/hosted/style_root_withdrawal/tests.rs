@@ -1244,6 +1244,159 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
 }
 
 #[test]
+fn registered_attribute_verification_precedes_attr_writes_and_attachment_guards() {
+    use crate::{DomAttributeAttachment, DomSourceAttributeVerificationOutcome, DomSourceOutput};
+    use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+    use surgeist_html::values::Namespace;
+
+    let cancel = cancel();
+    let (mut dom, source, document) = constructor();
+    let snapshot = dom.snapshot();
+    let navigable = snapshot.document(document).unwrap().navigable().unwrap();
+    let global = snapshot.hosted_navigable(navigable).unwrap().global();
+    let backing = source
+        .retain_runtime_payload(
+            &mut dom,
+            crate::DomDocumentScriptRegistration::storage_bytes(),
+            &cancel,
+        )
+        .unwrap();
+    let (_, registration) = source
+        .attach_document_script_host(
+            &mut dom,
+            global,
+            document,
+            crate::DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel,
+        )
+        .unwrap();
+
+    let mut setup = DomBatch::new();
+    let first = setup.create_element_ns(document, Namespace::html(), "div");
+    let second = setup.create_element_ns(document, Namespace::html(), "div");
+    let incoming = setup.create_attribute(document, "onclick");
+    setup.set_attribute(&first, "onclick", "original");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let first = commit.created(&first).unwrap().unwrap();
+    let second = commit.created(&second).unwrap().unwrap();
+    let incoming = dom
+        .snapshot()
+        .attr(commit.created(&incoming).unwrap().unwrap())
+        .unwrap()
+        .id();
+    let handler = dom
+        .snapshot()
+        .node(first)
+        .unwrap()
+        .get_attribute_node(&"onclick".into())
+        .unwrap()
+        .id();
+    let verified = crate::DocumentString::from_utf16(vec![0xd800, 0, 0x62]);
+
+    for (edit, receiver, input, output) in [
+        (
+            DomSourceEdit::set_attribute_value(handler, "argument"),
+            first,
+            "argument".into(),
+            None,
+        ),
+        (
+            DomSourceEdit::set_text_content(handler.node(), "text"),
+            first,
+            "text".into(),
+            None,
+        ),
+        (
+            DomSourceEdit::attach_attribute(first, handler),
+            first,
+            verified.clone(),
+            Some(DomAttributeAttachment::Unchanged(handler)),
+        ),
+        (
+            DomSourceEdit::attach_attribute(second, handler),
+            second,
+            verified.clone(),
+            None,
+        ),
+        (
+            DomSourceEdit::attach_attribute(first, incoming),
+            first,
+            "".into(),
+            Some(DomAttributeAttachment::Replaced(handler)),
+        ),
+    ] {
+        let stamp = dom.snapshot().stamp();
+        let mut lease = dom
+            .begin_source_edit(edit, source_limits(), &cancel)
+            .unwrap();
+        let progress = lease.advance(&cancel);
+        let Ok(DomSourceProgress::Request(DomSourceRequest::AttributeVerification(request))) =
+            progress
+        else {
+            panic!(
+                "standard Attr operations must request verification before writing or checking ownership: {progress:?}"
+            );
+        };
+        assert_eq!(request.element(), receiver);
+        assert_eq!(lease.snapshot().stamp(), stamp);
+        assert_eq!(
+            lease
+                .attribute_verification_input(request, &registration, &cancel)
+                .unwrap(),
+            &input
+        );
+        let reply = if output == Some(DomAttributeAttachment::Unchanged(handler)) {
+            "must not replace".into()
+        } else {
+            verified.clone()
+        };
+        let mut reply = Some(DomSourceAttributeVerificationOutcome::Value(reply));
+        lease
+            .accept_attribute_verification(request, &registration, &mut reply, &cancel)
+            .unwrap();
+        let progress = lease.advance(&cancel).unwrap();
+        if receiver == second {
+            let DomSourceProgress::Failed(failure) = progress else {
+                panic!("the original InUse error follows verification: {progress:?}");
+            };
+            assert_eq!(failure.error(), &DomError::InUseAttribute);
+        } else {
+            let DomSourceProgress::Complete(completion) = progress else {
+                panic!("the verified mutation completes: {progress:?}");
+            };
+            assert_eq!(
+                completion.output(),
+                output.map(DomSourceOutput::AttributeAttachment)
+            );
+        }
+        let snapshot = lease.snapshot();
+        let current = snapshot
+            .node(first)
+            .unwrap()
+            .get_attribute_node(&"onclick".into())
+            .unwrap();
+        assert_eq!(current.value(), &verified);
+        let id = if output == Some(DomAttributeAttachment::Replaced(handler)) {
+            incoming
+        } else {
+            handler
+        };
+        assert_eq!(current.id(), id);
+    }
+    let detached = dom.snapshot();
+    let replaced = detached.attr(handler.node()).unwrap();
+    assert_eq!(replaced.owner_element(), None);
+    assert_eq!(replaced.value(), &verified);
+}
+
+#[test]
 fn script_settings_from_an_expired_hosted_issuer_do_not_advance_source() {
     use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
     use surgeist_html::values::Namespace;
