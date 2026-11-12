@@ -1027,7 +1027,9 @@ impl<S: LayoutScalar> Constants<S> {
             Size::ZERO
         };
         let (style_size, min_size, max_size) = match input.sizing_mode() {
-            SizingMode::ContentSize => (Size::NONE, Size::NONE, Size::NONE),
+            SizingMode::ContentSize | SizingMode::PositionedColumnFlexInline => {
+                (Size::NONE, Size::NONE, Size::NONE)
+            }
             SizingMode::InherentSize => {
                 let style_size = preferred_size(
                     style.common.size,

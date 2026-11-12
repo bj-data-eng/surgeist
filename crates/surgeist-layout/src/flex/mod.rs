@@ -749,6 +749,39 @@ impl<S: LayoutScalar> Constants<S> {
         let max_content_cross = row_preferred_size && axes.cross_size(preferred).is_max_content();
         let (style_size, min_size, max_size) = match input.sizing_mode() {
             SizingMode::ContentSize => (Size::NONE, Size::NONE, Size::NONE),
+            SizingMode::PositionedColumnFlexInline => {
+                let main_axis = axes.main_physical_axis();
+                let basis = axes.main_size(input.parent());
+                let minimum = resolve_minimum_optional(
+                    axes.main_size(Size::new(
+                        &style.common.min_size.width,
+                        &style.common.min_size.height,
+                    )),
+                    SizingAlgorithm::Flex,
+                    main_axis,
+                    basis,
+                    true,
+                )
+                .map_err(|error| crate::error::sizing_resolution_error(node, error))?;
+                let maximum = resolve_maximum_optional(
+                    axes.main_size(Size::new(
+                        &style.common.max_size.width,
+                        &style.common.max_size.height,
+                    )),
+                    SizingAlgorithm::Flex,
+                    main_axis,
+                    basis,
+                    true,
+                )
+                .map_err(|error| crate::error::sizing_resolution_error(node, error))?;
+                (
+                    Size::NONE,
+                    axes.with_main_size(Size::NONE, minimum)
+                        .add_optional(box_sizing_adjustment),
+                    axes.with_main_size(Size::NONE, maximum)
+                        .add_optional(box_sizing_adjustment),
+                )
+            }
             SizingMode::InherentSize => {
                 let resolve_preferred = |value, axis, basis| {
                     if max_content_main && axis == axes.main_physical_axis()

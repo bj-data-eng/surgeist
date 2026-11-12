@@ -494,7 +494,7 @@ fn intrinsic_container_available<S: LayoutScalar>(
     available: Size<AxisSizingRequestOf<S>>,
     sizing_mode: SizingMode,
 ) -> Result<LogicalSizeOf<AxisSizingRequestOf<S>>, SizingResolutionError<S>> {
-    if sizing_mode == SizingMode::ContentSize {
+    if sizing_mode != SizingMode::InherentSize {
         return Ok(sizing_flow_axes.logical_size(available));
     }
     let algorithm = sizing_algorithm_for_grid_display(style.display);
