@@ -794,6 +794,7 @@ pub(super) fn allocate(
             let mut admit = |next| draft.admit_custody_usage(next, cancel);
             let mut formation = crate::element::ElementFormation::new(
                 draft.custody_registry(),
+                &draft.blocks,
                 None,
                 cancel,
                 &mut admit,

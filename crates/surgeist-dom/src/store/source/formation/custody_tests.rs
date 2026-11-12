@@ -379,8 +379,13 @@ fn actual_typed_family_targets_preserve_snapshot_identity_and_release_after_last
     );
     let baseline = draft.custody_ledger().total();
     let mut admission = |next| draft.admit_custody_usage(next, &cancel);
-    let mut context =
-        ElementFormation::new(draft.custody_registry(), None, &cancel, &mut admission);
+    let mut context = ElementFormation::new(
+        draft.custody_registry(),
+        &draft.blocks,
+        None,
+        &cancel,
+        &mut admission,
+    );
     let measurement = Measurement::begin().unwrap();
     let next = context
         .native(extra, storage::Payload::default(), || {
@@ -439,8 +444,13 @@ fn actual_typed_family_targets_preserve_snapshot_identity_and_release_after_last
     extra.bytes = size_of::<Vec<u16>>() + capacity * size_of::<u16>();
     extra.units = capacity;
     let mut admission = |next| draft.admit_custody_usage(next, &cancel);
-    let mut context =
-        ElementFormation::new(draft.custody_registry(), None, &cancel, &mut admission);
+    let mut context = ElementFormation::new(
+        draft.custody_registry(),
+        &draft.blocks,
+        None,
+        &cancel,
+        &mut admission,
+    );
     let measurement = Measurement::begin().unwrap();
     let dialog_next = context
         .native(extra, storage::Payload::default(), || {
@@ -449,8 +459,13 @@ fn actual_typed_family_targets_preserve_snapshot_identity_and_release_after_last
         .unwrap();
     let dialog_controls = context.into_children();
     let mut admission = |next| draft.admit_custody_usage(next, &cancel);
-    let mut context =
-        ElementFormation::new(draft.custody_registry(), None, &cancel, &mut admission);
+    let mut context = ElementFormation::new(
+        draft.custody_registry(),
+        &draft.blocks,
+        None,
+        &cancel,
+        &mut admission,
+    );
     let style_next = context
         .native(
             storage::Payload::default(),

@@ -462,6 +462,40 @@ fn borrowers_of_one_block_are_priced_by_length_and_the_block_once() {
     );
 }
 
+#[test]
+fn attribute_values_that_borrow_one_block_are_priced_by_length_and_the_block_once() {
+    let build = |first: DocumentString, second: DocumentString| {
+        let mut builder = builder();
+        let document = document(&mut builder);
+        let name = |local: &str| QualifiedName::new(Namespace::none(), None, local);
+        let attributes = OrderedAttributes::new([
+            surgeist_html::values::Attribute::new(name("a"), first),
+            surgeist_html::values::Attribute::new(name("b"), second),
+        ])
+        .unwrap();
+        builder
+            .add_element(
+                &document,
+                name("div"),
+                attributes,
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder.finish().unwrap()
+    };
+    let owners = build(exact(&[97, 98, 99, 100]), exact(&[101, 102, 103, 104]));
+    let (block, [first, second]) = borrowers();
+    let borrowed = build(first, second);
+    let (owned, shared) = (observe(&owners), observe(&borrowed));
+    assert_eq!(
+        shared.utf16_extent(),
+        owned.utf16_extent() + block.capacity()
+    );
+    assert_eq!(borrowed.0.blocks.len(), 1);
+    assert!(owners.0.blocks.is_empty());
+}
+
 fn listed_strings<'a>(
     strings: &'a [DocumentString],
 ) -> impl Fn(&mut dyn FnMut(&DocumentString)) + 'a {

@@ -400,6 +400,8 @@ pub enum HtmlBaseFactsError {
     Utf16Limit,
     WorkLimit,
     RepresentationExhausted,
+    /// A backing for a copy of retained units could not be allocated.
+    AllocationFailed,
     /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
     /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
     /// operation's, or a change the operation does not charge. It carries the accounting fault.
@@ -423,6 +425,7 @@ impl HtmlBaseFactsError {
             | Self::Utf16Limit
             | Self::WorkLimit
             | Self::RepresentationExhausted
+            | Self::AllocationFailed
             | Self::WrongBase
             | Self::WrongDocument => None,
         }
@@ -584,7 +587,10 @@ impl HtmlBaseRetainedStorageUsage {
         Ok(())
     }
     pub(crate) fn string(&mut self, value: &DocumentString) -> Result<(), HtmlBaseFactsError> {
-        let units = value.retained_units();
+        self.string_of_units(value.retained_units())
+    }
+    /// A string header and a backing of `units` units.
+    pub(crate) fn string_of_units(&mut self, units: usize) -> Result<(), HtmlBaseFactsError> {
         self.units = self
             .units
             .checked_add(units)

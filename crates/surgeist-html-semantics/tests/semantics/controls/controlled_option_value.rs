@@ -666,3 +666,85 @@ fn controlled_chain_attachment_work_is_linear_in_either_order() {
         }
     }
 }
+
+/// The retained storage of a controlled capture after it adds one `option` element named `name`
+/// with a saved `is` of `saved_is`.
+fn storage_after_adding(
+    name: &DocumentString,
+    saved_is: &DocumentString,
+) -> HtmlOptionValueStorageUsage {
+    let cancel = AtomicBool::new(false);
+    let mut owner = HtmlControlledOptionValueCapture::new(
+        limits(),
+        HtmlHostFactsRevision::fresh(),
+        envelope(),
+        &cancel,
+    )
+    .unwrap();
+    let doc = owner
+        .add_document(HtmlDocumentMode::NoQuirks, envelope(), &cancel)
+        .unwrap();
+    owner
+        .add_element(
+            &doc,
+            &QualifiedName::new(Namespace::html(), None, name.clone()),
+            &OrderedAttributes::new([]).unwrap(),
+            Some(saved_is),
+            envelope(),
+            &cancel,
+        )
+        .unwrap();
+    owner.storage_usage()
+}
+
+/// A block of text with spare capacity, and an exact owner of each range a test borrows from it.
+fn spare_block() -> surgeist_html::values::TextBlock {
+    let mut units = Vec::with_capacity(4096);
+    units.extend("option widget".encode_utf16());
+    surgeist_html::values::TextBlock::from_utf16(units)
+}
+
+fn exact_owner(text: &str) -> DocumentString {
+    let mut units = Vec::new();
+    units
+        .try_reserve_exact(text.encode_utf16().count())
+        .unwrap();
+    units.extend(text.encode_utf16());
+    DocumentString::from_utf16(units)
+}
+
+#[test]
+fn the_envelope_charges_the_block_of_a_saved_is_that_borrows_one_once() {
+    let block = spare_block();
+    assert!(block.capacity() >= 4096);
+    let name = exact_owner("option");
+    let borrowed = storage_after_adding(&name, &block.string(7..13).unwrap());
+    let owned = storage_after_adding(&name, &exact_owner("widget"));
+    // The value is charged by its length in both, and the block is one more charge in the
+    // envelope of the borrower.
+    assert_eq!(
+        borrowed.utf16_extent(),
+        owned.utf16_extent() + block.capacity()
+    );
+    assert_eq!(
+        borrowed.retained_bytes(),
+        owned.retained_bytes() + block.retained_bytes()
+    );
+}
+
+#[test]
+fn the_envelope_charges_the_block_of_an_element_name_that_borrows_one_once() {
+    let block = spare_block();
+    assert!(block.capacity() >= 4096);
+    let saved = exact_owner("widget");
+    let borrowed = storage_after_adding(&block.string(0..6).unwrap(), &saved);
+    let owned = storage_after_adding(&exact_owner("option"), &saved);
+    assert_eq!(
+        borrowed.utf16_extent(),
+        owned.utf16_extent() + block.capacity()
+    );
+    assert_eq!(
+        borrowed.retained_bytes(),
+        owned.retained_bytes() + block.retained_bytes()
+    );
+}

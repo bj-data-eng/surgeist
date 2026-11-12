@@ -203,6 +203,19 @@ impl<'a> Admission<'a> {
         crate::source::event::retain_ancestor_work(self.original.source_ancestors.as_ref(), 1)?;
         Ok(())
     }
+    /// Lists the block `value` borrows in the original transaction, so that a retention that
+    /// prices the value by its length has its block charged once.
+    pub(in crate::store) fn adopt(
+        &self,
+        value: &surgeist_html::values::DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.original.blocks.adopt(
+            value,
+            |next| self.original.admit_custody_usage(next, cancel),
+            || self.original.source_step(cancel),
+        )
+    }
     pub(in crate::store) fn effect_payload(
         &mut self,
         payload: super::storage::Payload,

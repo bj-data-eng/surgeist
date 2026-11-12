@@ -236,6 +236,10 @@ fn the_encoding_url_errors_find_the_fault_through_their_base_facts_error() {
         None
     );
     assert_eq!(
+        formation(HtmlBaseFactsError::AllocationFailed).accounting_fault(),
+        None
+    );
+    assert_eq!(
         HtmlEncodingUrlFactsError::ForeignProducer.accounting_fault(),
         None
     );

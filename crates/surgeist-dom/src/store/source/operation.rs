@@ -955,11 +955,20 @@ impl Operation {
             .retained_payload_units()?
             .checked_add(length)
             .ok_or(DomError::RepresentationExhausted)?;
-        for string in [Some(base_url), media, title, blocking, nonce]
+        for (index, string) in [Some(base_url), media, title, blocking, nonce]
             .into_iter()
-            .flatten()
+            .enumerate()
         {
+            let Some(string) = string else {
+                continue;
+            };
             self.draft.source_step(cancel)?;
+            if index != 0 && string.borrowed_block().is_some() {
+                // A value of an attribute that borrows a block is copied into an exact owner
+                // below, which admits its header, units and backing, so the source keeps its own
+                // units and not the block of the attribute.
+                continue;
+            }
             units = units
                 .checked_add(string.retained_units())
                 .ok_or(DomError::RepresentationExhausted)?;
@@ -1005,6 +1014,18 @@ impl Operation {
                 }
             }
         }
+        let media = media
+            .map(|value| self.own_attribute_value(value, budget, cancel))
+            .transpose()?;
+        let title = title
+            .map(|value| self.own_attribute_value(value, budget, cancel))
+            .transpose()?;
+        let blocking = blocking
+            .map(|value| self.own_attribute_value(value, budget, cancel))
+            .transpose()?;
+        let nonce = nonce
+            .map(|value| self.own_attribute_value(value, budget, cancel))
+            .transpose()?;
         let source = formation::allocated_arc(DomStyleSource {
             operation: self.id,
             ordinal: match frame.invocation {
@@ -1019,12 +1040,25 @@ impl Operation {
             root,
             text: formation::allocated_arc(text),
             base_url: base_url.clone(),
-            media: media.cloned(),
-            title: title.cloned(),
-            blocking: blocking.cloned(),
-            nonce: nonce.cloned().unwrap_or_default(),
+            media,
+            title,
+            blocking,
+            nonce: nonce.unwrap_or_default(),
         });
         Ok(source)
+    }
+    /// The value of an attribute that the style source retains: a value that borrows a block is
+    /// copied into an exact owner that `budget` charges, and an owner is shared.
+    fn own_attribute_value(
+        &self,
+        value: &DocumentString,
+        budget: &formation::Formation,
+        cancel: &AtomicBool,
+    ) -> Result<DocumentString, DomError> {
+        if value.borrowed_block().is_none() {
+            return Ok(value.clone());
+        }
+        formation::owned_copy(value, budget, cancel)
     }
     fn visit_sheet_order(
         &self,

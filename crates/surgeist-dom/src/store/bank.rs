@@ -1230,6 +1230,15 @@ impl CustodyRegistry {
         self.lock().blocks.find(block).is_some()
     }
 
+    /// Drops the listing of `block` and releases its debit, whatever claims or publications made
+    /// it. This puts a store in the state of a retention whose value no other path has listed, to
+    /// test the listing a retention site makes for itself: in every reachable state the attribute
+    /// bank has listed the block of an attribute value before a site retains the value.
+    #[cfg(test)]
+    pub fn unlist_block(&self, block: &TextBlock) {
+        drop(self.lock().blocks.remove(block));
+    }
+
     /// Relies on a debit that charges `block`, in one critical section so that no other
     /// transaction changes the listing between the look and the claim: a published listing, a
     /// claim on a listing that only unpublished transactions hold, or a new listing made with the

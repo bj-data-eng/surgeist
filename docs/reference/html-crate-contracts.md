@@ -111,6 +111,37 @@ allocation without a second copy or a fabricated capacity are named for their ro
 
 A string never exposes mutable access while another holder can observe it.
 
+### Retaining a string that borrows a block
+
+A string over part of a block is a borrower; `borrowed_block` returns its block, and a string over
+a whole block is an owner. A holder that retains a string charges it one of two ways:
+
+- by occurrence: the holder lists the block in a `TextBlockTable`, charges the block once for all
+  the borrowers it holds, and charges each borrower `occurrence_units`, its own length;
+- by capacity: `retained_units` charges the capacity of the block, spare capacity included, at
+  every occurrence. This is the conservative default, since it never charges less than the memory
+  the string keeps alive.
+
+Each retention of an attribute value or of the saved `is` value either lists or copies:
+
+| Retention | Rule |
+| --- | --- |
+| DOM attribute banks and attribute payloads, nonce, saved `is` (when an element forms it and when a registry binding re-forms it), form control name, details group name, slot name, slottable slot name | List through the transaction's block adoptions. |
+| DOM transient reports of the focus, image, iframe loading and `closedby` hooks, and the details name the source exclusivity step reads | List. |
+| Embedder policy inputs, the URL basis and the host observation of it for a hosted iframe, and the style value an inline style recording keeps in its event log | List through the draft of the operation or the transaction. A published listing keeps the block while any holder remains. |
+| Default-style content a Meta atomic recording admits | Count each occurrence by length. The envelope charges each block once, at its capacity, in the payload of the first occurrence that holds it, and a rollback releases it with that occurrence. |
+| Element name and saved `is` strings of the controlled OptionValue capture | The capture lists each block and counts each string by length. The envelope charges each block the capture newly lists once, at its capacity, in the payload of the addition that lists it, and a refused addition takes the listing back. The text and comment leaves of the capture are not attribute values and keep the capacity of their block. |
+| Whole-capture element storage, and the element value allowance of `add_element` (the construction capture and the controlled OptionValue capture add elements through it) | List: each string counts by occurrence and the capture lists the block once. A refused addition takes its listing back. |
+| DOM input state strings, style source media, title, blocking and nonce, and the name a hosted history entry keeps | Copy into an exact owner of the units. A hosted history entry outlives the transaction, and the paths that copy its rows have no draft that lists a block, so it keeps an exact owner. The copy is charged to a fork of the operation formation before it allocates, and that charge ends with the copy. |
+| `add_element_from_inputs` values and saved `is`, the hyperlink snapshot raw value, the captured frozen Base href | Copy into an exact owner. The hyperlink snapshot offers the length of the copy to the caller's retention before it reserves the backing, and refuses a reserved capacity larger than the length with `HtmlBaseFactsError::AllocationFailed`. The captured Base href charges the work of its copy before it allocates, and the Base facts admit its units afterwards: the allocation is bounded by the source value and by the work charged for the copies of the capture. `add_element_from_inputs` charges the work of each copy before it runs. A failed allocation is a typed allocation failure. |
+
+The input raw value, image source and dialog return value that parsed installation reads are
+owners of a parsed document and keep the capacity charge.
+
+A value a caller passes in keeps the capacity price at the points where no transaction has listed
+its block, for example the value of a `DomBatch` command during a source operation, or an
+observation a host builds for a facts bank. A copy shares an owner instead of copying it.
+
 `OrderedAttributes::shared_attributes(&self) -> &Arc<Vec<Attribute>>` lends the
 actual immutable backing and retained capacity without a clone or validation
 pass. Consuming `into_shared_attributes(self) -> Arc<Vec<Attribute>>` returns

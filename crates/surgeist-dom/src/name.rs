@@ -233,7 +233,9 @@ impl DomAttribute {
     }
     pub(crate) fn retained_payload(&self) -> Result<Payload, DomError> {
         let mut payload = self.name.retained_payload()?;
-        payload.string(&self.value)?;
+        // A value that borrows a block is priced by its length: every path that forms an
+        // attribute lists the block it borrows, so the block is charged once for the store.
+        payload.listed_string(&self.value)?;
         Ok(payload)
     }
 }

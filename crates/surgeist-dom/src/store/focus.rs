@@ -86,7 +86,8 @@ impl Draft {
             payload.name(element.name())?;
             if let Some(raw) = raw {
                 payload.name(raw.name())?;
-                payload.string(raw.value())?;
+                self.list_block(raw.value(), cancel)?;
+                payload.listed_string(raw.value())?;
             }
             formation.retain_payload(payload, cancel)?;
         }

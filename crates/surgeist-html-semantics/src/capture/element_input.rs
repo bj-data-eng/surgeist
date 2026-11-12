@@ -108,10 +108,15 @@ impl Extent {
         step: &mut impl FnMut(preflight::Action) -> Result<(), E>,
     ) -> Result<(), HtmlCaptureElementError<E>> {
         step(preflight::Action::Work(1)).map_err(HtmlCaptureElementError::Interrupted)?;
+        // A value that borrows a block is retained as an exact copy of its units.
+        let retained = if value.borrowed_block().is_some() {
+            value.len()
+        } else {
+            value.retained_units()
+        };
         self.units = add(self.units, value.len())?;
-        self.retained_units = add(self.retained_units, value.retained_units())?;
-        let bytes = value
-            .retained_units()
+        self.retained_units = add(self.retained_units, retained)?;
+        let bytes = retained
             .checked_mul(size_of::<u16>())
             .ok_or(HtmlCaptureError::RepresentationExhausted)?;
         self.bytes = add(self.bytes, add(size_of::<Vec<u16>>(), bytes)?)?;
@@ -210,6 +215,8 @@ impl HtmlCaptureBuilder {
     /// saved-is string headers and capacities and the destination attribute Vec
     /// header/capacity, per occurrence. It excludes record/relationship banks,
     /// later nonce/hyperlink facts, opaque Arc headers and allocator bookkeeping.
+    /// An attribute value or saved `is` value that borrows a block is retained as an exact copy of
+    /// its units, so the element never keeps the block alive at the price of its capacity.
     /// Refusal commits no subject, value receipt or logical usage.
     pub fn add_element_from_inputs<E>(
         &mut self,
@@ -247,6 +254,17 @@ impl HtmlCaptureBuilder {
                     HtmlCaptureElementError::Capture(HtmlCaptureError::RepresentationExhausted)
                 }
             })?;
+        // A saved `is` value that borrows a block is retained as an exact copy of its units.
+        let is_value = match is_value {
+            HtmlCapturedIsValue::Value(value) if value.borrowed_block().is_some() => {
+                admit(preflight::Action::Work(value.len()))
+                    .map_err(HtmlCaptureElementError::Interrupted)?;
+                HtmlCapturedIsValue::Value(storage::owned_value(&value).ok_or(
+                    HtmlCaptureElementError::Capture(HtmlCaptureError::RepresentationExhausted),
+                )?)
+            }
+            other => other,
+        };
         self.add_element_controlled(
             document,
             formed.name,
@@ -386,7 +404,14 @@ impl HtmlCaptureBuilder {
             step(preflight::Action::Work(1)).map_err(HtmlCaptureElementError::Interrupted)?;
             let name = attribute_name.capture(step)?;
             step(preflight::Action::Work(1)).map_err(HtmlCaptureElementError::Interrupted)?;
-            let value = attribute_value.clone();
+            if attribute_value.borrowed_block().is_some() {
+                for _ in 0..attribute_value.len() {
+                    step(preflight::Action::Work(1))
+                        .map_err(HtmlCaptureElementError::Interrupted)?;
+                }
+            }
+            let value =
+                storage::owned_value(attribute_value).ok_or(FormFailure::AllocationFailed)?;
             values.push(Attribute::new(name, value));
         }
         if let Some(value) = saved_is {

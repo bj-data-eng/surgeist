@@ -474,20 +474,32 @@ impl Draft {
             .as_ref()
             .expect("explicit Meta capability");
         recording.envelope.step(cancel)?;
+        let block = content.borrowed_block();
+        let mut block_held = false;
         for prior in &recording.entries {
             recording.envelope.step(cancel)?;
             if prior.content.shares_storage_with(content) {
                 return Ok(());
             }
+            // An earlier occurrence of the block carries the charge for it.
+            block_held |=
+                block.is_some_and(|block| prior.content.block().shares_allocation_with(block));
         }
-        let payload = source::storage::Payload {
-            bytes: content
-                .retained_units()
+        // A range that borrows a block is charged by its length, and the block once for the
+        // recording, in the payload of the first occurrence that holds it: the occurrences keep
+        // the block alive. Any other string is charged by the capacity of its block.
+        let units = content.occurrence_units();
+        let mut payload = source::storage::Payload {
+            bytes: units
                 .checked_mul(2)
                 .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
                 .ok_or(DomError::RepresentationExhausted)?,
-            units: content.retained_units(),
+            units,
         };
+        if let Some(block) = block.filter(|_| !block_held) {
+            payload.add_bytes(block.retained_bytes())?;
+            payload.add_units(block.capacity())?;
+        }
         if recording.envelope.source.is_some() {
             let mut payloads = recording.payloads.borrow_mut();
             recording.envelope.reserve(&mut payloads, 1, cancel)?;

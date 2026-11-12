@@ -1,5 +1,6 @@
 //! Controlled formation and one OptionValue read over an ordinary captured tree.
 use crate::accounting::{LedgerError, wide};
+use crate::capture::ElementListingError;
 use crate::capture::preflight::ActionPolicy;
 use crate::*;
 use std::mem::size_of;
@@ -899,9 +900,32 @@ impl Control {
         &self,
         usage: HtmlCaptureRetainedStorageUsage,
     ) -> Result<HtmlOptionValueStorageUsage, HtmlControlledOptionValueFailure> {
+        self.add_payload_with_blocks(usage, 0, 0)
+    }
+    #[expect(
+        clippy::result_large_err,
+        reason = "Refusal preserves the original qualified error and complete usage without allocation."
+    )]
+    fn add_payload_with_blocks(
+        &self,
+        usage: HtmlCaptureRetainedStorageUsage,
+        block_bytes: usize,
+        block_units: usize,
+    ) -> Result<HtmlOptionValueStorageUsage, HtmlControlledOptionValueFailure> {
+        let exhausted = || {
+            self.failure(HtmlControlledOptionValueError::Control(
+                HtmlOptionValueControlError::RepresentationExhausted,
+            ))
+        };
         let payload = HtmlOptionValueStorageUsage {
-            bytes: usage.retained_bytes(),
-            units: usage.utf16_extent(),
+            bytes: usage
+                .retained_bytes()
+                .checked_add(block_bytes)
+                .ok_or_else(exhausted)?,
+            units: usage
+                .utf16_extent()
+                .checked_add(block_units)
+                .ok_or_else(exhausted)?,
         };
         self.add(payload, false)
             .map_err(|e| self.failure(HtmlControlledOptionValueError::Control(e)))?;
@@ -1129,7 +1153,34 @@ impl HtmlControlledOptionValueCapture {
                     },
                 })
             })?;
-        let payload = self.control.add_payload(formed.usage)?;
+        // The strings of the element are charged by their length, and the capture lists the block
+        // each borrows once: the envelope charges each listed block once, at its capacity, in the
+        // payload of the addition that lists it.
+        let listing = builder
+            .list_element_blocks(&formed.name, &formed.attributes, saved_is)
+            .map_err(|error| {
+                self.control.failure(match error {
+                    ElementListingError::AllocationFailed => {
+                        HtmlControlledOptionValueError::AllocationFailed
+                    }
+                    ElementListingError::RepresentationExhausted => {
+                        HtmlControlledOptionValueError::Control(
+                            HtmlOptionValueControlError::RepresentationExhausted,
+                        )
+                    }
+                })
+            })?;
+        let payload = match self.control.add_payload_with_blocks(
+            formed.usage,
+            listing.bytes(),
+            listing.units(),
+        ) {
+            Ok(payload) => payload,
+            Err(error) => {
+                builder.unlist_element_blocks(listing);
+                return Err(error);
+            }
+        };
         let result = builder.add_element_controlled(
             document,
             formed.name,
@@ -1140,6 +1191,9 @@ impl HtmlControlledOptionValueCapture {
             HtmlCaptureRegistryInput::Null,
             &mut |action| self.control.query(cancel).action(action),
         );
+        if result.is_err() {
+            builder.unlist_element_blocks(listing);
+        }
         self.control.finish_add(result, payload)
     }
     #[expect(

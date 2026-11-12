@@ -1,4 +1,6 @@
 //! One original requestClose continuation; Runtime owns effects and custody only.
+#[cfg(test)]
+mod tests;
 use super::*;
 use surgeist_html::elements::dialog::{
     HtmlCloseWatcherRequestAction as A, HtmlCloseWatcherRequestCursor,
@@ -232,7 +234,8 @@ impl DomSourceLease<'_> {
             payload.name(element.name())?;
             if let Some(raw) = raw {
                 payload.name(raw.name())?;
-                payload.string(raw.value())?;
+                op.draft.list_block(raw.value(), cancel)?;
+                payload.listed_string(raw.value())?;
             }
             budget.retain_payload(payload, cancel)?;
             for _ in 0..2 {

@@ -654,3 +654,596 @@ fn a_block_is_released_once_no_attribute_holds_it() {
     dom.apply(batch, &AtomicBool::new(false)).unwrap();
     assert_eq!(dom.custody_registry.listed_blocks(), 0);
 }
+
+/// A store whose element and group limits admit the families the attribute tests build.
+fn element_dom() -> Dom {
+    Dom::new(
+        DomLimits::new(
+            2048,
+            1_000_000,
+            4096,
+            128,
+            128,
+            32,
+            32_000_000,
+            DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_details_toggle_intentions(64)
+        .unwrap()
+        .with_input_processing(1_000_000, 1_000_000)
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+/// The custody total of a store whose document holds one HTML `tag` element with the given
+/// attributes, and the number of blocks it charges.
+fn total_with_element(
+    tag: &str,
+    attributes: &[(&str, &DocumentString)],
+) -> (custody::Usage, usize) {
+    let mut dom = element_dom();
+    let document = document(&mut dom);
+    let mut batch = crate::DomBatch::new();
+    let element = batch.create_element_ns(document, surgeist_html::values::Namespace::html(), tag);
+    for (name, value) in attributes {
+        batch.set_attribute(&element, *name, (*value).clone());
+    }
+    batch.insert_before(&element, document, None);
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    (total(&dom), dom.custody_registry.listed_blocks())
+}
+
+/// A borrower of a block with spare capacity and an exact owner of the same four units, which
+/// the elements of the tests below retain through the attribute `name`.
+fn assert_charged_by_length_and_the_block_once(
+    tag: &str,
+    name: &str,
+    others: &[(&str, &DocumentString)],
+) {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let borrowed = block.string(0..4).unwrap();
+    let owner = exact_owner();
+    let with = |value: &DocumentString| {
+        let mut attributes = others.to_vec();
+        attributes.push((name, value));
+        total_with_element(tag, &attributes)
+    };
+    let (shared, listed) = with(&borrowed);
+    let (owned, none) = with(&owner);
+    // The element retains the value again beyond the attribute, and every retention of a
+    // borrower is its length: the block adds its capacity once, whatever the retentions.
+    assert_eq!(shared.units(), owned.units() + block.capacity());
+    assert_eq!((listed, none), (1, 0));
+}
+
+#[test]
+fn a_nonce_that_borrows_a_block_is_charged_by_length_and_the_block_once() {
+    assert_charged_by_length_and_the_block_once("script", "nonce", &[]);
+}
+
+#[test]
+fn the_name_of_an_input_that_borrows_a_block_is_charged_by_length_and_the_block_once() {
+    assert_charged_by_length_and_the_block_once("input", "name", &[]);
+}
+
+#[test]
+fn the_name_of_a_details_that_borrows_a_block_is_charged_by_length_and_the_block_once() {
+    assert_charged_by_length_and_the_block_once("details", "name", &[]);
+}
+
+#[test]
+fn the_observed_source_of_an_image_input_that_borrows_a_block_is_charged_by_length_and_the_block_once()
+ {
+    assert_charged_by_length_and_the_block_once(
+        "input",
+        "src",
+        &[("type", &DocumentString::from("image"))],
+    );
+}
+
+#[test]
+fn a_focus_report_of_an_attribute_that_borrows_a_block_is_charged_by_length() {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let mut dom = element_dom();
+    let document = document(&mut dom);
+    let mut batch = crate::DomBatch::new();
+    let element =
+        batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "dialog");
+    batch.set_attribute(&element, "inert", block.string(0..4).unwrap());
+    batch.insert_before(&element, document, None);
+    let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let node = done.created(&element).unwrap().unwrap();
+    // The source operation retains the units the store holds and at most 100 more: the report of
+    // the attribute fits when it is priced by its four units, and cannot when it is priced by the
+    // capacity of its block.
+    let cancel = AtomicBool::new(false);
+    let units = total(&dom).units() + 100;
+    let limits = crate::DomSourceLimits::new(16_000_000, units, 1_000_000, 32, 4096, 4096, 1);
+    let batch = crate::DomBatch::new();
+    let (draft, _) =
+        Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel).unwrap();
+    let key = draft.resolve(node.into()).unwrap();
+    assert_eq!(
+        draft.focus_boolean(
+            key,
+            surgeist_html::attributes::HtmlBooleanAttribute::Inert,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Inert,
+            &cancel,
+        ),
+        Ok(true)
+    );
+    assert_eq!(dom.custody_registry.listed_blocks(), 1);
+}
+
+/// Builds a store with one HTML `tag` element whose `name` attribute is `value`, and gives back
+/// the store and the element.
+fn store_with_attribute(tag: &str, name: &str, value: DocumentString) -> (Dom, crate::NodeId) {
+    let mut dom = element_dom();
+    let document = document(&mut dom);
+    let mut batch = crate::DomBatch::new();
+    let element = batch.create_element_ns(document, surgeist_html::values::Namespace::html(), tag);
+    batch.set_attribute(&element, name, value);
+    batch.insert_before(&element, document, None);
+    let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let node = done.created(&element).unwrap().unwrap();
+    (dom, node)
+}
+
+#[test]
+fn removing_the_attribute_of_each_retention_releases_the_block() {
+    for (tag, name) in [
+        ("script", "nonce"),
+        ("input", "name"),
+        ("input", "src"),
+        ("details", "name"),
+    ] {
+        let block = spare_block();
+        let weak = block.downgrade();
+        let (mut dom, node) = store_with_attribute(tag, name, block.string(0..4).unwrap());
+        assert!(dom.custody_registry.block_listed(&block), "{tag} {name}");
+        drop(block);
+        let mut batch = crate::DomBatch::new();
+        batch.remove_attribute(node, name);
+        dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        // The attribute, the nonce slot, the control facts and the input value no longer hold
+        // the block, so the next sweep gives its charge back.
+        assert_eq!(weak.holders(), 0, "{tag} {name}");
+        assert_eq!(dom.custody_registry.listed_blocks(), 0, "{tag} {name}");
+    }
+}
+
+#[test]
+fn replacing_an_attribute_value_releases_the_block_of_the_old_value() {
+    let first = spare_block();
+    let second = spare_block();
+    let (first_weak, second_weak) = (first.downgrade(), second.downgrade());
+    let (mut dom, node) = store_with_attribute("div", "data-a", first.string(0..4).unwrap());
+    drop(first);
+    let mut batch = crate::DomBatch::new();
+    batch.set_attribute(node, "data-a", second.string(4..8).unwrap());
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    assert_eq!(first_weak.holders(), 0);
+    assert_eq!(second_weak.holders(), 2);
+    assert_eq!(dom.custody_registry.listed_blocks(), 1);
+    drop(second);
+    assert_eq!(second_weak.holders(), 1);
+}
+
+#[test]
+fn replacing_an_attribute_value_by_an_equal_one_keeps_the_published_value_and_its_block() {
+    // The edited element compares equal to the published one, so the published element and its
+    // value stay; the block of the equal replacement is not held.
+    let first = spare_block();
+    let second = spare_block();
+    let (first_weak, second_weak) = (first.downgrade(), second.downgrade());
+    let (mut dom, node) = store_with_attribute("div", "data-a", first.string(0..4).unwrap());
+    drop(first);
+    let mut batch = crate::DomBatch::new();
+    batch.set_attribute(node, "data-a", second.string(0..4).unwrap());
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    assert_eq!(first_weak.holders(), 1);
+    assert_eq!(second_weak.holders(), 1);
+    drop(second);
+    assert_eq!(second_weak.holders(), 0);
+    // The next transaction sweeps the entry of the block nothing holds.
+    dom.apply(crate::DomBatch::new(), &AtomicBool::new(false))
+        .unwrap();
+    assert_eq!(dom.custody_registry.listed_blocks(), 1);
+}
+
+/// Removes the `name` attribute, whose value is `value`, from an HTML `tag` element in a source
+/// operation that retains at most `margin` units beyond the store, and gives whether the
+/// operation completed.
+fn removal_completes_within(tag: &str, name: &str, value: &DocumentString, margin: usize) -> bool {
+    let (mut dom, node) = store_with_attribute(tag, name, value.clone());
+    let cancel = AtomicBool::new(false);
+    let mut batch = crate::DomBatch::new();
+    batch.remove_attribute(node, name);
+    let units = total(&dom).units() + margin;
+    let limits = crate::DomSourceLimits::new(16_000_000, units, 1_000_000, 32, 4096, 4096, 1);
+    match dom
+        .begin_source_commands(batch, limits, &cancel)
+        .and_then(|mut lease| lease.advance(&cancel))
+    {
+        Ok(crate::DomSourceProgress::Complete(_)) => true,
+        Err(DomError::ResourceLimit {
+            resource: DomResource::SourceRetainedUnits,
+            ..
+        }) => false,
+        other => panic!("unexpected end of the source operation: {other:?}"),
+    }
+}
+
+/// The least margin of units beyond the store in which the removal completes.
+fn least_margin(tag: &str, name: &str, value: &DocumentString) -> usize {
+    (0..2048)
+        .find(|margin| removal_completes_within(tag, name, value, *margin))
+        .expect("the removal completes within the limit of the scan")
+}
+
+/// The removal of an attribute that borrows a block needs the margin of the removal of an
+/// attribute that is an exact owner of the same text, which is below the capacity of the block.
+fn assert_removal_is_charged_by_length(tag: &str, name: &str) {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let owner = least_margin(tag, name, &exact_owner());
+    let borrower = least_margin(tag, name, &block.string(0..4).unwrap());
+    assert!(owner < block.capacity());
+    assert_eq!(borrower, owner);
+}
+
+#[test]
+fn the_transient_loading_report_of_an_image_that_borrows_a_block_is_charged_by_length() {
+    assert_removal_is_charged_by_length("img", "loading");
+}
+
+#[test]
+fn the_loading_report_of_an_iframe_that_borrows_a_block_is_charged_by_length() {
+    assert_removal_is_charged_by_length("iframe", "loading");
+}
+
+/// A store whose shadow trees and elements admit the named slots the tests below build.
+fn slot_dom() -> Dom {
+    Dom::new(
+        DomLimits::new(
+            4096,
+            1_000_000,
+            16_384,
+            64,
+            1,
+            0,
+            0,
+            DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+/// The custody total of a store whose host has an open shadow root with named slot assignment
+/// holding one `slot` element named `slot_name` and one light child slotted by `child_name`, and
+/// the number of blocks it charges.
+fn total_with_named_slots(
+    slot_name: Option<&DocumentString>,
+    child_name: Option<&DocumentString>,
+) -> (custody::Usage, usize) {
+    use surgeist_html::construction::{
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    };
+    let mut dom = slot_dom();
+    let document = document(&mut dom);
+    let html = surgeist_html::values::Namespace::html();
+    let mut batch = crate::DomBatch::new();
+    let host = batch.create_element_ns(document, html.clone(), "div");
+    batch.insert_before(&host, document, None);
+    let shadow = batch.attach_shadow(
+        &host,
+        HtmlShadowRootProperties::new(
+            HtmlShadowRootMode::Open,
+            HtmlSlotAssignment::Named,
+            false,
+            true,
+            false,
+        ),
+    );
+    let slot = batch.create_element_ns(document, html.clone(), "slot");
+    if let Some(name) = slot_name {
+        batch.set_attribute(&slot, "name", name.clone());
+    }
+    batch.insert_before(&slot, &shadow, None);
+    let child = batch.create_element_ns(document, html, "span");
+    if let Some(name) = child_name {
+        batch.set_attribute(&child, "slot", name.clone());
+    }
+    batch.insert_before(&child, &host, None);
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    (total(&dom), dom.custody_registry.listed_blocks())
+}
+
+#[test]
+fn the_name_of_a_slot_that_borrows_a_block_is_charged_by_length_and_the_block_once() {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let (shared, listed) = total_with_named_slots(Some(&block.string(0..4).unwrap()), None);
+    let (owned, none) = total_with_named_slots(Some(&exact_owner()), None);
+    assert_eq!(shared.units(), owned.units() + block.capacity());
+    assert_eq!((listed, none), (1, 0));
+}
+
+#[test]
+fn the_slot_name_of_a_slottable_that_borrows_a_block_is_charged_by_length_and_the_block_once() {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let (shared, listed) = total_with_named_slots(None, Some(&block.string(0..4).unwrap()));
+    let (owned, none) = total_with_named_slots(None, Some(&exact_owner()));
+    assert_eq!(shared.units(), owned.units() + block.capacity());
+    assert_eq!((listed, none), (1, 0));
+}
+
+/// The custody total of a store whose element holds a saved `is` value of `value`, which a second
+/// transaction keeps while it binds the element to a registry, and the number of blocks charged.
+fn total_after_binding_a_registry(value: &DocumentString) -> (custody::Usage, usize) {
+    total_after_binding_a_registry_without(value, None)
+}
+
+/// [`total_after_binding_a_registry`], with the listing of `unlist` dropped between the two
+/// transactions, so that the binding is the only path that lists the block of the saved `is`.
+fn total_after_binding_a_registry_without(
+    value: &DocumentString,
+    unlist: Option<&TextBlock>,
+) -> (custody::Usage, usize) {
+    let cancel = AtomicBool::new(false);
+    let mut dom = element_dom();
+    let document = document(&mut dom);
+    let mut batch = crate::DomBatch::new();
+    let element =
+        batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "div");
+    batch.insert_before(&element, document, None);
+    let done = dom.apply(batch, &cancel).unwrap();
+    let node = done.created(&element).unwrap().unwrap();
+    // The first transaction forms the saved `is` of the element, as element creation does.
+    let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+    let key = draft.resolve(node.into()).unwrap();
+    let registry = draft.custody_registry().clone();
+    let mut admit = |usage| draft.admit_custody_usage(usage, &cancel);
+    let mut formation =
+        crate::element::ElementFormation::new(&registry, &draft.blocks, None, &cancel, &mut admit);
+    let custom = formation
+        .custom(
+            crate::element::CustomAssociation {
+                registry: crate::DomRegistryBinding::Null,
+                definition: crate::DomElementDefinition::Null,
+                saved_is: Some(value.clone()),
+            },
+            source::storage::Payload::default(),
+        )
+        .unwrap();
+    let mut saved = draft
+        .node(key)
+        .unwrap()
+        .element()
+        .unwrap()
+        .language()
+        .clone();
+    saved.set_custom_payload(Some(custom));
+    let formed = formation.finish(saved);
+    draft
+        .replace_element_formed(key, formed, None, &cancel)
+        .unwrap();
+    let prepared = draft.finish(&dom, &cancel).unwrap();
+    dom.publish(prepared, &cancel).unwrap();
+    if let Some(block) = unlist {
+        dom.custody_registry.unlist_block(block);
+        assert_eq!(dom.custody_registry.listed_blocks(), 0);
+    }
+    // The second transaction binds the element to a registry and re-forms the association.
+    let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+    let key = draft.resolve(node.into()).unwrap();
+    let binding = crate::DomRegistryBinding::Registry(crate::registry::DomRegistryId {
+        owner: dom.owner,
+        slot: 0,
+        generation: 0,
+    });
+    draft
+        .establish_element_registry(key, binding, &cancel)
+        .unwrap();
+    let prepared = draft.finish(&dom, &cancel).unwrap();
+    dom.publish(prepared, &cancel).unwrap();
+    (total(&dom), dom.custody_registry.listed_blocks())
+}
+
+#[test]
+fn the_saved_is_that_borrows_a_block_is_charged_by_length_when_a_registry_binds_the_element() {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let (shared, listed) = total_after_binding_a_registry(&block.string(0..4).unwrap());
+    let (owned, none) = total_after_binding_a_registry(&exact_owner());
+    assert_eq!(shared.units(), owned.units() + block.capacity());
+    assert_eq!((listed, none), (1, 0));
+}
+
+/// Copies `value` into an exact owner under a formation of an operation that retains at most
+/// `units` units and `bytes` bytes beyond the store, and gives the copy, the custody total before
+/// and after, and the number of blocks listed.
+fn exact_owner_within(
+    value: &DocumentString,
+    margin: (usize, usize),
+) -> (
+    Result<DocumentString, DomError>,
+    custody::Usage,
+    custody::Usage,
+    usize,
+) {
+    let dom = dom();
+    let cancel = AtomicBool::new(false);
+    let batch = crate::DomBatch::new();
+    let roomy = crate::DomSourceLimits::new(16_000_000, 1_000_000, 1_000_000, 32, 4096, 4096, 1);
+    let (mut draft, _) =
+        Draft::new_source(&dom, batch.owner.clone(), &batch.commands, roomy, &cancel).unwrap();
+    // The operation admits against the custody it controls, the draft's own included, and the
+    // bytes and units outside the store, so the margins count from there.
+    let held = (
+        draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes,
+        draft.source_storage_units(&cancel).unwrap() + draft.source_other_units,
+    );
+    draft.source_limits = Some(crate::DomSourceLimits::new(
+        held.0 + margin.1,
+        held.1 + margin.0,
+        1_000_000,
+        32,
+        4096,
+        4096,
+        1,
+    ));
+    let formation = source::formation::Formation::new(&draft, &cancel)
+        .unwrap()
+        .unwrap();
+    let before = total(&dom);
+    let copy = source::formation::exact_owner(value, Some(&formation), &cancel);
+    (
+        copy,
+        before,
+        total(&dom),
+        dom.custody_registry.listed_blocks(),
+    )
+}
+
+#[test]
+fn a_borrower_is_copied_into_an_exact_owner_whose_charge_ends_with_the_copy() {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let borrowed = block.string(2..6).unwrap();
+    let (copy, before, after, listed) = exact_owner_within(&borrowed, (64, 1_000_000));
+    let copy = copy.unwrap();
+    assert_eq!(copy, borrowed);
+    assert!(copy.borrowed_block().is_none());
+    assert!(!copy.shares_storage_with(&borrowed));
+    // The owner holds its four units and nothing of the block, and the copy leaves the ledger as
+    // it was: the holder of the owner prices it.
+    assert_eq!(copy.retained_units(), 4);
+    assert_eq!(after, before);
+    assert_eq!(listed, 0);
+    // An owner is shared and charged nothing.
+    let owner = exact_owner();
+    let (shared, before, after, _) = exact_owner_within(&owner, (0, 1_000_000));
+    assert!(shared.unwrap().shares_storage_with(&owner));
+    assert_eq!(after, before);
+}
+
+#[test]
+fn the_copy_of_a_borrower_is_charged_its_header_length_and_spare_before_and_after_it_allocates() {
+    let block = spare_block();
+    let borrowed = block.string(2..6).unwrap();
+    let (copy, ..) = exact_owner_within(&borrowed, (1_000, 1_000_000));
+    let held = copy.unwrap().retained_units();
+    // The units are the length and the spare room the allocator left; the bytes are the header and
+    // two bytes for each of those units.
+    let units = borrowed.len() + (held - borrowed.len());
+    let bytes = size_of::<Vec<u16>>() + units * size_of::<u16>();
+    for (margin, accepted) in [
+        ((units - 1, 1_000_000), false),
+        ((units, 1_000_000), true),
+        ((1_000, bytes - 1), false),
+        ((1_000, bytes), true),
+    ] {
+        let (outcome, before, after, _) = exact_owner_within(&borrowed, margin);
+        assert_eq!(outcome.is_ok(), accepted, "{margin:?}: {outcome:?}");
+        if !accepted {
+            let resource = if margin.0 < 1_000 {
+                DomResource::SourceRetainedUnits
+            } else {
+                DomResource::SourceRetainedBytes
+            };
+            assert!(
+                matches!(&outcome, Err(DomError::ResourceLimit { resource: r, .. }) if *r == resource),
+                "{margin:?}: {outcome:?}"
+            );
+        }
+        // A refusal and an accepted copy alike leave the ledger as it was.
+        assert_eq!(after, before);
+    }
+}
+
+/// The slot names that a store holds for a slot named by a range of `slot_block` and a light child
+/// slotted by a range of `child_block`: the nodes the second transaction of a test moves.
+struct NamedSlots {
+    dom: Dom,
+    shadow: crate::NodeId,
+    slot: crate::NodeId,
+    host: crate::NodeId,
+    child: crate::NodeId,
+}
+
+fn named_slots(slot_block: &TextBlock, child_block: &TextBlock) -> NamedSlots {
+    use surgeist_html::construction::{
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    };
+    let mut dom = slot_dom();
+    let document = document(&mut dom);
+    let html = surgeist_html::values::Namespace::html();
+    let mut batch = crate::DomBatch::new();
+    let host = batch.create_element_ns(document, html.clone(), "div");
+    batch.insert_before(&host, document, None);
+    let shadow = batch.attach_shadow(
+        &host,
+        HtmlShadowRootProperties::new(
+            HtmlShadowRootMode::Open,
+            HtmlSlotAssignment::Named,
+            false,
+            true,
+            false,
+        ),
+    );
+    let slot = batch.create_element_ns(document, html.clone(), "slot");
+    batch.set_attribute(&slot, "name", slot_block.string(0..4).unwrap());
+    batch.insert_before(&slot, &shadow, None);
+    let child = batch.create_element_ns(document, html, "span");
+    batch.set_attribute(&child, "slot", child_block.string(0..4).unwrap());
+    batch.insert_before(&child, &host, None);
+    let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    NamedSlots {
+        shadow: done.attached_shadow_root(&shadow).unwrap().unwrap(),
+        slot: done.created(&slot).unwrap().unwrap(),
+        host: done.created(&host).unwrap().unwrap(),
+        child: done.created(&child).unwrap().unwrap(),
+        dom,
+    }
+}
+
+#[test]
+fn a_cached_slot_fact_that_borrows_a_block_lists_it_when_the_nodes_are_moved() {
+    let (slot_block, child_block) = (spare_block(), spare_block());
+    let mut store = named_slots(&slot_block, &child_block);
+    let registry = store.dom.custody_registry.clone();
+    let charged = total(&store.dom);
+    assert_eq!(registry.listed_blocks(), 2);
+    // No path has listed the blocks when the second transaction moves the slot and the child,
+    // which keeps their cached facts: the facts list the blocks the names borrow.
+    registry.unlist_block(&slot_block);
+    registry.unlist_block(&child_block);
+    assert_eq!(registry.listed_blocks(), 0);
+    let mut batch = crate::DomBatch::new();
+    batch.insert_before(store.slot, store.shadow, None);
+    batch.insert_before(store.child, store.host, None);
+    store.dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    assert!(registry.block_listed(&slot_block));
+    assert!(registry.block_listed(&child_block));
+    assert_eq!(registry.listed_blocks(), 2);
+    // Each block is charged once again, and the store holds what it held before.
+    assert_eq!(total(&store.dom).units(), charged.units());
+}
+
+#[test]
+fn a_registry_binding_lists_the_block_of_the_saved_is_it_reforms() {
+    let block = spare_block();
+    let saved = block.string(0..4).unwrap();
+    let (listed, count) = total_after_binding_a_registry_without(&saved, Some(&block));
+    let (kept, kept_count) = total_after_binding_a_registry(&saved);
+    // The block is charged once again, as when the element formed the saved `is`.
+    assert_eq!((count, kept_count), (1, 1));
+    assert_eq!(listed.units(), kept.units());
+}

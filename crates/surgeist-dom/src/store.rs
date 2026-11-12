@@ -18,7 +18,7 @@ mod attributes;
 mod autofocus;
 pub(crate) mod bank;
 mod base;
-mod block_custody;
+pub(crate) mod block_custody;
 #[cfg(test)]
 mod block_custody_tests;
 pub(crate) mod canonical;

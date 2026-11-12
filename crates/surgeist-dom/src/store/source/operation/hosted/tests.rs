@@ -472,3 +472,364 @@ fn inherited_csp_association_is_parked_across_original_work_refusal_and_raised_r
         ))
     );
 }
+
+/// Where the construction of a hosted child stops for a measurement.
+#[derive(Clone, Copy)]
+enum Stop {
+    /// Before the Permissions Policy answer, with the inputs of the embedder retained.
+    Policy,
+    /// After the initial entry and its history are accepted.
+    History,
+    /// At the Permissions Policy answer, after the declared-origin URL request of the iframe is
+    /// issued.
+    Url,
+    /// At the same answer, after the host's observation of that request is accepted.
+    Observed,
+}
+
+fn spare_block() -> surgeist_html::values::TextBlock {
+    let mut units = Vec::with_capacity(512);
+    units.extend([97_u16, 98, 99, 100, 101, 102, 103, 104]);
+    surgeist_html::values::TextBlock::from_utf16(units)
+}
+
+fn exact_owner() -> surgeist_html::values::DocumentString {
+    let mut units = Vec::new();
+    units.try_reserve_exact(4).unwrap();
+    units.extend([97_u16, 98, 99, 100]);
+    surgeist_html::values::DocumentString::from_utf16(units)
+}
+
+/// The custody total of the store, and the number of blocks it charges, while the construction of a
+/// hosted `iframe` with the given attributes is held at `stop`.
+fn total_at(
+    attributes: &[(&str, &surgeist_html::values::DocumentString)],
+    stop: Stop,
+) -> (crate::store::custody::Usage, usize) {
+    run_to(attributes, stop, None, None)
+}
+
+/// A point of the construction before which a test drops the listing of a block, so that the
+/// retention made there is the only path that lists it.
+#[derive(Clone, Copy, PartialEq)]
+enum Isolate {
+    /// Before the inputs of the embedder are retained.
+    Policy,
+    /// Before the URL request of the iframe is issued.
+    Request,
+}
+
+/// What the host's observation of the URL request of the iframe carries as its raw value, when
+/// not the request's own.
+type Raw<'a> = Option<&'a surgeist_html::values::DocumentString>;
+
+/// [`total_at`], with the listing of a block dropped at a point of the construction, and the raw
+/// value of the host's observation given.
+fn run_to(
+    attributes: &[(&str, &surgeist_html::values::DocumentString)],
+    stop: Stop,
+    isolate: Option<(Isolate, &surgeist_html::values::TextBlock)>,
+    observed: Raw<'_>,
+) -> (crate::store::custody::Usage, usize) {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, mut source, document, _) = super::super::fullscreen::native_fixture(
+        DomLimits::new(
+            128,
+            1_000_000,
+            256,
+            128,
+            128,
+            32,
+            4_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    );
+    let parent = dom
+        .snapshot()
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let mut batch = DomBatch::new();
+    let closed = batch.create_html_document(document, None);
+    let iframe =
+        batch.create_element_ns(&closed, surgeist_html::values::Namespace::html(), "iframe");
+    for (name, value) in attributes {
+        batch.set_attribute(&iframe, *name, (*value).clone());
+    }
+    let iframe = dom
+        .apply(batch, &cancel)
+        .unwrap()
+        .created(&iframe)
+        .unwrap()
+        .unwrap();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(iframe, parent, None),
+            limits(),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::HostedChild(child)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("actual connected iframe reaches its child constructor");
+    };
+    let preparation = lease
+        .prepare_hosted_child(&mut source, &child, &cancel)
+        .unwrap();
+    let mut prepared = Some(
+        source
+            .seal_child_preparation(&child, &mut Some(preparation), &cancel)
+            .unwrap(),
+    );
+    if let Some((Isolate::Policy, block)) = isolate {
+        lease.dom.custody_registry.unlist_block(block);
+        assert_eq!(lease.dom.custody_registry.listed_blocks(), 0);
+    }
+    lease
+        .accept_hosted_child_preparation(&mut source, &child, &mut prepared, &cancel)
+        .unwrap();
+    for _ in 0..12 {
+        let at_policy = matches!(
+            lease.hosted_child_step(&child).unwrap(),
+            DomHostedChildStep::PermissionsPolicy(_)
+        );
+        if at_policy && matches!(stop, Stop::Url | Stop::Observed) {
+            let revision = surgeist_html_semantics::HtmlBaseFactsRevision::new(
+                surgeist_html_semantics::HtmlBaseProducerId::fresh(),
+                21,
+                22,
+                23,
+            );
+            if let Some((Isolate::Request, block)) = isolate {
+                lease.dom.custody_registry.unlist_block(block);
+            }
+            let issued = lease
+                .source_url_request(
+                    &child,
+                    crate::DomSourceUrlStage::IframeDeclaredOrigin,
+                    &revision,
+                    &cancel,
+                )
+                .unwrap();
+            if matches!(stop, Stop::Observed) {
+                // The host observes the value the request carries, as the Runtime does: its raw
+                // value is the clone of the request's.
+                let actual = surgeist_html_semantics::HtmlBaseParseObservation::new(
+                    observed.unwrap_or(issued.raw()).clone(),
+                    issued.base_url().clone(),
+                    issued.encoding().clone(),
+                    revision.clone(),
+                    surgeist_html_semantics::HtmlBaseParseOutcome::Failure,
+                )
+                .unwrap();
+                let mut response = Some(issued.observe(actual, None).unwrap());
+                lease
+                    .accept_source_url_observation(&child, &issued, &mut response, &cancel)
+                    .unwrap();
+                assert!(response.is_none());
+            }
+            return (
+                lease.dom.custody_registry.ledger().total(),
+                lease.dom.custody_registry.listed_blocks(),
+            );
+        }
+        let publication = match lease.hosted_child_step(&child).unwrap() {
+            DomHostedChildStep::PermissionsPolicy(request) => {
+                if matches!(stop, Stop::Policy) {
+                    return (
+                        lease.dom.custody_registry.ledger().total(),
+                        lease.dom.custody_registry.listed_blocks(),
+                    );
+                }
+                let mut policy = Some(
+                    source
+                        .seal_permissions_policy(
+                            request,
+                            DomInitialPermissionsPolicy::new(
+                                DomPermissionsPolicyValue::Enabled,
+                                DomPermissionsPolicyValue::Enabled,
+                            ),
+                            &cancel,
+                        )
+                        .unwrap(),
+                );
+                lease
+                    .accept_hosted_child_policy(&mut source, &child, &mut policy, &cancel)
+                    .unwrap();
+                continue;
+            }
+            DomHostedChildStep::NativeExecution(request) => {
+                let global = source.issue_global(request, &cancel).unwrap();
+                source
+                    .seal_native_execution(request, global, 200, &cancel)
+                    .unwrap()
+            }
+            DomHostedChildStep::MakeActive(request) => {
+                source.seal_make_active(request, &cancel).unwrap()
+            }
+            DomHostedChildStep::FinishLoading(request) => {
+                source.seal_finish_loading(request, 300, &cancel).unwrap()
+            }
+            DomHostedChildStep::InitialEntry(request) => {
+                let entry = source.issue_entry(request, &cancel).unwrap();
+                let navigable = source.issue_navigable(request, &cancel).unwrap();
+                let mut initialization = Some(DomHostedEntryInitialization::new(
+                    uuid(u16::from(b'3')),
+                    uuid(u16::from(b'4')),
+                ));
+                source
+                    .seal_initial_entry(request, entry, navigable, &mut initialization, &cancel)
+                    .unwrap()
+            }
+            DomHostedChildStep::QueueHistory(request) => {
+                let mut publication = Some(source.seal_child_history(request, &cancel).unwrap());
+                lease
+                    .accept_hosted_child_history(&mut source, &child, &mut publication, &cancel)
+                    .unwrap();
+                assert!(publication.is_none());
+                if matches!(stop, Stop::History) {
+                    return (
+                        lease.dom.custody_registry.ledger().total(),
+                        lease.dom.custody_registry.listed_blocks(),
+                    );
+                }
+                continue;
+            }
+            _ => panic!("unexpected child phase"),
+        };
+        let mut value = Some(publication);
+        lease
+            .accept_hosted_child_publication(&mut source, &child, &mut value, &cancel)
+            .unwrap();
+    }
+    panic!("the construction did not reach the stop");
+}
+
+/// A borrower of one block and an exact owner of the same four units give totals that differ by
+/// the capacity of the block alone, and charge the block once.
+fn assert_charged_by_length_and_the_block_once(
+    names: &[&str],
+    others: &[(&str, &surgeist_html::values::DocumentString)],
+    stop: Stop,
+) {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let borrowed = block.string(0..4).unwrap();
+    let owner = exact_owner();
+    let with = |value: &surgeist_html::values::DocumentString| {
+        let mut attributes = others.to_vec();
+        for name in names {
+            attributes.push((*name, value));
+        }
+        total_at(&attributes, stop)
+    };
+    let (shared, listed) = with(&borrowed);
+    let (owned, none) = with(&owner);
+    assert_eq!(shared.units(), owned.units() + block.capacity());
+    assert_eq!((listed, none), (1, 0));
+}
+
+#[test]
+fn the_embedder_policy_inputs_of_an_iframe_that_borrow_a_block_are_charged_by_length() {
+    assert_charged_by_length_and_the_block_once(&["sandbox", "srcdoc", "allow"], &[], Stop::Policy);
+}
+
+#[test]
+fn the_name_an_iframe_history_entry_keeps_is_charged_by_length_when_it_borrows_a_block() {
+    assert_charged_by_length_and_the_block_once(&["name"], &[], Stop::History);
+}
+
+#[test]
+fn the_url_basis_of_an_iframe_source_that_borrows_a_block_is_charged_by_length() {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let borrowed = block.string(0..4).unwrap();
+    let owner = exact_owner();
+    // What the request adds beyond the construction held at the answer: the raw source and the
+    // base the basis keeps.
+    let added = |value: &surgeist_html::values::DocumentString| {
+        let (policy, _) = total_at(&[("src", value)], Stop::Policy);
+        let (url, listed) = total_at(&[("src", value)], Stop::Url);
+        (url.units() - policy.units(), listed)
+    };
+    let (shared, listed) = added(&borrowed);
+    let (owned, none) = added(&owner);
+    assert_eq!(shared, owned);
+    assert_eq!((listed, none), (1, 0));
+}
+
+#[test]
+fn the_observation_the_host_returns_for_an_iframe_source_that_borrows_a_block_is_charged_by_length()
+{
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let borrowed = block.string(0..4).unwrap();
+    let owner = exact_owner();
+    // What the accepted observation adds beyond the request: the raw value it repeats.
+    let added = |value: &surgeist_html::values::DocumentString| {
+        let (url, _) = total_at(&[("src", value)], Stop::Url);
+        let (observed, listed) = total_at(&[("src", value)], Stop::Observed);
+        (observed.units() - url.units(), listed)
+    };
+    let (shared, listed) = added(&borrowed);
+    let (owned, none) = added(&owner);
+    assert_eq!(shared, owned);
+    assert_eq!((listed, none), (1, 0));
+}
+
+#[test]
+fn the_embedder_policy_inputs_list_the_block_they_borrow_for_the_operation() {
+    let block = spare_block();
+    let borrowed = block.string(0..4).unwrap();
+    let attributes = [
+        ("sandbox", &borrowed),
+        ("srcdoc", &borrowed),
+        ("allow", &borrowed),
+    ];
+    let (listed, count) = run_to(
+        &attributes,
+        Stop::Policy,
+        Some((Isolate::Policy, &block)),
+        None,
+    );
+    // The block is charged once again, as when the attribute bank listed it.
+    let (kept, kept_count) = total_at(&attributes, Stop::Policy);
+    assert_eq!((count, kept_count), (1, 1));
+    assert_eq!(listed.units(), kept.units());
+}
+
+#[test]
+fn the_url_basis_of_an_iframe_source_lists_the_block_it_borrows_for_the_operation() {
+    let block = spare_block();
+    let borrowed = block.string(0..4).unwrap();
+    let attributes = [("src", &borrowed)];
+    let (listed, count) = run_to(
+        &attributes,
+        Stop::Url,
+        Some((Isolate::Request, &block)),
+        None,
+    );
+    let (kept, kept_count) = total_at(&attributes, Stop::Url);
+    assert_eq!((count, kept_count), (1, 1));
+    assert_eq!(listed.units(), kept.units());
+}
+
+#[test]
+fn an_observation_whose_raw_value_borrows_another_block_lists_that_block_for_the_operation() {
+    let block = spare_block();
+    let borrowed = block.string(0..4).unwrap();
+    // The host builds the observation from its own copy of the value, which is a range of a
+    // block of its own that no earlier path of the store has listed.
+    let other = spare_block();
+    let echo = other.string(0..4).unwrap();
+    assert_eq!(echo, borrowed);
+    let attributes = [("src", &borrowed)];
+    let (own, own_count) = total_at(&attributes, Stop::Observed);
+    let (foreign, foreign_count) = run_to(&attributes, Stop::Observed, None, Some(&echo));
+    assert_eq!((own_count, foreign_count), (1, 2));
+    // The second block is charged once, at its capacity, and the observation by its length.
+    assert_eq!(foreign.units(), own.units() + other.capacity());
+}

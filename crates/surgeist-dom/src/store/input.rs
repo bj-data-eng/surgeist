@@ -117,8 +117,29 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<Option<input_processing::InputValue>, DomError> {
         self.control_attribute(key, attribute, cancel)?
-            .map(|value| self.input_shared(value, cancel))
+            .map(|value| self.input_attribute_value(value, cancel))
             .transpose()
+    }
+    /// The value of an attribute that the input retains, as its current value or a derived one.
+    /// The input state prices its strings by the capacity of their blocks, whichever path set
+    /// them, so a value that borrows a block is copied into an exact owner here instead of
+    /// keeping that block alive at the price of its capacity.
+    fn input_attribute_value(
+        &self,
+        value: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<input_processing::InputValue, DomError> {
+        if value.borrowed_block().is_none() {
+            return self.input_shared(value, cancel);
+        }
+        self.source_step(cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let value =
+            source::formation::units(value.code_units(), false, formation.as_ref(), cancel)?;
+        Ok(input_processing::InputValue {
+            value,
+            payload: formation.map(source::formation::Formation::into_charge),
+        })
     }
     fn input_default(
         &self,

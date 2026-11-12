@@ -838,6 +838,67 @@ fn shared_content_and_reinserted_meta_keep_distinct_occurrences_with_one_actual_
     assert_eq!(commit.roots().len(), 1);
     drop(dead);
 }
+/// Whether the preparation of one batch that inserts a default-style `meta` for each of `contents`
+/// stays within an envelope of `units` code units.
+fn recording_fits(contents: &[DocumentString], units: usize) -> bool {
+    let mut f = fixture(u64::MAX);
+    let native = DomMetaAtomicLimits::new(16_000_000, units, 1_000_000, 128).unwrap();
+    let mut batch = DomBatch::new();
+    for content in contents {
+        insert(&mut batch, f.docs[0], f.heads[0], content.clone());
+    }
+    let caps = f.owners.iter().collect::<Vec<_>>();
+    prepare(&mut f.dom, batch, &caps, None, native).is_ok()
+}
+
+/// The least envelope, in code units, in which the recording of `contents` fits.
+fn least_recording_units(contents: &[DocumentString]) -> usize {
+    let (mut low, mut high) = (0_usize, 8192_usize);
+    assert!(recording_fits(contents, high));
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if recording_fits(contents, middle) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
+#[test]
+fn recorded_contents_that_borrow_one_block_are_charged_by_length_and_the_block_once() {
+    let mut units = Vec::with_capacity(512);
+    units.extend([97_u16, 98, 99, 100, 101, 102, 103, 104]);
+    let block = surgeist_html::values::TextBlock::from_utf16(units);
+    assert!(block.capacity() >= 512);
+    let borrowed = [
+        block.string(0..4).unwrap(),
+        block.string(4..8).unwrap(),
+        block.string(2..6).unwrap(),
+    ];
+    // The owners hold the same three texts as the ranges, each in a block of its own.
+    let owners: Vec<DocumentString> = [
+        [97_u16, 98, 99, 100],
+        [101, 102, 103, 104],
+        [99, 100, 101, 102],
+    ]
+    .into_iter()
+    .map(|text| {
+        let mut units = Vec::new();
+        units.try_reserve_exact(4).unwrap();
+        units.extend(text);
+        DocumentString::from_utf16(units)
+    })
+    .collect();
+    // Three distinct ranges are three charges of their lengths, and the block is one more charge
+    // of its capacity.
+    assert_eq!(
+        least_recording_units(&borrowed),
+        least_recording_units(&owners) + block.capacity()
+    );
+}
+
 #[test]
 fn authentic_cancellation_refuses_a_held_root_snapshot_lookup_without_work_or_publication() {
     let mut f = fixture(u64::MAX);

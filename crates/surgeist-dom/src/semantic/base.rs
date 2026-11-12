@@ -50,7 +50,7 @@ pub(super) fn with_facts(
                 if attr.name().namespace_uri().is_none()
                     && attr.name().local_name().code_units() == [104, 114, 101, 102]
                 {
-                    href = Some(attr.value().clone());
+                    href = Some(owned_href(attr.value(), control)?);
                     break;
                 }
             }
@@ -111,6 +111,32 @@ pub(super) fn with_facts(
     Ok((input.with_base_facts(revision, Some(facts)), used))
 }
 
+/// The href a captured frozen Base retains. A value that borrows a block of text is copied into
+/// an exact owner of its units, so the capture does not hold the block at the price of its
+/// capacity; the work of the copy is charged before it allocates. An owner is shared.
+///
+/// The units of the copy are admitted afterwards, by the captured Base facts against the
+/// policy's unit limit, and no control path admits them earlier without reporting a unit refusal
+/// ahead of an earlier refusal of the facts. The allocation that precedes that admission is
+/// equivalent to an admitted one: it is bounded by the length of a value the source snapshot
+/// already holds, and the copies of one capture are bounded together by the work charged before
+/// each of them.
+fn owned_href(
+    value: &surgeist_html::values::DocumentString,
+    control: &mut Control<'_>,
+) -> Result<surgeist_html::values::DocumentString, DomHtmlCaptureError> {
+    if value.borrowed_block().is_none() {
+        return Ok(value.clone());
+    }
+    control.charge(value.len())?;
+    let mut units = Vec::new();
+    units
+        .try_reserve_exact(value.len())
+        .map_err(|_| DomHtmlCaptureError::AllocationFailed)?;
+    units.extend_from_slice(value.code_units());
+    Ok(surgeist_html::values::DocumentString::from_utf16(units))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,6 +144,9 @@ mod tests {
     use surgeist_html::values::Namespace;
     use surgeist_html_semantics::*;
     fn fixture() -> (Dom, DocumentId) {
+        fixture_with_href("target".into())
+    }
+    fn fixture_with_href(href: surgeist_html::values::DocumentString) -> (Dom, DocumentId) {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(
             DomLimits::new(
@@ -183,7 +212,7 @@ mod tests {
                 .unwrap();
         let mut b = DomBatch::new();
         b.bind_base_facts(dom.snapshot().document(d).unwrap().stamp(), &facts);
-        b.set_attribute(base, "href", "target");
+        b.set_attribute(base, "href", href);
         b.insert_before(base, d, None);
         dom.apply(b, &cancel).unwrap();
         (dom, d)
@@ -232,6 +261,42 @@ mod tests {
             ))
         ));
         capture(&dom, doc, records, units, usage.validation_work()).unwrap();
+    }
+    #[test]
+    fn the_href_of_a_frozen_base_that_borrows_a_block_is_captured_by_its_length() {
+        let mut units = Vec::with_capacity(512);
+        units.extend("target".encode_utf16());
+        let block = surgeist_html::values::TextBlock::from_utf16(units);
+        assert!(block.capacity() >= 512);
+        // The reference is an exact owner of the same six units.
+        let mut exact = Vec::new();
+        exact.try_reserve_exact(6).unwrap();
+        exact.extend("target".encode_utf16());
+        assert_eq!(exact.capacity(), 6);
+        let (owned, owned_doc) =
+            fixture_with_href(surgeist_html::values::DocumentString::from_utf16(exact));
+        let (borrowed, borrowed_doc) = fixture_with_href(block.string(0..6).unwrap());
+        let reference = capture(&owned, owned_doc, 64, 32768, 1_000_000).unwrap();
+        let usage = reference.context.base_facts().unwrap().formation_usage();
+        // The limits that admit the capture of the owner admit the borrower, which the capture
+        // keeps as its own six units and not as the capacity of its block.
+        let copy = capture(
+            &borrowed,
+            borrowed_doc,
+            usage.record_capacity(),
+            usage.utf16_extent(),
+            usage.validation_work(),
+        )
+        .unwrap();
+        assert_eq!(copy.context.base_facts().unwrap().formation_usage(), usage);
+        assert_eq!(
+            copy.context.base_facts().unwrap().retained_storage_usage(),
+            reference
+                .context
+                .base_facts()
+                .unwrap()
+                .retained_storage_usage()
+        );
     }
     #[test]
     fn producer_validation_work_is_monotone_across_slot_reconstruction() {

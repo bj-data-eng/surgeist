@@ -452,8 +452,13 @@ impl Recording {
             .usage()?
             .checked_add(custody::Usage::new(size_of::<Event>(), 0))?;
         if let Some(Some(value)) = input {
+            // The event keeps the style value after the transaction, which lists its block once:
+            // the value is priced by its length.
+            draft
+                .blocks
+                .adopt(value, |next| p.admit(next), || p.step())?;
             let mut payload = source::storage::Payload::default();
-            payload.string(value)?;
+            payload.listed_string(value)?;
             usage = usage.checked_add(custody::Usage::new(payload.bytes, payload.units))?;
         }
         let debit = draft.custody_ledger().retain(usage, |u| p.admit(u))?;
@@ -1327,6 +1332,119 @@ mod tests {
             .unwrap();
         }
         (dom, a, b, root, first, second)
+    }
+    /// The custody total, and the number of listed blocks, while a recording draft holds an edit of
+    /// the `style` attribute of an element to `value`.
+    fn total_while_recording_a_style_edit(value: &DocumentString) -> (custody::Usage, usize) {
+        let (mut dom, a, _, _, first, _) = fixture(1_000_000);
+        let batch = DomBatch::new();
+        let context =
+            DomInlineStyleBatchContext::new(&batch, dom.snapshot().stamp(), vec![row(first, a)])
+                .unwrap();
+        let recording = dom
+            .begin_inline_recording(context, &cancel())
+            .unwrap()
+            .unwrap();
+        let mut draft = Draft::new(&dom, batch.owner, &cancel()).unwrap();
+        draft.inline_recording = Some(recording);
+        draft
+            .set_attribute(
+                Key::Existing(first),
+                None,
+                &"style".into(),
+                value,
+                dom.limits,
+                &cancel(),
+            )
+            .unwrap();
+        assert_eq!(draft.inline_recording.as_ref().unwrap().log.len, 1);
+        (
+            dom.custody_registry.ledger().total(),
+            dom.custody_registry.listed_blocks(),
+        )
+    }
+    #[test]
+    fn a_recorded_style_value_that_borrows_a_block_is_charged_by_length_and_the_block_once() {
+        let mut units = Vec::with_capacity(512);
+        units.extend("--x:1 --y:2".encode_utf16());
+        let block = surgeist_html::values::TextBlock::from_utf16(units);
+        assert!(block.capacity() >= 512);
+        let mut exact = Vec::new();
+        exact.try_reserve_exact(5).unwrap();
+        exact.extend("--x:1".encode_utf16());
+        let (shared, listed) = total_while_recording_a_style_edit(&block.string(0..5).unwrap());
+        let (owned, none) = total_while_recording_a_style_edit(&DocumentString::from_utf16(exact));
+        assert_eq!(shared.units(), owned.units() + block.capacity());
+        assert_eq!((listed, none), (1, 0));
+    }
+    /// The units a second edit of the `style` attribute to a range of `block` adds to the custody
+    /// of a recording draft, and the number of blocks listed after it, when the transaction has
+    /// given up the listing the first edit made (`unlisted`) and when it has not.
+    fn second_edit_adds(
+        block: &surgeist_html::values::TextBlock,
+        unlisted: bool,
+    ) -> (usize, usize) {
+        let value = block.string(0..5).unwrap();
+        let (mut dom, a, _, _, first, _) = fixture(1_000_000);
+        let batch = DomBatch::new();
+        let context =
+            DomInlineStyleBatchContext::new(&batch, dom.snapshot().stamp(), vec![row(first, a)])
+                .unwrap();
+        let recording = dom
+            .begin_inline_recording(context, &cancel())
+            .unwrap()
+            .unwrap();
+        let mut draft = Draft::new(&dom, batch.owner, &cancel()).unwrap();
+        draft.inline_recording = Some(recording);
+        draft
+            .set_attribute(
+                Key::Existing(first),
+                None,
+                &"style".into(),
+                &value,
+                dom.limits,
+                &cancel(),
+            )
+            .unwrap();
+        let name = draft
+            .node(Key::Existing(first))
+            .unwrap()
+            .element()
+            .unwrap()
+            .language()
+            .attributes()
+            .iter()
+            .next()
+            .unwrap()
+            .name()
+            .clone();
+        if unlisted {
+            // The transaction gives up the listing the attribute bank made, as if no path had
+            // listed the block of the value that the next edit records.
+            draft.blocks = block_custody::BlockAdoptions::new(dom.custody_registry.clone());
+            assert_eq!(dom.custody_registry.listed_blocks(), 0);
+        }
+        let before = dom.custody_registry.ledger().total().units();
+        draft
+            .inline_attribute(Key::Existing(first), &name, Some(&value), &cancel())
+            .unwrap();
+        assert_eq!(draft.inline_recording.as_ref().unwrap().log.len, 2);
+        (
+            dom.custody_registry.ledger().total().units() - before,
+            dom.custody_registry.listed_blocks(),
+        )
+    }
+    #[test]
+    fn a_recorded_style_value_lists_the_block_it_borrows_for_the_event_log() {
+        let mut units = Vec::with_capacity(512);
+        units.extend("--x:1 --y:2".encode_utf16());
+        let block = surgeist_html::values::TextBlock::from_utf16(units);
+        assert!(block.capacity() >= 512);
+        let (listed_by_edit, count) = second_edit_adds(&block, true);
+        let (already_listed, kept) = second_edit_adds(&block, false);
+        // The edit lists the block itself, once, and charges the value by its length as before.
+        assert_eq!((count, kept), (1, 1));
+        assert_eq!(listed_by_edit, already_listed + block.capacity());
     }
     #[test]
     fn vector_and_owned_child_replacement_reorder_current_membership_before_later_adoption() {

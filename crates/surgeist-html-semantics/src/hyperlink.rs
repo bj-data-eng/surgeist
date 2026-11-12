@@ -266,6 +266,11 @@ impl HtmlEncodingUrlParseFacts {
     /// refusal propagates without retaining the snapshot. Earlier lookup or
     /// footprint failures skip it. This adds no lookup work steps. The caller
     /// supplies its retention/cancellation policy and owns resulting custody.
+    /// An observed raw value that borrows a block of text is retained as an exact copy of its
+    /// units. `retain` receives the length of the copy before its backing is reserved, so a
+    /// refusal allocates nothing; the lookup has already visited every unit of it. A failed
+    /// reservation, or one whose capacity exceeds the admitted length, is
+    /// [`HtmlBaseFactsError::AllocationFailed`].
     pub fn resolve_hyperlink_with<E>(
         &self,
         raw: &DocumentString,
@@ -276,13 +281,21 @@ impl HtmlEncodingUrlParseFacts {
         retain: impl FnOnce(HtmlBaseRetainedStorageUsage) -> Result<(), E>,
     ) -> Result<HtmlHyperlinkUrlSnapshot, HtmlEncodingUrlLookupError<E>> {
         let observation = self.find_with(raw.code_units(), base, encoding, expected, &mut step)?;
+        // A raw value that borrows a block of text is retained as an exact copy of its units, so
+        // the snapshot neither holds the block nor reports its capacity. The copy is admitted by
+        // its length before its backing is reserved, and the capacity that is reserved must not
+        // exceed what was admitted.
+        let copied = observation.raw.borrowed_block().is_some();
+        let raw_units = if copied {
+            observation.raw.len()
+        } else {
+            observation.raw.retained_units()
+        };
         let result_units = match &observation.outcome {
             HtmlEncodingUrlParseOutcome::Failure => 0,
             HtmlEncodingUrlParseOutcome::Parsed(record) => record.serialization().retained_units(),
         };
-        let units = observation
-            .raw
-            .retained_units()
+        let units = raw_units
             .checked_add(base.serialization().retained_units())
             .and_then(|n| n.checked_add(result_units))
             .ok_or_else(|| {
@@ -295,7 +308,7 @@ impl HtmlEncodingUrlParseFacts {
             units: 0,
         };
         let footprint = (|| {
-            retained.string(&observation.raw)?;
+            retained.string_of_units(raw_units)?;
             retained.url(self.base())?;
             if let HtmlEncodingUrlParseOutcome::Parsed(record) = &observation.outcome {
                 retained.url(record)?;
@@ -305,8 +318,23 @@ impl HtmlEncodingUrlParseFacts {
         footprint.map_err(|e| HtmlEncodingUrlLookupError::Facts(e.into()))?;
         debug_assert_eq!(retained.utf16_extent(), units);
         retain(retained).map_err(HtmlEncodingUrlLookupError::Interrupted)?;
+        let raw = if copied {
+            let mut units = Vec::new();
+            units.try_reserve_exact(raw_units).map_err(|_| {
+                HtmlEncodingUrlLookupError::Facts(HtmlBaseFactsError::AllocationFailed.into())
+            })?;
+            if units.capacity() > raw_units {
+                return Err(HtmlEncodingUrlLookupError::Facts(
+                    HtmlBaseFactsError::AllocationFailed.into(),
+                ));
+            }
+            units.extend_from_slice(observation.raw.code_units());
+            DocumentString::from_utf16(units)
+        } else {
+            observation.raw.clone()
+        };
         Ok(HtmlHyperlinkUrlSnapshot {
-            raw: observation.raw.clone(),
+            raw,
             base: self.base().clone(),
             encoding: self.encoding().clone(),
             revision: self.revision().clone(),

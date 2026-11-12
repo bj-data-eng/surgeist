@@ -695,8 +695,13 @@ impl Draft {
         }
         let registry = self.custody_registry().clone();
         let mut admit = |usage| self.admit_custody_usage(usage, cancel);
-        let mut formation =
-            crate::element::ElementFormation::new(&registry, None, cancel, &mut admit);
+        let mut formation = crate::element::ElementFormation::new(
+            &registry,
+            &self.blocks,
+            None,
+            cancel,
+            &mut admit,
+        );
         let hosted = next.map(|value| formation.hosted(value)).transpose()?;
         let mut element = self
             .node(key)?
@@ -722,39 +727,27 @@ impl Draft {
         if element.custom_element_registry() == binding {
             return Ok(());
         }
-        let mut extra = source::storage::Payload::default();
-        if let Some(value) = element.saved_is() {
-            extra.string(value)?;
-        }
-        let formed = payload::form_group(
-            self.custody_registry(),
-            None,
-            source::storage::Payload::default(),
-            source::storage::typed::<crate::element::CustomAssociation>(extra)?,
-            &mut |usage| self.admit_custody_usage(usage, cancel),
-            || {
-                Ok(crate::element::CustomAssociation {
-                    registry: binding,
-                    definition: element.custom_element_definition(),
-                    saved_is: element.saved_is().cloned(),
-                })
-            },
-        )?;
-        let mut element = element.clone();
-        element.set_custom_payload(Some(formed.value));
-        let children = crate::element::ElementChildren {
-            custom: Some(formed.custody),
-            ..crate::element::ElementChildren::default()
+        // The association keeps the saved `is`, which is priced as `ElementFormation::custom`
+        // prices it: by length, with the block it borrows listed for the transaction.
+        let association = crate::element::CustomAssociation {
+            registry: binding,
+            definition: element.custom_element_definition(),
+            saved_is: element.saved_is().cloned(),
         };
-        self.replace_element_formed(
-            key,
-            crate::element::FormedElement {
-                value: element,
-                children,
-            },
+        let mut element = element.clone();
+        let registry = self.custody_registry().clone();
+        let mut admit = |usage| self.admit_custody_usage(usage, cancel);
+        let mut formation = crate::element::ElementFormation::new(
+            &registry,
+            &self.blocks,
             None,
             cancel,
-        )
+            &mut admit,
+        );
+        let custom = formation.custom(association, source::storage::Payload::default())?;
+        element.set_custom_payload(Some(custom));
+        let formed = formation.finish(element);
+        self.replace_element_formed(key, formed, None, cancel)
     }
 }
 
