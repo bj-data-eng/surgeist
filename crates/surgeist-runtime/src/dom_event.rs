@@ -1703,9 +1703,7 @@ impl<C> DomEventDispatcher<C> {
                     }
                     #[cfg(feature = "document-scripting")]
                     CallbackKind::Guest(_)
-                        if host != DispatchHost::Guest
-                            && (host != DispatchHost::AttachedSource
-                                || event.0.toggle.is_some()) =>
+                        if !matches!(host, DispatchHost::Guest | DispatchHost::AttachedSource) =>
                     {
                         return Err(RunStop::HostUnavailable);
                     }

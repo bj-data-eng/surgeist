@@ -94,7 +94,7 @@ impl DocumentPrototypes {
         constructor: &Value<'scope>,
         funding: &OriginInterfaceFunding<'_>,
     ) -> Result<Self, DocumentGuestEventError> {
-        let unavailable = illegal_node_constructor();
+        let unavailable = illegal_constructor();
         let (prototypes, _) = Self::install(
             scope,
             node,
@@ -114,13 +114,24 @@ impl DocumentPrototypes {
         funding: &OriginInterfaceFunding<'_>,
         constructors: Option<CaptureFunding<'_>>,
     ) -> Result<(Self, Value<'scope>), DocumentGuestEventError> {
-        let (_, document) =
-            install_derived_node(scope, node, constructor, DOCUMENT, document_callback)?;
-        let (fragment_constructor, fragment) = install_derived_node(
+        let (_, document) = install_derived_interface(
             scope,
             node,
             constructor,
-            fragment::FRAGMENT,
+            FunctionMetadata {
+                name: DOCUMENT,
+                length: 0,
+            },
+            document_callback,
+        )?;
+        let (fragment_constructor, fragment) = install_derived_interface(
+            scope,
+            node,
+            constructor,
+            FunctionMetadata {
+                name: fragment::FRAGMENT,
+                length: 0,
+            },
             fragment_callback,
         )?;
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
@@ -496,16 +507,16 @@ pub(super) fn install_interface<'scope>(
     )
 }
 
-fn install_derived_node<'scope>(
+pub(super) fn install_derived_interface<'scope>(
     scope: &mut Scope<'scope>,
-    node: &Value<'scope>,
-    node_constructor: &Value<'scope>,
-    name: &[u16],
+    parent: &Value<'scope>,
+    parent_constructor: &Value<'scope>,
+    metadata: FunctionMetadata<'_>,
     callback: &ConstructorCallback,
 ) -> Result<(Value<'scope>, Value<'scope>), Error> {
-    let prototype = scope.object(ObjectPrototype::Object(node))?;
-    let constructor = scope.constructor(callback, FunctionMetadata { name, length: 0 })?;
-    scope.set_prototype(&constructor, ObjectPrototype::Object(node_constructor))?;
+    let prototype = scope.object(ObjectPrototype::Object(parent))?;
+    let constructor = scope.constructor(callback, metadata)?;
+    scope.set_prototype(&constructor, ObjectPrototype::Object(parent_constructor))?;
     scope.define_property(
         &constructor,
         PropertyKey::String(PROTOTYPE),
@@ -517,11 +528,11 @@ fn install_derived_node<'scope>(
         },
     )?;
     let global = scope.global()?;
-    install_interface(scope, &global, name, &constructor, &prototype)?;
+    install_interface(scope, &global, metadata.name, &constructor, &prototype)?;
     Ok((constructor, prototype))
 }
 
-fn illegal_node_constructor() -> ConstructorCallback {
+pub(super) fn illegal_constructor() -> ConstructorCallback {
     ConstructorCallback::bounded(
         0,
         |_| Err(Error::BackendUnavailable),
@@ -790,7 +801,7 @@ impl Capture {
     }
 }
 
-fn complete<'scope>(
+pub(super) fn complete<'scope>(
     scope: &mut Scope<'scope>,
     events: &GuestEvents,
     result: Result<Value<'scope>, DocumentGuestEventError>,

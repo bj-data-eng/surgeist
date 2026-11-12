@@ -3,6 +3,7 @@
 mod document;
 mod listener_methods;
 mod operations;
+mod toggle_event;
 
 use super::*;
 pub(super) use document::{GuestNodeProjection, NodeLifetime};
@@ -136,6 +137,7 @@ pub(super) struct PublicEventBindings {
     callbacks: Rc<Callbacks>,
     window: RetainedCallbackObject,
     event: RetainedCallbackObject,
+    toggle_event: RetainedCallbackObject,
     target: RetainedCallbackObject,
     trusted: RetainedCallbackObject,
     dispatch_in_attachment: RetainedCallbackObject,
@@ -325,6 +327,9 @@ impl PublicEventBindings {
         let target = install_target_prototype(scope, &capture_origin)?;
 
         install_event_interface(scope, Interface::Event, &event, &capture)?;
+        let toggle_event = toggle_event::install(scope, &event, &capture)?;
+        let toggle_event = scope.callback_object(&toggle_event)?;
+        let toggle_event = scope.retain_callback_object(toggle_event, fund)?;
         install_event_interface(scope, Interface::Target, &target, &capture_origin)?;
         let observed = scope.callback_object(&event)?;
         let document = document::DocumentBindings::install(
@@ -375,6 +380,7 @@ impl PublicEventBindings {
             callbacks,
             window,
             event,
+            toggle_event,
             target,
             trusted,
             dispatch_in_attachment,
@@ -507,6 +513,17 @@ impl PublicEventBindings {
         scope: &mut Scope<'scope>,
     ) -> Result<Value<'scope>, Error> {
         scope.open_callback_object(&self.event)
+    }
+
+    pub(super) fn native_event_prototype<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        event: &NativeDomEvent,
+    ) -> Result<Value<'scope>, Error> {
+        match event.toggle_event() {
+            Some(_) => scope.open_callback_object(&self.toggle_event),
+            None => self.event_prototype(scope),
+        }
     }
 
     pub(super) fn trusted_getter<'scope>(

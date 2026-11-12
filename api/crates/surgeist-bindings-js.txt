@@ -133,6 +133,7 @@ pub fn surgeist_bindings_js::conversion::declarations::shadow_root_mode() -> sur
 pub fn surgeist_bindings_js::conversion::declarations::slot_assignment_mode() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::SlotAssignmentMode>
 pub fn surgeist_bindings_js::conversion::declarations::text_constructor_0_data() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::text_split_text_0_offset() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
+pub fn surgeist_bindings_js::conversion::declarations::toggle_event_constructor_0_type() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub mod surgeist_bindings_js::conversion::types
 pub const surgeist_bindings_js::conversion::types::BOOLEAN: surgeist_bindings_js::conversion::Type<bool>
 pub const surgeist_bindings_js::conversion::types::BYTE_STRING: surgeist_bindings_js::conversion::Type<surgeist_bindings_js::ByteString>

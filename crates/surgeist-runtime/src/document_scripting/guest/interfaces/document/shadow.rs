@@ -60,12 +60,15 @@ pub(super) fn install<'scope>(
     fragment: &Value<'scope>,
     capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
 ) -> Result<Value<'scope>, DocumentGuestEventError> {
-    let (_, prototype) = install_derived_node(
+    let (_, prototype) = install_derived_interface(
         scope,
         fragment,
         fragment_constructor,
-        &ascii(b"ShadowRoot"),
-        &illegal_node_constructor(),
+        FunctionMetadata {
+            name: &ascii(b"ShadowRoot"),
+            length: 0,
+        },
+        &illegal_constructor(),
     )?;
     for (member, key, name) in [
         (Member::Mode, &ascii(b"mode")[..], &ascii(b"get mode")[..]),

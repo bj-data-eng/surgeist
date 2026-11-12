@@ -379,6 +379,19 @@
       "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#",
       "entries": ["ElementContentEditable"]
+    },
+    {
+      "id": "ToggleEvent.source",
+      "path": "references/html-toggle-event--877d6146487f--eeb465762458.md",
+      "anchor": "the&#45;toggleevent&#45;interface",
+      "block": 0,
+      "sha256": "6d07688d961ffaeb06d8e9b831401f821936de31991530217e860c79215fd4ee",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-toggleevent-interface",
+      "entries": [
+        "ToggleEvent",
+        "ToggleEventInit"
+      ]
     }
   ],
   "declarations": [
@@ -3980,6 +3993,138 @@
           "id": "ElementContentEditable.inputMode"
         }
       ]
+    },
+    {
+      "id": "ToggleEvent",
+      "kind": "interface",
+      "name": "ToggleEvent",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [],
+          "kind": "constructor",
+          "arguments": [
+            {
+              "name": "type",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "required"
+            },
+            {
+              "name": "eventInitDict",
+              "type": {
+                "kind": "named",
+                "name": "ToggleEventInit"
+              },
+              "presence": "optional",
+              "default": {
+                "kind": "empty_dictionary"
+              }
+            }
+          ],
+          "id": "ToggleEvent.constructor:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "oldState",
+          "readonly": true,
+          "id": "ToggleEvent.oldState"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "newState",
+          "readonly": true,
+          "id": "ToggleEvent.newState"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Element"
+            }
+          },
+          "name": "source",
+          "readonly": true,
+          "id": "ToggleEvent.source"
+        }
+      ],
+      "inherits": "Event"
+    },
+    {
+      "id": "ToggleEventInit",
+      "kind": "dictionary",
+      "name": "ToggleEventInit",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [],
+          "kind": "dictionary_member",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "oldState",
+          "required": false,
+          "default": {
+            "kind": "string",
+            "value": ""
+          },
+          "id": "ToggleEventInit.oldState"
+        },
+        {
+          "attributes": [],
+          "kind": "dictionary_member",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "newState",
+          "required": false,
+          "default": {
+            "kind": "string",
+            "value": ""
+          },
+          "id": "ToggleEventInit.newState"
+        },
+        {
+          "attributes": [],
+          "kind": "dictionary_member",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Element"
+            }
+          },
+          "name": "source",
+          "required": false,
+          "default": {
+            "kind": "null"
+          },
+          "id": "ToggleEventInit.source"
+        }
+      ],
+      "inherits": "EventInit"
     }
   ],
   "includes": [
@@ -7616,6 +7761,76 @@
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
+    },
+    "ToggleEvent.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "toggleevent.constructor.construct",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Admit the original authored Event, exact DOMString state and nullable canonical Element source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-toggleevent-interface",
+          "issue": 2643
+        }
+      ]
+    },
+    "ToggleEvent.oldState/get": {
+      "kind": "native",
+      "adapter": "toggleevent.oldstate.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/dom_event.rs",
+          "symbol": "DomToggleEvent"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the exact original native ToggleEvent state or nullable source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-toggleevent-interface",
+          "issue": 2634
+        }
+      ]
+    },
+    "ToggleEvent.newState/get": {
+      "kind": "native",
+      "adapter": "toggleevent.newstate.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/dom_event.rs",
+          "symbol": "DomToggleEvent"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the exact original native ToggleEvent state or nullable source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-toggleevent-interface",
+          "issue": 2634
+        }
+      ]
+    },
+    "ToggleEvent.source/get": {
+      "kind": "native",
+      "adapter": "toggleevent.source.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/dom_event.rs",
+          "symbol": "DomToggleEvent"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Project the exact original native ToggleEvent state or nullable source.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-toggleevent-interface",
+          "issue": 2634
+        }
+      ]
     }
   },
   "semantics": {

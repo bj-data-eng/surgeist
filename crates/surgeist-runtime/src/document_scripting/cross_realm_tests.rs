@@ -1165,6 +1165,7 @@ fn attached_beforetoggle_uses_the_original_toggle_event() {
                     && Object.getPrototypeOf(event) === ToggleEvent.prototype
                     && Object.getPrototypeOf(ToggleEvent.prototype) === Event.prototype
                     && Object.getPrototypeOf(ToggleEvent) === Event
+                    && ToggleEvent.length === 1
                     && Object.prototype.toString.call(event) === "[object ToggleEvent]"
                     && event.oldState === "closed" && event.newState === "open"
                     && event.source === null && event.oldState === "closed" && event.source === null

@@ -1546,6 +1546,17 @@ pub fn document_html_query_command_value_0_command_id() -> Argument<Type<DomStri
     )
 }
 
+/// Selected argument `ToggleEvent.constructor:0/type` (not overload selection).
+pub fn toggle_event_constructor_0_type() -> Argument<Type<DomString>> {
+    Argument::new(
+        "ToggleEvent.constructor:0/type",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 /// Selected setter conversion for `CharacterData.data`.
 pub fn character_data_data_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY

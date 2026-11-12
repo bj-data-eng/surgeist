@@ -286,6 +286,12 @@ reporting. Guest listener references follow heap reachability, so an
 unreachable target and its listener cycle can retire together. Rust callers
 can inspect or control an authored Event through its borrowed native view.
 Host and guest initialization clear the same native target and guest reference.
+`DocumentScriptHost::service_attached_source_event` uses the transferred
+registry to deliver the original synchronous native event. A Dialog
+`beforetoggle` listener receives a `ToggleEvent` with the original readonly
+`oldState`, `newState` and `source` values. The interface inherits `Event`.
+Calling the authored constructor throws a `TypeError` in this profile.
+[Authored construction is tracked in #2643](https://github.com/bj-data-eng/surgeist/issues/2643).
 The Window's readonly own `document` getter returns its canonical Document
 wrapper. The Document exposes the base Node reads for identity, connectivity,
 parent, owner and root. The standard Document constructor uses the original
