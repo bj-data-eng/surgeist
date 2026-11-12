@@ -5,6 +5,36 @@ use crate::hosted::ScriptRegistration;
 use crate::source::callback::CallbackWork;
 use crate::store::attributes::PreparedAttributeName;
 use crate::{DomDocumentScriptRegistration, DomHostedError};
+use surgeist_html::security::csp::{
+    HtmlCspArtifactLayout, HtmlCspDisposalWork, HtmlCspLayout, HtmlCspStorage,
+};
+
+impl crate::DomSourceAttributePolicyRead<'_> {
+    /// Admit work for a borrowed CSP inspection on the original Source meter.
+    /// Layouts that introduce or transfer native storage require a different owner.
+    pub fn admit_csp_read(
+        &self,
+        layout: HtmlCspLayout,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        check_cancel(cancel)?;
+        if layout.retained() != HtmlCspArtifactLayout::default()
+            || layout.transferred() != HtmlCspArtifactLayout::default()
+            || layout.peak() != HtmlCspStorage::default()
+            || layout.closing_work() != HtmlCspDisposalWork::default()
+        {
+            return Err(DomError::HtmlChargeProtocol);
+        }
+        layout
+            .charge_work(&mut crate::store::html_credits::Credits(|credits| {
+                for _ in 0..credits {
+                    self.step(cancel)?;
+                }
+                Ok(())
+            }))
+            .map_err(crate::store::html_credits::charged)
+    }
+}
 
 pub(in crate::store) struct Pending {
     request: DomSourceAttributeVerificationRequest,

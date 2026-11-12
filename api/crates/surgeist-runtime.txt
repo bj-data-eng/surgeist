@@ -6,6 +6,19 @@ pub mod surgeist_runtime
 pub use surgeist_runtime::DomElementTaskId
 pub use surgeist_runtime::DomElementTaskSourceKind
 pub mod surgeist_runtime::trusted_types_csp
+pub enum surgeist_runtime::trusted_types_csp::AttributePolicyError
+pub surgeist_runtime::trusted_types_csp::AttributePolicyError::ContainerUnavailable
+pub surgeist_runtime::trusted_types_csp::AttributePolicyError::Csp(surgeist_html::internal::security::csp_policy::HtmlCspProtocolError)
+pub surgeist_runtime::trusted_types_csp::AttributePolicyError::Dom(surgeist_dom::store::DomError)
+pub surgeist_runtime::trusted_types_csp::AttributePolicyError::ProcessorUnavailable
+impl core::convert::From<surgeist_dom::store::DomError> for surgeist_runtime::trusted_types_csp::AttributePolicyError
+pub fn surgeist_runtime::trusted_types_csp::AttributePolicyError::from(error: surgeist_dom::store::DomError) -> Self
+impl core::convert::From<surgeist_html::internal::security::csp_policy::HtmlCspError<surgeist_dom::store::DomError>> for surgeist_runtime::trusted_types_csp::AttributePolicyError
+pub fn surgeist_runtime::trusted_types_csp::AttributePolicyError::from(error: surgeist_html::internal::security::csp_policy::HtmlCspError<surgeist_dom::store::DomError>) -> Self
+impl core::error::Error for surgeist_runtime::trusted_types_csp::AttributePolicyError
+pub fn surgeist_runtime::trusted_types_csp::AttributePolicyError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_runtime::trusted_types_csp::AttributePolicyError
+pub fn surgeist_runtime::trusted_types_csp::AttributePolicyError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_runtime::trusted_types_csp::Directive
 pub surgeist_runtime::trusted_types_csp::Directive::RequireTrustedTypesFor
 pub surgeist_runtime::trusted_types_csp::Directive::TrustedTypes
@@ -34,6 +47,16 @@ impl<E> core::convert::From<surgeist_runtime::trusted_types_csp::PolicyListCapac
 pub fn surgeist_runtime::trusted_types_csp::PolicyListError<E>::from(error: surgeist_runtime::trusted_types_csp::PolicyListCapacity) -> Self
 impl<E> core::fmt::Display for surgeist_runtime::trusted_types_csp::PolicyListError<E>
 pub fn surgeist_runtime::trusted_types_csp::PolicyListError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_runtime::trusted_types_csp::AttributeMismatch<'read, 'policies>
+impl<'policies> surgeist_runtime::trusted_types_csp::AttributeMismatch<'_, 'policies>
+pub fn surgeist_runtime::trusted_types_csp::AttributeMismatch<'_, 'policies>::blocked(&self) -> core::option::Option<bool>
+pub fn surgeist_runtime::trusted_types_csp::AttributeMismatch<'_, 'policies>::next_violation(&mut self, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<surgeist_runtime::trusted_types_csp::Violation<'policies>>, surgeist_dom::store::DomError>
+pub struct surgeist_runtime::trusted_types_csp::AttributePolicies<'a>
+impl<'a> surgeist_runtime::trusted_types_csp::AttributePolicies<'a>
+pub const fn surgeist_runtime::trusted_types_csp::AttributePolicies<'a>::document(&self) -> surgeist_dom::identity::DocumentId
+pub fn surgeist_runtime::trusted_types_csp::AttributePolicies<'a>::mismatch(&self) -> surgeist_runtime::trusted_types_csp::AttributeMismatch<'_, 'a>
+pub fn surgeist_runtime::trusted_types_csp::AttributePolicies<'a>::read(lease: &'a surgeist_dom::store::source::operation::DomSourceLease<'_>, request: surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest, registration: &surgeist_dom::hosted::DomDocumentScriptRegistration, processor: core::option::Option<&surgeist_runtime::trusted_types_csp::PolicyProcessor>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<Self, surgeist_runtime::trusted_types_csp::AttributePolicyError>
+pub fn surgeist_runtime::trusted_types_csp::AttributePolicies<'a>::requires_default_policy(&self, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<bool, surgeist_dom::store::DomError>
 pub struct surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>
 impl<'policy, 'name> surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>
 pub fn surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>::blocked(&self) -> core::option::Option<bool>

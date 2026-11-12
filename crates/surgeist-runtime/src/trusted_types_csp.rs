@@ -12,7 +12,9 @@ use surgeist_html::{
     values::DocumentString,
 };
 
+mod attribute;
 mod provider;
+pub use attribute::{AttributeMismatch, AttributePolicies, AttributePolicyError};
 pub use provider::{PolicyListCapacity, PolicyListError, PolicyProcessor};
 
 /// The source and disposition of one delivered CSP policy.

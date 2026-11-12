@@ -2,6 +2,7 @@ mod authored_toggle;
 mod declarative_shadow;
 mod element_tasks;
 mod nested_dispatch;
+mod trusted_attribute;
 
 use super::*;
 use crate::{
@@ -226,6 +227,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     element_tasks::verify_attached_element_tasks();
     nested_dispatch::verify_nested_authored_dispatch();
     authored_toggle::verify_authored_toggle_constructor();
+    trusted_attribute::hosted_attribute_policy_reads_charge_the_parked_source_and_preserve_exact_input();
     declarative_shadow::verify_declarative_shadow_reuse();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(

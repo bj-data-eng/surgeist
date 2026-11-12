@@ -1050,6 +1050,7 @@ fn actual_parked_source_keeps_its_mandatory_tail_and_original_cleanup_custody() 
 fn trusted_attribute_sink_parks_for_its_registered_global() {
     use crate::{DomSourceAttributeSink, DomSourceAttributeVerificationOutcome};
     use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+    use surgeist_html::security::csp::{HtmlCspDisposalWork, HtmlCspLayout, HtmlCspStorage};
     use surgeist_html::values::Namespace;
 
     let cancel = cancel();
@@ -1182,6 +1183,27 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
     let spent = lease.status().spent_work();
     policy.step(&cancel).unwrap();
     assert_eq!(lease.status().spent_work(), spent + 1);
+    let read = HtmlCspLayout::processing(
+        3,
+        HtmlCspStorage::default(),
+        HtmlCspDisposalWork::default(),
+        0,
+    )
+    .unwrap();
+    policy.admit_csp_read(read, &cancel).unwrap();
+    assert_eq!(lease.status().spent_work(), spent + 4);
+    let retain = HtmlCspLayout::processing(
+        2,
+        HtmlCspStorage::try_new(2, 1, 1).unwrap(),
+        HtmlCspDisposalWork::default(),
+        0,
+    )
+    .unwrap();
+    assert_eq!(
+        policy.admit_csp_read(retain, &cancel),
+        Err(DomError::HtmlChargeProtocol)
+    );
+    assert_eq!(lease.status().spent_work(), spent + 4);
     let scope = lease
         .open_attribute_verification_callback(request, &registration, &cancel)
         .unwrap();
