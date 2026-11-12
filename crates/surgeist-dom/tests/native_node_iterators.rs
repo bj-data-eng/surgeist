@@ -175,7 +175,12 @@ fn empty_traversal_in_a_live_source_callback_spends_the_observers_work() {
 
 #[test]
 fn filter_response_cannot_outlive_its_original_source_callback() {
-    let Tree { mut dom, root, .. } = tree();
+    let Tree {
+        mut dom,
+        root,
+        first,
+        ..
+    } = tree();
     let cancel = AtomicBool::new(false);
     let id = dom
         .create_node_iterator(root, u32::MAX, DomNodeIteratorFilter::Callback, &cancel)
@@ -185,6 +190,17 @@ fn filter_response_cannot_outlive_its_original_source_callback() {
     let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
     let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
     let filter = request(dom.node_iterator_next(id, 256, &cancel).unwrap(), root);
+    let filter = request(
+        filter
+            .respond(&mut dom, DomNodeFilterDecision::Reject, &cancel)
+            .unwrap(),
+        first,
+    );
+    assert!(
+        matches!(filter.respond(&mut dom, DomNodeFilterDecision::Accept, &cancel).unwrap(), DomNodeIteratorProgress::Complete(Some(node)) if node == first)
+    );
+    assert_eq!(reference(&dom, id), (first, false));
+    let filter = request(dom.node_iterator_previous(id, 256, &cancel).unwrap(), first);
     drop(scope);
     let mut permit = Some(permit);
     let mut outcome = Some(
@@ -209,8 +225,8 @@ fn filter_response_cannot_outlive_its_original_source_callback() {
             .unwrap_err(),
         DomError::InvalidSourceEvent
     );
-    assert_eq!(reference(&dom, id), (root, true));
-    let filter = request(dom.node_iterator_next(id, 256, &cancel).unwrap(), root);
+    assert_eq!(reference(&dom, id), (first, false));
+    let filter = request(dom.node_iterator_previous(id, 256, &cancel).unwrap(), first);
     drop(filter);
 }
 

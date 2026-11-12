@@ -17,7 +17,9 @@ the actual node to pass to its filter. The caller may edit the same DOM while
 the request is live. Respond with the filter decision or drop the request on
 abrupt completion. Any already-published edits survive. The request is affine
 and recursive traversal that reaches another filter check on the same iterator
-refuses while it is active.
+refuses while it is active. Traversal inside a live Source event also spends
+that observer's work allowance and its enclosing allowances, including when
+the walk returns no match. Respond to a filter from its original Source event.
 
 Ordinary removal adjusts the committed reference and any active candidate
 before unlinking, after live Range adjustments. If the filter accepts a node

@@ -1,5 +1,6 @@
 use super::*;
-use crate::{DomNodeFilterDecision, DomNodeIteratorProgress};
+use crate::source::event::EventWork;
+use crate::{DomNodeFilterDecision, DomNodeIteratorProgress, DomSourceEventId};
 use std::cell::Cell;
 use traversal::Direction;
 
@@ -24,14 +25,23 @@ impl Work {
 struct Tree<'a> {
     dom: &'a Dom,
     work: &'a Work,
+    source: Option<&'a EventWork>,
     cancel: &'a AtomicBool,
 }
 
 impl Tree<'_> {
+    fn step(&self) -> Result<(), DomError> {
+        self.work.step(self.cancel)?;
+        if let Some(source) = self.source {
+            source.step(self.cancel)?;
+        }
+        Ok(())
+    }
+
     fn node(&self, id: NodeId) -> Result<&Node, DomError> {
         self.dom
             .state
-            .node_with(self.dom.owner, id, &mut || self.work.step(self.cancel))
+            .node_with(self.dom.owner, id, &mut || self.step())
     }
 
     fn matching(
@@ -42,7 +52,7 @@ impl Tree<'_> {
         active: bool,
     ) -> Result<Option<Pointer<NodeId>>, DomError> {
         loop {
-            self.work.step(self.cancel)?;
+            self.step()?;
             let Some(next) = traversal::advance(self, cursor.root, pointer, direction)? else {
                 return Ok(None);
             };
@@ -68,7 +78,7 @@ impl Tree<'_> {
 
 impl OrdinaryTree<NodeId> for Tree<'_> {
     fn position(&self, node: NodeId) -> Result<Option<(NodeId, usize)>, DomError> {
-        self.work.step(self.cancel)?;
+        self.step()?;
         let Some(position) = self.dom.state.slot_index.position(Key::Existing(node)) else {
             return Ok(None);
         };
@@ -136,6 +146,7 @@ pub struct DomNodeIteratorFilterRequest {
     node: NodeId,
     direction: Direction,
     work: Work,
+    source: Option<DomSourceEventId>,
     activation: Activation,
 }
 
@@ -165,25 +176,32 @@ impl DomNodeIteratorFilterRequest {
         decision: DomNodeFilterDecision,
         cancel: &AtomicBool,
     ) -> Result<DomNodeIteratorProgress, DomError> {
+        if dom.owner != self.id.owner {
+            return Err(DomError::ForeignOwner);
+        }
         dom.require_source_entry()?;
-        check_cancel(cancel)?;
+        let source = dom.dispatch_hosted_read_work(cancel)?;
+        if source.as_deref().map(|work| work.identity) != self.source {
+            return Err(DomError::InvalidSourceEvent);
+        }
         let mut cursor = dom.state.node_iterators.cursor(dom.owner, self.id)?.clone();
         let candidate = cursor
             .live_candidate()
             .filter(|candidate| candidate.invocation == self.activation.invocation)
             .ok_or(DomError::StaleNodeIterator)?;
+        let tree = Tree {
+            dom,
+            work: &self.work,
+            source: source.as_deref(),
+            cancel,
+        };
         if decision == DomNodeFilterDecision::Accept {
-            self.work.step(cancel)?;
+            tree.step()?;
             cursor.reference = candidate.pointer;
             cursor.candidate = None;
             dom.publish_node_iterator(self.id, cursor, cancel)?;
             return Ok(DomNodeIteratorProgress::Complete(Some(self.node)));
         }
-        let tree = Tree {
-            dom,
-            work: &self.work,
-            cancel,
-        };
         let Some(next) = tree.matching(
             &cursor,
             public_pointer(candidate.pointer)?,
@@ -272,7 +290,7 @@ impl Dom {
         cancel: &AtomicBool,
     ) -> Result<DomNodeIteratorProgress, DomError> {
         self.require_source_entry()?;
-        check_cancel(cancel)?;
+        let source = self.dispatch_hosted_read_work(cancel)?;
         let mut cursor = self.state.node_iterators.cursor(self.owner, id)?.clone();
         let work = Work {
             limit: work_limit,
@@ -281,6 +299,7 @@ impl Dom {
         let tree = Tree {
             dom: self,
             work: &work,
+            source: source.as_deref(),
             cancel,
         };
         let active = cursor.live_candidate().is_some();
@@ -316,6 +335,7 @@ impl Dom {
                     node: next.node,
                     direction,
                     work,
+                    source: source.as_deref().map(|work| work.identity),
                     activation,
                 },
             ))
