@@ -535,10 +535,6 @@ where
         let parent_logical_unresolved_margin = constants.flow_axes.logical_edges(unresolved_margin);
         let parent_logical_available = constants.flow_axes.logical_size(pass_request.axes());
         let child_flow_axes = child_style.common.flow_axes;
-        let child_parent_size = prepared.parent_size;
-        let child_logical_node_inner_size = child_flow_axes.logical_size(child_parent_size);
-        let child_logical_available = prepared.logical_available;
-        let available_child_inline = prepared.available_inline;
         let mut child_input = prepared
             .input
             .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
@@ -649,140 +645,34 @@ where
         );
         let mut child_margin = constants.flow_axes.physical_edges(logical_child_margin);
         if places_against_float_exclusions {
-            let block_start_for = |output: ComputeOutputOf<S>, margin: Edges<S>| {
-                let preview_top_margin = output
-                    .block_margin_collapse
-                    .at(constants.flow_axes.block_start())
-                    .collapse_with_margin(
-                        margin.at_physical_side(constants.flow_axes.block_start()),
-                    );
-                let start = adjoining.reduce_start(
-                    constants.collapse_top_margin,
-                    child_margin_can_collapse_with_parent(&child_style),
-                    preview_top_margin,
-                );
-                adjoining.cursor + start.offset
-            };
-            let preview_cursor_block = block_start_for(output, child_margin);
-            let inline_size_can_shrink =
-                parent_inline_size_can_shrink(&child_style, constants.flow_axes);
-            let band_request = |tree: &Tree,
-                                available_inline|
-             -> ComputeResult<Tree::Node, ComputeInputOf<S>, S, M> {
-                let band_child_inline =
-                    crate::layout_math::remaining_available_extent(available_inline, S::ZERO)
-                        .map_err(|error| {
-                            crate::error::sizing_resolution_error(child, error.into())
-                        })?;
-                let band_available_child_inline =
-                    if child_flow_axes.inline_axis() == constants.flow_axes.inline_axis() {
-                        Some(band_child_inline)
-                    } else {
-                        available_child_inline
-                    };
-                let band_child_known = in_flow_child_known_size::<Tree, M>(
-                    tree,
+            let measured = compute_child_against_floats(
+                tree,
+                FloatAvoidingChild {
                     child,
-                    &child_style,
-                    child_padding + child_border,
-                    child_flow_axes,
-                    child_logical_node_inner_size,
-                    (child_logical_available.inline.operation() == crate::SizingOperation::Normal)
-                        .then_some(band_available_child_inline)
-                        .flatten(),
-                )?;
-                let mut band_available = child_flow_axes.physical_size(LogicalSizeOf::new(
-                    in_flow_child_inline_request(
-                        &child_style,
-                        tree.has_leaf_measurement(child),
-                        child_flow_axes,
-                        band_available_child_inline,
-                        child_logical_available.inline,
-                    )
-                    .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?,
-                    in_flow_child_block_request(child_logical_available.block),
-                ));
-                set_parent_inline_space(
-                    &mut band_available,
-                    constants.flow_axes,
-                    band_child_inline,
-                )
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-                Ok(ComputeInputOf::<S>::for_child(
+                    child_style: &child_style,
+                    constants,
+                    adjoining: &adjoining,
+                    prepared: &prepared,
+                    pass_request,
                     child_run_mode,
-                    SizingMode::InherentSize,
-                    RequestedAxis::Both,
-                    band_child_known,
-                    child_parent_size,
-                    ContainingLayoutContext::new(
-                        constants.flow_axes,
-                        ParentFormattingContext::BlockFlow,
-                    ),
-                    pass_request.with_axes(band_available),
-                )
-                .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
-                .with_block_indent_context(child_indent_context)
-                .with_baseline_demand_from(child_input))
-            };
-
-            if inline_size_can_shrink {
-                let mut block =
-                    float_exclusions.clearance_block(preview_cursor_block, child_style.clear);
-                loop {
-                    let (available_inline, next) = float_exclusions
-                        .rectangular_bfc_opportunity(block, parent_logical_unresolved_margin);
-                    let request = band_request(tree, available_inline)?;
-                    let packet = if request.run_mode().is_perform_layout() {
-                        Some(tree.probe_float_child(
-                            child,
-                            request,
-                            crate::engine::FloatChildTrial::InFlow,
-                        )?)
-                    } else {
-                        None
-                    };
-                    let measured = match &packet {
-                        Some(packet) => packet.output,
-                        None => tree.compute_child(child, request)?,
-                    };
-                    let size = constants.flow_axes.logical_size(measured.size);
-                    let margin = resolve_logical_in_flow_margin(
-                        parent_logical_unresolved_margin,
-                        size,
-                        logical_node_inner_size.inline.or(parent_logical_available
+                    child_indent_context,
+                    parent_inline_basis: logical_node_inner_size.inline.or(
+                        parent_logical_available
                             .inline
                             .space()
                             .definite_size()
-                            .map(crate::NonNegativeFiniteOf::get)),
-                    );
-                    let physical_margin = constants.flow_axes.physical_edges(margin);
-                    let minimum_block = block_start_for(measured, physical_margin);
-                    if minimum_block > block {
-                        block = minimum_block;
-                        continue;
-                    }
-                    let Some(location) = float_exclusions.rectangular_bfc_position(
-                        block,
-                        size,
-                        parent_logical_unresolved_margin,
-                        in_flow_child_inline_offset(size.inline, margin, constants),
-                    ) else {
-                        block = next.expect("an intersecting float has a later boundary");
-                        continue;
-                    };
-                    if let Some(packet) = packet {
-                        tree.accept_float_child(&packet)?;
-                    }
-                    output = measured;
-                    child_input = request;
-                    accepted_float_position = Some(location);
-                    break;
-                }
-            }
-
-            if accepted_float_position.is_none() {
-                output = tree.compute_child(child, child_input)?;
-            }
+                            .map(crate::NonNegativeFiniteOf::get),
+                    ),
+                    containing_scrollbars: input.settled_auto_scrollbars(),
+                    float_exclusions: &float_exclusions,
+                    output,
+                    child_margin,
+                    child_input,
+                },
+            )?;
+            output = measured.output;
+            child_input = measured.input;
+            accepted_float_position = measured.position;
             logical_child_size = constants.flow_axes.logical_size(output.size);
             logical_child_margin = resolve_logical_in_flow_margin(
                 parent_logical_unresolved_margin,
@@ -1236,6 +1126,188 @@ where
         active_margin_at_start: adjoining.start_open,
         active_margin_can_collapse_with_parent: adjoining.end_adjoins_parent,
         all_in_flow_children_can_collapse_through: adjoining.all_through,
+    })
+}
+
+struct FloatAvoidingChild<'input, 'a, Node, S: LayoutScalar> {
+    child: Node,
+    child_style: &'a BlockChildProjection<'input, S>,
+    constants: &'a Constants<S>,
+    adjoining: &'a entry::AdjoiningFlow<S>,
+    prepared: &'a PreparedChild<S>,
+    pass_request: crate::SizingRequestOf<S>,
+    child_run_mode: RunMode,
+    child_indent_context: crate::text_indent::BlockIndentContext<S>,
+    parent_inline_basis: Option<S>,
+    containing_scrollbars: crate::scroll::SettledAutoScrollbarState,
+    float_exclusions: &'a FloatExclusions<S, Node>,
+    output: ComputeOutputOf<S>,
+    child_margin: Edges<S>,
+    child_input: ComputeInputOf<S>,
+}
+
+struct MeasuredAgainstFloats<S: LayoutScalar> {
+    output: ComputeOutputOf<S>,
+    input: ComputeInputOf<S>,
+    position: Option<LogicalPointOf<S>>,
+}
+
+fn compute_child_against_floats<'input, Tree, S, M>(
+    tree: &mut Tree,
+    request: FloatAvoidingChild<'input, '_, Tree::Node, S>,
+) -> ComputeResult<Tree::Node, MeasuredAgainstFloats<S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let FloatAvoidingChild {
+        child,
+        child_style,
+        constants,
+        adjoining,
+        prepared,
+        pass_request,
+        child_run_mode,
+        child_indent_context,
+        parent_inline_basis,
+        containing_scrollbars,
+        float_exclusions,
+        mut output,
+        child_margin,
+        mut child_input,
+    } = request;
+    let parent_logical_unresolved_margin = constants
+        .flow_axes
+        .logical_edges(prepared.unresolved_margin);
+    let child_flow_axes = child_style.common.flow_axes;
+    let child_parent_size = prepared.parent_size;
+    let child_logical_node_inner_size = child_flow_axes.logical_size(child_parent_size);
+    let child_logical_available = prepared.logical_available;
+    let available_child_inline = prepared.available_inline;
+    let child_padding = prepared.padding;
+    let child_border = prepared.border;
+    let mut accepted_float_position = None;
+    let block_start_for = |output: ComputeOutputOf<S>, margin: Edges<S>| {
+        let preview_top_margin = output
+            .block_margin_collapse
+            .at(constants.flow_axes.block_start())
+            .collapse_with_margin(margin.at_physical_side(constants.flow_axes.block_start()));
+        let start = adjoining.reduce_start(
+            constants.collapse_top_margin,
+            child_margin_can_collapse_with_parent(child_style),
+            preview_top_margin,
+        );
+        adjoining.cursor + start.offset
+    };
+    let preview_cursor_block = block_start_for(output, child_margin);
+    let inline_size_can_shrink = parent_inline_size_can_shrink(child_style, constants.flow_axes);
+    let band_request = |tree: &Tree,
+                        available_inline|
+     -> ComputeResult<Tree::Node, ComputeInputOf<S>, S, M> {
+        let band_child_inline =
+            crate::layout_math::remaining_available_extent(available_inline, S::ZERO)
+                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
+        let band_available_child_inline =
+            if child_flow_axes.inline_axis() == constants.flow_axes.inline_axis() {
+                Some(band_child_inline)
+            } else {
+                available_child_inline
+            };
+        let band_child_known = in_flow_child_known_size::<Tree, M>(
+            tree,
+            child,
+            child_style,
+            child_padding + child_border,
+            child_flow_axes,
+            child_logical_node_inner_size,
+            (child_logical_available.inline.operation() == crate::SizingOperation::Normal)
+                .then_some(band_available_child_inline)
+                .flatten(),
+        )?;
+        let mut band_available = child_flow_axes.physical_size(LogicalSizeOf::new(
+            in_flow_child_inline_request(
+                child_style,
+                tree.has_leaf_measurement(child),
+                child_flow_axes,
+                band_available_child_inline,
+                child_logical_available.inline,
+            )
+            .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?,
+            in_flow_child_block_request(child_logical_available.block),
+        ));
+        set_parent_inline_space(&mut band_available, constants.flow_axes, band_child_inline)
+            .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
+        Ok(ComputeInputOf::<S>::for_child(
+            child_run_mode,
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            band_child_known,
+            child_parent_size,
+            ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::BlockFlow),
+            pass_request.with_axes(band_available),
+        )
+        .with_containing_auto_scrollbar_pass(containing_scrollbars)
+        .with_block_indent_context(child_indent_context)
+        .with_baseline_demand_from(child_input))
+    };
+
+    if inline_size_can_shrink {
+        let mut block = float_exclusions.clearance_block(preview_cursor_block, child_style.clear);
+        loop {
+            let (available_inline, next) = float_exclusions
+                .rectangular_bfc_opportunity(block, parent_logical_unresolved_margin);
+            let request = band_request(tree, available_inline)?;
+            let packet = if request.run_mode().is_perform_layout() {
+                Some(tree.probe_float_child(
+                    child,
+                    request,
+                    crate::engine::FloatChildTrial::InFlow,
+                )?)
+            } else {
+                None
+            };
+            let measured = match &packet {
+                Some(packet) => packet.output,
+                None => tree.compute_child(child, request)?,
+            };
+            let size = constants.flow_axes.logical_size(measured.size);
+            let margin = resolve_logical_in_flow_margin(
+                parent_logical_unresolved_margin,
+                size,
+                parent_inline_basis,
+            );
+            let physical_margin = constants.flow_axes.physical_edges(margin);
+            let minimum_block = block_start_for(measured, physical_margin);
+            if minimum_block > block {
+                block = minimum_block;
+                continue;
+            }
+            let Some(location) = float_exclusions.rectangular_bfc_position(
+                block,
+                size,
+                parent_logical_unresolved_margin,
+                in_flow_child_inline_offset(size.inline, margin, constants),
+            ) else {
+                block = next.expect("an intersecting float has a later boundary");
+                continue;
+            };
+            if let Some(packet) = packet {
+                tree.accept_float_child(&packet)?;
+            }
+            output = measured;
+            child_input = request;
+            accepted_float_position = Some(location);
+            break;
+        }
+    }
+
+    if accepted_float_position.is_none() {
+        output = tree.compute_child(child, child_input)?;
+    }
+    Ok(MeasuredAgainstFloats {
+        output,
+        input: child_input,
+        position: accepted_float_position,
     })
 }
 
