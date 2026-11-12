@@ -336,11 +336,11 @@ pub(in crate::document_scripting) fn element_methods_return_the_exact_attribute(
     host.with_native(|dom, _, _| {
         assert!(dom.pending_source_edit().is_none());
         let snapshot = dom.snapshot();
-        assert_eq!(snapshot.attr(old.node()).unwrap().owner_element(), None);
         assert_eq!(
-            snapshot.attr(replacement).unwrap().owner_element(),
+            snapshot.attr(old.node()).unwrap().owner_element(),
             Some(other)
         );
+        assert_eq!(snapshot.attr(replacement).unwrap().owner_element(), None);
     })
     .unwrap();
 }
