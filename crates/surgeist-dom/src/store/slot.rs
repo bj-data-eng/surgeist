@@ -595,16 +595,6 @@ impl Dom {
         limits: crate::DomSlotQueryLimits,
         cancel: &AtomicBool,
     ) -> Result<(Prepared, Arc<[NodeId]>), DomError> {
-        let (mut draft, targets) = self.stage_mutation_notification(limits, cancel)?;
-        let prepared = draft.finish(self, cancel)?;
-        Ok((prepared, targets))
-    }
-
-    pub(super) fn stage_mutation_notification(
-        &self,
-        limits: crate::DomSlotQueryLimits,
-        cancel: &AtomicBool,
-    ) -> Result<(Draft, Arc<[NodeId]>), DomError> {
         check_cancel(cancel)?;
         admit(
             self.state.signal_slots.len(),
@@ -618,16 +608,28 @@ impl Dom {
             targets.push(target);
         }
         let mut draft = Draft::new(self, DomBatch::new().owner, cancel)?;
-        assert!(matches!(
-            draft.native_tasks.first(),
+        draft.clear_mutation_notification(cancel)?;
+        let prepared = draft.finish(self, cancel)?;
+        // Complete the independent output backing before publication.
+        Ok((prepared, targets.into()))
+    }
+}
+
+impl Draft {
+    pub(super) fn clear_mutation_notification(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if !matches!(
+            self.native_tasks.first(),
             Some(select::Pending::MutationNotification)
-        ));
-        draft.queue_native_remove(0, 1, cancel)?;
-        draft.queue_signals_clear(cancel)?;
-        draft.notification_queued = false;
-        // Vec-to-Arc conversion allocates. Complete it while the drained
-        // state is private, before publish's final cancellation boundary.
-        Ok((draft, targets.into()))
+        ) {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        self.queue_native_remove(0, 1, cancel)?;
+        self.queue_signals_clear(cancel)?;
+        self.notification_queued = false;
+        Ok(())
     }
 }
 

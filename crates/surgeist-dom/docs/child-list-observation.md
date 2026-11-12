@@ -14,7 +14,7 @@ observer also releases its identity, and a reused slot has a new generation.
 
 The [native checkpoint](slots-and-checkpoints.md#signals-and-native-checkpoints)
 captures pending observers and Slot signals together. It drains each observer's
-current records and transients when it reaches that observer. Edits during an
+current records and transients in observer creation order. Edits during an
 earlier delivery can therefore affect a later observer in the same turn.
 Release each `DomChildListNotification` after processing it to advance the
 turn. Slot signals from that turn follow its observer deliveries.

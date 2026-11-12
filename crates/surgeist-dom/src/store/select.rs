@@ -1336,10 +1336,12 @@ impl Draft {
                         )?;
                     }
                     Effect::Clear { target } => {
-                        if let Some(child) = self.node(target)?.children().first() {
-                            self.push_effect(Effect::Clear { target }, true, cancel)?;
-                            self.remove(child, limits, cancel)?;
-                        }
+                        self.replace_all_children(
+                            target,
+                            tree::AfterRemovingChildren::Complete,
+                            limits,
+                            cancel,
+                        )?;
                     }
                     Effect::Tree(frame) => self.tree_effect(frame, limits, cancel)?,
                     Effect::Compound(frame) => self.compound_effect(frame, limits, cancel)?,
@@ -1495,13 +1497,8 @@ impl Draft {
                         }
                     }
                     Effect::Replace { fragment, target } => {
-                        if let Some(child) = self.node(target)?.children().first() {
-                            self.push_effect(Effect::Replace { fragment, target }, true, cancel)?;
-                            self.remove(child, limits, cancel)?;
-                        } else {
-                            self.push_effect(Effect::Cleanup(fragment), true, cancel)?;
-                            self.pre_insert(fragment, target, None, limits, cancel)?;
-                        }
+                        self.push_effect(Effect::Cleanup(fragment), true, cancel)?;
+                        self.replace_all_checked(fragment, target, limits, cancel)?;
                     }
                     Effect::Cleanup(fragment) => {
                         let Key::Created(_) = fragment else {

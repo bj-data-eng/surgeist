@@ -57,13 +57,25 @@ fn copy<T>(
     debit: &mut custody::Debit,
     edit: &Edit<'_>,
 ) -> Result<SharedVec<T>, DomError> {
+    if values.len() != 0 {
+        debit.grow(custody::Usage::new(size_of::<Vec<T>>(), 0), |usage| {
+            edit.admit(usage)
+        })?;
+    }
+    Ok(copy_vec(values, debit, edit)?.into())
+}
+
+pub(super) fn copy_vec<T>(
+    values: impl ExactSizeIterator<Item = Result<T, DomError>>,
+    debit: &mut custody::Debit,
+    edit: &Edit<'_>,
+) -> Result<Vec<T>, DomError> {
     let count = values.len();
     if count == 0 {
-        return Ok(SharedVec::default());
+        return Ok(Vec::new());
     }
     let bytes = count
         .checked_mul(size_of::<T>())
-        .and_then(|bytes| bytes.checked_add(size_of::<Vec<T>>()))
         .ok_or(DomError::RepresentationExhausted)?;
     debit.grow(custody::Usage::new(bytes, 0), |usage| edit.admit(usage))?;
     let mut result = Vec::new();
@@ -78,7 +90,7 @@ fn copy<T>(
         edit.step()?;
         result.push(value?);
     }
-    Ok(result.into())
+    Ok(result)
 }
 
 impl Mutation {

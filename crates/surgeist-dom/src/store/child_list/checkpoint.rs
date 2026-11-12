@@ -29,6 +29,17 @@ impl CheckpointWork {
         self.spent.set(next);
         Ok(())
     }
+
+    fn require(&self, steps: usize) -> Result<(), DomError> {
+        let refused = DomError::ChildListWorkLimit { limit: self.limit };
+        let steps = u64::try_from(steps).map_err(|_| refused.clone())?;
+        self.spent
+            .get()
+            .checked_add(steps)
+            .filter(|spent| *spent <= self.limit)
+            .map(|_| ())
+            .ok_or(refused)
+    }
 }
 
 struct Delivery {
@@ -71,10 +82,16 @@ impl Drop for DomChildListNotification {
 }
 
 pub(in crate::store) struct Turn {
-    slots: DomSlotNotifications,
+    slots: Option<CapturedSlots>,
     order: custody::Held<Vec<DomChildListObserverId>>,
     cursor: usize,
     delivery: Option<Arc<Delivery>>,
+}
+
+struct CapturedSlots {
+    notifications: DomSlotNotifications,
+    _state: transaction::StateCustody,
+    _backing: custody::Debit,
 }
 
 impl Working {
@@ -83,20 +100,13 @@ impl Working {
         order: &mut custody::Held<Vec<DomChildListObserverId>>,
         edit: &Edit<'_>,
     ) -> Result<(), DomError> {
-        let mut current = self.tables.pending.first;
-        while let Some(index) = current {
+        for (_, observer) in self.tables.pending.iter() {
             edit.step()?;
-            let (id, mut observer) = self.pending_observer(index, edit.draft.store)?;
-            current = observer
-                .pending
-                .take()
-                .ok_or(DomError::ChildListPublicationUnavailable)?
-                .next;
             records::reserve_output(order, edit)?;
-            order.value_mut().push(id);
-            self.put_observer(id, Some(observer), edit)?;
+            order.value_mut().push(*observer);
         }
-        self.tables.pending = List::default();
+        self.tables.pending = bank::Bank::default();
+        self.controls.pending = bank::BankCustody::default();
         Ok(())
     }
 }
@@ -106,7 +116,7 @@ impl Dom {
         self.state
             .child_lists
             .as_ref()
-            .is_some_and(|state| state.tables.pending.first.is_some())
+            .is_some_and(|state| state.tables.pending.record_count() != 0)
     }
 
     pub(in crate::store) fn begin_child_list_turn(
@@ -115,26 +125,34 @@ impl Dom {
         work: &CheckpointWork,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.require_source_idle()?;
         work.step(cancel)?;
-        let bytes = self
-            .state
-            .signal_slots
-            .len()
-            .checked_mul(size_of::<NodeId>())
-            .and_then(|bytes| bytes.checked_add(size_of::<Turn>()))
-            .ok_or(DomError::RepresentationExhausted)?;
         let debit = self
             .custody_registry
             .ledger()
-            .retain(custody::Usage::new(bytes, 0), |_| check_cancel(cancel))?;
+            .retain(custody::Usage::new(size_of::<Turn>(), 0), |_| {
+                check_cancel(cancel)
+            })?;
         let mut order = custody::Held::new(Vec::new(), debit);
-        let (mut draft, targets) = self.stage_mutation_notification(limits, cancel)?;
+        let mut draft = Draft::new(self, DomBatch::new().owner, cancel)?;
         draft.edit_child_lists_with_work(cancel, Some(work), |working, edit| {
             working.take_pending(&mut order, edit)
         })?;
+        let count = self.state.signal_slots.len();
+        admit(count, limits.output_nodes(), DomResource::SlotQueryOutput)?;
+        work.require(count)?;
+        let targets = self.capture_child_list_slot_targets(&draft, work, cancel)?;
+        draft.clear_mutation_notification(cancel)?;
         let prepared = draft.finish(self, cancel)?;
         let commit = self.publish(prepared, cancel)?;
-        let slots = DomSlotNotifications::new(self.snapshot(), targets, commit.changes);
+        let slots = targets.map(|targets| {
+            let (targets, backing) = targets.into_parts();
+            CapturedSlots {
+                notifications: DomSlotNotifications::new(self.snapshot(), targets, commit.changes),
+                _state: self.state_custody.clone(),
+                _backing: backing,
+            }
+        });
         self.child_list_turn = Some(Box::new(Turn {
             order,
             slots,
@@ -142,6 +160,37 @@ impl Dom {
             delivery: None,
         }));
         Ok(())
+    }
+
+    fn capture_child_list_slot_targets(
+        &self,
+        draft: &Draft,
+        work: &CheckpointWork,
+        cancel: &AtomicBool,
+    ) -> Result<Option<custody::Held<Arc<[NodeId]>>>, DomError> {
+        if self.state.signal_slots.is_empty() {
+            return Ok(None);
+        }
+        let edit = Edit {
+            draft,
+            cancel,
+            checkpoint: Some(work),
+        };
+        let ledger = draft.custody_ledger();
+        let mut temporary = ledger.retain(custody::Usage::ZERO, |usage| edit.admit(usage))?;
+        let copied = records::copy_vec(
+            self.state.signal_slots.iter().copied().map(Ok),
+            &mut temporary,
+            &edit,
+        )?;
+        let bytes = copied
+            .len()
+            .checked_mul(size_of::<NodeId>())
+            .ok_or(DomError::RepresentationExhausted)?;
+        let backing = ledger.retain(custody::Usage::new(bytes, 0), |usage| edit.admit(usage))?;
+        let targets = copied.into();
+        drop(temporary);
+        Ok(Some(custody::Held::new(targets, backing)))
     }
 
     pub(in crate::store) fn advance_child_list_turn(
@@ -171,11 +220,9 @@ impl Dom {
                     .child_list_turn
                     .take()
                     .ok_or(DomError::ChildListPublicationUnavailable)?;
-                return if turn.slots.targets().is_empty() {
-                    Ok(None)
-                } else {
-                    Ok(Some(DomNativeCheckpoint::Slots(turn.slots)))
-                };
+                return Ok(turn
+                    .slots
+                    .map(|slots| DomNativeCheckpoint::Slots(slots.notifications)));
             };
             work.step(cancel)?;
             let next = turn

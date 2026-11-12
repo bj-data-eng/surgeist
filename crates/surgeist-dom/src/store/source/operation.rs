@@ -662,6 +662,7 @@ impl Operation {
         }
         let draft = &mut self.draft;
         draft.dom_limits.event_recipients = limits.event_recipients;
+        draft.dom_limits.child_list_observation = limits.child_list_observation;
         draft
             .input_processing
             .update_limits(limits.input_scratch, limits.input_work);

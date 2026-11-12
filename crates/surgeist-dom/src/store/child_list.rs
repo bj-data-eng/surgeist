@@ -24,9 +24,9 @@ struct Links {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct Observer {
+    creation: usize,
     registrations: Option<usize>,
     records: List,
-    pending: Option<Links>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -131,7 +131,8 @@ struct Tables {
     registrations: bank::Bank<Registration>,
     records: bank::Bank<QueuedRecord>,
     bodies: bank::Bank<Body>,
-    pending: List,
+    pending: bank::Bank<DomChildListObserverId>,
+    next_creation: usize,
     counts: Counts,
 }
 
@@ -143,6 +144,7 @@ pub(super) struct Controls {
     registrations: bank::BankCustody<Registration>,
     records: bank::BankCustody<QueuedRecord>,
     bodies: bank::BankCustody<Body>,
+    pending: bank::BankCustody<DomChildListObserverId>,
 }
 
 #[derive(Debug)]
@@ -197,6 +199,7 @@ impl Published {
             created_targets: adopt_table(&tables.created_targets, registry, admit, step)?,
             registrations: adopt_table(&tables.registrations, registry, admit, step)?,
             records: adopt_table(&tables.records, registry, admit, step)?,
+            pending: adopt_table(&tables.pending, registry, admit, step)?,
         };
         attach_controls(root, controls, registry.ledger(), admit)
     }
@@ -262,6 +265,16 @@ impl Draft {
                     .as_deref()
                     .map(|published| &published.tables)
             })
+    }
+
+    pub(super) fn admit_child_list_observation(
+        &self,
+        limits: DomChildListObservationLimits,
+    ) -> Result<(), DomError> {
+        if let Some(tables) = self.child_lists() {
+            tables.admit(limits)?;
+        }
+        Ok(())
     }
 
     fn edit_child_lists<T>(
@@ -458,7 +471,7 @@ impl Draft {
             .base
             .child_lists
             .as_ref()
-            .is_some_and(|base| base.tables == working.tables)
+            .is_some_and(|base| base.tables.shares_frontier(&working.tables))
         {
             return Ok(unchanged());
         }
@@ -572,6 +585,21 @@ impl Dom {
 }
 
 impl Tables {
+    fn shares_frontier(&self, other: &Self) -> bool {
+        fn same<T>(left: &bank::Bank<T>, right: &bank::Bank<T>) -> bool {
+            left.len() == right.len() && left.shares_root(right)
+        }
+        self.counts == other.counts
+            && self.next_creation == other.next_creation
+            && same(&self.observers, &other.observers)
+            && same(&self.targets, &other.targets)
+            && same(&self.created_targets, &other.created_targets)
+            && same(&self.registrations, &other.registrations)
+            && same(&self.records, &other.records)
+            && same(&self.bodies, &other.bodies)
+            && same(&self.pending, &other.pending)
+    }
+
     fn admit(&self, limits: DomChildListObservationLimits) -> Result<(), DomError> {
         for (count, limit, resource) in [
             (

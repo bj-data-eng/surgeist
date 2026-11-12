@@ -32,7 +32,18 @@ impl Working {
             slot: index,
             generation,
         };
-        self.put_observer(id, Some(Observer::default()), edit)?;
+        let creation = self.tables.next_creation;
+        self.tables.next_creation = creation
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        self.put_observer(
+            id,
+            Some(Observer {
+                creation,
+                ..Observer::default()
+            }),
+            edit,
+        )?;
         Ok(id)
     }
 
@@ -302,28 +313,17 @@ impl Working {
         id: DomChildListObserverId,
         edit: &Edit<'_>,
     ) -> Result<(), DomError> {
-        let mut observer = self.tables.observer(edit.draft.store, id)?;
-        if observer.pending.is_some() {
-            return Ok(());
+        let creation = self.tables.observer(edit.draft.store, id)?.creation;
+        if self.tables.pending.get(creation).is_none() {
+            edit.write(
+                &mut self.tables.pending,
+                &mut self.controls.pending,
+                creation,
+                id,
+                false,
+            )?;
         }
-        let last = self.tables.pending.last;
-        if let Some(index) = last {
-            let (earlier_id, mut earlier) = self.pending_observer(index, edit.draft.store)?;
-            earlier
-                .pending
-                .as_mut()
-                .ok_or(DomError::StaleChildListObserver)?
-                .next = Some(id.slot);
-            self.put_observer(earlier_id, Some(earlier), edit)?;
-        } else {
-            self.tables.pending.first = Some(id.slot);
-        }
-        self.tables.pending.last = Some(id.slot);
-        observer.pending = Some(Links {
-            previous: last,
-            next: None,
-        });
-        self.put_observer(id, Some(observer), edit)
+        Ok(())
     }
 
     pub(super) fn unlink_pending(
@@ -331,55 +331,15 @@ impl Working {
         id: DomChildListObserverId,
         edit: &Edit<'_>,
     ) -> Result<(), DomError> {
-        let mut observer = self.tables.observer(edit.draft.store, id)?;
-        let Some(links) = observer.pending.take() else {
-            return Ok(());
-        };
-        if let Some(index) = links.previous {
-            let (neighbor, mut value) = self.pending_observer(index, edit.draft.store)?;
-            value
-                .pending
-                .as_mut()
-                .ok_or(DomError::ChildListPublicationUnavailable)?
-                .next = links.next;
-            self.put_observer(neighbor, Some(value), edit)?;
-        } else {
-            self.tables.pending.first = links.next;
+        let creation = self.tables.observer(edit.draft.store, id)?.creation;
+        if self.tables.pending.get(creation).is_some() {
+            edit.remove(
+                &mut self.tables.pending,
+                &mut self.controls.pending,
+                creation,
+            )?;
         }
-        if let Some(index) = links.next {
-            let (neighbor, mut value) = self.pending_observer(index, edit.draft.store)?;
-            value
-                .pending
-                .as_mut()
-                .ok_or(DomError::ChildListPublicationUnavailable)?
-                .previous = links.previous;
-            self.put_observer(neighbor, Some(value), edit)?;
-        } else {
-            self.tables.pending.last = links.previous;
-        }
-        self.put_observer(id, Some(observer), edit)
-    }
-
-    pub(super) fn pending_observer(
-        &self,
-        index: usize,
-        owner: DomOwnerId,
-    ) -> Result<(DomChildListObserverId, Observer), DomError> {
-        let slot = self
-            .tables
-            .observers
-            .get(index)
-            .copied()
-            .ok_or(DomError::StaleChildListObserver)?;
-        let value = slot.value.ok_or(DomError::StaleChildListObserver)?;
-        Ok((
-            DomChildListObserverId {
-                owner,
-                slot: index,
-                generation: slot.generation,
-            },
-            value,
-        ))
+        Ok(())
     }
 
     pub(super) fn add_transients(
