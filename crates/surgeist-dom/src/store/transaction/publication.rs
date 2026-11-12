@@ -146,11 +146,32 @@ impl Draft {
         for (created, _) in self.created_dirty.iter() {
             self.source_step(cancel)?;
             if self.created[created].is_none() {
+                let observed =
+                    if ids.get(created).is_none() && self.child_list_exposes_creation(created) {
+                        let slot = slots.lowest_vacant().unwrap_or(slots.len());
+                        let generation = slots.get(slot).map_or(0, |entry| entry.generation);
+                        let id = NodeId {
+                            owner: self.store,
+                            slot,
+                            generation,
+                        };
+                        ids.assign(created, id, self.custody_registry(), |usage| {
+                            self.admit_custody_usage(usage, cancel)
+                        })?;
+                        Some(id)
+                    } else {
+                        None
+                    };
                 if let Some(id) = ids.get(created) {
-                    let old = &self.base.slots[id.slot];
+                    let (generation, retired) = if observed.is_some() {
+                        (id.generation, false)
+                    } else {
+                        let old = &self.base.slots[id.slot];
+                        (old.generation, old.retired)
+                    };
                     let slot = Slot {
-                        generation: old.generation.checked_add(1).unwrap_or(old.generation),
-                        retired: old.retired || old.generation == u64::MAX,
+                        generation: generation.checked_add(1).unwrap_or(generation),
+                        retired: retired || generation == u64::MAX,
                         node: None,
                     };
                     let debit = self
@@ -433,6 +454,7 @@ impl Draft {
         )?;
         let ranges = self.finish_ranges(&id, cancel)?;
         let iterators = self.finish_node_iterators(participant_id, cancel)?;
+        let child_lists = self.finish_child_lists(participant_id, cancel)?;
         let mut created_ranges = Vec::new();
         source::formation::reserve(
             &mut created_ranges,
@@ -520,6 +542,7 @@ impl Draft {
                 slots,
                 ranges: ranges.ranges,
                 node_iterators: iterators.value,
+                child_lists: child_lists.value,
                 incomplete_source: None,
                 incomplete_hosted: dom.state.incomplete_hosted,
                 registries: self.registries.clone(),
@@ -544,6 +567,7 @@ impl Draft {
                 slots: slots_custody,
                 ranges: ranges.custody,
                 node_iterators: iterators.custody,
+                child_lists: child_lists.custody,
                 inbound: inbound_custody,
                 controls: controls.custody,
                 slot_index: slot_index.custody,
@@ -570,6 +594,10 @@ impl Draft {
             self.ranges.touched(),
         )?;
         self.node_iterator_changes(&dom.state, state, &mut changes, budget, cancel)?;
+        if child_lists.changed {
+            source::formation::reserve(&mut changes, 1, budget, cancel)?;
+            changes.push(DomChange::ChildListObservation);
+        }
         #[cfg(test)]
         let mut changes_written = super::sequence::CopyObservation::default();
         // Transition-domain changes precede the exact Document-origin closure.
@@ -806,6 +834,7 @@ impl Draft {
             .mark_published(&self.base.container_index, &self.base_custody.containers);
         self.ranges = super::ranges::Ranges::new(&self.base, &self.base_custody);
         self.node_iterators = node_iterator::DraftIterators::new(&self.base, &self.base_custody);
+        self.child_lists = None;
         let base = self.base.clone();
         let custody = self.base_custody.clone();
         self.acknowledge_queue_targets_publication(

@@ -165,6 +165,7 @@ mod names;
 mod node_iterator;
 pub use name::{DomAttribute, DomNameAtom, DomQualifiedName};
 pub use name_limits::DomNameLimits;
+mod child_list;
 mod node_values;
 mod output;
 mod parsed_installation;
@@ -190,6 +191,7 @@ mod view_transition;
 pub use autofocus::DomDocumentAutofocus;
 pub use base::{DomBase, DomBaseFactsError, DomBaseResponse, DomFrozenBase, DomLink};
 pub use batch::{AttachedShadowRoot, CreatedNode, DomBatch, NodeOperand};
+pub use child_list::{DomChildListObservationLimits, DomChildListObserverId, DomChildListRecord};
 pub use details::{
     DomDetails, DomDetailsToggleCancellationReason, DomDetailsToggleIntention,
     DomDetailsToggleIntentionId, DomDetailsToggleTransfer, DomElementTaskAssociation,
@@ -289,6 +291,7 @@ pub use snapshot::{
     DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomShadowRoot, DomSnapshot, DomTagName,
     DomTreeOrder, DomTreeScope,
 };
+pub use store::DomChildListNotification;
 pub use store::DomNodeIteratorFilterRequest;
 pub use store::meta_atomic::{DomMetaOrdinaryPreparation, DomMetaOrdinaryPublished};
 mod parsed_association;

@@ -13,6 +13,7 @@ pub(in crate::store) struct StateFrontiers {
     pub slots: bank::BankCustody<Slot>,
     pub ranges: bank::BankCustody<crate::range::Slot<NodeId>>,
     pub node_iterators: node_iterator::IteratorCustody,
+    pub child_lists: Option<child_list::PublishedCustody>,
     pub inbound: inbound::InboundCustody,
     pub controls: super::controls::ControlCustody,
     pub slot_index: super::slot_index::SlotCustody,
@@ -162,6 +163,11 @@ impl StateCustody {
             let node_iterators = state
                 .node_iterators
                 .adopt_custody(registry, &mut admit, &mut step)?;
+            let child_lists = state
+                .child_lists
+                .as_ref()
+                .map(|bank| bank.adopt(registry, &mut admit, &mut step))
+                .transpose()?;
             let inbound = state
                 .inbound
                 .adopt_custody(registry, &mut admit, &mut step)?;
@@ -202,6 +208,7 @@ impl StateCustody {
                     slots,
                     ranges,
                     node_iterators,
+                    child_lists,
                     inbound,
                     controls,
                     slot_index,

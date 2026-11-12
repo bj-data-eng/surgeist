@@ -1111,7 +1111,7 @@ fn signal_target(key: Key) -> Option<Key> {
 fn native_target(value: select::Pending) -> Option<Key> {
     match value {
         select::Pending::Update { target, .. } => Some(target),
-        select::Pending::Slots => None,
+        select::Pending::MutationNotification => None,
     }
 }
 fn details_document(value: details::Pending<Key>) -> DocumentSource {
@@ -1125,7 +1125,7 @@ fn signal(value: &NodeId) -> Key {
 }
 fn native(value: &select::Task<NodeId>) -> select::Pending {
     match *value {
-        select::Task::Slots => select::Pending::Slots,
+        select::Task::MutationNotification => select::Pending::MutationNotification,
         select::Task::Update { serial, target } => select::Pending::Update {
             serial: Some(serial),
             target: Key::Existing(target),
@@ -1137,7 +1137,7 @@ fn details(value: &crate::DomDetailsToggleIntention) -> details::Pending<Key> {
 }
 fn native_count(value: select::Pending) -> QueueCounts {
     match value {
-        select::Pending::Slots => QueueCounts::default(),
+        select::Pending::MutationNotification => QueueCounts::default(),
         select::Pending::Update { serial, .. } => QueueCounts {
             selected: 1,
             unissued: u64::from(serial.is_none()),
@@ -3416,7 +3416,7 @@ mod tests {
             .insert(
                 0,
                 &[
-                    select::Pending::Slots,
+                    select::Pending::MutationNotification,
                     select::Pending::Update {
                         serial: None,
                         target,
@@ -3438,7 +3438,10 @@ mod tests {
             },
         );
         queue.apply_ack(ack, &PublicationCommitted::at_fence());
-        assert!(matches!(queue.first(), Some(select::Pending::Slots)));
+        assert!(matches!(
+            queue.first(),
+            Some(select::Pending::MutationNotification)
+        ));
         assert!(matches!(
             queue.get(1),
             Some(select::Pending::Update {

@@ -23,9 +23,11 @@ mod block_custody;
 mod block_custody_tests;
 pub(crate) mod canonical;
 mod changes;
+mod child_list;
 #[cfg(test)]
 use changes::full_difference;
 use changes::{same_auxiliary, sparse_difference};
+pub use child_list::DomChildListNotification;
 mod children;
 #[cfg(test)]
 pub(crate) mod compact_tests;
@@ -138,6 +140,10 @@ pub enum DomResource {
     FullscreenEvents,
     Ranges,
     NodeIterators,
+    ChildListObservers,
+    ChildListRegistrations,
+    ChildListRecords,
+    ChildListRecordReferences,
     ManagedNodes,
     SlotReferences,
     AutofocusCandidates,
@@ -267,6 +273,12 @@ pub enum DomError {
     },
     StaleRange,
     StaleNodeIterator,
+    StaleChildListObserver,
+    ChildListPublicationUnavailable,
+    ChildListDeliveryActive,
+    ChildListWorkLimit {
+        limit: u64,
+    },
     NodeIteratorFilterActive,
     NodeIteratorPublicationUnavailable,
     NodeIteratorWorkLimit {
@@ -519,6 +531,7 @@ pub struct DomLimits {
     fullscreen_events: usize,
     ranges: usize,
     node_iterators: usize,
+    child_list_observation: crate::DomChildListObservationLimits,
     dispatch_custody: crate::DomDispatchCustodyLimits,
     event_recipients: crate::DomEventRecipientLimits,
     nodes: usize,
@@ -620,6 +633,16 @@ impl DomLimits {
     pub fn node_iterators(self) -> usize {
         self.node_iterators
     }
+    pub fn with_child_list_observation(
+        mut self,
+        limits: crate::DomChildListObservationLimits,
+    ) -> Self {
+        self.child_list_observation = limits;
+        self
+    }
+    pub fn child_list_observation(self) -> crate::DomChildListObservationLimits {
+        self.child_list_observation
+    }
     /// Aggregate installed candidate references across all Document histories.
     /// Native empty state needs no allowance; each growing insertion does.
     pub fn with_autofocus_candidates(mut self, candidates: usize) -> Result<Self, DomError> {
@@ -698,6 +721,7 @@ impl DomLimits {
             fullscreen_events: 0,
             ranges: 0,
             node_iterators: 0,
+            child_list_observation: crate::DomChildListObservationLimits::default(),
             dispatch_custody: crate::DomDispatchCustodyLimits::default(),
             event_recipients: crate::DomEventRecipientLimits::default(),
             nodes,
@@ -1037,6 +1061,7 @@ pub enum DomChange {
     NodeIteratorCreated(crate::DomNodeIteratorId),
     NodeIteratorReference(crate::DomNodeIteratorId),
     NodeIteratorRetired(crate::DomNodeIteratorId),
+    ChildListObservation,
     RangeBoundary(crate::DomRangeId),
     RangeRetired(crate::DomRangeId),
     DocumentActiveRange(DocumentId),
@@ -1301,6 +1326,7 @@ pub(crate) struct State {
     details_targets: transaction::queues::CanonicalTargets,
     pub(crate) ranges: bank::Bank<crate::range::Slot<NodeId>>,
     node_iterators: node_iterator::Iterators,
+    child_lists: Option<Arc<child_list::Published>>,
     pub(crate) incomplete_source: Option<crate::DomSourceOperationId>,
     pub(crate) incomplete_hosted: Option<crate::hosted::DomHostedOperationId>,
     pub(crate) slots: bank::Bank<Slot>,
@@ -1321,6 +1347,7 @@ impl PartialEq for State {
     fn eq(&self, other: &Self) -> bool {
         self.ranges == other.ranges
             && self.node_iterators == other.node_iterators
+            && self.child_lists == other.child_lists
             && self.incomplete_source == other.incomplete_source
             && self.incomplete_hosted == other.incomplete_hosted
             && self.slots == other.slots
@@ -1370,6 +1397,7 @@ impl State {
 /// mutable CSSOM custody. Moving it does not replay or rebind that operation.
 /// Shared mutation and Sync are not supplied by this exclusive-owner contract.
 pub struct Dom {
+    child_list_turn: Option<Box<child_list::Turn>>,
     script_registration: Option<crate::hosted::CanonicalScriptRegistration>,
     fullscreen_exits: fullscreen::custody::Invocations,
     next_fullscreen_exit: u64,
@@ -1433,6 +1461,7 @@ impl Dom {
             details_targets: transaction::queues::CanonicalTargets::default(),
             ranges: bank::Bank::default(),
             node_iterators: node_iterator::Iterators::default(),
+            child_lists: None,
             incomplete_source: None,
             incomplete_hosted: None,
             slots: bank::Bank::default(),
@@ -1469,6 +1498,7 @@ impl Dom {
             },
         )?;
         Ok(Self {
+            child_list_turn: None,
             style_cssom_roots: style_custody::Bank::new(&registry),
             pending_associations: pending_associations::Bank::new(&registry),
             fullscreen_exits: fullscreen::custody::Invocations::new(&registry),
@@ -1594,6 +1624,9 @@ impl Dom {
             limits.node_iterators,
             DomResource::NodeIterators,
         )?;
+        if let Some(child_lists) = &self.state.child_lists {
+            child_lists.admit(limits.child_list_observation)?;
+        }
         admit(
             self.fullscreen_exits.len(),
             limits.fullscreen_exits,
@@ -1727,6 +1760,26 @@ impl Dom {
         #[cfg(test)]
         self.observe_source_lifecycle();
         result
+    }
+
+    fn edit_native_state<T>(
+        &mut self,
+        cancel: &AtomicBool,
+        edit: impl FnOnce(&mut Draft) -> Result<T, DomError>,
+    ) -> Result<T, DomError> {
+        self.require_source_entry()?;
+        check_cancel(cancel)?;
+        let batch = DomBatch::new();
+        let mut draft = if self.source_operation.is_some() {
+            self.source_observed_batch(batch.owner, &[], 0, cancel)?
+        } else {
+            Draft::new(self, batch.owner, cancel)?
+        };
+        let result = edit(&mut draft)?;
+        let mut prepared = draft.finish(self, cancel)?;
+        prepared.state.incomplete_source = self.state.incomplete_source;
+        self.publish(prepared, cancel)?;
+        Ok(result)
     }
     /// Canonical whole-batch input policy, before any command is resolved or
     /// staged. Each caller supplies its actual cancellation/work admission.
@@ -2284,6 +2337,7 @@ struct Draft {
     fullscreen_work_custody: Option<crate::DomFullscreenExitId>,
     ranges: transaction::ranges::Ranges,
     node_iterators: node_iterator::DraftIterators,
+    child_lists: Option<Arc<child_list::Version>>,
     range_tickets: Vec<crate::DomRangeId>,
     range_tickets_charge: custody::Debit,
     owner: Arc<BatchIdentity>,
@@ -2866,6 +2920,7 @@ impl Draft {
             _header_custody: header,
             ranges,
             node_iterators,
+            child_lists: None,
             range_tickets: Vec::new(),
             range_tickets_charge,
             owner,
@@ -3066,9 +3121,29 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.remove_tree_child(node, false, limits, cancelled)
+    }
+    fn remove_tree_child(
+        &mut self,
+        node: Key,
+        suppress_record: bool,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
         if let Some(parent) = self.node(node)?.parent() {
             self.range_pre_remove(node, parent, cancelled)?;
             self.node_iterator_pre_remove(node, parent, cancelled)?;
+            let siblings = if !suppress_record && self.may_observe_child_list() {
+                let index = self.child_list_position(parent, node, cancelled)?;
+                let children = self.node(parent)?.children();
+                let previous = index
+                    .checked_sub(1)
+                    .and_then(|previous| children.get(previous));
+                let next = index.checked_add(1).and_then(|next| children.get(next));
+                Some((previous, next))
+            } else {
+                None
+            };
             self.relations_retain(
                 parent,
                 transaction::RelationField::Children,
@@ -3080,7 +3155,11 @@ impl Draft {
             fields.commit(cancelled)?;
             self.slot_removal(node, parent, limits, cancelled)?;
             self.push_effect(
-                select::Effect::Tree(tree::Frame::RemovedParent(parent)),
+                select::Effect::Tree(tree::Frame::RemovedParent {
+                    parent,
+                    node,
+                    siblings,
+                }),
                 self.effect_scoped,
                 cancelled,
             )?;

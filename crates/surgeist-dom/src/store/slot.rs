@@ -201,7 +201,7 @@ impl Draft {
             admit(count, limits.slot_references, DomResource::SlotReferences)?;
             self.slot_signal_push(slot, cancel)?;
         }
-        self.queue_slot_marker(cancel)?;
+        self.queue_mutation_notification(cancel)?;
         Ok(())
     }
     fn assign_slottables(
@@ -260,7 +260,7 @@ impl Draft {
             if new_signal {
                 self.slot_signal_push(key, cancel)?;
             }
-            self.queue_slot_marker(cancel)?;
+            self.queue_mutation_notification(cancel)?;
         }
         self.relations_replace_owned(
             key,
@@ -608,17 +608,28 @@ impl Dom {
             targets.push(target);
         }
         let mut draft = Draft::new(self, DomBatch::new().owner, cancel)?;
-        assert!(matches!(
-            draft.native_tasks.first(),
-            Some(select::Pending::Slots)
-        ));
-        draft.queue_native_remove(0, 1, cancel)?;
-        draft.queue_signals_clear(cancel)?;
-        draft.notification_queued = false;
+        draft.clear_mutation_notification(cancel)?;
         let prepared = draft.finish(self, cancel)?;
-        // Vec-to-Arc conversion allocates. Complete it while the drained
-        // state is private, before publish's final cancellation boundary.
+        // Complete the independent output backing before publication.
         Ok((prepared, targets.into()))
+    }
+}
+
+impl Draft {
+    pub(super) fn clear_mutation_notification(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if !matches!(
+            self.native_tasks.first(),
+            Some(select::Pending::MutationNotification)
+        ) {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        self.queue_native_remove(0, 1, cancel)?;
+        self.queue_signals_clear(cancel)?;
+        self.notification_queued = false;
+        Ok(())
     }
 }
 

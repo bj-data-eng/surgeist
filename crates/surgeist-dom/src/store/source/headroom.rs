@@ -835,7 +835,7 @@ mod tests {
                         serial: Some(0),
                         target,
                     },
-                    select::Pending::Slots,
+                    select::Pending::MutationNotification,
                 ],
                 &cancel,
             )

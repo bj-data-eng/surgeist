@@ -543,3 +543,132 @@ fn normalize_foreign_retired_and_precanceled_inputs_preserve_the_actual_tree() {
         before.node(fragment).unwrap().children()
     );
 }
+
+#[test]
+fn observer_record_refusal_retries_the_published_normalize_source() {
+    let cancel = cancel();
+    let observation = |records| DomChildListObservationLimits::new(1, 1, records, 32).unwrap();
+    let mut dom = Dom::new(limits(65536).with_child_list_observation(observation(2))).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let style = batch.create_element_ns(&document, Namespace::html(), "style");
+    let texts = ["ab", "cd", "ef"].map(|value| {
+        let text = batch.create_text(&document, value);
+        batch.insert_before(&text, &style, None);
+        text
+    });
+    let commit = apply(&mut dom, batch);
+    let document = commit.document(&document).unwrap();
+    let style = commit.created(&style).unwrap().unwrap();
+    let [first, second, third] = texts.map(|ticket| commit.created(&ticket).unwrap().unwrap());
+    {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::insert_before(style, document.node(), None),
+                policy(),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("connected Style policy");
+        };
+        lease
+            .accept_inline_csp(&request, &deny(&request), &cancel)
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancel).unwrap(),
+            DomSourceProgress::Complete(_)
+        ));
+    }
+    let observer = dom.create_child_list_observer(&cancel).unwrap();
+    dom.observe_child_list(observer, style, false, &cancel)
+        .unwrap();
+    let mut lease = dom
+        .begin_source_edit(DomSourceEdit::normalize(style), policy(), &cancel)
+        .unwrap();
+    let operation = lease.operation();
+    let DomSourceProgress::Request(DomSourceRequest::Style(first_request)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("normalize append reaches its original Style request");
+    };
+    assert_eq!(first_request.source().ordinal(), 0);
+    assert!(lease.status().has_published());
+    assert_eq!(
+        lease.snapshot().node(style).unwrap().children(),
+        [first, second, third]
+    );
+    drop(lease);
+    dom.set_limits(dom.limits().with_child_list_observation(observation(1)))
+        .unwrap();
+    let mut lease = dom
+        .resume_source_edit(operation, policy(), &cancel)
+        .unwrap();
+    let mut reached = 0;
+    let mut refused = false;
+    for _ in 0..6 {
+        let before = lease.snapshot().stamp();
+        match lease.advance(&cancel) {
+            Ok(DomSourceProgress::Request(DomSourceRequest::Style(request))) => {
+                reached += 1;
+                lease
+                    .accept_inline_csp(&request, &deny(&request), &cancel)
+                    .unwrap();
+            }
+            Err(DomError::ResourceLimit {
+                resource: DomResource::ChildListRecords,
+                limit: 1,
+            }) => {
+                assert!(reached > 0);
+                assert!(lease.status().has_published());
+                assert_eq!(lease.snapshot().stamp(), before);
+                refused = true;
+                break;
+            }
+            outcome => {
+                panic!("expected another Style request or the record limit, got {outcome:?}")
+            }
+        }
+    }
+    assert!(refused);
+    drop(lease);
+    assert_eq!(dom.pending_source_edit().unwrap().operation(), operation);
+    dom.set_limits(dom.limits().with_child_list_observation(observation(2)))
+        .unwrap();
+
+    let mut lease = dom
+        .resume_source_edit(operation, policy(), &cancel)
+        .unwrap();
+    let mut complete = false;
+    for _ in 0..6 {
+        match lease.advance(&cancel).unwrap() {
+            DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
+                lease
+                    .accept_inline_csp(&request, &deny(&request), &cancel)
+                    .unwrap();
+            }
+            DomSourceProgress::Complete(done) => {
+                assert_eq!(done.operation(), operation);
+                complete = true;
+                break;
+            }
+            outcome => panic!("expected the original Source tail, got {outcome:?}"),
+        }
+    }
+    assert!(complete);
+    drop(lease);
+    let records = dom.take_child_list_records(observer, &cancel).unwrap();
+    assert_eq!(records.len(), 2);
+    for (record, removed, next) in [
+        (&records[0], second, Some(third)),
+        (&records[1], third, None),
+    ] {
+        assert_eq!(record.target(), style);
+        assert!(record.added_nodes().is_empty());
+        assert_eq!(record.removed_nodes(), &[removed]);
+        assert_eq!(record.previous_sibling(), Some(first));
+        assert_eq!(record.next_sibling(), next);
+    }
+}

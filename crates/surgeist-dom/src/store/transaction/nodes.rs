@@ -265,7 +265,8 @@ impl Draft {
         counts.admit(self.ranges.len(), nodes, units, limits)
     }
     pub(in crate::store) fn admit_dom_resources(&self, limits: DomLimits) -> Result<(), DomError> {
-        self.admit_node_counts(self.counts, self.nodes, self.units, limits)
+        self.admit_node_counts(self.counts, self.nodes, self.units, limits)?;
+        self.admit_child_list_observation(limits.child_list_observation)
     }
 }
 pub(in crate::store) fn resize_debit(

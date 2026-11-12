@@ -247,7 +247,7 @@ impl Dom {
         filter: DomNodeIteratorFilter,
         cancel: &AtomicBool,
     ) -> Result<DomNodeIteratorId, DomError> {
-        self.edit_node_iterator(cancel, |draft| {
+        self.edit_native_state(cancel, |draft| {
             draft.create_node_iterator(root, what_to_show, filter, cancel)
         })
     }
@@ -258,7 +258,7 @@ impl Dom {
         id: DomNodeIteratorId,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.edit_node_iterator(cancel, |draft| {
+        self.edit_native_state(cancel, |draft| {
             draft.node_iterators.value.cursor(draft.store, id)?;
             draft.retire_iterator_slot(id.slot, cancel)
         })
@@ -352,28 +352,8 @@ impl Dom {
         cursor: Cursor,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.edit_node_iterator(cancel, |draft| {
+        self.edit_native_state(cancel, |draft| {
             draft.write_node_iterator(id, cursor, cancel)
         })
-    }
-
-    fn edit_node_iterator<T>(
-        &mut self,
-        cancel: &AtomicBool,
-        edit: impl FnOnce(&mut Draft) -> Result<T, DomError>,
-    ) -> Result<T, DomError> {
-        self.require_source_entry()?;
-        check_cancel(cancel)?;
-        let batch = DomBatch::new();
-        let mut draft = if self.source_operation.is_some() {
-            self.source_observed_batch(batch.owner, &[], 0, cancel)?
-        } else {
-            Draft::new(self, batch.owner, cancel)?
-        };
-        let result = edit(&mut draft)?;
-        let mut prepared = draft.finish(self, cancel)?;
-        prepared.state.incomplete_source = self.state.incomplete_source;
-        self.publish(prepared, cancel)?;
-        Ok(result)
     }
 }

@@ -171,6 +171,7 @@ impl DomSelectTask {
 pub enum DomNativeCheckpoint {
     Idle,
     Select(DomSelectTask),
+    ChildList(crate::DomChildListNotification),
     Slots(crate::DomSlotNotifications),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

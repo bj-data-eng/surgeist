@@ -29,12 +29,12 @@ pub(in crate::store) use source::scratch::ScratchVec;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Task<K> {
     Update { serial: u64, target: K },
-    Slots,
+    MutationNotification,
 }
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Pending {
     Update { serial: Option<u64>, target: Key },
-    Slots,
+    MutationNotification,
 }
 pub(super) struct FinishedTasks {
     pub tasks: SharedVec<Task<NodeId>>,
@@ -98,9 +98,16 @@ impl Draft {
         );
         Ok(())
     }
-    pub(super) fn queue_slot_marker(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
+    pub(super) fn queue_mutation_notification(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         if !self.notification_queued {
-            self.queue_native_insert(self.native_tasks.len(), &[Pending::Slots], cancel)?;
+            self.queue_native_insert(
+                self.native_tasks.len(),
+                &[Pending::MutationNotification],
+                cancel,
+            )?;
             self.notification_queued = true;
         }
         Ok(())
@@ -185,7 +192,7 @@ impl Draft {
                 for (index, task) in self.native_tasks.iter().enumerate() {
                     source::formation::step(budget, cancel)?;
                     match task {
-                        Pending::Slots => out.push(Task::Slots),
+                        Pending::MutationNotification => out.push(Task::MutationNotification),
                         Pending::Update {
                             serial: old,
                             target,
@@ -246,7 +253,7 @@ impl Draft {
 }
 impl Dom {
     pub fn pending_native_tasks(&self) -> usize {
-        self.state.native_tasks.len()
+        self.state.native_tasks.len() + usize::from(self.child_list_turn.is_some())
     }
     pub fn native_checkpoint_step(
         &mut self,
@@ -261,6 +268,23 @@ impl Dom {
             }
         }
         check_cancel(cancel)?;
+        let work = child_list::CheckpointWork::new(limits.work);
+        loop {
+            if self.child_list_turn.is_some()
+                && let Some(checkpoint) = self.advance_child_list_turn(&work, cancel)?
+            {
+                return Ok(checkpoint);
+            }
+            if matches!(
+                self.state.native_tasks.first(),
+                Some(Task::MutationNotification)
+            ) && self.has_pending_child_lists()
+            {
+                self.begin_child_list_turn(limits.slots, &work, cancel)?;
+                continue;
+            }
+            break;
+        }
         match self.state.native_tasks.first().copied() {
             None => Ok(crate::DomNativeCheckpoint::Idle),
             Some(Task::Update { serial, target }) => {
@@ -296,7 +320,7 @@ impl Dom {
                     authorization: auth,
                 }))
             }
-            Some(Task::Slots) => {
+            Some(Task::MutationNotification) => {
                 let (prepared, targets) = self.prepare_slot_checkpoint(limits.slots, cancel)?;
                 let commit = self.publish(prepared, cancel)?;
                 Ok(crate::DomNativeCheckpoint::Slots(
@@ -1312,10 +1336,12 @@ impl Draft {
                         )?;
                     }
                     Effect::Clear { target } => {
-                        if let Some(child) = self.node(target)?.children().first() {
-                            self.push_effect(Effect::Clear { target }, true, cancel)?;
-                            self.remove(child, limits, cancel)?;
-                        }
+                        self.replace_all_children(
+                            target,
+                            tree::AfterRemovingChildren::Complete,
+                            limits,
+                            cancel,
+                        )?;
                     }
                     Effect::Tree(frame) => self.tree_effect(frame, limits, cancel)?,
                     Effect::Compound(frame) => self.compound_effect(frame, limits, cancel)?,
@@ -1471,13 +1497,8 @@ impl Draft {
                         }
                     }
                     Effect::Replace { fragment, target } => {
-                        if let Some(child) = self.node(target)?.children().first() {
-                            self.push_effect(Effect::Replace { fragment, target }, true, cancel)?;
-                            self.remove(child, limits, cancel)?;
-                        } else {
-                            self.push_effect(Effect::Cleanup(fragment), true, cancel)?;
-                            self.pre_insert(fragment, target, None, limits, cancel)?;
-                        }
+                        self.push_effect(Effect::Cleanup(fragment), true, cancel)?;
+                        self.replace_all_checked(fragment, target, limits, cancel)?;
                     }
                     Effect::Cleanup(fragment) => {
                         let Key::Created(_) = fragment else {
@@ -2474,6 +2495,7 @@ mod effect_scope_tests {
                 Effect::Tree(super::super::tree::Frame::ReplaceAll {
                     key: outer,
                     after: super::super::tree::AfterRemovingChildren::Insert(first),
+                    removed: draft.effect_vec(),
                 }),
                 false,
                 &cancel,
@@ -2522,6 +2544,7 @@ mod effect_scope_tests {
                 Effect::Tree(super::super::tree::Frame::ReplaceAll {
                     key: outer,
                     after: super::super::tree::AfterRemovingChildren::Insert(first),
+                    removed: draft.effect_vec(),
                 }),
                 false,
                 &cancel,
