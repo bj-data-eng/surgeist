@@ -308,23 +308,12 @@ impl Working {
         }
         let last = self.tables.pending.last;
         if let Some(index) = last {
-            let slot = self
-                .tables
-                .observers
-                .get(index)
-                .copied()
-                .ok_or(DomError::StaleChildListObserver)?;
-            let mut earlier = slot.value.ok_or(DomError::StaleChildListObserver)?;
+            let (earlier_id, mut earlier) = self.pending_observer(index, edit.draft.store)?;
             earlier
                 .pending
                 .as_mut()
                 .ok_or(DomError::StaleChildListObserver)?
                 .next = Some(id.slot);
-            let earlier_id = DomChildListObserverId {
-                owner: edit.draft.store,
-                slot: index,
-                generation: slot.generation,
-            };
             self.put_observer(earlier_id, Some(earlier), edit)?;
         } else {
             self.tables.pending.first = Some(id.slot);
@@ -335,6 +324,62 @@ impl Working {
             next: None,
         });
         self.put_observer(id, Some(observer), edit)
+    }
+
+    pub(super) fn unlink_pending(
+        &mut self,
+        id: DomChildListObserverId,
+        edit: &Edit<'_>,
+    ) -> Result<(), DomError> {
+        let mut observer = self.tables.observer(edit.draft.store, id)?;
+        let Some(links) = observer.pending.take() else {
+            return Ok(());
+        };
+        if let Some(index) = links.previous {
+            let (neighbor, mut value) = self.pending_observer(index, edit.draft.store)?;
+            value
+                .pending
+                .as_mut()
+                .ok_or(DomError::ChildListPublicationUnavailable)?
+                .next = links.next;
+            self.put_observer(neighbor, Some(value), edit)?;
+        } else {
+            self.tables.pending.first = links.next;
+        }
+        if let Some(index) = links.next {
+            let (neighbor, mut value) = self.pending_observer(index, edit.draft.store)?;
+            value
+                .pending
+                .as_mut()
+                .ok_or(DomError::ChildListPublicationUnavailable)?
+                .previous = links.previous;
+            self.put_observer(neighbor, Some(value), edit)?;
+        } else {
+            self.tables.pending.last = links.previous;
+        }
+        self.put_observer(id, Some(observer), edit)
+    }
+
+    pub(super) fn pending_observer(
+        &self,
+        index: usize,
+        owner: DomOwnerId,
+    ) -> Result<(DomChildListObserverId, Observer), DomError> {
+        let slot = self
+            .tables
+            .observers
+            .get(index)
+            .copied()
+            .ok_or(DomError::StaleChildListObserver)?;
+        let value = slot.value.ok_or(DomError::StaleChildListObserver)?;
+        Ok((
+            DomChildListObserverId {
+                owner,
+                slot: index,
+                generation: slot.generation,
+            },
+            value,
+        ))
     }
 
     pub(super) fn add_transients(

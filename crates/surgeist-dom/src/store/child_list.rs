@@ -553,6 +553,22 @@ impl Dom {
             })
         })
     }
+
+    /// Release the native observer, its registrations, and its queued records.
+    pub fn retire_child_list_observer(
+        &mut self,
+        observer: DomChildListObserverId,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.edit_native_state(cancel, |draft| {
+            draft.edit_child_lists(cancel, |working, edit| {
+                working.disconnect_registrations(observer, edit)?;
+                working.drain_records(observer, None, edit)?;
+                working.unlink_pending(observer, edit)?;
+                working.put_observer(observer, None, edit)
+            })
+        })
+    }
 }
 
 impl Tables {

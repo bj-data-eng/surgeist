@@ -4,8 +4,9 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DocumentId, Dom, DomBatch, DomChildListObservationLimits, DomChildListObserverId,
     DomChildListRecord, DomError, DomLimits, DomNameLimits, DomNativeCheckpoint,
-    DomNativeCheckpointLimits, DomResource, DomSlotQueryLimits, DomSourceEdit, DomSourceLimits,
-    DomSourceProgress, Namespace, NodeId,
+    DomNativeCheckpointLimits, DomResource, DomShadowRootInit, DomSlotQueryLimits, DomSourceEdit,
+    DomSourceLimits, DomSourceProgress, DomSourceRequest, DomStyleInlineCspObservation,
+    HtmlShadowRootMode, Namespace, NodeId,
 };
 
 struct Tree {
@@ -544,4 +545,133 @@ fn retiring_a_pending_observer_unlinks_it_without_losing_the_next_generation_or_
             .unwrap()
             .is_empty()
     );
+}
+
+#[test]
+fn fragment_records_keep_their_order_across_the_real_style_source_boundary() {
+    let Tree {
+        mut dom,
+        document,
+        root,
+        last,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let mut setup = DomBatch::new();
+    let fragment = setup.create_fragment(document);
+    let style = setup.create_element_ns(document, Namespace::html(), "style");
+    let text = setup.create_text(document, "p { color: red }");
+    let sibling = setup.create_element_ns(document, Namespace::html(), "p");
+    setup.insert_before(&text, &style, None);
+    setup.insert_before(&style, &fragment, None);
+    setup.insert_before(&sibling, &fragment, None);
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let fragment = commit.created(&fragment).unwrap().unwrap();
+    let style = commit.created(&style).unwrap().unwrap();
+    let sibling = commit.created(&sibling).unwrap().unwrap();
+    let observer = observe(&mut dom, fragment, false);
+    dom.observe_child_list(observer, root, false, &cancel)
+        .unwrap();
+    let limits = DomSourceLimits::new(32_000_000, 100_000, 1_000_000, 128, 4096, 4096, 4);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(fragment, root, None),
+            limits,
+            &cancel,
+        )
+        .unwrap();
+    let operation = lease.operation();
+    let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("real inline Style CSP request");
+    };
+    assert_eq!(request.source().element(), style);
+    let ordinal = request.source().ordinal();
+    drop(lease);
+    assert_eq!(
+        dom.take_child_list_records(observer, &cancel).unwrap_err(),
+        DomError::SourceOperationPending
+    );
+    let mut lease = dom.resume_source_edit(operation, limits, &cancel).unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("original retained request");
+    };
+    assert_eq!(request.source().ordinal(), ordinal);
+    lease.request_cancel();
+    let denied = DomStyleInlineCspObservation::evaluated(
+        request.source(),
+        std::sync::Arc::new(vec!["style-src 'none'".into()]),
+        19,
+        false,
+    );
+    lease.accept_inline_csp(&request, &denied, &cancel).unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("original mandatory tail");
+    };
+    assert!(done.cancellation_requested());
+    drop(lease);
+    let records = dom.take_child_list_records(observer, &cancel).unwrap();
+    assert_eq!(records.len(), 2);
+    assert_record(&records[0], fragment, &[], &[style, sibling], None, None);
+    assert_record(&records[1], root, &[style, sibling], &[], Some(last), None);
+}
+
+#[test]
+fn one_notification_turn_delivers_observers_before_its_captured_slot_signals() {
+    let cancel = AtomicBool::new(false);
+    let names = DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap();
+    let observations = DomChildListObservationLimits::new(8, 32, 32, 256).unwrap();
+    let limits = DomLimits::new(64, 4096, 128, 64, 0, 64, 1_000_000, names)
+        .unwrap()
+        .with_child_list_observation(observations);
+    let mut dom = Dom::new(limits).unwrap();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let host = setup.create_element_ns(&document, Namespace::html(), "div");
+    setup.insert_before(&host, &document, None);
+    let shadow = setup.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+    let slot = setup.create_element_ns(&document, Namespace::html(), "slot");
+    setup.insert_before(&slot, &shadow, None);
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let document = commit.document(&document).unwrap();
+    let host = commit.created(&host).unwrap().unwrap();
+    let slot = commit.created(&slot).unwrap().unwrap();
+    let checkpoint = checkpoint_limits(1_000_000);
+    assert!(matches!(
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap(),
+        DomNativeCheckpoint::Idle
+    ));
+    let observer = observe(&mut dom, host, false);
+    let mut append = DomBatch::new();
+    let text = append.create_text(document, "slotted");
+    append.insert_before(&text, host, None);
+    let text = dom
+        .apply(append, &cancel)
+        .unwrap()
+        .created(&text)
+        .unwrap()
+        .unwrap();
+    assert_eq!(dom.pending_native_tasks(), 1);
+    let DomNativeCheckpoint::ChildList(delivery) =
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+    else {
+        panic!("observer is reached before Slot signals");
+    };
+    assert_eq!(delivery.observer(), observer);
+    assert_eq!(delivery.records().len(), 1);
+    assert_record(&delivery.records()[0], host, &[text], &[], None, None);
+    drop(delivery);
+    let DomNativeCheckpoint::Slots(signals) =
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+    else {
+        panic!("original captured Slot signal follows observers");
+    };
+    assert_eq!(signals.targets(), &[slot]);
+    assert!(matches!(
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap(),
+        DomNativeCheckpoint::Idle
+    ));
 }

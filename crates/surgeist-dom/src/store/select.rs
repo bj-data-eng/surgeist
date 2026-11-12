@@ -253,7 +253,7 @@ impl Draft {
 }
 impl Dom {
     pub fn pending_native_tasks(&self) -> usize {
-        self.state.native_tasks.len()
+        self.state.native_tasks.len() + usize::from(self.child_list_turn.is_some())
     }
     pub fn native_checkpoint_step(
         &mut self,

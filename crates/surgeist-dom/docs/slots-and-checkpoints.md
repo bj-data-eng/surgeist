@@ -47,9 +47,11 @@ Both results retain the exact immutable source; neither changes canonical links.
 ## Signals and native checkpoints
 
 Source signals accumulate an ordered deduplicated set in the same transaction.
-`Dom::native_checkpoint_step` executes the oldest native FIFO turn. A Slot
-marker transfers the then-current signal set as historical slotchange intentions (bubbles=true, composed=false,
-cancelable=false), without dispatching callbacks or fabricating observer objects.
+`Dom::native_checkpoint_step` executes the oldest native FIFO turn. The shared
+mutation notification marker captures the current signal set as historical
+slotchange intentions (`bubbles=true`, `composed=false`, `cancelable=false`).
+The turn yields its [child-list observer deliveries](child-list-observation.md)
+before yielding the captured Slot signals.
 A failed/cancelled drain preserves the set. Native destroy removes exact retired
 pending recipients with `SlotSignalCancelled { reason: Destroyed }` evidence;
 detach/adopt/disconnect do not cancel. Drained batches retain their historical

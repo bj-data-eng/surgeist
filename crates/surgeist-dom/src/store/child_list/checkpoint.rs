@@ -86,23 +86,12 @@ impl Working {
         let mut current = self.tables.pending.first;
         while let Some(index) = current {
             edit.step()?;
-            let slot = self
-                .tables
-                .observers
-                .get(index)
-                .copied()
-                .ok_or(DomError::StaleChildListObserver)?;
-            let mut observer = slot.value.ok_or(DomError::StaleChildListObserver)?;
+            let (id, mut observer) = self.pending_observer(index, edit.draft.store)?;
             current = observer
                 .pending
                 .take()
                 .ok_or(DomError::ChildListPublicationUnavailable)?
                 .next;
-            let id = DomChildListObserverId {
-                owner: edit.draft.store,
-                slot: index,
-                generation: slot.generation,
-            };
             records::reserve_output(order, edit)?;
             order.value_mut().push(id);
             self.put_observer(id, Some(observer), edit)?;
