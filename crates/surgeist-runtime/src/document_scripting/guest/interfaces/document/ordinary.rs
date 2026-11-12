@@ -287,11 +287,11 @@ impl OrdinaryBindings {
     pub(super) fn watch_source<'scope>(
         &self,
         scope: &mut Scope<'scope>,
-        owner: &NativeOwner,
-        events: &GuestEvents,
+        (owner, events): (&NativeOwner, &GuestEvents),
         request: &DomSourceEventRequest,
         node: GuestNode,
         prototype: &RetainedCallbackObject,
+        handler: Result<(), Error>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         self.project(
             scope,
@@ -308,6 +308,7 @@ impl OrdinaryBindings {
                     key,
                     &owner.cancellation,
                 )?;
+                handler?;
                 Ok((node, watch))
             }),
         )

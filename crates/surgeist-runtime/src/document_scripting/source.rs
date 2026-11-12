@@ -284,13 +284,7 @@ fn call_guest(
         .is_some_and(|events| events.has_public_node_projection())
     {
         let result = call_public_guest(
-            engine,
-            native,
-            &attachment,
-            handler,
-            request,
-            delegated,
-            limits,
+            engine, native, attachment, handler, request, delegated, limits,
         );
         drop(active);
         engine.settle_engine_cleanup(&attachment.realm);
@@ -468,15 +462,15 @@ fn call_public_guest(
             Ok(global) => global,
             Err(error) => return refuse(scope, &attachment.failures, error),
         };
-        let handler = scope.import(handler)?;
         let argument = events.project_source_comment(
             scope,
-            native,
-            attachment,
+            (native, attachment),
             &request,
             delegated,
             creation_global,
+            handler,
         )?;
+        let handler = scope.import(handler)?;
         let source = ActiveSource {
             request,
             delegated,

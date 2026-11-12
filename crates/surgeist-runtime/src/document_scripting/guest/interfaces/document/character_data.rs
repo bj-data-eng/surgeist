@@ -3,7 +3,7 @@
 use super::*;
 mod mutations;
 use surgeist_bindings_js::{
-    DomString,
+    DomString, Root,
     conversion::{
         Argument, Converted, Type,
         declarations::{
@@ -208,11 +208,11 @@ impl GuestEvents {
     pub(in crate::document_scripting) fn project_source_comment<'scope>(
         &self,
         scope: &mut Scope<'scope>,
-        owner: &NativeOwner,
-        attachment: &Attachment,
+        (owner, attachment): (&NativeOwner, &Attachment),
         request: &DomSourceEventRequest,
         node: NodeId,
         origin: DomHostedGlobalId,
+        handler: &Root,
     ) -> Result<Value<'scope>, Error> {
         let admission = ordinary::Admission::source(owner, self, request);
         let result = (|| {
@@ -222,13 +222,17 @@ impl GuestEvents {
                 return Ok(value);
             }
             let mut watch = |prototypes: &DocumentPrototypes| {
+                // Root import only validates the owner and opens a local
+                // reference. Defer its result until native watch admission so
+                // the same first refusal wins in either Source route.
+                let handler = scope.import(handler).map(drop);
                 ordinary.watch_source(
                     scope,
-                    owner,
-                    self,
+                    (owner, self),
                     request,
                     GuestNode::Comment(node),
                     prototypes.character_data.prototype(CharacterKind::Comment),
+                    handler,
                 )
             };
             if origin == attachment.target.global() {
