@@ -210,8 +210,7 @@ impl Draft {
             })
     }
 
-    /// Independent Elements retain independent attribute occurrences even
-    /// when their immutable bank is shared. Unrelated edits alias this child.
+    /// Admit one name operation step under both name and Source work policy.
     pub(in crate::store) fn name_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         self.names.step(&mut || self.source_step(cancel))
     }

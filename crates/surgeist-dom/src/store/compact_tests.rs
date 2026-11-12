@@ -513,7 +513,7 @@ fn native_node_graphs_retain_real_banks_payloads_and_snapshot_union() {
     assert_eq!(before.count("bank.record"), 9);
     assert!(before.count("bank.page") > 0 && before.count("bank.leaf") > 0);
     assert_eq!(before.count("native.canvas"), 1);
-    // Four freshly created Elements have no attribute bank allocation. Their
+    // Four freshly created Elements have no attribute order allocation. Their
     // four local atoms share one additional HTML namespace atom across the three
     // HTML names in this DOM, without atomizing the PI/doctype names.
     assert_eq!(before.count("attributes.target"), 0);

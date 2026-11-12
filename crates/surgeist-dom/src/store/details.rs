@@ -771,8 +771,7 @@ mod tests {
         units.push(u16::from(b'g'));
         let block = surgeist_html::values::TextBlock::from_utf16(units);
         let (mut draft, key) = draft_named(block.string(0..1).unwrap());
-        // No path has listed the block when the exclusivity step reads the name, as when the
-        // attribute bank had not: the read lists it itself, once.
+        // Isolate the exclusivity read by removing the Attr value's listing.
         draft.custody_registry().unlist_block(&block);
         assert_eq!(draft.custody_registry().listed_blocks(), 0);
         source_budget(&mut draft, 1_000_000, 10_000);

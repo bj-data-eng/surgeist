@@ -127,7 +127,7 @@ fn markup() -> String {
     for row in 0..ROWS {
         source.push_str(&format!("<tr id=\"r{row}\">"));
         for _ in 0..COLUMNS {
-            // Separate source occurrences, not caller-shared attribute banks.
+            // Each cell has its own authored attribute occurrences.
             source.push_str("<td class=\"cell\" style=\"color: red\">cell</td>");
         }
         source.push_str("</tr>");
