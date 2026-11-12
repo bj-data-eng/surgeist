@@ -1,3 +1,5 @@
+mod element_tasks;
+
 use super::*;
 use crate::{
     DomElementTaskRuntimeLimits, DomEventCallback, DomEventDispatchError, DomEventDispatchLimits,
@@ -20,6 +22,14 @@ pub(super) fn hosted_session(
     cancel: &AtomicBool,
     source_jobs: usize,
 ) -> (DomSession, DomHostedTopLevel) {
+    hosted_session_with_details(cancel, source_jobs, 0)
+}
+
+fn hosted_session_with_details(
+    cancel: &AtomicBool,
+    source_jobs: usize,
+    details_intentions: usize,
+) -> (DomSession, DomHostedTopLevel) {
     let dom = Dom::new(
         DomLimits::new(
             128,
@@ -34,7 +44,9 @@ pub(super) fn hosted_session(
         .unwrap()
         .with_dispatch_custody(
             DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
-        ),
+        )
+        .with_details_toggle_intentions(details_intentions)
+        .unwrap(),
     )
     .unwrap();
     let mut session = DomSession::new(
@@ -208,6 +220,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     attached_registry_keeps_preparation_refusal_on_retry();
     attached_registry_preserves_the_original_terminal_refusal();
     attached_beforetoggle_uses_the_original_toggle_event();
+    element_tasks::verify_attached_element_tasks();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
     );
@@ -766,8 +779,19 @@ struct AttachedCancel {
     observations: Rc<RefCell<Vec<NativeDomEvent>>>,
 }
 
-fn hosted_dialog(cancel: &AtomicBool) -> (DomSession, DomHostedTopLevel, NodeId) {
-    let (mut session, target) = hosted_session(cancel, 8);
+fn hosted_element(cancel: &AtomicBool, name: &str) -> (DomSession, DomHostedTopLevel, NodeId) {
+    let details_intentions = if name == "details" { 4 } else { 0 };
+    let (mut session, target) = hosted_session_with_details(cancel, 8, details_intentions);
+    let element = insert_hosted_element(&mut session, target, name, cancel);
+    (session, target, element)
+}
+
+fn insert_hosted_element(
+    session: &mut DomSession,
+    target: DomHostedTopLevel,
+    name: &str,
+    cancel: &AtomicBool,
+) -> NodeId {
     let document = target.document();
     let html = session
         .snapshot()
@@ -777,20 +801,19 @@ fn hosted_dialog(cancel: &AtomicBool) -> (DomSession, DomHostedTopLevel, NodeId)
         .unwrap();
     let body = session.snapshot().node(html).unwrap().children()[1];
     let mut create = DomBatch::new();
-    let dialog = create.create_element_ns(document, Namespace::html(), "dialog");
-    create.insert_before(&dialog, body, None);
-    let dialog = session
+    let element = create.create_element_ns(document, Namespace::html(), name);
+    create.insert_before(&element, body, None);
+    session
         .dom()
         .apply(create, cancel)
         .unwrap()
-        .created(&dialog)
+        .created(&element)
         .unwrap()
-        .unwrap();
-    (session, target, dialog)
+        .unwrap()
 }
 
 fn attached_cancel_host(cancel: Arc<AtomicBool>) -> AttachedCancel {
-    let (mut session, target, dialog) = hosted_dialog(&cancel);
+    let (mut session, target, dialog) = hosted_element(&cancel, "dialog");
     let document = target.document();
     let registry_limits = DomEventRegistryLimits {
         registrations: 8,
@@ -1116,7 +1139,7 @@ fn attached_registry_preserves_the_original_terminal_refusal() {
 
 fn attached_beforetoggle_uses_the_original_toggle_event() {
     let cancel = Arc::new(AtomicBool::new(false));
-    let (mut session, target, dialog) = hosted_dialog(&cancel);
+    let (mut session, target, dialog) = hosted_element(&cancel, "dialog");
     let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
         registrations: 8,
         pending_events: 4,

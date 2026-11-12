@@ -55,10 +55,6 @@ impl DocumentScriptHost {
             .guest_events()
             .map_err(DocumentScriptEventError::Guest)?;
         let owner = self.native.clone();
-        let attachment = owner
-            .attachment
-            .get()
-            .ok_or(DocumentScriptNativeError::Revoked)?;
         let mut usage = crate::dom_event::DispatchUsage::default();
         loop {
             let progress = self.with_native(|dom, _, source| {
@@ -88,45 +84,57 @@ impl DocumentScriptHost {
             else {
                 return Ok(progress);
             };
-            let result = match self.engine.as_mut() {
-                Some(engine) => engine
-                    .process
-                    .execution()
-                    .in_realm(&engine.realm, |scope| {
-                        Ok(events.invoke_source_listener(&owner, scope, request, &selected))
-                    })
-                    .map_err(DocumentGuestEventError::from)
-                    .and_then(|result| result),
-                None => Err(DocumentScriptNativeError::Revoked.into()),
-            };
-            let result = events.report_selected(&mut selected, result);
-            if let Some(engine) = self.engine.as_mut() {
-                engine.settle_engine_cleanup(&attachment.realm);
-            }
-            if let Err(error) = result {
-                return Err(match error {
-                    DocumentGuestEventError::Document(error) => {
-                        DocumentScriptEventError::Access(error)
-                    }
-                    error => DocumentScriptEventError::Guest(error),
-                });
-            }
+            self.invoke_attached_listener(&events, Some(request), &mut selected)?;
         }
+    }
+
+    pub(super) fn invoke_attached_listener(
+        &mut self,
+        events: &GuestEvents,
+        request: Option<&DomSourceEventRequest>,
+        selected: &mut DomEventHostInvocation,
+    ) -> Result<(), DocumentScriptEventError> {
+        let owner = &self.native;
+        let attachment = owner
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        let result = match self.engine.as_mut() {
+            Some(engine) => engine
+                .process
+                .execution()
+                .in_realm(&engine.realm, |scope| {
+                    Ok(events.invoke_native_listener(owner, scope, request, selected))
+                })
+                .map_err(DocumentGuestEventError::from)
+                .and_then(|result| result),
+            None => Err(DocumentScriptNativeError::Revoked.into()),
+        };
+        let result = events.report_selected(selected, result);
+        if let Some(engine) = self.engine.as_mut() {
+            engine.settle_engine_cleanup(&attachment.realm);
+        }
+        result.map_err(|error| match error {
+            DocumentGuestEventError::Document(error) => DocumentScriptEventError::Access(error),
+            error => DocumentScriptEventError::Guest(error),
+        })
     }
 }
 
 impl GuestEvents {
-    fn invoke_source_listener(
+    fn invoke_native_listener(
         &self,
         owner: &NativeOwner,
         scope: &mut Scope<'_>,
-        request: &DomSourceEventRequest,
+        request: Option<&DomSourceEventRequest>,
         selected: &DomEventHostInvocation,
     ) -> Result<Result<(), DomEventCallbackError>, DocumentGuestEventError> {
         let mut report = None;
         let mut active = None;
         let values = (|| {
-            active = Some(ActiveAttachedEvent::enter(owner, request)?);
+            active = request
+                .map(|request| ActiveAttachedEvent::enter(owner, request))
+                .transpose()?;
             self.step()?;
             report = Some(self.reports.reserve_count(self, owner, 1)?);
             let current = selected
@@ -134,7 +142,7 @@ impl GuestEvents {
                 .current_target()
                 .ok_or(Error::RegistryConflict)?;
             let receiver = wrapper::project_native_event_target(owner, self, scope, &current)?;
-            let event = self.project_source_event(owner, scope, selected.event())?;
+            let event = self.project_native_event(owner, scope, selected.event())?;
             Ok((event, receiver))
         })();
         match self.invoke_selected(
@@ -158,14 +166,14 @@ impl GuestEvents {
         }
     }
 
-    fn project_source_event<'scope>(
+    fn project_native_event<'scope>(
         &self,
         owner: &NativeOwner,
         scope: &mut Scope<'scope>,
         native: &NativeDomEvent,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let mut identity = native
-            .source_projection()
+            .attached_projection()
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         if let Some(token) = identity.as_ref()

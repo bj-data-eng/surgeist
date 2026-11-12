@@ -1703,7 +1703,7 @@ impl<C> DomEventDispatcher<C> {
                     }
                     #[cfg(feature = "document-scripting")]
                     CallbackKind::Guest(_)
-                        if !matches!(host, DispatchHost::Guest | DispatchHost::AttachedSource) =>
+                        if !matches!(host, DispatchHost::Guest | DispatchHost::AttachedNative) =>
                     {
                         return Err(RunStop::HostUnavailable);
                     }
@@ -1904,7 +1904,7 @@ struct Event {
     creation: Result<DomEventCreationObservation, DomEventTimestampUnavailable>,
     toggle: Option<DomToggleEvent>,
     #[cfg(feature = "document-scripting")]
-    source_projection: RefCell<
+    attached_projection: RefCell<
         Option<
             surgeist_bindings_js::NativeObjectToken<
                 crate::document_scripting::guest::GuestEventProjection,
@@ -2401,7 +2401,7 @@ pub(crate) enum DispatchHost {
     #[cfg(feature = "document-scripting")]
     Guest,
     #[cfg(feature = "document-scripting")]
-    AttachedSource,
+    AttachedNative,
 }
 
 fn snapshot_formation_bytes(limits: DomEventDispatchLimits) -> Option<usize> {
@@ -2454,7 +2454,7 @@ impl EventInvocationOwner {
                 creation: creation.map(EventCreation::into_observation),
                 toggle,
                 #[cfg(feature = "document-scripting")]
-                source_projection: RefCell::new(None),
+                attached_projection: RefCell::new(None),
                 storage: backing.storage,
                 target: RefCell::new(None),
                 stop: Cell::new(false),
@@ -2703,7 +2703,7 @@ impl std::fmt::Debug for NativeDomEvent {
 }
 impl NativeDomEvent {
     #[cfg(feature = "document-scripting")]
-    pub(crate) fn source_projection(
+    pub(crate) fn attached_projection(
         &self,
     ) -> &RefCell<
         Option<
@@ -2712,7 +2712,7 @@ impl NativeDomEvent {
             >,
         >,
     > {
-        &self.0.source_projection
+        &self.0.attached_projection
     }
 
     fn continuation(&self) -> Option<Rc<EventContinuation>> {
@@ -3426,7 +3426,7 @@ fn build_node_path(
         .map_err(DomEventDispatchError::Dom)?;
     let first_root = root(snapshot, original, budget)?;
     #[cfg(feature = "document-scripting")]
-    let observes_window_event = matches!(_host, DispatchHost::Guest | DispatchHost::AttachedSource);
+    let observes_window_event = matches!(_host, DispatchHost::Guest | DispatchHost::AttachedNative);
     #[cfg(feature = "document-scripting")]
     let mut in_shadow_tree = if observes_window_event {
         source_tick(budget)?;

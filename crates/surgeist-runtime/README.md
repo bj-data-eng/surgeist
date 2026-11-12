@@ -292,6 +292,9 @@ registry to deliver the original synchronous native event. A Dialog
 `oldState`, `newState` and `source` values. The interface inherits `Event`.
 Calling the authored constructor throws a `TypeError` in this profile.
 [Authored construction is tracked in #2643](https://github.com/bj-data-eng/surgeist/issues/2643).
+`DocumentScriptHost::run_attached_element_task` delivers queued Details and
+Dialog events through their original task bank. A retained delivery can be
+resumed at the same cursor. Task completion runs the native queue cleanup.
 The Window's readonly own `document` getter returns its canonical Document
 wrapper. The Document exposes the base Node reads for identity, connectivity,
 parent, owner and root. The standard Document constructor uses the original

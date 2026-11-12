@@ -340,7 +340,7 @@ impl DomSourceRuntime {
                 &mut (),
                 (
                     limits,
-                    crate::dom_event::DispatchHost::AttachedSource,
+                    crate::dom_event::DispatchHost::AttachedNative,
                     usage,
                 ),
                 cancel,

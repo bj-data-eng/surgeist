@@ -6,16 +6,21 @@
 //! leave a reentrantly queued task untracked. Dropping this owner abandons its
 //! remaining tasks; it never reports those tasks as delivered.
 use crate::dom_event::{
-    DispatchCall, DispatchFunding, DispatchHost, DomEventDispatchError, DomEventDispatchLimits,
-    DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
-    DomEventTimestampUnavailable, EventDispatchObservation, EventInvocationOwner, NativeDomEvent,
+    DispatchCall, DispatchFunding, DispatchHost, DispatchUsage, DomEventDispatchError,
+    DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
+    DomEventDom, DomEventTimestampUnavailable, EventDispatchObservation, EventInvocationOwner,
+    NativeDomEvent,
 };
 use crate::dom_lifecycle::NativeTaskRunning;
+#[cfg(feature = "document-scripting")]
+use crate::{DomEventHostInvocation, DomHostedTopLevel};
 use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::mem::size_of;
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "document-scripting")]
+use surgeist_dom::DomSourceEventRequest;
 use surgeist_dom::{
     DomDetailsToggleIntention, DomDetailsToggleTransfer, DomError, DomOwnerId, DomRevision,
     DomSnapshot,
@@ -1465,6 +1470,36 @@ impl ElementTaskState {
         }
     }
 }
+struct ElementTaskRun<'a> {
+    source: DomElementTaskSourceKind,
+    limits: DomElementTaskRunLimits,
+    cancel: &'a AtomicBool,
+    #[cfg(feature = "document-scripting")]
+    attachment: Option<AttachedTaskRequest<'a>>,
+}
+
+#[cfg(feature = "document-scripting")]
+pub(crate) struct AttachedTaskRequest<'a> {
+    pub(crate) target: DomHostedTopLevel,
+    pub(crate) expected: Option<DomElementTaskId>,
+    pub(crate) usage: &'a mut DispatchUsage,
+}
+
+pub(crate) enum ElementTaskRunOutcome {
+    Native(DomElementTaskProgress),
+    #[cfg(feature = "document-scripting")]
+    Guest(AttachedElementListener),
+}
+
+#[cfg(feature = "document-scripting")]
+pub(crate) struct AttachedElementListener {
+    pub(crate) id: DomElementTaskId,
+    pub(crate) request: Option<DomSourceEventRequest>,
+    pub(crate) invocation: DomEventHostInvocation,
+    _native_task: Option<NativeTaskRunning>,
+    _running: ElementTaskRunning,
+}
+
 impl DomElementTaskRuntime {
     /// Execute or resume the selected source’s FIFO head through the actual shared dispatcher.
     /// The source task and its actual event/receipt remain in their original
@@ -1477,7 +1512,66 @@ impl DomElementTaskRuntime {
         limits: DomElementTaskRunLimits,
         cancel: &AtomicBool,
     ) -> Result<DomElementTaskProgress, DomElementTaskRuntimeError> {
-        let state = context.element_tasks().state()?;
+        let original = context.element_tasks().clone();
+        let outcome = original.run_next_inner(
+            dom,
+            dispatcher,
+            context,
+            ElementTaskRun {
+                source,
+                limits,
+                cancel,
+                #[cfg(feature = "document-scripting")]
+                attachment: None,
+            },
+            |context| context.element_tasks().clone(),
+        )?;
+        match outcome {
+            ElementTaskRunOutcome::Native(progress) => Ok(progress),
+            #[cfg(feature = "document-scripting")]
+            ElementTaskRunOutcome::Guest(_) => Err(DomElementTaskRuntimeError::Binding),
+        }
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn run_attached(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        dispatcher: &mut DomEventDispatcher<()>,
+        (source, limits): (DomElementTaskSourceKind, DomElementTaskRunLimits),
+        attachment: AttachedTaskRequest<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<ElementTaskRunOutcome, DomElementTaskRuntimeError> {
+        self.run_next_inner(
+            dom,
+            dispatcher,
+            &mut (),
+            ElementTaskRun {
+                source,
+                limits,
+                cancel,
+                attachment: Some(attachment),
+            },
+            |_| self.clone(),
+        )
+    }
+
+    fn run_next_inner<C>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        dispatcher: &mut DomEventDispatcher<C>,
+        context: &mut C,
+        run: ElementTaskRun<'_>,
+        current_owner: impl FnOnce(&mut C) -> Self,
+    ) -> Result<ElementTaskRunOutcome, DomElementTaskRuntimeError> {
+        let ElementTaskRun {
+            source,
+            limits,
+            cancel,
+            #[cfg(feature = "document-scripting")]
+            mut attachment,
+        } = run;
+        let state = self.state()?;
         let (value, selected_index) = {
             let mut owner = state.borrow_mut();
             if owner.dom != dom.owner() {
@@ -1495,12 +1589,31 @@ impl DomElementTaskRuntime {
                 }
             }
             let Some(index) = selected else {
-                return Ok(DomElementTaskProgress::Empty);
+                #[cfg(feature = "document-scripting")]
+                if attachment
+                    .as_ref()
+                    .is_some_and(|request| request.expected.is_some())
+                {
+                    return Err(DomElementTaskRuntimeError::Binding);
+                }
+                return Ok(ElementTaskRunOutcome::Native(DomElementTaskProgress::Empty));
             };
             let Some(head) = owner.tasks.get(index) else {
-                return Ok(DomElementTaskProgress::Empty);
+                return Ok(ElementTaskRunOutcome::Native(DomElementTaskProgress::Empty));
             };
             let value = head.value;
+            #[cfg(feature = "document-scripting")]
+            if let Some(request) = &attachment
+                && (request
+                    .expected
+                    .is_some_and(|expected| expected != value.id())
+                    || value.queue_association().is_none_or(|association| {
+                        association.document() != request.target.document()
+                            || association.global() != request.target.global()
+                    }))
+            {
+                return Err(DomElementTaskRuntimeError::Binding);
+            }
             if dom
                 .raw()
                 .pending_source_edit()
@@ -1512,7 +1625,9 @@ impl DomElementTaskRuntime {
             }
             if head.running {
                 owner.spend(1, cancel)?;
-                return Ok(DomElementTaskProgress::Running(value.id()));
+                return Ok(ElementTaskRunOutcome::Native(
+                    DomElementTaskProgress::Running(value.id()),
+                ));
             }
             let cleanup = owner
                 .limits
@@ -1528,10 +1643,12 @@ impl DomElementTaskRuntime {
             owner.tasks[index].running = true;
             (value, index)
         };
-        let _running = ElementTaskRunning {
+        let running = ElementTaskRunning {
             state: state.clone(),
             id: value.id(),
         };
+        #[cfg(not(feature = "document-scripting"))]
+        let _running = running;
         let mut native_task = if let Some(association) = value.queue_association() {
             let (hosted, started) = {
                 let owner = state.borrow();
@@ -1572,22 +1689,33 @@ impl DomElementTaskRuntime {
                 let mut owner = state.borrow_mut();
                 owner.prepare_event(dom, dispatcher, value, native_task.as_ref(), limits, cancel)?
             };
-            let (event, _scope, funding) = match prepared {
+            let (event, scope, funding) = match prepared {
                 PreparedEvent::Destroyed => return Ok(ElementTaskStep::Destroyed),
                 PreparedEvent::Delivered => return Ok(ElementTaskStep::Complete),
                 PreparedEvent::Dispatch(event, scope, funding) => (event, scope, funding),
             };
+            #[cfg(not(feature = "document-scripting"))]
+            let _scope = scope;
+            let mut local_usage = DispatchUsage::default();
+            #[cfg(feature = "document-scripting")]
+            let (host, usage) = match &mut attachment {
+                Some(request) => (DispatchHost::AttachedNative, &mut *request.usage),
+                None => (DispatchHost::Unavailable, &mut local_usage),
+            };
+            #[cfg(not(feature = "document-scripting"))]
+            let (host, usage) = (DispatchHost::Unavailable, &mut local_usage);
             let outcome = dispatcher
-                .deliver(
+                .deliver_with_usage(
                     dom.raw_mut(),
                     context,
                     &event,
                     DispatchCall {
                         limits: limits.dispatch,
                         cancel,
-                        host: DispatchHost::Unavailable,
+                        host,
                         funding,
                     },
+                    usage,
                 )
                 .map_err(DomElementTaskRuntimeError::Dispatch)?;
             let mut owner = state.borrow_mut();
@@ -1601,13 +1729,32 @@ impl DomElementTaskRuntime {
                     task.receipt = Some(receipt);
                     Ok(ElementTaskStep::Complete)
                 }
+                #[cfg(feature = "document-scripting")]
+                DomEventDispatchOutcome::HostInvocation(invocation) => {
+                    if let Some(scope) = scope {
+                        invocation
+                            .retain_source_scope(scope)
+                            .map_err(DomElementTaskRuntimeError::Dispatch)?;
+                    }
+                    Ok(ElementTaskStep::Selected(invocation, task.request.clone()))
+                }
                 retained => Ok(ElementTaskStep::Retained(retained)),
             }
         })();
         // This is arbitrary caller code too. The bank already owns a completed
         // receipt if it unwinds, so subsequent execution cannot replay dispatch.
-        let displaced = !Weak::ptr_eq(&Rc::downgrade(&state), &context.element_tasks().state);
+        let displaced = !Weak::ptr_eq(&Rc::downgrade(&state), &current_owner(context).state);
         match result? {
+            #[cfg(feature = "document-scripting")]
+            ElementTaskStep::Selected(invocation, request) => {
+                Ok(ElementTaskRunOutcome::Guest(AttachedElementListener {
+                    id: value.id(),
+                    request,
+                    invocation,
+                    _native_task: native_task,
+                    _running: running,
+                }))
+            }
             ElementTaskStep::Complete | ElementTaskStep::Destroyed => {
                 if matches!(
                     value,
@@ -1651,25 +1798,31 @@ impl DomElementTaskRuntime {
                     // Ordinary caller output transfer ends product ownership of
                     // diagnostic failure backing; shared Event/Path stay charged.
                     receipt.release_producer_retention();
-                    Ok(DomElementTaskProgress::Complete {
-                        task: value,
-                        receipt,
-                        dialog_toggle_disposition: task.dialog_toggle_disposition,
-                        displaced_owner: displaced.then(|| Self {
-                            state: Rc::downgrade(&state),
-                        }),
-                    })
+                    Ok(ElementTaskRunOutcome::Native(
+                        DomElementTaskProgress::Complete {
+                            task: value,
+                            receipt,
+                            dialog_toggle_disposition: task.dialog_toggle_disposition,
+                            displaced_owner: displaced.then(|| Self {
+                                state: Rc::downgrade(&state),
+                            }),
+                        },
+                    ))
                 } else {
-                    Ok(DomElementTaskProgress::SkippedTargetDestroyed(value))
+                    Ok(ElementTaskRunOutcome::Native(
+                        DomElementTaskProgress::SkippedTargetDestroyed(value),
+                    ))
                 }
             }
-            ElementTaskStep::Retained(dispatch) => Ok(DomElementTaskProgress::Retained {
-                task: value,
-                dispatch,
-                displaced_owner: displaced.then(|| Self {
-                    state: Rc::downgrade(&state),
-                }),
-            }),
+            ElementTaskStep::Retained(dispatch) => Ok(ElementTaskRunOutcome::Native(
+                DomElementTaskProgress::Retained {
+                    task: value,
+                    dispatch,
+                    displaced_owner: displaced.then(|| Self {
+                        state: Rc::downgrade(&state),
+                    }),
+                },
+            )),
         }
     }
 }
@@ -1677,6 +1830,8 @@ enum ElementTaskStep {
     Complete,
     Destroyed,
     Retained(DomEventDispatchOutcome),
+    #[cfg(feature = "document-scripting")]
+    Selected(DomEventHostInvocation, Option<DomSourceEventRequest>),
 }
 struct ElementTaskRunning {
     state: Rc<RefCell<ElementTaskState>>,
