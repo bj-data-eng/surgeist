@@ -302,6 +302,59 @@ fn unloaded_media_rejects_reached_resource_effects_atomically() {
 }
 
 #[test]
+fn removing_media_from_a_document_requires_its_stable_state_steps() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let container = batch.create_element_ns(&document, Namespace::html(), "div");
+    let audio = batch.create_element_ns(&document, Namespace::html(), "audio");
+    let video = batch.create_element_ns(&document, Namespace::html(), "video");
+    let fragment = batch.create_fragment(&document);
+    let detached = batch.create_element_ns(&document, Namespace::html(), "audio");
+    batch.insert_before(&container, &document, None);
+    batch.insert_before(&audio, &container, None);
+    batch.insert_before(&video, &container, None);
+    batch.insert_before(&detached, &fragment, None);
+    let commit = apply(&mut dom, batch);
+    let container = commit.created(&container).unwrap().unwrap();
+    let audio = commit.created(&audio).unwrap().unwrap();
+    let video = commit.created(&video).unwrap().unwrap();
+    let detached = commit.created(&detached).unwrap().unwrap();
+    let cancel = AtomicBool::new(false);
+
+    let mut remove_detached = DomBatch::new();
+    remove_detached.detach(detached);
+    apply(&mut dom, remove_detached);
+    assert!(dom.snapshot().node(detached).unwrap().parent().is_none());
+
+    let before = dom.snapshot().stamp();
+    let usage = dom.usage();
+    for node in [audio, container] {
+        let mut batch = DomBatch::new();
+        batch.detach(node);
+        assert!(dom.apply(batch, &cancel).is_err());
+        assert_eq!(dom.snapshot().stamp(), before);
+        assert_eq!(dom.usage(), usage);
+    }
+    let limits = DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2);
+    let result = match dom.begin_source_edit(DomSourceEdit::detach(video), limits, &cancel) {
+        Ok(mut lease) => lease.advance(&cancel).map(drop),
+        Err(error) => Err(error),
+    };
+    assert!(result.is_err());
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert_eq!(dom.usage(), usage);
+    assert_eq!(
+        dom.snapshot().node(audio).unwrap().parent(),
+        Some(container)
+    );
+    assert_eq!(
+        dom.snapshot().node(video).unwrap().parent(),
+        Some(container)
+    );
+}
+
+#[test]
 fn source_media_creation_retains_its_exact_native_result() {
     let mut dom = dom();
     let mut batch = DomBatch::new();
