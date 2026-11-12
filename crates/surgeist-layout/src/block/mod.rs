@@ -652,18 +652,16 @@ where
 
 struct BlockPass<'input, Node, S: LayoutScalar> {
     active: Option<ActiveBlockPass<'input, Node, S>>,
-    positioned: Option<PositionedBlockPass<'input, Node, S>>,
-}
-
-struct PositionedBlockPass<'input, Node, S: LayoutScalar> {
-    flow: BlockFlow<'input, Node, S>,
-    constants: Constants<S>,
-    positioned: PositionedFlow<Node, S>,
+    positioned: Option<PositionedFlow<Node, S>>,
 }
 
 struct ActiveBlockPass<'input, Node, S: LayoutScalar> {
     flow: BlockFlow<'input, Node, S>,
     constants: Constants<S>,
+    in_flow: Option<InFlowPass<Node, S>>,
+}
+
+struct InFlowPass<Node, S: LayoutScalar> {
     traversal: InFlowTraversal<Node, S>,
     phase: BlockPassPhase<S>,
 }
@@ -679,7 +677,7 @@ enum BlockPassPhase<S: LayoutScalar> {
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
     fn has_work(&self) -> bool {
-        self.active.is_some() || self.positioned.is_some()
+        self.active.is_some()
     }
 
     fn advance<Tree, M>(
@@ -695,7 +693,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
                 return self.advance_positioned(tree);
             }
             let active = self.active.as_mut().expect("active Block pass");
-            match active
+            let in_flow = active.in_flow.as_mut().expect("in-flow Block pass");
+            match in_flow
                 .traversal
                 .step(tree, &active.flow.children, &active.constants)?
             {
@@ -719,18 +718,17 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        let pass = self.positioned.as_mut().expect("positioned Block pass");
+        let active = self.active.as_ref().expect("active Block pass");
+        let positioned = self.positioned.as_mut().expect("positioned Block pass");
         if let Some(child) =
-            pass.positioned
-                .next_child(tree, &pass.flow.children, &pass.constants)?
+            positioned.next_child(tree, &active.flow.children, &active.constants)?
         {
             return Ok(ControlFlow::Continue(BlockChild::Positioned(child)));
         }
-        let PositionedBlockPass {
-            flow,
-            constants,
-            positioned,
-        } = self
+        let ActiveBlockPass {
+            flow, constants, ..
+        } = self.active.take().expect("completed Block pass");
+        let positioned = self
             .positioned
             .take()
             .expect("completed positioned Block pass");
@@ -747,29 +745,31 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        let ActiveBlockPass {
-            flow,
-            constants,
-            traversal,
-            phase,
-        } = self.active.take().expect("completed Block pass");
+        let active = self.active.as_mut().expect("active Block pass");
+        let InFlowPass { traversal, phase } =
+            active.in_flow.take().expect("completed in-flow pass");
         let completed = traversal.finish(tree)?;
         let next = match phase {
             BlockPassPhase::Inline(measurement) => {
-                let extent = measurement.accept(&flow.constants, completed.intrinsic_inline_demand);
+                let extent =
+                    measurement.accept(&active.flow.constants, completed.intrinsic_inline_demand);
                 drop(completed);
-                flow.begin_inline_or_normal(tree, inherited, extent)?
+                let active = self.active.take().expect("completed inline pass");
+                active
+                    .flow
+                    .begin_inline_or_normal(tree, inherited, extent)?
             }
             BlockPassPhase::Normal(sizing) => {
                 let provisional = sizing.provisional_output_size(
-                    &flow.constants,
-                    &constants,
-                    flow.input,
+                    &active.flow.constants,
+                    &active.constants,
+                    active.flow.input,
                     &completed,
-                    flow.float_role,
+                    active.flow.float_role,
                 );
                 if sizing.needs_final_pass {
-                    flow.begin_final(
+                    let active = self.active.take().expect("completed normal pass");
+                    active.flow.begin_final(
                         tree,
                         inherited,
                         completed,
@@ -779,8 +779,6 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
                 } else {
                     return self.begin_completion(
                         tree,
-                        flow,
-                        constants,
                         completed,
                         provisional,
                         sizing.ratio_block_outer,
@@ -790,16 +788,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
             BlockPassPhase::Final {
                 provisional,
                 ratio_block_outer,
-            } => {
-                return self.begin_completion(
-                    tree,
-                    flow,
-                    constants,
-                    completed,
-                    provisional,
-                    ratio_block_outer,
-                );
-            }
+            } => return self.begin_completion(tree, completed, provisional, ratio_block_outer),
         };
         self.active = Some(next);
         Ok(None)
@@ -808,8 +797,6 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
     fn begin_completion<Tree, M>(
         &mut self,
         tree: &mut Tree,
-        flow: BlockFlow<'input, Node, S>,
-        constants: Constants<S>,
         completed: in_flow::InFlowResult<Node, S>,
         provisional: LogicalSizeOf<S>,
         ratio_block_outer: Option<S>,
@@ -817,20 +804,20 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        match flow.prepare_completion(
+        let active = self.active.as_ref().expect("active Block pass");
+        match active.flow.prepare_completion(
             tree,
-            &constants,
+            &active.constants,
             completed,
             provisional,
             ratio_block_outer,
         )? {
-            ControlFlow::Break(output) => Ok(Some(output)),
+            ControlFlow::Break(output) => {
+                self.active = None;
+                Ok(Some(output))
+            }
             ControlFlow::Continue(positioned) => {
-                self.positioned = Some(PositionedBlockPass {
-                    flow,
-                    constants,
-                    positioned,
-                });
+                self.positioned = Some(positioned);
                 Ok(None)
             }
         }
@@ -845,19 +832,20 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
+        let active = self.active.as_mut().expect("active Block pass");
         match pending {
-            PendingBlockChild::InFlow(child) => {
-                let active = self.active.as_mut().expect("active Block pass");
-                active
-                    .traversal
-                    .accept_child(tree, &active.constants, child, output)
-            }
-            PendingBlockChild::Positioned(child) => {
-                let pass = self.positioned.as_mut().expect("positioned Block pass");
-                pass.positioned
-                    .accept_child(tree, pass.flow.node, &pass.constants, child, output)
-                    .map_err(Into::into)
-            }
+            PendingBlockChild::InFlow(child) => active
+                .in_flow
+                .as_mut()
+                .expect("in-flow child resumes its owning pass")
+                .traversal
+                .accept_child(tree, &active.constants, child, output),
+            PendingBlockChild::Positioned(child) => self
+                .positioned
+                .as_mut()
+                .expect("positioned child resumes its owning pass")
+                .accept_child(tree, active.flow.node, &active.constants, child, output)
+                .map_err(Into::into),
         }
     }
 }
@@ -916,8 +904,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockFlow<'input, Node, S> {
                     return Ok(ActiveBlockPass {
                         flow: self,
                         constants,
-                        traversal,
-                        phase: BlockPassPhase::Inline(measurement),
+                        in_flow: Some(InFlowPass {
+                            traversal,
+                            phase: BlockPassPhase::Inline(measurement),
+                        }),
                     });
                 }
             }
@@ -971,8 +961,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockFlow<'input, Node, S> {
         Ok(ActiveBlockPass {
             flow: self,
             constants,
-            traversal,
-            phase: BlockPassPhase::Normal(sizing),
+            in_flow: Some(InFlowPass {
+                traversal,
+                phase: BlockPassPhase::Normal(sizing),
+            }),
         })
     }
 
@@ -1012,11 +1004,13 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockFlow<'input, Node, S> {
         Ok(ActiveBlockPass {
             flow: self,
             constants,
-            traversal,
-            phase: BlockPassPhase::Final {
-                provisional,
-                ratio_block_outer,
-            },
+            in_flow: Some(InFlowPass {
+                traversal,
+                phase: BlockPassPhase::Final {
+                    provisional,
+                    ratio_block_outer,
+                },
+            }),
         })
     }
 
