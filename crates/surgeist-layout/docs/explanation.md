@@ -167,12 +167,14 @@ reachable range, and the scroller's flow axes and active snap axis.
 Alignment roles follow the scroller's block and inline axes. When the
 area exceeds the snapport along the target's own inline axis, start and
 end use the target's edge directions. The aligned offsets are clamped to
-the reachable range.
+the reachable range. [WebKit alignment](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/page/scrolling/ScrollSnapOffsetsInfo.cpp#L420-L460)
 
 For an oversized axis, the covering interval intersects the offsets that
 keep the snapport within the area, the reachable range, and the gap between
 eligible adjacent offsets. A gap between two neighbors must exceed the
 snapport extent. An absent neighbor leaves that end of the gap open.
+Coverage bounds round inward to scalar offsets that keep the snapport inside
+the area.
 The scrolling consumer checks visibility at the final two-axis offset
 before selecting a destination. Shared boundary coordinates count as
 visible. [CSS Scroll Snap 1](https://www.w3.org/TR/2021/CR-css-scroll-snap-1-20210311/#scroll-snap-align)
