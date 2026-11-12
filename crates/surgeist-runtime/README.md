@@ -287,8 +287,10 @@ unreachable target and its listener cycle can retire together. Rust callers
 can inspect or control an authored Event through its borrowed native view.
 Host and guest initialization clear the same native target and guest reference.
 `DocumentScriptHost::service_attached_source_event` uses the transferred
-registry to deliver the original synchronous native event. A Dialog
-`beforetoggle` listener receives a `ToggleEvent` with the original readonly
+registry to deliver the original synchronous native event. A selected listener
+can dispatch an existing authored Event through the same registry.
+`Window.event` follows the inner listener and restores the outer event on return.
+A Dialog `beforetoggle` listener receives a `ToggleEvent` with the original readonly
 `oldState`, `newState` and `source` values. The interface inherits `Event`.
 Calling the authored constructor throws a `TypeError` in this profile.
 [Authored construction is tracked in #2643](https://github.com/bj-data-eng/surgeist/issues/2643).
