@@ -489,7 +489,15 @@ impl Draft {
             if matches!(original.kind(), transaction::KindRead::ShadowRoot(_)) {
                 return Err(DomError::NotSupported);
             }
-            if let Some(budget) = &formation {
+            // A text or comment is priced where it is shared, as an occurrence that lists the block
+            // it borrows, so that the block is charged once for the store and not again by the
+            // capacity of the occurrence.
+            if let Some(budget) = &formation
+                && !matches!(
+                    original.kind(),
+                    transaction::KindRead::Text(_) | transaction::KindRead::Comment(_)
+                )
+            {
                 budget.retain_payload(
                     source::storage::kind_read(original.kind(), || self.source_step(cancel))?,
                     cancel,
@@ -501,8 +509,12 @@ impl Draft {
                 | transaction::KindRead::Attr(_)
                 | transaction::KindRead::ShadowRoot(_) => return Err(DomError::WrongNodeKind),
                 transaction::KindRead::DocumentFragment => NewNode::DocumentFragment,
-                transaction::KindRead::Text(value) => NewNode::Text(value.clone()),
-                transaction::KindRead::Comment(value) => NewNode::Comment(value.clone()),
+                transaction::KindRead::Text(value) => NewNode::Text(
+                    source::formation::share_listed(value, formation.as_ref(), cancel)?,
+                ),
+                transaction::KindRead::Comment(value) => NewNode::Comment(
+                    source::formation::share_listed(value, formation.as_ref(), cancel)?,
+                ),
                 transaction::KindRead::ProcessingInstruction(value) => {
                     NewNode::ProcessingInstruction(value.clone())
                 }
