@@ -1116,8 +1116,8 @@ pub(crate) fn share(
     }
     Ok(value.clone())
 }
-/// Shares a string that a Text or Comment node holds, which lists its block: the string is priced by
-/// the occurrence rule, as the node's own payload prices it, and the store charges the block once.
+/// Shares a string whose owning node lists its block. The occurrence is priced
+/// as the node's payload prices it, and the store charges the block once.
 pub(crate) fn share_listed(
     value: &DocumentString,
     budget: Option<&Formation>,
