@@ -11,7 +11,7 @@ pub(in crate::store) enum Entry<'a> {
         before: Option<Key>,
     },
     Select {
-        target: Key,
+        targets: crate::select::TaskTargets<Key>,
     },
 }
 
@@ -261,9 +261,9 @@ impl Draft {
                     } => restore
                         .draft
                         .pre_insert(wrapper, parent, before, dom.limits, cancel),
-                    Entry::Select { target } => restore
+                    Entry::Select { targets } => restore
                         .draft
-                        .schedule_selectedcontent(target, dom.limits, cancel),
+                        .schedule_select_task(targets, dom.limits, cancel),
                 }
             })();
             while matches!(result, Err(DomError::FullscreenExitHandoffRequired)) {
@@ -829,11 +829,11 @@ mod tests {
                 &[
                     select::Pending::Update {
                         serial: None,
-                        target,
+                        targets: crate::select::TaskTargets::whole(target),
                     },
                     select::Pending::Update {
                         serial: Some(0),
-                        target,
+                        targets: crate::select::TaskTargets::whole(target),
                     },
                     select::Pending::MutationNotification,
                 ],
@@ -841,7 +841,14 @@ mod tests {
             )
             .unwrap();
         draft
-            .queue_cancelled_selects_insert(0, &[(None, f.select), (Some(1), f.select)], &cancel)
+            .queue_cancelled_selects_insert(
+                0,
+                &[
+                    (None, crate::select::TaskTargets::whole(f.select)),
+                    (Some(1), crate::select::TaskTargets::whole(f.select)),
+                ],
+                &cancel,
+            )
             .unwrap();
         draft.source_headroom = Some(Scan::new());
         draft.seed_headroom(&cancel).unwrap();
@@ -1058,8 +1065,14 @@ mod tests {
             );
             let created = draft.created.len();
             let live = draft.source_formation_bytes.load(Ordering::Relaxed);
-            let result =
-                draft.admit_source_command_headroom(&f.dom, Entry::Select { target }, 0, &cancel);
+            let result = draft.admit_source_command_headroom(
+                &f.dom,
+                Entry::Select {
+                    targets: crate::select::TaskTargets::whole(target),
+                },
+                0,
+                &cancel,
+            );
             // Cloning the actual Text into a fresh Style triggers one update.
             // Its association occurrence is fresh, even though the source Style
             // has exhausted its own independent occurrence counter.

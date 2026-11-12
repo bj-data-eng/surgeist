@@ -1110,7 +1110,7 @@ fn signal_target(key: Key) -> Option<Key> {
 }
 fn native_target(value: select::Pending) -> Option<Key> {
     match value {
-        select::Pending::Update { target, .. } => Some(target),
+        select::Pending::Update { targets, .. } => Some(targets.select),
         select::Pending::MutationNotification => None,
     }
 }
@@ -1126,9 +1126,9 @@ fn signal(value: &NodeId) -> Key {
 fn native(value: &select::Task<NodeId>) -> select::Pending {
     match *value {
         select::Task::MutationNotification => select::Pending::MutationNotification,
-        select::Task::Update { serial, target } => select::Pending::Update {
+        select::Task::Update { serial, targets } => select::Pending::Update {
             serial: Some(serial),
-            target: Key::Existing(target),
+            targets: targets.map(Key::Existing),
         },
     }
 }
@@ -1159,7 +1159,9 @@ fn detail_count<K>(value: details::Pending<K>) -> QueueCounts {
         unissued: u64::from(value.is_unissued()),
     }
 }
-fn cancelled_select_count(value: (Option<u64>, NodeId)) -> QueueCounts {
+type SelectCancellation = (Option<u64>, crate::select::TaskTargets<NodeId>);
+
+fn cancelled_select_count(value: SelectCancellation) -> QueueCounts {
     QueueCounts {
         selected: 1,
         unissued: u64::from(value.0.is_none()),
@@ -1206,9 +1208,9 @@ wrapper!(
 );
 wrapper!(
     CancelledSelects,
-    (Option<u64>, NodeId),
-    (Option<u64>, NodeId),
-    copy::<(Option<u64>, NodeId)>,
+    SelectCancellation,
+    SelectCancellation,
+    copy::<SelectCancellation>,
     cancelled_select_count
 );
 wrapper!(
@@ -1297,7 +1299,7 @@ capture_wrapper!(
 empty_wrapper!(CancelledSignals, copy::<NodeId>, one::<NodeId>);
 empty_wrapper!(
     CancelledSelects,
-    copy::<(Option<u64>, NodeId)>,
+    copy::<SelectCancellation>,
     cancelled_select_count
 );
 empty_wrapper!(
@@ -1343,7 +1345,7 @@ pub(in crate::store) enum QueueUndo {
     Native(QueueInverse<select::Task<NodeId>, select::Pending>),
     Details(QueueInverse<crate::DomDetailsToggleIntention, details::Pending<Key>>),
     CancelledSignals(QueueInverse<NodeId, NodeId>),
-    CancelledSelects(QueueInverse<(Option<u64>, NodeId), (Option<u64>, NodeId)>),
+    CancelledSelects(QueueInverse<SelectCancellation, SelectCancellation>),
     CancelledDetails(QueueInverse<details::Pending<NodeId>, details::Pending<NodeId>>),
 }
 impl QueueUndo {
@@ -1534,7 +1536,7 @@ insert_operation!(
 insert_operation!(
     queue_cancelled_selects_insert,
     cancelled_selects,
-    (Option<u64>, NodeId),
+    SelectCancellation,
     CancelledSelects
 );
 insert_operation!(
@@ -2725,7 +2727,7 @@ mod tests {
                 0,
                 &[select::Pending::Update {
                     serial: None,
-                    target,
+                    targets: crate::select::TaskTargets::whole(target),
                 }],
                 &cancel,
             )
@@ -3419,7 +3421,7 @@ mod tests {
                     select::Pending::MutationNotification,
                     select::Pending::Update {
                         serial: None,
-                        target,
+                        targets: crate::select::TaskTargets::whole(target),
                     },
                 ],
                 false,
@@ -3434,7 +3436,7 @@ mod tests {
             1,
             select::Pending::Update {
                 serial: Some(23),
-                target,
+                targets: crate::select::TaskTargets::whole(target),
             },
         );
         queue.apply_ack(ack, &PublicationCommitted::at_fence());
@@ -3446,7 +3448,10 @@ mod tests {
             queue.get(1),
             Some(select::Pending::Update {
                 serial: Some(23),
-                target: Key::Created(7)
+                targets: crate::select::TaskTargets {
+                    select: Key::Created(7),
+                    selectedcontent: None
+                }
             })
         ));
         assert_eq!(

@@ -1004,6 +1004,17 @@ impl DomSourceEdit {
             },
         }
     }
+    /// Move an existing node within its shadow-including root, preserving its
+    /// identity and running the dedicated native moving steps.
+    pub fn move_before(node: NodeId, parent: NodeId, before: Option<NodeId>) -> Self {
+        Self {
+            command: Command::MoveBefore {
+                node: node.into(),
+                parent: parent.into(),
+                before: before.map(crate::NodeOperand::Existing),
+            },
+        }
+    }
     /// Request one `detach` operation on the canonical owner.
     pub fn detach(node: NodeId) -> Self {
         Self {

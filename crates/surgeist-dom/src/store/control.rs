@@ -397,6 +397,26 @@ impl Draft {
         }
         Ok(())
     }
+    pub(super) fn control_moving_node(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if association(&self.node(key)?).is_some() {
+            self.reset_control_for(
+                key,
+                Trigger::RemovingOrMoving {
+                    has_owner: self.node(key)?.control_owner().is_some(),
+                },
+                cancel,
+            )?;
+        }
+        if self.has_control_id(key, cancel)? {
+            self.id_recipients(key, false, cancel)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn control_attribute_change(
         &mut self,
         key: Key,

@@ -1,6 +1,8 @@
 use super::transaction::KindRead;
 use super::*;
 
+mod movement;
+
 pub(super) struct Insertion {
     moving: select::ScratchVec<Key>,
     fragment: Option<Key>,
@@ -30,6 +32,13 @@ pub(super) enum AfterRemovingChildren {
     ReuseShadowRoot,
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum TreeHook {
+    Insert,
+    Remove { old_parent: Key },
+    Move { old_parent: Key },
+}
+
 pub(super) enum Frame {
     FullscreenRemoving {
         document: Key,
@@ -51,15 +60,16 @@ pub(super) enum Frame {
     },
     Walk {
         root: Key,
-        old_parent: Option<Key>,
+        hook: TreeHook,
         pending: source::effects::ScratchStack<Key>,
     },
     Node {
         key: Key,
         root: Key,
-        old_parent: Option<Key>,
+        hook: TreeHook,
         stage: u8,
     },
+    MoveRecords(movement::MoveRecords),
     AdoptAfterRemoval {
         node: Key,
         document: Key,
@@ -139,24 +149,25 @@ impl Frame {
             },
             Self::Walk {
                 root,
-                old_parent,
+                hook,
                 pending,
             } => Self::Walk {
                 root: *root,
-                old_parent: *old_parent,
+                hook: *hook,
                 pending: pending.clone(),
             },
             Self::Node {
                 key,
                 root,
-                old_parent,
+                hook,
                 stage,
             } => Self::Node {
                 key: *key,
                 root: *root,
-                old_parent: *old_parent,
+                hook: *hook,
                 stage: *stage,
             },
+            Self::MoveRecords(records) => Self::MoveRecords(*records),
             Self::AdoptAfterRemoval { node, document } => Self::AdoptAfterRemoval {
                 node: *node,
                 document: *document,
@@ -264,16 +275,17 @@ impl Draft {
         self.replace_all_children(key, after, limits, cancel)
     }
 
-    pub(super) fn shadow_connected(
-        &self,
-        mut key: Key,
-        cancel: &AtomicBool,
-    ) -> Result<bool, DomError> {
+    pub(super) fn shadow_connected(&self, key: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
+        let root = self.shadow_including_root(key, cancel)?;
+        Ok(matches!(self.node(root)?.kind(), KindRead::Document(_)))
+    }
+
+    fn shadow_including_root(&self, mut key: Key, cancel: &AtomicBool) -> Result<Key, DomError> {
         loop {
             self.effect_step(cancel)?;
             match self.shadow_including_parent(key)? {
                 Some(parent) => key = parent,
-                None => return Ok(matches!(self.node(key)?.kind(), KindRead::Document(_))),
+                None => return Ok(key),
             }
         }
     }
@@ -665,7 +677,7 @@ impl Draft {
         self.push_effect(
             select::Effect::Tree(Frame::Walk {
                 root,
-                old_parent: Some(old_parent),
+                hook: TreeHook::Remove { old_parent },
                 pending,
             }),
             self.effect_scoped,
@@ -963,12 +975,12 @@ impl Draft {
             }
             Frame::Walk {
                 root,
-                old_parent,
+                hook,
                 mut pending,
             } => {
                 if let Some(key) = pending.pop() {
                     #[cfg(test)]
-                    if old_parent.is_none()
+                    if matches!(hook, TreeHook::Insert)
                         && let Some(trace) = &mut self.insertion_trace
                     {
                         trace.visited += 1;
@@ -987,7 +999,7 @@ impl Draft {
                     self.push_effect(
                         select::Effect::Tree(Frame::Walk {
                             root,
-                            old_parent,
+                            hook,
                             pending,
                         }),
                         self.effect_scoped,
@@ -997,7 +1009,7 @@ impl Draft {
                         select::Effect::Tree(Frame::Node {
                             key,
                             root,
-                            old_parent,
+                            hook,
                             stage: 0,
                         }),
                         self.effect_scoped,
@@ -1008,10 +1020,12 @@ impl Draft {
             Frame::Node {
                 key,
                 root,
-                old_parent,
+                hook,
                 stage,
             } => {
-                if let Some(parent) = old_parent {
+                if let TreeHook::Move { old_parent } = hook {
+                    self.native_moving_node(key, root, old_parent, stage, limits, cancel)?;
+                } else if let TreeHook::Remove { old_parent: parent } = hook {
                     if stage == 0 {
                         self.source_step(cancel)?;
                         let node = self.node(key)?;
@@ -1046,7 +1060,7 @@ impl Draft {
                             select::Effect::Tree(Frame::Node {
                                 key,
                                 root,
-                                old_parent,
+                                hook,
                                 stage: stage + 1,
                             }),
                             self.effect_scoped,
@@ -1067,7 +1081,7 @@ impl Draft {
                         4 => self.control_removing_node(key, cancel)?,
                         5 => self.base_tree_change(key, limits, cancel)?,
                         6 => self.hyperlink_tree_change(key, Some(parent), cancel)?,
-                        7 => self.style_tree_change(key, old_parent, limits, cancel)?,
+                        7 => self.style_tree_change(key, Some(parent), limits, cancel)?,
                         9 => self.dialog_removal(key, limits, cancel)?,
                         8 => match self.node(key)?.kind() {
                             KindRead::Element(element) if element.is_meta() => {
@@ -1098,7 +1112,7 @@ impl Draft {
                             select::Effect::Tree(Frame::Node {
                                 key,
                                 root,
-                                old_parent,
+                                hook,
                                 stage: stage + 1,
                             }),
                             self.effect_scoped,
@@ -1224,7 +1238,7 @@ impl Draft {
                         self.push_effect(
                             select::Effect::Tree(Frame::Walk {
                                 root: child,
-                                old_parent: None,
+                                hook: TreeHook::Insert,
                                 pending,
                             }),
                             self.effect_scoped,
@@ -1267,6 +1281,7 @@ impl Draft {
             Frame::ReleaseMoving(frame) => {
                 self.queue_replacement_record(&frame, cancel)?;
             }
+            Frame::MoveRecords(records) => records.queue(self, cancel)?,
         }
         Ok(())
     }

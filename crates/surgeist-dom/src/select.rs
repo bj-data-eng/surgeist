@@ -110,9 +110,48 @@ pub struct DomNativeTaskId {
 pub enum DomSelectTaskCancellationReason {
     TargetDestroyed,
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct TaskTargets<K> {
+    pub(crate) select: K,
+    pub(crate) selectedcontent: Option<K>,
+}
+impl<K: Copy + PartialEq> TaskTargets<K> {
+    pub(crate) fn contains(self, key: K) -> bool {
+        self.select == key || self.selectedcontent == Some(key)
+    }
+}
+impl<K: Copy> TaskTargets<K> {
+    pub(crate) fn whole(select: K) -> Self {
+        Self {
+            select,
+            selectedcontent: None,
+        }
+    }
+
+    pub(crate) fn map<T>(self, mut map: impl FnMut(K) -> T) -> TaskTargets<T> {
+        TaskTargets {
+            select: map(self.select),
+            selectedcontent: self.selectedcontent.map(map),
+        }
+    }
+
+    pub(crate) fn try_map<T, E>(
+        self,
+        mut map: impl FnMut(K) -> Result<T, E>,
+    ) -> Result<TaskTargets<T>, E> {
+        Ok(TaskTargets {
+            select: map(self.select)?,
+            selectedcontent: self.selectedcontent.map(map).transpose()?,
+        })
+    }
+
+    pub(crate) fn any(self, mut predicate: impl FnMut(K) -> bool) -> bool {
+        predicate(self.select) || self.selectedcontent.is_some_and(predicate)
+    }
+}
 pub(crate) struct Authorization {
     pub(crate) id: DomNativeTaskId,
-    pub(crate) target: NodeId,
+    pub(crate) targets: TaskTargets<NodeId>,
     state: std::sync::atomic::AtomicU8,
     pub(crate) source: crate::DomSnapshot,
 }
@@ -125,10 +164,14 @@ impl Authorization {
             std::sync::atomic::Ordering::Acquire,
         );
     }
-    pub(crate) fn new(id: DomNativeTaskId, target: NodeId, source: crate::DomSnapshot) -> Self {
+    pub(crate) fn new(
+        id: DomNativeTaskId,
+        targets: TaskTargets<NodeId>,
+        source: crate::DomSnapshot,
+    ) -> Self {
         Self {
             id,
-            target,
+            targets,
             source,
             state: std::sync::atomic::AtomicU8::new(0),
         }
@@ -152,6 +195,7 @@ impl std::fmt::Debug for DomSelectTask {
         f.debug_struct("DomSelectTask")
             .field("operation", &self.operation())
             .field("select", &self.select())
+            .field("selectedcontent", &self.selectedcontent())
             .finish()
     }
 }
@@ -160,7 +204,11 @@ impl DomSelectTask {
         self.authorization.id
     }
     pub fn select(&self) -> NodeId {
-        self.authorization.target
+        self.authorization.targets.select
+    }
+    /// The captured target for a single-element update, when this task has one.
+    pub fn selectedcontent(&self) -> Option<NodeId> {
+        self.authorization.targets.selectedcontent
     }
     pub fn source(&self) -> &crate::DomSnapshot {
         &self.source
