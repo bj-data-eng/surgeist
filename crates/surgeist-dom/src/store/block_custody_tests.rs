@@ -579,3 +579,78 @@ fn a_parked_installation_draft_and_another_batch_charge_a_shared_block_once() {
     assert!(dom.custody_registry.block_listed(&block));
     assert!(total(&dom).units() >= block.capacity());
 }
+
+/// The custody total of a store whose document holds one element with an attribute for each of
+/// `values`, and the number of blocks it charges.
+fn total_with_attributes(values: &[DocumentString]) -> (custody::Usage, usize) {
+    let mut dom = dom();
+    let document = document(&mut dom);
+    let mut batch = crate::DomBatch::new();
+    let element = batch.create_element(document, "div");
+    for (index, value) in values.iter().enumerate() {
+        batch.set_attribute(&element, format!("data-{index}"), value.clone());
+    }
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    (total(&dom), dom.custody_registry.listed_blocks())
+}
+
+#[test]
+fn attributes_that_borrow_one_block_are_charged_by_length_and_the_block_once() {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let borrowed = [
+        block.string(0..4).unwrap(),
+        block.string(4..8).unwrap(),
+        block.string(2..6).unwrap(),
+    ];
+    let owners = [exact_owner(), exact_owner(), exact_owner()];
+    let ((shared, listed), (owned, none)) = (
+        total_with_attributes(&borrowed),
+        total_with_attributes(&owners),
+    );
+    // The block adds its capacity in units once, whatever the number of attributes.
+    assert_eq!(shared.units(), owned.units() + block.capacity());
+    assert_eq!((listed, none), (1, 0));
+    // A fourth attribute of the block adds its own length and no block.
+    let four = [
+        borrowed[0].clone(),
+        borrowed[1].clone(),
+        borrowed[2].clone(),
+        block.string(1..5).unwrap(),
+    ];
+    let more = [
+        owners[0].clone(),
+        owners[1].clone(),
+        owners[2].clone(),
+        exact_owner(),
+    ];
+    let ((shared, listed), (owned, _)) =
+        (total_with_attributes(&four), total_with_attributes(&more));
+    assert_eq!(shared.units(), owned.units() + block.capacity());
+    assert_eq!(listed, 1);
+}
+
+#[test]
+fn a_block_is_released_once_no_attribute_holds_it() {
+    let mut dom = dom();
+    let document = document(&mut dom);
+    let block = spare_block();
+    let mut batch = crate::DomBatch::new();
+    let element = batch.create_element(document, "div");
+    batch.set_attribute(&element, "data-a", block.string(0..4).unwrap());
+    batch.set_attribute(&element, "data-b", block.string(4..8).unwrap());
+    let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let node = done.created(&element).unwrap().unwrap();
+    assert!(dom.custody_registry.block_listed(&block));
+    drop(done);
+    drop(block);
+    // Removing one attribute leaves the block with the other.
+    let mut batch = crate::DomBatch::new();
+    batch.remove_attribute(node, "data-a");
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    assert_eq!(dom.custody_registry.listed_blocks(), 1);
+    let mut batch = crate::DomBatch::new();
+    batch.remove_attribute(node, "data-b");
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    assert_eq!(dom.custody_registry.listed_blocks(), 0);
+}
