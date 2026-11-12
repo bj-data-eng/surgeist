@@ -158,7 +158,9 @@ impl Capture {
                 let document = node
                     .owner_document()
                     .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                Ok((document, node.hosted_shadow_root()))
+                let root =
+                    node.reusable_shadow_root_with(native.properties().mode(), || events.step())?;
+                Ok((document, root))
             })?;
             if let Some(root) = existing
                 && let Some(projected) = public

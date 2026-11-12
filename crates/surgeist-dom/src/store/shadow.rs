@@ -76,9 +76,7 @@ impl Draft {
         let KindRead::ShadowRoot(state) = node.kind() else {
             return Err(DomError::WrongNodeKind);
         };
-        if !state.declarative() || state.mode() != init.properties.mode() {
-            return Err(DomError::NotSupported);
-        }
+        state.require_declarative_reuse(init.properties.mode())?;
         self.replace_all_children(
             root,
             AfterRemovingChildren::ReuseShadowRoot,

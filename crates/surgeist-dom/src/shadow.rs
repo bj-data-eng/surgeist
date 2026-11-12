@@ -58,6 +58,16 @@ pub struct DomShadowRootState {
     keep_custom_element_registry_null: bool,
 }
 impl DomShadowRootState {
+    pub(crate) fn require_declarative_reuse(
+        self,
+        mode: HtmlShadowRootMode,
+    ) -> Result<(), crate::DomError> {
+        if !self.declarative() || self.mode() != mode {
+            return Err(crate::DomError::NotSupported);
+        }
+        Ok(())
+    }
+
     pub(crate) fn clear_declarative(&mut self) {
         self.declarative = false;
     }
