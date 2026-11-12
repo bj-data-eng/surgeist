@@ -137,17 +137,17 @@ fn assert_alignment_direction<S: LayoutScalar>() {
         FlowAxes::new(WritingMode::VerticalRl, Direction::Rtl),
         ScrollSnapAlign::new(ScrollSnapAlignValue::End, ScrollSnapAlignValue::Start),
     );
-    for (width, height, expected_x, expected_y) in [
+    for (y, width, height, expected_x, expected_y) in [
         // Equality in the target inline axis retains the container's directions.
-        (20.0, 50.0, 50.0, -20.0),
+        (-30.0, 20.0, 50.0, 50.0, -20.0),
         // Oversized target block extent alone leaves directions unchanged.
-        (120.0, 50.0, 50.0, -20.0),
+        (-30.0, 120.0, 50.0, 50.0, -20.0),
         // Oversized target inline extent flips both physical directions.
-        (20.0, 90.0, -30.0, -20.0),
+        (120.0, 20.0, 90.0, -30.0, 100.0),
     ] {
         let geometry = target
             .snap_geometry_in_scroller(
-                rect(60.0, -30.0, width, height),
+                rect(60.0, y, width, height),
                 snap_context(ScrollSnapAxis::Both),
             )
             .unwrap()
@@ -277,4 +277,209 @@ fn assert_unreachable_snap_offset<S: LayoutScalar>() {
 fn snap_alignment_clamps_unreachable_offsets_without_creating_coverage() {
     assert_unreachable_snap_offset::<f32>();
     assert_unreachable_snap_offset::<f64>();
+}
+
+fn assert_snap_outset_cancellation<S: LayoutScalar>(maximum: S) {
+    let border = rect::<S>(-maximum.to_f64(), 0.0, maximum.to_f64(), 1.0);
+    for (right, expected) in [(-S::ONE, None), (S::ONE, Some(rect(0.0, 0.0, 1.0, 1.0)))] {
+        let margin = ScrollMarginOf::try_new(S::ZERO, right, S::ZERO, -maximum).unwrap();
+        assert_eq!(target(margin).snap_area_in_scroller(border), Ok(expected));
+    }
+}
+
+#[test]
+fn snap_outsets_keep_small_signed_width_after_cancellation() {
+    assert_snap_outset_cancellation(f32::MAX);
+    assert_snap_outset_cancellation(f64::MAX);
+}
+
+fn assert_snap_outset_inversion<S: LayoutScalar>(maximum: S) {
+    let margin = ScrollMarginOf::try_new(S::ZERO, -maximum, S::ZERO, -maximum).unwrap();
+    assert_eq!(
+        target(margin).snap_area_in_scroller(rect(0.0, 0.0, 0.0, 1.0)),
+        Ok(None),
+    );
+}
+
+#[test]
+fn snap_outsets_report_inversion_when_negative_extent_exceeds_scalar_range() {
+    assert_snap_outset_inversion(f32::MAX);
+    assert_snap_outset_inversion(f64::MAX);
+}
+
+fn assert_snap_outset_rounding<S: LayoutScalar>(smallest: S) {
+    let half_ulp = S::EPSILON / S::from_f64(2.0);
+    let margin = ScrollMarginOf::try_new(S::ZERO, half_ulp, S::ZERO, smallest).unwrap();
+    let area = target(margin)
+        .snap_area_in_scroller(rect(0.0, 0.0, 1.0, 1.0))
+        .unwrap()
+        .unwrap();
+    assert_eq!(area.size().width, S::ONE + S::EPSILON);
+}
+
+#[test]
+fn snap_outsets_round_above_the_midpoint_with_a_subnormal_contribution() {
+    assert_snap_outset_rounding(f32::from_bits(1));
+    assert_snap_outset_rounding(f64::from_bits(1));
+}
+
+fn horizontal_snap<S: LayoutScalar>(
+    alignment: ScrollSnapAlignValue,
+    area: ScrollRectOf<S>,
+    snapport: ScrollRectOf<S>,
+    reachable: (f64, f64),
+) -> crate::ScrollSnapGeometryOf<S> {
+    let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let target = configured_target(
+        ScrollMarginOf::default(),
+        axes,
+        ScrollSnapAlign::new(ScrollSnapAlignValue::None, alignment),
+    );
+    let range = PhysicalScrollRangeOf::try_new(
+        S::from_f64(reachable.0),
+        S::from_f64(reachable.1),
+        S::ZERO,
+        S::ZERO,
+    )
+    .unwrap();
+    target
+        .snap_geometry_in_scroller(
+            area,
+            ScrollSnapContextOf::new(snapport, range, axes, ScrollSnapAxis::X),
+        )
+        .unwrap()
+        .unwrap()
+}
+
+fn assert_snap_gap<S: LayoutScalar>(p: f64) {
+    let geometry = horizontal_snap::<S>(
+        ScrollSnapAlignValue::Start,
+        rect(0.0, 0.0, 2.0 * p, 1.0),
+        rect(0.0, 0.0, p, 1.0),
+        (-1.0, p),
+    );
+    let axis = PhysicalAxis::Horizontal;
+    assert_eq!(
+        geometry.covering_offsets(axis, Some(S::ZERO), Some(S::from_f64(p))),
+        Ok(None)
+    );
+    let coverage = geometry
+        .covering_offsets(axis, Some(-S::ONE), Some(S::from_f64(p)))
+        .unwrap()
+        .unwrap();
+    assert_eq!(coverage.minimum(), S::ZERO);
+    assert_eq!(coverage.maximum(), S::from_f64(p));
+}
+
+#[test]
+fn snap_gap_comparison_keeps_the_distance_beyond_the_snapport_extent() {
+    assert_snap_gap::<f32>(16_777_216.0);
+    assert_snap_gap::<f64>(9_007_199_254_740_992.0);
+}
+
+fn assert_snap_relative_center<S: LayoutScalar>(p: f64) {
+    let geometry = horizontal_snap::<S>(
+        ScrollSnapAlignValue::Center,
+        rect(p + 2.0, 0.0, 2.0, 1.0),
+        rect(p, 0.0, 2.0, 1.0),
+        (0.0, 4.0),
+    );
+    assert_eq!(
+        geometry.aligned_offset(PhysicalAxis::Horizontal),
+        Some(S::from_f64(2.0)),
+    );
+}
+
+#[test]
+fn snap_center_alignment_uses_relative_centers() {
+    assert_snap_relative_center::<f32>(16_777_216.0);
+    assert_snap_relative_center::<f64>(9_007_199_254_740_992.0);
+}
+
+fn assert_snap_subnormal_center<S: LayoutScalar>(smallest: S) {
+    let unit = smallest.to_f64();
+    let geometry = horizontal_snap::<S>(
+        ScrollSnapAlignValue::Center,
+        rect(0.0, 0.0, 3.0 * unit, 1.0),
+        rect(0.0, 0.0, unit, 1.0),
+        (0.0, 3.0 * unit),
+    );
+    assert_eq!(
+        geometry.aligned_offset(PhysicalAxis::Horizontal),
+        Some(smallest)
+    );
+}
+
+#[test]
+fn snap_center_alignment_keeps_half_subnormal_terms_until_subtraction() {
+    assert_snap_subnormal_center(f32::from_bits(1));
+    assert_snap_subnormal_center(f64::from_bits(1));
+}
+
+fn assert_snap_relative_end<S: LayoutScalar>(p: f64) {
+    let geometry = horizontal_snap::<S>(
+        ScrollSnapAlignValue::End,
+        rect(0.0, 0.0, 2.0, 1.0),
+        rect(p, 0.0, 1.0, 1.0),
+        (-p, 0.0),
+    );
+    let axis = PhysicalAxis::Horizontal;
+    let end = S::from_f64(-p + 1.0);
+    let coverage = geometry
+        .covering_offsets(axis, None, None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (
+            geometry.aligned_offset(axis),
+            coverage.minimum(),
+            coverage.maximum()
+        ),
+        (Some(end), S::from_f64(-p), end),
+    );
+}
+
+#[test]
+fn snap_end_alignment_and_coverage_preserve_the_snapport_extent() {
+    assert_snap_relative_end::<f32>(16_777_216.0);
+    assert_snap_relative_end::<f64>(9_007_199_254_740_992.0);
+}
+
+fn assert_snap_coverage_uses_representable_offsets<S: LayoutScalar>(p: f64) {
+    let geometry = horizontal_snap::<S>(
+        ScrollSnapAlignValue::Start,
+        rect(p, 0.0, 2.0, 1.0),
+        rect(-0.5, 0.0, 1.0, 1.0),
+        (p, p + 2.0),
+    );
+    // The mathematical interval is [p + 0.5, p + 1.5]. Neither scalar
+    // offset bordering this interval keeps the snapport inside the area.
+    assert_eq!(
+        geometry.covering_offsets(PhysicalAxis::Horizontal, None, None),
+        Ok(None)
+    );
+}
+
+#[test]
+fn snap_coverage_excludes_offsets_rounded_outside_the_interval() {
+    assert_snap_coverage_uses_representable_offsets::<f32>(16_777_216.0);
+    assert_snap_coverage_uses_representable_offsets::<f64>(9_007_199_254_740_992.0);
+}
+
+fn assert_snap_visibility_at_large_offset<S: LayoutScalar>(p: f64) {
+    let geometry = horizontal_snap::<S>(
+        ScrollSnapAlignValue::End,
+        rect(0.5, 0.0, 0.5, 1.0),
+        rect(p, 0.0, 1.0, 1.0),
+        (-p - 2.0, 0.0),
+    );
+    let offset = |x| PhysicalScrollOffsetOf::try_new(S::from_f64(x), S::ZERO).unwrap();
+    assert!(geometry.is_visible_at(offset(-p)));
+    assert!(!geometry.is_visible_at(offset(-p - 2.0)));
+}
+
+#[test]
+fn snap_visibility_preserves_the_snapport_extent_after_translation() {
+    assert_snap_visibility_at_large_offset::<f32>(16_777_216.0);
+    assert_snap_visibility_at_large_offset::<f64>(9_007_199_254_740_992.0);
 }
