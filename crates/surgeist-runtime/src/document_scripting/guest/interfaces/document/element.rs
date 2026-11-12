@@ -550,8 +550,7 @@ impl Capture {
                             .ok_or(DocumentScriptNativeError::ProjectionCustody)?,
                     ),
                     ElementMember::ShadowRoot => {
-                        events.step()?;
-                        ElementObservation::ShadowRoot(node.shadow_root())
+                        ElementObservation::ShadowRoot(node.shadow_root_with(|| events.step())?)
                     }
                 })
             })?;
