@@ -113,6 +113,47 @@ impl From<crate::DomHostedRuntimeError> for DomEventConstructionError {
 struct InitializedEvent {
     event_type: DomEventType,
     init: DomEventInit,
+    toggle: Option<DomToggleEvent>,
+}
+
+#[cfg(feature = "document-scripting")]
+pub(crate) struct AuthoredToggleInit<'text> {
+    pub(crate) event: DomEventInit,
+    pub(crate) old_state: &'text [u16],
+    pub(crate) new_state: &'text [u16],
+    pub(crate) source: Option<NodeId>,
+}
+
+#[cfg(feature = "document-scripting")]
+impl DomToggleEvent {
+    pub(super) fn retain(
+        storage: &EventStorage,
+        dom: &mut DomEventDom<'_>,
+        init: &AuthoredToggleInit<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomEventDispatchError> {
+        if let Some(source) = init.source
+            && dom
+                .snapshot()
+                .node_with(source, || storage.step(1, cancel))?
+                .as_element()
+                .is_none()
+        {
+            return Err(DomError::WrongNodeKind.into());
+        }
+        let state = |dom: &mut DomEventDom<'_>, units: &[u16]| {
+            if units.is_empty() {
+                Ok(EventText::Static(&[]))
+            } else {
+                EventText::retain(storage, dom, units, cancel)
+            }
+        };
+        Ok(Self {
+            old_state: state(dom, init.old_state)?,
+            new_state: state(dom, init.new_state)?,
+            source: init.source,
+        })
+    }
 }
 
 impl NativeDomEvent {
@@ -130,7 +171,36 @@ impl NativeDomEvent {
             dom,
             storage,
             creation,
-            Some(InitializedEvent { event_type, init }),
+            Some(InitializedEvent {
+                event_type,
+                init,
+                toggle: None,
+            }),
+            cancel,
+        )
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn authored_toggle(
+        dom: &mut DomEventDom<'_>,
+        storage: EventStorage,
+        creation: crate::dom_lifecycle::EventCreation,
+        event_type: &[u16],
+        init: AuthoredToggleInit<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomEventDispatchError> {
+        storage.step(1, cancel)?;
+        let event_type = DomEventType::retain(&storage, dom, event_type, cancel)?;
+        let toggle = DomToggleEvent::retain(&storage, dom, &init, cancel)?;
+        Self::allocate(
+            dom,
+            storage,
+            creation,
+            Some(InitializedEvent {
+                event_type,
+                init: init.event,
+                toggle: Some(toggle),
+            }),
             cancel,
         )
     }
@@ -159,9 +229,9 @@ impl NativeDomEvent {
                 _retained: allocation,
             },
         });
-        let (event_type, init) = initialized.map_or_else(
-            || (None, DomEventInit::default()),
-            |event| (Some(event.event_type), event.init),
+        let (event_type, init, toggle) = initialized.map_or_else(
+            || (None, DomEventInit::default(), None),
+            |event| (Some(event.event_type), event.init, event.toggle),
         );
         Ok(Self(
             Rc::new(Event {
@@ -170,7 +240,7 @@ impl NativeDomEvent {
                 init: Cell::new(init),
                 trusted: Cell::new(false),
                 creation: Ok(creation.into_observation()),
-                toggle: None,
+                toggle,
                 #[cfg(feature = "document-scripting")]
                 attached_projection: RefCell::new(None),
                 storage,

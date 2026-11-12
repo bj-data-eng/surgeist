@@ -150,7 +150,11 @@ fn attached_registry_runs_the_original_queued_details_toggle() {
         let data = native.toggle_event().unwrap();
         assert_eq!(
             (data.old_state(), data.new_state(), data.source()),
-            ("closed", "open", None)
+            (
+                "closed".encode_utf16().collect::<Vec<_>>().as_slice(),
+                "open".encode_utf16().collect::<Vec<_>>().as_slice(),
+                None
+            )
         );
         assert!(native.current_target().is_none());
     }

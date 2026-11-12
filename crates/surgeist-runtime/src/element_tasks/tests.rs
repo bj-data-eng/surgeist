@@ -166,7 +166,7 @@ fn record() -> DomEventCallback<Context> {
         // records callback unwinds instead of allowing them to hide test failures.
         context.log.push((
             event.current_target().unwrap().node().unwrap(),
-            *event.toggle_event().unwrap(),
+            event.toggle_event().unwrap().clone(),
             event.phase(),
         ));
         Ok(())
@@ -353,8 +353,14 @@ fn completed_details_dispatch_retains_dead_index_backing_in_its_actual_storage_c
     assert_eq!(receipt.callbacks(), 1);
     assert_eq!(c.log.len(), 1);
     assert_eq!(c.log[0].0, target);
-    assert_eq!(c.log[0].1.old_state(), "closed");
-    assert_eq!(c.log[0].1.new_state(), "open");
+    assert_eq!(
+        c.log[0].1.old_state(),
+        "closed".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        c.log[0].1.new_state(),
+        "open".encode_utf16().collect::<Vec<_>>()
+    );
     drop(receipt);
     assert_eq!(c.element_tasks.pending_total_tasks().unwrap(), 0);
     assert!(dom.dom().pending_source_edit().is_none());
@@ -384,7 +390,7 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
             DomEventCallback::new(move |dom, _, c: &mut Context, event| {
                 c.log.push((
                     event.current_target().unwrap().node().unwrap(),
-                    *event.toggle_event().unwrap(),
+                    event.toggle_event().unwrap().clone(),
                     event.phase(),
                 ));
                 if c.reenter {
@@ -463,9 +469,13 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
     assert_eq!(
         c.log
             .iter()
-            .map(|(_, event, _)| (event.old_state(), event.new_state()))
+            .map(|(_, event, _)| (
+                String::from_utf16(event.old_state()).unwrap(),
+                String::from_utf16(event.new_state()).unwrap()
+            ))
             .collect::<Vec<_>>(),
-        vec![("closed", "open"), ("closed", "closed"), ("closed", "open")]
+        [("closed", "open"), ("closed", "closed"), ("closed", "open")]
+            .map(|(old, new)| (old.to_owned(), new.to_owned()))
     );
     // With all prior tasks finished, a new transition has no tracked old state.
     // It must use this actual Open→Closed transition, not the earlier Closed.
@@ -483,11 +493,25 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
     assert_eq!(c.log.len(), 4);
     assert_eq!(
         c.log[3].1.old_state(),
-        fresh_close.details().unwrap().event().old_state().as_str()
+        fresh_close
+            .details()
+            .unwrap()
+            .event()
+            .old_state()
+            .as_str()
+            .encode_utf16()
+            .collect::<Vec<_>>()
     );
     assert_eq!(
         c.log[3].1.new_state(),
-        fresh_close.details().unwrap().event().new_state().as_str()
+        fresh_close
+            .details()
+            .unwrap()
+            .event()
+            .new_state()
+            .as_str()
+            .encode_utf16()
+            .collect::<Vec<_>>()
     );
     assert_eq!(c.log[3].1.source(), None);
     assert_eq!(
@@ -612,7 +636,7 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
             DomEventType::TOGGLE,
             DomEventCallback::new(move |dom, _, c: &mut Context, event| {
                 c.log
-                    .push((a, *event.toggle_event().unwrap(), event.phase()));
+                    .push((a, event.toggle_event().unwrap().clone(), event.phase()));
                 let mut batch = DomBatch::new();
                 batch.detach(a);
                 batch.destroy(a);
@@ -800,7 +824,7 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
             DomEventType::TOGGLE,
             DomEventCallback::new(move |_dom, _, c: &mut Context, event| {
                 c.log
-                    .push((a, *event.toggle_event().unwrap(), event.phase()));
+                    .push((a, event.toggle_event().unwrap().clone(), event.phase()));
                 let (replacement_session, _, _, _) = fixture();
                 let replacement = replacement_session.element_task_execution();
                 c.replacement_session = Some(replacement_session);
@@ -1072,7 +1096,7 @@ fn accessor_unwind_after_completed_dispatch_keeps_actual_receipt_and_releases_ru
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.log.push((
                     event.current_target().unwrap().node().unwrap(),
-                    *event.toggle_event().unwrap(),
+                    event.toggle_event().unwrap().clone(),
                     event.phase(),
                 ));
                 context.panic_next_access = true;

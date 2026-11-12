@@ -202,9 +202,9 @@ fn accepted_toggle_reports_exact_retired_or_surviving_cleanup_after_later_once_l
             assert_eq!(event.kind, DomEventType::TOGGLE);
             assert_eq!(event.target, Some(subject));
             assert_eq!(event.current, Some(DomEventTarget::Node(subject)));
-            let payload = event.payload.unwrap();
-            assert_eq!(payload.old_state(), "open");
-            assert_eq!(payload.new_state(), "closed");
+            let payload = event.payload.as_ref().unwrap();
+            assert_eq!(String::from_utf16(payload.old_state()).unwrap(), "open");
+            assert_eq!(String::from_utf16(payload.new_state()).unwrap(), "closed");
             assert_eq!(payload.source(), None);
             assert!(!event.cancelable);
         }

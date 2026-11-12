@@ -290,10 +290,11 @@ Host and guest initialization clear the same native target and guest reference.
 registry to deliver the original synchronous native event. A selected listener
 can dispatch an existing authored Event through the same registry.
 `Window.event` follows the inner listener and restores the outer event on return.
-A Dialog `beforetoggle` listener receives a `ToggleEvent` with the original readonly
-`oldState`, `newState` and `source` values. The interface inherits `Event`.
-Calling the authored constructor throws a `TypeError` in this profile.
-[Authored construction is tracked in #2643](https://github.com/bj-data-eng/surgeist/issues/2643).
+The Window exposes `ToggleEvent` with inherited `Event` operations and readonly
+`oldState`, `newState` and `source` getters. Authored construction preserves the
+exact UTF-16 states and the original Element identity. The source getter
+retargets that Element against the current invocation target. Native Details
+and Dialog notifications keep their original state values and null source.
 `DocumentScriptHost::run_attached_element_task` delivers queued Details and
 Dialog events through their original task bank. A retained delivery can be
 resumed at the same cursor. Task completion runs the native queue cleanup.

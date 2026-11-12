@@ -579,8 +579,14 @@ fn assert_abandoned_details_row(
     assert_eq!(event.phase(), DomEventPhase::None);
     assert!(event.composed_path().next().is_none());
     let toggle = event.toggle_event().unwrap();
-    assert_eq!(toggle.old_state(), "closed");
-    assert_eq!(toggle.new_state(), "open");
+    assert_eq!(
+        toggle.old_state(),
+        "closed".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        toggle.new_state(),
+        "open".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(
         held.path.as_mut().unwrap().by_ref().collect::<Vec<_>>(),
         expected_path.map(crate::DomEventTarget::Node),

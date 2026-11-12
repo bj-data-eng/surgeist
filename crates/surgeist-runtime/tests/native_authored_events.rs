@@ -1036,7 +1036,7 @@ fn native_toggle_payload_and_receipt_survive_ordinary_body_reinitialization() {
     };
     assert_eq!(context.calls, 1);
     let event = context.observed.take().unwrap();
-    let payload = *event.toggle_event().unwrap();
+    let payload = event.toggle_event().unwrap().clone();
     let creation = *event.creation().unwrap();
     assert_eq!(creation.global(), top.global());
     let original_receipt_type = receipt.event_type();

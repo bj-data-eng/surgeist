@@ -110,8 +110,14 @@ fn shown_and_initial_toggle_delivered(
             DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, context: &mut QueueContext, event| {
                 let payload = event.toggle_event().unwrap();
-                assert_eq!(payload.old_state(), "closed");
-                assert_eq!(payload.new_state(), "open");
+                assert_eq!(
+                    payload.old_state(),
+                    "closed".encode_utf16().collect::<Vec<_>>()
+                );
+                assert_eq!(
+                    payload.new_state(),
+                    "open".encode_utf16().collect::<Vec<_>>()
+                );
                 assert_eq!(payload.source(), None);
                 context.delivered.push(DomEventType::TOGGLE);
                 Ok(())
@@ -217,8 +223,14 @@ fn deliver_closed_tasks(session: &mut DomSession, top: DomHostedTopLevel, subjec
                         assert!(event.toggle_event().is_none());
                     } else {
                         let payload = event.toggle_event().unwrap();
-                        assert_eq!(payload.old_state(), "open");
-                        assert_eq!(payload.new_state(), "closed");
+                        assert_eq!(
+                            payload.old_state(),
+                            "open".encode_utf16().collect::<Vec<_>>()
+                        );
+                        assert_eq!(
+                            payload.new_state(),
+                            "closed".encode_utf16().collect::<Vec<_>>()
+                        );
                         assert_eq!(payload.source(), None);
                     }
                     context.delivered.push(kind.clone());

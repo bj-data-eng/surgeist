@@ -288,7 +288,7 @@ fn observe(event: &NativeDomEvent) -> EventObservation {
         kind: event.event_type(),
         target: event.target().and_then(|target| target.node()),
         current: event.current_target(),
-        payload: event.toggle_event().copied(),
+        payload: event.toggle_event().cloned(),
         creation: event.creation().copied(),
         path: event.composed_path().collect(),
         bubbles: event.bubbles(),
@@ -428,9 +428,15 @@ fn assert_before(event: &EventObservation, subject: NodeId) {
     assert!(!event.cancelable);
     assert!(!event.bubbles);
     assert!(!event.prevented);
-    let toggle = event.payload.unwrap();
-    assert_eq!(toggle.old_state(), "open");
-    assert_eq!(toggle.new_state(), "closed");
+    let toggle = event.payload.as_ref().unwrap();
+    assert_eq!(
+        toggle.old_state(),
+        "open".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        toggle.new_state(),
+        "closed".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(toggle.source(), None);
 }
 
@@ -618,9 +624,12 @@ fn close_result_matrix_and_user_interaction_first_delivery_preserve_toggle_track
         assert_eq!(context.delivered.len(), 2);
         let observed = &context.delivered[1];
         assert_eq!(observed.kind, DomEventType::TOGGLE);
-        let event = observed.payload.unwrap();
-        assert_eq!(event.old_state(), "open");
-        assert_eq!(event.new_state(), "closed");
+        let event = observed.payload.as_ref().unwrap();
+        assert_eq!(event.old_state(), "open".encode_utf16().collect::<Vec<_>>());
+        assert_eq!(
+            event.new_state(),
+            "closed".encode_utf16().collect::<Vec<_>>()
+        );
         assert_eq!(event.source(), None);
         let html = closed.node(top.document().node()).unwrap().children()[0];
         let expected_path = [
@@ -880,8 +889,14 @@ fn hosted_dialog_toggle_and_close_keep_original_creation_across_retained_deliver
     };
     assert_eq!(toggle_capture.kind, DomEventType::TOGGLE);
     assert_eq!(toggle_target.kind, DomEventType::TOGGLE);
-    assert_eq!(toggle_target.payload.unwrap().old_state(), "open");
-    assert_eq!(toggle_target.payload.unwrap().new_state(), "closed");
+    assert_eq!(
+        toggle_target.payload.as_ref().unwrap().old_state(),
+        "open".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        toggle_target.payload.as_ref().unwrap().new_state(),
+        "closed".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(close_capture.kind, DomEventType::CLOSE);
     assert_eq!(close_target.kind, DomEventType::CLOSE);
     assert_eq!(close_target.payload, None);
@@ -1655,9 +1670,15 @@ fn completed_show_then_close_replaces_toggle_with_equal_states_but_keeps_plain_c
     );
     assert_eq!(context.delivered.len(), 1);
     assert_eq!(context.delivered[0].kind, DomEventType::TOGGLE);
-    let event = context.delivered[0].payload.unwrap();
-    assert_eq!(event.old_state(), "closed");
-    assert_eq!(event.new_state(), "closed");
+    let event = context.delivered[0].payload.as_ref().unwrap();
+    assert_eq!(
+        event.old_state(),
+        "closed".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        event.new_state(),
+        "closed".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(event.source(), None);
     assert_eq!(
         session

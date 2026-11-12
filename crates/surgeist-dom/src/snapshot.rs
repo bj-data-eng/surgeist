@@ -87,6 +87,29 @@ impl DomSnapshot {
             node,
         })
     }
+
+    /// Retarget a node against an invocation node, or against a non-Node target
+    /// when `against` is absent. Every topology lookup uses the supplied meter.
+    pub fn retarget_node_with<E: From<DomError>>(
+        &self,
+        source: NodeId,
+        against: Option<NodeId>,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<NodeId, E> {
+        let mut candidate = self.node_with(source, &mut step)?;
+        loop {
+            let root = candidate.root_with(false, &mut step)?;
+            let Some(shadow) = root.as_shadow_root() else {
+                return Ok(candidate.id());
+            };
+            if let Some(against) = against
+                && root.is_shadow_including_inclusive_ancestor_with(against, &mut step)?
+            {
+                return Ok(candidate.id());
+            }
+            candidate = self.node_with(shadow.host(), &mut step)?;
+        }
+    }
     pub fn document(&self, id: DocumentId) -> Result<DomDocument<'_>, DomError> {
         if !matches!(self.node(id.node())?.kind(), DomNodeKind::Document(_)) {
             return Err(DomError::WrongNodeKind);
@@ -425,9 +448,16 @@ impl<'a> DomNode<'a> {
         self,
         other: NodeId,
     ) -> Result<bool, DomError> {
+        self.is_shadow_including_inclusive_ancestor_with(other, || Ok(()))
+    }
+    fn is_shadow_including_inclusive_ancestor_with<E: From<DomError>>(
+        self,
+        other: NodeId,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
         let mut next = Some(other);
         while let Some(id) = next {
-            let node = self.snapshot.node(id)?;
+            let node = self.snapshot.node_with(id, &mut step)?;
             if self.id == id {
                 return Ok(true);
             }

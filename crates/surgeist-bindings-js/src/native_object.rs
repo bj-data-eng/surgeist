@@ -89,11 +89,36 @@ impl<'scope> Scope<'scope> {
         payload: T,
         admit: impl FnOnce(usize) -> Result<Storage, E>,
     ) -> Result<Value<'scope>, E> {
+        self.project_payload(prototype, payload, None, admit)
+    }
+
+    /// Project a native object with one engine-traced reference already set.
+    /// The reference must be an object. If it cannot be installed, the weak
+    /// native entry is never published and its admitted backing is released.
+    pub fn project_native_object_with_reference<T: 'static, Storage: 'static, E: From<Error>>(
+        &mut self,
+        prototype: ObjectPrototype<'_, 'scope>,
+        payload: T,
+        slot: u32,
+        reference: &Value<'scope>,
+        admit: impl FnOnce(usize) -> Result<Storage, E>,
+    ) -> Result<Value<'scope>, E> {
+        self.project_payload(prototype, payload, Some((slot, &reference.root)), admit)
+    }
+
+    fn project_payload<T: 'static, Storage: 'static, E: From<Error>>(
+        &mut self,
+        prototype: ObjectPrototype<'_, 'scope>,
+        payload: T,
+        reference: Option<(u32, &crate::Root)>,
+        admit: impl FnOnce(usize) -> Result<Storage, E>,
+    ) -> Result<Value<'scope>, E> {
         self.check_active()?;
         let backing = admit(self.native_projection_bytes::<T, Storage>()?)?;
         let root = self.operations.project_native_object(
             prototype.input(),
             Rc::new(NativeObject::new(payload, backing)),
+            reference,
         )?;
         Ok(self.value(root))
     }

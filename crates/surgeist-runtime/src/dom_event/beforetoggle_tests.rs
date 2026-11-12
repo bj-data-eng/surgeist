@@ -54,7 +54,7 @@ fn listener(label: u8, prevent: bool) -> DomEventCallback<Vec<Seen>> {
             label,
             current: event.current_target().unwrap(),
             phase: event.phase(),
-            payload: *event.toggle_event().unwrap(),
+            payload: event.toggle_event().unwrap().clone(),
             canceled: event.default_prevented(),
             cancelable: event.cancelable(),
             bubbles: event.bubbles(),
@@ -65,8 +65,14 @@ fn listener(label: u8, prevent: bool) -> DomEventCallback<Vec<Seen>> {
 }
 fn assert_show_payload(log: &[Seen]) {
     for observation in log {
-        assert_eq!(observation.payload.old_state(), "closed");
-        assert_eq!(observation.payload.new_state(), "open");
+        assert_eq!(
+            observation.payload.old_state(),
+            "closed".encode_utf16().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            observation.payload.new_state(),
+            "open".encode_utf16().collect::<Vec<_>>()
+        );
         assert_eq!(observation.payload.source(), None);
         assert!(observation.cancelable);
         assert!(!observation.bubbles && !observation.composed);
@@ -175,8 +181,14 @@ fn noncancelable_details_toggle_ignores_prevention_and_keeps_exact_payload() {
     assert!(!receipt.default_prevented() && !event.default_prevented());
     assert_eq!(log.len(), 1);
     assert!(!log[0].cancelable && !log[0].canceled);
-    assert_eq!(log[0].payload.old_state(), "closed");
-    assert_eq!(log[0].payload.new_state(), "closed");
+    assert_eq!(
+        log[0].payload.old_state(),
+        "closed".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        log[0].payload.new_state(),
+        "closed".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(log[0].payload.source(), None);
 }
 

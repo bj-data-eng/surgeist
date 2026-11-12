@@ -2666,7 +2666,7 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
 
     struct Context {
         tasks: DomElementTaskRuntime,
-        calls: Vec<(&'static str, &'static str, &'static str)>,
+        calls: Vec<(&'static str, String, String)>,
     }
     impl DomElementTaskEventContext for Context {
         fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
@@ -2721,9 +2721,11 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
                 DomEventType::TOGGLE,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     let payload = event.toggle_event().unwrap();
-                    context
-                        .calls
-                        .push(("before", payload.old_state(), payload.new_state()));
+                    context.calls.push((
+                        "before",
+                        String::from_utf16(payload.old_state()).unwrap(),
+                        String::from_utf16(payload.new_state()).unwrap(),
+                    ));
                     Ok(())
                 }),
                 DomEventListenerOptions::default(),
@@ -2749,9 +2751,11 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
                 DomEventType::TOGGLE,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     let payload = event.toggle_event().unwrap();
-                    context
-                        .calls
-                        .push(("after", payload.old_state(), payload.new_state()));
+                    context.calls.push((
+                        "after",
+                        String::from_utf16(payload.old_state()).unwrap(),
+                        String::from_utf16(payload.new_state()).unwrap(),
+                    ));
                     Ok(())
                 }),
                 DomEventListenerOptions::default(),
@@ -2796,7 +2800,10 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
             } else {
                 original_task = Some(task.id());
             }
-            assert_eq!(context.calls[first_call..], [("before", old, new)]);
+            assert_eq!(
+                context.calls[first_call..],
+                [("before", old.to_owned(), new.to_owned())]
+            );
             assert_eq!(
                 context
                     .tasks
@@ -2838,7 +2845,10 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
         assert!(receipt.failures().is_empty());
         assert_eq!(
             context.calls[first_call..],
-            [("before", old, new), ("after", old, new)],
+            [
+                ("before", old.to_owned(), new.to_owned()),
+                ("after", old.to_owned(), new.to_owned())
+            ],
             "the native prefix is never replayed and the tail runs only after removal"
         );
         assert_eq!(

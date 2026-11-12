@@ -201,51 +201,48 @@ impl EventAllocation {
     }
 }
 
-struct TypeBlock {
+pub(super) struct TextBlock {
     units: Vec<u16>,
 }
-struct TypeCustody {
+pub(super) struct TextCustody {
     _allocation: EventAllocation,
 }
 
 #[derive(Clone)]
-enum TypeStorage {
+pub(super) enum EventText {
     Static(&'static [u16]),
     // The units and fixed target drop before their shared accounting receipt.
     Owned {
-        block: Rc<TypeBlock>,
-        _custody: Rc<TypeCustody>,
+        block: Rc<TextBlock>,
+        _custody: Rc<TextCustody>,
     },
 }
 
 /// One exact immutable UTF-16 event type. Clones preserve its admitted backing.
 #[derive(Clone)]
-pub struct DomEventType(TypeStorage);
+pub struct DomEventType(EventText);
 
 impl DomEventType {
-    pub(super) const EMPTY: Self = Self(TypeStorage::Static(&[]));
+    pub(super) const EMPTY: Self = Self(EventText::Static(&[]));
 
     /// Exact `load` spelling.
-    pub const LOAD: Self = Self(TypeStorage::Static(&[108, 111, 97, 100]));
+    pub const LOAD: Self = Self(EventText::Static(&[108, 111, 97, 100]));
     /// Exact `error` spelling.
-    pub const ERROR: Self = Self(TypeStorage::Static(&[101, 114, 114, 111, 114]));
+    pub const ERROR: Self = Self(EventText::Static(&[101, 114, 114, 111, 114]));
     /// Exact `toggle` spelling.
-    pub const TOGGLE: Self = Self(TypeStorage::Static(&[116, 111, 103, 103, 108, 101]));
+    pub const TOGGLE: Self = Self(EventText::Static(&[116, 111, 103, 103, 108, 101]));
     /// Exact `beforetoggle` spelling.
-    pub const BEFORE_TOGGLE: Self = Self(TypeStorage::Static(&[
+    pub const BEFORE_TOGGLE: Self = Self(EventText::Static(&[
         98, 101, 102, 111, 114, 101, 116, 111, 103, 103, 108, 101,
     ]));
     /// Exact `close` spelling.
-    pub const CLOSE: Self = Self(TypeStorage::Static(&[99, 108, 111, 115, 101]));
+    pub const CLOSE: Self = Self(EventText::Static(&[99, 108, 111, 115, 101]));
     /// Exact `cancel` spelling.
-    pub const CANCEL: Self = Self(TypeStorage::Static(&[99, 97, 110, 99, 101, 108]));
+    pub const CANCEL: Self = Self(EventText::Static(&[99, 97, 110, 99, 101, 108]));
 
     /// Exact code units, including isolated surrogates and NULs.
     pub fn code_units(&self) -> &[u16] {
-        match &self.0 {
-            TypeStorage::Static(units) => units,
-            TypeStorage::Owned { block, .. } => &block.units,
-        }
+        self.0.code_units()
     }
 
     pub(crate) fn retain(
@@ -266,9 +263,27 @@ impl DomEventType {
                 return Ok(candidate);
             }
         }
+        EventText::retain(storage, dom, units, cancel).map(Self)
+    }
+}
+
+impl EventText {
+    pub(super) fn code_units(&self) -> &[u16] {
+        match self {
+            Self::Static(units) => units,
+            Self::Owned { block, .. } => &block.units,
+        }
+    }
+
+    pub(super) fn retain(
+        storage: &EventStorage,
+        dom: &mut DomEventDom<'_>,
+        units: &[u16],
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomEventDispatchError> {
         storage.step(units.len(), cancel)?;
-        let bytes = size_of::<TypeBlock>()
-            .checked_add(size_of::<TypeCustody>())
+        let bytes = size_of::<TextBlock>()
+            .checked_add(size_of::<TextCustody>())
             .and_then(|headers| {
                 units
                     .len()
@@ -284,12 +299,24 @@ impl DomEventType {
             return Err(DomEventDispatchError::Admission(DomEventResource::Storage));
         }
         copy.extend_from_slice(units);
-        Ok(Self(TypeStorage::Owned {
-            block: Rc::new(TypeBlock { units: copy }),
-            _custody: Rc::new(TypeCustody {
+        Ok(Self::Owned {
+            block: Rc::new(TextBlock { units: copy }),
+            _custody: Rc::new(TextCustody {
                 _allocation: allocation,
             }),
-        }))
+        })
+    }
+}
+
+impl PartialEq for EventText {
+    fn eq(&self, other: &Self) -> bool {
+        self.code_units() == other.code_units()
+    }
+}
+impl Eq for EventText {}
+impl std::fmt::Debug for EventText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.code_units().fmt(f)
     }
 }
 
@@ -334,13 +361,58 @@ pub(crate) fn equal_units<E>(
 mod tests {
     use super::*;
 
+    #[cfg(feature = "document-scripting")]
+    #[test]
+    fn toggle_payload_releases_the_first_state_if_the_second_state_refuses() {
+        use super::super::{AuthoredToggleInit, DomEventInit, DomToggleEvent};
+
+        let mut owner = super::super::tests::dom();
+        let mut dom = DomEventDom::borrow(&mut owner);
+        let cancel = AtomicBool::new(false);
+        let old = [0xd800, 0];
+        let new = [0xdc00];
+        let init = AuthoredToggleInit {
+            event: DomEventInit::default(),
+            old_state: &old,
+            new_state: &new,
+            source: None,
+        };
+        let header = size_of::<StorageCounter>();
+        let required = 2 * (size_of::<TextBlock>() + size_of::<TextCustody>())
+            + size_of_val(&old)
+            + size_of_val(&new);
+        let limits = |storage_bytes| DomEventStorageLimits {
+            storage_bytes,
+            work: 100,
+        };
+        let short =
+            EventStorage::session(&mut dom, limits(header + required - 1), &cancel).unwrap();
+        assert!(matches!(
+            DomToggleEvent::retain(&short, &mut dom, &init, &cancel),
+            Err(DomEventDispatchError::Admission(DomEventResource::Storage))
+        ));
+        assert_eq!(short.counter().unwrap().work.get(), 3);
+        assert_eq!(short.counter().unwrap().bytes.get(), header);
+        drop(short);
+        let exact = EventStorage::session(&mut dom, limits(header + required), &cancel).unwrap();
+        let payload = DomToggleEvent::retain(&exact, &mut dom, &init, &cancel).unwrap();
+        assert_eq!(payload.old_state(), old);
+        assert_eq!(payload.new_state(), new);
+        assert_eq!(exact.counter().unwrap().bytes.get(), header + required);
+        let escaped = payload.clone();
+        drop(payload);
+        assert_eq!(exact.counter().unwrap().bytes.get(), header + required);
+        drop(escaped);
+        assert_eq!(exact.counter().unwrap().bytes.get(), header);
+    }
+
     #[test]
     fn exact_type_admission_retains_canonical_bytes_and_units_through_escaped_clones() {
         let mut owner = super::super::tests::dom();
         let mut dom = DomEventDom::borrow(&mut owner);
         let cancel = AtomicBool::new(false);
         let input = [0xd800, 0, 0xdc01];
-        let headers = size_of::<TypeBlock>() + size_of::<TypeCustody>();
+        let headers = size_of::<TextBlock>() + size_of::<TextCustody>();
         let header = size_of::<StorageCounter>();
         let bytes = headers + size_of_val(&input);
         let limits = |storage_bytes| DomEventStorageLimits {
@@ -357,7 +429,7 @@ mod tests {
 
         let exact = EventStorage::session(&mut dom, limits(header + bytes), &cancel).unwrap();
         let name = DomEventType::retain(&exact, &mut dom, &input, &cancel).unwrap();
-        let TypeStorage::Owned {
+        let EventText::Owned {
             block,
             _custody: custody,
         } = &name.0
