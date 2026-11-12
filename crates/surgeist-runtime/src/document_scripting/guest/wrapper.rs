@@ -190,9 +190,7 @@ impl GuestEvents {
                 .session
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
-            if owner.observe(attachment, &mut session)?.status() != HtmlScriptingStatus::Enabled {
-                return Err(DocumentScriptNativeError::Revoked.into());
-            }
+            owner.qualify_guest_dispatch(attachment, &mut session)?;
         }
         event.check_dispatch_state()?;
         let mut reports = self.reports.reserve(self, owner)?;

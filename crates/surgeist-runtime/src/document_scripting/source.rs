@@ -512,6 +512,21 @@ impl NativeOwner {
         self.active_attached_event.borrow().clone()
     }
 
+    pub(super) fn qualify_guest_dispatch(
+        &self,
+        attachment: &Attachment,
+        session: &mut DomSession,
+    ) -> Result<(), DocumentScriptNativeError> {
+        let status = match self.attached_event_request() {
+            Some(request) => self.qualify_event(attachment, session, &request)?,
+            None => self.observe(attachment, session)?.status(),
+        };
+        if status != HtmlScriptingStatus::Enabled {
+            return Err(DocumentScriptNativeError::Revoked);
+        }
+        Ok(())
+    }
+
     pub(super) fn active_event_request(&self) -> Option<DomSourceEventRequest> {
         self.attached_event_request()
             .or_else(|| self.active_source().map(|active| active.request))
