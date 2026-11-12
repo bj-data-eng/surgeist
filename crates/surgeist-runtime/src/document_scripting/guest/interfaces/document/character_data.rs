@@ -366,33 +366,26 @@ impl Capture {
             .ok_or(Error::ExpiredIdentity)?
             .document
             .ordinary;
-        ordinary.create(
-            scope,
-            owner,
-            events,
-            prototype,
-            ordinary::CreationRefusal::Host,
-            |inbox, key| {
-                self.with_native(owner, |session, _| {
-                    let mut batch = DomBatch::new();
-                    let ticket = kind.create(&mut batch, document, data);
-                    let (_, node, watch) = session
-                        .dom()
-                        .raw_mut()
-                        .apply_with_node_retirement_watch(
-                            batch,
-                            &ticket,
-                            inbox,
-                            key,
-                            events.limits.node_retirement,
-                            &owner.cancellation,
-                        )
-                        .map_err(DocumentScriptNativeError::from)?
-                        .into_parts();
-                    Ok((kind.project(node), watch))
-                })
-            },
-        )
+        ordinary.create(scope, owner, events, prototype, |inbox, key| {
+            self.with_native(owner, |session, _| {
+                let mut batch = DomBatch::new();
+                let ticket = kind.create(&mut batch, document, data);
+                let (_, node, watch) = session
+                    .dom()
+                    .raw_mut()
+                    .apply_with_node_retirement_watch(
+                        batch,
+                        &ticket,
+                        inbox,
+                        key,
+                        events.limits.node_retirement,
+                        &owner.cancellation,
+                    )
+                    .map_err(DocumentScriptNativeError::from)?
+                    .into_parts();
+                Ok((kind.project(node), watch))
+            })
+        })
     }
 
     fn character_member<'scope>(

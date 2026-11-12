@@ -161,7 +161,6 @@ impl Capture {
                     &owner,
                     &events,
                     ordinary::NodePrototype::Creation(&prototypes.shadow),
-                    ordinary::CreationRefusal::NotSupportedException,
                     |inbox, key| {
                         self.with_native(&owner, |session, _| {
                             let (_, root, watch) = session

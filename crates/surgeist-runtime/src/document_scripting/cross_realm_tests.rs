@@ -216,6 +216,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::shadow_root::shadow_projection_admits_exact_work_and_backing();
     super::guest::tests::shadow_root::closed_root_visibility_admits_the_canonical_lookup();
     super::guest::tests::registered_origin::shadow_root_keeps_its_registered_creation_realm();
+    super::guest::tests::registered_origin::scripted_shadow_uses_the_current_document_creation_realm();
     super::guest::tests::element_projection_admits_exact_work_and_backing();
     super::guest::tests::refused_element_realm_installation_releases_guest_backing();
     super::guest::tests::native_element_ancestors_are_projected_and_metered();

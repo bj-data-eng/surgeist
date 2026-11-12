@@ -124,32 +124,25 @@ impl Capture {
             .ok_or(Error::ExpiredIdentity)?
             .document
             .ordinary;
-        bindings.create(
-            scope,
-            owner,
-            events,
-            prototype,
-            ordinary::CreationRefusal::Host,
-            |inbox, key| {
-                self.with_native(owner, |session, _| {
-                    let mut batch = DomBatch::new();
-                    let ticket = batch.create_fragment(document);
-                    let (_, node, watch) = session
-                        .dom()
-                        .raw_mut()
-                        .apply_with_node_retirement_watch(
-                            batch,
-                            &ticket,
-                            inbox,
-                            key,
-                            events.limits.node_retirement,
-                            &owner.cancellation,
-                        )
-                        .map_err(DocumentScriptNativeError::from)?
-                        .into_parts();
-                    Ok((GuestNode::Fragment(node), watch))
-                })
-            },
-        )
+        bindings.create(scope, owner, events, prototype, |inbox, key| {
+            self.with_native(owner, |session, _| {
+                let mut batch = DomBatch::new();
+                let ticket = batch.create_fragment(document);
+                let (_, node, watch) = session
+                    .dom()
+                    .raw_mut()
+                    .apply_with_node_retirement_watch(
+                        batch,
+                        &ticket,
+                        inbox,
+                        key,
+                        events.limits.node_retirement,
+                        &owner.cancellation,
+                    )
+                    .map_err(DocumentScriptNativeError::from)?
+                    .into_parts();
+                Ok((GuestNode::Fragment(node), watch))
+            })
+        })
     }
 }

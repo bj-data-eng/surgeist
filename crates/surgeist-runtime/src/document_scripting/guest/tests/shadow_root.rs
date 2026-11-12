@@ -403,6 +403,26 @@ pub(in crate::document_scripting) fn scripted_shadow_conversion_preserves_order_
         after.node(closed.host()).unwrap().hosted_shadow_root(),
         Some(closed.id())
     );
+    let events = host.guest_events().unwrap();
+    let bytes = events.budget.used.get();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            for (let attempt = 0; attempt < 20; ++attempt) {
+                try { shadowHost.attachShadow({mode: "closed"}); return false; }
+                catch (error) {
+                    if (!(error instanceof DOMException) || error.name !== "NotSupportedError")
+                        return false;
+                }
+            }
+            return true;
+        })()"#,
+        )
+    })
+    .unwrap();
+    assert_eq!(events.budget.used.get(), bytes);
+    assert_eq!(host.snapshot().unwrap().stamp(), after.stamp());
 }
 
 pub(in crate::document_scripting) fn scripted_shadow_revalidates_after_reentry() {
