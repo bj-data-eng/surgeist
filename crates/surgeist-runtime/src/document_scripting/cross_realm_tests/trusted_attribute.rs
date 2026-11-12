@@ -400,6 +400,46 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         Some(&expected_nested)
     );
     assert_eq!(calls.get(), 1);
+
+    let (mut host, permit) =
+        attach_attribute_recovery_fixture(session, target, element, &cancel, 20_000);
+    let calls = pause_guest_attribute(
+        &mut host,
+        &permit,
+        &cancel,
+        "protectedTarget.setAttribute('onclick', 'null-later')",
+    );
+    super::super::guest::tests::assert_queued_trusted_types_violations(&host, &[]);
+    cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+    let parked = host
+        .with_native(|dom, _, _| dom.pending_source_edit())
+        .unwrap()
+        .expect("a null callback result must survive refusal before its mismatch reports");
+    let progress = host
+        .resume_pending_attribute_write(&permit, SOURCE)
+        .unwrap()
+        .unwrap();
+    let DomSourceDriveProgress::Failed(failure) = progress else {
+        panic!("expected the original enforcing CSP rejection, got {progress:?}");
+    };
+    assert_eq!(failure.operation(), parked.operation());
+    assert_eq!(
+        failure.error(),
+        &DomError::SourceAttributeVerificationRejected
+    );
+    assert_eq!(calls.get(), 1);
+    super::super::guest::tests::assert_queued_trusted_types_violations(
+        &host,
+        &[(1, "trusted-types-sink", "Element onclick|null-later")],
+    );
+    assert_eq!(
+        host.snapshot()
+            .unwrap()
+            .node(element)
+            .unwrap()
+            .attribute(&"onclick".into()),
+        Some(&"later!".into()),
+    );
 }
 
 fn attach_attribute_recovery_fixture(
@@ -432,6 +472,10 @@ fn attach_attribute_recovery_fixture(
                         return 'unreachable';
                     }
                     if (value === 'budget') return 'z'.repeat(7500);
+                    if (value === 'null-later') {
+                        stopAfterAttributeCallback();
+                        return null;
+                    }
                     return { toString() {
                         stopAfterAttributeCallback();
                         return value + '!';
