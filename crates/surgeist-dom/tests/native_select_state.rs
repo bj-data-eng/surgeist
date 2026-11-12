@@ -1556,3 +1556,67 @@ fn retired_select_skip_refuses_while_a_real_style_source_obligation_is_parked() 
     // End with that service obligation still parked. This test does not
     // invent a CSP receipt merely to clear it or pretend to prove reentrant idle.
 }
+
+#[test]
+fn selectedcontent_clone_and_clear_queue_their_single_replace_all_records() {
+    let mut f = fixture(false, true);
+    let c = cancel();
+    let observation = DomChildListObservationLimits::new(2, 8, 8, 64).unwrap();
+    f.dom
+        .set_limits(f.dom.limits().with_child_list_observation(observation))
+        .unwrap();
+    let mut setup = DomBatch::new();
+    let a_tail = setup.create_comment(f.doc, "first option tail");
+    let b_tail = setup.create_comment(f.doc, "second option tail");
+    setup.insert_before(&a_tail, f.a, None);
+    setup.insert_before(&b_tail, f.b, None);
+    setup.set_select_selected_index(f.select, 0);
+    apply(&mut f.dom, setup);
+    let original = f
+        .dom
+        .snapshot()
+        .node(f.content)
+        .unwrap()
+        .children()
+        .to_vec();
+    assert_eq!(original.len(), 2);
+    let observer = f.dom.create_child_list_observer(&c).unwrap();
+    f.dom
+        .observe_child_list(observer, f.content, false, &c)
+        .unwrap();
+
+    let mut select = DomBatch::new();
+    select.set_select_selected_index(f.select, 1);
+    apply(&mut f.dom, select);
+    let replacement = f
+        .dom
+        .snapshot()
+        .node(f.content)
+        .unwrap()
+        .children()
+        .to_vec();
+    assert_eq!(replacement.len(), 2);
+    let records = f.dom.take_child_list_records(observer, &c).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].target(), f.content);
+    assert_eq!(records[0].added_nodes(), replacement);
+    assert_eq!(records[0].removed_nodes(), original);
+    assert_eq!(records[0].previous_sibling(), None);
+    assert_eq!(records[0].next_sibling(), None);
+
+    let mut clear = DomBatch::new();
+    clear.set_select_selected_index(f.select, -1);
+    apply(&mut f.dom, clear);
+    assert!(
+        f.dom
+            .snapshot()
+            .node(f.content)
+            .unwrap()
+            .children()
+            .is_empty()
+    );
+    let records = f.dom.take_child_list_records(observer, &c).unwrap();
+    assert_eq!(records.len(), 1);
+    assert!(records[0].added_nodes().is_empty());
+    assert_eq!(records[0].removed_nodes(), replacement);
+}

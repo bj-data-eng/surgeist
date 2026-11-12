@@ -245,3 +245,113 @@ impl Dom {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture(observer_count: usize, slotted: bool) -> Dom {
+        let cancel = AtomicBool::new(false);
+        let names = crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap();
+        let observations = DomChildListObservationLimits::new(observer_count, 8, 8, 32).unwrap();
+        let limits = DomLimits::new(32, 4096, 64, 64, 0, 8, 1_000_000, names)
+            .unwrap()
+            .with_child_list_observation(observations);
+        let mut dom = Dom::new(limits).unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let root = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        setup.insert_before(&root, &document, None);
+        if slotted {
+            let shadow = setup.attach_shadow(
+                &root,
+                crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Open),
+            );
+            let slot = setup.create_element_ns(&document, crate::Namespace::html(), "slot");
+            setup.insert_before(&slot, &shadow, None);
+        }
+        let commit = dom.apply(setup, &cancel).unwrap();
+        let root = commit.created(&root).unwrap().unwrap();
+        let document = commit.document(&document).unwrap();
+        for index in 0..observer_count {
+            let observer = dom.create_child_list_observer(&cancel).unwrap();
+            if index + 1 == observer_count {
+                dom.observe_child_list(observer, root, false, &cancel)
+                    .unwrap();
+            }
+        }
+        let mut append = DomBatch::new();
+        let text = append.create_text(document, "pending");
+        append.insert_before(&text, root, None);
+        dom.apply(append, &cancel).unwrap();
+        dom
+    }
+
+    fn begin(dom: &mut Dom, work: &CheckpointWork, cancel: &AtomicBool) {
+        dom.begin_child_list_turn(DomSlotQueryLimits::new(64, 64).unwrap(), work, cancel)
+            .unwrap();
+    }
+
+    #[test]
+    fn observer_only_turn_does_not_pin_the_old_dom_state() {
+        let cancel = AtomicBool::new(false);
+        let work = CheckpointWork::new(1_000_000);
+        let mut dom = fixture(1, false);
+        begin(&mut dom, &work, &cancel);
+        let old = Arc::downgrade(&dom.state);
+        let delivery = dom.advance_child_list_turn(&work, &cancel).unwrap();
+        assert!(matches!(delivery, Some(DomNativeCheckpoint::ChildList(_))));
+        assert!(old.upgrade().is_none());
+    }
+
+    #[test]
+    fn slot_turn_retains_the_capture_with_its_exact_existing_custody() {
+        let cancel = AtomicBool::new(false);
+        let work = CheckpointWork::new(1_000_000);
+        let mut dom = fixture(1, true);
+        assert_eq!(dom.snapshot().pending_slot_signals().len(), 1);
+        begin(&mut dom, &work, &cancel);
+        let capture = dom.state.clone();
+        let delivery = dom.advance_child_list_turn(&work, &cancel).unwrap();
+        assert!(matches!(delivery, Some(DomNativeCheckpoint::ChildList(_))));
+        assert!(!Arc::ptr_eq(&capture, &dom.state));
+        let mut visits = 0;
+        let _retained = transaction::StateCustody::adopt(
+            &capture,
+            &dom.custody_registry,
+            None,
+            |_| Ok(()),
+            || {
+                visits += 1;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            visits, 1,
+            "the in-flight turn keeps the original controlled capture"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires SURGEIST_DOM_STORAGE_COUNTERS at compilation"]
+    fn high_slot_observer_publication_skips_unrelated_observer_records() {
+        let cancel = AtomicBool::new(false);
+        let measured = |count| {
+            let mut dom = fixture(count, false);
+            let work = CheckpointWork::new(1_000_000);
+            let measure = scale_metrics::Measurement::begin().unwrap();
+            begin(&mut dom, &work, &cancel);
+            measure
+                .finish(scale_metrics::Hooks::one(scale_metrics::Domain::Bank))
+                .unwrap()
+                .canonical_record_reads
+        };
+        let low = measured(8);
+        let high = measured(512);
+        assert!(
+            high < low + 128,
+            "bank record reads for 8 and 512 observers were {low} and {high}"
+        );
+    }
+}

@@ -675,3 +675,54 @@ fn one_notification_turn_delivers_observers_before_its_captured_slot_signals() {
         DomNativeCheckpoint::Idle
     ));
 }
+
+#[test]
+fn notification_order_uses_creation_across_reversed_registration_and_slot_reuse() {
+    let Tree {
+        mut dom,
+        root,
+        branch,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let checkpoint = checkpoint_limits(1_000_000);
+    let older = dom.create_child_list_observer(&cancel).unwrap();
+    let younger = dom.create_child_list_observer(&cancel).unwrap();
+    dom.observe_child_list(younger, root, false, &cancel)
+        .unwrap();
+    dom.observe_child_list(older, root, false, &cancel).unwrap();
+
+    let mut detach = DomBatch::new();
+    detach.detach(branch);
+    dom.apply(detach, &cancel).unwrap();
+    for expected in [older, younger] {
+        let DomNativeCheckpoint::ChildList(delivery) =
+            dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+        else {
+            panic!("expected observer delivery");
+        };
+        assert_eq!(delivery.observer(), expected);
+    }
+    assert!(matches!(
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap(),
+        DomNativeCheckpoint::Idle
+    ));
+
+    dom.retire_child_list_observer(older, &cancel).unwrap();
+    dom.disconnect_child_list_observer(younger, &cancel)
+        .unwrap();
+    let newest = observe(&mut dom, root, false);
+    dom.observe_child_list(younger, root, false, &cancel)
+        .unwrap();
+    let mut insert = DomBatch::new();
+    insert.insert_before(branch, root, None);
+    dom.apply(insert, &cancel).unwrap();
+    for expected in [younger, newest] {
+        let DomNativeCheckpoint::ChildList(delivery) =
+            dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+        else {
+            panic!("expected observer delivery after slot reuse");
+        };
+        assert_eq!(delivery.observer(), expected);
+    }
+}

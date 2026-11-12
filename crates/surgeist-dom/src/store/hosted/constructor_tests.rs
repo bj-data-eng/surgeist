@@ -147,6 +147,17 @@ fn fixture() -> (
     DomHostedCreationLease,
     Option<DomHostedPolicyPublication>,
 ) {
+    fixture_with(|_| {})
+}
+
+fn fixture_with(
+    before_hosting: impl FnOnce(&mut Dom),
+) -> (
+    Dom,
+    DomHostedSource,
+    DomHostedCreationLease,
+    Option<DomHostedPolicyPublication>,
+) {
     let c = cancel();
     let mut dom = Dom::new(
         DomLimits::new(
@@ -162,6 +173,7 @@ fn fixture() -> (
         .unwrap(),
     )
     .unwrap();
+    before_hosting(&mut dom);
     let mut source = dom
         .register_hosted_source(limits(8_000_000, 8_000_000, 1_000_000), &c)
         .unwrap();
@@ -185,6 +197,58 @@ fn fixture() -> (
         )
         .unwrap();
     (dom, source, lease, Some(publication))
+}
+
+#[test]
+fn incomplete_hosted_construction_refuses_before_consuming_observer_checkpoint() {
+    let c = cancel();
+    let (mut dom, mut source, mut lease, mut policy) = fixture_with(|dom| {
+        let limits = crate::DomChildListObservationLimits::new(1, 4, 4, 16).unwrap();
+        dom.set_limits(dom.limits().with_child_list_observation(limits))
+            .unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let document = dom.apply(setup, &c).unwrap().document(&document).unwrap();
+        let observer = dom.create_child_list_observer(&c).unwrap();
+        dom.observe_child_list(observer, document.node(), false, &c)
+            .unwrap();
+        let mut append = DomBatch::new();
+        let comment = append.create_comment(document, "pending observer delivery");
+        append.insert_before(&comment, document, None);
+        dom.apply(append, &c).unwrap();
+    });
+    lease
+        .accept_permissions_policy(&mut dom, &mut source, &mut policy, &c)
+        .unwrap();
+    let DomHostedCreationStep::NativeExecution(request) = lease.step(&dom).unwrap() else {
+        panic!("actual native construction request");
+    };
+    let global = source.issue_global(request, &c).unwrap();
+    let mut publication = Some(
+        source
+            .seal_native_execution(request, global, 100, &c)
+            .unwrap(),
+    );
+    lease
+        .accept_publication(&mut dom, &mut source, &mut publication, &c)
+        .unwrap();
+    let before = dom.snapshot();
+    assert!(before.incomplete_hosted_operation().is_some());
+    assert_eq!(dom.pending_native_tasks(), 1);
+    let limits = crate::DomNativeCheckpointLimits::new(
+        1_000_000,
+        1_000_000,
+        crate::DomSlotQueryLimits::new(16, 16).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        dom.native_checkpoint_step(limits, &c).unwrap_err(),
+        DomError::SourceOperationPending
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.pending_native_tasks(), 1);
+    assert!(dom.has_pending_child_lists());
+    assert!(dom.child_list_turn.is_none());
 }
 fn used(source: &DomHostedSource) -> usize {
     source.limits().retained_bytes() - source.remaining_bytes().unwrap()
