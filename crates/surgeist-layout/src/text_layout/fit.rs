@@ -2596,25 +2596,18 @@ where
             environment.box_uses.clear();
             (environment.reset)(scope.reset)?;
             result.truncate(entry.prefix_len);
-            let mut start = entry.boundary.view().participant_offset();
-            let mut logical_start = entry.logical_start;
-            let mut phase = entry.phase;
-            let mut minimum_block = entry.minimum_block;
-            let mut indent_state = entry.indent_state;
-            let mut line_box_context = entry.line_box_context;
-            let mut hyphenation_state = entry.hyphenation_state;
             // A rebuilt sequence owns fresh continuation custody. Requests below
             // retain it in reuse, convergence and visited-choice identity.
-            let mut incoming = entry.incoming.clone();
+            let mut progress = entry.clone();
             let mut completed_end = false;
-            let mut current_boundary = entry.boundary.clone();
             let mut formatted_count = 0;
             while !completed_end {
                 let goal = scope.goal.filter(|_| {
                     formatted_count >= scope.goal_after
                         && scope.goal_before.is_none_or(|end| formatted_count < end)
                 });
-                let start_boundary = current_boundary.clone();
+                let start = progress.boundary.view().participant_offset();
+                let start_boundary = progress.boundary.clone();
                 let rejected_choices: &[CandidateKey] = if constrained {
                     if visited.len() <= result.len() - entry.prefix_len {
                         visited.push(Vec::new());
@@ -2624,11 +2617,11 @@ where
                     &[]
                 };
                 let mut position = CandidatePosition {
-                    phase,
-                    source_floor: logical_start,
-                    source_minimum: minimum_block,
-                    logical_start,
-                    minimum_block,
+                    phase: progress.phase,
+                    source_floor: progress.logical_start,
+                    source_minimum: progress.minimum_block,
+                    logical_start: progress.logical_start,
+                    minimum_block: progress.minimum_block,
                     deferred_from: None,
                 };
                 let mut transitions = Vec::new();
@@ -2672,12 +2665,12 @@ where
                             let query = EndpointContext {
                                 accepted_prefix: result,
                                 preceding: None,
-                                line_box_context,
+                                line_box_context: progress.line_box_context,
                                 start: &start_boundary,
-                                incoming: incoming.as_ref(),
+                                incoming: progress.incoming.as_ref(),
                                 position: &position,
-                                indent_state,
-                                hyphenation_state,
+                                indent_state: progress.indent_state,
+                                hyphenation_state: progress.hyphenation_state,
                                 rejected_choices,
                                 conditional: false,
                                 operation: CandidateOperation::Primary,
@@ -2849,7 +2842,7 @@ where
                         });
                         let search = input.segment.conditional_search(
                             &start_boundary,
-                            incoming.as_ref(),
+                            progress.incoming.as_ref(),
                             &ceiling,
                             purpose,
                             &skipped_ordinary,
@@ -2864,11 +2857,11 @@ where
                             accepted_prefix: result,
                             preceding: None,
                             start: &start_boundary,
-                            line_box_context,
-                            incoming: incoming.as_ref(),
+                            line_box_context: progress.line_box_context,
+                            incoming: progress.incoming.as_ref(),
                             position: &position,
-                            indent_state,
-                            hyphenation_state,
+                            indent_state: progress.indent_state,
+                            hyphenation_state: progress.hyphenation_state,
                             rejected_choices,
                             conditional: true,
                             operation: CandidateOperation::Primary,
@@ -3109,29 +3102,35 @@ where
                     } else {
                         logical_end
                     };
-                    minimum_block = candidate.frame.minimum_block;
-                    phase = candidate.frame.phase;
+                    progress.minimum_block = candidate.frame.minimum_block;
+                    progress.phase = candidate.frame.phase;
                     if cleared > logical_end {
-                        minimum_block =
-                            Some(minimum_block.map_or(cleared, |minimum| minimum.max(cleared)));
+                        progress.minimum_block = Some(
+                            progress
+                                .minimum_block
+                                .map_or(cleared, |minimum| minimum.max(cleared)),
+                        );
                     }
                     let ending = candidate.request.context.end;
-                    let end = candidate.request.end.view().participant_offset();
-                    current_boundary = candidate.request.end.clone();
-                    let first_formatted = indent_state.first_formatted();
+                    progress.boundary = candidate.request.end.clone();
+                    let first_formatted = progress.indent_state.first_formatted();
                     if candidate.disposition.is_formatted() {
-                        indent_state.commit(ending == LineEnd::Forced);
-                        line_box_context.commit(candidate.request.context.line_box_direction);
+                        progress.indent_state.commit(ending == LineEnd::Forced);
+                        progress
+                            .line_box_context
+                            .commit(candidate.request.context.line_box_direction);
                     }
                     accept_encounters()?;
                     if crate::layout_math::normal_available_size(input.available).is_some()
                         && candidate.disposition.is_formatted()
                     {
-                        hyphenation_state.commit(candidate.request.alternative.is_some());
+                        progress
+                            .hyphenation_state
+                            .commit(candidate.request.alternative.is_some());
                     }
                     // Trials and hypothetical manual portions do not mutate this
                     // state; only the accepted outgoing ending replaces it.
-                    incoming = candidate.finalized.hyphenation_continuation();
+                    progress.incoming = candidate.finalized.hyphenation_continuation();
                     let available = candidate.finalized.metric_bounds().size.width;
                     let mut role_copies = super::formatted::EntryCopies::default();
                     let mut role_uses = role_copies
@@ -3146,10 +3145,10 @@ where
                         box_uses: environment.box_uses.split_off(box_use_start),
                         first_formatted,
                         role_uses,
-                        line_box_end: line_box_context,
+                        line_box_end: progress.line_box_context,
                         zone_basis,
                         phrase_basis,
-                        hyphenation_end: hyphenation_state,
+                        hyphenation_end: progress.hyphenation_state,
                         encounters: candidate.encounters,
                         finalized: candidate.finalized,
                         amounts: candidate.amounts,
@@ -3166,8 +3165,7 @@ where
                             next: cleared,
                         },
                     });
-                    logical_start = cleared;
-                    start = end;
+                    progress.logical_start = cleared;
                     completed_end = ending == LineEnd::Paragraph;
                     if result
                         .last()
@@ -3228,17 +3226,8 @@ where
                 visited[depth].push(result[index].key());
                 continue 'sequence;
             }
-            return Ok(SequenceOutcome::Complete(SequenceEntry {
-                phase,
-                boundary: current_boundary,
-                logical_start,
-                minimum_block,
-                indent_state,
-                line_box_context,
-                hyphenation_state,
-                incoming,
-                prefix_len: result.len(),
-            }));
+            progress.prefix_len = result.len();
+            return Ok(SequenceOutcome::Complete(progress));
         }
     }
 }
