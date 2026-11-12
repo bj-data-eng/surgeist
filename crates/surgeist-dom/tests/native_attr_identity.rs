@@ -202,3 +202,144 @@ fn detached_attr_value_clone_adoption_and_retirement_use_exact_node_identity() {
         &"".into()
     );
 }
+
+#[test]
+fn string_attribute_edits_keep_identity_prefix_and_order_until_removal() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let namespace = Namespace::from_uri("urn:ordered");
+    let local = DocumentString::from("token");
+    let mut initial = DomBatch::new();
+    let document = initial.create_document();
+    let element = initial.create_element(&document, "root");
+    initial.set_attribute(&element, "first", "a");
+    initial.set_attribute_ns(&element, namespace.clone(), "p:token", "old");
+    initial.set_attribute(&element, "last", "z");
+    let commit = dom.apply(initial, &cancel).unwrap();
+    let document = commit.document(&document).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+
+    let before = dom.snapshot();
+    let map = before.node(element).unwrap().attributes().unwrap();
+    assert_eq!(map.len(), 3);
+    assert!(map.item(3).is_none());
+    assert_eq!(map.item(0).unwrap().name().local_name(), &"first".into());
+    assert_eq!(map.item(2).unwrap().name().local_name(), &"last".into());
+    let old = map.get_named_item_ns(&namespace, &local).unwrap();
+    let id = old.id();
+    assert_eq!(map.item(1).unwrap().id(), id);
+    assert_eq!(map.get_named_item(&"p:token".into()).unwrap().id(), id);
+    assert_eq!(old.owner_element(), Some(element));
+    assert_eq!(old.owner_document(), document);
+    assert_eq!(before.node(id.node()).unwrap().parent(), None);
+
+    let value = DocumentString::from_utf16(vec![0, 0xd800, 0x61]);
+    let mut update = DomBatch::new();
+    update.set_attribute_ns(element, namespace.clone(), "q:token", value.clone());
+    let commit = dom.apply(update, &cancel).unwrap();
+    assert!(
+        commit
+            .changes()
+            .changes()
+            .contains(&surgeist_dom::DomChange::AttrValue(id))
+    );
+    assert!(
+        commit
+            .changes()
+            .changes()
+            .contains(&surgeist_dom::DomChange::Attributes(element))
+    );
+    let edited = dom.snapshot();
+    let map = edited.node(element).unwrap().attributes().unwrap();
+    assert_eq!(map.item(1).unwrap().id(), id);
+    assert_eq!(map.item(1).unwrap().value(), &value);
+    assert_eq!(map.item(1).unwrap().name().prefix(), Some(&"p".into()));
+    assert!(map.get_named_item(&"q:token".into()).is_none());
+    assert_eq!(old.value(), &"old".into());
+
+    let mut remove = DomBatch::new();
+    remove.remove_attribute_ns(element, namespace.clone(), local.clone());
+    dom.apply(remove, &cancel).unwrap();
+    let removed = dom.snapshot();
+    let detached = removed.attr(id.node()).unwrap();
+    assert_eq!(detached.owner_element(), None);
+    assert_eq!(detached.owner_document(), document);
+    assert_eq!(detached.value(), &value);
+    assert_eq!(
+        edited.attr(id.node()).unwrap().owner_element(),
+        Some(element)
+    );
+
+    let mut recreate = DomBatch::new();
+    recreate.set_attribute_ns(element, namespace, "q:token", "fresh");
+    dom.apply(recreate, &cancel).unwrap();
+    let final_snapshot = dom.snapshot();
+    let map = final_snapshot.node(element).unwrap().attributes().unwrap();
+    assert_eq!(map.item(1).unwrap().name().local_name(), &"last".into());
+    assert_eq!(map.item(2).unwrap().name().prefix(), Some(&"q".into()));
+    assert_ne!(map.item(2).unwrap().id(), id);
+    assert_eq!(final_snapshot.attr(id.node()).unwrap().value(), &value);
+}
+
+#[test]
+fn attr_document_and_element_custody_are_independent() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut initial = DomBatch::new();
+    let source = initial.create_document();
+    let second = initial.create_document();
+    let third = initial.create_document();
+    let element = initial.create_element(&source, "root");
+    initial.set_attribute(&element, "owned", "value");
+    let commit = dom.apply(initial, &cancel).unwrap();
+    let source = commit.document(&source).unwrap();
+    let second = commit.document(&second).unwrap();
+    let third = commit.document(&third).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let captured = dom.snapshot();
+    let attr = captured
+        .node(element)
+        .unwrap()
+        .attributes()
+        .unwrap()
+        .item(0)
+        .unwrap()
+        .id();
+
+    let mut invalid = DomBatch::new();
+    invalid.destroy(attr.node());
+    assert!(matches!(
+        dom.apply(invalid, &cancel),
+        Err(DomError::InvalidDestruction)
+    ));
+
+    let mut adopt = DomBatch::new();
+    adopt.adopt(attr.node(), second);
+    adopt.adopt(element, source);
+    dom.apply(adopt, &cancel).unwrap();
+    let divergent = dom.snapshot();
+    let view = divergent.attr(attr.node()).unwrap();
+    assert_eq!(view.owner_element(), Some(element));
+    assert_eq!(view.owner_document(), second);
+
+    let mut adopt = DomBatch::new();
+    adopt.adopt(element, third);
+    dom.apply(adopt, &cancel).unwrap();
+    let reconciled = dom.snapshot();
+    let view = reconciled.attr(attr.node()).unwrap();
+    assert_eq!(view.owner_element(), Some(element));
+    assert_eq!(view.owner_document(), third);
+
+    let mut destroy = DomBatch::new();
+    destroy.destroy(element);
+    dom.apply(destroy, &cancel).unwrap();
+    assert!(matches!(
+        dom.snapshot().attr(attr.node()),
+        Err(DomError::StaleNode)
+    ));
+    assert_eq!(captured.attr(attr.node()).unwrap().owner_document(), source);
+    assert_eq!(
+        reconciled.attr(attr.node()).unwrap().value(),
+        &"value".into()
+    );
+}
