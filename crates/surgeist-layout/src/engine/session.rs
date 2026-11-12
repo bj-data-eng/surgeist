@@ -1,8 +1,11 @@
 #[cfg(test)]
 mod scope_resource_tests;
 
-use super::contracts::{CacheAccess, Compute, Round, UnroundedInlineFragmentState};
+use super::contracts::{
+    CacheAccess, ChildCacheRequest, Compute, Round, UnroundedInlineFragmentState,
+};
 use super::entry_staging::{self, Rows};
+use super::hidden::{HiddenChildren, HiddenRequest};
 use crate::error::{
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
     LayoutResultOf,
@@ -21,6 +24,15 @@ type SessionResult<Tree, T> = LayoutResultOf<
     <Tree as Traverse>::Scalar,
     <Tree as LayoutTree>::MeasureError,
 >;
+
+enum ChildAdmission<Node, S: LayoutScalar> {
+    Ready(ComputeOutputOf<S>),
+    Hidden(HiddenRequest<Node>),
+    Uncached {
+        input: ComputeInputOf<S>,
+        cache: Option<ChildCacheRequest<Node, S>>,
+    },
+}
 
 type CanonicalFrames<Tree> = Vec<
     crate::text_layout::state::CanonicalFrame<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
@@ -1379,6 +1391,151 @@ where
         Ok(input)
     }
 
+    fn admit_child(
+        &mut self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+    ) -> SessionResult<Tree, ChildAdmission<Tree::Node, Tree::Scalar>> {
+        if self.tree.layout_input(node).as_inline_text().is_some()
+            || self.tree.layout_input(node).as_text_control().is_some()
+        {
+            if self.text.is_none() {
+                return Err(LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextCapture),
+                ));
+            }
+            let known = input.known();
+            let size = Size::new(
+                known.width.unwrap_or(Tree::Scalar::ZERO),
+                known.height.unwrap_or(Tree::Scalar::ZERO),
+            );
+            return Ok(ChildAdmission::Ready(ComputeOutputOf::from_sizes(
+                size, size,
+            )));
+        }
+
+        let input = self.prepare_child_input(node, input)?;
+        let style = self.tree.node_input(node);
+        if input.run_mode() == RunMode::PerformHiddenLayout || style.display == crate::Display::None
+        {
+            #[cfg(test)]
+            HIDDEN_COMPUTE_SESSION_REQUESTS.with(|requests| {
+                requests.borrow_mut().push((
+                    input.settled_auto_scrollbars(),
+                    input.containing_auto_scrollbar_pass(),
+                ));
+            });
+            return Ok(ChildAdmission::Hidden(self.hidden_request(node, input)));
+        }
+
+        if let Some(memo) = &self.entry_sources {
+            let funding = self.entry_funding(node)?;
+            let measured = memo
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .contains(node, funding.as_ref())
+                .map_err(|error| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::Text(error),
+                    )
+                })?;
+            if measured {
+                return Ok(ChildAdmission::Uncached { input, cache: None });
+            }
+        }
+
+        let restore_subtree = input.run_mode().is_perform_layout() && self.child_count(node) != 0;
+        let uncached_input = input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL);
+        if restore_subtree && !self.subtree_uses_shape_provider(node) {
+            return Ok(ChildAdmission::Uncached {
+                input: uncached_input,
+                cache: None,
+            });
+        }
+
+        let cache_input = if restore_subtree {
+            uncached_input
+        } else {
+            input
+        };
+        let cache = ChildCacheRequest::new(node, cache_input, self.cache_context());
+        if let Some(output) = cache.restore_hit(self)?
+            && (!restore_subtree || self.restore_committed_subtree(node))
+        {
+            return Ok(ChildAdmission::Ready(output));
+        }
+        Ok(ChildAdmission::Uncached {
+            input: uncached_input,
+            cache: Some(cache),
+        })
+    }
+
+    fn hidden_request(
+        &self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+    ) -> HiddenRequest<Tree::Node> {
+        HiddenRequest {
+            node,
+            source_index: self.staged_source_index(node),
+            containing_context: input.containing_layout_context(),
+            containing_pass: input.containing_auto_scrollbar_pass(),
+        }
+    }
+
+    fn drive_hidden(
+        &mut self,
+        request: HiddenRequest<Tree::Node>,
+    ) -> SessionResult<Tree, ComputeOutputOf<Tree::Scalar>> {
+        let mut children = HiddenChildren::begin(self, request)?;
+        let mut pending = Vec::new();
+        loop {
+            let Some((node, input)) = children.next_box(self)? else {
+                let Some(parent) = pending.pop() else {
+                    return Ok(ComputeOutputOf::HIDDEN);
+                };
+                children = parent;
+                continue;
+            };
+            match self.admit_child(node, input)? {
+                ChildAdmission::Hidden(request) => {
+                    if children.has_remaining() {
+                        pending.try_reserve(1).map_err(|_| {
+                            LayoutErrorOf::new(
+                                LayoutErrorSiteOf::Node(node),
+                                LayoutOperation::ChildLayout,
+                                LayoutErrorKindOf::Allocation,
+                            )
+                        })?;
+                        pending.push(children);
+                    }
+                    children = HiddenChildren::begin(self, request)?;
+                }
+                ChildAdmission::Ready(_) => {}
+                ChildAdmission::Uncached { input, cache } => {
+                    self.complete_admitted_child(node, input, cache)?;
+                }
+            }
+        }
+    }
+
+    fn complete_admitted_child(
+        &mut self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+        cache: Option<ChildCacheRequest<Tree::Node, Tree::Scalar>>,
+    ) -> SessionResult<Tree, ComputeOutputOf<Tree::Scalar>> {
+        let output = self.compute_child_uncached(node, input)?;
+        if let Some(cache) = cache {
+            cache.store(self, output)?;
+        }
+        Ok(output)
+    }
+
     fn compute_child_uncached(
         &mut self,
         node: Tree::Node,
@@ -1516,14 +1673,9 @@ where
             crate::Display::Grid | crate::Display::GridLanes => {
                 crate::grid::compute_grid(self, node, input).map_err(Into::into)
             }
-            crate::Display::None => super::compute_hidden(
-                self,
-                node,
-                self.staged_source_index(node),
-                input.containing_layout_context(),
-                input.containing_auto_scrollbar_pass(),
-            )
-            .map_err(Into::into),
+            crate::Display::None => self
+                .drive_hidden(self.hidden_request(node, input))
+                .map_err(Into::into),
             crate::Display::InlineBlock
             | crate::Display::InlineGrid
             | crate::Display::InlineGridLanes => {
@@ -1961,88 +2113,13 @@ where
         input: ComputeInputOf<Self::Scalar>,
     ) -> LayoutResultOf<Self::Node, ComputeOutputOf<Self::Scalar>, Self::Scalar, Tree::MeasureError>
     {
-        if self.tree.layout_input(node).as_inline_text().is_some()
-            || self.tree.layout_input(node).as_text_control().is_some()
-        {
-            if self.text.is_none() {
-                return Err(LayoutErrorOf::new(
-                    LayoutErrorSiteOf::Node(node),
-                    LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextCapture),
-                ));
-            }
-            let known = input.known();
-            let size = Size::new(
-                known.width.unwrap_or(Self::Scalar::ZERO),
-                known.height.unwrap_or(Self::Scalar::ZERO),
-            );
-            return Ok(ComputeOutputOf::from_sizes(size, size));
-        }
-
-        let input = self.prepare_child_input(node, input)?;
-        let style = self.tree.node_input(node);
-        if input.run_mode() == RunMode::PerformHiddenLayout || style.display == crate::Display::None
-        {
-            #[cfg(test)]
-            HIDDEN_COMPUTE_SESSION_REQUESTS.with(|requests| {
-                requests.borrow_mut().push((
-                    input.settled_auto_scrollbars(),
-                    input.containing_auto_scrollbar_pass(),
-                ));
-            });
-            return super::compute_hidden(
-                self,
-                node,
-                self.staged_source_index(node),
-                input.containing_layout_context(),
-                input.containing_auto_scrollbar_pass(),
-            );
-        }
-
-        if let Some(memo) = &self.entry_sources {
-            let funding = self.entry_funding(node)?;
-            let measured = memo
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .contains(node, funding.as_ref())
-                .map_err(|error| {
-                    LayoutErrorOf::new(
-                        LayoutErrorSiteOf::Node(node),
-                        LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::Text(error),
-                    )
-                })?;
-            if measured {
-                return self.compute_child_uncached(node, input);
+        match self.admit_child(node, input)? {
+            ChildAdmission::Ready(output) => Ok(output),
+            ChildAdmission::Hidden(request) => self.drive_hidden(request),
+            ChildAdmission::Uncached { input, cache } => {
+                self.complete_admitted_child(node, input, cache)
             }
         }
-
-        if input.run_mode().is_perform_layout() && self.child_count(node) != 0 {
-            let input = input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL);
-            if self.subtree_uses_shape_provider(node) {
-                let context = <Self as CacheAccess<Tree::MeasureError>>::cache_context(self);
-                if let Some(output) = <Self as CacheAccess<Tree::MeasureError>>::cache_get(
-                    self, node, &input, context,
-                )? && self.cache_restore_semantics(node, &input)?
-                    && self.restore_committed_subtree(node)
-                {
-                    return Ok(output);
-                }
-                let output = self.compute_child_uncached(node, input)?;
-                <Self as CacheAccess<Tree::MeasureError>>::cache_store(
-                    self, node, &input, context, output,
-                )?;
-                return Ok(output);
-            }
-            return self.compute_child_uncached(node, input);
-        }
-
-        super::contracts::compute_cached(self, node, input, |session, node, input| {
-            session.compute_child_uncached(
-                node,
-                input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL),
-            )
-        })
     }
 
     fn observe_grid_overflow(

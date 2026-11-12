@@ -3,6 +3,7 @@ pub(crate) mod containment;
 pub(crate) mod contracts;
 mod entry_sources;
 mod entry_staging;
+mod hidden;
 mod root;
 mod rounding;
 pub(crate) use rounding::FragmentAnchor;
@@ -20,7 +21,9 @@ use crate::{
     LayoutRootContextOf, LayoutRootRequestOf, LayoutScalar, LayoutTree,
     LayoutUnsupportedCapability, Overflow, PhysicalAxis, Position, Size, SizingAlgorithm, Traverse,
 };
-pub(crate) use root::{compute_hidden, compute_root};
+#[cfg(test)]
+pub(crate) use hidden::compute_hidden;
+pub(crate) use root::compute_root;
 #[cfg(test)]
 pub(crate) use rounding::round_layout;
 #[cfg(test)]
@@ -695,3 +698,6 @@ fn run_session<Tree: LayoutTree>(
 
 #[cfg(test)]
 mod atomic_size_tests;
+
+#[cfg(test)]
+mod depth_tests;

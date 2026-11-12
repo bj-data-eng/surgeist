@@ -371,9 +371,9 @@ pub type Scalar = DefaultScalar;
 #[cfg(test)]
 pub(crate) use block::compute_block;
 pub use cache::{Cache, CacheKeyContext, CacheOf, ClearState};
-pub(crate) use engine::contracts::{CacheAccess, Compute};
+pub(crate) use engine::contracts::Compute;
 #[cfg(test)]
-pub(crate) use engine::contracts::{Round, compute_cached};
+pub(crate) use engine::contracts::{CacheAccess, Round};
 #[cfg(test)]
 pub(crate) use engine::round_layout;
 #[cfg(test)]

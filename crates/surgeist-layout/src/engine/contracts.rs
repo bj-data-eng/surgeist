@@ -1,7 +1,7 @@
 use crate::error::LayoutResultOf;
 use crate::{
     CacheKeyContext, ComputeInputOf, ComputeOutputOf, InlineFragmentOutputOf, LayoutInputViewOf,
-    LayoutOutputEntryOf, LayoutScalar, NodeInputOf, RunMode, Traverse,
+    LayoutOutputEntryOf, LayoutScalar, NodeInputOf, Traverse,
 };
 
 pub(crate) type WrappingContextLoan<'a, Node> = (
@@ -319,33 +319,40 @@ pub(crate) trait CacheAccess<M = core::convert::Infallible> {
     fn cache_clear(&mut self, node: Self::Node) -> LayoutResultOf<Self::Node, (), Self::Scalar, M>;
 }
 
-pub(crate) fn compute_cached<Tree, ComputeFn, M>(
-    tree: &mut Tree,
-    node: Tree::Node,
-    input: ComputeInputOf<Tree::Scalar>,
-    compute: ComputeFn,
-) -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
-where
-    Tree: CacheAccess<M> + ?Sized,
-    ComputeFn: FnOnce(
-        &mut Tree,
-        Tree::Node,
-        ComputeInputOf<Tree::Scalar>,
-    )
-        -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>,
-{
-    if input.run_mode() == RunMode::PerformHiddenLayout {
-        return compute(tree, node, input);
+pub(crate) struct ChildCacheRequest<Node, S: LayoutScalar> {
+    node: Node,
+    input: ComputeInputOf<S>,
+    context: CacheKeyContext,
+}
+
+impl<Node: Copy + Eq, S: LayoutScalar> ChildCacheRequest<Node, S> {
+    pub(crate) fn new(node: Node, input: ComputeInputOf<S>, context: CacheKeyContext) -> Self {
+        Self {
+            node,
+            input,
+            context,
+        }
     }
 
-    let context = tree.cache_context();
-    if let Some(output) = tree.cache_get(node, &input, context)?
-        && tree.cache_restore_semantics(node, &input)?
+    pub(crate) fn restore_hit<Tree, M>(&self, tree: &mut Tree) -> CacheLookupResult<Node, S, M>
+    where
+        Tree: CacheAccess<M, Node = Node, Scalar = S>,
     {
-        return Ok(output);
+        let output = tree.cache_get(self.node, &self.input, self.context)?;
+        if output.is_some() && tree.cache_restore_semantics(self.node, &self.input)? {
+            return Ok(output);
+        }
+        Ok(None)
     }
 
-    let output = compute(tree, node, input)?;
-    tree.cache_store(node, &input, context, output)?;
-    Ok(output)
+    pub(crate) fn store<Tree, M>(
+        self,
+        tree: &mut Tree,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: CacheAccess<M, Node = Node, Scalar = S>,
+    {
+        tree.cache_store(self.node, &self.input, self.context, output)
+    }
 }

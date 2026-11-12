@@ -634,14 +634,19 @@ fn cached_compute_uses_tree_cache_before_running_expensive_layout() {
         ),
     );
 
-    let first = compute_cached(&mut probe, 7, input, |tree, _node, _input| {
-        tree.calls += 1;
-        Ok(ComputeOutput::from_outer_size(Size::new(80.0, 24.0)))
-    });
-    let second = compute_cached(&mut probe, 7, input, |tree, _node, _input| {
-        tree.calls += 1;
-        Ok(ComputeOutput::from_outer_size(Size::new(10.0, 10.0)))
-    });
+    let mut compute = |size| -> crate::LayoutResultOf<u32, ComputeOutput, Scalar> {
+        let request =
+            crate::engine::contracts::ChildCacheRequest::new(7, input, probe.cache_context());
+        if let Some(output) = request.restore_hit(&mut probe)? {
+            return Ok(output);
+        }
+        probe.calls += 1;
+        let output = ComputeOutput::from_outer_size(size);
+        request.store(&mut probe, output)?;
+        Ok(output)
+    };
+    let first = compute(Size::new(80.0, 24.0));
+    let second = compute(Size::new(10.0, 10.0));
 
     let first = first.expect("first cache request computes");
     let second = second.expect("second cache request reuses the result");
