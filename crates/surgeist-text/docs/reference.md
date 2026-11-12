@@ -119,6 +119,9 @@ generated inline. The pattern edges bound cell selection and lookaround.
 scope font reference, and limits when a cell is selected. Each cell applies
 ordinary horizontal inner whitespace processing and retains its source pieces
 and horizontal paint frame. Horizontal writing leaves the declaration inactive.
+`LeaderRunView::glyph_frame()` reports the executed physical paint frame with
+the pattern's inline start and baseline at zero. A glyphless cell remains
+available from its contribution through `LeaderClusterView::cell()`.
 
 `FinalizedLeaderPattern` retains the exact source, transformed mappings, unit
 metrics, and actual glyph runs and font instances. `cluster_views()` supplies
