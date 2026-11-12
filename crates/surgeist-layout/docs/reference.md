@@ -235,15 +235,15 @@ allocations use already used line-coordinate units, with no second preparation
 scale; see Text's [allocated shift contract](../../surgeist-text/docs/reference.md).
 Its existing sideways-lr refusal remains in effect.
 
-For a block scroll container with `baseline_source: Auto`, the last set places
-both names at its own signed block-end margin edge. Layout then clamps exported
-available coordinates to that container's border interval. Explicit `First` or
-`Last` uses content-derived facts, with the same clamp; a synthesized fallback
-is also clamped when consumed. `Clip` alone does not create a scroll container
-or invoke these rules. Classification follows the adopted overflow-pair model.
-Each scrolling descendant exports its facts before its parent translates them.
-These coordinates use Layout's canonical initial-placement frame; current scroll
-offsets are not Layout inputs. See the pinned
+A Block container that scrolls on its block axis uses its signed block-end
+margin edge for the last baseline set when `baseline_source` is `Auto`.
+Explicit `First` or `Last` uses content-derived facts. Layout clamps generic
+and named exports to the owning scroll container's border interval. It also
+clamps a synthesized named fallback when consumed. The overflow-pair model
+determines whether clipping provides a scroll container.
+A scrolling Block descendant exports its baselines in its own border frame
+before the parent translates them. Both frames use the canonical initial
+placement. See the pinned
 [baseline export rules](../../../references/css-align-3--WD-css-align-3-20260130--7361249cbb73.md#baseline-export)
 and [source selection](../../../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#baseline-source).
 
