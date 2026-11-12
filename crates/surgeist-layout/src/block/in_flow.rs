@@ -489,6 +489,165 @@ impl<S: LayoutScalar> InFlowMarginPlacement<S> {
     }
 }
 
+struct SharedInFlowPlacement<Node, S: LayoutScalar> {
+    origin: LogicalPointOf<S>,
+    floats: float_context::Completed<Node, S>,
+}
+
+struct InFlowBoxPlacement<'a, Node, S: LayoutScalar> {
+    node: Node,
+    child: Node,
+    source_index: usize,
+    constants: &'a Constants<S>,
+    cursor: S,
+    containing_size: Size<S>,
+    child_size: LogicalSizeOf<S>,
+    logical_margin: LogicalEdgesOf<S>,
+    child_margin: Edges<S>,
+    child_border: Edges<S>,
+    child_padding: Edges<S>,
+    output: &'a ComputeOutputOf<S>,
+    clear: Clear,
+    avoids_float_exclusions: bool,
+    accepted_float_position: Option<LogicalPointOf<S>>,
+    shared_child: Option<SharedInFlowPlacement<Node, S>>,
+    inset_offset: Point<S>,
+    deferred_inset: bool,
+    set_layout: bool,
+}
+
+struct InFlowBoxOrigins<S: LayoutScalar> {
+    logical: LogicalPointOf<S>,
+    normal: Point<S>,
+}
+
+fn place_in_flow_box<'input, Tree, S, M>(
+    tree: &mut Tree,
+    placement: InFlowBoxPlacement<'_, Tree::Node, S>,
+    float_exclusions: &mut FloatExclusions<S, Tree::Node>,
+    owned_float_block_end: &mut S,
+    contributions: &mut BlockScrollContributions<S>,
+) -> LayoutResultOf<Tree::Node, InFlowBoxOrigins<S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let InFlowBoxPlacement {
+        node,
+        child,
+        source_index,
+        constants,
+        cursor,
+        containing_size,
+        child_size,
+        logical_margin,
+        child_margin,
+        child_border,
+        child_padding,
+        output,
+        clear,
+        avoids_float_exclusions,
+        accepted_float_position,
+        shared_child,
+        inset_offset,
+        deferred_inset,
+        set_layout,
+    } = placement;
+    let logical_location = LogicalPointOf::new(
+        in_flow_child_inline_offset(child_size.inline, logical_margin, constants),
+        cursor,
+    );
+    if shared_child
+        .as_ref()
+        .is_some_and(|shared| shared.origin != logical_location)
+    {
+        return Err(float_context::missing(child));
+    }
+    let fallback_location =
+        constants
+            .flow_axes
+            .physical_point(logical_location, child_size, containing_size);
+    let flow_location = if let Some(location) = accepted_float_position {
+        constants
+            .flow_axes
+            .physical_point(location, child_size, containing_size)
+    } else if avoids_float_exclusions {
+        let location = float_exclusions.place_bfc_block(
+            cursor,
+            child_size,
+            logical_margin,
+            clear,
+            logical_location.inline,
+        );
+        constants
+            .flow_axes
+            .physical_point(location, child_size, containing_size)
+    } else {
+        fallback_location
+    };
+    let location = Point::new(
+        flow_location.x + inset_offset.x,
+        flow_location.y + inset_offset.y,
+    );
+    if let Some(shared) = shared_child {
+        if !float_exclusions
+            .import_child(&shared.floats, logical_location)
+            .map_err(|error| super::inline_run::text_run_error(child, error.into()))?
+        {
+            return Err(float_context::missing(child));
+        }
+        *owned_float_block_end = owned_float_block_end.max(float_exclusions.bottom());
+    }
+    if set_layout {
+        let scroll_geometry = with_block_scroll_projections::<Tree, M, _>(
+            tree,
+            child,
+            |box_projection, target_projection| {
+                retained_child_scroll_geometry(
+                    box_projection,
+                    target_projection,
+                    output.size,
+                    output.content_size,
+                    child_padding,
+                    child_border,
+                    output.scroll_geometry,
+                )
+            },
+        )
+        .map_err(|error| layout_child_geometry_error(node, child, error))?;
+        if !deferred_inset {
+            contributions
+                .include_in_flow_geometry(location, child_margin, scroll_geometry)
+                .map_err(|error| layout_child_geometry_error(node, child, error))?;
+        }
+        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+            child,
+            crate::output::NormalGeometryOf::box_geometry(
+                flow_location,
+                output.size,
+                scroll_geometry.content_box(),
+            ),
+            NodeOutputOf::<S> {
+                source_index: crate::SourceIndex::new(source_index),
+                location,
+                size: output.size,
+                named_baselines: output.named_baselines,
+                content_size: output.content_size,
+                border: child_border,
+                padding: child_padding,
+                margin: child_margin,
+                ..NodeOutputOf::new()
+            }
+            .with_scroll_geometry(Some(scroll_geometry)),
+        ));
+    }
+
+    Ok(InFlowBoxOrigins {
+        logical: logical_location,
+        normal: flow_location,
+    })
+}
+
 pub(super) fn layout_in_flow_children<'input, Tree, S, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
@@ -829,7 +988,6 @@ where
         let resident_cut = remaining_cut;
         let mut introduced_cut = resident_cut
             .filter(|cut| cut.container == node && cut.node == child && cut.index == index);
-        let mut accepted_shared_origin = None;
         let mut accepted_float_position = None;
         let places_against_float_exclusions =
             physical_float_context && avoids_float_exclusions && !float_exclusions.is_empty();
@@ -894,8 +1052,10 @@ where
             clearance_funding = computed.clearance_funding;
             introduced_cut = computed.introduced_cut;
             remaining_cut = computed.remaining_cut;
-            accepted_shared_origin = Some(computed.location);
-            shared_child = Some(computed.accepted.floats);
+            shared_child = Some(SharedInFlowPlacement {
+                origin: computed.location,
+                floats: computed.accepted.floats,
+            });
             computed.accepted.output
         } else {
             tree.compute_block_child(child_request)?
@@ -1053,93 +1213,36 @@ where
             &mut remaining_cut,
             &mut fragment_margins,
         )?;
-        let logical_location = LogicalPointOf::new(
-            in_flow_child_inline_offset(logical_child_size.inline, logical_child_margin, constants),
-            adjoining.cursor,
-        );
-        if accepted_shared_origin.is_some_and(|origin| origin != logical_location) {
-            return Err(float_context::missing(child).into());
-        }
-        let fallback_location = constants.flow_axes.physical_point(
-            logical_location,
-            logical_child_size,
-            containing_size,
-        );
-        let flow_location = if let Some(location) = accepted_float_position {
-            constants
-                .flow_axes
-                .physical_point(location, logical_child_size, containing_size)
-        } else if avoids_float_exclusions {
-            let location = float_exclusions.place_bfc_block(
-                adjoining.cursor,
-                logical_child_size,
-                logical_child_margin,
-                child_style.clear,
-                logical_location.inline,
-            );
-            constants
-                .flow_axes
-                .physical_point(location, logical_child_size, containing_size)
-        } else {
-            fallback_location
-        };
-        let location = Point::new(
-            flow_location.x + inset_offset.x,
-            flow_location.y + inset_offset.y,
-        );
-        if let Some(shared) = shared_child {
-            let flow_origin = logical_location;
-            if !float_exclusions
-                .import_child(&shared, flow_origin)
-                .map_err(|error| super::inline_run::text_run_error(child, error.into()))?
-            {
-                return Err(float_context::missing(child).into());
-            }
-            owned_float_block_end = owned_float_block_end.max(float_exclusions.bottom());
-        }
-        if set_layout {
-            let scroll_geometry = with_block_scroll_projections::<Tree, M, _>(
-                tree,
+        let InFlowBoxOrigins {
+            logical: logical_location,
+            normal: flow_location,
+        } = place_in_flow_box(
+            tree,
+            InFlowBoxPlacement {
+                node,
                 child,
-                |box_projection, target_projection| {
-                    retained_child_scroll_geometry(
-                        box_projection,
-                        target_projection,
-                        output.size,
-                        output.content_size,
-                        child_padding,
-                        child_border,
-                        output.scroll_geometry,
-                    )
-                },
-            )
-            .map_err(|error| layout_child_geometry_error(node, child, error))?;
-            if !deferred_inset {
-                contributions
-                    .include_in_flow_geometry(location, child_margin, scroll_geometry)
-                    .map_err(|error| layout_child_geometry_error(node, child, error))?;
-            }
-            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-                child,
-                crate::output::NormalGeometryOf::box_geometry(
-                    flow_location,
-                    output.size,
-                    scroll_geometry.content_box(),
-                ),
-                NodeOutputOf::<S> {
-                    source_index: crate::SourceIndex::new(source_index),
-                    location,
-                    size: output.size,
-                    named_baselines: output.named_baselines,
-                    content_size: output.content_size,
-                    border: child_border,
-                    padding: child_padding,
-                    margin: child_margin,
-                    ..NodeOutputOf::new()
-                }
-                .with_scroll_geometry(Some(scroll_geometry)),
-            ));
-        }
+                source_index,
+                constants,
+                cursor: adjoining.cursor,
+                containing_size,
+                child_size: logical_child_size,
+                logical_margin: logical_child_margin,
+                child_margin,
+                child_border,
+                child_padding,
+                output: &output,
+                clear: child_style.clear,
+                avoids_float_exclusions,
+                accepted_float_position,
+                shared_child,
+                inset_offset,
+                deferred_inset,
+                set_layout,
+            },
+            &mut float_exclusions,
+            &mut owned_float_block_end,
+            &mut contributions,
+        )?;
 
         let child_block_end = if avoids_float_exclusions {
             constants
