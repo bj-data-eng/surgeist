@@ -136,6 +136,20 @@ pub enum HtmlMetaCspRemovedDirective {
     /// The `sandbox` directive.
     Sandbox,
 }
+pub(in crate::internal::security) const META_REMOVED_DIRECTIVES: [HtmlMetaCspRemovedDirective; 3] = [
+    HtmlMetaCspRemovedDirective::ReportUri,
+    HtmlMetaCspRemovedDirective::FrameAncestors,
+    HtmlMetaCspRemovedDirective::Sandbox,
+];
+impl HtmlMetaCspRemovedDirective {
+    pub(in crate::internal::security) const fn ascii_name(self) -> &'static [u8] {
+        match self {
+            Self::ReportUri => b"report-uri",
+            Self::FrameAncestors => b"frame-ancestors",
+            Self::Sandbox => b"sandbox",
+        }
+    }
+}
 /// What caused a meta policy request.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMetaCspTrigger {
@@ -206,11 +220,7 @@ impl HtmlMetaCspQualification {
     /// Returns the directives that the processor must remove from the parsed policy
     /// before enforcing it, in the order the Standard lists them.
     pub fn removed_directives(&self) -> [HtmlMetaCspRemovedDirective; 3] {
-        [
-            HtmlMetaCspRemovedDirective::ReportUri,
-            HtmlMetaCspRemovedDirective::FrameAncestors,
-            HtmlMetaCspRemovedDirective::Sandbox,
-        ]
+        META_REMOVED_DIRECTIVES
     }
     fn text_layout(&self) -> Result<HtmlCspArtifactLayout, HtmlCspProtocolError> {
         HtmlCspArtifactLayout::inline::<QualificationRecord>(12)

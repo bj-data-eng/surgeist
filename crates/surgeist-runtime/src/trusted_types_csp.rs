@@ -5,7 +5,12 @@
 //! per violated policy. The caller owns the Global and queues those candidates.
 
 use std::ops::Range;
-use surgeist_html::values::DocumentString;
+use surgeist_html::{
+    security::csp::{
+        HtmlCspDirectiveValues, HtmlCspDirectives, HtmlCspPolicySource, HtmlCspSerializedPolicy,
+    },
+    values::DocumentString,
+};
 
 /// The source and disposition of one delivered CSP policy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -21,6 +26,13 @@ pub enum PolicyDelivery {
 impl PolicyDelivery {
     fn enforces(self) -> bool {
         self != Self::ReportOnlyHeader
+    }
+
+    fn source(self) -> HtmlCspPolicySource {
+        match self {
+            Self::EnforcingHeader | Self::ReportOnlyHeader => HtmlCspPolicySource::Header,
+            Self::Meta => HtmlCspPolicySource::Meta,
+        }
     }
 }
 
@@ -41,37 +53,18 @@ impl Policy {
         delivery: PolicyDelivery,
         step: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<Self, E> {
-        let text = serialized.code_units();
-        let mut remaining = text;
-        let mut script_required = None;
-        let mut names = None;
-        while !remaining.is_empty() && (script_required.is_none() || names.is_none()) {
-            let mut ascii = true;
-            let mut directive = consume(&mut remaining, step, |unit| {
-                if unit == u16::from(b';') {
-                    return false;
-                }
-                ascii &= unit <= 0x7f;
-                true
-            })?;
-            let directive_end = text.len() - remaining.len();
-            if let Some((_, tail)) = remaining.split_first() {
-                remaining = tail;
-            }
-            if !ascii {
-                continue;
-            }
-            let name = word(&mut directive, step)?;
-            if script_required.is_none() && keyword(name, b"require-trusted-types-for") {
-                script_required = Some(has_script(directive, step)?);
-            } else if names.is_none() && keyword(name, b"trusted-types") {
-                names = Some((directive_end - directive.len())..directive_end);
-            }
-        }
+        let policy = HtmlCspSerializedPolicy::new(serialized.code_units(), delivery.source());
+        let script_required = match policy.directive_with(b"require-trusted-types-for", step)? {
+            Some(directive) => has_script(directive.values(), step)?,
+            None => false,
+        };
+        let names = policy
+            .directive_with(b"trusted-types", step)?
+            .map(|directive| directive.value_range());
         Ok(Self {
             serialized,
             delivery,
-            script_required: script_required.unwrap_or(false),
+            script_required,
             names,
         })
     }
@@ -87,13 +80,19 @@ impl Policy {
         &self.serialized
     }
 
+    /// Visits the effective directive set, in order, for violation reporting.
+    pub fn directives(&self) -> HtmlCspDirectives<'_> {
+        HtmlCspSerializedPolicy::new(self.serialized.code_units(), self.delivery.source())
+            .directives()
+    }
+
     fn denies_name<E>(
         &self,
         name: &[u16],
         duplicate: bool,
         step: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<bool, E> {
-        let Some(mut values) = self
+        let Some(values) = self
             .names
             .as_ref()
             .and_then(|range| self.serialized.code_units().get(range.clone()))
@@ -102,8 +101,11 @@ impl Policy {
         };
         let mut permitted = false;
         let mut allows_duplicate = !duplicate;
-        while !values.is_empty() && !(permitted && allows_duplicate) {
-            let value = word(&mut values, step)?;
+        let mut values = HtmlCspDirectiveValues::new(values);
+        while !(permitted && allows_duplicate) {
+            let Some(value) = values.next_with(step)? else {
+                break;
+            };
             if keyword(value, b"'allow-duplicates'") {
                 allows_duplicate = true;
             } else if value == [u16::from(b'*')] || matching_name(value, name, step)? {
@@ -114,37 +116,6 @@ impl Policy {
     }
 }
 
-// ASCII whitespace uses Infra's five characters and excludes vertical tab.
-fn whitespace(unit: u16) -> bool {
-    matches!(unit, 0x09 | 0x0a | 0x0c | 0x0d | 0x20)
-}
-
-fn consume<'a, E>(
-    remaining: &mut &'a [u16],
-    step: &mut impl FnMut() -> Result<(), E>,
-    mut keep: impl FnMut(u16) -> bool,
-) -> Result<&'a [u16], E> {
-    let mut count = 0;
-    for &unit in *remaining {
-        step()?;
-        if !keep(unit) {
-            break;
-        }
-        count += 1;
-    }
-    let (prefix, tail) = (*remaining).split_at(count);
-    *remaining = tail;
-    Ok(prefix)
-}
-
-fn word<'a, E>(
-    remaining: &mut &'a [u16],
-    step: &mut impl FnMut() -> Result<(), E>,
-) -> Result<&'a [u16], E> {
-    consume(remaining, step, whitespace)?;
-    consume(remaining, step, |unit| !whitespace(unit))
-}
-
 fn keyword(units: &[u16], literal: &[u8]) -> bool {
     units.len() == literal.len()
         && units.iter().zip(literal).all(|(&unit, byte)| {
@@ -152,9 +123,12 @@ fn keyword(units: &[u16], literal: &[u8]) -> bool {
         })
 }
 
-fn has_script<E>(mut values: &[u16], step: &mut impl FnMut() -> Result<(), E>) -> Result<bool, E> {
-    while !values.is_empty() {
-        if keyword(word(&mut values, step)?, b"'script'") {
+fn has_script<E>(
+    mut values: HtmlCspDirectiveValues<'_>,
+    step: &mut impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    while let Some(value) = values.next_with(step)? {
+        if keyword(value, b"'script'") {
             return Ok(true);
         }
     }

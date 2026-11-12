@@ -22,6 +22,7 @@ pub const fn surgeist_runtime::trusted_types_csp::Decision<'policy, 'name>::scri
 pub struct surgeist_runtime::trusted_types_csp::Policy
 impl surgeist_runtime::trusted_types_csp::Policy
 pub const fn surgeist_runtime::trusted_types_csp::Policy::delivery(&self) -> surgeist_runtime::trusted_types_csp::PolicyDelivery
+pub fn surgeist_runtime::trusted_types_csp::Policy::directives(&self) -> surgeist_html::internal::security::csp_directives::HtmlCspDirectives<'_>
 pub fn surgeist_runtime::trusted_types_csp::Policy::parse<E>(serialized: surgeist_html::internal::values::document_string::DocumentString, delivery: surgeist_runtime::trusted_types_csp::PolicyDelivery, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<Self, E>
 pub fn surgeist_runtime::trusted_types_csp::Policy::serialized(&self) -> &surgeist_html::internal::values::document_string::DocumentString
 pub struct surgeist_runtime::trusted_types_csp::Violation<'a>

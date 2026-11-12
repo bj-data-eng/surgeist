@@ -122,6 +122,28 @@ fn mismatches_retain_every_ordered_violation_across_refusal_and_blocking() {
 }
 
 #[test]
+fn meta_violation_exposes_the_full_effective_directive_set() {
+    let list = [parse(
+        "REPORT-uri /old; SCRIPT-src 'self'; require-trusted-types-for 'script'; script-src *",
+        PolicyDelivery::Meta,
+    )];
+    let mut decision = Decision::script_mismatch(&list);
+    let violation = decision.next_violation(&mut step).unwrap().unwrap();
+    let mut directives = violation.policy().directives();
+    let script = directives.next_with(&mut step).unwrap().unwrap();
+    assert!(script.name().eq(*b"script-src"));
+    let first: Vec<_> = "'self'".encode_utf16().collect();
+    assert_eq!(
+        script.values().next_with(&mut step).unwrap(),
+        Some(first.as_slice())
+    );
+    let types = directives.next_with(&mut step).unwrap().unwrap();
+    assert!(types.name().eq(*b"require-trusted-types-for"));
+    assert!(directives.next_with(&mut step).unwrap().is_none());
+    assert_eq!(decision.blocked(), Some(true));
+}
+
+#[test]
 fn source_inspection_and_name_comparison_can_refuse_before_advancing() {
     let text = "trusted-types duplicate 'allow-duplicates'";
     let mut steps = 0_u64;
