@@ -137,8 +137,8 @@ impl LeaderRunView<'_> {
         &self.run
     }
 
-    /// Executed physical glyph frame with the pattern's inline start and
-    /// shared baseline at zero, including any combined cell transform.
+    /// Executed physical glyph frame with local x=0 on the shared baseline
+    /// at physical (0, 0), including any combined cell transform.
     pub fn glyph_frame(&self) -> Result<crate::GlyphFrame> {
         self.run.pattern_glyph_frame()
     }
