@@ -65,8 +65,23 @@ impl Draft {
         mut formed: FormedSlot,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if slots.get(index) == Some(formed.value.value()) {
-            return Ok(());
+        if let Some(old) = slots.get(index) {
+            let new = formed.value.value();
+            let unchanged = match (&old.node, &new.node) {
+                (Some(Node::Attr(old_attr)), Some(Node::Attr(new_attr))) => {
+                    old.generation == new.generation
+                        && old.retired == new.retired
+                        && old_attr.value.common == new_attr.value.common
+                        && old_attr.value.owner == new_attr.value.owner
+                        && old_attr
+                            .value
+                            .same_data(&new_attr.value, || self.source_step(cancel))?
+                }
+                _ => old == new,
+            };
+            if unchanged {
+                return Ok(());
+            }
         }
         let payload =
             source::storage::canonical_slot(formed.value.value(), || self.source_step(cancel))?;

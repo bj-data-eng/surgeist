@@ -53,6 +53,55 @@ fn same_backing(left: DomNamedNodeMap<'_>, right: DomNamedNodeMap<'_>) -> bool {
                 && std::ptr::eq(a.value(), b.value())
         })
 }
+
+#[test]
+fn restoring_an_attr_value_in_a_published_batch_keeps_its_original_backing() {
+    let mut dom = owner();
+    let document = document(&mut dom);
+    let original = units(RAW);
+    let mut setup = DomBatch::new();
+    let element = setup.create_element(document, "div");
+    setup.set_attribute(&element, "data-x", original.clone());
+    let element = apply(&mut dom, setup).created(&element).unwrap().unwrap();
+    let before = dom.snapshot();
+    let id = before
+        .node(element)
+        .unwrap()
+        .get_attribute_node(&"data-x".into())
+        .unwrap()
+        .id();
+
+    let restored = units(RAW);
+    assert!(!restored.shares_storage_with(&original));
+    let mut edit = DomBatch::new();
+    edit.set_attribute(element, "data-x", "changed");
+    edit.set_attribute(element, "data-x", restored);
+    edit.create_comment(document, "publish this change");
+    let commit = apply(&mut dom, edit);
+    let after = dom.snapshot();
+
+    assert_ne!(after.stamp(), before.stamp());
+    assert!(
+        !commit
+            .changes()
+            .changes()
+            .contains(&DomChange::Attributes(element))
+    );
+    assert!(
+        !commit
+            .changes()
+            .changes()
+            .contains(&DomChange::AttrValue(id))
+    );
+    assert!(
+        after
+            .attr(id.node())
+            .unwrap()
+            .value()
+            .shares_storage_with(&original)
+    );
+}
+
 fn assert_input_attributes(snapshot: &DomSnapshot, input: NodeId, value: &[u16]) {
     let node = snapshot.node(input).unwrap();
     let attributes = node.attributes().unwrap();

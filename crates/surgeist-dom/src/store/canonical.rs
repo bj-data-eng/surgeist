@@ -201,6 +201,47 @@ pub(crate) struct AttrNode<K> {
     pub data: Arc<Payload<crate::DomAttribute>>,
     pub owner: Option<K>,
 }
+impl<K> AttrNode<K> {
+    pub(super) fn same_data(
+        &self,
+        other: &Self,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<bool, DomError> {
+        if Arc::ptr_eq(&self.data, &other.data) {
+            return Ok(true);
+        }
+        let left = &self.data.value;
+        let right = &other.data.value;
+        for (left, right) in [
+            (left.name().namespace_uri(), right.name().namespace_uri()),
+            (left.name().prefix(), right.name().prefix()),
+            (
+                Some(left.name().local_name()),
+                Some(right.name().local_name()),
+            ),
+            (Some(left.value()), Some(right.value())),
+        ] {
+            let (left, right) = match (left, right) {
+                (None, None) => continue,
+                (Some(left), Some(right)) => (left, right),
+                _ => return Ok(false),
+            };
+            if left.shares_storage_with(right) {
+                continue;
+            }
+            if left.len() != right.len() {
+                return Ok(false);
+            }
+            for (left, right) in left.code_units().iter().zip(right.code_units()) {
+                step()?;
+                if left != right {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
+}
 #[cfg_attr(test, derive(Clone))]
 #[derive(Debug)]
 pub(crate) enum Node {

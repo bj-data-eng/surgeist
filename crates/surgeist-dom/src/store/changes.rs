@@ -22,14 +22,9 @@ fn same_payload<T: PartialEq>(
 
 fn same_language(left: &Node, right: &Node) -> bool {
     match (left, right) {
-        (Node::Document(a), Node::Document(b)) => {
-            same_payload(&a.value.metadata, &b.value.metadata)
-        }
-        (Node::Element(a), Node::Element(b)) => same_payload(&a.value.element, &b.value.element),
         (Node::DocumentFragment(_), Node::DocumentFragment(_)) => true,
         (Node::ShadowRoot(a), Node::ShadowRoot(b)) => same_payload(&a.value.state, &b.value.state),
         (Node::Text(a), Node::Text(b)) => same_payload(&a.value.data, &b.value.data),
-        (Node::Attr(a), Node::Attr(b)) => same_payload(&a.value.data, &b.value.data),
         (Node::Comment(a), Node::Comment(b)) => same_payload(&a.value.data, &b.value.data),
         (Node::ProcessingInstruction(a), Node::ProcessingInstruction(b)) => {
             same_payload(&a.value.data, &b.value.data)
@@ -64,11 +59,45 @@ fn same_attributes(
         if left != right {
             return Ok(false);
         }
-        if !same_language(states.0.node(owner, left)?, states.1.node(owner, right)?) {
+        let (Node::Attr(left), Node::Attr(right)) =
+            (states.0.node(owner, left)?, states.1.node(owner, right)?)
+        else {
+            return Ok(false);
+        };
+        if !left
+            .value
+            .same_data(&right.value, || source::formation::step(budget, cancel))?
+        {
             return Ok(false);
         }
     }
     Ok(true)
+}
+
+fn intrinsic_changed(
+    owner: DomOwnerId,
+    states: (&State, &State),
+    nodes: (&Node, &Node),
+    budget: Option<&source::formation::Formation>,
+    cancel: &AtomicBool,
+) -> Result<bool, DomError> {
+    match nodes {
+        (Node::Element(_), Node::Element(_)) => {
+            Ok(!same_attributes(owner, states, nodes, budget, cancel)?)
+        }
+        (Node::Attr(before), Node::Attr(after)) => Ok(!before
+            .value
+            .same_data(&after.value, || source::formation::step(budget, cancel))?),
+        (Node::Document(before), Node::Document(after)) => {
+            let before = &before.value.metadata;
+            let after = &after.value.metadata;
+            Ok(
+                !Arc::ptr_eq(before, after)
+                    && !before.value.same_nondesign_mode_state(&after.value),
+            )
+        }
+        _ => Ok(!same_language(nodes.0, nodes.1)),
+    }
 }
 
 fn attr_owner_changed(before: &Node, after: &Node) -> bool {
@@ -370,15 +399,8 @@ pub(super) fn sparse_difference(
                     #[cfg(test)]
                     written.pushed::<DomChange>();
                 }
-                let intrinsic_changed = match (node.kind(), current.kind()) {
-                    (DomNodeKind::Element(_), DomNodeKind::Element(_)) => {
-                        !same_attributes(owner, (old, new), (node, current), budget, cancelled)?
-                    }
-                    (DomNodeKind::Document(before), DomNodeKind::Document(after)) => {
-                        !std::ptr::eq(before, after) && !before.same_nondesign_mode_state(after)
-                    }
-                    _ => !same_language(node, current),
-                };
+                let intrinsic_changed =
+                    intrinsic_changed(owner, (old, new), (node, current), budget, cancelled)?;
                 if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
                     (node.kind(), current.kind())
                     && ((!std::ptr::eq(before, after) && !before.same_nonattribute_state(after))
@@ -693,15 +715,8 @@ pub(super) fn full_difference(
                         DomViewTransitionSubject::Element(id),
                     ));
                 }
-                let intrinsic_changed = match (node.kind(), current.kind()) {
-                    (DomNodeKind::Element(_), DomNodeKind::Element(_)) => {
-                        !same_attributes(owner, (old, new), (node, current), budget, cancelled)?
-                    }
-                    (DomNodeKind::Document(before), DomNodeKind::Document(after)) => {
-                        !std::ptr::eq(before, after) && !before.same_nondesign_mode_state(after)
-                    }
-                    _ => !same_language(node, current),
-                };
+                let intrinsic_changed =
+                    intrinsic_changed(owner, (old, new), (node, current), budget, cancelled)?;
                 if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
                     (node.kind(), current.kind())
                     && ((!std::ptr::eq(before, after) && !before.same_nonattribute_state(after))
