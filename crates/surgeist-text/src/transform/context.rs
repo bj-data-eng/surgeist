@@ -194,6 +194,10 @@ pub(crate) struct SourceContext<'a> {
 
 impl<'a> SourceContext<'a> {
     pub(super) fn combination_requested(&self) -> bool {
+        // Source-local leader patterns have no applicable combination scope.
+        if self.processed.is_leader_pattern() && self.scope_topology.is_none() {
+            return false;
+        }
         let authored =
             self.processed.base_style().text_combine_upright != crate::TextCombineUpright::None
                 || self.processed.source().spans().iter().any(|span| {

@@ -132,6 +132,11 @@ pub(crate) fn is_hard_separator(code_point: u32) -> bool {
     if crate::control::is_visible(code_point) {
         return false;
     }
+    is_unicode_hard_separator(code_point)
+}
+
+/// Hard-break classes of the original Unicode scalar before presentation.
+pub(crate) fn is_unicode_hard_separator(code_point: u32) -> bool {
     matches!(
         CodePointMapData::<LineBreak>::new().get32(code_point),
         LineBreak::MandatoryBreak

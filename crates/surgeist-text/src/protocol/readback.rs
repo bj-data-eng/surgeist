@@ -1756,6 +1756,20 @@ impl FinalizedLine {
 }
 
 impl FinalizedRunView<'_> {
+    pub(crate) fn paint_glyph_range(&self) -> std::ops::Range<usize> {
+        self.run.glyphs.clone()
+    }
+
+    pub(crate) fn pattern_glyph_frame(&self) -> Result<crate::GlyphFrame> {
+        let placement = crate::engine::PlacedLine {
+            finalized: Arc::clone(&self.line.inner),
+            anchor: Point::new(0.0, 0.0),
+            orientation: self.line.inner.selected.request.context.orientation,
+            atomics: Vec::new(),
+        };
+        super::placement::qualify_run_glyph_frame(&placement, self.run)
+    }
+
     /// The outer cell whose horizontal inner frame owns this run.
     #[must_use]
     pub fn cell(&self) -> Option<FinalizedCellView<'_>> {

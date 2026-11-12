@@ -98,6 +98,20 @@ impl System {
         Ok(crate::PreparedText { inner })
     }
 
+    /// Finalizes one isolated generated leader pattern for reuse by Layout.
+    ///
+    /// Mandatory breaks are removed before ordinary whitespace processing.
+    /// Surviving spaces and glyphs retain their advances at pattern edges.
+    pub fn prepare_leader_pattern(
+        &mut self,
+        input: crate::LeaderPatternInput,
+    ) -> Result<crate::FinalizedLeaderPattern> {
+        let direction = input.direction;
+        let (analyzed, options) = engine::leader::analyze(input)?;
+        let prepared = self.prepare(&analyzed, options)?;
+        engine::leader::finalize(prepared, direction, &mut self.shape_context)
+    }
+
     fn place_analyzed(
         &mut self,
         analyzed: Arc<engine::AnalyzedData>,

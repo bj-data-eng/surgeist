@@ -7,7 +7,7 @@ use crate::{
     Affinity, AnalyzedSource, InlineBoxKind, ParagraphBaseDirection, ParagraphBoundaryDefinition,
     ParagraphBoundaryPolicy, ParagraphConnection, ParagraphConnectionKind, ParagraphControl,
     ParagraphControlKind, ParagraphOrigin, ParagraphReplacement, ParagraphReplacementDefinition,
-    ParagraphStrut, Range, Result, Source, Style,
+    ParagraphStrut, ParagraphTabReference, Range, Result, Source, Style,
 };
 use std::sync::Arc;
 
@@ -534,6 +534,7 @@ pub(super) struct ProcessingBarrier {
     pub(super) scope: Option<usize>,
 }
 pub(super) struct ProcessingContext {
+    pub(super) leader_pattern: bool,
     pub(super) domains: Vec<Domain>,
     pub(super) origins: Vec<(Range, usize)>,
     pub(super) boundaries: Vec<TrimBoundary>,
@@ -555,6 +556,25 @@ fn take(seen: &mut [bool], index: usize) -> Result<()> {
 
 /// Trims first, executes the shared Phase I lexer once, and freezes views.
 pub fn process_contextual_source(input: ContextualSourceInput) -> Result<ProcessedSource> {
+    process_capture(input, CapturePurpose::Document)
+}
+
+pub(crate) fn process_leader_capture(
+    input: ContextualSourceInput,
+    tab_reference: Option<&ParagraphTabReference>,
+) -> Result<ProcessedSource> {
+    process_capture(input, CapturePurpose::Leader(tab_reference))
+}
+
+enum CapturePurpose<'a> {
+    Document,
+    Leader(Option<&'a ParagraphTabReference>),
+}
+
+fn process_capture(
+    input: ContextualSourceInput,
+    purpose: CapturePurpose<'_>,
+) -> Result<ProcessedSource> {
     if input.envelope != SourceProcessingEnvelope::Complete {
         return Err(invalid(SourceProcessingError::IncompleteExterior));
     }
@@ -578,6 +598,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         .map(|_| Capture::default())
         .collect();
     let mut context = ProcessingContext {
+        leader_pattern: matches!(purpose, CapturePurpose::Leader(_)),
         domains: Vec::new(),
         origins: Vec::new(),
         boundaries: Vec::new(),
@@ -1277,7 +1298,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                         .map(|&i| control_orders[i])
                         .collect(),
                 }),
-                terminal_edge: if terminal {
+                terminal_edge: if terminal && !context.leader_pattern {
                     crate::ParagraphTerminalEdge::BlockEnd
                 } else {
                     crate::ParagraphTerminalEdge::NonBlockBoundary
@@ -1285,10 +1306,13 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 base_direction: Some(input.paragraphs[index].base_direction),
                 paragraph_strut: input.paragraphs[index].paragraph_strut,
                 domain_style: Some(context.domains[capture.domain].style.clone()),
-                tab_reference: Some(crate::ParagraphTabReference::new(
-                    context.domains[capture.domain].style.clone(),
-                    context.domains[capture.domain].direction,
-                )?),
+                tab_reference: match &purpose {
+                    CapturePurpose::Document => Some(ParagraphTabReference::new(
+                        context.domains[capture.domain].style.clone(),
+                        context.domains[capture.domain].direction,
+                    )?),
+                    CapturePurpose::Leader(reference) => reference.cloned(),
+                },
             },
         };
         for replacement in &data.replacements {
@@ -1334,6 +1358,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         base_style: context.domains[0].style.clone(),
         segment_breaks: input.segment_breaks,
         processed: crate::Text::from_code_units(units),
+        leader_pattern: context.leader_pattern,
         map,
         box_order,
         paragraphs: records,

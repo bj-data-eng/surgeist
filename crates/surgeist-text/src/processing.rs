@@ -77,6 +77,7 @@ pub(crate) enum DeletionCause {
     SpaceAroundSegmentBreak,
     DuplicateSegmentBreak,
     ContextualSegmentBreak,
+    LeaderBreak,
     CollapsedSpace,
     Trim,
 }
@@ -123,6 +124,7 @@ pub struct ProcessedSource {
     base_style: Style,
     segment_breaks: DocumentSegmentBreaks,
     processed: Text,
+    leader_pattern: bool,
     map: Vec<MappingPiece>,
     box_order: Vec<usize>,
     pub(crate) paragraphs: Vec<contextual::ParagraphRecord>,
@@ -161,7 +163,18 @@ pub fn process_source_whitespace(
     base_style: Style,
     segment_breaks: DocumentSegmentBreaks,
 ) -> Result<ProcessedSource> {
-    process_with_boundaries(source, base_style, segment_breaks, &[], None)
+    process_with_boundaries(source, base_style, segment_breaks, &[], None, false)
+}
+
+pub(crate) fn process_leader_pattern(source: Source, base_style: Style) -> Result<ProcessedSource> {
+    process_with_boundaries(
+        source,
+        base_style,
+        DocumentSegmentBreaks::Defined(Vec::new()),
+        &[],
+        None,
+        true,
+    )
 }
 
 pub(crate) fn process_paragraph(
@@ -203,6 +216,7 @@ pub(crate) fn process_paragraph(
         segment_breaks,
         &barriers,
         Some(paragraph),
+        false,
     )
 }
 
@@ -222,6 +236,7 @@ fn process_with_boundaries(
     segment_breaks: DocumentSegmentBreaks,
     barriers: &[usize],
     paragraph: Option<&crate::protocol::paragraph::ParagraphData>,
+    leader_pattern: bool,
 ) -> Result<ProcessedSource> {
     crate::source_model::validate_structure(&source)?;
     validate_delimiters(&source, &segment_breaks)?;
@@ -264,6 +279,7 @@ fn process_with_boundaries(
         box_order: &box_order,
         barriers,
         decode_boundaries: &decode_boundaries,
+        leader_pattern,
     })?;
     let preserved_spaces = preserved_spaces(&units, &tokens)?;
     Ok(ProcessedSource {
@@ -271,6 +287,7 @@ fn process_with_boundaries(
         base_style,
         segment_breaks,
         processed: Text::from_code_units(units),
+        leader_pattern,
         map,
         box_order,
         paragraphs: Vec::new(),
@@ -304,6 +321,7 @@ pub(crate) fn identity(source: Source, base_style: Style) -> Result<ProcessedSou
     }
     Ok(ProcessedSource {
         processed: source.text().clone(),
+        leader_pattern: false,
         source,
         base_style,
         segment_breaks: DocumentSegmentBreaks::Defined(Vec::new()),
@@ -317,6 +335,10 @@ pub(crate) fn identity(source: Source, base_style: Style) -> Result<ProcessedSou
 }
 
 impl ProcessedSource {
+    pub(crate) const fn is_leader_pattern(&self) -> bool {
+        self.leader_pattern
+    }
+
     pub(crate) fn preserves_space_at(&self, processed: usize) -> bool {
         let end = self
             .preserved_spaces

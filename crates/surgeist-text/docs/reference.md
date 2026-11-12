@@ -103,6 +103,41 @@ Anywhere opportunities, actual-owner hyphenation exclusion and atomic glue
 precedence. These ordinary opportunities are distinct from emergency overflow
 wrapping; typography and captured ancestor wrapping still govern admission.
 
+## Leader pattern preparation
+
+`System::prepare_leader_pattern` finalizes a decoded literal or a dotted, solid,
+or space keyword as one isolated inline unit. The caller supplies its used
+style, bidi base, writing axis, orientation, and tab reference. Text removes
+mandatory Unicode line-break controls before Phase I whitespace processing
+and retains their original UTF-16 correspondence. Surviving pattern-edge
+spaces and punctuation keep their advances. Preserved tabs use the unit
+start as origin.
+
+In vertical writing, `text-combine-upright` uses a complete capture of the
+generated inline. The pattern edges bound cell selection and lookaround.
+`LeaderCombinationContext` supplies the actual horizontal inner direction,
+scope font reference, and limits when a cell is selected. Each cell applies
+ordinary horizontal inner whitespace processing and retains its source pieces
+and horizontal paint frame. Horizontal writing leaves the declaration inactive.
+`LeaderRunView::glyph_frame()` reports the executed physical paint frame with
+local x=0 on the shared baseline at physical (0, 0). A glyphless cell remains
+available from its contribution through `LeaderClusterView::cell()`.
+
+`FinalizedLeaderPattern` retains the exact source, transformed mappings, unit
+metrics, and actual glyph runs and font instances. `cluster_views()` supplies
+each contribution's advance, bounds, presentation range, and original source
+pieces, including for glyphless tabs. Contributions and paint glyphs share
+pattern-local group identities. A group keeps a presentation grapheme and
+its shared shaping together across glyphs and contributions.
+
+An empty pattern has zero advance and no glyphs. A space-only pattern can
+have positive advance and empty ink. Clones share the same finalized unit.
+Layout owns repetition placement, and Render obtains admitted ink from the
+retained font instances.
+
+[Selected leader rules](../../../references/css-content-3-leaders-clauses--editor-capture-20261010--586d408a8de7.md#leader-rules)
+and [Text 4 whitespace phases](../../../references/css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#white-space-rules).
+
 ## Semantic window observations
 
 `PreparedText::semantic_window` observes a complete issued `PreparedSourceSegment`,

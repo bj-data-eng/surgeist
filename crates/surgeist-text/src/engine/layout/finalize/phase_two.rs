@@ -290,6 +290,21 @@ pub(super) fn natural(
     ledger: &mut Ledger,
 ) -> Result<Natural> {
     let (positions, total) = positions(selected, shaped, atomics, order, ledger)?;
+    if selected.prepared.analyzed.processed.is_leader_pattern() {
+        return Ok(Natural {
+            causes: Vec::new(),
+            removed: account::filled(ledger, shaped.clusters.len(), false)?,
+            raw_trim: account::filled(ledger, shaped.clusters.len(), false)?,
+            deferred: account::filled(ledger, shaped.clusters.len(), None)?,
+            usage: FormattedLineUsage {
+                first: false,
+                last: false,
+            },
+            capacity: None,
+            positions,
+            total,
+        });
+    }
     let native = selected.metric_policy == LineMetricPolicy::Native;
     let body_side = if selected.presentation.analysis.base_level & 1 != 0 {
         Side::Start

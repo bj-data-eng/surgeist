@@ -342,6 +342,21 @@ impl LineEdgeUnitView<'_> {
             },
         }
     }
+    pub(crate) fn first_presentation_atom(&self) -> Option<usize> {
+        match self.target() {
+            EdgeTarget::Cluster(_, row) => row.atoms.clone().next(),
+            EdgeTarget::Cell(_, cell) => self.line.inner.selected.presentation.units[cell.unit]
+                .atoms
+                .clone()
+                .next(),
+        }
+    }
+    pub(crate) fn cell(&self) -> Option<crate::FinalizedCellView<'_>> {
+        let EdgeTarget::Cell(index, _) = self.target() else {
+            return None;
+        };
+        self.line.cell_views().nth(index)
+    }
     pub fn punctuation_unit(&self) -> Option<super::PresentationRange> {
         match self.target() {
             EdgeTarget::Cluster(_, row) => row.punctuation_unit,

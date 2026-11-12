@@ -585,6 +585,8 @@ pub(crate) struct FinalizedLineData {
     pub(crate) clusters: Vec<FinalizedCluster>,
     /// Paint-order canonical local glyphs, with original associations.
     pub(crate) glyphs: Vec<FinalizedGlyph>,
+    /// Leader-only group ordinals, first by presentation atom, then by paint glyph.
+    pub(crate) leader_paint_groups: Vec<usize>,
     pub(crate) word_anchors: Vec<SpacingDisplacement>,
     pub(crate) character_anchors: Vec<SpacingDisplacement>,
     pub(crate) boxes: Vec<FinalizedBox>,
@@ -620,6 +622,10 @@ impl FinalizedLineData {
         visit(W::buffer(&self.runs, self.runs.len())?)?;
         visit(W::buffer(&self.clusters, self.clusters.len())?)?;
         visit(W::buffer(&self.glyphs, self.glyphs.len())?)?;
+        visit(W::buffer(
+            &self.leader_paint_groups,
+            self.leader_paint_groups.len(),
+        )?)?;
         visit(W::buffer(&self.word_anchors, self.word_anchors.len())?)?;
         visit(W::buffer(
             &self.character_anchors,

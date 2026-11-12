@@ -19,6 +19,7 @@ pub(crate) mod bidi;
 mod convert;
 pub(crate) mod editing;
 pub(crate) mod layout;
+pub(crate) mod leader;
 mod lru_cache;
 pub(crate) mod resolve;
 pub(crate) mod scope_alignment;

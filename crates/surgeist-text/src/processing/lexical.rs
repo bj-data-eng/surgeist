@@ -137,6 +137,7 @@ pub(super) enum ValidatedProcessingRequest<'a> {
         box_order: &'a [usize],
         barriers: &'a [usize],
         decode_boundaries: &'a [usize],
+        leader_pattern: bool,
     },
     Contextual {
         source: &'a Source,
@@ -157,6 +158,7 @@ pub(super) fn execute(request: ValidatedProcessingRequest<'_>) -> Result<Lexical
             box_order,
             barriers,
             decode_boundaries,
+            leader_pattern,
         } => {
             let mut tokens = tokenize(
                 source,
@@ -167,6 +169,9 @@ pub(super) fn execute(request: ValidatedProcessingRequest<'_>) -> Result<Lexical
                 decode_boundaries,
                 None,
             )?;
+            if leader_pattern {
+                remove_leader_breaks(source, &mut tokens);
+            }
             phase_one(&mut tokens)?;
             emit(source, tokens, LexicalContext::SourceLocal)
         }
@@ -179,6 +184,20 @@ pub(super) fn execute(request: ValidatedProcessingRequest<'_>) -> Result<Lexical
             origins,
             provided,
         } => execute_contextual(source, breaks, context, capture, modes, origins, provided),
+    }
+}
+
+fn remove_leader_breaks(source: &Source, tokens: &mut [Token]) {
+    let units = source.text().code_units();
+    for token in tokens {
+        if token.source.len() == 1
+            && crate::engine::analysis::is_unicode_hard_separator(u32::from(
+                units[token.source.start],
+            ))
+        {
+            token.kind = Kind::Text;
+            token.delete(DeletionCause::LeaderBreak);
+        }
     }
 }
 
@@ -682,6 +701,9 @@ fn execute_contextual(
         }),
     )?;
     tokens.retain(|token| token.kind != Kind::Barrier);
+    if context.leader_pattern {
+        remove_leader_breaks(source, &mut tokens);
+    }
     for token in &mut tokens {
         let origin = context
             .origins
