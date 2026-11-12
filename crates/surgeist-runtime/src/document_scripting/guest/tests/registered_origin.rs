@@ -280,6 +280,41 @@ pub(in crate::document_scripting) fn registered_origin_refusals_preserve_state()
     assert_eq!(host.snapshot().unwrap().stamp(), before);
 }
 
+pub(in crate::document_scripting) fn borrowed_fragment_factory_keeps_dom_on_wrapper_refusal() {
+    let RegisteredOrigin {
+        mut host, permit, ..
+    } = retired_origin_with_moved_element();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "globalThis.factoryDocument = originChild.ownerDocument",
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let before = host.snapshot().unwrap();
+    let events = host.guest_events().unwrap();
+    events
+        .public
+        .as_ref()
+        .unwrap()
+        .refuse_next_ordinary_wrapper_validation();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "Document.prototype.createDocumentFragment.call(factoryDocument)",
+            ))
+            .map(drop)
+    });
+    assert!(matches!(
+        result,
+        Err(DocumentScriptError::Script(Error::BackendUnavailable))
+    ));
+    let after = host.snapshot().unwrap();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.nodes().count(), before.nodes().count());
+}
+
 fn assert_projection_admission() {
     let read = |scope: &mut Scope<'_>| {
         scope

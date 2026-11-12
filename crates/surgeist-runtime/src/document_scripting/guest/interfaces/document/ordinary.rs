@@ -6,6 +6,8 @@ use surgeist_dom::DomNodeRetirementWatch;
 pub(super) struct OrdinaryBindings {
     inbox: RefCell<DomNodeRetirementInbox>,
     pins: RefCell<OrdinaryPins>,
+    #[cfg(test)]
+    pub(super) refuse_next_validation: Cell<bool>,
 }
 
 pub(super) enum NodePrototype<'value, 'scope> {
@@ -169,6 +171,8 @@ impl OrdinaryBindings {
         Self {
             inbox: RefCell::new(inbox),
             pins: RefCell::new(OrdinaryPins::default()),
+            #[cfg(test)]
+            refuse_next_validation: Cell::new(false),
         }
     }
 
@@ -226,6 +230,10 @@ impl OrdinaryBindings {
                 (holder, Publication::Watched(node, watch))
             }
         };
+        #[cfg(test)]
+        if self.refuse_next_validation.replace(false) {
+            return Err(Error::BackendUnavailable.into());
+        }
         let value = scope.open_callback_object(&holder)?;
         let projection = scope
             .native_object::<GuestNodeProjection>(&value)?

@@ -553,6 +553,11 @@ fn install_getter<'scope>(
 }
 
 impl PublicEventBindings {
+    #[cfg(test)]
+    pub(in crate::document_scripting::guest) fn refuse_next_ordinary_wrapper_validation(&self) {
+        self.document.ordinary.refuse_next_validation.set(true);
+    }
+
     fn other_document_origin(
         &self,
         owner: &NativeOwner,
