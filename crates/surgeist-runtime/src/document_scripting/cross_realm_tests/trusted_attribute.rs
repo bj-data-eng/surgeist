@@ -1,4 +1,105 @@
 use super::*;
+
+pub(super) fn guest_tree_edits_deliver_original_meta_policies() {
+    use crate::trusted_types_csp::PolicyDelivery;
+    use surgeist_dom::DomDocumentCspState;
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
+        limits.with_meta_processing_work(1_000_000)
+    });
+    let element = insert_hosted_element(&mut session, target, "div", &cancel);
+    let document = target.document();
+    let snapshot = session.snapshot();
+    let html = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let head = snapshot.node(html).unwrap().children()[0];
+    let mut batch = DomBatch::new();
+    let first = batch.create_element_ns(document, Namespace::html(), "meta");
+    batch.set_attribute(&first, "http-equiv", "content-security-policy");
+    batch.set_attribute(&first, "content", "trusted-types default");
+    let second = batch.create_element_ns(document, Namespace::html(), "meta");
+    batch.set_attribute(&second, "http-equiv", "content-security-policy");
+    batch.set_attribute(&second, "content", "require-trusted-types-for 'script'");
+    let fragment = batch.create_fragment(document);
+    batch.insert_before(&first, &fragment, None);
+    batch.insert_before(&second, &fragment, None);
+    let commit = session.dom().apply(batch, &cancel).unwrap();
+    let first = commit.created(&first).unwrap().unwrap();
+    let second = commit.created(&second).unwrap().unwrap();
+    let fragment = commit.created(&fragment).unwrap().unwrap();
+    session.enable_trusted_types_csp(&cancel).unwrap();
+    let policy_owner = session.trusted_types_csp.as_ref().unwrap().clone();
+    let mut host =
+        super::super::guest::tests::attach_public_nodes(session, target, cancel, 5_000, 20_000);
+    let permit = host.permit().unwrap();
+    for (node, name) in [
+        (head, "policyHead"),
+        (element, "policyTarget"),
+        (fragment, "policyFragment"),
+        (first, "firstMeta"),
+        (second, "secondMeta"),
+    ] {
+        super::super::guest::tests::expose_public_node_for_source_test(
+            &mut host, &permit, node, name,
+        );
+    }
+    host.in_document(&permit, |scope| {
+        evaluate(scope, r#"
+            (() => {
+                const check = (ok, label) => { if (!ok) throw new Error(label); };
+                check(policyHead.insertBefore(policyFragment, null) === policyFragment, 'exact fragment return');
+                check(firstMeta.parentNode === policyHead && secondMeta.parentNode === policyHead
+                    && policyFragment.textContent === '', 'native fragment insertion');
+                let blocked = false;
+                try { policyTarget.setAttribute('onclick', 'blocked'); }
+                catch (error) { blocked = error instanceof TypeError; }
+                check(blocked, 'the original Meta policy must already be active');
+                trustedTypes.createPolicy('default', {createScript: value => value + '!'});
+                policyTarget.setAttribute('onclick', 'exact\ud800');
+                const text = document.createTextNode('text');
+                check(policyTarget.appendChild(text) === text, 'exact append return');
+                const replacement = document.createComment('replacement');
+                check(policyTarget.replaceChild(replacement, text) === text
+                    && text.parentNode === null && replacement.parentNode === policyTarget, 'exact replace return');
+                try { policyHead.removeChild(replacement); }
+                catch (error) { check(error.name === 'NotFoundError', 'wrong parent exception'); }
+                check(replacement.parentNode === policyTarget, 'wrong-parent removal does not detach');
+                check(policyTarget.removeChild(replacement) === replacement && replacement.parentNode === null, 'exact remove return');
+            })()
+        "#).map(drop)
+    }).unwrap();
+    let snapshot = host.snapshot().unwrap();
+    assert_eq!(snapshot.node(head).unwrap().children(), &[first, second]);
+    let actual = snapshot
+        .node(element)
+        .unwrap()
+        .attribute(&"onclick".into())
+        .unwrap();
+    assert_eq!(
+        actual.code_units(),
+        &"exact"
+            .encode_utf16()
+            .chain([0xd800, u16::from(b'!')])
+            .collect::<Vec<_>>()
+    );
+    let document = snapshot.document(document).unwrap();
+    let state = document.metadata().policy_container().csp();
+    assert!(matches!(state, DomDocumentCspState::Associated(_)));
+    let processor = policy_owner.processor.borrow();
+    let list = processor
+        .document_policies_with(state, &mut |_| Ok::<(), Infallible>(()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(list.len(), 2);
+    assert!(
+        list.iter()
+            .all(|policy| policy.delivery() == PolicyDelivery::Meta)
+    );
+}
 use crate::trusted_types_csp::{AttributePolicies, AttributePolicyError, PolicyFactory};
 use std::convert::Infallible;
 use surgeist_bindings_js::conversion::{ConversionAccount, ResourceTable, WorkTable};
