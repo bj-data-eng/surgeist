@@ -310,7 +310,7 @@ impl ControlIndex {
         let facts = |fact: &Facts| {
             let mut payload = source::storage::Payload::default();
             if let Some(name) = &fact.name {
-                payload.string(name)?;
+                payload.listed_string(name)?;
             }
             Ok(bank::Totals {
                 bytes: size_of::<Facts>()
@@ -800,6 +800,10 @@ impl Draft {
         };
         let input = element.input_state();
         let (form_present, name, name_usage) = if reuse_attributes && let Some(old) = old {
+            // The name keeps its block for this transaction as well as for the facts it reuses.
+            if let Some(name) = &old.name {
+                self.list_block(name, cancel)?;
+            }
             (old.form_present, old.name.clone(), old.name_usage)
         } else {
             let mut form_present = false;
@@ -820,7 +824,10 @@ impl Draft {
             }
             let mut payload = source::storage::Payload::default();
             if let Some(name) = &name {
-                payload.string(name)?;
+                // The name is a clone of the attribute value: it borrows the block the attribute
+                // lists, and it is priced by its length like the attribute.
+                self.list_block(name, cancel)?;
+                payload.listed_string(name)?;
             }
             (
                 form_present,

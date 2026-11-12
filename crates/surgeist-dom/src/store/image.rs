@@ -303,7 +303,8 @@ impl Draft {
                     budget.step(cancel)?;
                     let mut payload = source::storage::Payload::default();
                     payload.name(name)?;
-                    payload.string(value)?;
+                    self.list_block(value, cancel)?;
+                    payload.listed_string(value)?;
                     budget.retain_payload(payload, cancel)?;
                 }
                 Ok(crate::DomAttribute::from_parts(name.clone(), value.clone()))
@@ -324,7 +325,8 @@ impl Draft {
             if let Some(raw) = raw {
                 budget.step(cancel)?;
                 payload.name(raw.name())?;
-                payload.string(raw.value())?;
+                self.list_block(raw.value(), cancel)?;
+                payload.listed_string(raw.value())?;
             }
             budget.retain_payload(payload, cancel)?;
             // This is the original LOADING report, as in family::loading_state:

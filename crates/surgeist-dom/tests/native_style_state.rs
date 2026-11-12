@@ -2878,3 +2878,67 @@ fn admitted_inert_parser_style_continues_after_creation_to_render_context() {
         Err(DomError::IncompleteSourceOperation)
     ));
 }
+
+#[test]
+fn a_style_source_copies_the_attribute_values_that_borrow_a_block() {
+    use surgeist_dom::{DomResource, DomSourceLimits, DomSourceProgress};
+    use surgeist_html::values::TextBlock;
+
+    // One unit of a block whose capacity is a mebi-unit. The source retains the attribute
+    // values it reports, and a retained byte limit that the capacity of the block would exceed
+    // twice over must admit them.
+    let mut units = Vec::with_capacity(1_048_576);
+    units.extend([u16::from(b'x'), u16::from(b'y')]);
+    let block = TextBlock::from_utf16(units);
+    assert!(block.capacity() >= 1_048_576);
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(
+        DomLimits::new(
+            128,
+            4_194_304,
+            512,
+            0,
+            0,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let parent = batch.create_element_ns(&document, Namespace::html(), "div");
+    let style = batch.create_element_ns(&document, Namespace::html(), "style");
+    batch.set_attribute(&style, "media", block.string(0..1).unwrap());
+    batch.set_attribute(&style, "title", block.string(1..2).unwrap());
+    batch.insert_before(&parent, &document, None);
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let parent = commit.created(&parent).unwrap().unwrap();
+    let style = commit.created(&style).unwrap().unwrap();
+    // The store holds the block once; the source may retain a mebibyte more, which is far below
+    // the capacity of the block that each of two values would cost.
+    let limit = block.retained_bytes() + 1_048_576;
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(style, parent, None),
+            DomSourceLimits::new(limit, 16_000_000, 10_000_000, 128, 4096, 4096, 1),
+            &cancel,
+        )
+        .unwrap();
+    let progress = lease.advance(&cancel);
+    let request = match progress {
+        Ok(DomSourceProgress::Request(DomSourceRequest::Style(request))) => request,
+        Err(DomError::ResourceLimit {
+            resource: DomResource::SourceRetainedBytes,
+            limit,
+        }) => panic!("the source is priced by the capacity of the block, over {limit} bytes"),
+        other => panic!("expected the first Style boundary, got {other:?}"),
+    };
+    let source = request.source();
+    assert_eq!(source.media(), Some(&"x".into()));
+    assert_eq!(source.title(), Some(&"y".into()));
+    // The source holds its own units, not the block of the attributes.
+    assert!(source.media().unwrap().borrowed_block().is_none());
+    assert!(source.title().unwrap().borrowed_block().is_none());
+}

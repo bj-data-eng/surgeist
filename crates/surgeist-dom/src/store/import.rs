@@ -463,6 +463,7 @@ impl Draft {
             let mut admit = |next| self.admit_custody_usage(next, cancel);
             let children = crate::element::ElementFormation::new(
                 self.custody_registry(),
+                &self.blocks,
                 formation.as_ref(),
                 cancel,
                 &mut admit,

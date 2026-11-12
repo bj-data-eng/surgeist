@@ -36,8 +36,9 @@ impl Qualified for Fact {
             bytes: size_of::<Self>(),
             units: 0,
         };
+        // Every path that forms a fact lists the block its name borrows (`list_name`).
         if let Some(name) = &self.name {
-            payload.string(name)?;
+            payload.listed_string(name)?;
         }
         Ok(custody::Usage::new(payload.bytes, payload.units))
     }
@@ -49,6 +50,13 @@ impl PartialEq for Fact {
 }
 impl Eq for Fact {}
 impl Fact {
+    /// Lists the block the name of `fact` borrows, before the fact is retained priced by length.
+    fn list_name(draft: &Draft, fact: Option<&Self>, cancel: &AtomicBool) -> Result<(), DomError> {
+        match fact.and_then(|fact| fact.name.as_ref()) {
+            Some(name) => draft.list_block(name, cancel),
+            None => Ok(()),
+        }
+    }
     fn same(&self, other: &Self) -> bool {
         self.key == other.key
             && self.kind == other.kind
@@ -272,6 +280,7 @@ impl Families {
                 } else {
                     None
                 };
+                Fact::list_name(draft, value.as_ref(), cancel)?;
                 output
                     .index
                     .facts
@@ -779,6 +788,7 @@ impl Families {
             if value.is_some() {
                 changed = true;
             }
+            Fact::list_name(draft, value.as_ref(), cancel)?;
             next.index
                 .facts
                 .change(&mut next.custody.facts, key, value, &mut edit)?;

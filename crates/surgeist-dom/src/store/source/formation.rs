@@ -881,6 +881,55 @@ pub(crate) fn reserve<T>(
     }
 }
 
+/// Copies a string that borrows a block into an exact owner of its units, for a holder that
+/// outlives the transaction: the holder then keeps neither the block nor its capacity. An owner is
+/// shared. The copy is charged to a fork of `budget`: the header, then the length of the string
+/// before the allocation, and the spare room the allocator adds after it. The charge ends with the
+/// copy, because the holder prices the owner it keeps.
+pub(crate) fn exact_owner(
+    value: &DocumentString,
+    budget: Option<&Formation>,
+    cancel: &AtomicBool,
+) -> Result<DocumentString, DomError> {
+    if value.borrowed_block().is_none() {
+        return Ok(value.clone());
+    }
+    match budget {
+        Some(budget) => owned_copy(value, &budget.fork(), cancel),
+        None => {
+            let mut units = Vec::new();
+            units
+                .try_reserve_exact(value.len())
+                .map_err(|_| DomError::AllocationFailed)?;
+            for unit in value.code_units() {
+                step(None, cancel)?;
+                units.push(*unit);
+            }
+            Ok(DocumentString::from_utf16(units))
+        }
+    }
+}
+
+/// Copies the units of `value` into a new owner that `budget` charges and keeps charged: the
+/// header, then the units and the bytes of the backing before it allocates, and the spare room the
+/// allocator adds after it.
+pub(crate) fn owned_copy(
+    value: &DocumentString,
+    budget: &Formation,
+    cancel: &AtomicBool,
+) -> Result<DocumentString, DomError> {
+    let mut header = storage::Payload::default();
+    header.empty_string()?;
+    budget.retain_payload(header, cancel)?;
+    let mut units = Vec::new();
+    reserve_utf16(&mut units, value.len(), Some(budget), cancel)?;
+    for unit in value.code_units() {
+        budget.step(cancel)?;
+        units.push(*unit);
+    }
+    Ok(DocumentString::from_utf16(units))
+}
+
 /// Grow an actual UTF16 bank with the same byte policy and an explicit unit
 /// extent. Other two-byte element types do not acquire UTF16 classification.
 pub(crate) fn reserve_utf16(
@@ -1122,6 +1171,18 @@ pub(in crate::store) fn shared_string(
 ) -> Result<(DocumentString, Option<super::checkpoint::Charge>), DomError> {
     let formation = Formation::new(draft, cancel)?;
     let value = share(value, formation.as_ref(), cancel)?;
+    Ok((value, formation.map(Formation::into_charge)))
+}
+
+/// Shares an attribute value that the caller's transaction lists: the value is priced by the
+/// occurrence rule, and the store charges the block it borrows once.
+pub(in crate::store) fn shared_listed_string(
+    draft: &Draft,
+    value: &DocumentString,
+    cancel: &AtomicBool,
+) -> Result<(DocumentString, Option<super::checkpoint::Charge>), DomError> {
+    let formation = Formation::new(draft, cancel)?;
+    let value = share_listed(value, formation.as_ref(), cancel)?;
     Ok((value, formation.map(Formation::into_charge)))
 }
 

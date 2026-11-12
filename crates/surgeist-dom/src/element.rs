@@ -35,7 +35,7 @@ fn original_string(
 ) -> Result<crate::store::source::storage::Payload, DomError> {
     let mut usage = crate::store::source::storage::Payload::default();
     if budget.is_some() {
-        usage.string(value)?;
+        usage.listed_string(value)?;
     }
     Ok(usage)
 }
@@ -280,7 +280,7 @@ impl DomElement {
     ) -> Result<FormedElement, DomError> {
         let saved_is = self
             .saved_is()
-            .map(|value| formation::share(value, formation.budget, formation.cancel))
+            .map(|value| formation::share_listed(value, formation.budget, formation.cancel))
             .transpose()?;
         Self::initialize(name, saved_is, environment, formation)
     }

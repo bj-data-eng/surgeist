@@ -37,6 +37,12 @@ pub(super) struct AttributeSuffix {
     cause: AttributeCause,
 }
 impl AttributeSuffix {
+    /// The old and new values of the attribute that the effect retains.
+    pub(super) fn values(&self) -> impl Iterator<Item = &DocumentString> {
+        [self.old_value.as_ref(), self.new_value.as_ref()]
+            .into_iter()
+            .flatten()
+    }
     pub(super) fn retained_payload(
         &self,
         mut step: impl FnMut() -> Result<(), DomError>,
@@ -49,7 +55,7 @@ impl AttributeSuffix {
             .flatten()
         {
             step()?;
-            payload.string(value)?;
+            payload.listed_string(value)?;
         }
         Ok(payload)
     }
@@ -73,6 +79,39 @@ fn retain_string(
         budget.retain_payload(payload, cancel)?;
     }
     Ok(value.clone())
+}
+/// Retains `value` as an attribute value of the draft's store: the block of a borrowed value is
+/// listed once for the transaction and the occurrence is priced by its length, so a parsed value
+/// is never charged the capacity of the block it borrows.
+fn retain_attribute_value(
+    draft: &Draft,
+    value: &DocumentString,
+    budget: Option<&source::formation::Formation>,
+    cancel: &AtomicBool,
+) -> Result<DocumentString, DomError> {
+    draft.list_block(value, cancel)?;
+    if let Some(budget) = budget {
+        budget.step(cancel)?;
+        let mut payload = source::storage::Payload::default();
+        payload.listed_string(value)?;
+        budget.retain_payload(payload, cancel)?;
+    }
+    Ok(value.clone())
+}
+impl Draft {
+    /// Lists the block a retained value borrows, once for the transaction, so that the retention
+    /// can price the value by its length. An owner lists nothing.
+    pub(in crate::store) fn list_block(
+        &self,
+        value: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.blocks.adopt(
+            value,
+            |next| self.admit_custody_usage(next, cancel),
+            || self.source_step(cancel),
+        )
+    }
 }
 fn retain_name(
     value: &QualifiedName,
@@ -205,15 +244,16 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         let candidate = source::formation::Formation::new(self, cancelled)?;
-        let value = retain_string(value, candidate.as_ref(), cancelled)?;
+        let value = retain_attribute_value(self, value, candidate.as_ref(), cancelled)?;
         let mut original = source::storage::Payload::default();
         if candidate.is_some() {
-            original.string(&value)?;
+            original.listed_string(&value)?;
         }
         let (value, controls) = {
             let mut admit = |next| self.admit_custody_usage(next, cancelled);
             let mut context = ElementFormation::new(
                 self.custody_registry(),
+                &self.blocks,
                 candidate.as_ref(),
                 cancelled,
                 &mut admit,
@@ -426,10 +466,11 @@ impl Draft {
         admit(minimum, limits.units, DomResource::StringCodeUnits)?;
         let hook = source::formation::Formation::new(self, cancelled)?;
         let changed = retain_name(&write.name, hook.as_ref(), cancelled)?;
-        let details_new_value = retain_string(value, hook.as_ref(), cancelled)?;
+        let details_new_value = retain_attribute_value(self, value, hook.as_ref(), cancelled)?;
         let old_value = position
             .map(|index| {
-                retain_string(
+                retain_attribute_value(
+                    self,
                     element.attributes()[index].value(),
                     hook.as_ref(),
                     cancelled,
@@ -439,9 +480,9 @@ impl Draft {
         let candidate = source::formation::Formation::new(self, cancelled)?;
         let replacement = Attribute::from_parts(
             write.name,
-            retain_string(value, candidate.as_ref(), cancelled)?,
+            retain_attribute_value(self, value, candidate.as_ref(), cancelled)?,
         );
-        let nonce = nonce_after_effect(nonce_value, candidate.as_ref(), cancelled)?;
+        let nonce = nonce_after_effect(self, nonce_value, candidate.as_ref(), cancelled)?;
         #[cfg(test)]
         let mut attribute_writes = crate::store::CopyObservation::default();
         let capacity = element
@@ -460,7 +501,7 @@ impl Draft {
             }
             let copied = Attribute::from_parts(
                 retain_name(attribute.name(), candidate.as_ref(), cancelled)?,
-                retain_string(attribute.value(), candidate.as_ref(), cancelled)?,
+                retain_attribute_value(self, attribute.value(), candidate.as_ref(), cancelled)?,
             );
             attributes.entries.push(copied);
             #[cfg(test)]
@@ -493,6 +534,7 @@ impl Draft {
             let mut admit = |next| self.admit_custody_usage(next, cancelled);
             let context = ElementFormation::new(
                 self.custody_registry(),
+                &self.blocks,
                 candidate.as_ref(),
                 cancelled,
                 &mut admit,
@@ -674,7 +716,7 @@ impl Draft {
             attribute_copy_observation::before(self, removed.name(), false, cancelled)?;
         let hook = source::formation::Formation::new(self, cancelled)?;
         let changed = retain_name(removed.name(), hook.as_ref(), cancelled)?;
-        let old_value = retain_string(removed.value(), hook.as_ref(), cancelled)?;
+        let old_value = retain_attribute_value(self, removed.value(), hook.as_ref(), cancelled)?;
         let old_units = element.units().ok_or(DomError::RepresentationExhausted)?;
         let candidate = source::formation::Formation::new(self, cancelled)?;
         for _ in 0..surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND {
@@ -682,7 +724,7 @@ impl Draft {
         }
         let nonce_value =
             surgeist_html::security::nonce::nonce_attribute_change(element.name(), &changed, None);
-        let nonce = nonce_after_effect(nonce_value, candidate.as_ref(), cancelled)?;
+        let nonce = nonce_after_effect(self, nonce_value, candidate.as_ref(), cancelled)?;
         #[cfg(test)]
         let mut attribute_writes = crate::store::CopyObservation::default();
         let capacity = element.attributes().len();
@@ -697,7 +739,7 @@ impl Draft {
             }
             attributes.entries.push(Attribute::from_parts(
                 retain_name(attribute.name(), candidate.as_ref(), cancelled)?,
-                retain_string(attribute.value(), candidate.as_ref(), cancelled)?,
+                retain_attribute_value(self, attribute.value(), candidate.as_ref(), cancelled)?,
             ));
             #[cfg(test)]
             attribute_writes.pushed::<Attribute>();
@@ -714,6 +756,7 @@ impl Draft {
             let mut admit = |next| self.admit_custody_usage(next, cancelled);
             let context = ElementFormation::new(
                 self.custody_registry(),
+                &self.blocks,
                 candidate.as_ref(),
                 cancelled,
                 &mut admit,
@@ -774,6 +817,7 @@ impl Draft {
     }
 }
 fn nonce_after_effect(
+    draft: &Draft,
     effect: surgeist_html::security::nonce::HtmlNonceAttributeEffect<'_>,
     budget: Option<&source::formation::Formation>,
     cancel: &AtomicBool,
@@ -785,7 +829,7 @@ fn nonce_after_effect(
             source::formation::units(&[], false, budget, cancel).map(NonceUpdate::Set)
         }
         HtmlNonceAttributeEffect::CopyValue(value) => {
-            retain_string(value, budget, cancel).map(NonceUpdate::Set)
+            retain_attribute_value(draft, value, budget, cancel).map(NonceUpdate::Set)
         }
     }
 }

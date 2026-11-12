@@ -1349,6 +1349,146 @@ mod tests {
             ids.len()
         );
     }
+    /// Imports a fragment whose `div` has the attributes `a` and `b` with the values `a` and `b`
+    /// and the saved `is` value `is`, under an `element_value_bytes` allowance of `bytes`.
+    fn import_div(
+        a: DocumentString,
+        b: DocumentString,
+        is: DocumentString,
+        bytes: usize,
+    ) -> (
+        Result<HtmlConstructionCaptureImport, HtmlConstructionCaptureFailure>,
+        usize,
+    ) {
+        let attribute = |local: &str, value| {
+            surgeist_html::values::Attribute::new(
+                QualifiedName::new(Namespace::none(), None, local),
+                value,
+            )
+        };
+        let mut rows = Vec::new();
+        rows.try_reserve_exact(2).unwrap();
+        rows.extend([attribute("a", a), attribute("b", b)]);
+        let attributes = OrderedAttributes::new(rows).unwrap();
+        let capacity = attributes.shared_attributes().capacity();
+        let mut source = HtmlFragment::builder(
+            surgeist_html::construction::HtmlConstructionLimits::new(20, 40, 10, 100, 20),
+        )
+        .unwrap();
+        let root = source.root();
+        source
+            .append_element(
+                &root,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                attributes,
+            )
+            .unwrap();
+        let source = source.finish().unwrap();
+        let root_id = source.root().id();
+        let mut ids = vec![root_id];
+        ids.extend(source.node(&root_id).unwrap().children());
+        let revision = HtmlHostFactsRevision::fresh();
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(20, 100, 100, 1000, 20, 0, 0, bytes),
+            revision.clone(),
+        );
+        let document = builder
+            .add_document(
+                surgeist_html::construction::HtmlDocumentMode::Quirks,
+                HtmlScriptingStatus::Enabled,
+                HtmlCaptureRegistryInput::Unavailable,
+            )
+            .unwrap();
+        let mut is = Some(is);
+        let nodes = ids
+            .iter()
+            .map(|id| {
+                let element = matches!(source.node(id).unwrap().kind(), HtmlNodeKind::Element(_));
+                HtmlConstructionCaptureNodeFacts::new(
+                    *id,
+                    HtmlConstructionCaptureDocument::Existing(document.clone()),
+                    None,
+                    element.then(|| {
+                        HtmlConstructionCaptureElementFacts::new(
+                            HtmlCapturedIsValue::Value(is.take().unwrap()),
+                            HtmlCaptureRegistryInput::Unavailable,
+                        )
+                    }),
+                    None,
+                )
+            })
+            .collect();
+        let result = HtmlConstructionCaptureAdapter::fragment(
+            builder,
+            source,
+            HtmlConstructionCaptureFacts::new(revision, nodes),
+            HtmlConstructionCaptureLimits::new(20, 1000, 100_000),
+            HtmlSemanticCancellation::new(),
+        );
+        (result, capacity)
+    }
+    /// The element value bytes of a `div` with the attributes `a` and `b` of the given values
+    /// and a saved `is`, from the headers and backings of exact owners.
+    fn div_bytes(
+        a: &DocumentString,
+        b: &DocumentString,
+        is: &DocumentString,
+        rows: usize,
+    ) -> usize {
+        let string = |value: &DocumentString| {
+            size_of::<Vec<u16>>() + value.retained_units() * size_of::<u16>()
+        };
+        let name = QualifiedName::new(Namespace::html(), None, "div");
+        let local = |name: &str| string(&DocumentString::from(name));
+        let name = name.namespace().uri().map_or(0, string) + string(name.local_name());
+        name + size_of::<Vec<surgeist_html::values::Attribute>>()
+            + rows * size_of::<surgeist_html::values::Attribute>()
+            + local("a")
+            + string(a)
+            + local("b")
+            + string(b)
+            + string(is)
+    }
+    #[test]
+    fn element_values_that_borrow_a_block_are_counted_by_occurrence_and_list_the_block_once() {
+        let mut units = Vec::with_capacity(512);
+        units.extend("abcd".encode_utf16());
+        let block = surgeist_html::values::TextBlock::from_utf16(units);
+        assert!(block.capacity() >= 512);
+        let exact = |text: &str| {
+            let mut units = Vec::new();
+            units.try_reserve_exact(text.len()).unwrap();
+            units.extend(text.encode_utf16());
+            assert_eq!(units.capacity(), text.len());
+            DocumentString::from_utf16(units)
+        };
+        let (a, b, is) = (exact("ab"), exact("cd"), exact("bc"));
+        // The allowance that admits the element of owners of the same texts, and not a byte less.
+        let (_, rows) = import_div(a.clone(), b.clone(), is.clone(), usize::MAX);
+        let bytes = div_bytes(&a, &b, &is, rows);
+        let borrowed = |range| block.string(range).unwrap();
+        let (refused, _) = import_div(borrowed(0..2), borrowed(2..4), borrowed(1..3), bytes - 1);
+        let Err(failure) = refused else {
+            panic!("one byte short of the allowance of the owners was admitted")
+        };
+        assert!(matches!(
+            failure.reason,
+            HtmlConstructionCaptureError::Capture(HtmlCaptureError::LimitExceeded {
+                resource: HtmlCaptureResource::ElementValueBytes,
+                ..
+            })
+        ));
+        // The refused addition listed nothing.
+        assert_eq!(failure.builder.data.blocks.len(), 0);
+        let (admitted, _) = import_div(borrowed(0..2), borrowed(2..4), borrowed(1..3), bytes);
+        let import = match admitted {
+            Ok(import) => import,
+            Err(failure) => panic!("the allowance of the owners refused: {:?}", failure.reason),
+        };
+        assert_eq!(import.builder.usage().element_value_bytes(), bytes);
+        // Each value is counted by its length, and the block is listed once for all of them.
+        assert_eq!(import.builder.data.blocks.len(), 1);
+    }
     #[test]
     fn every_work_cutoff_rolls_back_new_records_and_retains_input_allocations() {
         let mut source = HtmlFragment::builder(

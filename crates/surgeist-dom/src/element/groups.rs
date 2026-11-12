@@ -4,6 +4,7 @@ use super::{DomElement, DomElementDefinition};
 use crate::name::AttributeStorage;
 use crate::store::{
     bank,
+    block_custody::BlockAdoptions,
     custody::Usage,
     payload,
     source::{formation::Formation, storage},
@@ -73,6 +74,9 @@ pub(crate) struct FormedElement {
 /// does not outlive that operation or become part of an immutable snapshot.
 pub(crate) struct ElementFormation<'a> {
     pub registry: &'a bank::CustodyRegistry,
+    /// The transaction's block listing: a group that retains a string borrowing a block lists the
+    /// block here and prices the string by its length, with or without a formation budget.
+    pub blocks: &'a BlockAdoptions,
     pub budget: Option<&'a Formation>,
     pub cancel: &'a AtomicBool,
     pub admit: &'a mut dyn FnMut(Usage) -> Result<(), DomError>,
@@ -81,17 +85,28 @@ pub(crate) struct ElementFormation<'a> {
 impl<'a> ElementFormation<'a> {
     pub(crate) fn new(
         registry: &'a bank::CustodyRegistry,
+        blocks: &'a BlockAdoptions,
         budget: Option<&'a Formation>,
         cancel: &'a AtomicBool,
         admit: &'a mut dyn FnMut(Usage) -> Result<(), DomError>,
     ) -> Self {
         Self {
             registry,
+            blocks,
             budget,
             cancel,
             admit,
             children: ElementChildren::default(),
         }
+    }
+
+    /// Lists the block `value` borrows for the transaction, before a group prices it by length.
+    fn list(&mut self, value: &DocumentString) -> Result<(), DomError> {
+        let (budget, cancel) = (self.budget, self.cancel);
+        let admit = &mut *self.admit;
+        self.blocks.adopt(value, admit, || {
+            crate::store::source::formation::step(budget, cancel)
+        })
     }
 
     fn form<T>(
@@ -136,7 +151,8 @@ impl<'a> ElementFormation<'a> {
         );
         let mut extra = storage::Payload::default();
         if let Some(text) = &value.saved_is {
-            extra.string(text)?;
+            self.list(text)?;
+            extra.listed_string(text)?;
         }
         let formed = self.form(extra, original, || Ok(value))?;
         self.children.custom = Some(formed.custody);
@@ -150,7 +166,8 @@ impl<'a> ElementFormation<'a> {
     ) -> Result<Arc<payload::Payload<NonceSlot>>, DomError> {
         assert!(self.children.nonce.is_none(), "one selected nonce slot");
         let mut extra = storage::Payload::default();
-        extra.string(&value)?;
+        self.list(&value)?;
+        extra.listed_string(&value)?;
         let formed = self.form(extra, original, || Ok(NonceSlot { value }))?;
         self.children.nonce = Some(formed.custody);
         Ok(formed.value)

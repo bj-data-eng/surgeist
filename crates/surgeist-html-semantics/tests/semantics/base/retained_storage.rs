@@ -226,3 +226,72 @@ fn standalone_url_record_footprint_preserves_actual_spare_backing_without_bank()
         71 * size_of::<u16>()
     );
 }
+
+#[test]
+fn hyperlink_snapshot_copies_an_observed_value_that_borrows_a_block() {
+    let mut units = Vec::with_capacity(512);
+    units.extend("target".encode_utf16());
+    let block = surgeist_html::values::TextBlock::from_utf16(units);
+    assert!(block.capacity() >= 512);
+    let borrowed = block.string(0..6).unwrap();
+    let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 1, 1);
+    let base = HtmlBaseUrlRecord::observed(
+        revision.clone(),
+        text("https://base/", 0),
+        HtmlBaseUrlScheme::Other,
+        false,
+        None,
+    )
+    .unwrap();
+    let result = HtmlBaseUrlRecord::observed(
+        revision.clone(),
+        text("https://result/", 0),
+        HtmlBaseUrlScheme::Other,
+        false,
+        None,
+    )
+    .unwrap();
+    let encoding = HtmlBaseEncoding::fresh();
+    let resolve = |raw: DocumentString| {
+        let facts = HtmlEncodingUrlParseFacts::new(
+            base.clone(),
+            encoding.clone(),
+            revision.clone(),
+            vec![HtmlEncodingUrlParseObservation::new(
+                raw.clone(),
+                HtmlEncodingUrlParseOutcome::Parsed(result.clone()),
+            )],
+            HtmlBaseFactsLimits::new(16, 100_000, 100_000),
+        )
+        .unwrap();
+        let mut admitted = None;
+        let snapshot = facts
+            .resolve_hyperlink_with(
+                &raw,
+                &base,
+                &encoding,
+                &revision,
+                || Ok::<_, ()>(()),
+                |usage| {
+                    admitted = Some(usage);
+                    Ok(())
+                },
+            )
+            .unwrap();
+        (snapshot, admitted.unwrap())
+    };
+    let (owned, owned_admitted) = resolve(text("target", 0));
+    let (copied, admitted) = resolve(borrowed);
+    // The snapshot keeps its own units and not the block of the observed value.
+    assert!(copied.raw().borrowed_block().is_none());
+    assert_eq!(copied.raw(), owned.raw());
+    assert_eq!(admitted, owned_admitted);
+    assert_eq!(
+        copied.retained_storage_usage(),
+        owned.retained_storage_usage()
+    );
+    assert_eq!(
+        copied.retained_utf16_extent(),
+        owned.retained_utf16_extent()
+    );
+}

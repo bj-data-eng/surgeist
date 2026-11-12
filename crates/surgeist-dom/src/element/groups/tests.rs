@@ -23,7 +23,8 @@ fn fresh_nonce_admits_the_actual_target_and_empty_string_before_allocation() {
             }
             Ok(())
         };
-        let mut formation = ElementFormation::new(&registry, None, &cancel, &mut admit);
+        let blocks = crate::store::block_custody::BlockAdoptions::new(registry.clone());
+        let mut formation = ElementFormation::new(&registry, &blocks, None, &cancel, &mut admit);
         let result = formation.fresh_nonce();
         if allowance < required {
             assert!(matches!(result, Err(DomError::AllocationFailed)));
@@ -55,7 +56,8 @@ fn reserved_nonce_preserves_its_actual_backing_and_releases_after_semantics() {
     let weak = text.block().downgrade();
     let raw_capacity = text.retained_units();
     let mut admit = |_| Ok(());
-    let mut formation = ElementFormation::new(&registry, None, &cancel, &mut admit);
+    let blocks = crate::store::block_custody::BlockAdoptions::new(registry.clone());
+    let mut formation = ElementFormation::new(&registry, &blocks, None, &cancel, &mut admit);
     let value = formation
         .nonce(text.clone(), storage::Payload::default())
         .unwrap();
@@ -94,7 +96,8 @@ fn cancelled_group_construction_keeps_original_semantics_and_controls() {
     let text = DocumentString::from("actual-original");
     let weak = text.block().downgrade();
     let mut admit = |_| panic!("cancellation precedes allocation admission");
-    let mut formation = ElementFormation::new(&registry, None, &cancel, &mut admit);
+    let blocks = crate::store::block_custody::BlockAdoptions::new(registry.clone());
+    let mut formation = ElementFormation::new(&registry, &blocks, None, &cancel, &mut admit);
     assert!(matches!(
         formation.nonce(text.clone(), storage::Payload::default()),
         Err(DomError::Cancelled)

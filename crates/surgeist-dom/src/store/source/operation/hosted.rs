@@ -505,7 +505,9 @@ impl DomSourceLease<'_> {
         payload.add_bytes(size_of::<DomHostedEmbedderPolicyInputs>())?;
         for value in [sandbox, srcdoc, src, allow].into_iter().flatten() {
             prefix.work.step(cancel)?;
-            payload.string(value)?;
+            // The inputs live as long as the operation, whose draft lists the block of each value.
+            op.draft.list_block(value, cancel)?;
+            payload.listed_string(value)?;
         }
         let phase_formation = formation::Formation::new(&op.draft, cancel)?;
         if let Some(formation) = &phase_formation {
@@ -754,7 +756,9 @@ impl DomSourceLease<'_> {
             formation::Formation::new(&op.draft, cancel)?.ok_or(DomError::SourceUrlUnavailable)?;
         let mut payload = storage::Payload::default();
         payload.add_bytes(size_of::<crate::source::UrlBasis>())?;
-        payload.string(raw)?;
+        // The basis lives as long as the operation, whose draft lists the block of the value.
+        op.draft.list_block(raw, cancel)?;
+        payload.listed_string(raw)?;
         payload.add_bytes(base.retained_storage_usage().retained_bytes())?;
         payload.add_units(base.retained_storage_usage().utf16_extent())?;
         formation.retain_payload(payload, cancel)?;
@@ -850,7 +854,10 @@ impl DomSourceLease<'_> {
         // response capacity and Parsed record remain independently measured.
         let mut payload = storage::Payload::default();
         payload.add_bytes(size_of::<crate::DomSourceUrlObservation>())?;
-        payload.string(candidate.observation.raw())?;
+        // The observation lives as long as the operation, whose draft lists the block of the
+        // value: the Runtime builds it from a clone of the request's value.
+        op.draft.list_block(candidate.observation.raw(), cancel)?;
+        payload.listed_string(candidate.observation.raw())?;
         payload.add_bytes(issued.base_url().retained_storage_usage().retained_bytes())?;
         payload.add_units(issued.base_url().retained_storage_usage().utf16_extent())?;
         if let HtmlBaseParseOutcome::Parsed { record, .. } = candidate.observation.outcome() {
@@ -1426,6 +1433,11 @@ impl DomSourceLease<'_> {
                             .as_ref()
                             .ok_or(DomHostedError::UnsupportedProfile)?;
                         let fresh = formation::Formation::new(&operation.draft, cancel)?;
+                        // The history keeps the name after the operation, so it keeps an exact
+                        // owner and not a range of the block of the attribute.
+                        let target_name = target_name
+                            .map(|name| formation::exact_owner(name, fresh.as_ref(), cancel))
+                            .transpose()?;
                         let context = canonical::history::Context::new(
                             source,
                             &inner.request().work,
@@ -1447,7 +1459,7 @@ impl DomSourceLease<'_> {
                                 ),
                                 origin: inner.origin.clone(),
                                 parent: Some((request.parent, request.container)),
-                                target_name,
+                                target_name: target_name.as_ref(),
                                 about_base_url: facts.0.facts.about_base_url(),
                                 initiator_origin: Some(&inner.origin),
                             },

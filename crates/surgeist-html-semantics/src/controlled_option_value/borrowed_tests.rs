@@ -275,3 +275,181 @@ fn work_and_cancellation_refusals_drop_every_unpublished_borrowed_payload() {
         .add_element(&doc, &local, attrs.as_slice(), None, generous(), &cancel)
         .unwrap();
 }
+
+#[test]
+fn values_and_saved_is_that_borrow_a_block_are_admitted_by_their_length_and_the_block_once() {
+    let mut units = Vec::with_capacity(512);
+    units.extend("abcd".encode_utf16());
+    let block = surgeist_html::values::TextBlock::from_utf16(units);
+    assert!(block.capacity() >= 512);
+    let exact = |text: &str| {
+        let mut units = Vec::new();
+        units.try_reserve_exact(text.len()).unwrap();
+        units.extend(text.encode_utf16());
+        assert_eq!(units.capacity(), text.len());
+        DocumentString::from_utf16(units)
+    };
+    let name = qname("x");
+    let owners = [Attribute::new(qname("a"), exact("ab"))];
+    let saved_owner = exact("bc");
+    let borrowed = [Attribute::new(qname("a"), block.string(0..2).unwrap())];
+    let saved = block.string(1..3).unwrap();
+    // The envelope that admits an element of owners of the same texts admits the borrowers and the
+    // block they borrow, once, at its capacity.
+    let (owner_bytes, owner_units) = raw_payload(&name, &owners, Some(&saved_owner));
+    let payload_bytes = owner_bytes + block.retained_bytes();
+    let payload_units = owner_units + block.capacity();
+    let (mut owner, doc) = setup();
+    let cancel = AtomicBool::new(false);
+    let before = owner.storage_usage();
+    let bank = 2 * match &owner.phase {
+        Phase::Building(builder) => builder.inspect_controlled_records().2,
+        _ => unreachable!(),
+    };
+    let peak = before.bytes + payload_bytes + bank;
+    owner
+        .add_element(
+            &doc,
+            &name,
+            borrowed.as_slice(),
+            Some(&saved),
+            HtmlOptionValueEnvelope::new(peak, payload_units, 100_000),
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(owner.storage_usage().units, payload_units);
+    assert_eq!(owner.usage().peak_storage().bytes, peak);
+}
+
+/// A block of text with spare capacity, and an exact owner of a text, for the tests that compare
+/// elements of borrowers with elements of owners.
+fn spare_block() -> surgeist_html::values::TextBlock {
+    let mut units = Vec::with_capacity(512);
+    units.extend("abcdefgh".encode_utf16());
+    surgeist_html::values::TextBlock::from_utf16(units)
+}
+fn exact_owner(text: &str) -> DocumentString {
+    let mut units = Vec::new();
+    units.try_reserve_exact(text.len()).unwrap();
+    units.extend(text.encode_utf16());
+    assert_eq!(units.capacity(), text.len());
+    DocumentString::from_utf16(units)
+}
+/// Adds an element named `x` whose saved `is` is `saved`.
+#[expect(
+    clippy::result_large_err,
+    reason = "The failure is the public error of the add operation under test, returned unchanged."
+)]
+fn add_with_saved_is(
+    owner: &mut HtmlControlledOptionValueCapture,
+    doc: &HtmlCaptureBuilderSubject,
+    saved: &DocumentString,
+    envelope: HtmlOptionValueEnvelope,
+    cancel: &AtomicBool,
+) -> Result<HtmlCaptureBuilderSubject, HtmlControlledOptionValueFailure> {
+    owner.add_element(
+        doc,
+        &qname("x"),
+        &[] as &[Attribute],
+        Some(saved),
+        envelope,
+        cancel,
+    )
+}
+
+#[test]
+fn elements_that_borrow_one_block_charge_it_once_for_the_capture() {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let cancel = AtomicBool::new(false);
+    let add_two = |first: DocumentString, second: DocumentString| {
+        let (mut owner, doc) = setup();
+        for saved in [first, second] {
+            add_with_saved_is(&mut owner, &doc, &saved, generous(), &cancel).unwrap();
+        }
+        owner.storage_usage()
+    };
+    let shared = add_two(block.string(0..2).unwrap(), block.string(4..6).unwrap());
+    let owned = add_two(exact_owner("ab"), exact_owner("ef"));
+    // Both values are charged by their lengths and the block is charged once, at its capacity.
+    assert_eq!(shared.units, owned.units + block.capacity());
+    assert_eq!(shared.bytes, owned.bytes + block.retained_bytes());
+}
+
+/// The storage of a capture that adds one element whose saved `is` is `saved`, after `refuse` has
+/// tried and failed to add it.
+fn storage_after_retry(
+    saved: &DocumentString,
+    refuse: impl FnOnce(&mut HtmlControlledOptionValueCapture, &HtmlCaptureBuilderSubject),
+) -> HtmlOptionValueStorageUsage {
+    let (mut owner, doc) = setup();
+    refuse(&mut owner, &doc);
+    add_with_saved_is(&mut owner, &doc, saved, generous(), &AtomicBool::new(false)).unwrap();
+    owner.storage_usage()
+}
+
+#[test]
+fn an_addition_the_envelope_refuses_leaves_its_block_unlisted_for_the_retry() {
+    let block = spare_block();
+    let saved = block.string(0..2).unwrap();
+    let cancel = AtomicBool::new(false);
+    let fresh = storage_after_retry(&saved, |_, _| {});
+    let retried = storage_after_retry(&saved, |owner, doc| {
+        let before = owner.storage_usage();
+        // The value fits by its length and the block does not: the envelope refuses the addition
+        // after the capture listed the block.
+        let (_, units) = raw_payload(&qname("x"), &[], Some(&exact_owner("ab")));
+        let failure = add_with_saved_is(
+            owner,
+            doc,
+            &saved,
+            HtmlOptionValueEnvelope::new(16_000_000, units + block.capacity() - 1, 100_000),
+            &cancel,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            failure.kind(),
+            HtmlControlledOptionValueError::Control(HtmlOptionValueControlError::LimitExceeded {
+                resource: HtmlOptionValueResource::LiveUtf16,
+                ..
+            })
+        ));
+        assert_eq!(owner.storage_usage(), before);
+    });
+    // The retry charges the block once, as an addition that was never refused does.
+    assert_eq!(retried, fresh);
+    assert!(fresh.units >= block.capacity());
+}
+
+#[test]
+fn an_addition_the_capture_refuses_part_way_leaves_its_block_unlisted_for_the_retry() {
+    let block = spare_block();
+    let saved = block.string(0..2).unwrap();
+    let fresh = storage_after_retry(&saved, |_, _| {});
+    // Cancel at each work step of the addition in turn, until the addition finishes before the stop.
+    let mut refused = 0;
+    for after in 0..10_000 {
+        let mut stopped = false;
+        let retried = storage_after_retry(&saved, |owner, doc| {
+            let cancel = AtomicBool::new(false);
+            let before = owner.storage_usage();
+            owner.control.cancel_after.set(owner.usage().work() + after);
+            let outcome = add_with_saved_is(owner, doc, &saved, generous(), &cancel);
+            owner.control.cancel_after.set(u64::MAX);
+            if outcome.is_err() {
+                stopped = true;
+                assert_eq!(owner.storage_usage(), before);
+                assert_eq!(
+                    owner.control.temporary_usage(),
+                    HtmlOptionValueStorageUsage::default()
+                );
+            }
+        });
+        if !stopped {
+            break;
+        }
+        refused += 1;
+        assert_eq!(retried, fresh, "stopped after {after} steps");
+    }
+    assert!(refused > 3, "the sweep refused {refused} stops");
+}

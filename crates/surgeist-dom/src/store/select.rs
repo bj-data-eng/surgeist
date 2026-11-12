@@ -1128,6 +1128,11 @@ impl EffectFrame {
     ) -> Result<Self, DomError> {
         check_cancel(cancel)?;
         a.step()?;
+        if let Effect::AttributeSuffix(frame) | Effect::AfterScriptAttribute(frame) = &self.effect {
+            for value in frame.values() {
+                a.adopt(value, cancel)?;
+            }
+        }
         let retained = self.effect.retained_payload(|| a.step())?;
         let payload = a.effect_payload(retained, cancel)?;
         let effect = match &self.effect {

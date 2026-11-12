@@ -37,6 +37,19 @@ impl Qualified for Fact {
     }
 }
 impl Fact {
+    /// Lists the blocks the names of `fact` borrow, before the fact is retained with the names
+    /// priced by length.
+    fn list_names(draft: &Draft, fact: Option<&Self>, cancel: &AtomicBool) -> Result<(), DomError> {
+        let Some(fact) = fact else {
+            return Ok(());
+        };
+        for name in [&fact.slot, &fact.light].into_iter().flatten() {
+            if let Some(value) = &name.value {
+                draft.list_block(value, cancel)?;
+            }
+        }
+        Ok(())
+    }
     fn name(&self, kind: usize) -> Option<&Name> {
         if kind == 0 {
             self.slot.as_ref()
@@ -155,7 +168,9 @@ fn read_name(
         .cloned();
     let mut payload = source::storage::Payload::default();
     if let Some(name) = &name {
-        payload.string(name)?;
+        // The callers list the block of the name (`Fact::list_names`), so the name is priced by
+        // its length.
+        payload.listed_string(name)?;
     }
     Ok((name, custody::Usage::new(payload.bytes, payload.units)))
 }
@@ -591,6 +606,7 @@ impl Names {
             } else {
                 fact(order.after, key, before.get(key), reuse, edit.step)?
             };
+            Fact::list_names(draft, value.as_ref(), cancel)?;
             changed |= next
                 .value
                 .facts
@@ -812,6 +828,7 @@ impl Names {
                 } else {
                     None
                 };
+                Fact::list_names(draft, value.as_ref(), cancel)?;
                 next.value
                     .facts
                     .change(&mut next.custody.facts, public, value, &mut edit)?;

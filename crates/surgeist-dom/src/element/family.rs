@@ -378,7 +378,8 @@ fn loading_state<N: HtmlNameInput + ?Sized, A: HtmlAttributeInput>(
         report_payload.name(element)?;
         if let Some(raw) = raw {
             report_payload.name(raw.name())?;
-            report_payload.string(raw.value())?;
+            budget.adopt_block(raw.value(), cancel)?;
+            report_payload.listed_string(raw.value())?;
         }
         budget.retain_payload(report_payload, cancel)?;
         // The actual LOADING rule first checks attribute/namespace, performs
@@ -528,7 +529,8 @@ mod tests {
         let registry = registry();
         let cancel = AtomicBool::new(false);
         let mut admit = |_| Ok(());
-        let mut formation = ElementFormation::new(&registry, None, &cancel, &mut admit);
+        let blocks = crate::store::block_custody::BlockAdoptions::new(registry.clone());
+        let mut formation = ElementFormation::new(&registry, &blocks, None, &cancel, &mut admit);
         NativeFamily::Canvas(
             formation
                 .native(Payload::default(), Payload::default(), || {
@@ -558,7 +560,13 @@ mod tests {
                         content: Some(content),
                     },
                     &mut || crate::store::check_cancel(&cancel),
-                    &mut ElementFormation::new(&registry, None, &cancel, &mut |_| Ok(())),
+                    &mut ElementFormation::new(
+                        &registry,
+                        &crate::store::block_custody::BlockAdoptions::new(registry.clone()),
+                        None,
+                        &cancel,
+                        &mut |_| Ok(()),
+                    ),
                 )
                 .unwrap()
         };
@@ -612,7 +620,13 @@ mod tests {
                 }
                 crate::store::check_cancel(&cancel)
             },
-            &mut ElementFormation::new(&registry, None, &cancel, &mut |_| Ok(())),
+            &mut ElementFormation::new(
+                &registry,
+                &crate::store::block_custody::BlockAdoptions::new(registry.clone()),
+                None,
+                &cancel,
+                &mut |_| Ok(()),
+            ),
         );
         assert_eq!(result, Err(DomError::Cancelled));
         assert_eq!(reads, 8);
@@ -642,7 +656,13 @@ mod tests {
                 }
                 crate::store::check_cancel(&cancel)
             },
-            &mut ElementFormation::new(&registry, None, &cancel, &mut |_| Ok(())),
+            &mut ElementFormation::new(
+                &registry,
+                &crate::store::block_custody::BlockAdoptions::new(registry.clone()),
+                None,
+                &cancel,
+                &mut |_| Ok(()),
+            ),
         );
         assert_eq!(result, Err(DomError::Cancelled));
         assert_eq!(reads, 5);

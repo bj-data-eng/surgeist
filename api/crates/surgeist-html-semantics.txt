@@ -19,6 +19,7 @@ pub surgeist_html_semantics::HtmlBaseAllowed::Blocked
 pub surgeist_html_semantics::HtmlBaseAllowed::Unavailable
 pub enum surgeist_html_semantics::HtmlBaseFactsError
 pub surgeist_html_semantics::HtmlBaseFactsError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
+pub surgeist_html_semantics::HtmlBaseFactsError::AllocationFailed
 pub surgeist_html_semantics::HtmlBaseFactsError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlBaseFactsError::ContradictoryObservation
 pub surgeist_html_semantics::HtmlBaseFactsError::DuplicateObservation

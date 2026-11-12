@@ -24,31 +24,54 @@ enum Count {
 /// checkpoint.
 pub(super) type BlockTable = TextBlockTable<(usize, usize, usize)>;
 
+/// Visits every string of an element record: its name, each attribute name and value, the saved
+/// `is` value and the nonce.
+pub(super) fn element_strings(
+    element: &QualifiedName,
+    attributes: &OrderedAttributes,
+    is_value: Option<&DocumentString>,
+    nonce: Option<&DocumentString>,
+    visit: &mut dyn FnMut(&DocumentString),
+) {
+    let name = |name: &QualifiedName, visit: &mut dyn FnMut(&DocumentString)| {
+        if let Some(namespace) = name.namespace().uri() {
+            visit(namespace);
+        }
+        if let Some(prefix) = name.prefix() {
+            visit(prefix);
+        }
+        visit(name.local_name());
+    };
+    name(element, visit);
+    for attribute in attributes.shared_attributes().iter() {
+        name(attribute.name(), visit);
+        visit(attribute.value());
+    }
+    if let Some(value) = is_value {
+        visit(value);
+    }
+    if let Some(value) = nonce {
+        visit(value);
+    }
+}
+
 /// Visits every string of `kind` that a record of the capture holds.
 pub(super) fn kind_strings(kind: &HtmlCapturedNodeKind, visit: &mut dyn FnMut(&DocumentString)) {
     match kind {
         HtmlCapturedNodeKind::Element(element) => {
-            let name = |name: &QualifiedName, visit: &mut dyn FnMut(&DocumentString)| {
-                if let Some(namespace) = name.namespace().uri() {
-                    visit(namespace);
-                }
-                if let Some(prefix) = name.prefix() {
-                    visit(prefix);
-                }
-                visit(name.local_name());
-            };
-            name(element.name(), visit);
-            let attributes = element.attributes().shared_attributes();
-            for attribute in attributes.iter() {
-                name(attribute.name(), visit);
-                visit(attribute.value());
-            }
-            if let HtmlCapturedIsValue::Value(value) = &element.is_value {
-                visit(value);
-            }
-            if let HtmlCapturedNonce::Value(value) = &element.nonce {
-                visit(value);
-            }
+            element_strings(
+                element.name(),
+                element.attributes(),
+                match &element.is_value {
+                    HtmlCapturedIsValue::Value(value) => Some(value),
+                    _ => None,
+                },
+                match &element.nonce {
+                    HtmlCapturedNonce::Value(value) => Some(value),
+                    _ => None,
+                },
+                visit,
+            );
         }
         HtmlCapturedNodeKind::Text(value) | HtmlCapturedNodeKind::Comment(value) => visit(value),
         HtmlCapturedNodeKind::ProcessingInstruction(HtmlCapturedProcessingInstruction {
@@ -76,6 +99,17 @@ pub(super) fn kind_strings(kind: &HtmlCapturedNodeKind, visit: &mut dyn FnMut(&D
 pub(super) struct Listing(Vec<TextBlock>);
 
 impl Listing {
+    /// The bytes and the units the listed blocks keep alive, which the capture accounts for once
+    /// each. `None` when the sums are not representable.
+    pub(super) fn usage(&self) -> Option<(usize, usize)> {
+        let mut bytes = 0usize;
+        let mut units = 0usize;
+        for block in &self.0 {
+            bytes = bytes.checked_add(block.retained_bytes())?;
+            units = units.checked_add(block.capacity())?;
+        }
+        Some((bytes, units))
+    }
     /// Removes the entries this operation made, leaving the table as it was.
     pub(super) fn undo(self, table: &mut BlockTable) {
         for block in &self.0 {
@@ -369,6 +403,22 @@ pub(crate) fn option_value_string<E>(
     Ok(usage)
 }
 
+/// The value a capture retains for `value`: an exact owner of its units when it borrows a block,
+/// so that the capture does not keep the block alive at the price of its capacity, and a shared
+/// handle to an owner. `None` when the allocation fails.
+pub(crate) fn owned_value(value: &DocumentString) -> Option<DocumentString> {
+    if value.borrowed_block().is_none() {
+        return Some(value.clone());
+    }
+    let mut units = Vec::new();
+    units.try_reserve_exact(value.len()).ok()?;
+    units.extend_from_slice(value.code_units());
+    Some(DocumentString::from_utf16(units))
+}
+
+/// The element value storage a capture retains for an element added with `name`, `attributes`
+/// and `saved_is`. The capture lists the block of every string of the element that borrows one, so
+/// each string is counted by its occurrence, and the block once for the capture.
 pub(crate) fn option_value_element<E>(
     name: &QualifiedName,
     attributes: &OrderedAttributes,
@@ -376,18 +426,18 @@ pub(crate) fn option_value_element<E>(
     step: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<HtmlCaptureRetainedStorageUsage, HtmlCaptureStorageError<E>> {
     let mut usage = HtmlCaptureRetainedStorageUsage { bytes: 0, units: 0 };
-    usage.name(name, Count::Retained, step)?;
+    usage.name(name, Count::Listed, step)?;
     step().map_err(HtmlCaptureStorageError::Interrupted)?;
     let values = attributes.shared_attributes();
     usage.add_bytes(size_of::<Vec<surgeist_html::values::Attribute>>())?;
     usage.bank::<surgeist_html::values::Attribute, E>(values.capacity())?;
     for attribute in values.iter() {
         step().map_err(HtmlCaptureStorageError::Interrupted)?;
-        usage.name(attribute.name(), Count::Retained, step)?;
-        usage.string(attribute.value(), Count::Retained, step)?;
+        usage.name(attribute.name(), Count::Listed, step)?;
+        usage.string(attribute.value(), Count::Listed, step)?;
     }
     if let Some(value) = saved_is {
-        usage.string(value, Count::Retained, step)?;
+        usage.string(value, Count::Listed, step)?;
     }
     Ok(usage)
 }

@@ -26,7 +26,9 @@ An owned semantic capture instead forms its HTML-owned values through the captur
 builder's controlled borrowed-input front. The required
 `HtmlCaptureLimits::element_value_bytes()` allowance covers cumulative initial
 element name, ordered-attribute and saved-creation-`is` retention, including
-destination capacity and formation/validation overlap. UTF-16 units and work
+destination capacity and formation/validation overlap. A value that is a range of a
+text block counts by its length and the capture lists the block once. The capture of a
+frozen Base copies a borrowed `href` into an exact owner. UTF-16 units and work
 remain separately admitted. This allowance does not bound the whole capture
 heap or later nonce, hyperlink and context facts; the adapter also retains its
 source snapshot and identity map under their own limits. Refusal and cancellation

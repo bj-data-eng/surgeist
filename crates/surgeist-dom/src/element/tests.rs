@@ -96,7 +96,13 @@ fn native(names: &mut Names, local: &str) -> DomElement {
     let formed = DomElement::native(
         name,
         crate::DomDocumentEnvironment::new(crate::DomNativeInputPlatform::headless()),
-        ElementFormation::new(&names.registry, None, &cancel, &mut |_| Ok(())),
+        ElementFormation::new(
+            &names.registry,
+            &crate::store::block_custody::BlockAdoptions::new(names.registry.clone()),
+            None,
+            &cancel,
+            &mut |_| Ok(()),
+        ),
     )
     .unwrap();
     names.children.push(formed.children);
@@ -196,7 +202,13 @@ fn changed(names: &mut Names, element: &DomElement, attributes: AttributeStorage
             binding,
             &changed,
             NonceUpdate::Unchanged,
-            ElementFormation::new(&names.registry, None, &cancel, &mut |_| Ok(())),
+            ElementFormation::new(
+                &names.registry,
+                &crate::store::block_custody::BlockAdoptions::new(names.registry.clone()),
+                None,
+                &cancel,
+                &mut |_| Ok(()),
+            ),
         )
         .unwrap();
     names.children.push(formed.children);
@@ -243,7 +255,13 @@ fn parsed_receipts_and_semantic_equality_preserve_actual_producer_capacity() {
             source.nonce().cloned(),
             source.family.clone(),
             source.common_state(),
-            ElementFormation::new(&names.registry, None, &cancel, &mut |_| Ok(())),
+            ElementFormation::new(
+                &names.registry,
+                &crate::store::block_custody::BlockAdoptions::new(names.registry.clone()),
+                None,
+                &cancel,
+                &mut |_| Ok(()),
+            ),
         )
         .unwrap();
         names.children.push(formed.children);
@@ -290,7 +308,13 @@ fn scalar_family_clones_and_refused_mutations_preserve_the_original_receipt() {
         binding,
         &changed_name,
         NonceUpdate::Unchanged,
-        ElementFormation::new(&names.registry, None, &cancel, &mut |_| Ok(())),
+        ElementFormation::new(
+            &names.registry,
+            &crate::store::block_custody::BlockAdoptions::new(names.registry.clone()),
+            None,
+            &cancel,
+            &mut |_| Ok(()),
+        ),
     );
     assert!(matches!(rejected, Err(DomError::Cancelled)));
     check(&candidate, 21);
@@ -371,9 +395,13 @@ fn unrelated_attributes_alias_the_name_and_exact_native_group_without_admission(
             binding,
             &changed,
             NonceUpdate::Unchanged,
-            ElementFormation::new(&names.registry, None, &cancel, &mut |_| {
-                panic!("unchanged semantic groups acquire no new payload or control")
-            }),
+            ElementFormation::new(
+                &names.registry,
+                &crate::store::block_custody::BlockAdoptions::new(names.registry.clone()),
+                None,
+                &cancel,
+                &mut |_| panic!("unchanged semantic groups acquire no new payload or control"),
+            ),
         )
         .unwrap();
     let edited = &formed.value;

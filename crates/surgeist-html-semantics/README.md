@@ -28,11 +28,14 @@ retained vector/string capacities; lookup charges a caller callback before each
 comparison unit and preserves its first interruption. `lookup_units_with` borrows
 an exact UTF-16 input, including a Meta refresh substring, and returns the bank's
 observed outcome without copying the input or creating Element history.
-`resolve_hyperlink_with` establishes the genuine A/Area snapshot, retaining only
+`resolve_hyperlink_with` establishes the A/Area snapshot, retaining only
 its raw input, qualification and observed result, including explicit parse failure.
 Its mandatory final retention callback receives the checked selected snapshot
-footprint before cloning any selected handle: Self, actual observation raw
-capacity, Base and observed result. Earlier lookup or footprint failure skips
+footprint before cloning any selected handle: Self, the raw input, Base and
+observed result. The raw input counts its actual capacity, except that a raw
+value that borrows a text block is copied into an exact owner and counts the
+length of the copy; a copy whose reserved capacity is larger than that length
+is refused. Earlier lookup or footprint failure skips
 this callback; its refusal propagates unchanged. No extra lookup work step is
 introduced. Callers provide their actual retention/cancellation policy and hold
 the admitted occurrence through its own transfer or drop. Ordinary unrestricted
@@ -126,12 +129,15 @@ fallbacks and spare capacity. Aliased occurrences are conservatively counted
 separately; allocator and Arc bookkeeping are excluded. The cache is formed
 within existing bounded construction/resolution and does not change logical
 formation limits or semantic equality. A selected snapshot counts its chosen
-observation, not the original observation bank.
+observation, not the original observation bank. A snapshot copies a raw value that is a range
+of a text block into an exact owner, and reports a failed allocation as
+`HtmlBaseFactsError::AllocationFailed`.
 
 `HtmlCaptureLimits::element_value_bytes` is a required finite allowance for
 initial element names, attributes and saved-is values. It counts retained string
 headers and actual UTF-16 capacities and the attribute Vec header and actual
-capacity, conservatively per occurrence, across all added elements. Pending
+capacity, conservatively per occurrence, across all added elements. A value that is a range
+of a text block counts by its length and the capture lists the block once. Pending
 formation and validation must fit beside previously committed values. It is not
 a total capture-heap ceiling: record and relationship banks, later nonce and
 hyperlink observations, opaque Arc control blocks and allocator bookkeeping stay

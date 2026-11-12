@@ -109,7 +109,8 @@ impl Draft {
     ) -> Result<Option<DetailsValue>, DomError> {
         self.control_attribute(key, name, cancel)?
             .map(|value| {
-                let (value, payload) = source::formation::shared_string(self, value, cancel)?;
+                let (value, payload) =
+                    source::formation::shared_listed_string(self, value, cancel)?;
                 Ok(DetailsValue {
                     value,
                     _payload: payload,
@@ -705,6 +706,13 @@ mod tests {
         }
     }
     fn named_draft() -> (Fixture, Key, usize) {
+        let mut units = Vec::with_capacity(4096);
+        units.push(u16::from(b'g'));
+        let capacity = units.capacity();
+        let (fixture, key) = draft_named(DocumentString::from_utf16(units));
+        (fixture, key, capacity)
+    }
+    fn draft_named(name: DocumentString) -> (Fixture, Key) {
         let (mut dom, _, a, _) = fixture();
         dom.set_limits(
             DomLimits::new(
@@ -720,14 +728,53 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        let mut units = Vec::with_capacity(4096);
-        units.push(u16::from(b'g'));
-        let capacity = units.capacity();
         let mut setup = DomBatch::new();
-        setup.set_attribute(a, "name", DocumentString::from_utf16(units));
+        setup.set_attribute(a, "name", name);
         dom.apply(setup, &AtomicBool::new(false)).unwrap();
         let draft = Draft::new(&dom, Arc::new(BatchIdentity), &AtomicBool::new(false)).unwrap();
-        (Fixture { draft, _dom: dom }, Key::Existing(a), capacity)
+        (Fixture { draft, _dom: dom }, Key::Existing(a))
+    }
+    #[test]
+    fn source_details_name_that_borrows_a_block_is_charged_by_length_and_lists_the_block() {
+        let cancel = AtomicBool::new(false);
+        let mut units = Vec::with_capacity(4096);
+        units.push(u16::from(b'g'));
+        let block = surgeist_html::values::TextBlock::from_utf16(units);
+        assert!(block.capacity() >= 4096);
+        let (mut draft, key) = draft_named(block.string(0..1).unwrap());
+        // The budget holds the unit and its header, and cannot hold the capacity of the block.
+        source_budget(&mut draft, 4 * size_of::<Vec<u16>>(), 64);
+        let name = draft
+            .details_attribute_value(key, KnownHtmlAttribute::Name, &cancel)
+            .unwrap()
+            .unwrap();
+        assert_eq!(name.value.code_units(), [u16::from(b'g')]);
+        assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 1);
+        assert_eq!(draft.custody_registry().listed_blocks(), 1);
+    }
+    #[test]
+    fn source_details_name_lists_the_block_it_borrows_for_the_transaction() {
+        let cancel = AtomicBool::new(false);
+        let mut units = Vec::with_capacity(4096);
+        units.push(u16::from(b'g'));
+        let block = surgeist_html::values::TextBlock::from_utf16(units);
+        let (mut draft, key) = draft_named(block.string(0..1).unwrap());
+        // No path has listed the block when the exclusivity step reads the name, as when the
+        // attribute bank had not: the read lists it itself, once.
+        draft.custody_registry().unlist_block(&block);
+        assert_eq!(draft.custody_registry().listed_blocks(), 0);
+        source_budget(&mut draft, 1_000_000, 10_000);
+        let before = draft.custody_registry().ledger().total().units();
+        draft
+            .details_attribute_value(key, KnownHtmlAttribute::Name, &cancel)
+            .unwrap()
+            .unwrap();
+        assert!(draft.custody_registry().block_listed(&block));
+        assert_eq!(draft.custody_registry().listed_blocks(), 1);
+        assert_eq!(
+            draft.custody_registry().ledger().total().units(),
+            before + block.capacity()
+        );
     }
     #[test]
     fn source_details_name_has_exact_capacity_custody_and_releases_on_first_stop() {

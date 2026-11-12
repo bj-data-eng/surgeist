@@ -110,6 +110,62 @@ fn owned_values_admit_actual_reserved_capacity_exactly_and_refuse_one_byte_short
     assert!(attrs.shared_attributes().capacity() > attrs.len());
 }
 
+/// An owner of the units of `text` whose backing holds exactly them.
+fn exact(text: &str) -> DocumentString {
+    let mut units = Vec::new();
+    units
+        .try_reserve_exact(text.encode_utf16().count())
+        .unwrap();
+    units.extend(text.encode_utf16());
+    assert_eq!(units.capacity(), text.encode_utf16().count());
+    DocumentString::from_utf16(units)
+}
+
+#[test]
+fn values_that_borrow_a_block_are_retained_as_exact_copies_under_the_gate_of_owners() {
+    let mut units = Vec::with_capacity(4096);
+    units.extend("abcd".encode_utf16());
+    let block = surgeist_html::values::TextBlock::from_utf16(units);
+    assert!(block.capacity() >= 4096);
+    let name = qname("x");
+    let borrowed = [
+        Attribute::new(qname("a"), block.string(0..2).unwrap()),
+        Attribute::new(qname("b"), block.string(2..4).unwrap()),
+    ];
+    let saved = block.string(1..3).unwrap();
+    // The gate that admits owners of the same text admits the borrowers.
+    let owners = [
+        Attribute::new(qname("a"), exact("ab")),
+        Attribute::new(qname("b"), exact("cd")),
+    ];
+    let saved_owner = exact("bc");
+    let bytes = raw_element_bytes(&name, &owners, owners.len(), Some(&saved_owner));
+    let (mut owner, doc) = builder(bytes);
+    let subject = owner
+        .add_element_from_inputs(
+            &doc,
+            &name,
+            borrowed.as_slice(),
+            HtmlCapturedIsValue::Value(saved),
+            HtmlCaptureRegistryInput::Null,
+            || Ok::<_, Infallible>(()),
+        )
+        .unwrap();
+    let HtmlCapturedNodeKind::Element(value) = &owner.data.records[subject.index].kind else {
+        panic!("element")
+    };
+    assert_eq!(value.attributes().as_slice(), owners);
+    assert_eq!(value.is_value(), &HtmlCapturedIsValue::Value(saved_owner));
+    // The element holds its own units and not the block.
+    assert!(
+        value
+            .attributes()
+            .iter()
+            .all(|attribute| attribute.value().borrowed_block().is_none())
+    );
+    assert_eq!(owner.usage().element_value_bytes(), bytes);
+}
+
 #[test]
 fn borrowed_empty_values_have_an_exact_same_builder_byte_gate_and_cumulative_receipts() {
     let name = qname("x");

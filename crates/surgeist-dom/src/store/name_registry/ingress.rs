@@ -495,6 +495,11 @@ impl Draft {
                 selected: None,
             });
         }
+        // Every value that borrows a block lists it before the bank prices the value by its
+        // length, so the block is charged once for the store whichever path formed the entry.
+        for entry in &input.entries {
+            self.list_block(entry.value(), cancel)?;
+        }
         // Names are already owner-resolved. Whole-bank reuse precedes any
         // new materialization identity, target or optional per-string work.
         let miss = if let Some(session) = self.sharing_session() {
@@ -678,6 +683,7 @@ impl Draft {
         let mut admit = |next| self.admit_custody_usage(next, cancel);
         let formation = crate::element::ElementFormation::new(
             self.custody_registry(),
+            &self.blocks,
             budget,
             cancel,
             &mut admit,

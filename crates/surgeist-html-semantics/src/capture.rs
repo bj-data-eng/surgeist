@@ -1020,6 +1020,61 @@ fn html(name: &QualifiedName, local: &str) -> bool {
 fn namespace(ns: &Namespace, uri: &str) -> bool {
     ns.uri().is_some_and(|v| exact(v, uri))
 }
+/// The blocks that one element addition listed before the capture records the element, with the
+/// bytes and units they keep alive, which the owner that bounds the addition charges.
+pub(crate) struct ElementListing {
+    listing: storage::Listing,
+    bytes: usize,
+    units: usize,
+}
+/// Why the blocks of an element could not be listed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ElementListingError {
+    /// The table of blocks could not reserve room for an entry.
+    AllocationFailed,
+    /// The bytes or units the listed blocks keep alive cannot be represented.
+    RepresentationExhausted,
+}
+impl ElementListing {
+    pub(crate) fn bytes(&self) -> usize {
+        self.bytes
+    }
+    pub(crate) fn units(&self) -> usize {
+        self.units
+    }
+}
+
+impl HtmlCaptureBuilder {
+    /// Lists the blocks the strings of an element borrow that the capture does not list yet, before
+    /// the element is recorded: the recording then lists nothing more. A refusal lists nothing.
+    pub(crate) fn list_element_blocks(
+        &mut self,
+        name: &QualifiedName,
+        attributes: &OrderedAttributes,
+        saved_is: Option<&DocumentString>,
+    ) -> Result<ElementListing, ElementListingError> {
+        let listing = storage::list_blocks(
+            &mut self.data.blocks,
+            &mut self.data.block_sequence,
+            |visit| storage::element_strings(name, attributes, saved_is, None, visit),
+        )
+        .map_err(|_| ElementListingError::AllocationFailed)?;
+        let Some((bytes, units)) = listing.usage() else {
+            listing.undo(&mut self.data.blocks);
+            return Err(ElementListingError::RepresentationExhausted);
+        };
+        Ok(ElementListing {
+            listing,
+            bytes,
+            units,
+        })
+    }
+    /// Takes back the listing of an element that was not recorded.
+    pub(crate) fn unlist_element_blocks(&mut self, listing: ElementListing) {
+        listing.listing.undo(&mut self.data.blocks);
+    }
+}
+
 impl HtmlCaptureBuilder {
     /// Establishes actual A/Area cache history. The observed Document is the
     /// historical parsing Document, which may differ after adoption. No URL,
@@ -1468,6 +1523,9 @@ impl HtmlCaptureBuilder {
         Ok(())
     }
     /// Adds exact element values; unspecified topology and associations stay unavailable.
+    /// A value that is a range of a text block of the producer is counted in the element value
+    /// allowance by its length, and the capture lists the block once for all the values that
+    /// borrow it. An owner is counted by the capacity of its backing, at every occurrence.
     pub fn add_element(
         &mut self,
         document: &HtmlCaptureBuilderSubject,
