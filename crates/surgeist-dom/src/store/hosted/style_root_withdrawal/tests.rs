@@ -1047,6 +1047,100 @@ fn actual_parked_source_keeps_its_mandatory_tail_and_original_cleanup_custody() 
 }
 
 #[test]
+fn trusted_attribute_sink_parks_for_its_registered_global() {
+    use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+    use surgeist_html::values::Namespace;
+
+    let cancel = cancel();
+    let (mut dom, source, document) = constructor();
+    let snapshot = dom.snapshot();
+    let navigable = snapshot.document(document).unwrap().navigable().unwrap();
+    let global = snapshot.hosted_navigable(navigable).unwrap().global();
+
+    let context = source
+        .document_constructor_context(&dom, global, &cancel)
+        .unwrap();
+    let constructed = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::construct_document(context),
+                source_limits(),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("the standard Document constructor completes");
+        };
+        let Some(crate::DomSourceOutput::Document(constructed)) = done.output() else {
+            panic!("the constructor returns the new Document");
+        };
+        constructed
+    };
+    let mut setup = DomBatch::new();
+    let inert = setup.create_document();
+    let element = setup.create_element_ns(&inert, Namespace::html(), "div");
+    setup.adopt(&element, constructed);
+    let element = dom
+        .apply(setup, &cancel)
+        .unwrap()
+        .created(&element)
+        .unwrap()
+        .unwrap();
+    let facts = crate::DomDocumentScriptingFacts {
+        engine: HtmlScriptingEngine::Supported,
+        policy: HtmlScriptingPolicy {
+            user_allows: true,
+            automation_allows: true,
+        },
+    };
+    let backing = source
+        .retain_runtime_payload(
+            &mut dom,
+            crate::DomDocumentScriptRegistration::storage_bytes(),
+            &cancel,
+        )
+        .unwrap();
+    let (_binding, _registration) = source
+        .attach_document_script_host(&mut dom, global, document, facts, backing, &cancel)
+        .unwrap();
+
+    let before = dom.snapshot();
+    let receiver = before.node(element).unwrap();
+    assert_eq!(receiver.owner_document(), Some(constructed));
+    assert_eq!(receiver.relevant_global().unwrap(), None);
+    assert_eq!(
+        before
+            .node(constructed.node())
+            .unwrap()
+            .relevant_global()
+            .unwrap(),
+        Some(global)
+    );
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_attribute(element, "onclick", "handler"),
+            source_limits(),
+            &cancel,
+        )
+        .unwrap();
+    let result = lease.advance(&cancel);
+    assert!(
+        matches!(result, Ok(DomSourceProgress::Request(_))),
+        "the constructed Document inherits the live verification Global: {result:?}"
+    );
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        lease
+            .snapshot()
+            .node(element)
+            .unwrap()
+            .attribute(&"onclick".into()),
+        None
+    );
+    assert!(!lease.status().has_published());
+}
+
+#[test]
 fn script_settings_from_an_expired_hosted_issuer_do_not_advance_source() {
     use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
     use surgeist_html::values::Namespace;
