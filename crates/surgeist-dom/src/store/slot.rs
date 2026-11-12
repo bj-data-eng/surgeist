@@ -201,7 +201,7 @@ impl Draft {
             admit(count, limits.slot_references, DomResource::SlotReferences)?;
             self.slot_signal_push(slot, cancel)?;
         }
-        self.queue_slot_marker(cancel)?;
+        self.queue_mutation_notification(cancel)?;
         Ok(())
     }
     fn assign_slottables(
@@ -260,7 +260,7 @@ impl Draft {
             if new_signal {
                 self.slot_signal_push(key, cancel)?;
             }
-            self.queue_slot_marker(cancel)?;
+            self.queue_mutation_notification(cancel)?;
         }
         self.relations_replace_owned(
             key,
@@ -595,6 +595,16 @@ impl Dom {
         limits: crate::DomSlotQueryLimits,
         cancel: &AtomicBool,
     ) -> Result<(Prepared, Arc<[NodeId]>), DomError> {
+        let (mut draft, targets) = self.stage_mutation_notification(limits, cancel)?;
+        let prepared = draft.finish(self, cancel)?;
+        Ok((prepared, targets))
+    }
+
+    pub(super) fn stage_mutation_notification(
+        &self,
+        limits: crate::DomSlotQueryLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(Draft, Arc<[NodeId]>), DomError> {
         check_cancel(cancel)?;
         admit(
             self.state.signal_slots.len(),
@@ -610,15 +620,14 @@ impl Dom {
         let mut draft = Draft::new(self, DomBatch::new().owner, cancel)?;
         assert!(matches!(
             draft.native_tasks.first(),
-            Some(select::Pending::Slots)
+            Some(select::Pending::MutationNotification)
         ));
         draft.queue_native_remove(0, 1, cancel)?;
         draft.queue_signals_clear(cancel)?;
         draft.notification_queued = false;
-        let prepared = draft.finish(self, cancel)?;
         // Vec-to-Arc conversion allocates. Complete it while the drained
         // state is private, before publish's final cancellation boundary.
-        Ok((prepared, targets.into()))
+        Ok((draft, targets.into()))
     }
 }
 

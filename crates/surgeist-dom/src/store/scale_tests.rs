@@ -575,7 +575,7 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
         .iter()
         .filter_map(|task| match task {
             super::select::Task::Update { target, .. } => Some(*target),
-            super::select::Task::Slots => None,
+            super::select::Task::MutationNotification => None,
         })
         .collect();
     assert_eq!(queued, select_ids);

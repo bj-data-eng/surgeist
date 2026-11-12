@@ -3,13 +3,24 @@ use super::*;
 
 pub(super) struct Insertion {
     moving: select::ScratchVec<Key>,
-    fragment: bool,
+    fragment: Option<Key>,
     parent: Key,
     before: Option<Key>,
+    previous: Option<Key>,
+    observation: InsertionObservation,
     index: usize,
     stage: u8,
     #[cfg(test)]
     _observation: scratch_observation::Moving,
+}
+
+enum InsertionObservation {
+    Ordinary,
+    Replace {
+        removed: Option<Key>,
+        previous: Option<Key>,
+    },
+    ReplaceAll(select::ScratchVec<Key>),
 }
 
 #[derive(Clone, Copy)]
@@ -33,7 +44,11 @@ pub(super) enum Frame {
     },
     Insert(Insertion),
     ReleaseMoving(Insertion),
-    RemovedParent(Key),
+    RemovedParent {
+        parent: Key,
+        node: Key,
+        siblings: Option<(Option<Key>, Option<Key>)>,
+    },
     Walk {
         root: Key,
         old_parent: Option<Key>,
@@ -54,11 +69,14 @@ pub(super) enum Frame {
         parent: Key,
         child: Key,
         before: Option<Key>,
+        previous: Option<Key>,
+        removed: Option<Key>,
         stage: u8,
     },
     ReplaceAll {
         key: Key,
         after: AfterRemovingChildren,
+        removed: select::ScratchVec<Key>,
     },
 }
 
@@ -71,7 +89,14 @@ impl Frame {
         match self {
             Self::FullscreenRemoving { flagged, .. } => flagged.freeze(draft, cancel),
             Self::Destroy { closure, .. } => closure.freeze(draft, cancel),
-            Self::Insert(frame) | Self::ReleaseMoving(frame) => frame.moving.freeze(draft, cancel),
+            Self::Insert(frame) | Self::ReleaseMoving(frame) => {
+                frame.moving.freeze(draft, cancel)?;
+                if let InsertionObservation::ReplaceAll(removed) = &mut frame.observation {
+                    removed.freeze(draft, cancel)?;
+                }
+                Ok(())
+            }
+            Self::ReplaceAll { removed, .. } => removed.freeze(draft, cancel),
             _ => Ok(()),
         }
     }
@@ -103,7 +128,15 @@ impl Frame {
             },
             Self::Insert(frame) => Self::Insert(frame.checkpoint(a, cancel)?),
             Self::ReleaseMoving(frame) => Self::ReleaseMoving(frame.checkpoint(a, cancel)?),
-            Self::RemovedParent(key) => Self::RemovedParent(*key),
+            Self::RemovedParent {
+                parent,
+                node,
+                siblings,
+            } => Self::RemovedParent {
+                parent: *parent,
+                node: *node,
+                siblings: *siblings,
+            },
             Self::Walk {
                 root,
                 old_parent,
@@ -133,17 +166,26 @@ impl Frame {
                 parent,
                 child,
                 before,
+                previous,
+                removed,
                 stage,
             } => Self::Replace {
                 node: *node,
                 parent: *parent,
                 child: *child,
                 before: *before,
+                previous: *previous,
+                removed: *removed,
                 stage: *stage,
             },
-            Self::ReplaceAll { key, after } => Self::ReplaceAll {
+            Self::ReplaceAll {
+                key,
+                after,
+                removed,
+            } => Self::ReplaceAll {
                 key: *key,
                 after: *after,
+                removed: removed.checkpoint(a, cancel)?,
             },
         })
     }
@@ -165,6 +207,19 @@ impl Insertion {
             fragment: self.fragment,
             parent: self.parent,
             before: self.before,
+            previous: self.previous,
+            observation: match &self.observation {
+                InsertionObservation::Ordinary => InsertionObservation::Ordinary,
+                InsertionObservation::Replace { removed, previous } => {
+                    InsertionObservation::Replace {
+                        removed: *removed,
+                        previous: *previous,
+                    }
+                }
+                InsertionObservation::ReplaceAll(removed) => {
+                    InsertionObservation::ReplaceAll(removed.checkpoint(a, cancel)?)
+                }
+            },
             index: self.index,
             stage: self.stage,
             #[cfg(test)]
@@ -480,6 +535,8 @@ impl Draft {
                 parent,
                 child,
                 before,
+                previous: None,
+                removed: None,
                 stage: 0,
             }),
             self.effect_scoped,
@@ -506,8 +563,22 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        let mut removed = self.effect_vec();
+        if !matches!(after, AfterRemovingChildren::ReuseShadowRoot) && self.may_observe_child_list()
+        {
+            let children = self.node(key)?.children();
+            self.select_reserve(&mut removed, children.len(), cancel)?;
+            for child in children.iter() {
+                self.source_step(cancel)?;
+                removed.push(child);
+            }
+        }
         self.push_effect(
-            select::Effect::Tree(Frame::ReplaceAll { key, after }),
+            select::Effect::Tree(Frame::ReplaceAll {
+                key,
+                after,
+                removed,
+            }),
             self.effect_scoped,
             cancel,
         )?;
@@ -519,6 +590,25 @@ impl Draft {
         node: Key,
         parent: Key,
         before: Option<Key>,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.insert_with_observation(
+            node,
+            parent,
+            before,
+            InsertionObservation::Ordinary,
+            limits,
+            cancelled,
+        )
+    }
+
+    fn insert_with_observation(
+        &mut self,
+        node: Key,
+        parent: Key,
+        before: Option<Key>,
+        observation: InsertionObservation,
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -545,9 +635,11 @@ impl Draft {
         self.push_effect(
             select::Effect::Tree(Frame::Insert(Insertion {
                 moving,
-                fragment,
+                fragment: fragment.then_some(node),
                 parent,
                 before,
+                previous: None,
+                observation,
                 index: 0,
                 stage: 0,
                 #[cfg(test)]
@@ -719,6 +811,7 @@ impl Draft {
                         self.retire_fullscreen_membership(key, cancel)?;
                         self.retire_range_container(key, cancel)?;
                         self.retire_node_iterator_root(key, cancel)?;
+                        self.retire_child_list_target(key, cancel)?;
                         let retired = self.retire_node(key, cancel)?;
                         self.retire_form_relations(key, cancel)?;
                         self.slot_retirement(key, retired.document, limits, cancel)?;
@@ -750,7 +843,14 @@ impl Draft {
                 }
             }
 
-            Frame::RemovedParent(parent) => self.children_changed(parent, limits, cancel)?,
+            Frame::RemovedParent {
+                parent,
+                node,
+                siblings,
+            } => {
+                self.child_list_removed(node, parent, siblings, cancel)?;
+                self.children_changed(parent, limits, cancel)?;
+            }
             Frame::AdoptAfterRemoval { node, document } => {
                 self.adopt_document(node, document, limits, cancel)?
             }
@@ -759,15 +859,24 @@ impl Draft {
                 parent,
                 child,
                 before,
+                previous,
+                removed,
                 stage,
             } => {
                 if stage == 0 {
+                    let previous = if self.may_observe_child_list() {
+                        self.child_list_before(parent, Some(child), cancel)?
+                    } else {
+                        None
+                    };
                     self.push_effect(
                         select::Effect::Tree(Frame::Replace {
                             node,
                             parent,
                             child,
                             before,
+                            previous,
+                            removed,
                             stage: 1,
                         }),
                         self.effect_scoped,
@@ -775,36 +884,73 @@ impl Draft {
                     )?;
                     self.adopt(node, self.node(parent)?.document(), limits, cancel)?;
                 } else if stage == 1 {
+                    let removed = self.node(child)?.parent().is_some().then_some(child);
                     self.push_effect(
                         select::Effect::Tree(Frame::Replace {
                             node,
                             parent,
                             child,
                             before,
+                            previous,
+                            removed,
                             stage: 2,
                         }),
                         self.effect_scoped,
                         cancel,
                     )?;
-                    self.remove(child, limits, cancel)?;
+                    if removed.is_some() {
+                        self.remove_tree_child(child, true, limits, cancel)?;
+                    }
                 } else {
-                    self.insert_validated(node, parent, before, limits, cancel)?;
+                    self.insert_with_observation(
+                        node,
+                        parent,
+                        before,
+                        InsertionObservation::Replace { removed, previous },
+                        limits,
+                        cancel,
+                    )?;
                 }
             }
-            Frame::ReplaceAll { key, after } => {
+            Frame::ReplaceAll {
+                key,
+                after,
+                removed,
+            } => {
                 if let Some(child) = self.node(key)?.children().first() {
                     self.push_effect(
-                        select::Effect::Tree(Frame::ReplaceAll { key, after }),
+                        select::Effect::Tree(Frame::ReplaceAll {
+                            key,
+                            after,
+                            removed,
+                        }),
                         self.effect_scoped,
                         cancel,
                     )?;
-                    self.remove(child, limits, cancel)?;
+                    let suppress = !matches!(after, AfterRemovingChildren::ReuseShadowRoot);
+                    self.remove_tree_child(child, suppress, limits, cancel)?;
                 } else {
                     match after {
-                        AfterRemovingChildren::Complete => (),
+                        AfterRemovingChildren::Complete => self.queue_child_list_record(
+                            child_list::MutationInput {
+                                target: key,
+                                added: &[],
+                                removed: &removed,
+                                previous: None,
+                                next: None,
+                            },
+                            cancel,
+                        )?,
                         AfterRemovingChildren::Insert(node) => {
                             // The named caller qualified the replacement before removal.
-                            self.insert_validated(node, key, None, limits, cancel)?;
+                            self.insert_with_observation(
+                                node,
+                                key,
+                                None,
+                                InsertionObservation::ReplaceAll(removed),
+                                limits,
+                                cancel,
+                            )?;
                         }
                         AfterRemovingChildren::ReuseShadowRoot => {
                             let mut state = self.shadow_state_mut(key, cancel)?;
@@ -991,9 +1137,9 @@ impl Draft {
                     // DOM3071 insert step 3 precedes fragment removal, Range
                     // maintenance and children-changed hooks.
                     if frame.moving.is_empty() {
-                        return Ok(());
+                        return self.queue_replacement_record(&frame, cancel);
                     }
-                    if frame.fragment
+                    if frame.fragment.is_some()
                         && let Some(&child) = frame.moving.get(frame.index)
                     {
                         frame.index += 1;
@@ -1002,13 +1148,31 @@ impl Draft {
                             self.effect_scoped,
                             cancel,
                         )?;
-                        self.remove(child, limits, cancel)?;
+                        self.remove_tree_child(child, true, limits, cancel)?;
                     } else {
+                        if let Some(fragment) = frame.fragment {
+                            self.queue_child_list_record(
+                                child_list::MutationInput {
+                                    target: fragment,
+                                    added: &[],
+                                    removed: &frame.moving,
+                                    previous: None,
+                                    next: None,
+                                },
+                                cancel,
+                            )?;
+                        }
                         frame.stage = 1;
                         frame.index = 0;
                         // DOM insert adjusts by the complete insertion list
                         // before the first per-node adoption/insertion hook.
                         self.range_insert(frame.parent, frame.before, frame.moving.len(), cancel)?;
+                        if matches!(frame.observation, InsertionObservation::Ordinary)
+                            && self.may_observe_child_list()
+                        {
+                            frame.previous =
+                                self.child_list_before(frame.parent, frame.before, cancel)?;
+                        }
                         self.push_effect(
                             select::Effect::Tree(Frame::Insert(frame)),
                             self.effect_scoped,
@@ -1068,6 +1232,18 @@ impl Draft {
                         )?;
                     }
                 } else if frame.stage != 3 {
+                    if matches!(frame.observation, InsertionObservation::Ordinary) {
+                        self.queue_child_list_record(
+                            child_list::MutationInput {
+                                target: frame.parent,
+                                added: &frame.moving,
+                                removed: &[],
+                                previous: frame.previous,
+                                next: frame.before,
+                            },
+                            cancel,
+                        )?;
+                    }
                     frame.stage = 3;
                     let parent = frame.parent;
                     self.push_effect(
@@ -1089,10 +1265,34 @@ impl Draft {
                 }
             }
             Frame::ReleaseMoving(frame) => {
-                drop(frame);
+                self.queue_replacement_record(&frame, cancel)?;
             }
         }
         Ok(())
+    }
+
+    fn queue_replacement_record(
+        &mut self,
+        frame: &Insertion,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let (removed, previous, next) = match &frame.observation {
+            InsertionObservation::Ordinary => return Ok(()),
+            InsertionObservation::Replace { removed, previous } => {
+                (removed.as_slice(), *previous, frame.before)
+            }
+            InsertionObservation::ReplaceAll(removed) => (removed.as_slice(), None, None),
+        };
+        self.queue_child_list_record(
+            child_list::MutationInput {
+                target: frame.parent,
+                added: &frame.moving,
+                removed,
+                previous,
+                next,
+            },
+            cancel,
+        )
     }
     fn insertion_nonce(&self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
         use surgeist_html::security::nonce::{

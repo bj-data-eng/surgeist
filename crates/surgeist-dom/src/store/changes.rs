@@ -883,6 +883,9 @@ pub(super) fn full_difference(
         changes.push(DomChange::SlotQueries);
     }
     node_iterator::full_changes(owner, old, new, &mut changes, cancelled)?;
+    if old.child_lists != new.child_lists {
+        changes.push(DomChange::ChildListObservation);
+    }
     new.view_transitions
         .changes(&old.view_transitions, &mut changes, budget, cancelled)?;
     // Complete pseudo origins derive from ordinary Document children. Report
