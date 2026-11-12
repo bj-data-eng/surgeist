@@ -257,6 +257,7 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
                             globalThis.firstOwner = hiddenOwnerAttr.ownerElement;
                             if (!(firstOwner instanceof Element)) throw new Error('unavailable Attr owner');
                         }
+                        if (globalThis.attachmentProbe) globalThis.attachmentProbe(value);
                         protectedTarget.setAttribute('data-entered', value);
                         if (value === 'throw') throw marker;
                         if (value === 'empty') return null;
@@ -520,6 +521,47 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         );
     }
     result.unwrap();
+
+    host.in_document(&permit, |scope| {
+        let script = r#"
+            (() => {
+                const inputs = [];
+                const original = protectedAttr.value;
+                const moving = hiddenOwnerAttr.value;
+                globalThis.attachmentProbe = value => inputs.push(value);
+                if (protectedTarget.setAttributeNode(protectedAttr) !== protectedAttr
+                    || protectedAttr.value !== original) return false;
+                try { firstOwner.setAttributeNodeNS(protectedAttr); return false; }
+                catch (error) { if (error.name !== 'InUseAttributeError') return false; }
+                if (inputs.length !== 2 || inputs[0] !== original || inputs[1] !== original
+                    || protectedAttr.ownerElement !== protectedTarget) return false;
+                globalThis.attachmentProbe = value => {
+                    inputs.push(value);
+                    try {
+                        protectedTarget.removeAttributeNode(hiddenOwnerAttr);
+                        throw new Error('accepted removal from a different owner');
+                    } catch (error) {
+                        if (error.name !== 'NotFoundError') throw error;
+                    }
+                    if (firstOwner.getAttributeNode('ONCLICK') !== hiddenOwnerAttr
+                        || firstOwner.removeAttributeNode(hiddenOwnerAttr) !== hiddenOwnerAttr)
+                        throw new Error('nested removal lost the original Attr');
+                };
+                const replaced = protectedTarget.setAttributeNodeNS(hiddenOwnerAttr);
+                delete globalThis.attachmentProbe;
+                return replaced === protectedAttr && protectedAttr.ownerElement === null
+                    && hiddenOwnerAttr.ownerElement === protectedTarget
+                    && hiddenOwnerAttr.value === moving + '!'
+                    && firstOwner.getAttributeNode('onclick') === null
+                    && protectedTarget.getAttributeNode('onclick') === hiddenOwnerAttr
+                    && inputs.length === 3 && inputs[2] === moving;
+            })()
+        "#;
+        let result = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    })
+    .unwrap();
 
     let calls = pause_guest_attribute(
         &mut host,

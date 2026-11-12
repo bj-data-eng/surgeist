@@ -556,6 +556,98 @@ fn named_node_map_removal_resolves_each_current_qualified_or_expanded_name() {
 }
 
 #[test]
+fn named_node_map_lookup_admits_current_document_entries_and_compared_units() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let xml = setup.create_document();
+    let html = setup.create_html_document(&xml, None);
+    let element = setup.create_element_ns(&html, Namespace::html(), "div");
+    let first_namespace = Namespace::from_uri("urn:attr-1");
+    let second_namespace = Namespace::from_uri("urn:attr-2");
+    setup.set_attribute_ns(&element, first_namespace, "p:item", "first");
+    setup.set_attribute_ns(&element, second_namespace.clone(), "p:item", "second");
+    setup.set_attribute(&element, "ignored", "third");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let xml = commit.document(&xml).unwrap();
+    let html = commit.document(&html).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let snapshot = dom.snapshot();
+    let map = snapshot.node(element).unwrap().attributes().unwrap();
+    let first = map.item(0).unwrap().id();
+    let second = map.item(1).unwrap().id();
+
+    let lookup_steps = |node| {
+        let mut steps = 0;
+        snapshot
+            .node_with(node, || {
+                steps += 1;
+                Ok::<_, DomError>(())
+            })
+            .unwrap();
+        steps
+    };
+    let qualified = DocumentString::from("P:ITEM");
+    let qualified_lookups = "http://www.w3.org/1999/xhtml".len()
+        + lookup_steps(html.node())
+        + lookup_steps(first.node());
+    let mut steps = 0;
+    let found = map
+        .get_named_item_with(&qualified, || {
+            steps += 1;
+            Ok::<_, DomError>(())
+        })
+        .unwrap();
+    assert_eq!(found.unwrap().id(), first);
+    assert_eq!(steps, qualified_lookups + qualified.len());
+
+    let mut steps = 0;
+    let found = map.get_named_item_with(&qualified, || {
+        steps += 1;
+        if steps == qualified_lookups + 2 {
+            return Err(DomError::Cancelled);
+        }
+        Ok(())
+    });
+    assert!(matches!(found, Err(DomError::Cancelled)));
+    assert_eq!(steps, qualified_lookups + 2);
+
+    let local = DocumentString::from("item");
+    let mut steps = 0;
+    let found = map
+        .get_named_item_ns_with(&second_namespace, &local, || {
+            steps += 1;
+            Ok::<_, DomError>(())
+        })
+        .unwrap();
+    assert_eq!(found.unwrap().id(), second);
+    assert_eq!(
+        steps,
+        lookup_steps(first.node())
+            + lookup_steps(second.node())
+            + 2 * "urn:attr-2".len()
+            + local.len()
+    );
+    assert!(
+        map.get_named_item_ns_with(&second_namespace, &"ITEM".into(), || Ok::<_, DomError>(()))
+            .unwrap()
+            .is_none()
+    );
+
+    let mut adopt = DomBatch::new();
+    adopt.adopt(element, xml);
+    dom.apply(adopt, &cancel).unwrap();
+    let adopted = dom.snapshot();
+    let adopted = adopted.node(element).unwrap().attributes().unwrap();
+    assert!(adopted.get_named_item(&qualified).is_none());
+    assert_eq!(
+        adopted.get_named_item(&"p:item".into()).unwrap().id(),
+        first
+    );
+    assert_eq!(map.get_named_item(&qualified).unwrap().id(), first);
+}
+
+#[test]
 fn native_attr_attachment_distinguishes_replace_unchanged_in_use_and_append() {
     use surgeist_dom::{DomAttributeAttachment, DomSourceOutput};
 

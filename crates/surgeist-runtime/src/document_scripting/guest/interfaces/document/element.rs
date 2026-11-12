@@ -8,6 +8,7 @@ use surgeist_html::{
 };
 
 mod attribute;
+pub(super) use attribute::AttributeResult;
 mod svg;
 
 const ELEMENT: &[u16] = &ascii(b"Element");

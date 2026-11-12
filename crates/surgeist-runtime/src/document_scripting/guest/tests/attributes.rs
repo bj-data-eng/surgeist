@@ -108,3 +108,145 @@ pub(in crate::document_scripting) fn detached_attribute_keeps_its_live_native_id
         Ok(())
     }).unwrap();
 }
+
+pub(in crate::document_scripting) fn element_methods_return_the_exact_attribute() {
+    let mut host = public_node_host(5_000, 20_000);
+    let permit = host.permit().unwrap();
+    let cancel = host.native.cancellation.clone();
+    let (element, other, unprojected) = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let element = batch.create_element_ns(permit.document, Namespace::html(), "div");
+            let other = batch.create_element_ns(permit.document, Namespace::html(), "span");
+            batch.set_attribute(&element, "data-old", "native");
+            let commit = dom.apply(batch, &cancel).unwrap();
+            let element = commit.created(&element).unwrap().unwrap();
+            let attr = dom
+                .snapshot()
+                .node(element)
+                .unwrap()
+                .get_attribute_node(&"data-old".into())
+                .unwrap()
+                .id()
+                .node();
+            (element, commit.created(&other).unwrap().unwrap(), attr)
+        })
+        .unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, element, "element");
+    expose_public_node_for_source_test(&mut host, &permit, other, "other");
+    let removed = host.in_document(&permit, |scope| {
+        let value = scope.evaluate(&units(r#"
+            (() => {
+                const assert = (condition, message) => { if (!condition) throw new Error(message); };
+                const throws = (operation, name) => {
+                    try { operation(); } catch (error) { return error.name === name; }
+                    return false;
+                };
+                const plain = document.createAttribute('data-old');
+                const old = element.setAttributeNode(plain);
+                assert(old instanceof Attr && old !== plain && old.ownerElement === null
+                    && old.name === 'data-old' && old.value === 'native', 'previously unprojected replacement');
+                assert(element.getAttributeNode('DATA-OLD') === plain
+                    && element.getAttributeNodeNS('', 'data-old') === plain
+                    && element.getAttributeNodeNS(null, 'DATA-OLD') === null
+                    && element.setAttributeNodeNS(plain) === plain, 'qualified and expanded identity');
+                const first = document.createAttributeNS('urn:test', 'p:entry');
+                const second = document.createAttributeNS('urn:test', 'q:entry');
+                assert(element.setAttributeNode(first) === null
+                    && element.getAttributeNode('P:ENTRY') === first
+                    && element.getAttributeNodeNS('urn:test', 'entry') === first
+                    && element.setAttributeNodeNS(second) === first
+                    && element.getAttributeNode('p:entry') === null
+                    && element.getAttributeNode('q:entry') === second, 'namespace replacement');
+                assert(throws(() => other.setAttributeNode(second), 'InUseAttributeError')
+                    && throws(() => other.removeAttributeNode(second), 'NotFoundError')
+                    && throws(() => element.setAttributeNode(Object.create(Attr.prototype)), 'TypeError')
+                    && throws(() => element.removeAttributeNode(new Proxy(second, {})), 'TypeError')
+                    && throws(() => Element.prototype.getAttributeNode.call({}), 'TypeError'), 'operation errors');
+                let converted = 0;
+                const namespace = { toString() { converted++; return ''; } };
+                assert(throws(() => element.getAttributeNodeNS(namespace), 'TypeError') && converted === 0,
+                    'arity before namespace coercion');
+                assert(element.getAttributeNodeNS(namespace, 'data-old') === plain && converted === 1,
+                    'namespace coercion once');
+                assert(element.removeAttributeNode(second) === second && second.ownerElement === null
+                    && element.getAttributeNodeNS('urn:test', 'entry') === null
+                    && throws(() => element.removeAttributeNode(second), 'NotFoundError'), 'exact removal');
+                return old;
+            })()
+        "#))?;
+        let projection = scope.native_object::<GuestNodeProjection>(&value)?.unwrap();
+        Ok(projection.payload().id().unwrap().node())
+    }).unwrap();
+    assert_eq!(removed, unprojected);
+    assert_eq!(
+        host.snapshot()
+            .unwrap()
+            .attr(removed)
+            .unwrap()
+            .owner_element(),
+        None
+    );
+
+    let old = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            batch.set_attribute(other, "data-old", "before");
+            dom.apply(batch, &cancel).unwrap();
+            dom.snapshot()
+                .node(other)
+                .unwrap()
+                .get_attribute_node(&"data-old".into())
+                .unwrap()
+                .id()
+        })
+        .unwrap();
+    let replacement = host
+        .in_document(&permit, |scope| {
+            let value = scope.evaluate(&units(
+                "globalThis.replacement = document.createAttribute('data-old')",
+            ))?;
+            Ok(scope
+                .native_object::<GuestNodeProjection>(&value)?
+                .unwrap()
+                .payload()
+                .id()
+                .unwrap()
+                .node())
+        })
+        .unwrap();
+    let events = host.guest_events().unwrap();
+    let spare = events.limits.storage_bytes - events.budget.used.get();
+    let backing = events.reserve(&host.native, spare).unwrap();
+    let before = events.budget.used.get();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units("other.setAttributeNode(replacement)"))
+            .map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("new guest projection must refuse without backing: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+        ))
+    ));
+    assert_eq!(events.budget.used.get(), before);
+    drop(backing);
+    assert!(matches!(
+        host.in_document(&permit, |_| Ok(())),
+        Err(DocumentScriptError::Script(Error::HostFailure(_)))
+    ));
+    host.with_native(|dom, _, _| {
+        assert!(dom.pending_source_edit().is_none());
+        let snapshot = dom.snapshot();
+        assert_eq!(snapshot.attr(old.node()).unwrap().owner_element(), None);
+        assert_eq!(
+            snapshot.attr(replacement).unwrap().owner_element(),
+            Some(other)
+        );
+    })
+    .unwrap();
+}

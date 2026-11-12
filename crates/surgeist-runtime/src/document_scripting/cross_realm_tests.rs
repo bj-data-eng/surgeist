@@ -237,6 +237,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     nested_dispatch::verify_nested_authored_dispatch();
     authored_toggle::verify_authored_toggle_constructor();
     super::guest::tests::attributes::detached_attribute_keeps_its_live_native_identity();
+    super::guest::tests::attributes::element_methods_return_the_exact_attribute();
     trusted_attribute::hosted_attribute_policy_reads_charge_the_parked_source_and_preserve_exact_input();
     trusted_attribute::hosted_meta_source_publishes_ordered_csp_for_the_registered_attribute_verifier();
     trusted_attribute::default_factory_retains_the_real_guest_callback();
@@ -913,6 +914,7 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
             r#"
             globalThis.sentinel = {};
             globalThis.cancelChecks = false;
+            const cancelAttr = document.createAttribute('data-cancel');
             let removedCalls = 0;
             const removed = () => { removedCalls++; };
             dialog.addEventListener("cancel", function (event) {
@@ -933,6 +935,9 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
                 const path = event.composedPath();
                 cancelChecks &&= path[0] === dialog
                     && path[1] instanceof HTMLBodyElement && path.includes(attachedDocument);
+                cancelChecks &&= dialog.setAttributeNode(cancelAttr) === null
+                    && dialog.getAttributeNode('data-cancel') === cancelAttr
+                    && dialog.removeAttributeNode(cancelAttr) === cancelAttr;
                 event.currentTarget.removeEventListener("cancel", removed);
                 event.preventDefault();
             }, {once: true});

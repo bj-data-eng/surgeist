@@ -1,4 +1,6 @@
-//! Standard Element setters over the original native Source operation.
+//! Standard attribute setters over the original native Source operation.
+
+mod node;
 
 use super::{super::character_data::copy_native_data, *};
 use crate::{
@@ -15,10 +17,16 @@ use surgeist_bindings_js::{
     dom_exception::DomExceptionName,
 };
 use surgeist_dom::{
-    DomSourceAttributeSink, DomSourceAttributeVerificationOutcome,
-    DomSourceAttributeVerificationRequest, DomSourceEdit, DomSourceLease, DomSourceLimits,
-    DomSourceRequest, DomSourceStatus, Namespace,
+    DomAttrId, DomAttributeAttachment, DomSourceAttributeSink,
+    DomSourceAttributeVerificationOutcome, DomSourceAttributeVerificationRequest, DomSourceEdit,
+    DomSourceLease, DomSourceLimits, DomSourceOutput, DomSourceRequest, DomSourceStatus, Namespace,
 };
+
+pub(in crate::document_scripting::guest::interfaces::document) enum AttributeResult<'scope> {
+    Value,
+    Attached(DomAttrId, Value<'scope>),
+    Removed(DomAttrId, Value<'scope>),
+}
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
@@ -46,7 +54,7 @@ pub(super) fn install<'scope>(
             true,
         )?;
     }
-    Ok(())
+    node::install(scope, element, capture)
 }
 
 impl Capture {
@@ -117,7 +125,7 @@ impl Capture {
                 TrustedAttributeValue::Trusted(brand) => Some(brand.kind()),
                 TrustedAttributeValue::String(_) => None,
             };
-            self.apply_attribute(scope, &owner, &events, edit, brand)
+            self.apply_attribute(scope, &owner, &events, edit, brand, AttributeResult::Value)
         })();
         match result {
             Ok(completion) => Ok(completion),
@@ -135,6 +143,7 @@ impl Capture {
         events: &GuestEvents,
         edit: DomSourceEdit,
         brand: Option<TrustedTypeKind>,
+        result_kind: AttributeResult<'scope>,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
         let attachment = owner
             .attachment
@@ -144,12 +153,16 @@ impl Capture {
         let cancel = &owner.cancellation;
         let mut no_style = |_: &surgeist_dom::DomStyleSource| None;
         let mut services = attribute_services(&mut no_style);
-        let (mut result, mut pending) = self.with_native(owner, |session, _| {
-            let mut source = session.source_execution();
-            let mut dom = session.dom();
-            let result = source.apply(&mut dom, edit, limits, &mut services, cancel);
-            Ok((result, dom.pending_source_edit()))
-        })?;
+        let event = owner.attached_event_request();
+        let (mut result, mut pending, parent) =
+            self.callbacks
+                .with_qualified_session(owner, event.as_ref(), |session, _| {
+                    let mut source = session.source_execution();
+                    let mut dom = session.dom();
+                    let parent = dom.pending_source_edit().map(DomSourceStatus::operation);
+                    let result = source.apply(&mut dom, edit, limits, &mut services, cancel);
+                    Ok((result, dom.pending_source_edit(), parent))
+                })?;
         let mut abrupt = None;
         if let Ok(DomSourceDriveProgress::Pending {
             request: DomSourceRequest::AttributeVerification(request),
@@ -178,7 +191,34 @@ impl Capture {
             Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
                 Err(DomError::Cancelled.into())
             }
-            Ok(DomSourceDriveProgress::Complete(_)) => Ok(Completion::Undefined),
+            Ok(DomSourceDriveProgress::Complete(done)) => match (result_kind, done.output()) {
+                (AttributeResult::Value, None) => Ok(Completion::Undefined),
+                (
+                    AttributeResult::Attached(incoming, _),
+                    Some(DomSourceOutput::AttributeAttachment(DomAttributeAttachment::Appended(
+                        id,
+                    ))),
+                ) if id == incoming => Ok(Completion::Return(scope.primitive(Primitive::Null)?)),
+                (
+                    AttributeResult::Attached(incoming, value),
+                    Some(DomSourceOutput::AttributeAttachment(DomAttributeAttachment::Unchanged(
+                        id,
+                    ))),
+                )
+                | (
+                    AttributeResult::Removed(incoming, value),
+                    Some(DomSourceOutput::RemovedAttribute(id)),
+                ) if id == incoming => Ok(Completion::Return(value)),
+                (
+                    AttributeResult::Attached(incoming, _),
+                    Some(DomSourceOutput::AttributeAttachment(DomAttributeAttachment::Replaced(
+                        id,
+                    ))),
+                ) if id != incoming => {
+                    node::project(scope, owner, events, Some(id)).map(Completion::Return)
+                }
+                _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
+            },
             Ok(DomSourceDriveProgress::Failed(failure)) => {
                 let error = failure.into_parts().1;
                 if let (DomError::SourceAttributeVerificationAbrupt, Some(original)) =
@@ -189,7 +229,8 @@ impl Capture {
                 attribute_failure(scope, error)
             }
             Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(error)))
-                if pending.is_none() && attribute_exception(&error).is_some() =>
+                if pending.map(DomSourceStatus::operation) == parent
+                    && attribute_exception(&error).is_some() =>
             {
                 attribute_failure(scope, error)
             }
@@ -712,6 +753,8 @@ fn attribute_exception(error: &DomError) -> Option<DomExceptionName> {
     match error {
         DomError::InvalidCharacter => Some(DomExceptionName::InvalidCharacterError),
         DomError::Namespace => Some(DomExceptionName::NamespaceError),
+        DomError::InUseAttribute => Some(DomExceptionName::InUseAttributeError),
+        DomError::NotFound => Some(DomExceptionName::NotFoundError),
         _ => None,
     }
 }

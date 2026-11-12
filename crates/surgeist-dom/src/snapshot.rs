@@ -621,16 +621,21 @@ impl<'a> DomNode<'a> {
             DocumentString::from_utf16(spelling.code_units().collect::<Vec<_>>())
         })
     }
-    pub(crate) fn html_element_in_html_document(self) -> bool {
-        self.as_element()
-            .is_some_and(|element| crate::names::in_html_namespace(element.name()))
-            && self
-                .snapshot
-                .document(self.node.document())
-                .expect("canonical node document")
-                .metadata()
-                .class()
-                == crate::DomDocumentClass::Html
+    pub(crate) fn html_element_in_html_document_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        let Some(element) = self.as_element() else {
+            return Ok(false);
+        };
+        if !crate::names::in_html_namespace_with(element.name(), &mut step)? {
+            return Ok(false);
+        }
+        let document = self.snapshot.node_with(self.node.document().node(), step)?;
+        let DomNodeKind::Document(metadata) = document.kind() else {
+            return Err(DomError::WrongNodeKind.into());
+        };
+        Ok(metadata.class() == crate::DomDocumentClass::Html)
     }
     pub fn attributes(self) -> Option<crate::DomNamedNodeMap<'a>> {
         self.as_element()?;

@@ -208,6 +208,7 @@ pub(super) fn set_value<'scope>(
             &events,
             DomSourceEdit::set_attribute_value(attribute, value),
             None,
+            element::AttributeResult::Value,
         )
     })();
     match result {

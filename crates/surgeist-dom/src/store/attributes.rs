@@ -1,6 +1,9 @@
 use super::*;
 use crate::element::{ElementFormation, FormedElement, NonceUpdate};
-use crate::names::{attribute_name, name_units, valid_attribute_local_name};
+use crate::names::{
+    attribute_name, expanded_equals_with, name_units, qualified_equals_with, same_code_units,
+    valid_attribute_local_name,
+};
 use crate::{DomAttribute as Attribute, DomQualifiedName as QualifiedName, DomSourceAttributeSink};
 use surgeist_html::values::{HtmlNameInput, Namespace};
 use surgeist_html::vocabulary::{
@@ -150,23 +153,6 @@ fn attribute_units(attribute: &Attribute) -> Result<usize, DomError> {
     name_units(attribute.name())
         .and_then(|units| units.checked_add(attribute.value().len()))
         .ok_or(DomError::RepresentationExhausted)
-}
-
-fn same_code_units(
-    left: &[u16],
-    right: &[u16],
-    mut step: impl FnMut() -> Result<(), DomError>,
-) -> Result<bool, DomError> {
-    if left.len() != right.len() {
-        return Ok(false);
-    }
-    for (left, right) in left.iter().zip(right) {
-        step()?;
-        if left != right {
-            return Ok(false);
-        }
-    }
-    Ok(true)
 }
 
 pub(super) fn same_string(
@@ -355,66 +341,6 @@ impl Draft {
         Ok(())
     }
 
-    fn attribute_name_equal(
-        &self,
-        left: &[u16],
-        right: &[u16],
-        cancel: &AtomicBool,
-    ) -> Result<bool, DomError> {
-        same_code_units(left, right, || self.name_step(cancel))
-    }
-    fn attribute_namespace_equal(
-        &self,
-        left: Option<&DocumentString>,
-        right: Option<&DocumentString>,
-        cancel: &AtomicBool,
-    ) -> Result<bool, DomError> {
-        match (left, right) {
-            (None, None) => Ok(true),
-            (Some(left), Some(right)) => {
-                self.attribute_name_equal(left.code_units(), right.code_units(), cancel)
-            }
-            _ => Ok(false),
-        }
-    }
-    fn attribute_qualified_equal(
-        &self,
-        name: &QualifiedName,
-        value: &DocumentString,
-        cancel: &AtomicBool,
-    ) -> Result<bool, DomError> {
-        let prefix = name.prefix();
-        let offset = prefix.map_or(Ok(0), |p| {
-            p.len()
-                .checked_add(1)
-                .ok_or(DomError::RepresentationExhausted)
-        })?;
-        if value.len()
-            != offset
-                .checked_add(name.local_name().len())
-                .ok_or(DomError::RepresentationExhausted)?
-        {
-            return Ok(false);
-        }
-        if let Some(prefix) = prefix {
-            if !self.attribute_name_equal(
-                prefix.code_units(),
-                &value.code_units()[..prefix.len()],
-                cancel,
-            )? {
-                return Ok(false);
-            }
-            self.name_step(cancel)?;
-            if value.code_units()[prefix.len()] != 0x3a {
-                return Ok(false);
-            }
-        }
-        self.attribute_name_equal(
-            name.local_name().code_units(),
-            &value.code_units()[offset..],
-            cancel,
-        )
-    }
     fn attribute_position(
         &self,
         attributes: transaction::AttributeRead<'_>,
@@ -427,19 +353,11 @@ impl Draft {
                 AttributeLookup::Expanded {
                     namespace,
                     local_name,
-                } => {
-                    self.attribute_namespace_equal(
-                        attribute.name().namespace_uri(),
-                        namespace,
-                        cancel,
-                    )? && self.attribute_name_equal(
-                        attribute.name().local_name().code_units(),
-                        local_name.code_units(),
-                        cancel,
-                    )?
-                }
+                } => expanded_equals_with(attribute.name(), namespace, local_name, || {
+                    self.name_step(cancel)
+                })?,
                 AttributeLookup::Qualified(name) => {
-                    self.attribute_qualified_equal(attribute.name(), name, cancel)?
+                    qualified_equals_with(attribute.name(), name, false, || self.name_step(cancel))?
                 }
             };
             if matched {
