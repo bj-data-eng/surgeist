@@ -217,11 +217,31 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     let mut host =
         super::super::guest::tests::attach_public_nodes(session, target, cancel, 5_000, 20_000);
     let permit = host.permit().unwrap();
-    host.in_document(&permit, |scope| {
+    super::super::guest::tests::expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        element,
+        "protectedTarget",
+    );
+    let result = host.in_document(&permit, |scope| {
         let expression: Vec<_> = r#"
             (() => {
-                const policy = trustedTypes.createPolicy('default');
+                const marker = {};
+                const policy = trustedTypes.createPolicy('default', {
+                    createScript(value, type, sink) {
+                        if (type !== 'TrustedScript' || sink !== 'Element onclick') throw new Error('incorrect sink');
+                        protectedTarget.setAttribute('data-entered', value);
+                        if (value === 'throw') throw marker;
+                        return {toString() {
+                            protectedTarget.setAttribute('data-coerced', 'yes');
+                            return value + '!';
+                        }};
+                    }
+                });
                 if (policy.name !== 'default' || trustedTypes.defaultPolicy !== policy) return false;
+                protectedTarget.setAttribute('onclick', 'first\ud800');
+                try { protectedTarget.setAttributeNS(null, 'onclick', 'throw'); return false; }
+                catch (error) { if (error !== marker) return false; }
                 try { trustedTypes.createPolicy('denied'); }
                 catch (error) { return error instanceof TypeError; }
                 return false;
@@ -230,7 +250,31 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         let result = scope.evaluate(&expression)?;
         assert!(scope.boolean(&result)?);
         Ok(())
-    }).expect("the actual guest factory must use the hosted Document's CSP");
+    });
+    if let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = &result {
+        panic!(
+            "the guest attribute verifier refused: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        );
+    }
+    result.expect("the actual guest factory and setter must use the hosted Document's CSP");
+    let snapshot = host.snapshot().unwrap();
+    let target = snapshot.node(element).unwrap();
+    assert_eq!(
+        target.attribute(&"onclick".into()).unwrap().code_units(),
+        &"first"
+            .encode_utf16()
+            .chain([0xd800, u16::from(b'!')])
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        target.attribute(&"data-entered".into()),
+        Some(&"throw".into())
+    );
+    assert_eq!(
+        target.attribute(&"data-coerced".into()),
+        Some(&"yes".into())
+    );
     super::super::guest::tests::assert_queued_policy_name(&host, "denied");
 }
 
