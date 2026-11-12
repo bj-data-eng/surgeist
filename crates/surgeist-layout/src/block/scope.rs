@@ -36,15 +36,10 @@ pub(crate) struct Placement<Node, S: LayoutScalar> {
     pub(crate) location: LogicalPointOf<S>,
 }
 
-pub(crate) struct Ordinary<Node, S: LayoutScalar> {
+pub(crate) struct ChildRequest<Node, S: LayoutScalar> {
     pub(crate) node: Node,
     pub(crate) input: ComputeInputOf<S>,
     pub(crate) entry: Option<Pending<Node, S>>,
-}
-
-pub(crate) enum ChildRequest<Node, S: LayoutScalar> {
-    Ordinary(Ordinary<Node, S>),
-    Scope(Pending<Node, S>),
 }
 
 impl<Node: Copy, S: LayoutScalar> Pending<Node, S> {
@@ -129,7 +124,7 @@ where
     let pending = prepare(
         tree,
         parent,
-        Ordinary {
+        ChildRequest {
             node,
             input,
             entry: None,
@@ -161,7 +156,7 @@ pub(super) struct ParentEntry<S: LayoutScalar> {
 pub(super) fn prepare<'input, Tree, M>(
     tree: &mut Tree,
     parent: Tree::Node,
-    child: Ordinary<Tree::Node, Tree::Scalar>,
+    child: ChildRequest<Tree::Node, Tree::Scalar>,
     style: &BlockChildProjection<'_, Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     prepared: &in_flow::PreparedChild<Tree::Scalar>,
@@ -170,7 +165,7 @@ pub(super) fn prepare<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let Ordinary {
+    let ChildRequest {
         node: child, input, ..
     } = child;
     let inline = tree.compute_axis_demand(

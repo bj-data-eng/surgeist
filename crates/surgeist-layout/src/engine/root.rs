@@ -97,29 +97,25 @@ where
     finish_root(tree, root, style, input, output, align_to_parent)
 }
 
-pub(crate) fn compute_root_scoped<'input, Tree, M>(
-    tree: &mut Tree,
+pub(super) fn compute_root_scoped<'input, Tree: crate::LayoutTree>(
+    tree: &mut super::session::ComputeSession<'input, Tree>,
     root: Tree::Node,
     request: crate::LayoutRootRequestOf<Tree::Scalar>,
-) -> super::block_scope::ComputeResult<Tree::Node, (), Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
+) -> super::block_scope::ComputeResult<Tree::Node, (), Tree::Scalar, Tree::MeasureError> {
     let style = tree.node_input(root);
     let RootComputeInput {
         input,
         align_to_parent,
     } = root_compute_input(tree, root, style, request)?;
-    let request = if tree.block_scope_child(root) {
-        crate::block::scope::ChildRequest::Scope(crate::block::scope::root(tree, root, input)?)
-    } else {
-        crate::block::scope::ChildRequest::Ordinary(crate::block::scope::Ordinary {
-            node: root,
-            input,
-            entry: None,
-        })
-    };
-    let output = tree.compute_block_child(request)?;
+    let entry = tree
+        .owns_block_scope(root)
+        .then(|| crate::block::scope::root(tree, root, input))
+        .transpose()?;
+    let output = tree.compute_block_child(crate::block::scope::ChildRequest {
+        node: root,
+        input: entry.map_or(input, |entry| entry.input),
+        entry,
+    })?;
     finish_root(tree, root, style, input, output, align_to_parent).map_err(Into::into)
 }
 

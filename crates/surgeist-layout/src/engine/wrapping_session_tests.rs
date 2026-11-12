@@ -143,25 +143,12 @@ fn native_avoid_results_do_not_enter_geometry_only_host_caches() {
                 policy == WrapInside::Avoid
             );
             assert_eq!(
-                owner
-                    .cache_store_entries
-                    .iter()
-                    .any(|entry| entry.node() == 0),
+                owner.cache.stores.iter().any(|entry| entry.node() == 0),
                 policy == WrapInside::Auto
             );
-            assert!(
-                owner
-                    .cache_store_entries
-                    .iter()
-                    .any(|entry| entry.node() == 2)
-            );
+            assert!(owner.cache.stores.iter().any(|entry| entry.node() == 2));
             if policy == WrapInside::Avoid {
-                assert!(
-                    owner
-                        .cache_clear_entries
-                        .iter()
-                        .any(|entry| entry.node() == 0)
-                );
+                assert!(owner.cache.clears.iter().any(|entry| entry.node() == 0));
             }
         }
     }
@@ -208,14 +195,9 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
             )
             .unwrap();
         assert_eq!(packet.output.size, Size::splat(S::from_f64(10.0)));
-        assert!(owner.cache_store_entries.is_empty());
+        assert!(owner.cache.stores.is_empty());
         owner.accept_float_child(&packet).unwrap();
-        assert!(
-            owner
-                .cache_store_entries
-                .iter()
-                .any(|entry| entry.node() == 4)
-        );
+        assert!(owner.cache.stores.iter().any(|entry| entry.node() == 4));
 
         let mut changed = ComputeSession::with_flow(&auto, auto.invalidated.clone());
         let error = changed.accept_float_child(&packet).unwrap_err();
@@ -226,8 +208,8 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
                 WrappingScopeError::InconsistentIncidence
             ))
         ));
-        assert!(changed.cache_store_entries.is_empty());
-        assert!(changed.unrounded_entries.is_empty());
+        assert!(changed.cache.stores.is_empty());
+        assert!(changed.outputs.unrounded.is_empty());
     }
     lane::<f32>();
     lane::<f64>();

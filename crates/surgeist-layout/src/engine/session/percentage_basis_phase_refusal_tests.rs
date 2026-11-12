@@ -21,20 +21,22 @@ fn actual_final_root_entry_cannot_replace_current_trial_measured_basis_custody()
     stage(&mut session); // actual compute_root and round_layout, no fabricated entries
     let valid = session.canonical_frames(0).unwrap();
     let slot = session
-        .unrounded_entries
+        .outputs
+        .unrounded
         .iter()
         .position(|entry| entry.node() == 0)
         .unwrap();
-    let original_unrounded = session.unrounded_entries[slot];
+    let original_unrounded = session.outputs.unrounded[slot];
     let actual_final = *session
-        .final_entries
+        .outputs
+        .rounded
         .iter()
         .find(|entry| entry.node() == 0)
         .unwrap();
     assert_eq!(actual_final.node(), original_unrounded.node());
     // The exact final entry came from this SAME performed trial. Its geometry
     // is valid final publication; it is not valid unrounded measured custody.
-    session.unrounded_entries[slot] = actual_final;
+    session.outputs.unrounded[slot] = actual_final;
     let outcome = session.canonical_frames(0);
     let Err(error) = outcome else {
         panic!("final publication cannot issue the current-trial measured inset basis");
@@ -49,7 +51,7 @@ fn actual_final_root_entry_cannot_replace_current_trial_measured_basis_custody()
     // Restoring the SAME actual current-trial raw entry restores valid frame
     // extraction. This is a private staged-slot negative, not host warm return;
     // invalid host warm custody retains its existing cache-miss/recompute policy.
-    session.unrounded_entries[slot] = original_unrounded;
+    session.outputs.unrounded[slot] = original_unrounded;
     let recovered = session.canonical_frames(0).unwrap();
     assert_eq!(recovered, valid);
     assert_eq!(
