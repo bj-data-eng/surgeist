@@ -255,6 +255,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     trusted_attribute::guest_meta_retry_preserves_accepted_first_policy();
     trusted_attribute::guest_attribute_policy_keeps_original_authority_after_adoption();
     trusted_attribute::guest_attribute_policy_verifies_html_and_svg_sinks();
+    trusted_attribute::guest_verification_without_callback_retains_the_native_continuation();
     trusted_attribute::default_factory_retains_the_real_guest_callback();
     super::guest::tests::trusted_policy::window_factory_creates_the_exact_default_policy();
     super::guest::tests::trusted_policy::guest_attribute_writes_reach_the_native_element();

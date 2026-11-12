@@ -1,5 +1,66 @@
 use super::*;
 
+pub(super) fn guest_verification_without_callback_retains_the_native_continuation() {
+    use crate::document_scripting::guest::tests::{
+        attach_public_nodes, expose_public_node_for_source_test,
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session(&cancel, 0);
+    let document = target.document();
+    let snapshot = session.snapshot();
+    let root = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let body = snapshot.node(root).unwrap().children()[1];
+    let mut batch = DomBatch::new();
+    let script = batch.create_element_ns(document, Namespace::html(), "script");
+    batch.insert_before(&script, body, None);
+    let script = session
+        .dom()
+        .apply(batch, &cancel)
+        .unwrap()
+        .created(&script)
+        .unwrap()
+        .unwrap();
+    let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, script, "scriptTarget");
+    let result = host.in_document(&permit, |scope| {
+        evaluate(scope, "scriptTarget.setAttribute('src', 'example.js')").map(drop)
+    });
+    assert!(matches!(
+        result,
+        Err(DocumentScriptError::Script(Error::HostFailure(_)))
+    ));
+    let parked = host
+        .with_native(|dom, _, _| dom.pending_source_edit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        parked.phase(),
+        surgeist_dom::DomSourcePhase::ScriptPreparation
+    );
+    let progress = host
+        .resume_pending_attribute_write(&permit, SOURCE)
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        progress,
+        crate::DomSourceDriveProgress::Pending {request: DomSourceRequest::Script(request), ..}
+            if request.operation() == parked.operation()
+    ));
+    assert!(
+        host.snapshot()
+            .unwrap()
+            .node(script)
+            .unwrap()
+            .attribute(&"src".into())
+            .is_none()
+    );
+}
+
 pub(super) fn guest_attribute_policy_verifies_html_and_svg_sinks() {
     use crate::document_scripting::guest::tests::{
         attach_public_nodes, expose_public_node_for_source_test,
