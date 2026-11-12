@@ -728,40 +728,18 @@ where
         )
     };
 
-    let inline_start = logical_column_offsets
-        .iter()
-        .copied()
-        .reduce(Tree::Scalar::min)
-        .unwrap_or(logical_content_box_inset.inline_start);
-    let inline_end = logical_column_offsets
-        .iter()
-        .copied()
-        .zip(columns.iter().copied())
-        .map(|(offset, size)| offset + size)
-        .reduce(Tree::Scalar::max)
-        .unwrap_or(inline_start);
-    let block_start = logical_row_offsets
-        .iter()
-        .copied()
-        .reduce(Tree::Scalar::min)
-        .unwrap_or(logical_content_box_inset.block_start);
-    let block_end = logical_row_offsets
-        .iter()
-        .copied()
-        .zip(rows.iter().copied())
-        .map(|(offset, size)| offset + size)
-        .reduce(Tree::Scalar::max)
-        .unwrap_or(block_start);
-    let logical_subject_size =
-        LogicalSizeOf::new(inline_end - inline_start, block_end - block_start);
-    let subject_size = constants.flow_axes.physical_size(logical_subject_size);
-    let subject_origin = constants.flow_axes.physical_point(
-        LogicalPointOf::new(inline_start, block_start),
-        logical_subject_size,
+    let track_subject = grid_track_alignment_subject(GridTrackAlignmentGeometry {
+        sizes: LogicalSizeOf::new(columns, rows),
+        offsets: LogicalSizeOf::new(&logical_column_offsets, &logical_row_offsets),
+        fallback_origin: LogicalPointOf::new(
+            logical_content_box_inset.inline_start,
+            logical_content_box_inset.block_start,
+        ),
+        flow_axes: constants.flow_axes,
         containing_size,
-    );
-    let track_subject = crate::ScrollRectOf::try_new(subject_origin, subject_size)
-        .map_err(|error| layout_child_geometry_error(node, node, error))?;
+        stacking_range: None,
+    })
+    .map_err(|error| layout_child_geometry_error(node, node, error))?;
     // A bounded probe can carry an estimate for an unissued axis.
     let resolved_axes = LogicalSizeOf::new(
         sizing_stage.has_resolved_axis(GridAxisKind::Column),
@@ -792,34 +770,29 @@ where
         pending_absolute,
         &mut child_contributions,
     )?;
-    let mut contributions = grid_scroll_contributions(
+    let contributions = grid_scroll_contributions(
         child_contributions,
         Some(track_scroll_bounds()),
         constants.flow_axes,
         constants.padding,
     )
     .map_err(|error| layout_child_geometry_error(node, node, error))?;
-    if resolved_axes.inline && style.justify_content.is_some() {
-        contributions
-            .set_active_alignment_subject(constants.flow_axes.inline_axis(), track_subject);
-    }
-    if resolved_axes.block && style.align_content.is_some() {
-        contributions.set_active_alignment_subject(constants.flow_axes.block_axis(), track_subject);
-    }
-    let visible_content_size = contributions
-        .content_size_from_anchor(Point::ZERO)
-        .map_err(|error| layout_child_geometry_error(node, node, error))?;
-
-    let layout = GridChildrenLayout {
-        visible_content_size,
+    let layout = report_grid_children(
+        node,
         contributions,
-        baselines: baselines.baselines,
-        baseline_groups: published_group_set,
-        executed_baselines: execution_input
-            .run_mode()
-            .is_perform_layout()
-            .then_some(executed_inventory),
-    };
+        GridLayoutReporting {
+            track_subject,
+            active_alignment_axes: LogicalSizeOf::new(
+                resolved_axes.inline && style.justify_content.is_some(),
+                resolved_axes.block && style.align_content.is_some(),
+            ),
+            flow_axes: constants.flow_axes,
+            baselines: baselines.baselines,
+            baseline_groups: published_group_set,
+            execution_input,
+            executed_inventory,
+        },
+    )?;
     debug_assert_eq!(
         layout
             .contributions

@@ -20,6 +20,112 @@ pub(in crate::grid) struct GridTrackScrollBounds<S: LayoutScalar> {
     pub(in crate::grid) present: LogicalSizeOf<bool>,
 }
 
+pub(in crate::grid) struct GridTrackAlignmentGeometry<'a, S: LayoutScalar> {
+    pub(in crate::grid) sizes: LogicalSizeOf<&'a [S]>,
+    pub(in crate::grid) offsets: LogicalSizeOf<&'a [S]>,
+    pub(in crate::grid) fallback_origin: LogicalPointOf<S>,
+    pub(in crate::grid) flow_axes: FlowAxes,
+    pub(in crate::grid) containing_size: Size<S>,
+    pub(in crate::grid) stacking_range: Option<(LogicalAxis, S, S)>,
+}
+
+pub(in crate::grid) fn grid_track_alignment_subject<S: LayoutScalar>(
+    geometry: GridTrackAlignmentGeometry<'_, S>,
+) -> Result<crate::ScrollRectOf<S>, crate::ScrollRectErrorOf<S>> {
+    let GridTrackAlignmentGeometry {
+        sizes,
+        offsets,
+        fallback_origin,
+        flow_axes,
+        containing_size,
+        stacking_range,
+    } = geometry;
+    let axis_extent = |offsets: &[S], sizes: &[S], fallback: S| {
+        let start = offsets.iter().copied().reduce(S::min).unwrap_or(fallback);
+        let end = offsets
+            .iter()
+            .copied()
+            .zip(sizes.iter().copied())
+            .map(|(offset, size)| offset + size)
+            .reduce(S::max)
+            .unwrap_or(start);
+        (start, end - start)
+    };
+    let (inline_start, inline_extent) =
+        axis_extent(offsets.inline, sizes.inline, fallback_origin.inline);
+    let (block_start, block_extent) =
+        axis_extent(offsets.block, sizes.block, fallback_origin.block);
+    let mut origin = LogicalPointOf::new(inline_start, block_start);
+    let mut size = LogicalSizeOf::new(inline_extent, block_extent);
+    if let Some((axis, start, end)) = stacking_range {
+        let stacking_origin = start.min(end);
+        let stacking_extent = start.max(end) - stacking_origin;
+        match axis {
+            LogicalAxis::Inline => {
+                origin.inline = stacking_origin;
+                size.inline = stacking_extent;
+            }
+            LogicalAxis::Block => {
+                origin.block = stacking_origin;
+                size.block = stacking_extent;
+            }
+        }
+    }
+    crate::ScrollRectOf::try_new(
+        flow_axes.physical_point(origin, size, containing_size),
+        flow_axes.physical_size(size),
+    )
+}
+
+pub(in crate::grid) struct GridLayoutReporting<Node, S: LayoutScalar> {
+    pub(in crate::grid) track_subject: crate::ScrollRectOf<S>,
+    pub(in crate::grid) active_alignment_axes: LogicalSizeOf<bool>,
+    pub(in crate::grid) flow_axes: FlowAxes,
+    pub(in crate::grid) baselines: BaselinesOf<S>,
+    pub(in crate::grid) baseline_groups: GridBaselineGroups<S>,
+    pub(in crate::grid) execution_input: ComputeInputOf<S>,
+    pub(in crate::grid) executed_inventory: ExecutedBaselineInventory<Node, S>,
+}
+
+pub(in crate::grid) fn report_grid_children<Node, S, M>(
+    node: Node,
+    mut contributions: ScrollContributionAccumulatorOf<S>,
+    reporting: GridLayoutReporting<Node, S>,
+) -> GridChildrenLayoutResult<Node, S, M>
+where
+    Node: Copy,
+    S: LayoutScalar,
+{
+    let GridLayoutReporting {
+        track_subject,
+        active_alignment_axes,
+        flow_axes,
+        baselines,
+        baseline_groups,
+        execution_input,
+        executed_inventory,
+    } = reporting;
+    if active_alignment_axes.inline {
+        contributions.set_active_alignment_subject(flow_axes.inline_axis(), track_subject);
+    }
+    if active_alignment_axes.block {
+        contributions.set_active_alignment_subject(flow_axes.block_axis(), track_subject);
+    }
+    let visible_content_size = contributions
+        .content_size_from_anchor(Point::ZERO)
+        .map_err(|error| layout_child_geometry_error(node, node, error))?;
+    Ok(GridChildrenLayout {
+        visible_content_size,
+        contributions,
+        baselines,
+        baseline_groups,
+        executed_baselines: execution_input
+            .run_mode()
+            .is_perform_layout()
+            .then_some(executed_inventory),
+    })
+}
+
 pub(in crate::grid) fn empty_grid_contributions<S: LayoutScalar>()
 -> ScrollContributionAccumulatorOf<S> {
     ScrollContributionAccumulatorOf::new(
