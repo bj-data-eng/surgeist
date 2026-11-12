@@ -17,8 +17,8 @@ use crate::dom_event::{
     DomEventTimestampUnavailable, DomEventType, DomStandaloneEventTarget, NativeDomEvent,
 };
 use interfaces::PublicEventBindings;
-pub(super) use reports::GuestExceptionReports;
 use reports::{DirectExceptions, ExceptionRoots};
+pub(super) use reports::{GuestExceptionReports, ViolationQueue};
 use surgeist_bindings_js::{
     Exception, NativeObjectToken, ObjectPrototype, RetainedCallbackObject, Root, Value,
 };

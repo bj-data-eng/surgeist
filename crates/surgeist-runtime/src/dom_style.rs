@@ -1706,6 +1706,9 @@ impl std::error::Error for DomSessionCreateFailure {
 /// permissions never own or release its resources.
 pub struct DomSession {
     dom: Dom,
+    #[cfg(feature = "document-scripting")]
+    pub(crate) trusted_types_csp:
+        Option<std::rc::Rc<crate::document_scripting::HostedPolicyProcessor>>,
     state: std::rc::Rc<std::cell::RefCell<StyleState>>,
     element_tasks: crate::element_tasks::ElementTaskOwner,
     hosted: crate::dom_lifecycle::HostedOwner,
@@ -1973,6 +1976,8 @@ impl DomSession {
         state.work.set(parsed_work);
         Ok(Self {
             dom,
+            #[cfg(feature = "document-scripting")]
+            trusted_types_csp: None,
             state: std::rc::Rc::new(std::cell::RefCell::new(state)),
             element_tasks: details,
             hosted,

@@ -23,7 +23,7 @@ use surgeist_html_semantics::HtmlScriptingStatus;
 
 use crate::{
     DomEventDom, DomHostedRuntimeError, DomHostedTopLevel, DomSession, DomSourceRuntime,
-    HostedRuntime,
+    DomSourceRuntimeError, HostedRuntime,
 };
 
 pub(crate) mod guest;
@@ -171,12 +171,158 @@ struct NativeOwner {
     session: RefCell<DomSession>,
     active_source: Cell<Option<source::ActiveSource>>,
     active_attached_event: RefCell<Option<surgeist_dom::DomSourceEventRequest>>,
+    trusted_types_reports: RefCell<Option<Box<guest::ViolationQueue>>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
     css_limits: Cell<CssNamespaceLimits>,
     dom_exception_limits: Cell<DomExceptionLimits>,
     timer_limits: Cell<Option<WindowTimerLimits>>,
     _backing: DomHostedRuntimeRetention,
+}
+
+pub(crate) struct HostedPolicyProcessor {
+    processor: RefCell<crate::trusted_types_csp::PolicyProcessor>,
+    _backing: [Option<DomHostedRuntimeRetention>; 3],
+}
+
+impl DomSession {
+    /// Enable one stable Trusted Types CSP processor for this Session. Its
+    /// qualification survives script host attachment and recovery.
+    pub fn enable_trusted_types_csp(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<(), DocumentScriptNativeError> {
+        if self.trusted_types_csp.is_some() {
+            return Ok(());
+        }
+        let hosted = self.hosted_execution();
+        let mut dom = self.dom();
+        let mut backing = [None, None, None];
+        backing[0] = Some(hosted.retain_script_payload(
+            &mut dom,
+            size_of::<HostedPolicyProcessor>() + 2 * size_of::<usize>()
+                - size_of::<crate::trusted_types_csp::PolicyProcessor>(),
+            cancel,
+        )?);
+        let mut slot = 1;
+        let mut action = None;
+        let processor = crate::trusted_types_csp::PolicyProcessor::new_with(
+            &mut |layout| {
+                drop(action.take());
+                let retained = layout.retained().storage().bytes();
+                let scratch = layout
+                    .peak()
+                    .bytes()
+                    .checked_sub(retained)
+                    .and_then(|bytes| bytes.checked_add(layout.atomic_bytes()))
+                    .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                layout
+                    .charge_work(&mut CspWork(|units| {
+                        let units = usize::try_from(units)
+                            .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?;
+                        hosted.admit_script_work(&dom, units, cancel)?;
+                        Ok::<(), DocumentScriptNativeError>(())
+                    }))
+                    .map_err(csp_work_error)?;
+                let pending = backing
+                    .get_mut(slot)
+                    .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                let mut admitted = hosted.retain_script_payload(
+                    &mut dom,
+                    retained
+                        .checked_add(scratch)
+                        .ok_or(DocumentScriptNativeError::RepresentationExhausted)?,
+                    cancel,
+                )?;
+                *pending = Some(admitted.split_off(retained)?);
+                action = Some(admitted);
+                slot += 1;
+                Ok::<(), DocumentScriptNativeError>(())
+            },
+            &mut |_| {},
+        )
+        .map_err(|error| match error {
+            surgeist_html::security::csp::HtmlCspError::Interrupted(error) => error,
+            surgeist_html::security::csp::HtmlCspError::Protocol(_) => {
+                DocumentScriptNativeError::TrustedTypesPolicyUnavailable
+            }
+        })?;
+        drop(action);
+        self.trusted_types_csp = Some(Rc::new(HostedPolicyProcessor {
+            processor: RefCell::new(processor),
+            _backing: backing,
+        }));
+        Ok(())
+    }
+
+    /// Service the reached Meta request using this Session's selected processor.
+    pub fn service_trusted_types_meta_csp(
+        &mut self,
+        request: surgeist_dom::DomSourceMetaCspRequest,
+        limits: surgeist_dom::DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomSourceRuntimeError> {
+        let processor = self
+            .trusted_types_csp
+            .as_ref()
+            .ok_or(DomSourceRuntimeError::MetaCsp(
+                surgeist_dom::DomSourceMetaCspError::PolicyUnavailable,
+            ))?
+            .clone();
+        let mut processor = processor.processor.try_borrow_mut().map_err(|_| {
+            DomSourceRuntimeError::MetaCsp(surgeist_dom::DomSourceMetaCspError::IssuerBusy)
+        })?;
+        self.source_execution().service_meta_csp(
+            &mut self.dom(),
+            request,
+            &mut processor,
+            limits,
+            cancel,
+        )
+    }
+}
+
+struct CspWork<F>(F);
+
+impl<E, F: FnMut(u64) -> Result<(), E>>
+    surgeist_ledger::Charge<
+        surgeist_html::accounting::HtmlWork,
+        surgeist_html::accounting::HtmlResource,
+    > for CspWork<F>
+where
+    E: From<DocumentScriptNativeError>,
+{
+    type Stop = E;
+
+    fn charge(&mut self, batch: &[surgeist_html::accounting::HtmlChange]) -> Result<(), E> {
+        for change in batch {
+            let surgeist_ledger::Change::Work(_, units) = *change else {
+                return Err(DocumentScriptNativeError::TrustedTypesPolicyUnavailable.into());
+            };
+            (self.0)(units)?;
+        }
+        Ok(())
+    }
+
+    fn record_largest(
+        &mut self,
+        _: surgeist_html::accounting::HtmlResource,
+        _: u64,
+    ) -> Result<(), E> {
+        Err(DocumentScriptNativeError::TrustedTypesPolicyUnavailable.into())
+    }
+}
+
+fn csp_work_error<E: From<DocumentScriptNativeError>>(
+    error: surgeist_html::accounting::HtmlChargedError<
+        E,
+        surgeist_html::accounting::HtmlChargeOverflow,
+    >,
+) -> E {
+    match error {
+        surgeist_html::accounting::HtmlChargedError::Stopped(error) => error,
+        _ => DocumentScriptNativeError::RepresentationExhausted.into(),
+    }
 }
 
 impl NativeOwner {
@@ -310,6 +456,7 @@ impl PreparedDocumentScriptHost {
                 session: RefCell::new(session),
                 active_source: Cell::new(None),
                 active_attached_event: RefCell::new(None),
+                trusted_types_reports: RefCell::new(None),
                 cancellation,
                 storage_limit,
                 css_limits: Cell::new(CssNamespaceLimits::default()),

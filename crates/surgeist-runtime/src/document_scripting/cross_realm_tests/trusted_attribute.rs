@@ -67,7 +67,8 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     }
     let formed = session.dom().apply(batch, &cancel).unwrap();
     let mut allow = |_| Ok::<(), Infallible>(());
-    let mut processor = PolicyProcessor::new_with(&mut allow, &mut |_| unreachable!()).unwrap();
+    session.enable_trusted_types_csp(&cancel).unwrap();
+    let selected = session.trusted_types_csp.as_ref().unwrap().clone();
     let mut other = PolicyProcessor::new_with(&mut allow, &mut |_| unreachable!()).unwrap();
     let mut source = session.source_execution();
     let mut services = DomSourceServices {
@@ -98,6 +99,7 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         };
         assert_eq!(session.snapshot().stamp(), before);
         if index == 0 {
+            let mut processor = selected.processor.borrow_mut();
             let mut stopped = StopAfterCspPreparation {
                 processor: &mut processor,
                 cancel: &cancel,
@@ -130,8 +132,8 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
                 ))
             ));
             assert_eq!(session.snapshot().stamp(), before);
-            source
-                .service_meta_csp(&mut session.dom(), request, &mut processor, SOURCE, &cancel)
+            session
+                .service_trusted_types_meta_csp(request, SOURCE, &cancel)
                 .unwrap();
         }
         assert_eq!(session.snapshot().stamp(), before);
@@ -165,7 +167,9 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
             before_units - policy_units + next_units
         );
         policy_units = next_units;
-        let list = processor
+        let list = selected
+            .processor
+            .borrow()
             .document_policies_with(state, &mut allow)
             .unwrap()
             .unwrap();
@@ -192,6 +196,7 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     else {
         panic!("expected actual registered attribute verifier");
     };
+    let processor = selected.processor.borrow();
     let policies =
         AttributePolicies::read(&lease, request, registration, Some(&processor), &cancel).unwrap();
     assert!(policies.requires_default_policy(&cancel).unwrap());
@@ -199,6 +204,7 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     let violation = mismatch.next_violation(&cancel).unwrap().unwrap();
     assert_eq!(violation.policy_index(), 1);
     assert_eq!(mismatch.blocked(), Some(true));
+    drop(processor);
     lease.request_cancel();
     assert!(matches!(
         lease.advance(&cancel).unwrap(),
@@ -225,6 +231,7 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         assert!(scope.boolean(&result)?);
         Ok(())
     }).expect("the actual guest factory must use the hosted Document's CSP");
+    super::super::guest::tests::assert_queued_policy_name(&host, "denied");
 }
 
 pub(super) fn default_factory_retains_the_real_guest_callback() {

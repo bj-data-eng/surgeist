@@ -1,6 +1,71 @@
 use std::{any::Any, collections::VecDeque};
 
 use super::*;
+use crate::trusted_types_csp::ViolationReport;
+
+pub(in crate::document_scripting) struct ViolationQueue {
+    reports: VecDeque<ViolationReport<GuestBacking>>,
+    backing: Option<GuestBacking>,
+    _header: GuestBacking,
+}
+
+impl ViolationQueue {
+    pub(super) fn new(
+        owner: &NativeOwner,
+        events: &GuestEvents,
+    ) -> Result<Box<Self>, DocumentGuestEventError> {
+        let header = events.reserve(owner, size_of::<Self>())?;
+        Ok(Box::new(Self {
+            reports: VecDeque::new(),
+            backing: None,
+            _header: header,
+        }))
+    }
+
+    pub(super) fn reserve(
+        &mut self,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+    ) -> Result<(), DocumentGuestEventError> {
+        if self.reports.len() < self.reports.capacity() {
+            return Ok(());
+        }
+        let capacity = self
+            .reports
+            .capacity()
+            .checked_mul(2)
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?
+            .max(1);
+        let bytes = capacity
+            .checked_mul(size_of::<ViolationReport<GuestBacking>>())
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let backing = events.reserve(owner, bytes)?;
+        let mut reports = VecDeque::new();
+        reports
+            .try_reserve_exact(capacity)
+            .map_err(|_| Error::Allocation)?;
+        if reports.capacity() != capacity {
+            return Err(Error::Allocation.into());
+        }
+        events.charge_work(
+            u64::try_from(self.reports.len())
+                .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?,
+        )?;
+        reports.append(&mut self.reports);
+        self.reports = reports;
+        self.backing = Some(backing);
+        Ok(())
+    }
+
+    pub(super) fn push(&mut self, report: ViolationReport<GuestBacking>) {
+        self.reports.push_back(report);
+    }
+
+    #[cfg(test)]
+    pub(super) fn front(&self) -> Option<&ViolationReport<GuestBacking>> {
+        self.reports.front()
+    }
+}
 
 pub(super) type DispatchFailure =
     HostFailureSlot<DocumentGuestEventError, DomHostedRuntimeRetention>;

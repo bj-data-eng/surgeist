@@ -5,6 +5,17 @@ pub(in crate::document_scripting) mod registered_origin;
 pub(in crate::document_scripting) mod shadow_root;
 pub(in crate::document_scripting) mod trusted_policy;
 
+pub(in crate::document_scripting) fn assert_queued_policy_name(
+    host: &DocumentScriptHost,
+    name: &str,
+) {
+    let queue = host.native.trusted_types_reports.borrow();
+    let report = queue.as_ref().unwrap().front().unwrap();
+    assert_eq!(report.policy_index(), 0);
+    assert_eq!(report.resource(), "trusted-types-policy");
+    assert_eq!(report.sample(), units(name));
+}
+
 fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
     let cancellation = Arc::new(AtomicBool::new(false));
     let (session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);

@@ -103,7 +103,7 @@ impl NamedMethod {
         let Some((input, trailing)) = arguments.split_first() else {
             return type_error(scope, &ascii(b"Policy input required"));
         };
-        if let Err(error) = qualify(&self.capture, &owner, &events, false) {
+        if let Err(error) = qualify(&self.capture, &owner, &events) {
             return refuse(scope, &events.refusal, error);
         }
         let account = &self.capture.callbacks.conversion;
@@ -120,7 +120,7 @@ impl NamedMethod {
         let data = account.run(scope, |cx| {
             cx.invoke_named_policy(callback, self.kind, input.get(), trailing)
         })?;
-        if let Err(error) = qualify(&self.capture, &owner, &events, false) {
+        if let Err(error) = qualify(&self.capture, &owner, &events) {
             return refuse(scope, &events.refusal, error);
         }
         let projected = (|| {
@@ -152,7 +152,7 @@ fn stringify<'scope>(
     else {
         return type_error(scope, &ascii(b"Wrong Trusted Type receiver"));
     };
-    if let Err(error) = qualify(capture, &owner, &events, false) {
+    if let Err(error) = qualify(capture, &owner, &events) {
         return refuse(scope, &events.refusal, error);
     }
     let string = capture

@@ -3,7 +3,7 @@
 mod methods;
 
 use super::*;
-use crate::trusted_types_csp::{PolicyCreationError, PolicyFactory};
+use crate::trusted_types_csp::{PolicyCreationError, PolicyFactory, ReportError};
 use surgeist_bindings_js::{
     TrustedPolicyCallback, ValueKind,
     conversion::{Converted, types},
@@ -94,7 +94,7 @@ pub(super) fn install<'scope>(
     let getter = scope.fixed_arity_function(
         &Callback::new(move |scope, _| {
             let (owner, events) = window_capture.active(scope)?;
-            if let Err(error) = qualify(&window_capture, &owner, &events, false) {
+            if let Err(error) = qualify(&window_capture, &owner, &events) {
                 return refuse(scope, &events.refusal, error);
             }
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
@@ -115,20 +115,10 @@ fn qualify(
     capture: &Capture,
     owner: &NativeOwner,
     events: &GuestEvents,
-    require_csp: bool,
 ) -> Result<(), DocumentGuestEventError> {
-    capture.callbacks.with_read(owner, events, |read, _| {
-        read.step()?;
-        if require_csp {
-            let document = read.snapshot.document(capture.callbacks.permit.document)?;
-            match document.metadata().policy_container().csp() {
-                DomDocumentCspState::ConstructorInitialEmpty => {}
-                DomDocumentCspState::Associated(policy) if policy.policy().profile().is_none() => {}
-                _ => return Err(DocumentScriptNativeError::TrustedTypesPolicyUnavailable.into()),
-            }
-        }
-        Ok(())
-    })
+    capture
+        .callbacks
+        .with_read(owner, events, |read, _| read.step())
 }
 
 fn type_error<'scope>(
@@ -147,7 +137,7 @@ fn policy_name<'scope>(
     let Some(policy) = scope.native_object::<PolicyObject>(arguments.receiver())? else {
         return type_error(scope, &ascii(b"TrustedTypePolicy required"));
     };
-    if let Err(error) = qualify(capture, &owner, &events, false) {
+    if let Err(error) = qualify(capture, &owner, &events) {
         return refuse(scope, &events.refusal, error);
     }
     let value = capture.callbacks.conversion.run(scope, |conversion| {
@@ -165,7 +155,7 @@ fn default_policy<'scope>(
     let Some(factory) = scope.native_object::<Factory>(arguments.receiver())? else {
         return type_error(scope, &ascii(b"TrustedTypePolicyFactory required"));
     };
-    if let Err(error) = qualify(capture, &owner, &events, false) {
+    if let Err(error) = qualify(capture, &owner, &events) {
         return refuse(scope, &events.refusal, error);
     }
     let result = factory
@@ -255,7 +245,66 @@ fn publish<'scope>(
     name: Converted<surgeist_bindings_js::DomString>,
     options: [Option<Value<'scope>>; 4],
 ) -> Result<Completion<'scope>, DocumentGuestEventError> {
-    qualify(capture, owner, events, true)?;
+    let request = owner.attached_event_request();
+    let (snapshot, processor) =
+        capture
+            .callbacks
+            .with_qualified_session(owner, request.as_ref(), |session, _| {
+                Ok((session.snapshot(), session.trusted_types_csp.clone()))
+            })?;
+    let mut step = || {
+        if let Some(request) = &request {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            session
+                .dom()
+                .raw()
+                .source_event_step(request, &owner.cancellation)?;
+        }
+        events.step()
+    };
+    step()?;
+    let document = snapshot.document(capture.callbacks.permit.document)?;
+    let policies = match document.metadata().policy_container().csp() {
+        DomDocumentCspState::ConstructorInitialEmpty => &[][..],
+        DomDocumentCspState::Associated(policy) if policy.policy().profile().is_none() => &[],
+        state @ DomDocumentCspState::Associated(_) => {
+            let processor = processor
+                .as_ref()
+                .ok_or(DocumentScriptNativeError::TrustedTypesPolicyUnavailable)?;
+            let processor = processor
+                .processor
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let mut scratch = None;
+            processor
+                .document_policies_with(state, &mut |layout| {
+                    drop(scratch.take());
+                    layout
+                        .charge_work(&mut crate::document_scripting::CspWork(|units| {
+                            for _ in 0..units {
+                                step()?;
+                            }
+                            Ok::<(), DocumentGuestEventError>(())
+                        }))
+                        .map_err(crate::document_scripting::csp_work_error)?;
+                    scratch = Some(events.reserve(owner, layout.atomic_bytes())?);
+                    Ok::<(), DocumentGuestEventError>(())
+                })
+                .map_err(|error| match error {
+                    surgeist_html::security::csp::HtmlCspError::Interrupted(error) => error,
+                    surgeist_html::security::csp::HtmlCspError::Protocol(_) => {
+                        DocumentScriptNativeError::TrustedTypesPolicyUnavailable.into()
+                    }
+                })?
+                .ok_or(DocumentScriptNativeError::TrustedTypesPolicyUnavailable)?
+        }
+        DomDocumentCspState::Unavailable => {
+            return Err(DocumentScriptNativeError::TrustedTypesPolicyUnavailable.into());
+        }
+    };
     let units = name.get().as_code_units();
     let text_bytes = units
         .len()
@@ -288,7 +337,36 @@ fn publish<'scope>(
         .state
         .try_borrow_mut()
         .map_err(|_| DocumentScriptNativeError::Busy)?;
-    let attempt = state.begin(&name, &[], &mut || events.step())?;
+    let mut attempt = state.begin(&name, policies, &mut step)?;
+    let mut reports = owner
+        .trusted_types_reports
+        .try_borrow_mut()
+        .map_err(|_| DocumentScriptNativeError::Busy)?;
+    while let Some(report) = attempt
+        .next_report(&mut step, |bytes| {
+            if reports.is_none() {
+                *reports = Some(super::super::reports::ViolationQueue::new(owner, events)?);
+            }
+            reports
+                .as_mut()
+                .ok_or(DocumentScriptNativeError::Busy)?
+                .reserve(owner, events)?;
+            events.reserve(owner, bytes)
+        })
+        .map_err(|error| match error {
+            ReportError::Stopped(error) => error,
+            ReportError::RepresentationExhausted => {
+                DocumentScriptNativeError::RepresentationExhausted.into()
+            }
+            ReportError::Allocation => Error::Allocation.into(),
+        })?
+    {
+        reports
+            .as_mut()
+            .ok_or(DocumentScriptNativeError::Busy)?
+            .push(report);
+    }
+    drop(reports);
     let admitted = match attempt.admit(|bytes| events.reserve(owner, bytes)) {
         Ok(admitted) => admitted,
         Err(PolicyCreationError::DefaultAlreadyExists) => {
@@ -298,7 +376,13 @@ fn publish<'scope>(
         Err(PolicyCreationError::RepresentationExhausted) => {
             return Err(DocumentScriptNativeError::RepresentationExhausted.into());
         }
-        Err(PolicyCreationError::BlockedByCsp | PolicyCreationError::PoliciesPending) => {
+        Err(PolicyCreationError::BlockedByCsp) => {
+            return Ok(type_error(
+                scope,
+                &ascii(b"Trusted Types policy blocked by CSP"),
+            )?);
+        }
+        Err(PolicyCreationError::PoliciesPending) => {
             return Err(DocumentScriptNativeError::TrustedTypesPolicyUnavailable.into());
         }
     };
