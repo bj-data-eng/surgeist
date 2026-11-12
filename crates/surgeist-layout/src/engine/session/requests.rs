@@ -2,7 +2,7 @@ use std::{collections::TryReserveError, ops::ControlFlow};
 
 use super::{ChildAdmission, ChildCacheRequest, ComputeSession, SessionResult};
 use crate::block::intrinsic::{BlockAxisDemand, InlineContentChild};
-use crate::block::{BlockComputation, BlockResult, PendingBox, begin_block_computation};
+use crate::block::{BlockComputation, BlockResult, PendingBlockChild, begin_block_computation};
 use crate::engine::block_scope::ordinary;
 use crate::engine::hidden::{HiddenChildren, HiddenRequest};
 use crate::{
@@ -75,7 +75,7 @@ struct BlockRequest<'input, Node, S: LayoutScalar> {
     computation: BlockComputation<'input, Node, S>,
     cache: Option<ChildCacheRequest<Node, S>>,
     projection: OutputProjection,
-    child: Option<PendingBox<'input, Node, S>>,
+    child: Option<PendingBlockChild<'input, Node, S>>,
 }
 
 struct PendingRequests<'input, Node, S: LayoutScalar> {
@@ -286,7 +286,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         pending: &mut SessionPending<'input, Tree>,
     ) -> SessionResult<Tree, SessionRequest<Tree>> {
         let parent = pending.blocks.last_mut().expect("active Block request");
-        let child = parent.child.take();
+        let child = parent.child.take().expect("pending Block child request");
         ordinary(parent.computation.accept_child(self, child, output))?;
         Ok(Request::AdvanceBlock)
     }
@@ -308,7 +308,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     .order
                     .try_reserve(1)
                     .map_err(|_| reserve_error(request.node))?;
-                parent.child = child;
+                parent.child = Some(child);
                 pending.order.push(PendingRequest::Block);
                 Ok(Request::Child {
                     node: request.node,

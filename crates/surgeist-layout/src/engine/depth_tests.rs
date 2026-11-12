@@ -291,3 +291,86 @@ fn deep_intrinsic_block_layout_returns_on_bounded_stack() {
         },
     );
 }
+
+fn assert_positioned_block_chain<S: LayoutScalar>(depth: u32) {
+    let (width, height) = (S::from_f64(13.0), S::from_f64(7.0));
+    let length = |value| crate::LengthPercentageOf::px(value).unwrap();
+    let preferred = |value| crate::PreferredSizeOf::value(length(value));
+    let positioned = |left, top| NodeInputOf {
+        display: Display::Block,
+        position: crate::Position::Absolute,
+        size: Size::new(preferred(width), preferred(height)),
+        inset: crate::Edges {
+            left: crate::LengthAutoOf::value(length(S::from_f64(left))),
+            top: crate::LengthAutoOf::value(length(S::from_f64(top))),
+            ..crate::Edges::all(crate::LengthAutoOf::AUTO)
+        },
+        ..NodeInputOf::default()
+    };
+    let mut tree = chain::<S>(Display::Block, depth + 1)
+        .children(0, [1, depth])
+        .children(depth - 1, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                size: Size::new(preferred(S::from_f64(100.0)), preferred(S::from_f64(40.0))),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(depth, positioned(25.0, 5.0));
+    for node in 1..depth {
+        tree = tree.style(node, positioned(2.0, 3.0));
+    }
+
+    let batch = compute_layout(&tree, 0, standalone()).expect("positioned Block chain");
+    assert_eq!(batch.node_layouts().len(), (depth + 1) as usize);
+    for (node, view) in batch.node_layouts() {
+        let output = view.single_box().unwrap().final_output();
+        let (size, x, y, source_index) = if node == 0 {
+            (
+                Size::new(S::from_f64(100.0), S::from_f64(40.0)),
+                0.0,
+                0.0,
+                0,
+            )
+        } else if node == depth {
+            (Size::new(width, height), 25.0, 5.0, 1)
+        } else {
+            (Size::new(width, height), 2.0, 3.0, 0)
+        };
+        assert_eq!(output.size, size, "node {node}");
+        assert_eq!(
+            output.location,
+            crate::Point::new(S::from_f64(x), S::from_f64(y)),
+            "node {node}"
+        );
+        assert_eq!(
+            output.source_index,
+            crate::SourceIndex::new(source_index),
+            "node {node}"
+        );
+    }
+}
+
+#[test]
+fn shallow_positioned_block_layout_publishes_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_positioned_block_layout_publishes_geometry",
+        || {
+            assert_positioned_block_chain::<f32>(3);
+            assert_positioned_block_chain::<f64>(3);
+        },
+    );
+}
+
+#[test]
+fn deep_positioned_block_layout_returns_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_positioned_block_layout_returns_on_bounded_stack",
+        || {
+            assert_positioned_block_chain::<f32>(128);
+            assert_positioned_block_chain::<f64>(128);
+        },
+    );
+}
