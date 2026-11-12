@@ -849,6 +849,43 @@ mod tests {
     }
 
     #[test]
+    fn zero_advance_pattern_retains_outline_and_source() {
+        let mut hmtx = crate::test_fonts::table(AHEM, *b"hmtx").to_vec();
+        let ahem_a_advance = 35 * 4;
+        hmtx[ahem_a_advance..ahem_a_advance + 2].fill(0);
+        let font = crate::test_fonts::replace_tables(AHEM, vec![(*b"hmtx", hmtx)]);
+        let mut system = crate::System::default();
+        system.register_fonts(font, FONT_LIMITS).unwrap();
+
+        let pattern = system
+            .prepare_leader_pattern(input(
+                LeaderPattern::Literal("A".into()),
+                WhiteSpace::Preserve,
+            ))
+            .unwrap();
+        assert_eq!(pattern.metrics().advance, 0.0);
+        let run = pattern.run_views().next().unwrap();
+        let (glyph, group) = run.glyphs().next().unwrap();
+        assert_eq!(
+            (glyph.id(), glyph.advance(), glyph.range()),
+            (35, 0.0, Range::new(0, 1))
+        );
+        let cluster = pattern.cluster_views().next().unwrap();
+        assert_eq!(cluster.advance(), 0.0);
+        assert_eq!(cluster.paint_group(), Some(group));
+        assert!(cluster.source_pieces().eq([Range::new(0, 1)]));
+        let instance = run.run().effective_instance().unwrap();
+        let outline = instance
+            .glyph_outline(glyph.id(), instance.face().catalogue_identity())
+            .unwrap();
+        assert!(
+            outline
+                .bounds()
+                .is_some_and(|rect| rect.size.width > 0.0 && rect.size.height > 0.0)
+        );
+    }
+
+    #[test]
     fn finalizes_rtl_and_sideways_with_actual_glyph_and_font_identity() {
         let mut rtl = crate::System::default();
         rtl.register_fonts(crate::shaping_test_fonts::arabic_ahem(), FONT_LIMITS)
