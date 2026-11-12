@@ -5,6 +5,74 @@ use super::*;
 use surgeist_dom::{DomBatch, DomNodeKind};
 use surgeist_html::values::{DocumentString, Namespace};
 
+pub(in crate::document_scripting) fn inherited_node_values_use_canonical_text() {
+    let mut host = public_node_host(5_000, 20_000);
+    let permit = host.permit().unwrap();
+    let cancel = host.native.cancellation.clone();
+    let (element, text) = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let element = batch.create_element_ns(permit.document, Namespace::html(), "div");
+            let inner = batch.create_element_ns(permit.document, Namespace::html(), "span");
+            let text = batch.create_text(permit.document, DocumentString::from_utf16([0xd800, 0]));
+            let comment = batch.create_comment(permit.document, "excluded");
+            let tail = batch.create_text(permit.document, "tail");
+            batch.insert_before(&text, &element, None);
+            batch.insert_before(&inner, &element, None);
+            batch.insert_before(&comment, &inner, None);
+            batch.insert_before(&tail, &inner, None);
+            let commit = dom.apply(batch, &cancel).unwrap();
+            (
+                commit.created(&element).unwrap().unwrap(),
+                commit.created(&text).unwrap().unwrap(),
+            )
+        })
+        .unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, element, "contentElement");
+    expose_public_node_for_source_test(&mut host, &permit, text, "contentText");
+    host.in_document(&permit, |scope| {
+        scope.evaluate(&units(r#"
+            (() => {
+                const check = (ok, label) => { if (!ok) throw new Error(label); };
+                check(contentElement.textContent === '\ud800\0tail', 'ordinary descendant text');
+                const root = contentElement.attachShadow({mode: 'open'});
+                root.textContent = 'shadow';
+                check(root.textContent === 'shadow' && contentElement.textContent === '\ud800\0tail', 'no shadow piercing');
+                const attr = document.createAttribute('data-value');
+                const set = Object.getOwnPropertyDescriptor(Node.prototype, 'nodeValue').set;
+                set.call(attr, 'first\udfff');
+                check(attr.textContent === 'first\udfff' && attr.value === attr.nodeValue, 'exact Attr value');
+                attr.textContent = null;
+                check(attr.value === '' && attr.nodeValue === '', 'null becomes empty');
+                set.call(attr);
+                check(attr.value === '', 'omission converts as nullable undefined');
+                contentText.nodeValue = 'new';
+                check(contentElement.textContent === 'newtail' && contentText.data === 'new', 'live character data');
+                let calls = 0;
+                contentElement.nodeValue = {toString() { calls++; return 'ignored'; }};
+                document.textContent = {toString() { calls++; return 'ignored'; }};
+                check(calls === 2 && contentElement.nodeValue === null && document.textContent === null
+                    && contentElement.textContent === 'newtail', 'convert before native no-op');
+                contentElement.textContent = '\udfff\0';
+                check(contentText.parentNode === null && contentElement.textContent === '\udfff\0', 'canonical replacement');
+                contentElement.textContent = null;
+                check(contentElement.textContent === '' && root.textContent === 'shadow', 'ordinary children only');
+                try { set.call({}, 'bad'); }
+                catch (error) { check(error instanceof TypeError, 'exact receiver brand'); return; }
+                throw new Error('accepted foreign Node receiver');
+            })()
+        "#)).map(drop)
+    }).unwrap();
+    assert!(
+        host.snapshot()
+            .unwrap()
+            .node(element)
+            .unwrap()
+            .children()
+            .is_empty()
+    );
+}
+
 pub(in crate::document_scripting) fn detached_attribute_keeps_its_live_native_identity() {
     let mut host = public_node_host(3_000, 20_000);
     let permit = host.permit().unwrap();
