@@ -247,9 +247,10 @@ impl<S: LayoutScalar> PartialEq<Option<ScrollRectOf<S>>> for OverflowClipOf<S> {
 /// Immutable layout-produced geometry and metadata for one scroll target.
 ///
 /// The nested value preserves local physical border geometry and scroll margin
-/// together with the target's flow axes and semantic snap metadata. Root owns
-/// retained association, transformed coordinates, oversized-target rules and
-/// live snap selection.
+/// together with the target's flow axes and semantic snap metadata. The
+/// composition layer supplies retained association and transformed bounds in
+/// the scroll container's frame. Layout derives snap geometry from those
+/// inputs and the scrolling consumer selects the live destination.
 ///
 /// ```compile_fail
 /// use surgeist_layout::ScrollTargetGeometry;

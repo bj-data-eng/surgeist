@@ -14,6 +14,10 @@ mod contribution;
 mod input;
 mod model;
 pub(crate) mod rounding;
+mod snap;
+
+#[cfg(test)]
+mod snap_tests;
 
 use box_geometry::{AutoScrollbarOverflowObservation, scroll_rect_axis_interval, used_overflow_at};
 pub(crate) use box_geometry::{
