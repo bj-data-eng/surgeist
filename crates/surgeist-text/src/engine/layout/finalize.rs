@@ -2976,6 +2976,13 @@ fn edge_dispositions_accounted(
     shaped: &ShapedData,
     ledger: &mut Ledger,
 ) -> Result<Vec<SpacingSlotDisposition>> {
+    if selected.prepared.analyzed.processed.is_leader_pattern() {
+        return account::filled(
+            ledger,
+            shaped.clusters.len(),
+            SpacingSlotDisposition::Retained { trailing: false },
+        );
+    }
     account::work(ledger, shaped.items.len())?;
     let mut projected = Vec::new();
     let mut clusters = Vec::new();

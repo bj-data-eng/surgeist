@@ -1334,6 +1334,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         base_style: context.domains[0].style.clone(),
         segment_breaks: input.segment_breaks,
         processed: crate::Text::from_code_units(units),
+        leader_pattern: false,
         map,
         box_order,
         paragraphs: records,
