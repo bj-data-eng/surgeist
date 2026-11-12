@@ -103,14 +103,19 @@ impl DomSourceLease<'_> {
         processor: &mut P,
         cancel: &AtomicBool,
     ) -> Result<(), DomSourceMetaCspError<P::Error>> {
+        if request.operation() != self.id {
+            return Err(DomError::InvalidSourceOperation.into());
+        }
         let operation = self
             .dom
             .source_operation
             .as_mut()
             .filter(|operation| !self.complete && operation.id == self.id)
             .ok_or(DomError::InvalidSourceOperation)?;
-        let frame = operation
-            .draft
+        let dialog::OperationDraft::Segment(draft) = &operation.draft else {
+            return Err(DomError::InvalidSourceOperation.into());
+        };
+        let frame = draft
             .pending_meta_csp()
             .filter(|frame| {
                 frame
