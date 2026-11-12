@@ -10,6 +10,7 @@ mod sequence;
 #[cfg(test)]
 pub(crate) mod tests;
 mod toggle_event;
+mod trusted_types;
 
 use std::rc::Rc;
 
@@ -32,6 +33,7 @@ pub use failure::{
 pub use listener::StandaloneListenerOptions;
 pub use sequence::Sequence;
 pub use toggle_event::ToggleEventOptions;
+pub use trusted_types::trusted_policy_callback_result;
 
 use account::{Account, Storage};
 
@@ -137,6 +139,9 @@ pub mod types {
         includes_undefined: true,
     };
     pub const DOM_STRING: Type<DomString> = Type::scalar(dom_string);
+    /// Complete `(TrustedType or DOMString)` conversion for Element setters.
+    pub const TRUSTED_ATTRIBUTE_VALUE: Type<crate::TrustedAttributeValue> =
+        Type::scalar(super::trusted_types::attribute_value);
     /// DOMString conversion with the selected LegacyNullToEmptyString annotation.
     pub const DOM_STRING_NULL_TO_EMPTY: Type<DomString> = Type::scalar(dom_string_null_to_empty);
     pub const USV_STRING: Type<UsvString> = Type::scalar(usv_string);

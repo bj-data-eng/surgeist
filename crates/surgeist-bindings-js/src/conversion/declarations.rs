@@ -5,6 +5,7 @@
 use super::{
     Argument, Conversion, Converted, Enumeration, Failure, IntegerType, Nullable, Type, types,
 };
+use crate::TrustedAttributeValue;
 use crate::declarations::DocumentReadyState;
 use crate::declarations::DocumentVisibilityState;
 use crate::declarations::EventInit;
@@ -668,6 +669,17 @@ pub fn element_set_attribute_0_qualified_name() -> Argument<Type<DomString>> {
     )
 }
 
+/// Selected argument `Element.setAttribute:0/value` (not overload selection).
+pub fn element_set_attribute_0_value() -> Argument<Type<TrustedAttributeValue>> {
+    Argument::new(
+        "Element.setAttribute:0/value",
+        1,
+        false,
+        types::TRUSTED_ATTRIBUTE_VALUE,
+        None,
+    )
+}
+
 /// Selected argument `Element.setAttributeNS:0/namespace` (not overload selection).
 pub fn element_set_attribute_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
@@ -686,6 +698,17 @@ pub fn element_set_attribute_ns_0_qualified_name() -> Argument<Type<DomString>> 
         1,
         false,
         types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `Element.setAttributeNS:0/value` (not overload selection).
+pub fn element_set_attribute_ns_0_value() -> Argument<Type<TrustedAttributeValue>> {
+    Argument::new(
+        "Element.setAttributeNS:0/value",
+        2,
+        false,
+        types::TRUSTED_ATTRIBUTE_VALUE,
         None,
     )
 }

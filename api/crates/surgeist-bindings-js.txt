@@ -84,8 +84,10 @@ pub fn surgeist_bindings_js::conversion::declarations::element_remove_attribute_
 pub fn surgeist_bindings_js::conversion::declarations::element_remove_attribute_ns_0_local_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::element_remove_attribute_ns_0_namespace() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>>
 pub fn surgeist_bindings_js::conversion::declarations::element_set_attribute_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::element_set_attribute_0_value() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::TrustedAttributeValue>>
 pub fn surgeist_bindings_js::conversion::declarations::element_set_attribute_ns_0_namespace() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>>
 pub fn surgeist_bindings_js::conversion::declarations::element_set_attribute_ns_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::element_set_attribute_ns_0_value() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::TrustedAttributeValue>>
 pub fn surgeist_bindings_js::conversion::declarations::element_toggle_attribute_0_force() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<bool>>
 pub fn surgeist_bindings_js::conversion::declarations::element_toggle_attribute_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::element_webkit_matches_selector_0_selectors() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -141,6 +143,7 @@ pub const surgeist_bindings_js::conversion::types::DOM_STRING: surgeist_bindings
 pub const surgeist_bindings_js::conversion::types::DOM_STRING_NULL_TO_EMPTY: surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub const surgeist_bindings_js::conversion::types::DOUBLE: surgeist_bindings_js::conversion::Type<f64>
 pub const surgeist_bindings_js::conversion::types::FLOAT: surgeist_bindings_js::conversion::Type<f32>
+pub const surgeist_bindings_js::conversion::types::TRUSTED_ATTRIBUTE_VALUE: surgeist_bindings_js::conversion::Type<surgeist_bindings_js::TrustedAttributeValue>
 pub const surgeist_bindings_js::conversion::types::UNDEFINED: surgeist_bindings_js::conversion::Type<()>
 pub const surgeist_bindings_js::conversion::types::UNRESTRICTED_DOUBLE: surgeist_bindings_js::conversion::Type<f64>
 pub const surgeist_bindings_js::conversion::types::UNRESTRICTED_FLOAT: surgeist_bindings_js::conversion::Type<f32>
@@ -317,6 +320,7 @@ impl<D: surgeist_bindings_js::conversion::Descriptor> surgeist_bindings_js::conv
 pub type surgeist_bindings_js::conversion::Sequence<D>::Output = alloc::vec::Vec<surgeist_bindings_js::conversion::Converted<<D as surgeist_bindings_js::conversion::Descriptor>::Output>>
 impl<T> surgeist_bindings_js::conversion::Descriptor for surgeist_bindings_js::conversion::Type<T>
 pub type surgeist_bindings_js::conversion::Type<T>::Output = T
+pub fn surgeist_bindings_js::conversion::trusted_policy_callback_result(kind: surgeist_bindings_js::TrustedTypeKind) -> surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::TrustedTypeData>>
 pub type surgeist_bindings_js::conversion::LedgerError = surgeist_ledger::Error<surgeist_bindings_js::conversion::Work, surgeist_bindings_js::conversion::Resource>
 pub mod surgeist_bindings_js::css
 pub struct surgeist_bindings_js::css::CssNamespaceLimits
@@ -521,6 +525,21 @@ pub surgeist_bindings_js::RecordFailure::Inactive::error: surgeist_bindings_js::
 pub surgeist_bindings_js::RecordFailure::Occupied
 pub surgeist_bindings_js::RecordFailure::Occupied::cause: E
 pub surgeist_bindings_js::RecordFailure::Occupied::first: surgeist_bindings_js::HostFailure
+pub enum surgeist_bindings_js::TrustedAttributeValue
+pub surgeist_bindings_js::TrustedAttributeValue::String(surgeist_bindings_js::DomString)
+pub surgeist_bindings_js::TrustedAttributeValue::Trusted(surgeist_bindings_js::TrustedType)
+impl surgeist_bindings_js::TrustedAttributeValue
+pub fn surgeist_bindings_js::TrustedAttributeValue::as_code_units(&self) -> &[u16]
+pub enum surgeist_bindings_js::TrustedTypeData
+pub surgeist_bindings_js::TrustedTypeData::Html(surgeist_bindings_js::DomString)
+pub surgeist_bindings_js::TrustedTypeData::Script(surgeist_bindings_js::DomString)
+pub surgeist_bindings_js::TrustedTypeData::ScriptUrl(surgeist_bindings_js::UsvString)
+impl surgeist_bindings_js::TrustedTypeData
+pub fn surgeist_bindings_js::TrustedTypeData::as_code_units(&self) -> &[u16]
+pub enum surgeist_bindings_js::TrustedTypeKind
+pub surgeist_bindings_js::TrustedTypeKind::Html
+pub surgeist_bindings_js::TrustedTypeKind::Script
+pub surgeist_bindings_js::TrustedTypeKind::ScriptUrl
 pub enum surgeist_bindings_js::ValueKind
 pub surgeist_bindings_js::ValueKind::BigInt
 pub surgeist_bindings_js::ValueKind::Boolean
@@ -693,6 +712,14 @@ pub fn surgeist_bindings_js::Scope<'scope>::project_retained_native_object<T: 's
 pub fn surgeist_bindings_js::Scope<'scope>::project_retained_native_object_in_prototype_realm<T: 'static, Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: &surgeist_bindings_js::RetainedCallbackObject, payload: T, admit: impl core::ops::function::FnOnce(usize, usize) -> core::result::Result<(Storage, Storage), E>) -> core::result::Result<surgeist_bindings_js::RetainedCallbackObject, E>
 pub fn surgeist_bindings_js::Scope<'scope>::set_native_object_reference<T: 'static>(&mut self, object: &surgeist_bindings_js::Value<'scope>, slot: u32, reference: core::option::Option<&surgeist_bindings_js::Value<'scope>>) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::try_project_retained_native_object<T: 'static, Storage: 'static, R, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::NativeProjectionPrototype<'_, 'scope>, payload: T, admit: impl core::ops::function::FnOnce(usize, usize) -> core::result::Result<(Storage, Storage), E>, commit: impl core::ops::function::FnOnce(&T) -> core::result::Result<R, E>) -> core::result::Result<(surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::RetainedCallbackObject, R), E>
+impl<'scope> surgeist_bindings_js::Scope<'scope>
+pub fn surgeist_bindings_js::Scope<'scope>::project_trusted_type<Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>, data: surgeist_bindings_js::conversion::Converted<core::option::Option<surgeist_bindings_js::TrustedTypeData>>, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<Storage, E>) -> core::result::Result<core::option::Option<surgeist_bindings_js::Value<'scope>>, E>
+impl<'scope> surgeist_bindings_js::Scope<'scope>
+pub fn surgeist_bindings_js::Scope<'scope>::trusted_type(&mut self, object: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<core::option::Option<surgeist_bindings_js::TrustedType>, surgeist_bindings_js::Error>
+pub struct surgeist_bindings_js::TrustedType(_)
+impl surgeist_bindings_js::TrustedType
+pub fn surgeist_bindings_js::TrustedType::as_code_units(&self) -> &[u16]
+pub fn surgeist_bindings_js::TrustedType::kind(&self) -> surgeist_bindings_js::TrustedTypeKind
 pub struct surgeist_bindings_js::UsvString(_)
 impl surgeist_bindings_js::UsvString
 pub fn surgeist_bindings_js::UsvString::as_code_units(&self) -> &[u16]

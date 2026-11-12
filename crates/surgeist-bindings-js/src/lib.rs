@@ -84,6 +84,7 @@ mod host;
 mod idl;
 mod native_object;
 mod owner;
+mod trusted_types;
 
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -93,6 +94,7 @@ pub use error::{Error, Exception, ExceptionPhase};
 pub use host::{HostFailure, HostFailureSlot, RealmAuthority, RealmId, RecordFailure};
 pub use idl::{ByteString, DomString, IntegerKind, IntegerMode, IntegerValue, UsvString};
 pub use native_object::{NativeObject, NativeObjectToken, NativeProjectionPrototype};
+pub use trusted_types::{TrustedAttributeValue, TrustedType, TrustedTypeData, TrustedTypeKind};
 
 /// Engine selected before creating any realm or heap values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -4307,9 +4307,9 @@
     {
       "name": "TrustedType",
       "kind": "typedef",
-      "owner": "surgeist-html",
-      "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
-      "requirement": "Pin the delegated TrustedType definition before converting/exposing this external type; the retained source here references it but is not its full defining clause."
+      "owner": "surgeist-bindings-js",
+      "url": "https://www.w3.org/TR/2026/WD-trusted-types-20261007/#typedefdef-trustedtype",
+      "requirement": "Resolve the exact original native TrustedHTML, TrustedScript or TrustedScriptURL brand before coercing the DOMString alternative of the Element attribute union."
     },
     {
       "name": "WindowEventHandlers",
