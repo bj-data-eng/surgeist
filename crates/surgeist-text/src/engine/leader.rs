@@ -291,7 +291,7 @@ fn analyze_combination(source: Source, input: LeaderPatternInput) -> Result<Anal
     };
     let processed = Arc::new(crate::processing::process_leader_capture(
         capture,
-        input.tab_reference,
+        input.tab_reference.as_ref(),
     )?);
     let paragraph = processed
         .paragraphs()

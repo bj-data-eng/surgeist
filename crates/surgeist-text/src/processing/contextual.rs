@@ -561,19 +561,19 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
 
 pub(crate) fn process_leader_capture(
     input: ContextualSourceInput,
-    tab_reference: Option<ParagraphTabReference>,
+    tab_reference: Option<&ParagraphTabReference>,
 ) -> Result<ProcessedSource> {
     process_capture(input, CapturePurpose::Leader(tab_reference))
 }
 
-enum CapturePurpose {
+enum CapturePurpose<'a> {
     Document,
-    Leader(Option<ParagraphTabReference>),
+    Leader(Option<&'a ParagraphTabReference>),
 }
 
 fn process_capture(
     input: ContextualSourceInput,
-    purpose: CapturePurpose,
+    purpose: CapturePurpose<'_>,
 ) -> Result<ProcessedSource> {
     if input.envelope != SourceProcessingEnvelope::Complete {
         return Err(invalid(SourceProcessingError::IncompleteExterior));
@@ -1311,7 +1311,7 @@ fn process_capture(
                         context.domains[capture.domain].style.clone(),
                         context.domains[capture.domain].direction,
                     )?),
-                    CapturePurpose::Leader(reference) => reference.clone(),
+                    CapturePurpose::Leader(reference) => reference.cloned(),
                 },
             },
         };
