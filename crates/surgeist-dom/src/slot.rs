@@ -681,6 +681,11 @@ impl DomSnapshot {
                         DomResource::SlotQueryOutput,
                     )?;
                 }
+            } else if matches!(n.kind, TreeKind::Element(element) if element.initial_media_state().is_some())
+            {
+                // Unloaded media owns a private, empty shadow boundary with
+                // no slots. Its light children remain in the ordinary tree.
+                continue;
             } else if is_slot(n.kind) {
                 let assigned = slottables(self, key, limits.scratch, cancel)
                     .map_err(|e| scratch_error(e, limits.scratch))?;

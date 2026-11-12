@@ -418,6 +418,8 @@ pub enum DomError {
     },
     LinkProcessingUnavailable,
     ImageProcessingUnavailable,
+    MediaResourceEffectUnavailable(surgeist_html::elements::media::HtmlMediaResourceEffect),
+    MediaRemovalStableStateUnavailable,
     ImageUpdateExhausted,
     HyperlinkProcessingUnavailable,
     EncodingUrlFacts(crate::DomEncodingUrlFactsError),

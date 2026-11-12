@@ -2,12 +2,15 @@
 //! initialization and §2.5.6 nonce attribute/IDL/insertion/cloning clauses.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentString, Dom, DomBatch, DomChange, DomError, DomLimits, DomResource,
-    HtmlCustomElementState, Namespace,
+    DocumentString, Dom, DomBatch, DomChange, DomError, DomFlatRelation, DomLimits, DomResource,
+    DomShadowRootInit, DomSlotQueryLimits, DomSourceEdit, DomSourceLimits, DomSourceProgress,
+    HtmlCustomElementState, HtmlShadowRootMode, Namespace,
 };
 use surgeist_html::{
+    elements::media::{HtmlInitialMediaState, HtmlMediaResourceEffect},
     elements::native::HtmlElementClass as Requirement,
-    security::nonce::HtmlBrowsingContextPresence, vocabulary::KnownHtmlElement,
+    security::nonce::HtmlBrowsingContextPresence,
+    vocabulary::KnownHtmlElement,
 };
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
@@ -184,13 +187,305 @@ fn namespace_element_validation_uses_element_context_and_preserves_utf16() {
 }
 
 #[test]
+fn fresh_native_audio_and_video_preserve_exact_namespaces() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let cases = [
+        (HTML, "audio", "audio", Some(HtmlInitialMediaState::Audio)),
+        (HTML, "p:video", "video", Some(HtmlInitialMediaState::Video)),
+        (HTML, "Audio", "Audio", None),
+        (SVG, "video", "video", None),
+        ("urn:example", "audio", "audio", None),
+    ];
+    let tickets: Vec<_> = cases
+        .iter()
+        .map(|(namespace, qualified, _, _)| {
+            batch.create_element_ns(&document, Namespace::from_uri(*namespace), *qualified)
+        })
+        .collect();
+    let commit = apply(&mut dom, batch);
+    let document = commit.document(&document).unwrap();
+    let snapshot = dom.snapshot();
+    for ((namespace, qualified, local, state), ticket) in cases.iter().zip(&tickets) {
+        let id = commit.created(ticket).unwrap().unwrap();
+        let node = snapshot.node(id).unwrap();
+        let element = node.as_element().unwrap();
+        assert_eq!(node.owner_document(), Some(document));
+        assert!(node.parent().is_none());
+        assert_eq!(node.tag_name(), Some(DocumentString::from(*qualified)));
+        assert_eq!(
+            element.name().namespace_uri(),
+            Namespace::from_uri(*namespace).uri()
+        );
+        assert_eq!(element.name().local_name(), &DocumentString::from(*local));
+        assert!(element.attributes().is_empty());
+        assert_eq!(element.initial_media_state(), *state);
+        if let Some(state) = state {
+            assert!(state.network_is_empty());
+            assert!(!state.has_media_data());
+            assert!(state.paused());
+            assert!(state.can_autoplay());
+            assert!(!state.delays_load_event());
+            assert!(state.show_poster());
+            assert_eq!(state.current_time(), 0.0);
+            assert!(state.current_src().is_empty());
+        }
+    }
+}
+
+#[test]
+fn unloaded_media_rejects_reached_resource_effects_atomically() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let audio = batch.create_element_ns(&document, Namespace::html(), "audio");
+    let video = batch.create_element_ns(&document, Namespace::html(), "video");
+    let source = batch.create_element_ns(&document, Namespace::html(), "source");
+    batch.set_attribute(&audio, "poster", "plain audio content attribute");
+    batch.set_attribute(&video, "poster", "");
+    batch.set_attribute_ns(
+        &video,
+        Namespace::from_uri("urn:foreign"),
+        "p:src",
+        "unrelated",
+    );
+    let commit = apply(&mut dom, batch);
+    let audio = commit.created(&audio).unwrap().unwrap();
+    let video = commit.created(&video).unwrap().unwrap();
+    let source = commit.created(&source).unwrap().unwrap();
+    let mut unset = DomBatch::new();
+    unset.remove_attribute(video, "poster");
+    apply(&mut dom, unset);
+
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    let mut load = DomBatch::new();
+    load.set_attribute(audio, "src", "");
+    let mut poster = DomBatch::new();
+    poster.set_attribute(video, "poster", "poster.png");
+    let mut select = DomBatch::new();
+    select.insert_before(source, video, None);
+    let cancel = AtomicBool::new(false);
+    for (batch, expected) in [
+        (load, HtmlMediaResourceEffect::Load),
+        (poster, HtmlMediaResourceEffect::DeterminePoster),
+        (select, HtmlMediaResourceEffect::SelectResource),
+    ] {
+        assert_eq!(
+            dom.apply(batch, &cancel).unwrap_err(),
+            DomError::MediaResourceEffectUnavailable(expected)
+        );
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+        assert_eq!(dom.usage(), usage);
+    }
+    assert!(dom.snapshot().node(source).unwrap().parent().is_none());
+    assert_eq!(
+        dom.snapshot()
+            .node(video)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .initial_media_state(),
+        Some(HtmlInitialMediaState::Video)
+    );
+    let mut clone = DomBatch::new();
+    let cloned = clone.clone_node(video, false);
+    let cloned = apply(&mut dom, clone).created(&cloned).unwrap().unwrap();
+    assert_ne!(cloned, video);
+    assert_eq!(
+        dom.snapshot()
+            .node(cloned)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .initial_media_state(),
+        Some(HtmlInitialMediaState::Video)
+    );
+}
+
+#[test]
+fn media_fallback_is_ordinary_content_outside_the_flat_tree() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element_ns(&document, Namespace::html(), "div");
+    batch.insert_before(&root, &document, None);
+    let cases = [(HTML, "audio"), (HTML, "video"), (SVG, "video")].map(|(namespace, name)| {
+        let host = batch.create_element_ns(&document, Namespace::from_uri(namespace), name);
+        let fallback = batch.create_element_ns(&document, Namespace::html(), "span");
+        let text = batch.create_text(&document, "fallback");
+        batch.insert_before(&host, &root, None);
+        batch.insert_before(&fallback, &host, None);
+        batch.insert_before(&text, &fallback, None);
+        (host, fallback, text, namespace == HTML)
+    });
+    let commit = apply(&mut dom, batch);
+    let document = commit.document(&document).unwrap();
+    let root = commit.created(&root).unwrap().unwrap();
+    let snapshot = dom.snapshot();
+    let cancel = AtomicBool::new(false);
+    let flat = snapshot
+        .flat_tree(document, DomSlotQueryLimits::new(16, 16).unwrap(), &cancel)
+        .unwrap();
+    for (host, fallback, text, media) in cases {
+        let host = commit.created(&host).unwrap().unwrap();
+        let fallback = commit.created(&fallback).unwrap().unwrap();
+        let text = commit.created(&text).unwrap().unwrap();
+        assert_eq!(snapshot.node(fallback).unwrap().parent(), Some(host));
+        assert_eq!(snapshot.node(text).unwrap().parent(), Some(fallback));
+        assert_eq!(snapshot.node(host).unwrap().shadow_root(), None);
+        assert_eq!(flat.relation(host).unwrap(), DomFlatRelation::Parent(root));
+        assert_eq!(
+            flat.relation(fallback).unwrap(),
+            if media {
+                DomFlatRelation::Excluded
+            } else {
+                DomFlatRelation::Parent(host)
+            }
+        );
+        assert_eq!(
+            flat.relation(text).unwrap(),
+            if media {
+                DomFlatRelation::Excluded
+            } else {
+                DomFlatRelation::Parent(fallback)
+            }
+        );
+    }
+}
+
+#[test]
+fn removing_media_from_a_document_requires_its_stable_state_steps() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let container = batch.create_element_ns(&document, Namespace::html(), "div");
+    let audio = batch.create_element_ns(&document, Namespace::html(), "audio");
+    let video = batch.create_element_ns(&document, Namespace::html(), "video");
+    let fragment = batch.create_fragment(&document);
+    let detached = batch.create_element_ns(&document, Namespace::html(), "audio");
+    let shadow_host = batch.create_element_ns(&document, Namespace::html(), "section");
+    let shadow = batch.attach_shadow(
+        &shadow_host,
+        DomShadowRootInit::new(HtmlShadowRootMode::Open),
+    );
+    let hosted = batch.create_element_ns(&document, Namespace::html(), "video");
+    batch.insert_before(&container, &document, None);
+    batch.insert_before(&audio, &container, None);
+    batch.insert_before(&video, &container, None);
+    batch.insert_before(&detached, &fragment, None);
+    batch.insert_before(&shadow_host, &container, None);
+    batch.insert_before(&hosted, &shadow, None);
+    let commit = apply(&mut dom, batch);
+    let container = commit.created(&container).unwrap().unwrap();
+    let audio = commit.created(&audio).unwrap().unwrap();
+    let video = commit.created(&video).unwrap().unwrap();
+    let detached = commit.created(&detached).unwrap().unwrap();
+    let shadow_host = commit.created(&shadow_host).unwrap().unwrap();
+    let hosted = commit.created(&hosted).unwrap().unwrap();
+    let cancel = AtomicBool::new(false);
+
+    let mut remove_detached = DomBatch::new();
+    remove_detached.detach(detached);
+    remove_detached.detach(shadow_host);
+    apply(&mut dom, remove_detached);
+    assert!(dom.snapshot().node(detached).unwrap().parent().is_none());
+    assert!(dom.snapshot().node(shadow_host).unwrap().parent().is_none());
+    assert!(dom.snapshot().node(hosted).unwrap().parent().is_some());
+
+    let before = dom.snapshot().stamp();
+    let usage = dom.usage();
+    for node in [audio, container] {
+        let mut batch = DomBatch::new();
+        batch.detach(node);
+        assert_eq!(
+            dom.apply(batch, &cancel).unwrap_err(),
+            DomError::MediaRemovalStableStateUnavailable
+        );
+        assert_eq!(dom.snapshot().stamp(), before);
+        assert_eq!(dom.usage(), usage);
+    }
+    let limits = DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2);
+    let result = match dom.begin_source_edit(DomSourceEdit::detach(video), limits, &cancel) {
+        Ok(mut lease) => lease.advance(&cancel).map(drop),
+        Err(error) => Err(error),
+    };
+    assert_eq!(result, Err(DomError::MediaRemovalStableStateUnavailable));
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert_eq!(dom.usage(), usage);
+    assert_eq!(
+        dom.snapshot().node(audio).unwrap().parent(),
+        Some(container)
+    );
+    assert_eq!(
+        dom.snapshot().node(video).unwrap().parent(),
+        Some(container)
+    );
+}
+
+#[test]
+fn source_media_creation_retains_its_exact_native_result() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let document = apply(&mut dom, batch).document(&document).unwrap();
+    let cancel = AtomicBool::new(false);
+    let limits = DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2);
+    for (name, expected) in [
+        ("audio", HtmlInitialMediaState::Audio),
+        ("p:video", HtmlInitialMediaState::Video),
+    ] {
+        let edit = DomSourceEdit::create_element_ns(document.node(), Namespace::html(), name);
+        let mut lease = dom.begin_source_edit(edit, limits, &cancel).unwrap();
+        let DomSourceProgress::Complete(result) = lease.advance(&cancel).unwrap() else {
+            panic!("fresh unloaded media has no resource handoff");
+        };
+        let node = result.published_node().unwrap();
+        drop(lease);
+        assert_eq!(
+            dom.snapshot()
+                .node(node)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .initial_media_state(),
+            Some(expected)
+        );
+        let before = dom.snapshot().stamp();
+        let usage = dom.usage();
+        let edit = DomSourceEdit::set_attribute(node, "src", "");
+        let refusal = match dom.begin_source_edit(edit, limits, &cancel) {
+            Ok(mut lease) => lease.advance(&cancel).unwrap_err(),
+            Err(error) => error,
+        };
+        assert_eq!(
+            refusal,
+            DomError::MediaResourceEffectUnavailable(HtmlMediaResourceEffect::Load)
+        );
+        assert_eq!(dom.snapshot().stamp(), before);
+        assert_eq!(dom.usage(), usage);
+    }
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    let edit = DomSourceEdit::create_element_ns(document.node(), Namespace::html(), "audio");
+    let cancelled = AtomicBool::new(true);
+    assert!(matches!(
+        dom.begin_source_edit(edit, limits, &cancelled),
+        Err(DomError::Cancelled)
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+}
+
+#[test]
 fn unmet_builtin_profiles_reject_the_whole_batch_with_the_actual_requirement() {
     let mut dom = dom();
     for (ns, name, requirement) in [
         (
             HTML,
-            "audio",
-            Requirement::KnownHtml(KnownHtmlElement::Audio),
+            "track",
+            Requirement::KnownHtml(KnownHtmlElement::Track),
         ),
         (
             HTML,

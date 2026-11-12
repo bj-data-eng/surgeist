@@ -98,27 +98,7 @@ pub(super) fn html_roots_select_their_exact_interfaces() {
             })
             .unwrap();
         previous = Some(native_root);
-        let source = format!(
-            r#"(() => {{
-                const type = globalThis["{interface}"];
-                const parent = globalThis["{parent}"];
-                if (typeof type !== "function") return "missing {interface}";
-                if (typeof parent !== "function") return "missing {parent}";
-                const root = interfaceDocument.documentElement;
-                return Object.getPrototypeOf(root) === type.prototype
-                    && Object.getPrototypeOf(type) === parent
-                    && Object.getPrototypeOf(type.prototype) === parent.prototype
-                    && root.localName === "{name}" && root.ownerDocument === interfaceDocument
-                    ? "ok" : "wrong {interface} for {name}";
-            }})()"#,
-        );
-        let result = host
-            .in_document(&permit, |scope| {
-                let value = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
-                scope.to_utf16(&value)
-            })
-            .unwrap();
-        assert_eq!(String::from_utf16(&result).unwrap(), "ok", "{name}");
+        assert_html_root_interface(&mut host, &permit, name, interface, parent);
     }
     eval(
         &mut host,
@@ -129,6 +109,48 @@ pub(super) fn html_roots_select_their_exact_interfaces() {
                 Object.getPrototypeOf(type.prototype) === HTMLMediaElement.prototype))"#,
         1.0,
     );
+    drop(host);
+    for (name, interface) in [("audio", "HTMLAudioElement"), ("video", "HTMLVideoElement")] {
+        let (mut host, permit, document) = interface_document();
+        host.with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let root = batch.create_element_ns(document, Namespace::html(), name);
+            batch.insert_before(&root, document, None);
+            dom.apply(batch, &cancel()).unwrap();
+        })
+        .unwrap();
+        assert_html_root_interface(&mut host, &permit, name, interface, "HTMLMediaElement");
+    }
+}
+
+fn assert_html_root_interface(
+    host: &mut DocumentScriptHost,
+    permit: &DocumentScriptPermit,
+    name: &str,
+    interface: &str,
+    parent: &str,
+) {
+    let source = format!(
+        r#"(() => {{
+            const type = globalThis["{interface}"];
+            const parent = globalThis["{parent}"];
+            if (typeof type !== "function") return "missing {interface}";
+            if (typeof parent !== "function") return "missing {parent}";
+            const root = interfaceDocument.documentElement;
+            return Object.getPrototypeOf(root) === type.prototype
+                && Object.getPrototypeOf(type) === parent
+                && Object.getPrototypeOf(type.prototype) === parent.prototype
+                && root.localName === "{name}" && root.ownerDocument === interfaceDocument
+                ? "ok" : "wrong {interface} for {name}";
+        }})()"#,
+    );
+    let result = host
+        .in_document(permit, |scope| {
+            let value = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&result).unwrap(), "ok", "{name}");
 }
 
 pub(super) fn generic_and_mathml_roots_keep_exact_namespaces() {

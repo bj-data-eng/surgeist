@@ -458,6 +458,12 @@ impl DomElement {
             ) => NativeFamily::Img,
             Requirement::KnownHtml(KnownHtmlElement::Picture) => NativeFamily::Picture,
             Requirement::KnownHtml(KnownHtmlElement::Source) => NativeFamily::Source,
+            Requirement::KnownHtml(KnownHtmlElement::Audio) => {
+                NativeFamily::Media(surgeist_html::elements::media::HtmlInitialMediaState::Audio)
+            }
+            Requirement::KnownHtml(KnownHtmlElement::Video) => {
+                NativeFamily::Media(surgeist_html::elements::media::HtmlInitialMediaState::Video)
+            }
             Requirement::KnownHtml(KnownHtmlElement::Optgroup) => NativeFamily::Optgroup,
             Requirement::KnownHtml(KnownHtmlElement::Selectedcontent) => {
                 NativeFamily::Selectedcontent(false)
@@ -562,13 +568,22 @@ impl DomElement {
     pub(crate) fn is_img(&self) -> bool {
         matches!(self.family, NativeFamily::Img)
     }
+    /// Observe the actual admitted unloaded Audio or Video state.
+    pub fn initial_media_state(
+        &self,
+    ) -> Option<surgeist_html::elements::media::HtmlInitialMediaState> {
+        match self.family {
+            NativeFamily::Media(state) => Some(state),
+            _ => None,
+        }
+    }
     pub(crate) fn image_tree_element(&self) -> Option<KnownHtmlElement> {
         match self.family {
             NativeFamily::Img => Some(KnownHtmlElement::Img),
             NativeFamily::Picture => Some(KnownHtmlElement::Picture),
             NativeFamily::Source => Some(KnownHtmlElement::Source),
-            _ => KnownHtmlElement::from_name(self.name())
-                .filter(|tag| matches!(tag, KnownHtmlElement::Audio | KnownHtmlElement::Video)),
+            NativeFamily::Media(state) => Some(state.element()),
+            _ => None,
         }
     }
     pub(crate) fn set_style_payload(&mut self, value: Arc<Payload<crate::DomStyleState>>) {

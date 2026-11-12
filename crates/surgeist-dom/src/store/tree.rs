@@ -589,6 +589,22 @@ impl Draft {
         self.run_effects(limits, cancel)
     }
 
+    fn former_ordinary_document(
+        &self,
+        key: Key,
+        removed: Key,
+        old_parent: Key,
+        admit: &mut impl FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<Key>, DomError> {
+        // The shadow-inclusive walk also visits hosted trees. Their ordinary
+        // roots remain separate from the removed subtree and the Document.
+        if crate::slot::root_admitted(self, key, admit)? != removed {
+            return Ok(None);
+        }
+        let root = crate::slot::root_admitted(self, old_parent, admit)?;
+        Ok(matches!(self.node(root)?.kind(), KindRead::Document(_)).then_some(root))
+    }
+
     pub(super) fn tree_effect(
         &mut self,
         frame: Frame,
@@ -901,33 +917,27 @@ impl Draft {
                         6 => self.hyperlink_tree_change(key, Some(parent), cancel)?,
                         7 => self.style_tree_change(key, old_parent, limits, cancel)?,
                         9 => self.dialog_removal(key, limits, cancel)?,
-                        8 => {
-                            if matches!(self.node(key)?.kind(), KindRead::Element(element) if element.is_meta())
-                            {
-                                // The shadow-inclusive removal walk also visits
-                                // hosted trees. Only a Meta whose ORDINARY root
-                                // was the removed root belonged to the former
-                                // ordinary Document tree.
+                        8 => match self.node(key)?.kind() {
+                            KindRead::Element(element) if element.is_meta() => {
                                 let old_document =
-                                    if crate::slot::root_admitted(self, key, &mut || {
+                                    self.former_ordinary_document(key, root, parent, &mut || {
                                         self.meta_step(cancel)
-                                    })? == root
-                                    {
-                                        let former_root =
-                                            crate::slot::root_admitted(self, parent, &mut || {
-                                                self.meta_step(cancel)
-                                            })?;
-                                        matches!(
-                                            self.node(former_root)?.kind(),
-                                            KindRead::Document(_)
-                                        )
-                                        .then_some(former_root)
-                                    } else {
-                                        None
-                                    };
+                                    })?;
                                 self.meta_removed(key, old_document, limits, cancel)?;
                             }
-                        }
+                            KindRead::Element(element)
+                                if element.initial_media_state().is_some() =>
+                            {
+                                let old_document =
+                                    self.former_ordinary_document(key, root, parent, &mut || {
+                                        self.effect_step(cancel)
+                                    })?;
+                                if old_document.is_some() {
+                                    return Err(DomError::MediaRemovalStableStateUnavailable);
+                                }
+                            }
+                            _ => (),
+                        },
                         _ => (),
                     }
                 } else {

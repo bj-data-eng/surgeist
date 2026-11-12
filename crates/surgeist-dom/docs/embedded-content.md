@@ -110,9 +110,8 @@ Img siblings of an actual Picture. Source insertion and root removal visit all
 actual direct Img children of the current/old Picture in source order. Img
 insertion into Picture and root removal from Picture start their own updates;
 removal then clears the already-null auto-sizes width. Descendant hooks preserve
-the subtree-root distinction. No temporary fanout list or resource selection is
-fabricated. Audio/Video native owners and Source media selection are not admitted;
-this profile supplies no src/network processing state.
+the subtree-root distinction. A Source insertion under unloaded Audio or Video
+reaches the media resource selection operation described below.
 
 Adoption into a different Document preserves the image request state and starts
 a new update against that Document. Its actual removal and Form owner reset
@@ -138,5 +137,37 @@ API is exposed. Readback of an invocation does not establish its current livenes
 or transfer its execution authority. ElementState, NodeDocument and ordinary tree/
 attribute changes retain their distinct coverage; rejection restores all state,
 waits, revision and history together.
+
+## Initial Audio and Video state
+
+The exact HTML expanded names `audio` and `video` establish the unloaded media
+state through ordinary native creation, Source creation, cloning, and authored
+immutable installation. Read it through `DomElement::initial_media_state`.
+The network is empty, no media data is available, playback is paused, and the
+show-poster and autoplay eligibility flags are set. The initial playback time
+is zero, the current resource address is empty, and media does not delay the
+Document load event. The canonical node owns this state and its lifetime.
+
+The unloaded profile has a private, empty shadow boundary with no slots.
+Fallback descendants keep their ordinary DOM identity and parentage, and the
+CSS flat tree excludes them. The boundary creates no author-visible ShadowRoot.
+[Pinned Video shadow tree](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L37209)
+· [Pinned Audio shadow tree](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L37718).
+
+Setting a null-namespace `src` reaches the load algorithm. A Source inserted
+under unloaded media reaches resource selection. A nonempty Video `poster`
+reaches poster determination. Each operation returns
+`DomError::MediaResourceEffectUnavailable` with its exact effect before
+publication. An empty or absent Video poster retains the absent frame and
+null resumption.
+
+Removing media from an ordinary Document tree reaches the stable-state
+removal steps. The edit returns `DomError::MediaRemovalStableStateUnavailable`
+before publication. Removing nodes from an ordinary detached fragment or
+removing a host that contains media only in its shadow tree does not reach this
+hook. Parser-created media requires its original lifecycle evidence, which the
+current immutable parse report does not supply.
+[Pinned HTML removal steps](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L41444)
+· [Pinned parser lifecycle](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L42334).
 
 [Back to surgeist-dom](../README.md).
