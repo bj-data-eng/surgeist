@@ -10,7 +10,7 @@ use crate::{AxisSizingRequestOf, FlowAxes};
 
 mod fit;
 
-use fit::{NumericRunContext, fit_numeric_run};
+use fit::{CapturedRunContext, NumericRunContext, fit_captured_run, fit_numeric_run};
 
 #[cfg(test)]
 mod baseline_offset_tests;
@@ -931,413 +931,44 @@ where
     let mut text_output = None;
     let mut text_progress = None;
     let mut formatted_item = None;
-    let mut report = if let Some(binding) = text_binding {
-        let (frame, frames, reusable, associations, scope_alignments, entry_funding) = {
-            let state = tree
-                .text_computation()
-                .expect("capture-backed branch retains its session state");
-            (
-                state.frame(container),
-                state.frames.clone(),
-                state.reusable.clone(),
-                state.associations.clone(),
-                state.scope_resources.clone(),
-                state.entry_case_funding().cloned(),
-            )
-        };
-        let canonical_exclusions = float_exclusions
-            .canonical_for_text(container, &frames)
-            .map_err(|error| text_run_error(container, error))?;
-        let exclusions = canonical_exclusions.as_ref().unwrap_or(float_exclusions);
-        let actual_content = frame.and_then(|frame| frame.normal.content_box());
-        let content_insets =
-            frame
-                .zip(actual_content)
-                .map_or(constants.content_box_inset, |(frame, rect)| {
-                    Edges::new(
-                        rect.origin().y,
-                        frame.normal.size.width - rect.origin().x - rect.size().width,
-                        frame.normal.size.height - rect.origin().y - rect.size().height,
-                        rect.origin().x,
-                    )
-                });
-        let available =
-            if crate::layout_math::normal_available_size(available_inline_extent).is_some() {
-                crate::layout_math::with_available_extent(
-                    available_inline_extent,
-                    actual_content.map(|rect| constants.flow_axes.logical_size(rect.size()).inline),
-                )
-                .map_err(|error| crate::error::sizing_resolution_error(container, error.into()))?
-            } else {
-                // A measured intrinsic result does not turn into a used constraint.
-                available_inline_extent
-            };
-        let formatted_mode = crate::layout_math::text_axis_request(available);
-        let formatted = tree
-            .text_computation()
-            .map(|state| {
-                state.formatted_snapshot(
-                    container,
-                    run,
-                    &text_run
-                        .as_ref()
-                        .expect("actual native source segment")
-                        .segment,
-                    input,
-                    formatted_mode,
-                )
-            })
-            .transpose()
-            .map_err(|error| text_run_error(container, error.into()))?
-            .unwrap_or_default();
-        let group_snapshot = tree
-            .group_computation()
-            .map(|groups| groups.snapshot())
-            .unwrap_or_default();
-        let actual_frame = if let Some(frame) = frame {
-            let visual_content = frame
-                .output
-                .scroll_geometry
-                .map(|geometry| geometry.content_box())
-                .ok_or_else(|| {
-                    text_run_error(
-                        container,
-                        crate::text_layout::fit::FitError::InvalidGeometry,
-                    )
-                })?;
-            if frame.normal.content_box().is_none() {
-                return Err(text_run_error(
-                    container,
-                    crate::text_layout::fit::FitError::InvalidGeometry,
-                ));
-            }
-            crate::text_layout::run::Frame::Canonical {
-                normal: crate::text_layout::run::CanonicalLineFrame {
-                    origin: frame.normal_origin,
-                    size: frame.normal.size,
-                    content_insets,
-                },
-                visual: crate::text_layout::run::CanonicalLineFrame {
-                    origin: frame.origin,
-                    size: frame.output.size,
-                    content_insets: Edges::new(
-                        visual_content.origin().y,
-                        frame.output.size.width
-                            - visual_content.origin().x
-                            - visual_content.size().width,
-                        frame.output.size.height
-                            - visual_content.origin().y
-                            - visual_content.size().height,
-                        visual_content.origin().x,
-                    ),
-                },
-            }
-        } else {
-            crate::text_layout::run::Frame::Measurement
-        };
-        let context = crate::text_layout::run::Context {
-            scope_alignments,
-            entry_funding: entry_funding.clone(),
-            orientation: text_orientation
-                .expect("the actual Text binding has its resolved orientation"),
-            inline_baseline_context: constants.inline_baseline_context,
-            groups: group_snapshot,
-            wrapping: tree.wrapping_context().and_then(|(context, graph)| {
-                crate::text_layout::run::WrappingProjection::new(
-                    context,
-                    graph,
-                    text_run.as_ref().expect("actual admitted native run"),
-                    &associations,
-                )
-                .map(|projection| projection.with_incoming(box_frontier.clone()))
-            }),
-            formatted,
-            frame: actual_frame,
-            containing_size,
-            content_insets,
-            cursor_block,
-            adjoining_displacement: adjoining_margin,
-            axes: constants.flow_axes,
-            available,
-            wrap_style: constants.wrap_style,
-            alignment: constants.text_align,
-            last_alignment: constants.text_align_last,
-            justification: constants.text_justification,
-            indent: resolve_text_indent(container, constants.text_indent, available)?,
-            indent_state,
-            hyphenation_state,
-            hyphenate_limit_zone: constants.hyphenate_limit_zone,
-            line_box_context,
-            tail,
-        };
-        let text_controls = binding
-            .controls
-            .iter()
-            .map(|binding| {
-                let node = binding.node;
-                let source_index = source_index_start
-                    + run
-                        .iter()
-                        .position(|child| *child == node)
-                        .expect("capture admitted the actual control node");
-                let (kind, strut, endpoint) = match tree.layout_input(node) {
-                    crate::LayoutInputViewOf::LineBreak(control) => (
-                        crate::inline::InlineParticipantLayoutKind::ForcedLineBreak,
-                        Some((control.metrics(), control.vertical_align())),
-                        None,
-                    ),
-                    crate::LayoutInputViewOf::InlineBoundary(boundary) => (
-                        match boundary.kind() {
-                            crate::InlineBoundaryKind::Start => {
-                                crate::inline::InlineParticipantLayoutKind::InlineBoundaryStart
-                            }
-                            crate::InlineBoundaryKind::End => {
-                                crate::inline::InlineParticipantLayoutKind::InlineBoundaryEnd
-                            }
-                        },
-                        Some((boundary.metrics(), boundary.vertical_align())),
-                        Some(crate::inline::InlineEndpointOf::from_input(boundary)),
-                    ),
-                    crate::LayoutInputViewOf::TextControl(_) => (
-                        crate::inline::InlineParticipantLayoutKind::SemanticControl,
-                        None,
-                        None,
-                    ),
-                    _ => unreachable!("validated actual control retains its normalized role"),
-                };
-                let boundary = endpoint
-                    .map(|endpoint| BoundaryAllocationContext {
-                        container,
-                        prepared: &text_binding.expect("the actual Text branch retains its binding").prepared,
-                        associations: &associations,
-                        resources: &context.scope_alignments,
-                        orientation: context.orientation,
-                        axes: constants.flow_axes,
-                    }.allocate(tree, node, &binding.occurrence, endpoint))
-                    .transpose()?;
-                Ok(crate::text_layout::run::Control {
-                    node,
-                    source_index,
-                    kind,
-                    endpoint,
-                    allocation: surgeist_text::ControlAllocation {
-                        occurrence: binding.occurrence.clone(),
-                        boundary,
-                        strut: strut.map(|(metrics, alignment)| surgeist_text::ControlStrut {
-                            baseline: metrics.baseline().to_f64(),
-                            line_extent: metrics.line_extent().to_f64(),
-                            alignment: match alignment {
-                                crate::VerticalAlignOf::Baseline => {
-                                    surgeist_text::LineBoxAlignment::Baseline
-                                }
-                                crate::VerticalAlignOf::Top => surgeist_text::LineBoxAlignment::Top,
-                                crate::VerticalAlignOf::Bottom => {
-                                    surgeist_text::LineBoxAlignment::Bottom
-                                }
-                                crate::VerticalAlignOf::Shift(offset) => {
-                                    surgeist_text::LineBoxAlignment::Shift(
-                                        surgeist_text::BaselineShift::try_new(offset.get().to_f64())
-                                            .expect("a finite Layout scalar widens to finite Text coordinates"),
-                                    )
-                                }
-                            },
-                        }),
-                    },
-                })
-            })
-            .collect::<Result<Vec<_>, LayoutErrorOf<Tree::Node, S, M>>>()?;
-        let intrinsic_max = !float_events.is_empty()
-            && (available.operation() == crate::SizingOperation::MaxContent);
-        let quality_replay = matches!(
-            constants.wrap_style,
-            crate::TextWrapStyle::Balance
-                | crate::TextWrapStyle::AvoidShortLastLine
-                | crate::TextWrapStyle::Pretty
-        ) && crate::layout_math::normal_available_size(available).is_some();
-        let admitted = text_run.as_ref().expect("actual admitted native run");
-        let funding = entry_funding.as_ref().map(|funding| funding.as_ref());
-        let bound_events = float_events
-            .bind(
-                admitted,
-                &associations,
-                text_controls.iter().map(|control| &control.allocation),
-                |owner| {
-                    let (context, graph) = tree
-                        .wrapping_context()
-                        .ok_or(crate::WrappingScopeError::MissingCapture)?;
-                    super::float_text::source_interval(
-                        admitted,
-                        &associations,
-                        context,
-                        graph,
-                        owner,
-                        funding,
-                    )
-                },
-                funding,
-            )
-            .map_err(|error| text_run_error(container, error))?;
-        let encounters = std::cell::RefCell::new(
-            super::float_text::Encounters::new(
-                bound_events,
-                exclusions
-                    .try_clone()
-                    .map_err(|error| text_run_error(container, error.into()))?,
+    let mut report = if let Some(admitted) = text_run.as_ref() {
+        let fit = fit_captured_run(
+            tree,
+            CapturedRunContext {
+                container,
+                run,
+                source_index_start,
+                available_inline_extent,
                 cursor_block,
-                if intrinsic_max {
-                    super::floats::FloatInlineSpace::IntrinsicMaximum
-                } else {
-                    super::floats::FloatInlineSpace::Finite
-                },
-                quality_replay
-                    || tail == crate::text_layout::fit::TailContext::CompleteBlock
-                        && crate::layout_math::normal_available_size(available).is_some(),
-                quality_replay,
-            )
-            .map_err(|error| text_run_error(container, error))?,
-        );
-        let result = crate::text_layout::run::layout(
-            text_run.as_ref().expect("actual admitted native run"),
-            &associations,
-            &text_atomics,
-            &text_controls,
-            context,
-            &reusable,
-            crate::text_layout::run::LineEnvironment {
-                reset: |mode| match mode {
-                    crate::text_layout::fit::EncounterReset::Candidate => {
-                        encounters.borrow_mut().reset_candidate()
-                    }
-                    crate::text_layout::fit::EncounterReset::Sequence => {
-                        encounters.borrow_mut().restart_sequence()
-                    }
-                    crate::text_layout::fit::EncounterReset::Group => {
-                        encounters.borrow_mut().restart_group()
-                    }
-                },
-                checkpoint_group: || encounters.borrow_mut().checkpoint_group(),
-                band: |block_start, block_end| {
-                    let block_start = crate::text_layout::run::number::<S>(block_start)?;
-                    let block_end = crate::text_layout::run::number::<S>(block_end)?;
-                    let start = cursor_block + block_start;
-                    let end = cursor_block + block_end;
-                    let band = if provider_enabled {
-                        match encounters
-                            .borrow()
-                            .band()
-                            .query_provider_band(tree, container, start, end)
-                        {
-                            Ok(band) => band,
-                            Err(error) => {
-                                *provider_error.borrow_mut() = Some(error);
-                                return Err(crate::text_layout::fit::FitError::Dependency);
-                            }
-                        }
-                    } else {
-                        encounters
-                            .borrow()
-                            .band()
-                            .query_rectangular_line_band(start, end)?
-                    };
-                    let inset_inline = constants
-                        .flow_axes
-                        .logical_edges(content_insets)
-                        .inline_start;
-                    let intrinsic_end_occupation = intrinsic_max
-                        .then(|| encounters.borrow().band().end_occupation(&band).to_f64());
-                    Ok(crate::text_layout::fit::Band {
-                        start: (band.inline_start - inset_inline).to_f64(),
-                        end: (band.inline_end - inset_inline).to_f64(),
-                        intrinsic_end_occupation,
-                        next_transition: band
-                            .next_transition
-                            .map(|next| (next - cursor_block).to_f64()),
-                    })
-                },
-                clear: |block, request: &surgeist_text::LineSelectionRequest| {
-                    let clear = request
-                        .participants
-                        .iter()
-                        .rev()
-                        .find_map(|participant| {
-                            let surgeist_text::PreparedParticipant::Control(control) = participant
-                            else {
-                                return None;
-                            };
-                            let row = binding
-                                .controls
-                                .iter()
-                                .find(|row| &row.occurrence == control)?;
-                            tree.layout_input(row.node)
-                                .as_line_break()
-                                .map(|control| control.clear())
-                        })
-                        .unwrap_or(crate::Clear::None);
-                    let block = crate::text_layout::run::number::<S>(block)?;
-                    let query = cursor_block + block;
-                    let cleared = encounters.borrow().band().clearance_block(query, clear);
-                    // Only the actual same-scalar clearance operation can issue a
-                    // minimum. Narrowing the queried position alone is not a
-                    // clearance and must not replace the fitter's f64 position.
-                    Ok((cleared > query).then(|| cleared.to_f64() - cursor_block.to_f64()))
-                },
-                replay: |line: &surgeist_text::FinalizedLine, replay| match encounters
-                    .borrow_mut()
-                    .replay(
-                        container,
-                        line,
-                        replay,
-                        entry_funding.as_ref().map(|funding| funding.as_ref()),
-                    ) {
-                    Ok(basis) => Ok(basis),
-                    Err(error) => {
-                        *provider_error.borrow_mut() = Some(error);
-                        Err(crate::text_layout::fit::FitError::Dependency)
-                    }
-                },
-                accept: || encounters.borrow_mut().accept(),
+                adjoining_margin,
+                constants,
+                input,
+                orientation: text_orientation
+                    .expect("the actual Text binding has its resolved orientation"),
+                provider_enabled,
+                line_box_context,
+                tail,
+                indent_state,
+                hyphenation_state,
+                containing_size,
+                box_frontier: &box_frontier,
+                admitted,
+                text_atomics: &text_atomics,
+                float_events,
             },
-        );
-        if let Some(error) = provider_error.borrow_mut().take() {
-            return Err(error);
-        }
-        let mut output = result.map_err(|error| text_run_error(container, error))?;
-        formatted_item = tree
-            .text_computation()
-            .map(|state| {
-                state.formatted_merge_run(
-                    container,
-                    run,
-                    &text_run
-                        .as_ref()
-                        .expect("actual native source segment")
-                        .segment,
-                    input,
-                    formatted_mode,
-                    core::mem::take(&mut output.formatted),
-                )
-            })
-            .transpose()
-            .map_err(|error| text_run_error(container, error.into()))?
-            .flatten();
-        let accepted = encounters.into_inner().finish();
-        for child in accepted.children {
-            tree.accept_float_child(&child.packet)?;
-            if let Some(groups) = tree.group_computation() {
-                groups.child(child.packet.node);
-            }
-            encounter_plans.push(child.pending);
-        }
-        *float_exclusions = accepted.ledger;
-        let report = output.report.clone();
-        text_progress = Some(output.progress);
-        margin = if output.progress.phase == crate::text_layout::fit::EntryPhase::Consumed {
+            float_exclusions,
+            &mut encounter_plans,
+            &provider_error,
+        )?;
+        formatted_item = fit.formatted;
+        text_progress = Some(fit.output.progress);
+        margin = if fit.output.progress.phase == crate::text_layout::fit::EntryPhase::Consumed {
             InlineRunMargin::Separates
         } else {
             InlineRunMargin::Adjoins
         };
-        text_output = Some(output);
-        report
+        text_output = Some(fit.output);
+        fit.report
     } else {
         let fit = fit_numeric_run(
             tree,
