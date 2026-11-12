@@ -703,7 +703,7 @@ fn live_clone_refuses_direct_shadow_root_foreign_and_retired_source_but_import_k
     let leaf = batch.create_text(&document, "historical");
     let commit = apply(&mut dom, batch);
     let doc = commit.document(&document).unwrap();
-    let shadow = commit.created(&root).unwrap().unwrap();
+    let shadow = commit.attached_shadow_root(&root).unwrap().unwrap();
     let leaf = commit.created(&leaf).unwrap().unwrap();
     let old = dom.snapshot();
     for import in [false, true] {

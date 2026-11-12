@@ -381,6 +381,28 @@ impl<'a> DomNode<'a> {
     pub fn hosted_shadow_root(self) -> Option<NodeId> {
         self.node.shadow_root()
     }
+    /// Qualify the host's existing root for matching declarative reuse.
+    /// A host without a root returns `None`. A mode mismatch or a
+    /// nondeclarative root returns `NotSupported`.
+    pub fn reusable_shadow_root_with<E: From<DomError>>(
+        self,
+        mode: surgeist_html::construction::HtmlShadowRootMode,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<NodeId>, E> {
+        step()?;
+        if self.as_element().is_none() {
+            return Err(DomError::WrongNodeKind.into());
+        }
+        let Some(root) = self.hosted_shadow_root() else {
+            return Ok(None);
+        };
+        let node = self.snapshot.node_with(root, step)?;
+        let DomNodeKind::ShadowRoot(state) = node.kind() else {
+            return Err(DomError::WrongNodeKind.into());
+        };
+        state.require_declarative_reuse(mode)?;
+        Ok(Some(root))
+    }
     /// Source Element.shadowRoot presentation: a closed root is not exposed.
     pub fn shadow_root(self) -> Option<NodeId> {
         self.shadow_root_with(|| Ok::<(), DomError>(()))

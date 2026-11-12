@@ -7,7 +7,8 @@ use surgeist_html::construction::{
 /// Native attach options. Mode is required; the other source defaults are
 /// named slot assignment and false delegates-focus, clonable and serializable.
 /// The registry defaults to the host's node Document registry. Explicit null
-/// is supported. Registry objects and declarative reuse are unavailable.
+/// is supported. Matching declarative roots keep their original options.
+/// Registry objects are unavailable.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomShadowRootInit {
     pub(crate) properties: HtmlShadowRootProperties,
@@ -57,6 +58,20 @@ pub struct DomShadowRootState {
     keep_custom_element_registry_null: bool,
 }
 impl DomShadowRootState {
+    pub(crate) fn require_declarative_reuse(
+        self,
+        mode: HtmlShadowRootMode,
+    ) -> Result<(), crate::DomError> {
+        if !self.declarative() || self.mode() != mode {
+            return Err(crate::DomError::NotSupported);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn clear_declarative(&mut self) {
+        self.declarative = false;
+    }
+
     pub(crate) fn select_global_registry(&mut self, registry: DomRegistryBinding) {
         if !self.keep_custom_element_registry_null {
             self.registry = registry;

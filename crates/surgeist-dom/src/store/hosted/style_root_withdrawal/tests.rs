@@ -360,7 +360,7 @@ impl Fixture {
             );
             dom.apply(setup, &cancel())
                 .unwrap()
-                .created(&shadow)
+                .attached_shadow_root(&shadow)
                 .unwrap()
                 .unwrap()
         };

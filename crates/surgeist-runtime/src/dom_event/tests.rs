@@ -1246,7 +1246,7 @@ fn shadow_config(mode: HtmlShadowRootMode, assignment: surgeist_dom::HtmlSlotAss
     Shadow {
         document: c.document(&d).unwrap(),
         host: c.created(&h).unwrap().unwrap(),
-        root: c.created(&r).unwrap().unwrap(),
+        root: c.attached_shadow_root(&r).unwrap().unwrap(),
         slot: c.created(&s).unwrap().unwrap(),
         light: c.created(&l).unwrap().unwrap(),
         inside: c.created(&i).unwrap().unwrap(),

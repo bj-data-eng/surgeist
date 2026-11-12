@@ -408,10 +408,10 @@ impl Recording {
     ) -> Result<usize, DomError> {
         let operand = |operand: &NodeOperand| match operand {
             NodeOperand::Existing(id) => Some(draft.live_key(Key::Existing(*id))),
-            NodeOperand::Created(ticket) => draft
-                .tickets
-                .get(ticket.index)
-                .map(|key| draft.live_key(*key)),
+            NodeOperand::Created(crate::CreatedNode { index, .. })
+            | NodeOperand::AttachedShadowRoot(crate::AttachedShadowRoot { index, .. }) => {
+                draft.tickets.get(*index).map(|key| draft.live_key(*key))
+            }
         };
         let mut found = None;
         for (index, row) in self.inputs().context.profiles.iter().enumerate() {

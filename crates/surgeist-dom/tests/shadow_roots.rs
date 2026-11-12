@@ -40,7 +40,7 @@ fn base(dom: &mut Dom, mode: Mode, clonable: bool) -> (DocumentId, NodeId, NodeI
     (
         commit.document(&document).unwrap(),
         commit.created(&host).unwrap().unwrap(),
-        commit.created(&root).unwrap().unwrap(),
+        commit.attached_shadow_root(&root).unwrap().unwrap(),
     )
 }
 #[test]
@@ -60,7 +60,7 @@ fn explicit_mode_defaults_and_complete_native_state_have_real_canonical_identity
         let mut batch = DomBatch::new();
         let root = batch.attach_shadow(host, init);
         let commit = apply(&mut dom, batch);
-        let root = commit.created(&root).unwrap().unwrap();
+        let root = commit.attached_shadow_root(&root).unwrap().unwrap();
         assert_eq!(before.node(host).unwrap().hosted_shadow_root(), None);
         assert_ne!(root, host);
         let snapshot = dom.snapshot();
@@ -124,7 +124,7 @@ fn explicit_properties_are_retained_without_claiming_slot_or_focus_execution() {
     let commit = apply(&mut dom, batch);
     let snapshot = dom.snapshot();
     let state = snapshot
-        .shadow_root(commit.created(&root).unwrap().unwrap())
+        .shadow_root(commit.attached_shadow_root(&root).unwrap().unwrap())
         .unwrap()
         .state();
     assert_eq!(state.properties(), properties);
@@ -158,7 +158,7 @@ fn shadow_preorder_and_scope_do_not_rewrite_ordinary_or_element_sibling_relation
     let id = |ticket| commit.created(ticket).unwrap().unwrap();
     let (inner, inner_root, deep, inner_light, light, text, comment, sibling) = (
         id(&inner),
-        id(&inner_root),
+        commit.attached_shadow_root(&inner_root).unwrap().unwrap(),
         id(&deep),
         id(&inner_light),
         id(&light),
@@ -365,7 +365,7 @@ fn adoption_preserves_nested_shadow_identities_and_detach_connectedness_with_old
     let commit = apply(&mut dom, batch);
     let other = commit.document(&other).unwrap();
     let inner = commit.created(&inner).unwrap().unwrap();
-    let inner_root = commit.created(&inner_root).unwrap().unwrap();
+    let inner_root = commit.attached_shadow_root(&inner_root).unwrap().unwrap();
     let text = commit.created(&text).unwrap().unwrap();
     let old = dom.snapshot();
     let mut batch = DomBatch::new();
@@ -514,7 +514,7 @@ fn shallow_and_deep_import_copy_clonable_shadow_descendants_after_ordinary_child
     batch.insert_before(&deep, &inner_root, None);
     let commit = apply(&mut source, batch);
     let inner = commit.created(&inner).unwrap().unwrap();
-    let inner_root = commit.created(&inner_root).unwrap().unwrap();
+    let inner_root = commit.attached_shadow_root(&inner_root).unwrap().unwrap();
     let captured = source.snapshot();
     let mut batch = DomBatch::new();
     batch.detach(host);
@@ -616,7 +616,7 @@ fn detached_host_destruction_retires_all_owned_shadow_generations_and_old_snapsh
     batch.insert_before(&text, &inner_root, None);
     let commit = apply(&mut dom, batch);
     let inner = commit.created(&inner).unwrap().unwrap();
-    let inner_root = commit.created(&inner_root).unwrap().unwrap();
+    let inner_root = commit.attached_shadow_root(&inner_root).unwrap().unwrap();
     let text = commit.created(&text).unwrap().unwrap();
     let old = dom.snapshot();
     let mut batch = DomBatch::new();
@@ -640,7 +640,7 @@ fn detached_host_destruction_retires_all_owned_shadow_generations_and_old_snapsh
     let new_root = batch.attach_shadow(&replacement, DomShadowRootInit::new(Mode::Open));
     let commit = apply(&mut dom, batch);
     let replacement = commit.created(&replacement).unwrap().unwrap();
-    let new_root = commit.created(&new_root).unwrap().unwrap();
+    let new_root = commit.attached_shadow_root(&new_root).unwrap().unwrap();
     assert_ne!(replacement, host);
     assert_ne!(new_root, root);
     assert_eq!(old.shadow_root(root).unwrap().host(), host);
@@ -694,7 +694,7 @@ fn exact_node_and_string_admission_and_late_failure_leave_no_root_or_identity_hi
             );
         } else {
             let commit = result.unwrap();
-            assert!(commit.created(&root).unwrap().is_some());
+            assert!(commit.attached_shadow_root(&root).unwrap().is_some());
             assert_eq!(dom.usage().string_code_units(), 62);
         }
         let mut batch = DomBatch::new();
@@ -730,10 +730,10 @@ fn exact_node_and_string_admission_and_late_failure_leave_no_root_or_identity_hi
     let root = batch.attach_shadow(host, DomShadowRootInit::new(Mode::Open));
     let commit = apply(&mut dom, batch);
     assert_eq!(
-        commit.created(&rejected).unwrap_err(),
+        commit.attached_shadow_root(&rejected).unwrap_err(),
         DomError::ForeignBatch
     );
-    assert!(commit.created(&root).unwrap().is_some());
+    assert!(commit.attached_shadow_root(&root).unwrap().is_some());
 }
 #[test]
 fn no_op_root_detach_and_transient_owned_tree_do_not_advance_revision_or_history() {
@@ -748,7 +748,7 @@ fn no_op_root_detach_and_transient_owned_tree_do_not_advance_revision_or_history
     batch.destroy(&temporary);
     let commit = apply(&mut dom, batch);
     assert_eq!(commit.created(&temporary).unwrap(), None);
-    assert_eq!(commit.created(&temp_root).unwrap(), None);
+    assert_eq!(commit.attached_shadow_root(&temp_root).unwrap(), None);
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(dom.usage(), usage);
     assert!(commit.changes().changes().is_empty());
@@ -920,7 +920,7 @@ fn source_valid_builtin_hosts_and_actual_custom_name_grammar_are_admitted() {
         let commit = apply(&mut dom, batch);
         assert!(
             dom.snapshot()
-                .shadow_root(commit.created(&root).unwrap().unwrap())
+                .shadow_root(commit.attached_shadow_root(&root).unwrap().unwrap())
                 .is_ok()
         );
     }

@@ -73,7 +73,10 @@ impl DomInlineStyleBatchContext {
                     NodeOperand::Existing(id) if id.owner() != basis.owner() => {
                         return Err(DomError::ForeignOwner.into());
                     }
-                    NodeOperand::Created(ticket) if !Arc::ptr_eq(&ticket.owner, &batch.owner) => {
+                    NodeOperand::Created(crate::CreatedNode { owner, .. })
+                    | NodeOperand::AttachedShadowRoot(crate::AttachedShadowRoot {
+                        owner, ..
+                    }) if !Arc::ptr_eq(owner, &batch.owner) => {
                         return Err(DomError::ForeignBatch.into());
                     }
                     _ => {}
@@ -108,7 +111,9 @@ impl DomInlineStyleSourceContext {
                 match operand {
                     NodeOperand::Existing(id) if id.owner() == basis.owner() => {}
                     NodeOperand::Existing(_) => return Err(DomError::ForeignOwner.into()),
-                    NodeOperand::Created(_) => return Err(DomError::ForeignBatch.into()),
+                    NodeOperand::Created(_) | NodeOperand::AttachedShadowRoot(_) => {
+                        return Err(DomError::ForeignBatch.into());
+                    }
                 }
             }
         }

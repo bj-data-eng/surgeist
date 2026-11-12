@@ -668,7 +668,7 @@ fn document_adoption_keeps_each_preference_and_shadow_lists_have_no_document_his
     let style = batch.create_element_ns(first, Namespace::html(), "style");
     batch.set_attribute(&style, "title", "ShadowTitle");
     let made = session.dom().apply(batch, &flag()).unwrap();
-    let shadow = made.created(&shadow).unwrap().unwrap();
+    let shadow = made.attached_shadow_root(&shadow).unwrap().unwrap();
     let style = made.created(&style).unwrap().unwrap();
     styles
         .bind_root(
@@ -880,7 +880,7 @@ fn retired_shadow_generation_releases_its_root_without_changing_document_prefere
     );
     let made = session.dom().apply(batch, &flag()).unwrap();
     let host = made.created(&host).unwrap().unwrap();
-    let shadow = made.created(&shadow).unwrap().unwrap();
+    let shadow = made.attached_shadow_root(&shadow).unwrap().unwrap();
     styles
         .bind_root(
             &session.dom(),
@@ -908,7 +908,7 @@ fn retired_shadow_generation_releases_its_root_without_changing_document_prefere
         ),
     );
     let made = session.dom().apply(batch, &flag()).unwrap();
-    let replacement = made.created(&replacement).unwrap().unwrap();
+    let replacement = made.attached_shadow_root(&replacement).unwrap().unwrap();
     assert_ne!(shadow, replacement);
     styles
         .bind_root(

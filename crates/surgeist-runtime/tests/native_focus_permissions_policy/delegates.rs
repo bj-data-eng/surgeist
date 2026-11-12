@@ -272,7 +272,7 @@ fn autofocus_in_shadow_descendants_does_not_enter_the_dialog_ordinary_passes() {
         .dom()
         .apply(batch, &cancel())
         .unwrap()
-        .created(&root)
+        .attached_shadow_root(&root)
         .unwrap()
         .unwrap();
     let mut batch = DomBatch::new();

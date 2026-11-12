@@ -119,7 +119,7 @@ fn fixture(layout: Layout<'_>) -> Fixture {
     Fixture {
         document: commit.document(&document).unwrap(),
         host: id(&host),
-        shadow: id(&shadow),
+        shadow: commit.attached_shadow_root(&shadow).unwrap().unwrap(),
         slots: slots.iter().map(id).collect(),
         unrelated_slots: unrelated_slots.iter().map(id).collect(),
         child: id(&child),

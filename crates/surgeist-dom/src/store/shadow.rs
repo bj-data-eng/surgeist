@@ -1,4 +1,5 @@
 use super::transaction::KindRead;
+use super::tree::AfterRemovingChildren;
 use super::*;
 
 impl Draft {
@@ -52,6 +53,43 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<Key, DomError> {
+        let (document, existing) = self.qualify_shadow_host(host, cancelled)?;
+        if existing.is_some() {
+            return Err(DomError::NotSupported);
+        }
+        self.attach_new_shadow(host, document, init, limits, cancelled)
+    }
+
+    pub(super) fn attach_shadow_command(
+        &mut self,
+        host: Key,
+        init: crate::DomShadowRootInit,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let (document, existing) = self.qualify_shadow_host(host, cancelled)?;
+        let Some(root) = existing else {
+            let root = self.attach_new_shadow(host, document, init, limits, cancelled)?;
+            return self.register_ticket(root, cancelled);
+        };
+        let node = self.node(root)?;
+        let KindRead::ShadowRoot(state) = node.kind() else {
+            return Err(DomError::WrongNodeKind);
+        };
+        state.require_declarative_reuse(init.properties.mode())?;
+        self.replace_all_children(
+            root,
+            AfterRemovingChildren::ReuseShadowRoot,
+            limits,
+            cancelled,
+        )
+    }
+
+    fn qualify_shadow_host(
+        &self,
+        host: Key,
+        cancelled: &AtomicBool,
+    ) -> Result<(Key, Option<Key>), DomError> {
         self.source_step(cancelled)?;
         let node = self.node(host)?;
         let KindRead::Element(element) = node.kind() else {
@@ -111,12 +149,17 @@ impl Draft {
             surgeist_html::elements::native::HtmlCustomElementState::Uncustomized
                 | surgeist_html::elements::native::HtmlCustomElementState::Undefined
         ));
-        if node.shadow_root().is_some() {
-            // A parsed declarative root can exist. Reusing it through native
-            // attachment requires its own removal and publication contract.
-            return Err(DomError::NotSupported);
-        }
-        let document = node.document();
+        Ok((node.document(), node.shadow_root()))
+    }
+
+    fn attach_new_shadow(
+        &mut self,
+        host: Key,
+        document: Key,
+        init: crate::DomShadowRootInit,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<Key, DomError> {
         let registry = self.document_metadata(document)?.custom_element_registry();
         let mut state = crate::DomShadowRootState::native(init);
         if !init.null_registry {

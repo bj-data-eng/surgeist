@@ -487,7 +487,7 @@ fn canceled_request_history_capture_uses_shadow_tree_order_and_actual_child_docu
             .dom()
             .apply(batch, &cancel())
             .unwrap()
-            .created(&shadow)
+            .attached_shadow_root(&shadow)
             .unwrap()
             .unwrap()
     };

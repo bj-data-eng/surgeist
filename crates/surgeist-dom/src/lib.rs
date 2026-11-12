@@ -188,7 +188,7 @@ mod view_transition;
 
 pub use autofocus::DomDocumentAutofocus;
 pub use base::{DomBase, DomBaseFactsError, DomBaseResponse, DomFrozenBase, DomLink};
-pub use batch::{CreatedNode, DomBatch, NodeOperand};
+pub use batch::{AttachedShadowRoot, CreatedNode, DomBatch, NodeOperand};
 pub use details::{
     DomDetails, DomDetailsToggleCancellationReason, DomDetailsToggleIntention,
     DomDetailsToggleIntentionId, DomDetailsToggleTransfer, DomElementTaskAssociation,
@@ -307,7 +307,7 @@ pub use store::source::operation::dialog_queue::{
 pub use store::{
     Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits,
     DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
-    DomNodeRetirementWatch, DomResource, DomUsage, DomWatchedCreation,
+    DomNodeRetirementWatch, DomResource, DomUsage, DomWatchedNode,
 };
 pub use surgeist_html::{
     construction::{

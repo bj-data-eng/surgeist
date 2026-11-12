@@ -882,7 +882,7 @@ fn shadow_scope_and_detach_keep_block_identity_and_canonical_scope_current() {
         .dom
         .apply_with_inline_styles(batch, inputs, requests(), no_decisions, &cancel())
         .unwrap();
-    let shadow = result.dom().created(&shadow).unwrap().unwrap();
+    let shadow = result.dom().attached_shadow_root(&shadow).unwrap().unwrap();
     assert_eq!(capture(&f.dom, element).tree_scope().root(), shadow);
     assert_eq!(capture(&f.dom, element).properties().handle(), &handle);
     assert_eq!(old.tree_scope().root(), f.a.node());

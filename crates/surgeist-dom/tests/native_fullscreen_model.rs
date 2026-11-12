@@ -371,11 +371,14 @@ fn document_and_nested_shadow_getters_retarget_and_reject_a_different_tree() {
     let commit = apply(&mut dom, batch);
     let document = commit.document(&document).unwrap();
     let outer = commit.created(&outer).unwrap().unwrap();
-    let outer_root = commit.created(&outer_root).unwrap().unwrap();
+    let outer_root = commit.attached_shadow_root(&outer_root).unwrap().unwrap();
     let inner = commit.created(&inner).unwrap().unwrap();
-    let inner_root = commit.created(&inner_root).unwrap().unwrap();
+    let inner_root = commit.attached_shadow_root(&inner_root).unwrap().unwrap();
     let leaf = commit.created(&leaf).unwrap().unwrap();
-    let unrelated_root = commit.created(&unrelated_root).unwrap().unwrap();
+    let unrelated_root = commit
+        .attached_shadow_root(&unrelated_root)
+        .unwrap()
+        .unwrap();
     fullscreen(&mut dom, leaf);
     let snapshot = dom.snapshot();
     assert_document_model(&snapshot, document, Some(leaf), true);
@@ -424,7 +427,7 @@ fn disconnected_shadow_host_returns_null_even_while_raw_fullscreen_exists() {
     batch.insert_before(&leaf, &root, None);
     let commit = apply(&mut dom, batch);
     let host = commit.created(&host).unwrap().unwrap();
-    let root = commit.created(&root).unwrap().unwrap();
+    let root = commit.attached_shadow_root(&root).unwrap().unwrap();
     let leaf = commit.created(&leaf).unwrap().unwrap();
     fullscreen(&mut dom, leaf);
     let snapshot = dom.snapshot();
@@ -1007,7 +1010,7 @@ fn matching_intermediate_shadow_document_does_not_hide_deeper_adoption_membershi
     let b = commit.document(&b).unwrap();
     let c = commit.document(&c).unwrap();
     let outer = commit.created(&outer).unwrap().unwrap();
-    let middle_root = commit.created(&middle_root).unwrap().unwrap();
+    let middle_root = commit.attached_shadow_root(&middle_root).unwrap().unwrap();
     let b_parent = commit.created(&b_parent).unwrap().unwrap();
     let b_old = commit.created(&b_old).unwrap().unwrap();
     let c_parent = commit.created(&c_parent).unwrap().unwrap();
@@ -1037,7 +1040,7 @@ fn matching_intermediate_shadow_document_does_not_hide_deeper_adoption_membershi
     batch.insert_before(&inner, middle_root, None);
     let commit = dom.apply(batch, &cancel).unwrap();
     let inner = commit.created(&inner).unwrap().unwrap();
-    let deep_root = commit.created(&deep_root).unwrap().unwrap();
+    let deep_root = commit.attached_shadow_root(&deep_root).unwrap().unwrap();
     let mut batch = DomBatch::new();
     batch.replace_child(deep_root, c_parent, c_old);
     dom.apply(batch, &cancel).unwrap();

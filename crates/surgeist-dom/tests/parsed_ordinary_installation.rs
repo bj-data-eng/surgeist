@@ -1309,6 +1309,112 @@ fn contextual_dsd_applies_captured_and_owned_effects_and_preserves_fallback_temp
 }
 
 #[test]
+fn source_attach_reuses_the_parsed_root_and_removes_its_children_in_tree_order() {
+    let cancel = AtomicBool::new(false);
+    let source_limits = DomSourceLimits::new(16_000_000, 200_000, 100_000, 64, 64, 64, 2);
+    for (mode, mismatch, markup) in [
+        (
+            HtmlShadowRootMode::Open,
+            HtmlShadowRootMode::Closed,
+            "<template shadowrootmode=open shadowrootdelegatesfocus shadowrootclonable shadowrootserializable><p>first</p><div>second</div></template>",
+        ),
+        (
+            HtmlShadowRootMode::Closed,
+            HtmlShadowRootMode::Open,
+            "<template shadowrootmode=closed shadowrootdelegatesfocus shadowrootclonable shadowrootserializable><p>first</p><div>second</div></template>",
+        ),
+    ] {
+        let (mut dom, capture, document, host) = fragment_fixture("div");
+        let report = fragment_report(&capture, host, HtmlSource::utf8(markup), true);
+        let installed = dom
+            .install_parsed_html_fragment(report, &capture, limits(), &cancel)
+            .unwrap();
+        let original = installed.snapshot();
+        let root = original.node(host).unwrap().hosted_shadow_root().unwrap();
+        let original_root = original.shadow_root(root).unwrap();
+        let original_state = original_root.state();
+        let children = original_root.node().children().to_vec();
+        assert_eq!(children.len(), 2);
+        assert!(original_state.declarative());
+        assert_eq!(original_state.mode(), mode);
+
+        let outcome = dom
+            .begin_source_edit(
+                DomSourceEdit::attach_shadow(host, DomShadowRootInit::new(mismatch)),
+                source_limits,
+                &cancel,
+            )
+            .unwrap()
+            .advance(&cancel);
+        assert_eq!(outcome.unwrap_err(), DomError::NotSupported);
+        assert_eq!(dom.snapshot().stamp(), original.stamp());
+
+        let progress = dom
+            .begin_source_edit(
+                DomSourceEdit::attach_shadow(
+                    host,
+                    DomShadowRootInit::new(mode).with_null_registry(),
+                ),
+                source_limits,
+                &cancel,
+            )
+            .unwrap()
+            .advance(&cancel)
+            .expect("matching attachment must reuse the original declarative root");
+        let DomSourceProgress::Complete(done) = progress else {
+            panic!("expected a completed native attachment: {progress:?}");
+        };
+        assert_eq!(done.output(), Some(DomSourceOutput::Node(root)));
+        let after = dom.snapshot();
+        assert_eq!(after.node(host).unwrap().hosted_shadow_root(), Some(root));
+        let retained = after.shadow_root(root).unwrap();
+        assert_eq!(retained.host(), host);
+        assert!(retained.node().children().is_empty());
+        let state = retained.state();
+        assert!(!state.declarative());
+        assert_eq!(state.properties(), original_state.properties());
+        assert_eq!(
+            state.custom_element_registry(),
+            original_state.custom_element_registry()
+        );
+        assert_eq!(
+            state.available_to_element_internals(),
+            original_state.available_to_element_internals()
+        );
+        assert_eq!(
+            state.keep_custom_element_registry_null(),
+            original_state.keep_custom_element_registry_null()
+        );
+        for &child in &children {
+            let detached = after.node(child).unwrap();
+            assert_eq!(detached.parent(), None);
+            assert_eq!(detached.owner_document(), Some(document));
+        }
+        let removals: Vec<_> = done
+            .commit()
+            .changes()
+            .changes()
+            .iter()
+            .filter_map(|change| match change {
+                DomChange::Parent(node) if children.contains(node) => Some(*node),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(removals, children);
+        let outcome = dom
+            .begin_source_edit(
+                DomSourceEdit::attach_shadow(host, DomShadowRootInit::new(mode)),
+                source_limits,
+                &cancel,
+            )
+            .unwrap()
+            .advance(&cancel);
+        assert_eq!(outcome.unwrap_err(), DomError::NotSupported);
+        assert_eq!(dom.snapshot().stamp(), after.stamp());
+    }
+}
+
+#[test]
 fn contextual_foreign_stale_cancelled_and_missing_intrinsic_inputs_are_atomic() {
     for which in 0..4 {
         let (mut dom, capture, _, host) = fragment_fixture("div");

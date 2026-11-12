@@ -558,7 +558,7 @@ fn shadow_owner(mode: HtmlShadowRootMode, connected: bool) -> ShadowOwner {
     let commit = dom.apply(batch, &cancelled()).unwrap();
     ShadowOwner {
         host: commit.created(&host).unwrap().unwrap(),
-        shadow: commit.created(&shadow).unwrap().unwrap(),
+        shadow: commit.attached_shadow_root(&shadow).unwrap().unwrap(),
         slot: commit.created(&slot).unwrap().unwrap(),
         inside: commit.created(&inside).unwrap().unwrap(),
         dom,

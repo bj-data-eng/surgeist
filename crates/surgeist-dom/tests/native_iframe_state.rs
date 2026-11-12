@@ -366,7 +366,7 @@ fn connected_shadow_iframe_uses_actual_document_independently_of_host() {
     let d = c.document(&d).unwrap();
     let other = c.document(&other).unwrap();
     let host = c.created(&host).unwrap().unwrap();
-    let root = c.created(&root).unwrap().unwrap();
+    let root = c.attached_shadow_root(&root).unwrap().unwrap();
     let target = c.created(&target).unwrap().unwrap();
     let old = c.created(&old).unwrap().unwrap();
     let mut b = DomBatch::new();

@@ -304,7 +304,8 @@ fn shadow_order_connects_only_reciprocal_roots_before_light_children() {
     batch.insert_before(&nested, &shadow, None);
     let commit = dom.apply(batch, &cancel).unwrap();
     let key = |ticket: &CreatedNode| Key::Existing(commit.created(ticket).unwrap().unwrap());
-    let (host, shadow, nested, light) = (key(&host), key(&shadow), key(&nested), key(&light));
+    let (host, nested, light) = (key(&host), key(&nested), key(&light));
+    let shadow = Key::Existing(commit.attached_shadow_root(&shadow).unwrap().unwrap());
     let empty = DomBatch::new();
     let mut draft = Draft::new(&dom, empty.owner, &cancel).unwrap();
     assert_eq!(

@@ -452,7 +452,7 @@ fn real_removal_replacement_adoption_and_shadow_descendants_drain_original_watch
                 batch.insert_before(&host, body, None);
                 let done = session.dom().apply(batch, &cancel).unwrap();
                 let host = done.created(&host).unwrap().unwrap();
-                let shadow = done.created(&shadow).unwrap().unwrap();
+                let shadow = done.attached_shadow_root(&shadow).unwrap().unwrap();
                 apply(
                     &mut session,
                     DomSourceEdit::insert_before(subject, shadow, None),
