@@ -1,3 +1,5 @@
+mod requests;
+
 #[cfg(test)]
 mod scope_resource_tests;
 
@@ -5,7 +7,7 @@ use super::contracts::{
     CacheAccess, ChildCacheRequest, Compute, Round, UnroundedInlineFragmentState,
 };
 use super::entry_staging::{self, Rows};
-use super::hidden::{HiddenChildren, HiddenRequest};
+use super::hidden::HiddenRequest;
 use crate::error::{
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
     LayoutResultOf,
@@ -1487,42 +1489,6 @@ where
         }
     }
 
-    fn drive_hidden(
-        &mut self,
-        request: HiddenRequest<Tree::Node>,
-    ) -> SessionResult<Tree, ComputeOutputOf<Tree::Scalar>> {
-        let mut children = HiddenChildren::begin(self, request)?;
-        let mut pending = Vec::new();
-        loop {
-            let Some((node, input)) = children.next_box(self)? else {
-                let Some(parent) = pending.pop() else {
-                    return Ok(ComputeOutputOf::HIDDEN);
-                };
-                children = parent;
-                continue;
-            };
-            match self.admit_child(node, input)? {
-                ChildAdmission::Hidden(request) => {
-                    if children.has_remaining() {
-                        pending.try_reserve(1).map_err(|_| {
-                            LayoutErrorOf::new(
-                                LayoutErrorSiteOf::Node(node),
-                                LayoutOperation::ChildLayout,
-                                LayoutErrorKindOf::Allocation,
-                            )
-                        })?;
-                        pending.push(children);
-                    }
-                    children = HiddenChildren::begin(self, request)?;
-                }
-                ChildAdmission::Ready(_) => {}
-                ChildAdmission::Uncached { input, cache } => {
-                    self.complete_admitted_child(node, input, cache)?;
-                }
-            }
-        }
-    }
-
     fn complete_admitted_child(
         &mut self,
         node: Tree::Node,
@@ -2033,21 +1999,7 @@ where
         input: ComputeInputOf<Self::Scalar>,
         axis: crate::PhysicalAxis,
     ) -> LayoutResultOf<Self::Node, Self::Scalar, Self::Scalar, Tree::MeasureError> {
-        let style = self.tree.node_input(node);
-        let own = crate::FlowAxes::new(style.writing_mode, style.direction);
-        if !self.tree.has_leaf_measurement(node) {
-            if own.inline_axis() == axis && style.display.inner_display() == crate::Display::Block {
-                return crate::block::intrinsic::axis_demand(self, node, input, axis);
-            }
-            if self.bound.is_some() && self.child_count(node) != 0 {
-                return Err(crate::block::intrinsic::profile_error(node));
-            }
-        }
-        let output = self.compute_child(node, input)?;
-        Ok(match axis {
-            crate::PhysicalAxis::Horizontal => output.size.width,
-            crate::PhysicalAxis::Vertical => output.size.height,
-        })
+        self.drive_axis(node, input, axis)
     }
 
     fn block_scope_entry_required(&self, node: Self::Node) -> bool {
@@ -2113,13 +2065,7 @@ where
         input: ComputeInputOf<Self::Scalar>,
     ) -> LayoutResultOf<Self::Node, ComputeOutputOf<Self::Scalar>, Self::Scalar, Tree::MeasureError>
     {
-        match self.admit_child(node, input)? {
-            ChildAdmission::Ready(output) => Ok(output),
-            ChildAdmission::Hidden(request) => self.drive_hidden(request),
-            ChildAdmission::Uncached { input, cache } => {
-                self.complete_admitted_child(node, input, cache)
-            }
-        }
+        self.drive_child(node, input)
     }
 
     fn observe_grid_overflow(

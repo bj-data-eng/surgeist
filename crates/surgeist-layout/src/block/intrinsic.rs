@@ -16,11 +16,13 @@ pub(super) fn normal_fill<S: LayoutScalar>(
         )
 }
 
+#[derive(Clone, Copy)]
 enum InlineExtent<S> {
     Resolved(S),
     Measure(InlineMeasurement<S>),
 }
 
+#[derive(Clone, Copy)]
 enum InlineMeasurement<S> {
     MinContent,
     MaxContent,
@@ -138,9 +140,9 @@ where
     }
 }
 
-struct InlineContentChild<Node, S: LayoutScalar> {
-    node: Node,
-    input: ComputeInputOf<S>,
+pub(crate) struct InlineContentChild<Node, S: LayoutScalar> {
+    pub(crate) node: Node,
+    pub(crate) input: ComputeInputOf<S>,
     margin: Edges<ResolvedLengthAutoOf<S>>,
 }
 
@@ -259,6 +261,101 @@ where
     Ok(pass.demand)
 }
 
+pub(crate) struct BlockAxisDemand<Node, S: LayoutScalar> {
+    node: Node,
+    input: ComputeInputOf<S>,
+    constants: Constants<S>,
+    extent: InlineExtent<S>,
+    content: Option<InlineContentPass<Node, S>>,
+}
+
+impl<Node: Copy + Eq, S: LayoutScalar> BlockAxisDemand<Node, S> {
+    pub(crate) fn begin<'input, Tree, M>(
+        tree: &mut Tree,
+        node: Node,
+        input: ComputeInputOf<S>,
+        axis: PhysicalAxis,
+    ) -> LayoutResultOf<Node, Self, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let style = block_container_projection::<Tree, M>(tree, node);
+        if style.common.flow_axes.inline_axis() != axis {
+            return Err(profile_error(node));
+        }
+        let contained = containment_sizing(
+            node,
+            tree.node_input(node),
+            input,
+            tree.fragment_minimum(node),
+        )?
+        .map_or(Size::NONE, |sizing| sizing.outer);
+        let constants =
+            Constants::from_projection::<Tree, M>(tree, node, &style, input, contained)?;
+        let extent = begin_inline::<Tree, M>(tree, node, &style, &constants, input);
+        Ok(Self {
+            node,
+            input,
+            constants,
+            extent,
+            content: None,
+        })
+    }
+
+    pub(crate) fn axis(&self) -> PhysicalAxis {
+        self.constants.flow_axes.inline_axis()
+    }
+
+    pub(crate) fn next_child<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+    ) -> NextInlineContentChild<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        while let InlineExtent::Measure(measurement) = self.extent {
+            let pass = if let Some(pass) = &mut self.content {
+                pass
+            } else {
+                let operation = measurement.operation();
+                if let Some(value) =
+                    tree.fragment_inline_content(self.node, self.input, operation)?
+                {
+                    self.extent = measurement.accept(&self.constants, value);
+                    continue;
+                }
+                self.content.insert(InlineContentPass::new(
+                    tree.children(self.node).collect(),
+                    &self.constants,
+                    self.input,
+                    operation,
+                ))
+            };
+            if let Some(child) = pass.next_child(tree, &self.constants)? {
+                return Ok(Some(child));
+            }
+            self.extent = measurement.accept(&self.constants, pass.demand);
+            self.content = None;
+        }
+        Ok(None)
+    }
+
+    pub(crate) fn accept_child(&mut self, child: InlineContentChild<Node, S>, inline: S) {
+        let axes = self.constants.flow_axes;
+        self.content
+            .as_mut()
+            .expect("a yielded inline child belongs to the active content pass")
+            .accept_child(axes, child, inline);
+    }
+
+    pub(crate) fn finish(self) -> S {
+        let InlineExtent::Resolved(outer) = self.extent else {
+            unreachable!("inline demand finishes after its last child");
+        };
+        outer
+    }
+}
+
 pub(crate) fn axis_demand<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
@@ -268,25 +365,12 @@ pub(crate) fn axis_demand<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let style = block_container_projection::<Tree, M>(tree, node);
-    if style.common.flow_axes.inline_axis() != axis {
-        return Err(profile_error(node));
+    let mut demand = BlockAxisDemand::begin(tree, node, input, axis)?;
+    while let Some(child) = demand.next_child(tree)? {
+        let inline = tree.compute_axis_demand(child.node, child.input, demand.axis())?;
+        demand.accept_child(child, inline);
     }
-    let contained = containment_sizing(
-        node,
-        tree.node_input(node),
-        input,
-        tree.fragment_minimum(node),
-    )?
-    .map_or(Size::NONE, |sizing| sizing.outer);
-    let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input, contained)?;
-    accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
-        if let Some(value) = tree.fragment_inline_content(node, input, operation)? {
-            Ok(value)
-        } else {
-            content(tree, node, &constants, input, operation)
-        }
-    })
+    Ok(demand.finish())
 }
 
 pub(crate) fn requested_axis(axis: PhysicalAxis) -> RequestedAxis {
