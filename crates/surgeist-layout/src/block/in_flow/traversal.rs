@@ -8,17 +8,32 @@ pub(in crate::block) enum InFlowStep<'input, Node, S: LayoutScalar> {
 
 pub(crate) struct InFlowChild<'input, Node, S: LayoutScalar> {
     request: scope::ChildRequest<Node, S>,
-    pending: Option<PendingBox<'input, Node, S>>,
+    pending: PendingInFlowChild<'input, Node, S>,
 }
 
-type ChildCompletion<'input, Node, S> = (Option<PendingBox<'input, Node, S>>, ComputeOutputOf<S>);
+pub(crate) enum PendingInFlowChild<'input, Node, S: LayoutScalar> {
+    Hidden,
+    Box(PendingBox<'input, Node, S>),
+    Inline(Option<crate::block::inline_run::PendingInlineAtomic<'input, Node, S>>),
+}
+
+type ChildCompletion<'input, Node, S> = (PendingInFlowChild<'input, Node, S>, ComputeOutputOf<S>);
+
+impl<Node: Copy, S: LayoutScalar> PendingInFlowChild<'_, Node, S> {
+    pub(crate) fn shared_request(&self) -> Option<(Node, ComputeInputOf<S>)> {
+        match self {
+            Self::Box(child) => child.shared_request(),
+            _ => None,
+        }
+    }
+}
 
 impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
     pub(crate) fn into_request(
         self,
     ) -> (
         scope::ChildRequest<Node, S>,
-        Option<PendingBox<'input, Node, S>>,
+        PendingInFlowChild<'input, Node, S>,
     ) {
         (self.request, self.pending)
     }
@@ -31,21 +46,20 @@ impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         let Self { request, pending } = self;
-        let output = if pending
-            .as_ref()
-            .is_some_and(|child| child.preparation.inherits_float_exclusions)
-        {
-            match tree.compute_child(request.node, request.input) {
-                Ok(output) => output,
-                Err(error) => {
-                    let _ = tree.end_child_float_context(request.node, request.input);
-                    return Err(error.into());
+        let output = match &pending {
+            PendingInFlowChild::Box(child) if child.preparation.inherits_float_exclusions => {
+                match tree.compute_child(request.node, request.input) {
+                    Ok(output) => output,
+                    Err(error) => {
+                        let _ = tree.end_child_float_context(request.node, request.input);
+                        return Err(error.into());
+                    }
                 }
             }
-        } else if pending.is_some() {
-            tree.compute_block_child(request)?
-        } else {
-            tree.compute_child(request.node, request.input)?
+            PendingInFlowChild::Box(_) => tree.compute_block_child(request)?,
+            PendingInFlowChild::Hidden | PendingInFlowChild::Inline(_) => {
+                tree.compute_child(request.node, request.input)?
+            }
         };
         Ok((pending, output))
     }
@@ -66,7 +80,14 @@ impl<Node: Copy, S: LayoutScalar> PendingBox<'_, Node, S> {
     }
 }
 
-pub(in crate::block) struct InFlowTraversal<Node, S: LayoutScalar> {
+struct ActiveInlineRun<'input, Node, S: LayoutScalar> {
+    transition: VisibleInlineRunTransition,
+    context: InlineRunContext<S>,
+    preparation: crate::block::inline_run::InlineRunPreparation<'input, Node, S>,
+}
+
+pub(in crate::block) struct InFlowTraversal<'input, Node, S: LayoutScalar> {
+    active_inline: Option<ActiveInlineRun<'input, Node, S>>,
     node: Node,
     input: ComputeInputOf<S>,
     inline_operation: crate::SizingOperation,
@@ -109,8 +130,8 @@ pub(in crate::block) struct InFlowTraversal<Node, S: LayoutScalar> {
     slot_cursor: usize,
 }
 
-impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
-    pub(in crate::block) fn begin<'input, Tree, M>(
+impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> {
+    pub(in crate::block) fn begin<Tree, M>(
         tree: &mut Tree,
         node: Node,
         constants: &Constants<S>,
@@ -269,6 +290,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         };
         let slot_cursor = 0;
         Ok(Self {
+            active_inline: None,
             node,
             input,
             inline_operation,
@@ -312,7 +334,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         })
     }
 
-    pub(in crate::block) fn step<'input, Tree, M>(
+    pub(in crate::block) fn step<Tree, M>(
         &mut self,
         tree: &mut Tree,
         children: &[Node],
@@ -321,6 +343,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
+        if self.active_inline.is_some() {
+            return self.advance_inline(tree, children, constants);
+        }
         if self.index >= children.len() && self.slot_cursor >= self.slots.len() {
             return Ok(InFlowStep::Complete);
         }
@@ -365,7 +390,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                                 ),
                                 entry: None,
                             },
-                            pending: None,
+                            pending: PendingInFlowChild::Hidden,
                         }));
                     }
                 }
@@ -389,72 +414,57 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                 let run_start = transition.start;
                 let run_end = transition.end;
                 self.index = run_end;
-                transition.apply(
+                let context = InlineRunContext {
+                    inline_request: self.flow_request,
+                    child_request: self.pass_request,
+                    box_frontier: self.box_frontier.clone(),
+                    tail: if !self.tail_active {
+                        crate::text_layout::fit::TailContext::Unrestricted
+                    } else if self.slot_cursor == self.slots.len()
+                        && children[run_end..].iter().all(|&node| {
+                            match InlineParticipantProjection::lookup::<Tree, M>(tree, node).kind()
+                            {
+                                InlineParticipantKindOf::Box(style) => {
+                                    style.display == crate::Display::None
+                                        || style.common.position == Position::Absolute
+                                        || !style.float.is_none()
+                                }
+                                _ => false,
+                            }
+                        })
+                    {
+                        crate::text_layout::fit::TailContext::CompleteBlock
+                    } else {
+                        crate::text_layout::fit::TailContext::Unresolved
+                    },
+                    hyphenation_state: self.hyphenation_state,
+                    line_box_context: self.line_box_context,
+                    source_index_start: run_start,
+                    cursor_block: self.adjoining.cursor,
+                    owned_float_block_end: self.owned_float_block_end,
+                    input,
+                    node_inner_size: self.node_inner_size,
+                    set_layout: self.set_layout,
+                    indent_state: self.inline_indent_state.unwrap_or_else(|| {
+                        crate::text_indent::IndentLineState::new(
+                            self.first_in_flow && constants.first_formatted,
+                        )
+                    }),
+                };
+                let preparation = transition.begin(
                     tree,
                     node,
-                    children,
-                    InlineRunContext {
-                        inline_request: self.flow_request,
-                        child_request: self.pass_request,
-                        box_frontier: self.box_frontier.clone(),
-                        tail: if !self.tail_active {
-                            crate::text_layout::fit::TailContext::Unrestricted
-                        } else if self.slot_cursor == self.slots.len()
-                            && children[run_end..].iter().all(|&node| {
-                                match InlineParticipantProjection::lookup::<Tree, M>(tree, node)
-                                    .kind()
-                                {
-                                    InlineParticipantKindOf::Box(style) => {
-                                        style.display == crate::Display::None
-                                            || style.common.position == Position::Absolute
-                                            || !style.float.is_none()
-                                    }
-                                    _ => false,
-                                }
-                            })
-                        {
-                            crate::text_layout::fit::TailContext::CompleteBlock
-                        } else {
-                            crate::text_layout::fit::TailContext::Unresolved
-                        },
-                        hyphenation_state: self.hyphenation_state,
-                        line_box_context: self.line_box_context,
-                        source_index_start: run_start,
-                        cursor_block: self.adjoining.cursor,
-                        owned_float_block_end: self.owned_float_block_end,
-                        constants,
-                        input,
-                        node_inner_size: self.node_inner_size,
-                        set_layout: self.set_layout,
-                        indent_state: self.inline_indent_state.unwrap_or_else(|| {
-                            crate::text_indent::IndentLineState::new(
-                                self.first_in_flow && constants.first_formatted,
-                            )
-                        }),
-                    },
-                    InlineRunTransitionState {
-                        box_frontier: &mut self.box_frontier,
-                        formatted: &mut self.formatted,
-                        indent_state: &mut self.inline_indent_state,
-                        line_box_context: &mut self.line_box_context,
-                        hyphenation_state: &mut self.hyphenation_state,
-                        tail_ledger: &mut self.tail_ledger,
-                        adjoining: &mut self.adjoining,
-                        fragment_margins: &mut self.fragment_margins,
-                        intrinsic_inline_demand: &mut self.intrinsic_inline_demand,
-                        baselines: &mut self.baselines,
-                        static_positions: &mut self.static_positions,
-                        resolved_terminal_float_block_end: &mut self
-                            .resolved_terminal_float_block_end,
-                        float_exclusions: &mut self.float_exclusions,
-                        float_intrinsics: &mut self.float_intrinsics,
-                        pending_floats: &mut self.pending_floats,
-                        owned_float_block_end: &mut self.owned_float_block_end,
-                        contributions: &mut self.contributions,
-                    },
+                    &children[run_start..run_end],
+                    constants,
+                    &context,
+                    self.adjoining.adjoining_displacement(),
                 )?;
-                self.first_in_flow &= self.inline_indent_state.is_none();
-                return Ok(InFlowStep::Continue);
+                self.active_inline = Some(ActiveInlineRun {
+                    transition,
+                    context,
+                    preparation,
+                });
+                return self.advance_inline(tree, children, constants);
             }
             InFlowChildStart::FlowBox { child, style } => (child, style),
         };
@@ -497,7 +507,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         };
         Ok(InFlowStep::Child(InFlowChild {
             request,
-            pending: Some(PendingBox {
+            pending: PendingInFlowChild::Box(PendingBox {
                 child,
                 style: child_style,
                 prepared,
@@ -506,7 +516,71 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         }))
     }
 
-    fn box_computation<'a, 'input>(
+    fn advance_inline<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        children: &[Node],
+        constants: &Constants<S>,
+    ) -> ComputeResult<Node, InFlowStep<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let active = self.active_inline.as_mut().expect("active inline run");
+        let run = &children[active.transition.start..active.transition.end];
+        if let Some(child) =
+            active
+                .preparation
+                .next_child(tree, self.node, run, constants, &active.context)?
+        {
+            return Ok(InFlowStep::Child(InFlowChild {
+                request: scope::ChildRequest {
+                    node: child.node,
+                    input: child.input,
+                    entry: None,
+                },
+                pending: PendingInFlowChild::Inline(child.pending),
+            }));
+        }
+        let ActiveInlineRun {
+            transition,
+            context,
+            preparation,
+        } = self.active_inline.take().expect("completed inline run");
+        transition.apply(
+            tree,
+            self.node,
+            run,
+            constants,
+            InlineRunRequest {
+                context,
+                prepared: preparation.prepared,
+                adjoining_margin: self.adjoining.adjoining_displacement(),
+            },
+            InlineRunTransitionState {
+                box_frontier: &mut self.box_frontier,
+                formatted: &mut self.formatted,
+                indent_state: &mut self.inline_indent_state,
+                line_box_context: &mut self.line_box_context,
+                hyphenation_state: &mut self.hyphenation_state,
+                tail_ledger: &mut self.tail_ledger,
+                adjoining: &mut self.adjoining,
+                fragment_margins: &mut self.fragment_margins,
+                intrinsic_inline_demand: &mut self.intrinsic_inline_demand,
+                baselines: &mut self.baselines,
+                static_positions: &mut self.static_positions,
+                resolved_terminal_float_block_end: &mut self.resolved_terminal_float_block_end,
+                float_exclusions: &mut self.float_exclusions,
+                float_intrinsics: &mut self.float_intrinsics,
+                pending_floats: &mut self.pending_floats,
+                owned_float_block_end: &mut self.owned_float_block_end,
+                contributions: &mut self.contributions,
+            },
+        )?;
+        self.first_in_flow &= self.inline_indent_state.is_none();
+        Ok(InFlowStep::Continue)
+    }
+
+    fn box_computation<'a>(
         &'a self,
         child: Node,
         child_style: &'a BlockChildProjection<'input, S>,
@@ -535,16 +609,27 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         }
     }
 
-    pub(in crate::block) fn accept_child<'input, Tree, M>(
+    pub(in crate::block) fn accept_child<Tree, M>(
         &mut self,
         tree: &mut Tree,
         constants: &Constants<S>,
-        pending: Option<PendingBox<'input, Node, S>>,
+        pending: PendingInFlowChild<'input, Node, S>,
         output: ComputeOutputOf<S>,
     ) -> ComputeResult<Node, (), S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
+        let pending = match pending {
+            PendingInFlowChild::Inline(pending) => {
+                let active = self.active_inline.as_mut().expect("active inline run");
+                return active
+                    .preparation
+                    .accept_child(tree, self.node, constants, &active.context, pending, output)
+                    .map_err(Into::into);
+            }
+            PendingInFlowChild::Box(pending) => Some(pending),
+            PendingInFlowChild::Hidden => None,
+        };
         if let Some(PendingBox {
             child,
             style,
@@ -577,7 +662,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         Ok(())
     }
 
-    fn accept_box<'input, Tree, M>(
+    fn accept_box<Tree, M>(
         &mut self,
         tree: &mut Tree,
         constants: &Constants<S>,
@@ -776,7 +861,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         Ok(())
     }
 
-    pub(in crate::block) fn finish<'input, Tree, M>(
+    pub(in crate::block) fn finish<Tree, M>(
         self,
         tree: &mut Tree,
     ) -> ComputeResult<Node, InFlowResult<Node, S>, S, M>

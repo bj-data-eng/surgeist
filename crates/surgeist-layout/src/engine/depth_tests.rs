@@ -438,3 +438,118 @@ fn deep_shared_float_block_layout_returns_on_bounded_stack() {
         },
     );
 }
+
+fn atomic_inline_block_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
+    let px = S::from_f64;
+    let preferred =
+        |value| crate::PreferredSizeOf::value(crate::LengthPercentageOf::px(px(value)).unwrap());
+    let atomic = || NodeInputOf {
+        display: Display::InlineBlock,
+        atomic_inline_participation: Some(crate::AtomicInlineParticipation::new(
+            surgeist_text::BidiLevel::try_new(0).unwrap(),
+            crate::InlineBreakOpportunity::Allowed,
+        )),
+        inline_baseline_context: crate::InlineBaselineContext::Physical,
+        vertical_align: crate::VerticalAlignOf::Top,
+        size: Size::new(preferred(13.0), preferred(7.0)),
+        ..NodeInputOf::default()
+    };
+    let mut tree = chain::<S>(Display::Block, depth + 1)
+        .children(0, [1, depth])
+        .children(depth - 1, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                inline_baseline_context: crate::InlineBaselineContext::Physical,
+                size: Size::new(preferred(100.0), preferred(80.0)),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(depth, atomic());
+    for node in 1..depth {
+        tree = tree.style(node, atomic());
+    }
+    tree
+}
+
+fn assert_atomic_inline_block_chain<S: LayoutScalar>(depth: u32) {
+    let px = S::from_f64;
+    let tree = atomic_inline_block_chain::<S>(depth);
+    let batch = compute_layout(&tree, 0, standalone()).expect("atomic inline Block chain");
+    assert_eq!(batch.node_layouts().len(), (depth + 1) as usize);
+    for (node, view) in batch.node_layouts() {
+        let output = view.single_box().unwrap().final_output();
+        let (width, height, x, source_index) = match node {
+            0 => (100.0, 80.0, 0.0, 0),
+            node if node == depth => (13.0, 7.0, 13.0, 1),
+            _ => (13.0, 7.0, 0.0, 0),
+        };
+        assert_eq!(output.size, Size::new(px(width), px(height)), "node {node}");
+        assert_eq!(
+            output.location,
+            crate::Point::new(px(x), S::ZERO),
+            "node {node}"
+        );
+        assert_eq!(
+            output.source_index,
+            crate::SourceIndex::new(source_index),
+            "node {node}"
+        );
+    }
+}
+
+#[test]
+fn shallow_atomic_inline_block_layout_publishes_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_atomic_inline_block_layout_publishes_geometry",
+        || {
+            assert_atomic_inline_block_chain::<f32>(3);
+            assert_atomic_inline_block_chain::<f64>(3);
+        },
+    );
+}
+
+#[test]
+fn deep_atomic_inline_block_layout_returns_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_atomic_inline_block_layout_returns_on_bounded_stack",
+        || {
+            assert_atomic_inline_block_chain::<f32>(128);
+            assert_atomic_inline_block_chain::<f64>(128);
+        },
+    );
+}
+
+fn assert_atomic_inline_leaf_refusal<S: LayoutScalar>(depth: u32) {
+    let leaf = depth + 1;
+    let tree = atomic_inline_block_chain::<S>(depth)
+        .children(depth - 1, [leaf])
+        .style(leaf, NodeInputOf::default())
+        .measure(leaf, Size::new(S::NAN, S::from_f64(7.0)));
+    let error = compute_layout(&tree, 0, standalone()).unwrap_err();
+    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(leaf));
+    assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
+    assert!(matches!(
+        error.kind(),
+        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::MeasurementOutput(output))
+            if output.axis() == crate::PhysicalAxis::Horizontal
+                && matches!(output.error(), crate::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.to_f64().is_nan())
+    ));
+
+    let repaired = tree.measure(leaf, Size::new(S::from_f64(5.0), S::from_f64(7.0)));
+    let batch =
+        compute_layout(&repaired, 0, standalone()).expect("valid leaf returns a complete batch");
+    assert_eq!(batch.node_layouts().len(), (depth + 2) as usize);
+}
+
+#[test]
+fn deep_atomic_inline_block_layout_returns_the_original_leaf_refusal() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_atomic_inline_block_layout_returns_the_original_leaf_refusal",
+        || {
+            assert_atomic_inline_leaf_refusal::<f32>(128);
+            assert_atomic_inline_leaf_refusal::<f64>(128);
+        },
+    );
+}

@@ -506,14 +506,14 @@ pub(crate) enum BlockChild<'input, Node, S: LayoutScalar> {
 }
 
 pub(crate) enum PendingBlockChild<'input, Node, S: LayoutScalar> {
-    InFlow(Option<in_flow::PendingBox<'input, Node, S>>),
+    InFlow(in_flow::PendingInFlowChild<'input, Node, S>),
     Positioned(AbsoluteChild<Node, S>),
 }
 
 impl<Node: Copy, S: LayoutScalar> PendingBlockChild<'_, Node, S> {
     pub(crate) fn shared_request(&self) -> Option<(Node, ComputeInputOf<S>)> {
         match self {
-            Self::InFlow(Some(child)) => child.shared_request(),
+            Self::InFlow(child) => child.shared_request(),
             _ => None,
         }
     }
@@ -665,11 +665,11 @@ struct BlockPass<'input, Node, S: LayoutScalar> {
 struct ActiveBlockPass<'input, Node, S: LayoutScalar> {
     flow: BlockFlow<'input, Node, S>,
     constants: Constants<S>,
-    in_flow: Option<InFlowPass<Node, S>>,
+    in_flow: Option<InFlowPass<'input, Node, S>>,
 }
 
-struct InFlowPass<Node, S: LayoutScalar> {
-    traversal: InFlowTraversal<Node, S>,
+struct InFlowPass<'input, Node, S: LayoutScalar> {
+    traversal: InFlowTraversal<'input, Node, S>,
     phase: BlockPassPhase<S>,
 }
 
