@@ -1,6 +1,57 @@
 use super::*;
-use crate::trusted_types_csp::{AttributePolicies, AttributePolicyError};
+use crate::trusted_types_csp::{AttributePolicies, AttributePolicyError, PolicyFactory};
+use std::convert::Infallible;
+use surgeist_bindings_js::conversion::{ConversionAccount, ResourceTable, WorkTable};
+use surgeist_bindings_js::{TrustedPolicyCallback, TrustedTypeKind};
 use surgeist_dom::{DocumentString, DomSourceAttributeVerificationOutcome, DomSourceProgress};
+
+pub(super) fn default_factory_retains_the_real_guest_callback() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = enable(session, target, cancel);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        let mut factory = PolicyFactory::<TrustedPolicyCallback, ()>::default();
+        let name = DocumentString::from("default");
+        let attempt = factory
+            .begin(&name, &[], &mut || Ok::<_, Infallible>(()))
+            .unwrap();
+        let admitted = attempt.admit(|_| Ok::<_, Infallible>(())).unwrap();
+        let guest = scope.evaluate(
+            &"(value, type, sink) => value + (type === 'TrustedScript' && sink === 'Element onclick' ? '!' : '?')"
+                .encode_utf16()
+                .collect::<Vec<_>>(),
+        )?;
+        let policy = Rc::new(
+            scope
+                .retain_trusted_policy_callback(&guest, |_| Ok::<_, Error>(()))?
+                .unwrap(),
+        );
+        admitted.publish(&policy);
+        let retained = factory.default_policy().unwrap();
+        assert!(Rc::ptr_eq(retained, &policy));
+        drop(policy);
+        let account = ConversionAccount::standalone(
+            scope,
+            WorkTable::splat(1_000),
+            ResourceTable::splat(1_000),
+        )?;
+        let result = account.run(scope, |conversion| {
+            conversion.invoke_default_policy(
+                retained,
+                TrustedTypeKind::Script,
+                &[0xd800, 0],
+                &"Element onclick".encode_utf16().collect::<Vec<_>>(),
+            )
+        })?;
+        assert_eq!(
+            result.get().as_ref().unwrap().as_code_units(),
+            &[0xd800, 0, b'!' as u16]
+        );
+        Ok(())
+    })
+    .unwrap();
+}
 
 pub(super) fn hosted_attribute_policy_reads_charge_the_parked_source_and_preserve_exact_input() {
     let cancel = Arc::new(AtomicBool::new(false));

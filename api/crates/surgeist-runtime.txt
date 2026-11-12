@@ -22,6 +22,16 @@ pub fn surgeist_runtime::trusted_types_csp::AttributePolicyError::fmt(&self, f: 
 pub enum surgeist_runtime::trusted_types_csp::Directive
 pub surgeist_runtime::trusted_types_csp::Directive::RequireTrustedTypesFor
 pub surgeist_runtime::trusted_types_csp::Directive::TrustedTypes
+pub enum surgeist_runtime::trusted_types_csp::PolicyCreationError<E>
+pub surgeist_runtime::trusted_types_csp::PolicyCreationError::Admission(E)
+pub surgeist_runtime::trusted_types_csp::PolicyCreationError::BlockedByCsp
+pub surgeist_runtime::trusted_types_csp::PolicyCreationError::DefaultAlreadyExists
+pub surgeist_runtime::trusted_types_csp::PolicyCreationError::PoliciesPending
+pub surgeist_runtime::trusted_types_csp::PolicyCreationError::RepresentationExhausted
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_runtime::trusted_types_csp::PolicyCreationError<E>
+pub fn surgeist_runtime::trusted_types_csp::PolicyCreationError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E> core::fmt::Display for surgeist_runtime::trusted_types_csp::PolicyCreationError<E>
+pub fn surgeist_runtime::trusted_types_csp::PolicyCreationError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_runtime::trusted_types_csp::PolicyDelivery
 pub surgeist_runtime::trusted_types_csp::PolicyDelivery::EnforcingHeader
 pub surgeist_runtime::trusted_types_csp::PolicyDelivery::Meta
@@ -47,6 +57,9 @@ impl<E> core::convert::From<surgeist_runtime::trusted_types_csp::PolicyListCapac
 pub fn surgeist_runtime::trusted_types_csp::PolicyListError<E>::from(error: surgeist_runtime::trusted_types_csp::PolicyListCapacity) -> Self
 impl<E> core::fmt::Display for surgeist_runtime::trusted_types_csp::PolicyListError<E>
 pub fn surgeist_runtime::trusted_types_csp::PolicyListError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_runtime::trusted_types_csp::AdmittedPolicyCreation<'factory, Payload, Backing>
+impl<Payload, Backing> surgeist_runtime::trusted_types_csp::AdmittedPolicyCreation<'_, Payload, Backing>
+pub fn surgeist_runtime::trusted_types_csp::AdmittedPolicyCreation<'_, Payload, Backing>::publish(self, policy: &alloc::rc::Rc<Payload>)
 pub struct surgeist_runtime::trusted_types_csp::AttributeMismatch<'read, 'policies>
 impl<'policies> surgeist_runtime::trusted_types_csp::AttributeMismatch<'_, 'policies>
 pub fn surgeist_runtime::trusted_types_csp::AttributeMismatch<'_, 'policies>::blocked(&self) -> core::option::Option<bool>
@@ -69,6 +82,18 @@ pub const fn surgeist_runtime::trusted_types_csp::Policy::delivery(&self) -> sur
 pub fn surgeist_runtime::trusted_types_csp::Policy::directives(&self) -> surgeist_html::internal::security::csp_directives::HtmlCspDirectives<'_>
 pub fn surgeist_runtime::trusted_types_csp::Policy::parse<E>(serialized: surgeist_html::internal::values::document_string::DocumentString, delivery: surgeist_runtime::trusted_types_csp::PolicyDelivery, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<Self, E>
 pub fn surgeist_runtime::trusted_types_csp::Policy::serialized(&self) -> &surgeist_html::internal::values::document_string::DocumentString
+pub struct surgeist_runtime::trusted_types_csp::PolicyCreation<'factory, 'policy, 'name, Payload, Backing>
+impl<'factory, 'policy, Payload, Backing> surgeist_runtime::trusted_types_csp::PolicyCreation<'factory, 'policy, '_, Payload, Backing>
+pub fn surgeist_runtime::trusted_types_csp::PolicyCreation<'factory, 'policy, '_, Payload, Backing>::admit<E>(self, admit_name: impl core::ops::function::FnOnce(usize) -> core::result::Result<Backing, E>) -> core::result::Result<surgeist_runtime::trusted_types_csp::AdmittedPolicyCreation<'factory, Payload, Backing>, surgeist_runtime::trusted_types_csp::PolicyCreationError<E>>
+pub fn surgeist_runtime::trusted_types_csp::PolicyCreation<'factory, 'policy, '_, Payload, Backing>::next_violation<E>(&mut self, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_runtime::trusted_types_csp::Violation<'policy>>, E>
+pub struct surgeist_runtime::trusted_types_csp::PolicyFactory<Payload, Backing>
+impl<Payload, Backing> surgeist_runtime::trusted_types_csp::PolicyFactory<Payload, Backing>
+pub fn surgeist_runtime::trusted_types_csp::PolicyFactory<Payload, Backing>::begin<'factory, 'policy, 'name, E>(&'factory mut self, name: &'name surgeist_html::internal::values::document_string::DocumentString, policies: &'policy [surgeist_runtime::trusted_types_csp::Policy], step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_runtime::trusted_types_csp::PolicyCreation<'factory, 'policy, 'name, Payload, Backing>, E>
+pub fn surgeist_runtime::trusted_types_csp::PolicyFactory<Payload, Backing>::default_policy(&self) -> core::option::Option<&alloc::rc::Rc<Payload>>
+impl<Payload, Backing> core::default::Default for surgeist_runtime::trusted_types_csp::PolicyFactory<Payload, Backing>
+pub fn surgeist_runtime::trusted_types_csp::PolicyFactory<Payload, Backing>::default() -> Self
+impl<Payload, Backing> core::ops::drop::Drop for surgeist_runtime::trusted_types_csp::PolicyFactory<Payload, Backing>
+pub fn surgeist_runtime::trusted_types_csp::PolicyFactory<Payload, Backing>::drop(&mut self)
 pub struct surgeist_runtime::trusted_types_csp::PolicyProcessor
 impl surgeist_runtime::trusted_types_csp::PolicyProcessor
 pub fn surgeist_runtime::trusted_types_csp::PolicyProcessor::document_policies_with<'a, E>(&self, state: surgeist_dom::meta::DomDocumentCspState<'a>, admit: &mut impl core::ops::function::FnMut(surgeist_html::internal::security::csp_policy::accounting::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<&'a [surgeist_runtime::trusted_types_csp::Policy]>, surgeist_html::internal::security::csp_policy::HtmlCspError<E>>

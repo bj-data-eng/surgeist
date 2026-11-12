@@ -13,8 +13,10 @@ use surgeist_html::{
 };
 
 mod attribute;
+mod factory;
 mod provider;
 pub use attribute::{AttributeMismatch, AttributePolicies, AttributePolicyError};
+pub use factory::{AdmittedPolicyCreation, PolicyCreation, PolicyCreationError, PolicyFactory};
 pub use provider::{PolicyListCapacity, PolicyListError, PolicyProcessor};
 
 /// The source and disposition of one delivered CSP policy.
