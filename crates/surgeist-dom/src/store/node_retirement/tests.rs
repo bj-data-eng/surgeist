@@ -138,6 +138,56 @@ fn source_shadow_creation_admits_the_watch_before_publication() {
 }
 
 #[test]
+fn source_shadow_host_validation_charges_the_complete_native_name_scan() {
+    use crate::{DomShadowRootInit, DomSourceLimits, HtmlShadowRootMode};
+    use surgeist_html::values::Namespace;
+
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, _) = fixture(&cancel);
+    let mut setup = DomBatch::new();
+    let short = setup.create_element_ns(document, Namespace::html(), "x");
+    let long_name = "x".repeat(2_048);
+    let long = setup.create_element_ns(document, Namespace::html(), long_name.as_str());
+    let setup = dom.apply(setup, &cancel).unwrap();
+    let short = setup.created(&short).unwrap().unwrap();
+    let long = setup.created(&long).unwrap().unwrap();
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let before = dom.snapshot();
+    let source = DomSourceLimits::new(16_000_000, 200_000, 512, 64, 64, 64, 2);
+    let init = DomShadowRootInit::new(HtmlShadowRootMode::Open);
+
+    // Both names lack a hyphen. The short scan reaches native name refusal.
+    // The long scan must exhaust the same budget before it reaches that test.
+    assert!(matches!(
+        dom.attach_shadow_with_node_retirement_watch(
+            short,
+            init,
+            &inbox,
+            8,
+            (source, GENEROUS),
+            &cancel
+        ),
+        Err(DomError::NotSupported)
+    ));
+    let long = dom.attach_shadow_with_node_retirement_watch(
+        long,
+        init,
+        &inbox,
+        9,
+        (source, GENEROUS),
+        &cancel,
+    );
+    assert!(
+        matches!(&long, Err(DomError::SourceWorkLimit { limit: 512 })),
+        "long host scan returned {:?}",
+        long.err()
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert!(dom.pending_source_edit().is_none());
+    assert!(inbox.take().is_none());
+}
+
+#[test]
 fn watched_creation_admits_the_exact_peak_and_retires_the_exact_generation() {
     let cancel = AtomicBool::new(false);
     let (mut dom, document, _) = fixture(&cancel);
