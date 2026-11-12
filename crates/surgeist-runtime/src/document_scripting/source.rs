@@ -1,7 +1,7 @@
 //! Guest execution of an already-selected native Source listener.
 
 use super::*;
-use surgeist_bindings_js::{Arguments, Exception, Root};
+use surgeist_bindings_js::{Arguments, Exception, Root, Value};
 use surgeist_dom::{
     DomNodeKind, DomNodeRetirementWatch, DomSourceEdit, DomSourceEventPayloadRetention,
     DomSourceEventRequest, DomSourceEventRetention, DomSourceLimits, NodeId,
@@ -278,6 +278,24 @@ fn call_guest(
         return Err(Error::BackendUnavailable);
     }
     let active = ActiveGuard(&native.active_source);
+    if engine
+        .guest_events
+        .as_ref()
+        .is_some_and(|events| events.has_public_node_projection())
+    {
+        let result = call_public_guest(
+            engine,
+            native,
+            &attachment,
+            handler,
+            request,
+            delegated,
+            limits,
+        );
+        drop(active);
+        engine.settle_engine_cleanup(&attachment.realm);
+        return result;
+    }
     let pin_bytes = projection::ProjectedComments::pin_bytes(&engine.process);
     let plan = engine.comments.plan_slot();
     let slot_bytes = plan.and_then(projection::SlotPlan::growth_bytes);
@@ -406,21 +424,81 @@ fn call_guest(
                 );
             };
             let argument = scope.open_managed_object(object)?;
-            native.active_source.set(Some(ActiveSource {
+            let source = ActiveSource {
                 request,
                 delegated,
                 creation_global,
                 limits,
                 argument: scope.retain(&argument),
-            }));
-            let receiver = scope.primitive(Primitive::Undefined)?;
-            scope.call(&handler, &receiver, &[argument])?;
-            Ok(())
+            };
+            invoke_argument(scope, native, source, &handler, argument)
         })
     })();
     drop(active);
     engine.settle_engine_cleanup(&attachment.realm);
     result
+}
+
+fn call_public_guest(
+    engine: &mut ScriptEngine,
+    native: &NativeOwner,
+    attachment: &Attachment,
+    handler: &Root,
+    request: DomSourceEventRequest,
+    delegated: NodeId,
+    limits: DomSourceLimits,
+) -> Result<(), Error> {
+    let events = engine.guest_events.as_ref().ok_or(Error::ExpiredIdentity)?;
+    engine.process.execution().in_realm(&engine.realm, |scope| {
+        let qualified = (|| {
+            let mut session = native
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            native.qualify_event(attachment, &mut session, &request)?;
+            let snapshot = session.snapshot();
+            let dom = session.dom();
+            delegated_comment_global_with(&snapshot, attachment, delegated, || {
+                dom.raw()
+                    .source_event_step(&request, &native.cancellation)
+                    .map_err(DocumentScriptNativeError::from)
+            })
+        })();
+        let creation_global = match qualified {
+            Ok(global) => global,
+            Err(error) => return refuse(scope, &attachment.failures, error),
+        };
+        let handler = scope.import(handler)?;
+        let argument = events.project_source_comment(
+            scope,
+            native,
+            attachment,
+            &request,
+            delegated,
+            creation_global,
+        )?;
+        let source = ActiveSource {
+            request,
+            delegated,
+            creation_global,
+            limits,
+            argument: scope.retain(&argument),
+        };
+        invoke_argument(scope, native, source, &handler, argument)
+    })
+}
+
+fn invoke_argument<'scope>(
+    scope: &mut Scope<'scope>,
+    native: &NativeOwner,
+    source: ActiveSource,
+    handler: &Value<'scope>,
+    argument: Value<'scope>,
+) -> Result<(), Error> {
+    native.active_source.set(Some(source));
+    let receiver = scope.primitive(Primitive::Undefined)?;
+    scope.call(handler, &receiver, &[argument])?;
+    Ok(())
 }
 
 impl NativeOwner {
@@ -583,14 +661,22 @@ fn delegated_comment_global(
     delegated: NodeId,
 ) -> Result<DomHostedGlobalId, DocumentScriptNativeError> {
     let snapshot = session.snapshot();
-    let node = snapshot.node(delegated)?;
+    delegated_comment_global_with(&snapshot, attachment, delegated, || Ok(()))
+}
+
+fn delegated_comment_global_with(
+    snapshot: &DomSnapshot,
+    attachment: &Attachment,
+    delegated: NodeId,
+    step: impl FnMut() -> Result<(), DocumentScriptNativeError>,
+) -> Result<DomHostedGlobalId, DocumentScriptNativeError> {
+    let node = snapshot.node_with(delegated, step)?;
     if !matches!(node.kind(), DomNodeKind::Comment(_))
         || node.parent() != Some(attachment.target.document().node())
     {
         return Err(DocumentScriptNativeError::SourceAccess);
     }
-    snapshot
-        .relevant_global(delegated)
+    node.relevant_global()
         .map_err(DomHostedRuntimeError::Dom)?
         .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)
 }

@@ -652,10 +652,11 @@ fn public_and_source_comment_projection_share_identity() {
                     if (comment !== publicComment || comment.marker !== 42) {
                         throw new Error("Source must delegate the original public Comment");
                     }
-                    detachIf(0, publicComment);
+                    detachIf(1, publicComment);
                 }"#,
                 &cancel,
             );
+            assert_eq!(projection.parent(), None);
         } else {
             projection.expose("comment => { globalThis.fromSource = comment; }", &cancel);
             expose_public(&mut projection);
@@ -668,6 +669,30 @@ fn public_and_source_comment_projection_share_identity() {
                     Ok(())
                 })
                 .unwrap();
+            projection
+                .host
+                .with_native(|dom, _, _| {
+                    let mut retire = DomBatch::new();
+                    retire.detach(projection.comment);
+                    retire.destroy(projection.comment);
+                    dom.apply(retire, &cancel).unwrap();
+                })
+                .unwrap();
+            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+                projection.host.in_document(&projection.permit, |scope| {
+                    evaluate(scope, "publicComment.length").map(drop)
+                })
+            else {
+                panic!("the Source-first Comment must observe native retirement");
+            };
+            assert!(matches!(
+                failure.cause::<super::DocumentGuestEventError>(),
+                Some(super::DocumentGuestEventError::Document(
+                    DocumentScriptError::Native(DocumentScriptNativeError::Dom(
+                        surgeist_dom::DomError::StaleNode
+                    ))
+                ))
+            ));
         }
     }
 }

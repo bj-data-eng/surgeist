@@ -12,6 +12,7 @@ use surgeist_bindings_js::{
         },
     },
 };
+use surgeist_dom::DomSourceEventRequest;
 
 const CHARACTER_DATA: &[u16] = &ascii(b"CharacterData");
 const TEXT: &[u16] = &ascii(b"Text");
@@ -195,6 +196,60 @@ impl CharacterBindings {
         match kind {
             CharacterKind::Text => &self.text,
             CharacterKind::Comment => &self.comment,
+        }
+    }
+}
+
+impl GuestEvents {
+    pub(in crate::document_scripting) fn has_public_node_projection(&self) -> bool {
+        self.public.is_some()
+    }
+
+    pub(in crate::document_scripting) fn project_source_comment<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        attachment: &Attachment,
+        request: &DomSourceEventRequest,
+        node: NodeId,
+        origin: DomHostedGlobalId,
+    ) -> Result<Value<'scope>, Error> {
+        let admission = ordinary::Admission::source(owner, self, request);
+        let result = (|| {
+            let public = self.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let ordinary = &public.document.ordinary;
+            if let Some(value) = ordinary.open_with(scope, node, || admission.step())? {
+                return Ok(value);
+            }
+            let mut watch = |prototypes: &DocumentPrototypes| {
+                ordinary.watch_source(
+                    scope,
+                    owner,
+                    self,
+                    request,
+                    GuestNode::Comment(node),
+                    prototypes.character_data.prototype(CharacterKind::Comment),
+                )
+            };
+            if origin == attachment.target.global() {
+                watch(&public.document.prototypes)
+            } else {
+                public.with_origin_with(
+                    origin,
+                    || admission.step(),
+                    |record| watch(&record.documents),
+                )
+            }
+        })();
+        match result {
+            Ok(value) => Ok(value),
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                Err(error)
+            }
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Native(error))) => {
+                refuse(scope, &attachment.failures, error)
+            }
+            Err(error) => refuse(scope, &self.refusal, error),
         }
     }
 }
