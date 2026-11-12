@@ -184,6 +184,12 @@ impl ElementBindings {
             )?;
         }
         super::shadow::install_attachment(scope, &element, capture)?;
+        super::parent_node::install(
+            scope,
+            &element,
+            super::parent_node::Receiver::Element,
+            capture,
+        )?;
         let base = scope.callback_object(&element)?;
         let mathml = scope.callback_object(&mathml)?;
         Ok(Self {

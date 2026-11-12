@@ -334,6 +334,11 @@ edits, with replacements driven by canonical Source under the caller's
 `DocumentGuestEventLimits::source_edits`. Those edits update native Ranges.
 Explicit Source Comment delegation uses the public Comment wrapper when the
 attachment has installed native node interfaces.
+Document, DocumentFragment and Element expose `moveBefore`. The binding
+validates the interface receiver and two required arguments, then drives the
+canonical state-preserving Source move. Existing wrappers keep their identity
+and native hierarchy and reference failures become the corresponding guest
+DOMExceptions.
 AbortSignal and wider descendant navigation are separate capabilities.
 
 An attachment can enable callable Window timers with `WindowTimerLimits`.
