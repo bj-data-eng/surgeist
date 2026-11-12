@@ -3,7 +3,7 @@
 use super::*;
 use surgeist_dom::{
     DocumentId, DomBatch, DomShadowRootInit, HtmlShadowRootMode, HtmlShadowRootProperties,
-    HtmlSlotAssignment,
+    HtmlSlotAssignment, NodeId,
 };
 use surgeist_html::values::Namespace;
 
@@ -29,7 +29,9 @@ fn guest_document(
         .unwrap()
 }
 
-fn open_root_host() -> (DocumentScriptHost, DocumentScriptPermit) {
+fn root_host(
+    mode: Option<HtmlShadowRootMode>,
+) -> (DocumentScriptHost, DocumentScriptPermit, Option<NodeId>) {
     let mut host = public_node_host(1_000, 20_000);
     let permit = host.permit().unwrap();
     let cancel = host.native.cancellation.clone();
@@ -38,29 +40,31 @@ fn open_root_host() -> (DocumentScriptHost, DocumentScriptPermit) {
         &permit,
         "globalThis.shadowDocument = new Document()",
     );
-    host.with_native(|dom, _, _| {
-        let mut batch = DomBatch::new();
-        let element = batch.create_element_ns(document, Namespace::html(), "div");
-        batch.insert_before(&element, document, None);
-        batch.attach_shadow(&element, DomShadowRootInit::new(HtmlShadowRootMode::Open));
-        dom.apply(batch, &cancel).unwrap();
-    })
-    .unwrap();
+    let root = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let element = batch.create_element_ns(document, Namespace::html(), "div");
+            batch.insert_before(&element, document, None);
+            let root = mode.map(|mode| batch.attach_shadow(&element, DomShadowRootInit::new(mode)));
+            let commit = dom.apply(batch, &cancel).unwrap();
+            root.and_then(|root| commit.created(&root).unwrap())
+        })
+        .unwrap();
     host.in_document(&permit, |scope| {
         scope
             .evaluate(&units(
-                "globalThis.openShadowHost = shadowDocument.documentElement",
+                "globalThis.shadowHost = shadowDocument.documentElement",
             ))
             .map(drop)
     })
     .unwrap();
-    (host, permit)
+    (host, permit, root)
 }
 
 pub(in crate::document_scripting) fn native_open_shadow_root_uses_the_canonical_interface() {
-    let (mut host, permit) = open_root_host();
+    let (mut host, permit, _) = root_host(Some(HtmlShadowRootMode::Open));
     host.in_document(&permit, |scope| {
-        let root = scope.evaluate(&units("openShadowHost.shadowRoot"))?;
+        let root = scope.evaluate(&units("shadowHost.shadowRoot"))?;
         assert_eq!(scope.kind(&root)?, surgeist_bindings_js::ValueKind::Object);
         assert_guest(
             scope,
@@ -209,5 +213,48 @@ pub(in crate::document_scripting) fn closed_root_keeps_identity_and_native_event
 }
 
 pub(in crate::document_scripting) fn shadow_projection_admits_exact_work_and_backing() {
-    assert_native_projection_admission(open_root_host, "openShadowHost.shadowRoot");
+    assert_native_projection_admission(
+        || {
+            let (host, permit, _) = root_host(Some(HtmlShadowRootMode::Open));
+            (host, permit)
+        },
+        "shadowHost.shadowRoot",
+    );
+}
+
+pub(in crate::document_scripting) fn closed_root_visibility_admits_the_canonical_lookup() {
+    let read = |scope: &mut Scope<'_>| assert_guest(scope, "shadowHost.shadowRoot === null");
+    let rootless_work = {
+        let (mut host, permit, _) = root_host(None);
+        let events = host.guest_events().unwrap();
+        let before = events.budget.work.get();
+        host.in_document(&permit, read).unwrap();
+        events.budget.work.get() - before
+    };
+    let (mut host, permit, root) = root_host(Some(HtmlShadowRootMode::Closed));
+    let snapshot = host.snapshot().unwrap();
+    let mut root_lookup_work = 0;
+    snapshot
+        .node_with(root.unwrap(), || {
+            root_lookup_work += 1;
+            Ok::<(), DomError>(())
+        })
+        .unwrap();
+    assert!(root_lookup_work >= 2);
+    let events = host.guest_events().unwrap();
+    let bytes = events.budget.used.get();
+    events
+        .budget
+        .work
+        .set(events.limits.work - rootless_work - root_lookup_work + 1);
+    let result = host.in_document(&permit, read);
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("closed-root lookup must refuse one unit short of the actual lookup: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::WorkLimit)
+    ));
+    assert_eq!(events.budget.used.get(), bytes);
+    assert_eq!(host.snapshot().unwrap().stamp(), snapshot.stamp());
 }
