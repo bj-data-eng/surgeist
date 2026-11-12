@@ -615,6 +615,49 @@ mod tests {
         .unwrap()
         .with_meta_processing_work(1_000_000)
     }
+
+    #[test]
+    fn source_meta_csp_insertion_waits_for_its_policy_without_publishing() {
+        use crate::{DomSourceEdit, DomSourceLimits, DomSourceProgress};
+
+        let cancel = AtomicBool::new(false);
+        let mut dom = Dom::new(policy()).unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let head = setup.create_element_ns(&document, Namespace::html(), "head");
+        let meta = setup.create_element_ns(&document, Namespace::html(), "meta");
+        setup.insert_before(&head, &document, None);
+        setup.set_attribute(&meta, "http-equiv", "content-security-policy");
+        setup.set_attribute(&meta, "content", "require-trusted-types-for 'script'");
+        let created = dom.apply(setup, &cancel).unwrap();
+        let head = created.created(&head).unwrap().unwrap();
+        let meta = created.created(&meta).unwrap().unwrap();
+        let before = dom.snapshot().stamp();
+        let limits = DomSourceLimits::new(64_000_000, 4_000_000, 1_000_000, 64, 4096, 4096, 1);
+        let operation = {
+            let mut lease = dom
+                .begin_source_edit(
+                    DomSourceEdit::insert_before(meta, head, None),
+                    limits,
+                    &cancel,
+                )
+                .unwrap();
+            let progress = lease.advance(&cancel);
+            assert!(
+                matches!(progress, Ok(DomSourceProgress::Request(_))),
+                "expected policy service on the reached Meta insertion, got {progress:?}"
+            );
+            assert_eq!(lease.snapshot().stamp(), before);
+            lease.operation()
+        };
+        let mut lease = dom.resume_source_edit(operation, limits, &cancel).unwrap();
+        assert!(matches!(
+            lease.advance(&cancel).unwrap(),
+            DomSourceProgress::Request(_)
+        ));
+        assert_eq!(lease.snapshot().stamp(), before);
+    }
+
     fn actual_source_meta_read(
         bytes: usize,
         require_complete: bool,
