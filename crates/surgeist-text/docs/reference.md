@@ -113,10 +113,16 @@ their original UTF-16 correspondence. Surviving pattern-edge spaces and
 punctuation keep their advances. Preserved tabs use the unit start as origin.
 
 `FinalizedLeaderPattern` retains the exact source, transformed mappings, unit
-metrics, and actual glyph runs and font instances. An empty pattern has zero
-advance and no glyphs. A space-only pattern can have positive advance and
-empty ink. Clones share the same finalized unit. Layout owns repetition
-placement, and Render obtains admitted ink from the retained font instances.
+metrics, and actual glyph runs and font instances. `cluster_views()` supplies
+each contribution's advance, bounds, presentation range, and original source
+pieces, including for glyphless tabs. Contributions and paint glyphs share
+pattern-local group identities. A group keeps a presentation grapheme and
+its shared shaping together across glyphs and contributions.
+
+An empty pattern has zero advance and no glyphs. A space-only pattern can
+have positive advance and empty ink. Clones share the same finalized unit.
+Layout owns repetition placement, and Render obtains admitted ink from the
+retained font instances.
 
 [Selected leader rules](../../../references/css-content-3-leaders-clauses--editor-capture-20261010--586d408a8de7.md#leader-rules)
 and [Text 4 whitespace phases](../../../references/css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#white-space-rules).
