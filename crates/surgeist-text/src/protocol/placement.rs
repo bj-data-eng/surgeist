@@ -8,7 +8,9 @@ use super::{
 };
 use crate::engine::{
     PlacedLine, PreparedData, editing,
-    layout::data::{FinalizedCell, FinalizedRunFrame, PlacedLayout, RunMetricBasis, cell_geometry},
+    layout::data::{
+        FinalizedCell, FinalizedRun, FinalizedRunFrame, PlacedLayout, RunMetricBasis, cell_geometry,
+    },
 };
 use crate::{Layout, Point, Range, Rect, Result, TextNumericError, TextNumericPhase};
 
@@ -151,6 +153,73 @@ fn qualify_cell_frame(
     checked_add("placed cell run x", x, inner.x_scale * local.x)?;
     checked_add("placed cell run y", y, local.y)?;
     Ok(crate::layout::cell_glyph_frame(placed, cell, local))
+}
+
+/// Qualifies the same executed run frame for a placed line or a local pattern.
+pub(crate) fn qualify_run_glyph_frame(
+    placed: &PlacedLine,
+    run: &FinalizedRun,
+) -> Result<crate::GlyphFrame> {
+    let baseline = placed.finalized.data.metrics.baseline;
+    if let FinalizedRunFrame::Line = run.frame
+        && let Some(reference) = run.reference
+    {
+        qualify_allocated_shift(
+            placed,
+            crate::BaselineShift::try_new(baseline - reference)?,
+            run.x,
+            0.0,
+        )?;
+    }
+    let shaped = &placed.finalized.data.font_runs[run.run];
+    let frame = match run.frame {
+        FinalizedRunFrame::Line => crate::layout::run_glyph_frame(placed, run, shaped),
+        FinalizedRunFrame::Cell(index) => qualify_cell_frame(
+            placed,
+            &placed.finalized.data.cells[index],
+            Point::new(run.x, run.y),
+        )?,
+    };
+    let origin = if matches!(run.frame, FinalizedRunFrame::Cell(_)) {
+        frame.origin()
+    } else {
+        let vector = crate::layout::line_vector(placed, crate::Point::new(run.x, run.y - baseline));
+        // Finalization qualifies the local font displacement. Translation
+        // can lose it again at a finite physical anchor, so check the
+        // required cross-axis contribution in this owning phase as well.
+        match placed.orientation {
+            LineOrientation::Horizontal => crate::Point::new(
+                placed.anchor.x + vector.x,
+                checked_add("placed run origin y", placed.anchor.y, vector.y)?,
+            ),
+            LineOrientation::SidewaysClockwise
+            | LineOrientation::SidewaysCounterclockwise
+            | LineOrientation::Vertical => crate::Point::new(
+                checked_add("placed run origin x", placed.anchor.x, vector.x)?,
+                placed.anchor.y + vector.y,
+            ),
+        }
+    };
+    finite("placed run origin x", origin.x)?;
+    finite("placed run origin y", origin.y)?;
+    for glyph in &placed.finalized.data.glyphs[run.glyphs.clone()] {
+        let point = frame.point(
+            glyph.pen,
+            f64::from(glyph.glyph.x),
+            f64::from(glyph.glyph.y),
+        );
+        finite("placed glyph origin x", point.x)?;
+        finite("placed glyph origin y", point.y)?;
+        if glyph.word_half != 0.0 {
+            let before = frame.point(
+                glyph.pen_base,
+                f64::from(glyph.glyph.x),
+                f64::from(glyph.glyph.y),
+            );
+            qualify_spacing_displacement(placed, run.frame, before, point, glyph.word_half)?;
+        }
+    }
+    Ok(frame)
 }
 
 /// A locally representable allocated shift can disappear at a physical anchor.
@@ -661,73 +730,7 @@ pub(crate) fn place_request(
             ))?;
         }
         for run in &placed.finalized.data.runs {
-            if let FinalizedRunFrame::Line = run.frame
-                && let Some(reference) = run.reference
-            {
-                qualify_allocated_shift(
-                    &placed,
-                    crate::BaselineShift::try_new(metrics.baseline - reference)?,
-                    run.x,
-                    0.0,
-                )?;
-            }
-            let shaped = &placed.finalized.data.font_runs[run.run];
-            let frame = match run.frame {
-                FinalizedRunFrame::Line => crate::layout::run_glyph_frame(&placed, run, shaped),
-                FinalizedRunFrame::Cell(index) => qualify_cell_frame(
-                    &placed,
-                    &placed.finalized.data.cells[index],
-                    Point::new(run.x, run.y),
-                )?,
-            };
-            let origin = if matches!(run.frame, FinalizedRunFrame::Cell(_)) {
-                frame.origin()
-            } else {
-                let vector = crate::layout::line_vector(
-                    &placed,
-                    crate::Point::new(run.x, run.y - metrics.baseline),
-                );
-                // Finalization qualifies the local font displacement. Translation
-                // can lose it again at a finite physical anchor, so check the
-                // required cross-axis contribution in this owning phase as well.
-                match placed.orientation {
-                    LineOrientation::Horizontal => crate::Point::new(
-                        placed.anchor.x + vector.x,
-                        checked_add("placed run origin y", placed.anchor.y, vector.y)?,
-                    ),
-                    LineOrientation::SidewaysClockwise
-                    | LineOrientation::SidewaysCounterclockwise
-                    | LineOrientation::Vertical => crate::Point::new(
-                        checked_add("placed run origin x", placed.anchor.x, vector.x)?,
-                        placed.anchor.y + vector.y,
-                    ),
-                }
-            };
-            finite("placed run origin x", origin.x)?;
-            finite("placed run origin y", origin.y)?;
-            for glyph in &placed.finalized.data.glyphs[run.glyphs.clone()] {
-                let point = frame.point(
-                    glyph.pen,
-                    f64::from(glyph.glyph.x),
-                    f64::from(glyph.glyph.y),
-                );
-                finite("placed glyph origin x", point.x)?;
-                finite("placed glyph origin y", point.y)?;
-                if glyph.word_half != 0.0 {
-                    let before = frame.point(
-                        glyph.pen_base,
-                        f64::from(glyph.glyph.x),
-                        f64::from(glyph.glyph.y),
-                    );
-                    qualify_spacing_displacement(
-                        &placed,
-                        run.frame,
-                        before,
-                        point,
-                        glyph.word_half,
-                    )?;
-                }
-            }
+            qualify_run_glyph_frame(&placed, run)?;
         }
         for unit in placed
             .finalized

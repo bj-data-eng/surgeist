@@ -137,6 +137,12 @@ impl LeaderRunView<'_> {
         &self.run
     }
 
+    /// Executed physical glyph frame with the pattern's inline start and
+    /// shared baseline at zero, including any combined cell transform.
+    pub fn glyph_frame(&self) -> Result<crate::GlyphFrame> {
+        self.run.pattern_glyph_frame()
+    }
+
     /// Each actual glyph in paint order with its indivisible group identity.
     pub fn glyphs(
         &self,
@@ -159,6 +165,12 @@ impl LeaderClusterView<'_> {
     #[must_use]
     pub fn paint_group(&self) -> Option<LeaderPaintGroup> {
         self.group
+    }
+
+    /// Actual cell geometry and source disposition, including glyphless cells.
+    #[must_use]
+    pub fn cell(&self) -> Option<crate::FinalizedCellView<'_>> {
+        self.edge.cell()
     }
 
     /// Signed inline advance after spacing.
@@ -644,10 +656,31 @@ mod tests {
             let group = cluster.paint_group().unwrap();
             assert_eq!(cluster.advance(), 20.0);
             let run = pattern.run_views().next().unwrap();
-            let cell = run.run().cell().unwrap();
+            let cell = cluster.cell().unwrap();
             assert_eq!(cell.source_cell().mode(), digits);
             assert!(cell.source_cell().used_code_points().eq([49, 50]));
             assert_eq!(cell.square().size, crate::Size::new(20.0, 20.0));
+            let frame = run.glyph_frame().unwrap();
+            assert_eq!(frame.outline_x(), crate::Point::new(0.5, 0.0));
+            assert_eq!(frame.outline_y(), crate::Point::new(0.0, 1.0));
+            assert_eq!(frame.pen_direction(), crate::Point::new(1.0, 0.0));
+            let placed = crate::Layout::from_finalized_lines(crate::PlacementRequest {
+                prepared: PreparedText {
+                    inner: Arc::clone(&pattern.line.inner.selected.prepared),
+                },
+                coverage: crate::PlacementCoverage::WholeParagraph,
+                entries: vec![crate::PlacementEntry::Formatted(crate::LinePlacement {
+                    line: pattern.line.clone(),
+                    anchor: crate::LineAnchor {
+                        inline_origin: 0.0,
+                        baseline: 0.0,
+                    },
+                    orientation,
+                    atomics: Vec::new(),
+                })],
+            })
+            .unwrap();
+            assert_eq!(frame, placed.run_views().next().unwrap().glyph_frame());
             assert_eq!(run.glyphs().len(), 2);
             for ((glyph, painted), original) in
                 run.glyphs().zip([Range::new(0, 1), Range::new(3, 4)])
@@ -734,6 +767,11 @@ mod tests {
         assert_eq!(space.processed_source().processed_text().code_units(), [32]);
         assert_eq!(space.metrics().advance, 20.0);
         assert!(space.run_views().all(|run| run.glyphs().next().is_none()));
+        let cluster = space.cluster_views().next().unwrap();
+        let cell = cluster.cell().unwrap();
+        let source = cell.source_cell();
+        assert_eq!(source.used_unit_count(), 0);
+        assert!(source.source_pieces().all(|piece| !piece.is_used()));
     }
 
     #[test]
