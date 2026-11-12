@@ -112,6 +112,7 @@ fn packet_pair<Node: Copy + Eq, S: LayoutScalar>(
         (
             GeometryStateOf::CanonicalAtomic {
                 measured_normal: a,
+                measured_padding_origin: pad_a,
                 normal: b,
                 normal_origin: c,
                 visual_origin: d,
@@ -119,6 +120,7 @@ fn packet_pair<Node: Copy + Eq, S: LayoutScalar>(
             },
             GeometryStateOf::CanonicalAtomic {
                 measured_normal: e,
+                measured_padding_origin: pad_b,
                 normal: f,
                 normal_origin: g,
                 visual_origin: h,
@@ -126,6 +128,7 @@ fn packet_pair<Node: Copy + Eq, S: LayoutScalar>(
             },
         ) => {
             a == e
+                && pad_a == pad_b
                 && b == f
                 && c == g
                 && d == h
@@ -846,6 +849,7 @@ mod tests {
         let unrounded = LayoutOutputEntryOf::canonical_atomic(
             2,
             normal,
+            Point::ZERO,
             normal,
             Point::new(1_000_000_000.25, -1_000_000_000.75),
             Point::new(1_000_000_000.5, -1_000_000_000.25),
@@ -906,6 +910,7 @@ mod tests {
             pair.unrounded = LayoutOutputEntryOf::canonical_atomic(
                 2,
                 normal,
+                Point::ZERO,
                 normal,
                 Point::new(0.25, 0.75),
                 Point::new(0.25, 0.75),
