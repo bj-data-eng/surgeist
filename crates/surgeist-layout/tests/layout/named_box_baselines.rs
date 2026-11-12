@@ -1,6 +1,7 @@
 //! Independently derived WM4 named margin-box baselines through public layout.
 mod atomic_margin_edges;
 mod atomic_receivers;
+mod scroll_generic;
 mod sideways_atomics;
 mod upright;
 mod used_alphabetic;
