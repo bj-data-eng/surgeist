@@ -1,5 +1,7 @@
 use super::*;
 
+pub(in crate::document_scripting) mod registered_origin;
+
 fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
     let cancellation = Arc::new(AtomicBool::new(false));
     let (session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
