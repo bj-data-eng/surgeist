@@ -553,3 +553,57 @@ fn deep_atomic_inline_block_layout_returns_the_original_leaf_refusal() {
         },
     );
 }
+
+std::thread_local! {
+    static LEAF_MEASUREMENTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn measure_nested_leaf<S: LayoutScalar>(_: crate::LeafMeasureInputOf<S>) -> Size<S> {
+    LEAF_MEASUREMENTS.set(LEAF_MEASUREMENTS.get() + 1);
+    Size::new(S::from_f64(11.0), S::from_f64(7.0))
+}
+
+fn nested_leaf_measurement_count<S: LayoutScalar>(display: Display, depth: u32) -> usize {
+    LEAF_MEASUREMENTS.set(0);
+    let tree = chain::<S>(display, depth + 1)
+        .style(
+            depth,
+            NodeInputOf {
+                display: Display::Block,
+                ..NodeInputOf::default()
+            },
+        )
+        .measure_with(depth, measure_nested_leaf);
+    let batch = compute_layout(&tree, 0, standalone()).expect("nested layout");
+    assert_eq!(batch.node_layouts().len(), (depth + 1) as usize);
+    LEAF_MEASUREMENTS.get()
+}
+
+fn assert_nested_leaf_work_is_bounded(display: Display) {
+    // This isolates measurement repetition from the separate traversal-depth limit.
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || {
+            let counts = [
+                [1, 2, 3, 4].map(|depth| nested_leaf_measurement_count::<f32>(display, depth)),
+                [1, 2, 3, 4].map(|depth| nested_leaf_measurement_count::<f64>(display, depth)),
+            ];
+            assert!(
+                counts.iter().flatten().all(|&count| (1..=20).contains(&count)),
+                "{display:?} leaf measurements at depths 1–4 must be bounded in both scalar lanes: {counts:?}"
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn nested_flex_leaf_measurement_work_is_bounded_per_call() {
+    assert_nested_leaf_work_is_bounded(Display::Flex);
+}
+
+#[test]
+fn nested_grid_leaf_measurement_work_is_bounded_per_call() {
+    assert_nested_leaf_work_is_bounded(Display::Grid);
+}
