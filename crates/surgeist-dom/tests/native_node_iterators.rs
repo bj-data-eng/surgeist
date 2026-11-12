@@ -2,8 +2,10 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomLimits, DomNameLimits, DomNodeIteratorFilter, DomNodeIteratorId,
-    DomNodeIteratorProgress, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomError, DomLimits, DomNameLimits,
+    DomNodeFilterDecision, DomNodeIteratorFilter, DomNodeIteratorFilterRequest, DomNodeIteratorId,
+    DomNodeIteratorProgress, DomResource, DomSourceEdit, DomSourceLimits, DomSourceProgress,
+    DomSourceRequest, DomStyleInlineCspObservation, Namespace, NodeId,
 };
 
 struct Tree {
@@ -78,6 +80,14 @@ fn reference(dom: &Dom, id: DomNodeIteratorId) -> (NodeId, bool) {
     )
 }
 
+fn request(progress: DomNodeIteratorProgress, expected: NodeId) -> DomNodeIteratorFilterRequest {
+    let DomNodeIteratorProgress::Filter(request) = progress else {
+        panic!("expected a filter call for {expected:?}");
+    };
+    assert_eq!(request.node(), expected);
+    request
+}
+
 #[test]
 fn traverse_checks_the_mask_without_pruning_children_and_keeps_boundary_position() {
     let Tree {
@@ -103,6 +113,7 @@ fn traverse_checks_the_mask_without_pruning_children_and_keeps_boundary_position
 fn pre_remove_relocates_both_pointer_directions_and_preserves_a_contained_root() {
     let Tree {
         mut dom,
+        second_document,
         root,
         first,
         removed,
@@ -113,6 +124,7 @@ fn pre_remove_relocates_both_pointer_directions_and_preserves_a_contained_root()
     let before = iterator(&mut dom, root, u32::MAX);
     let after = iterator(&mut dom, root, u32::MAX);
     let inside = iterator(&mut dom, removed, u32::MAX);
+    let unrelated = iterator(&mut dom, second_document.node(), u32::MAX);
     for expected in [root, first, removed, nested] {
         assert_eq!(step(&mut dom, before, true), Some(expected));
         assert_eq!(step(&mut dom, after, true), Some(expected));
@@ -127,6 +139,7 @@ fn pre_remove_relocates_both_pointer_directions_and_preserves_a_contained_root()
     assert_eq!(reference(&dom, before), (last, true));
     assert_eq!(reference(&dom, after), (first, false));
     assert_eq!(reference(&dom, inside), (nested, false));
+    assert_eq!(reference(&dom, unrelated), (second_document.node(), true));
     assert_eq!(step(&mut dom, before, true), Some(last));
     assert_eq!(step(&mut dom, after, true), Some(last));
 }
@@ -159,4 +172,391 @@ fn adoption_preserves_root_and_uses_its_new_document_for_later_removals() {
     dom.apply(detach, &AtomicBool::new(false)).unwrap();
     assert_eq!(reference(&dom, id), (nested, false));
     assert_eq!(step(&mut dom, id, false), Some(nested));
+}
+
+#[test]
+fn accepting_a_removed_candidate_returns_the_original_callback_argument() {
+    let Tree {
+        mut dom,
+        root,
+        first,
+        removed,
+        nested,
+        last,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = dom
+        .create_node_iterator(
+            root,
+            1 << 2 | 1 << 7,
+            DomNodeIteratorFilter::Callback,
+            &cancel,
+        )
+        .unwrap();
+    let revision = dom.revision();
+    let filter = request(dom.node_iterator_next(id, 256, &cancel).unwrap(), nested);
+    assert_eq!(filter.iterator(), id);
+    assert_eq!(dom.revision(), revision);
+    assert_eq!(reference(&dom, id), (root, true));
+    assert_eq!(
+        dom.node_iterator_next(id, 256, &cancel).unwrap_err(),
+        DomError::NodeIteratorFilterActive
+    );
+    assert!(matches!(
+        dom.node_iterator_previous(id, 256, &cancel).unwrap(),
+        DomNodeIteratorProgress::Complete(None)
+    ));
+
+    let mut detach = DomBatch::new();
+    detach.detach(removed);
+    let commit = dom.apply(detach, &cancel).unwrap();
+    assert!(
+        !commit
+            .changes()
+            .changes()
+            .contains(&DomChange::NodeIteratorReference(id))
+    );
+    assert_eq!(reference(&dom, id), (root, true));
+    assert!(
+        matches!(filter.respond(&mut dom, DomNodeFilterDecision::Accept, &cancel).unwrap(), DomNodeIteratorProgress::Complete(Some(node)) if node == nested)
+    );
+    assert_eq!(reference(&dom, id), (first, false));
+
+    let filter = request(dom.node_iterator_next(id, 256, &cancel).unwrap(), last);
+    assert!(matches!(
+        filter
+            .respond(&mut dom, DomNodeFilterDecision::Skip, &cancel)
+            .unwrap(),
+        DomNodeIteratorProgress::Complete(None)
+    ));
+    assert_eq!(reference(&dom, id), (first, false));
+}
+
+#[test]
+fn removing_a_subtree_relocates_the_committed_and_backward_candidate_independently() {
+    let Tree {
+        mut dom,
+        root,
+        first,
+        removed,
+        nested,
+        last,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = dom
+        .create_node_iterator(
+            root,
+            1 << 2 | 1 << 7,
+            DomNodeIteratorFilter::Callback,
+            &cancel,
+        )
+        .unwrap();
+    let filter = request(dom.node_iterator_next(id, 256, &cancel).unwrap(), nested);
+    assert!(
+        matches!(filter.respond(&mut dom, DomNodeFilterDecision::Accept, &cancel).unwrap(), DomNodeIteratorProgress::Complete(Some(node)) if node == nested)
+    );
+    let filter = request(
+        dom.node_iterator_previous(id, 256, &cancel).unwrap(),
+        nested,
+    );
+    assert_eq!(reference(&dom, id), (nested, false));
+
+    let mut detach = DomBatch::new();
+    detach.detach(removed);
+    dom.apply(detach, &cancel).unwrap();
+    assert_eq!(reference(&dom, id), (first, false));
+    assert!(
+        matches!(filter.respond(&mut dom, DomNodeFilterDecision::Accept, &cancel).unwrap(), DomNodeIteratorProgress::Complete(Some(node)) if node == nested)
+    );
+    assert_eq!(reference(&dom, id), (last, true));
+    let filter = request(dom.node_iterator_next(id, 256, &cancel).unwrap(), last);
+    assert!(
+        matches!(filter.respond(&mut dom, DomNodeFilterDecision::Accept, &cancel).unwrap(), DomNodeIteratorProgress::Complete(Some(node)) if node == last)
+    );
+}
+
+#[test]
+fn reject_does_not_prune_and_abrupt_filter_exit_clears_the_active_call() {
+    let Tree {
+        mut dom,
+        root,
+        first,
+        removed,
+        nested,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = dom
+        .create_node_iterator(root, u32::MAX, DomNodeIteratorFilter::Callback, &cancel)
+        .unwrap();
+    let filter = request(dom.node_iterator_next(id, 256, &cancel).unwrap(), root);
+    let filter = request(
+        filter
+            .respond(&mut dom, DomNodeFilterDecision::Reject, &cancel)
+            .unwrap(),
+        first,
+    );
+    let filter = request(
+        filter
+            .respond(&mut dom, DomNodeFilterDecision::Skip, &cancel)
+            .unwrap(),
+        removed,
+    );
+    let filter = request(
+        filter
+            .respond(&mut dom, DomNodeFilterDecision::Reject, &cancel)
+            .unwrap(),
+        nested,
+    );
+    drop(filter);
+    assert_eq!(reference(&dom, id), (root, true));
+    let filter = request(dom.node_iterator_next(id, 256, &cancel).unwrap(), root);
+    let cancelled = AtomicBool::new(true);
+    assert_eq!(
+        filter
+            .respond(&mut dom, DomNodeFilterDecision::Accept, &cancelled)
+            .unwrap_err(),
+        DomError::Cancelled
+    );
+    assert_eq!(reference(&dom, id), (root, true));
+    let filter = request(dom.node_iterator_next(id, 256, &cancel).unwrap(), root);
+    assert!(
+        matches!(filter.respond(&mut dom, DomNodeFilterDecision::Accept, &cancel).unwrap(), DomNodeIteratorProgress::Complete(Some(node)) if node == root)
+    );
+    assert_eq!(reference(&dom, id), (root, false));
+}
+
+#[test]
+fn a_filter_response_spends_the_original_traversals_remaining_work() {
+    let Tree { mut dom, root, .. } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = dom
+        .create_node_iterator(root, u32::MAX, DomNodeIteratorFilter::Callback, &cancel)
+        .unwrap();
+    let revision = dom.revision();
+    // The initial advance, the node lookup and its one bank page cost three
+    // units. Acceptance needs one more unit from the same allowance.
+    let filter = request(dom.node_iterator_next(id, 3, &cancel).unwrap(), root);
+    assert_eq!(
+        filter
+            .respond(&mut dom, DomNodeFilterDecision::Accept, &cancel)
+            .unwrap_err(),
+        DomError::NodeIteratorWorkLimit { limit: 3 }
+    );
+    assert_eq!(dom.revision(), revision);
+    assert_eq!(reference(&dom, id), (root, true));
+    let filter = request(dom.node_iterator_next(id, 4, &cancel).unwrap(), root);
+    assert!(
+        matches!(filter.respond(&mut dom, DomNodeFilterDecision::Accept, &cancel).unwrap(), DomNodeIteratorProgress::Complete(Some(node)) if node == root)
+    );
+    assert_eq!(reference(&dom, id), (root, false));
+}
+
+#[test]
+fn cross_parent_and_same_parent_insertions_use_the_actual_old_tree() {
+    let Tree {
+        mut dom,
+        root,
+        first,
+        removed,
+        nested,
+        last,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = iterator(&mut dom, root, u32::MAX);
+    for expected in [root, first, removed, nested] {
+        assert_eq!(step(&mut dom, id, true), Some(expected));
+    }
+    let mut reorder = DomBatch::new();
+    reorder.insert_before(removed, root, Some(first.into()));
+    let commit = dom.apply(reorder, &cancel).unwrap();
+    assert!(
+        commit
+            .changes()
+            .changes()
+            .contains(&DomChange::NodeIteratorReference(id))
+    );
+    assert_eq!(reference(&dom, id), (first, false));
+    assert_eq!(step(&mut dom, id, false), Some(first));
+    assert_eq!(step(&mut dom, id, false), Some(nested));
+
+    let mut reparent = DomBatch::new();
+    reparent.insert_before(nested, first, None);
+    dom.apply(reparent, &cancel).unwrap();
+    assert_eq!(reference(&dom, id), (first, true));
+    assert_eq!(step(&mut dom, id, true), Some(first));
+    assert_eq!(step(&mut dom, id, true), Some(nested));
+    assert_eq!(step(&mut dom, id, true), Some(last));
+}
+
+#[test]
+fn retained_slot_admission_reuse_and_destroy_use_exact_owners_and_generations() {
+    let Tree {
+        mut dom,
+        root,
+        first,
+        ..
+    } = tree();
+    let mut other = tree();
+    let cancel = AtomicBool::new(false);
+    dom.set_limits(dom.limits().with_node_iterators(1)).unwrap();
+    let id = iterator(&mut dom, root, u32::MAX);
+    let revision = dom.revision();
+    assert_eq!(dom.usage().node_iterators(), 1);
+    assert_eq!(other.dom.node_iterator(id), Err(DomError::ForeignOwner));
+    assert_eq!(
+        other
+            .dom
+            .create_node_iterator(root, u32::MAX, DomNodeIteratorFilter::None, &cancel),
+        Err(DomError::ForeignOwner)
+    );
+    assert_eq!(
+        dom.create_node_iterator(first, u32::MAX, DomNodeIteratorFilter::None, &cancel),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::NodeIterators,
+            limit: 1
+        })
+    );
+    assert_eq!(dom.revision(), revision);
+    assert_eq!(
+        dom.node_iterator_next(id, 0, &cancel).unwrap_err(),
+        DomError::NodeIteratorWorkLimit { limit: 0 }
+    );
+    assert_eq!(reference(&dom, id), (root, true));
+    assert_eq!(step(&mut dom, id, true), Some(root));
+    dom.retire_node_iterator(id, &cancel).unwrap();
+    assert_eq!(dom.usage().node_iterators(), 0);
+    let replacement = iterator(&mut dom, first, u32::MAX);
+    assert_ne!(replacement, id);
+    assert_eq!(dom.node_iterator(id), Err(DomError::StaleNodeIterator));
+    let mut destroy = DomBatch::new();
+    destroy.detach(first);
+    destroy.destroy(first);
+    let commit = dom.apply(destroy, &cancel).unwrap();
+    assert!(
+        commit
+            .changes()
+            .changes()
+            .contains(&DomChange::NodeIteratorRetired(replacement))
+    );
+    assert_eq!(
+        dom.node_iterator(replacement),
+        Err(DomError::StaleNodeIterator)
+    );
+    assert_eq!(dom.usage().node_iterators(), 0);
+}
+
+#[test]
+fn source_refusal_and_retry_keep_the_cursor_with_its_published_tree() {
+    let Tree {
+        mut dom,
+        root,
+        first,
+        removed,
+        nested,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let id = iterator(&mut dom, root, u32::MAX);
+    for expected in [root, first, removed, nested] {
+        assert_eq!(step(&mut dom, id, true), Some(expected));
+    }
+    let revision = dom.revision();
+    let refused = DomSourceLimits::new(16_000_000, 100_000, 0, 128, 4096, 4096, 1);
+    let error = match dom.begin_source_edit(DomSourceEdit::detach(removed), refused, &cancel) {
+        Err(error) => error,
+        Ok(mut lease) => {
+            let error = lease.advance(&cancel).unwrap_err();
+            assert!(!lease.status().has_published());
+            error
+        }
+    };
+    assert_eq!(error, DomError::SourceWorkLimit { limit: 0 });
+    assert_eq!(dom.revision(), revision);
+    assert_eq!(reference(&dom, id), (nested, false));
+    assert_eq!(dom.snapshot().node(removed).unwrap().parent(), Some(root));
+
+    let admitted = DomSourceLimits::new(16_000_000, 100_000, 1_000_000, 128, 4096, 4096, 1);
+    let mut lease = dom
+        .begin_source_edit(DomSourceEdit::detach(removed), admitted, &cancel)
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
+    assert_eq!(reference(&dom, id), (first, false));
+    assert_eq!(dom.snapshot().node(removed).unwrap().parent(), None);
+}
+
+#[test]
+fn fragment_cursor_adjustments_survive_the_real_style_source_suspension() {
+    let Tree { mut dom, root, .. } = tree();
+    let cancel = AtomicBool::new(false);
+    let mut setup = DomBatch::new();
+    let document = dom.snapshot().node(root).unwrap().owner_document().unwrap();
+    let fragment = setup.create_fragment(document);
+    let style = setup.create_element_ns(document, Namespace::html(), "style");
+    let text = setup.create_text(document, "p { color: red }");
+    let sibling = setup.create_element_ns(document, Namespace::html(), "p");
+    setup.insert_before(&text, &style, None);
+    setup.insert_before(&style, &fragment, None);
+    setup.insert_before(&sibling, &fragment, None);
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let fragment = commit.created(&fragment).unwrap().unwrap();
+    let style = commit.created(&style).unwrap().unwrap();
+    let sibling = commit.created(&sibling).unwrap().unwrap();
+    let id = iterator(&mut dom, fragment, u32::MAX);
+    assert_eq!(step(&mut dom, id, true), Some(fragment));
+    assert_eq!(step(&mut dom, id, true), Some(style));
+    assert_eq!(step(&mut dom, id, false), Some(style));
+    let limits = DomSourceLimits::new(16_000_000, 100_000, 1_000_000, 128, 4096, 4096, 1);
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(fragment, root, None),
+            limits,
+            &cancel,
+        )
+        .unwrap();
+    let operation = lease.operation();
+    let DomSourceProgress::Request(DomSourceRequest::Style(check)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("the connected Style must reach the real CSP boundary");
+    };
+    let ordinal = check.source().ordinal();
+    assert_eq!(check.source().element(), style);
+    drop(lease);
+    let prefix = dom.snapshot();
+    assert_eq!(prefix.node(fragment).unwrap().children(), []);
+    assert_eq!(prefix.node(style).unwrap().parent(), Some(root));
+    assert_eq!(reference(&dom, id), (fragment, false));
+
+    let mut lease = dom.resume_source_edit(operation, limits, &cancel).unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Style(check)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("resume must reach the retained CSP boundary");
+    };
+    assert_eq!(check.source().ordinal(), ordinal);
+    lease.request_cancel();
+    let denied = DomStyleInlineCspObservation::evaluated(
+        check.source(),
+        std::sync::Arc::new(vec!["style-src 'none'".into()]),
+        19,
+        false,
+    );
+    lease.accept_inline_csp(&check, &denied, &cancel).unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("the original Source tail must settle");
+    };
+    assert!(done.cancellation_requested());
+    drop(lease);
+    assert_eq!(dom.snapshot().node(sibling).unwrap().parent(), Some(root));
+    assert_eq!(reference(&dom, id), (fragment, false));
+    assert_eq!(step(&mut dom, id, true), None);
 }

@@ -270,6 +270,7 @@ fn full_usage(dom: &Dom) -> DomUsage {
         parsed_association_bytes: 0,
         parsed_association_units: 0,
         ranges: 0,
+        node_iterators: state.node_iterators.count_live_records(),
         meta_color_scheme_bytes: 0,
         autofocus_candidates: 0,
         slot_references: state.signal_slots.len(),

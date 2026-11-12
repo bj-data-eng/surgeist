@@ -718,6 +718,7 @@ impl Draft {
                         self.retire_autofocus_candidate(key, cancel)?;
                         self.retire_fullscreen_membership(key, cancel)?;
                         self.retire_range_container(key, cancel)?;
+                        self.retire_node_iterator_root(key, cancel)?;
                         let retired = self.retire_node(key, cancel)?;
                         self.retire_form_relations(key, cancel)?;
                         self.slot_retirement(key, retired.document, limits, cancel)?;
