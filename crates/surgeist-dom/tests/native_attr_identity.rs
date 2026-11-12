@@ -22,6 +22,36 @@ fn policy() -> DomSourceLimits {
 }
 
 #[test]
+fn standard_attribute_sink_requires_the_node_documents_global() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let element = setup.create_element_ns(&document, Namespace::html(), "div");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let before = dom.snapshot();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_attribute(element, "onclick", ""),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    let result = lease.advance(&cancel);
+    assert!(
+        result.is_err(),
+        "a recognized handler sink needs the node document's actual Global: {result:?}"
+    );
+    let after = lease.snapshot();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(
+        after.node(element).unwrap().attribute(&"onclick".into()),
+        None
+    );
+}
+
+#[test]
 fn attr_value_comparison_uses_the_operation_budget_without_spending_name_work() {
     let names = DomNameLimits::new(16_777_216, 16_384, 512, 1_048_576).unwrap();
     let mut dom =
