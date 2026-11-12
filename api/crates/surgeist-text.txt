@@ -2122,11 +2122,12 @@ impl core::fmt::Debug for surgeist_text::FinalizedInlineBoxPiece
 pub fn surgeist_text::FinalizedInlineBoxPiece::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::FinalizedLeaderPattern
 impl surgeist_text::FinalizedLeaderPattern
+pub fn surgeist_text::FinalizedLeaderPattern::cluster_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::LeaderClusterView<'_>>
 pub fn surgeist_text::FinalizedLeaderPattern::fragment_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedFragmentView<'_>>
 pub fn surgeist_text::FinalizedLeaderPattern::mapping_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SelectedMappingView<'_>>
 pub fn surgeist_text::FinalizedLeaderPattern::metrics(&self) -> surgeist_text::LineFeedback
 pub fn surgeist_text::FinalizedLeaderPattern::processed_source(&self) -> &surgeist_text::ProcessedSource
-pub fn surgeist_text::FinalizedLeaderPattern::run_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedRunView<'_>>
+pub fn surgeist_text::FinalizedLeaderPattern::run_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::LeaderRunView<'_>>
 pub fn surgeist_text::FinalizedLeaderPattern::source(&self) -> &surgeist_text::Source
 pub struct surgeist_text::FinalizedLine
 impl surgeist_text::FinalizedLine
@@ -2509,6 +2510,14 @@ impl surgeist_text::Layout
 pub fn surgeist_text::Layout::source_range_fragments(&self, origin: &surgeist_text::PreparedOrigin, local: surgeist_text::Range) -> surgeist_text::Result<surgeist_text::SourceRangeFragments<'_>>
 impl core::fmt::Debug for surgeist_text::Layout
 pub fn surgeist_text::Layout::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::LeaderClusterView<'a>
+impl surgeist_text::LeaderClusterView<'_>
+pub fn surgeist_text::LeaderClusterView<'_>::advance(&self) -> f64
+pub fn surgeist_text::LeaderClusterView<'_>::bounds(&self) -> surgeist_text::Rect
+pub fn surgeist_text::LeaderClusterView<'_>::paint_group(&self) -> core::option::Option<surgeist_text::LeaderPaintGroup>
+pub fn surgeist_text::LeaderClusterView<'_>::presentation_range(&self) -> surgeist_text::PresentationRange
+pub fn surgeist_text::LeaderClusterView<'_>::source_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::Range> + '_
+pub struct surgeist_text::LeaderPaintGroup(_)
 pub struct surgeist_text::LeaderPatternInput
 pub surgeist_text::LeaderPatternInput::direction: surgeist_text::ParagraphBaseDirection
 pub surgeist_text::LeaderPatternInput::orientation: surgeist_text::LineOrientation
@@ -2518,6 +2527,10 @@ pub surgeist_text::LeaderPatternInput::source_identity: surgeist_text::SourceIde
 pub surgeist_text::LeaderPatternInput::style: surgeist_text::Style
 pub surgeist_text::LeaderPatternInput::tab_reference: core::option::Option<surgeist_text::ParagraphTabReference>
 pub surgeist_text::LeaderPatternInput::typography: surgeist_text::AnalysisTypography
+pub struct surgeist_text::LeaderRunView<'a>
+impl surgeist_text::LeaderRunView<'_>
+pub fn surgeist_text::LeaderRunView<'_>::glyphs(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = (surgeist_text::FinalizedGlyphView<'_>, surgeist_text::LeaderPaintGroup)>
+pub fn surgeist_text::LeaderRunView<'_>::run(&self) -> &surgeist_text::FinalizedRunView<'_>
 pub struct surgeist_text::Line
 impl surgeist_text::Line
 pub const fn surgeist_text::Line::baseline(self) -> f64
