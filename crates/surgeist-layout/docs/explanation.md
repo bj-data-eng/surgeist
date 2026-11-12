@@ -128,9 +128,31 @@ focus/target scrolling, snap selection, CSSOM, scrollbar UI and host events rema
 with those consumers; Runtime coordinates coherent publication. Layout does not
 claim a live scrolling runtime.
 
-The general signed physical and flow-relative range types keep finite ordered
-minimum and maximum bounds. When an axis runs in reverse, `FlowAxes` swaps and
-negates endpoints so negative minima and maxima retain their meaning.
+#### Scroll offset coordinates
+
+`PhysicalScrollOffsetOf` measures x rightward and y downward.
+`FlowRelativeScrollOffsetOf` measures inline and block components toward the
+respective flow ends. `FlowAxes` exchanges the components when the inline
+axis is vertical and negates a component when its physical progression is
+decreasing. Both forms accept finite signed values and canonicalize zero.
+Conversion preserves the reference position.
+
+The corresponding range types store finite ordered endpoints and clamp each
+component to its closed interval. On a decreasing axis, conversion swaps and
+negates the endpoints. This preserves the result of clamping in either
+coordinate space. The range in `ScrollGeometryOf` uses zero for Layout's
+initial anchor and exposes an interval of `[0, 0]` on an axis without a scroll
+range. Standalone range values accept any ordered finite endpoints.
+
+[CSS Overflow 3's scroll offset definition](https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/#scroll-offset)
+leaves the module-wide coordinate direction open.
+[CSSOM View's scrolling area](https://www.w3.org/TR/2025/WD-cssom-view-1-20250916/#terminology)
+uses physical coordinates increasing rightward and downward, with an origin
+at the initial containing block origin for the viewport or at the top-left
+padding edge of an element in its default scroll position. A CSSOM View
+consumer uses that operation's own scrolling-area origin and overflow
+direction when mapping Layout geometry to its exposed coordinates. The
+CSSOM View origin and the initial scroll position can differ.
 
 These boundaries describe the represented behavior; they do not establish broad
 CSS conformance. The [browser parity guide](../tests/layout/browser_parity/README.md)
