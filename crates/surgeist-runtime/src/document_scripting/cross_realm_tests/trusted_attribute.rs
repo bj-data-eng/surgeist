@@ -1,5 +1,101 @@
 use super::*;
 
+pub(super) fn guest_attribute_policy_verifies_html_and_svg_sinks() {
+    use crate::document_scripting::guest::tests::{
+        attach_public_nodes, expose_public_node_for_source_test,
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
+        limits.with_meta_processing_work(1_000_000)
+    });
+    session.enable_trusted_types_csp(&cancel).unwrap();
+    let document = target.document();
+    let snapshot = session.snapshot();
+    let root = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let head = snapshot.node(root).unwrap().children()[0];
+    let hosted = session.hosted_execution();
+    let context = hosted
+        .with_current_top_level(&mut session.dom(), target, &cancel, |source, dom| {
+            source
+                .document_constructor_context(dom.raw(), target.global(), &cancel)
+                .map_err(crate::DomHostedRuntimeError::Dom)
+        })
+        .unwrap();
+    let mut batch = DomBatch::new();
+    let detached = batch.construct_document(context);
+    let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+    batch.set_attribute(&meta, "http-equiv", "content-security-policy");
+    batch.set_attribute(&meta, "content", "require-trusted-types-for 'script'");
+    let iframe = batch.create_element_ns(&detached, Namespace::html(), "iframe");
+    let script = batch.create_element_ns(document, Namespace::html(), "script");
+    let svg = batch.create_element_ns(&detached, Namespace::svg(), "script");
+    let formed = session.dom().apply(batch, &cancel).unwrap();
+    let mut adopt = DomBatch::new();
+    for ticket in [&iframe, &svg] {
+        adopt.adopt(formed.created(ticket).unwrap().unwrap(), document);
+    }
+    session.dom().apply(adopt, &cancel).unwrap();
+    let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, head, "sinkHead");
+    for (ticket, key) in [
+        (meta, "sinkPolicy"),
+        (iframe, "iframeSink"),
+        (script, "scriptSink"),
+        (svg, "svgSink"),
+    ] {
+        let node = formed.created(&ticket).unwrap().unwrap();
+        expose_public_node_for_source_test(&mut host, &permit, node, key);
+    }
+    host.in_document(&permit, |scope| {
+        let result = evaluate(scope, r#"
+            (() => {
+                const xlink = 'http://www.w3.org/1999/xlink';
+                const calls = [];
+                sinkHead.appendChild(sinkPolicy);
+                const accept = (value, type, sink) => {
+                    calls.push([value, type, sink]);
+                    return value + '!\udfff';
+                };
+                trustedTypes.createPolicy('default', {createHTML: accept, createScriptURL: accept});
+                iframeSink.setAttribute('srcdoc', 'html\ud800\0');
+                scriptSink.setAttributeNS(null, 'src', 'html script\ud800');
+                svgSink.setAttributeNS(xlink, 'xlink:href', 'svg xlink\ud800');
+                svgSink.setAttributeNS(null, 'href', 'svg plain\ud800');
+                const expected = [
+                    ['html\ud800\0', 'TrustedHTML', 'HTMLIFrameElement srcdoc'],
+                    ['html script\ud800', 'TrustedScriptURL', 'HTMLScriptElement src'],
+                    ['svg xlink\ud800', 'TrustedScriptURL', 'SVGScriptElement href'],
+                    ['svg plain\ud800', 'TrustedScriptURL', 'SVGScriptElement href']
+                ];
+                if (JSON.stringify(calls) !== JSON.stringify(expected)) return JSON.stringify(calls);
+                if (iframeSink.getAttribute('srcdoc') !== 'html\ud800\0!\udfff' ||
+                    scriptSink.getAttribute('src') !== 'html script\ufffd!\ufffd' ||
+                    svgSink.getAttributeNS(xlink, 'href') !== 'svg xlink\ufffd!\ufffd' ||
+                    svgSink.getAttributeNS(null, 'href') !== 'svg plain\ufffd!\ufffd')
+                    return 'wrong default callback string result';
+                const identity = value => value;
+                const named = trustedTypes.createPolicy('matching', {
+                    createHTML: identity, createScriptURL: identity
+                });
+                iframeSink.setAttribute('srcdoc', named.createHTML('trusted\ud800'));
+                scriptSink.setAttribute('src', named.createScriptURL('script\ud800'));
+                svgSink.setAttributeNS(xlink, 'xlink:href', named.createScriptURL('svg\ud800'));
+                return calls.length === 4 && iframeSink.getAttribute('srcdoc') === 'trusted\ud800'
+                    && scriptSink.getAttribute('src') === 'script\ufffd'
+                    && svgSink.getAttributeNS(xlink, 'href') === 'svg\ufffd'
+                    ? 'ok' : 'matching brand did not bypass the default callback';
+            })()
+        "#)?;
+        assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
+        Ok(())
+    }).unwrap();
+}
+
 pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
     use crate::document_scripting::guest::tests::{
         assert_queued_trusted_types_violations, attach_public_nodes,
