@@ -1,5 +1,129 @@
 use super::*;
 
+pub(super) fn guest_meta_retry_preserves_accepted_first_policy() {
+    use crate::{DomSourceDriveError, DomSourceRuntimeError};
+    use surgeist_dom::{DomResource, DomSourceMetaCspError, DomSourcePhase};
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let limits = |units| scripting_dom_limits(units, 0).with_meta_processing_work(1_000_000);
+    let (mut session, target) =
+        hosted_session_with_dom(&cancel, 0, Dom::new(limits(200_000)).unwrap());
+    let document = target.document();
+    let snapshot = session.snapshot();
+    let html = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let head = snapshot.node(html).unwrap().children()[0];
+    let mut batch = DomBatch::new();
+    let fragment = batch.create_fragment(document);
+    let larger = format!(
+        "require-trusted-types-for 'script'; extension {}",
+        "x".repeat(512)
+    );
+    let policies = ["trusted-types default", larger.as_str()];
+    let metas = policies.map(|policy| {
+        let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+        batch.set_attribute(&meta, "http-equiv", "content-security-policy");
+        batch.set_attribute(&meta, "content", policy);
+        batch.insert_before(&meta, &fragment, None);
+        meta
+    });
+    let commit = session.dom().apply(batch, &cancel).unwrap();
+    let fragment = commit.created(&fragment).unwrap().unwrap();
+    let [first, second] = metas.map(|meta| commit.created(&meta).unwrap().unwrap());
+    session.enable_trusted_types_csp(&cancel).unwrap();
+    let policy_owner = session.trusted_types_csp.as_ref().unwrap().clone();
+    let baseline = session.dom().usage().string_code_units();
+    // Leave room for the short first policy and its input custody, while
+    // refusing even one retained copy of the larger second policy.
+    let ceiling = baseline + 128;
+    session.dom().raw_mut().set_limits(limits(ceiling)).unwrap();
+    let mut host = super::super::guest::tests::attach_public_nodes(
+        session,
+        target,
+        cancel.clone(),
+        5_000,
+        20_000,
+    );
+    let permit = host.permit().unwrap();
+    for (node, name) in [(head, "retryHead"), (fragment, "retryFragment")] {
+        super::super::guest::tests::expose_public_node_for_source_test(
+            &mut host, &permit, node, name,
+        );
+    }
+    let before = host.snapshot().unwrap();
+    let result = host.in_document(&permit, |scope| {
+        evaluate(scope, "retryHead.appendChild(retryFragment)").map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("expected the original second policy admission refusal: {result:?}");
+    };
+    assert!(
+        matches!(failure.cause::<DomSourceDriveError>(), Some(DomSourceDriveError::Source(DomSourceRuntimeError::MetaCsp(DomSourceMetaCspError::Dom(DomError::ResourceLimit { resource: DomResource::StringCodeUnits, limit })))) if *limit == ceiling),
+        "{:?}",
+        failure.cause::<DomSourceDriveError>()
+    );
+    assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
+    assert_eq!(
+        host.snapshot().unwrap().node(fragment).unwrap().children(),
+        &[first, second]
+    );
+    let parked = host
+        .with_native(|dom, _, _| dom.pending_source_edit().unwrap())
+        .unwrap();
+    assert_eq!(parked.phase(), DomSourcePhase::MetaCsp);
+    let mut session = host.stop().into_session().unwrap();
+    let mut source = session.source_execution();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::MetaCsp(request),
+        ..
+    } = source
+        .resume(
+            &mut session.dom(),
+            parked.operation(),
+            SOURCE,
+            &mut services,
+            &cancel,
+        )
+        .unwrap()
+    else {
+        panic!("the original second policy request must remain parked");
+    };
+    assert_eq!(request.subject(), Some(second));
+    assert_eq!(request.operation(), parked.operation());
+    session.dom().raw_mut().set_limits(limits(200_000)).unwrap();
+    session
+        .service_trusted_types_meta_csp(request, SOURCE, &cancel)
+        .unwrap();
+    assert!(
+        matches!(source.resume(&mut session.dom(), parked.operation(), SOURCE, &mut services, &cancel).unwrap(), DomSourceDriveProgress::Complete(done) if done.operation() == parked.operation())
+    );
+    assert!(session.dom().pending_source_edit().is_none());
+    let after = session.snapshot();
+    assert_eq!(after.node(head).unwrap().children(), &[first, second]);
+    assert!(after.node(fragment).unwrap().children().is_empty());
+    let document = after.document(document).unwrap();
+    let processor = policy_owner.processor.borrow();
+    let list = processor
+        .document_policies_with(document.metadata().policy_container().csp(), &mut |_| {
+            Ok::<(), Infallible>(())
+        })
+        .unwrap()
+        .unwrap();
+    assert_eq!(list.len(), 2);
+    for (policy, expected) in list.iter().zip(policies) {
+        assert_eq!(policy.serialized(), &expected.into());
+    }
+}
+
 pub(super) fn guest_meta_without_processor_preserves_original_source() {
     use crate::{DomSourceDriveError, DomSourceRuntimeError};
     use surgeist_dom::{DomSourceMetaCspError, DomSourcePhase};

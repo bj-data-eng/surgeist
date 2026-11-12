@@ -43,25 +43,34 @@ fn hosted_session_with_dom_limits(
     details_intentions: usize,
     configure: impl FnOnce(DomLimits) -> DomLimits,
 ) -> (DomSession, DomHostedTopLevel) {
-    let dom = Dom::new(configure(
-        DomLimits::new(
-            128,
-            200_000,
-            256,
-            256,
-            256,
-            32,
-            1_000_000,
-            DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
-        )
-        .unwrap()
-        .with_dispatch_custody(
-            DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
-        )
-        .with_details_toggle_intentions(details_intentions)
-        .unwrap(),
-    ))
-    .unwrap();
+    let dom = Dom::new(configure(scripting_dom_limits(200_000, details_intentions))).unwrap();
+    hosted_session_with_dom(cancel, source_jobs, dom)
+}
+
+fn scripting_dom_limits(units: usize, details_intentions: usize) -> DomLimits {
+    DomLimits::new(
+        128,
+        units,
+        256,
+        256,
+        256,
+        32,
+        1_000_000,
+        DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_dispatch_custody(
+        DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+    )
+    .with_details_toggle_intentions(details_intentions)
+    .unwrap()
+}
+
+fn hosted_session_with_dom(
+    cancel: &AtomicBool,
+    source_jobs: usize,
+    dom: Dom,
+) -> (DomSession, DomHostedTopLevel) {
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
@@ -243,6 +252,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     trusted_attribute::hosted_meta_source_publishes_ordered_csp_for_the_registered_attribute_verifier();
     trusted_attribute::guest_tree_edits_deliver_original_meta_policies();
     trusted_attribute::guest_meta_without_processor_preserves_original_source();
+    trusted_attribute::guest_meta_retry_preserves_accepted_first_policy();
     trusted_attribute::default_factory_retains_the_real_guest_callback();
     super::guest::tests::trusted_policy::window_factory_creates_the_exact_default_policy();
     super::guest::tests::trusted_policy::guest_attribute_writes_reach_the_native_element();
