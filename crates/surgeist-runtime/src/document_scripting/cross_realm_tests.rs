@@ -203,6 +203,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::registered_origin_character_factories_use_receiver_realm();
     super::guest::tests::registered_origin::registered_character_factory_refuses_without_publication(
     );
+    public_and_source_comment_projection_share_identity();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
     );
     super::guest::tests::shadow_root::native_open_shadow_root_uses_the_canonical_interface();
@@ -529,6 +530,13 @@ impl Projection {
 }
 
 fn native_projection(cancel: Arc<AtomicBool>) -> (Projection, DomHostedTopLevel) {
+    native_projection_with_registry_route(cancel, false)
+}
+
+fn native_projection_with_registry_route(
+    cancel: Arc<AtomicBool>,
+    public: bool,
+) -> (Projection, DomHostedTopLevel) {
     let (mut session, receiving) = hosted_session(&cancel, 8);
     let execution = session
         .source_execution_scope(receiving.host(), &cancel)
@@ -571,14 +579,14 @@ fn native_projection(cancel: Arc<AtomicBool>) -> (Projection, DomHostedTopLevel)
         snapshot.relevant_global(comment).unwrap(),
         Some(origin.global())
     );
-    let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+    let registry_limits = DomEventRegistryLimits {
         registrations: 4,
         pending_events: 4,
         nested_dispatches: 4,
         storage_bytes: 16_000_000,
         work: 1_000_000,
-    })
-    .unwrap();
+    };
+    let mut dispatcher = DomEventDispatcher::new(registry_limits).unwrap();
     dispatcher
         .add_listener(
             &mut session.dom(),
@@ -588,7 +596,23 @@ fn native_projection(cancel: Arc<AtomicBool>) -> (Projection, DomHostedTopLevel)
             DomEventListenerOptions::default(),
         )
         .unwrap();
-    let mut host = enable(session, receiving, cancel);
+    let (mut host, dispatcher) = if public {
+        let mut registry = Some(dispatcher);
+        let host = super::guest::tests::attach_public_nodes_with_registry(
+            session,
+            receiving,
+            cancel,
+            10_000,
+            100_000,
+            &mut registry,
+        );
+        let replacement = DomEventDispatcher::new(registry_limits).unwrap();
+        let dispatcher =
+            super::guest::tests::move_public_registry_for_source_test(&host, replacement);
+        (host, dispatcher)
+    } else {
+        (enable(session, receiving, cancel), dispatcher)
+    };
     let permit = host.permit().unwrap();
     host.register_node_creation_realm(&permit, origin).unwrap();
     (
@@ -602,6 +626,50 @@ fn native_projection(cancel: Arc<AtomicBool>) -> (Projection, DomHostedTopLevel)
         },
         origin,
     )
+}
+
+fn public_and_source_comment_projection_share_identity() {
+    for public_first in [true, false] {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (mut projection, _) = native_projection_with_registry_route(cancel.clone(), true);
+        let expose_public = |projection: &mut Projection| {
+            super::guest::tests::expose_public_comment_for_source_test(
+                &mut projection.host,
+                &projection.permit,
+                projection.comment,
+            );
+        };
+        if public_first {
+            expose_public(&mut projection);
+            projection
+                .host
+                .in_document(&projection.permit, |scope| {
+                    evaluate(scope, "publicComment.marker = 42").map(drop)
+                })
+                .unwrap();
+            projection.expose(
+                r#"comment => {
+                    if (comment !== publicComment || comment.marker !== 42) {
+                        throw new Error("Source must delegate the original public Comment");
+                    }
+                    detachIf(0, publicComment);
+                }"#,
+                &cancel,
+            );
+        } else {
+            projection.expose("comment => { globalThis.fromSource = comment; }", &cancel);
+            expose_public(&mut projection);
+            projection
+                .host
+                .in_document(&projection.permit, |scope| {
+                    let actual = evaluate(scope, "fromSource === publicComment")?;
+                    let expected = scope.primitive(Primitive::Boolean(true))?;
+                    assert!(scope.strict_equals(&actual, &expected)?);
+                    Ok(())
+                })
+                .unwrap();
+        }
+    }
 }
 
 fn evaluate<'scope>(scope: &mut Scope<'scope>, text: &str) -> Result<Value<'scope>, Error> {

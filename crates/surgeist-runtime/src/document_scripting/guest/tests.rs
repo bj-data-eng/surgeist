@@ -26,6 +26,24 @@ fn attach_public_nodes(
     .unwrap();
     registry.bind(&mut session.dom(), &cancellation).unwrap();
     let mut registry = Some(registry);
+    attach_public_nodes_with_registry(
+        session,
+        target,
+        cancellation,
+        node_work,
+        source_work,
+        &mut registry,
+    )
+}
+
+pub(in crate::document_scripting) fn attach_public_nodes_with_registry(
+    session: DomSession,
+    target: DomHostedTopLevel,
+    cancellation: Arc<AtomicBool>,
+    node_work: u64,
+    source_work: u64,
+    registry: &mut Option<DomEventDispatcher<()>>,
+) -> DocumentScriptHost {
     PreparedDocumentScriptHost::prepare(session, 2_000_000, cancellation)
         .unwrap()
         .enable_with_guest_event_registry(
@@ -38,7 +56,7 @@ fn attach_public_nodes(
                 child_count: &units("readChildCount"),
                 detach_source_node_if: &units("detachIf"),
             },
-            &mut registry,
+            registry,
             DocumentGuestEventLimits {
                 storage_bytes: 64_000,
                 work: 10_000,
@@ -55,6 +73,37 @@ fn attach_public_nodes(
             },
         )
         .unwrap()
+}
+
+pub(in crate::document_scripting) fn move_public_registry_for_source_test(
+    host: &DocumentScriptHost,
+    replacement: DomEventDispatcher<()>,
+) -> DomEventDispatcher<()> {
+    host.guest_events().unwrap().registry.replace(replacement)
+}
+
+pub(in crate::document_scripting) fn expose_public_comment_for_source_test(
+    host: &mut DocumentScriptHost,
+    permit: &DocumentScriptPermit,
+    node: surgeist_dom::NodeId,
+) {
+    let events = host.guest_events().unwrap();
+    let owner = host.native.clone();
+    host.in_document(permit, |scope| {
+        let comment = events
+            .public
+            .as_ref()
+            .unwrap()
+            .project_node(scope, &owner, &events, node)
+            .unwrap();
+        let global = scope.global()?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("publicComment")),
+            &comment,
+        )
+    })
+    .unwrap();
 }
 
 pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creation_realm() {
