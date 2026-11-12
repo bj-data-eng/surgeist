@@ -379,6 +379,26 @@ impl Draft {
         Ok(true)
     }
 
+    /// Count the private CSP request during the rollback-only Source scan.
+    pub(in crate::store) fn headroom_meta_csp(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        if self.source_headroom.is_none() {
+            return Ok(false);
+        }
+        self.source_step(cancel)?;
+        let scan = self
+            .source_headroom
+            .as_mut()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        scan.invocations = scan
+            .invocations
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        Ok(true)
+    }
+
     pub(in crate::store) fn headroom_external_hook(
         &mut self,
         cancel: &AtomicBool,

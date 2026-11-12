@@ -4214,6 +4214,9 @@ mod tests {
                     DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Script(_)) => {
                         panic!("Style fixture cannot request Script settings")
                     }
+                    DomSourceProgress::Request(surgeist_dom::DomSourceRequest::MetaCsp(_)) => {
+                        panic!("Style fixture cannot request a Meta CSP processor")
+                    }
                     DomSourceProgress::Request(
                         surgeist_dom::DomSourceRequest::FullscreenExitHandoff(_),
                     ) => {

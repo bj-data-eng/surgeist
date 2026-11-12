@@ -190,7 +190,7 @@ pub enum DomMetaError {
     HistoryUnavailable,
     /// The preferred stylesheet-set operation requires its actual CSSOM owner.
     DefaultStyleUnsupported,
-    /// The reached CSP parser and policy enforcement are not supplied.
+    /// This native mutation route cannot process the reached CSP insertion.
     ContentSecurityPolicyUnsupported,
     /// Media beyond HTML's empty/ASCII-whitespace match needs actual matching facts.
     ThemeColorMediaUnavailable,

@@ -10,7 +10,21 @@ mod scheme;
 #[cfg(test)]
 mod tests_css;
 
+#[derive(Clone, Copy)]
+pub(super) struct CspInsertion {
+    pub(super) subject: Key,
+    pub(super) document: Key,
+    pub(super) ordinal: Option<u64>,
+}
+
 impl Draft {
+    pub(super) fn pending_meta_csp(&self) -> Option<CspInsertion> {
+        match self.effects.last()?.effect {
+            select::Effect::MetaCsp(frame) => Some(frame),
+            _ => None,
+        }
+    }
+
     pub(super) fn meta_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         self.source_step(cancel)?;
         if let Some(recording) = &self.meta_recording {
@@ -279,7 +293,22 @@ impl Draft {
                 }
             }
             Pragma::ContentSecurityPolicy if !content.is_empty() => {
-                return Err(DomError::Meta(Failure::ContentSecurityPolicyUnsupported));
+                if self.source_limits.is_none() {
+                    return Err(DomError::Meta(Failure::ContentSecurityPolicyUnsupported));
+                }
+                if self.headroom_meta_csp(cancel)? {
+                    return Ok(());
+                }
+                self.push_effect(
+                    select::Effect::MetaCsp(CspInsertion {
+                        subject: key,
+                        document,
+                        ordinal: None,
+                    }),
+                    self.effect_scoped,
+                    cancel,
+                )?;
+                return Err(DomError::MetaCspProcessingRequired);
             }
             _ => (),
         }
@@ -618,7 +647,9 @@ mod tests {
 
     #[test]
     fn source_meta_csp_insertion_waits_for_its_policy_without_publishing() {
-        use crate::{DomSourceEdit, DomSourceLimits, DomSourceProgress};
+        use crate::{
+            DomSourceEdit, DomSourceLimits, DomSourcePhase, DomSourceProgress, DomSourceRequest,
+        };
 
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(policy()).unwrap();
@@ -630,11 +661,12 @@ mod tests {
         setup.set_attribute(&meta, "http-equiv", "content-security-policy");
         setup.set_attribute(&meta, "content", "require-trusted-types-for 'script'");
         let created = dom.apply(setup, &cancel).unwrap();
+        let document = created.document(&document).unwrap();
         let head = created.created(&head).unwrap().unwrap();
         let meta = created.created(&meta).unwrap().unwrap();
         let before = dom.snapshot().stamp();
         let limits = DomSourceLimits::new(64_000_000, 4_000_000, 1_000_000, 64, 4096, 4096, 1);
-        let operation = {
+        let request = {
             let mut lease = dom
                 .begin_source_edit(
                     DomSourceEdit::insert_before(meta, head, None),
@@ -643,19 +675,32 @@ mod tests {
                 )
                 .unwrap();
             let progress = lease.advance(&cancel);
-            assert!(
-                matches!(progress, Ok(DomSourceProgress::Request(_))),
-                "expected policy service on the reached Meta insertion, got {progress:?}"
-            );
+            let Ok(DomSourceProgress::Request(DomSourceRequest::MetaCsp(request))) = progress
+            else {
+                panic!("expected policy service on the reached Meta insertion, got {progress:?}");
+            };
+            assert_eq!(request.operation(), lease.operation());
+            assert_eq!(request.subject(), Some(meta));
+            assert_eq!(request.document(), Some(document));
+            assert_eq!(lease.status().phase(), DomSourcePhase::MetaCsp);
             assert_eq!(lease.snapshot().stamp(), before);
-            lease.operation()
+            request
         };
-        let mut lease = dom.resume_source_edit(operation, limits, &cancel).unwrap();
+        let mut lease = dom
+            .resume_source_edit(request.operation(), limits, &cancel)
+            .unwrap();
         assert!(matches!(
             lease.advance(&cancel).unwrap(),
-            DomSourceProgress::Request(_)
+            DomSourceProgress::Request(DomSourceRequest::MetaCsp(again)) if again == request
         ));
         assert_eq!(lease.snapshot().stamp(), before);
+        lease.request_cancel();
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("explicit cancellation must close the original private insertion");
+        };
+        assert!(done.cancellation_requested());
+        assert_eq!(lease.snapshot().stamp(), before);
+        assert_eq!(lease.snapshot().node(meta).unwrap().parent(), None);
     }
 
     fn actual_source_meta_read(

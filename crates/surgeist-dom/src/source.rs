@@ -124,6 +124,8 @@ pub enum DomSourcePhase {
     FullscreenExitHandoff,
     /// Original HTML Script preparation is parked in the private segment.
     ScriptPreparation,
+    /// An original Meta CSP insertion awaits its policy processor.
+    MetaCsp,
     /// Actual original invocation cleanup remains after a native failure.
     PendingCleanup,
 }
@@ -173,6 +175,7 @@ impl DomSourceStatus {
 #[derive(Clone, Debug)]
 pub enum DomSourceRequest {
     AttributeVerification(DomSourceAttributeVerificationRequest),
+    MetaCsp(DomSourceMetaCspRequest),
     FullscreenExitHandoff(crate::DomSourceFullscreenExitHandoffRequest),
     Style(DomStyleRequest),
     HostedChild(crate::DomHostedChildRequest),
@@ -184,6 +187,32 @@ pub enum DomSourceRequest {
     CloseWatcher(DomSourceCloseWatcherRequest),
     DesignMode(DomSourceDesignModeRequest),
     Script(DomSourceScriptRequest),
+}
+
+/// Observation of one exact Meta CSP insertion in a private Source segment.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomSourceMetaCspRequest {
+    pub(crate) operation: DomSourceOperationId,
+    pub(crate) occurrence: watcher::HookOccurrence,
+    pub(crate) subject: Option<NodeId>,
+    pub(crate) document: Option<crate::DocumentId>,
+}
+
+impl DomSourceMetaCspRequest {
+    /// The original retained Source operation.
+    pub const fn operation(self) -> DomSourceOperationId {
+        self.operation
+    }
+
+    /// The Meta node, if its identity was already published.
+    pub const fn subject(self) -> Option<NodeId> {
+        self.subject
+    }
+
+    /// The Document, if its identity was already published.
+    pub const fn document(self) -> Option<crate::DocumentId> {
+        self.document
+    }
 }
 
 /// Actual reached boundary of an original native HTML Script preparation.

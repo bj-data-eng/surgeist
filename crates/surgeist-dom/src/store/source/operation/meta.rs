@@ -5,6 +5,56 @@ use crate::meta_atomic::{DomMetaAtomicLimits, DomMetaRuntimeUsage};
 #[cfg(test)]
 mod tests;
 
+impl Operation {
+    pub(super) fn issue_meta_csp_request(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceMetaCspRequest, DomError> {
+        self.draft.source_step(cancel)?;
+        let frame = self
+            .draft
+            .pending_meta_csp()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let ordinal = match frame.ordinal {
+            Some(ordinal) => ordinal,
+            None => {
+                let ordinal = self.draft.source_invocation;
+                let next = ordinal
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                let identities = self
+                    .identities
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                if identities > self.limits.identities {
+                    return Err(DomError::SourceIdentityLimit);
+                }
+                let Some(select::Effect::MetaCsp(frame)) =
+                    self.draft.effects.last_mut().map(|frame| &mut frame.effect)
+                else {
+                    return Err(DomError::InvalidSourceOperation);
+                };
+                frame.ordinal = Some(ordinal);
+                self.draft.source_invocation = next;
+                self.identities = identities;
+                ordinal
+            }
+        };
+        Ok(DomSourceMetaCspRequest {
+            operation: self.id,
+            occurrence: crate::source::watcher::HookOccurrence {
+                command: self.index,
+                ordinal,
+            },
+            subject: self.draft.published_id(frame.subject),
+            document: self
+                .draft
+                .published_id(frame.document)
+                .map(crate::DocumentId),
+        })
+    }
+}
+
 /// Original native accounting, retained outside the sparse semantic journal.
 /// Its actual atom backing and work dependencies outlive every alias together.
 pub(in crate::store) struct NativeWork {

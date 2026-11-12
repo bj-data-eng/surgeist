@@ -2243,6 +2243,9 @@ fn execute_slot_source_edit(
             surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Script(request)) => {
                 panic!("manual Slot assignment has no Script settings phase: {request:?}")
             }
+            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::MetaCsp(request)) => {
+                panic!("manual Slot assignment has no Meta CSP phase: {request:?}")
+            }
             surgeist_dom::DomSourceProgress::Request(DomSourceRequest::AttributeVerification(
                 request,
             )) => {

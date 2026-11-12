@@ -158,7 +158,7 @@ struct AcceptedCssomCreation {
     owner_rule: Option<surgeist_cssom::CssomRuleId>,
 }
 /// Execution permission for exactly one DOM-owned source operation. Drop parks
-/// a published operation; it never runs cleanup or discards its mandatory tail.
+/// a published operation or an exposed service request. It never runs cleanup.
 pub struct DomSourceLease<'a> {
     dom: &'a mut Dom,
     id: DomSourceOperationId,
@@ -168,19 +168,18 @@ pub struct DomSourceLease<'a> {
 }
 impl Drop for DomSourceLease<'_> {
     fn drop(&mut self) {
-        if !self.complete
-            && self.dom.source_operation.as_ref().is_some_and(|o| {
-                !o.published
-                    && !o.event_exposed
-                    && !o.script_parked
-                    && o.attribute_verification.is_none()
-                    && matches!(
-                        &o.draft,
-                        dialog::OperationDraft::Segment(draft) if draft.compound_failure().is_none()
-                    )
-                    && o.meta_policy.is_none()
-            })
-        {
+        if !self.complete && self.dom.source_operation.as_ref().is_some_and(|o| {
+            !o.published
+                && !o.event_exposed
+                && !o.script_parked
+                && o.attribute_verification.is_none()
+                && matches!(
+                    &o.draft,
+                    dialog::OperationDraft::Segment(draft)
+                        if draft.compound_failure().is_none() && draft.pending_meta_csp().is_none()
+                )
+                && o.meta_policy.is_none()
+        }) {
             self.dom.source_operation = self.dom.source_parents.pop();
         }
         #[cfg(test)]
@@ -707,6 +706,8 @@ impl Operation {
                 crate::DomSourcePhase::PendingCleanup
             } else if self.draft.pending_script().is_some() {
                 crate::DomSourcePhase::ScriptPreparation
+            } else if self.draft.pending_meta_csp().is_some() {
+                crate::DomSourcePhase::MetaCsp
             } else if self.waiting_attribute_verification().is_some() {
                 crate::DomSourcePhase::AttributeVerification
             } else if self.draft.fullscreen_exit.is_some() {
@@ -2115,6 +2116,11 @@ impl DomSourceLease<'_> {
                     )));
                 }
             }
+            if op.draft.pending_meta_csp().is_some() {
+                return Ok(DomSourceProgress::Request(DomSourceRequest::MetaCsp(
+                    op.issue_meta_csp_request(cancel)?,
+                )));
+            }
             if op.draft.fullscreen_exit.is_some() {
                 let request = op.fullscreen_handoff_request(self.dom, cancel)?;
                 op.event_exposed = true;
@@ -2261,6 +2267,7 @@ impl DomSourceLease<'_> {
             match result {
                 Err(
                     boundary @ (DomError::ScriptPreparationRequired
+                    | DomError::MetaCspProcessingRequired
                     | DomError::FullscreenExitHandoffRequired),
                 ) => {
                     if !op.command_admitted {
@@ -2275,6 +2282,13 @@ impl DomSourceLease<'_> {
                         op.restore_external_receipt(external_applied);
                         op.started = started;
                         return Err(DomError::IncompleteSourceOperation.into());
+                    }
+                    if matches!(boundary, DomError::MetaCspProcessingRequired) {
+                        op.started = true;
+                        drop(checkpoint);
+                        return Ok(DomSourceProgress::Request(DomSourceRequest::MetaCsp(
+                            op.issue_meta_csp_request(cancel)?,
+                        )));
                     }
                     if matches!(boundary, DomError::ScriptPreparationRequired) {
                         op.started = true;
@@ -6950,6 +6964,7 @@ pub(in crate::store) mod accounting_tests {
                         | DomSourceRequest::DesignMode(_)
                         | DomSourceRequest::FullscreenExitHandoff(_)
                         | DomSourceRequest::Script(_)
+                        | DomSourceRequest::MetaCsp(_)
                         | DomSourceRequest::AttributeVerification(_)
                         | DomSourceRequest::AutofocusInsertion(_),
                     )) => {

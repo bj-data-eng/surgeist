@@ -360,6 +360,8 @@ pub enum DomError {
     Namespace,
     /// HTML Script preparation requires a live settings observation.
     ScriptPreparationRequired,
+    /// A staged HTML Meta insertion requires its CSP processor.
+    MetaCspProcessingRequired,
     NotSupported,
     NativeInitializationRequired(surgeist_html::elements::native::HtmlElementClass),
     NonceInapplicable,

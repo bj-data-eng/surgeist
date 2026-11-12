@@ -59,6 +59,8 @@ pub struct DomSourceUrlService<'a> {
 pub enum DomSourceUnavailable {
     /// This exact standard attribute operation awaits a qualified verifier.
     AttributeVerification,
+    /// The original private Meta insertion awaits its CSP processor.
+    MetaCsp,
     /// An exact beforetoggle request requires explicit event dispatch.
     Event,
     /// This actual Dialog service has no implementation yet.
@@ -978,6 +980,12 @@ impl DomSourceRuntime {
                     return Ok(DomSourceDriveProgress::Pending {
                         reason: DomSourceUnavailable::AttributeVerification,
                         request: DomSourceRequest::AttributeVerification(request),
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::MetaCsp(request)) => {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        reason: DomSourceUnavailable::MetaCsp,
+                        request: DomSourceRequest::MetaCsp(request),
                     });
                 }
                 DomSourceProgress::Request(DomSourceRequest::Script(request)) => {
