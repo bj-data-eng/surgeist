@@ -3,7 +3,8 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DocumentId, Dom, DomBatch, DomChildListObservationLimits, DomChildListObserverId,
-    DomChildListRecord, DomLimits, DomNameLimits, Namespace, NodeId,
+    DomChildListRecord, DomLimits, DomNameLimits, DomSourceEdit, DomSourceLimits,
+    DomSourceProgress, Namespace, NodeId,
 };
 
 struct Tree {
@@ -182,5 +183,80 @@ fn fragment_transfer_reports_two_aggregate_records_in_source_order() {
         &[],
         Some(first),
         Some(branch),
+    );
+}
+
+#[test]
+fn replace_child_emits_one_record_with_the_original_neighbors() {
+    let Tree {
+        mut dom,
+        document,
+        root,
+        first,
+        branch,
+        last,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let observer = observe(&mut dom, root, false);
+    let mut replace = DomBatch::new();
+    let added = replace.create_text(document, "replacement");
+    replace.replace_child(&added, root, branch);
+    let added = dom
+        .apply(replace, &cancel)
+        .unwrap()
+        .created(&added)
+        .unwrap()
+        .unwrap();
+    let records = dom.take_child_list_records(observer, &cancel).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_record(
+        &records[0],
+        root,
+        &[added],
+        &[branch],
+        Some(first),
+        Some(last),
+    );
+}
+
+#[test]
+fn text_content_replacement_records_all_removed_and_added_nodes_once() {
+    let Tree {
+        mut dom,
+        root,
+        first,
+        branch,
+        last,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let observer = observe(&mut dom, root, true);
+    let limits = DomSourceLimits::new(32_000_000, 100_000, 1_000_000, 128, 4096, 4096, 4);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_text_content(root, "one"),
+            limits,
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
+    let snapshot = dom.snapshot();
+    let [added] = snapshot.node(root).unwrap().children() else {
+        panic!("one replacement Text");
+    };
+    let records = dom.take_child_list_records(observer, &cancel).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_record(
+        &records[0],
+        root,
+        &[*added],
+        &[first, branch, last],
+        None,
+        None,
     );
 }
