@@ -1231,6 +1231,52 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     })
     .unwrap();
 
+    let factory_result = host.in_document(&permit, |scope| {
+        let script = r#"
+            (() => {
+                let replacement;
+                let calls = 0;
+                const policy = trustedTypes.defaultPolicy;
+                globalThis.attachmentProbe = value => {
+                    if (value !== 'factory') return;
+                    calls++;
+                    const plain = document.createAttribute('DATA-NESTED');
+                    const fragment = document.createDocumentFragment();
+                    const text = document.createTextNode('nested\ud800');
+                    const comment = document.createComment('comment');
+                    fragment.appendChild(text);
+                    fragment.appendChild(comment);
+                    plain.value = fragment.textContent;
+                    firstOwner.setAttributeNode(plain);
+                    replacement = document.createAttributeNS(null, 'onclick');
+                    replacement.value = policy.createScript('nested\udfff');
+                    if (protectedTarget.setAttributeNode(replacement) !== hiddenOwnerAttr)
+                        throw new Error('nested attachment selected the wrong Attr');
+                };
+                try {
+                    protectedTarget.setAttribute('onclick', 'factory');
+                    return calls === 1 && replacement instanceof Attr
+                        && protectedTarget.getAttributeNode('onclick') === replacement
+                        && replacement.value === 'factory!'
+                        && hiddenOwnerAttr.ownerElement === null
+                        && firstOwner.getAttribute('data-nested') === 'nested\ud800';
+                } finally {
+                    delete globalThis.attachmentProbe;
+                }
+            })()
+        "#;
+        let result = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    });
+    if let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = &factory_result {
+        panic!(
+            "the original policy could not create a detached node: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        );
+    }
+    factory_result.unwrap();
+
     let calls = pause_guest_attribute(
         &mut host,
         &permit,
