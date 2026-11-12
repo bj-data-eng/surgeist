@@ -214,8 +214,13 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     drop(session);
 
     let session = host.stop().into_session().unwrap();
-    let mut host =
-        super::super::guest::tests::attach_public_nodes(session, target, cancel, 5_000, 20_000);
+    let mut host = super::super::guest::tests::attach_public_nodes(
+        session,
+        target,
+        cancel.clone(),
+        5_000,
+        20_000,
+    );
     let permit = host.permit().unwrap();
     super::super::guest::tests::expose_public_node_for_source_test(
         &mut host,
@@ -238,6 +243,7 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
                         if (value === 'empty') return null;
                         return {toString() {
                             protectedTarget.setAttribute('data-coerced', 'yes');
+                            if (value === 'later') stopAfterAttributeCallback();
                             return value + '!';
                         }};
                     }
@@ -288,6 +294,49 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
             (1, "trusted-types-sink", "Element onclick|empty"),
             (0, "trusted-types-policy", "denied"),
         ],
+    );
+
+    let calls = Rc::new(Cell::new(0));
+    let result = host.in_document(&permit, |scope| {
+        let calls = calls.clone();
+        let stop = cancel.clone();
+        let function = scope.function(&Callback::new(move |_, _| {
+            calls.set(calls.get() + 1);
+            stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            Ok(surgeist_bindings_js::Completion::Undefined)
+        }))?;
+        let global = scope.global()?;
+        scope.set(
+            &global,
+            PropertyKey::String(
+                &"stopAfterAttributeCallback"
+                    .encode_utf16()
+                    .collect::<Vec<_>>(),
+            ),
+            &function,
+        )?;
+        scope
+            .evaluate(
+                &"protectedTarget.setAttribute('onclick', 'later')"
+                    .encode_utf16()
+                    .collect::<Vec<_>>(),
+            )
+            .map(drop)
+    });
+    cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+    assert!(
+        matches!(
+            result,
+            Err(DocumentScriptError::Script(Error::HostFailure(_)))
+        ),
+        "{result:?}"
+    );
+    assert_eq!(calls.get(), 1);
+    assert!(
+        host.with_native(|dom, _, _| dom.pending_source_edit())
+            .unwrap()
+            .is_some(),
+        "the exact converted callback result must remain available after refusal"
     );
 }
 
