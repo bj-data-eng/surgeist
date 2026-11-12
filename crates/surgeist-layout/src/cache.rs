@@ -206,10 +206,10 @@ fn matches_output<S: LayoutScalar, T>(
         && key.physical_baseline_demand == entry.key.physical_baseline_demand
         && key.requires_fixed_grid_tracks == entry.key.requires_fixed_grid_tracks
         && context == entry.key.context
-        // ContentSize's original axis purposes can qualify suppressed preferred
+        // Original content sizing axis purposes can qualify suppressed preferred
         // bounds for descendant fallback. A known body dimension does not erase
         // that cross-axis authority, including when both dimensions are known.
-        && (input.sizing_mode() != SizingMode::ContentSize
+        && (input.sizing_mode() == SizingMode::InherentSize
             || (requested.width.operation() == saved.width.operation()
                 && requested.height.operation() == saved.height.operation()))
         && effective_operation(input.known().width, requested.width) == effective_operation(entry.key.known.width, saved.width)

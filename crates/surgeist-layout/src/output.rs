@@ -91,6 +91,9 @@ impl RunMode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SizingMode {
     ContentSize,
+    /// Inline intrinsic contribution of a positioned wrapping column Flex box.
+    /// Authored block bounds govern its line formation.
+    PositionedColumnFlexInline,
     InherentSize,
 }
 

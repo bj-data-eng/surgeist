@@ -605,6 +605,20 @@ where
         .transpose()?;
     let known_opposite =
         opposite.map_or(Size::NONE, |value| root_known_on_axis(opposite_axis, value));
+    let mode = if opposite.is_none()
+        && style.display.inner_display() == crate::Display::Flex
+        && style.flex_direction.is_column()
+        && style.flex_wrap != crate::FlexWrap::NoWrap
+        && !root_physical_axis_value(
+            Size::new(&style.max_size.width, &style.max_size.height),
+            opposite_axis,
+        )
+        .is_none()
+    {
+        crate::SizingMode::PositionedColumnFlexInline
+    } else {
+        crate::SizingMode::ContentSize
+    };
     let query = |tree: &mut Tree, operation| {
         let mut axes = sizing_request.axes();
         let requested_axis = match inline_axis {
@@ -621,7 +635,7 @@ where
             root,
             ComputeInputOf::for_child(
                 crate::RunMode::ComputeSize,
-                crate::SizingMode::ContentSize,
+                mode,
                 requested_axis,
                 known_opposite,
                 parent,

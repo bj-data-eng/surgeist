@@ -410,6 +410,81 @@ fn percentage_basis<S: LayoutScalar>() {
     }
 }
 
+fn positioned_column_flex_retains_main_bound<S: LayoutScalar>() {
+    for (main_cap, main_size, expected_width, expected_height, items_per_line) in [
+        (MaxSizeOf::NONE, PreferredSizeOf::AUTO, 40.0, 400.0, 20),
+        (
+            MaxSizeOf::NONE,
+            PreferredSizeOf::px(n(200.0)),
+            80.0,
+            200.0,
+            10,
+        ),
+        (
+            MaxSizeOf::px(n(200.0)),
+            PreferredSizeOf::AUTO,
+            80.0,
+            200.0,
+            10,
+        ),
+    ] {
+        for direction in [Direction::Ltr, Direction::Rtl] {
+            for box_sizing in [BoxSizing::ContentBox, BoxSizing::BorderBox] {
+                let root = NodeInputOf {
+                    display: Display::Flex,
+                    position: Position::Absolute,
+                    direction,
+                    box_sizing,
+                    flex_direction: FlexDirection::Column,
+                    flex_wrap: FlexWrap::Wrap,
+                    size: Size::new(PreferredSizeOf::AUTO, main_size.clone()),
+                    max_size: Size::new(MaxSizeOf::NONE, main_cap.clone()),
+                    ..NodeInputOf::<S>::default()
+                };
+                let child = NodeInputOf {
+                    display: Display::Block,
+                    flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+                    size: Size::new(PreferredSizeOf::px(n(40.0)), PreferredSizeOf::px(n(20.0))),
+                    ..NodeInputOf::<S>::default()
+                };
+                let mut tree = PublicLayoutTreeOf::new().children(0, 1..=20).style(0, root);
+                for node in 1..=20 {
+                    tree = tree.children(node, []).style(node, child.clone());
+                }
+
+                let batch = compute_layout(&tree, 0, request(0.0, direction)).unwrap();
+                assert_eq!(
+                    output(&batch, 0, false).size,
+                    Size::new(n(expected_width), n(expected_height)),
+                    "{direction:?}, {box_sizing:?}, main max {main_cap:?}, preferred {main_size:?}",
+                );
+                for node in 1..=20 {
+                    let index = node - 1;
+                    let column = f64::from(index / items_per_line) * 40.0;
+                    let x = match direction {
+                        Direction::Ltr => column,
+                        Direction::Rtl => expected_width - 40.0 - column,
+                    };
+                    let y = f64::from(index % items_per_line) * 20.0;
+                    let child = output(&batch, node, false);
+                    assert_eq!(child.size, Size::new(n(40.0), n(20.0)), "item {node}");
+                    assert_eq!(child.location, Point::new(n(x), n(y)), "item {node}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn positioned_column_flex_retains_main_bound_f32() {
+    positioned_column_flex_retains_main_bound::<f32>();
+}
+
+#[test]
+fn positioned_column_flex_retains_main_bound_f64() {
+    positioned_column_flex_retains_main_bound::<f64>();
+}
+
 fn fixed_orthogonal_root<S: LayoutScalar>() {
     let containing_size = Size::new(nn(192.0), nn(80.0));
     for (direction, containing_direction) in [

@@ -156,7 +156,9 @@ where
 
     let (node_size, node_min_size, node_max_size, preferred_intrinsic_operation, aspect_ratio) =
         match input.sizing_mode() {
-            SizingMode::ContentSize => (input.known(), Size::NONE, Size::NONE, Size::NONE, None),
+            SizingMode::ContentSize | SizingMode::PositionedColumnFlexInline => {
+                (input.known(), Size::NONE, Size::NONE, Size::NONE, None)
+            }
             SizingMode::InherentSize => {
                 let missing_basis_is_indefinite = input.run_mode() == RunMode::ComputeSize;
                 let (style_size, preferred_intrinsic_operation) = if input.known().width.is_some()
