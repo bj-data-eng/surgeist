@@ -69,18 +69,7 @@ pub type ScrollRect = ScrollRectOf<DefaultScalar>;
 
 impl<S: LayoutScalar> ScrollRectOf<S> {
     pub fn try_new(origin: Point<S>, size: Size<S>) -> Result<Self, ScrollRectErrorOf<S>> {
-        if !origin.x.is_finite() {
-            return Err(ScrollRectErrorOf::NonFiniteOrigin {
-                axis: PhysicalAxis::Horizontal,
-                value: origin.x,
-            });
-        }
-        if !origin.y.is_finite() {
-            return Err(ScrollRectErrorOf::NonFiniteOrigin {
-                axis: PhysicalAxis::Vertical,
-                value: origin.y,
-            });
-        }
+        Self::validate_origin(origin)?;
         if !size.width.is_finite() {
             return Err(ScrollRectErrorOf::NonFiniteSize {
                 axis: PhysicalAxis::Horizontal,
@@ -129,6 +118,22 @@ impl<S: LayoutScalar> ScrollRectOf<S> {
             origin: Point::new(canonical_zero(origin.x), canonical_zero(origin.y)),
             size: Size::new(canonical_zero(size.width), canonical_zero(size.height)),
         })
+    }
+
+    pub(super) fn validate_origin(origin: Point<S>) -> Result<(), ScrollRectErrorOf<S>> {
+        if !origin.x.is_finite() {
+            return Err(ScrollRectErrorOf::NonFiniteOrigin {
+                axis: PhysicalAxis::Horizontal,
+                value: origin.x,
+            });
+        }
+        if !origin.y.is_finite() {
+            return Err(ScrollRectErrorOf::NonFiniteOrigin {
+                axis: PhysicalAxis::Vertical,
+                value: origin.y,
+            });
+        }
+        Ok(())
     }
 
     #[must_use]

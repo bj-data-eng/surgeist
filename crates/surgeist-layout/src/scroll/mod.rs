@@ -15,6 +15,7 @@ mod input;
 mod model;
 pub(crate) mod rounding;
 mod snap;
+mod snap_distance;
 
 #[cfg(test)]
 mod snap_tests;

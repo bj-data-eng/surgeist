@@ -1,8 +1,11 @@
+use core::cmp::Ordering;
+
+use super::snap_distance::{SnapDistance, SnapRounding};
 use super::{
     DefaultScalar, FlowAxes, LayoutScalar, PhysicalAxis, PhysicalScrollAxisRangeOf,
     PhysicalScrollOffsetOf, PhysicalScrollRangeOf, Point, ScrollCoordinateErrorOf,
     ScrollRectErrorOf, ScrollRectOf, ScrollTargetGeometryOf, Size, canonical_zero,
-    scroll_rect_axis_interval, validate_physical_scroll_range,
+    validate_physical_scroll_range,
 };
 use crate::{ScrollSnapAlignValue, ScrollSnapAxis};
 
@@ -18,29 +21,26 @@ impl<S: LayoutScalar> ScrollTargetGeometryOf<S> {
         transformed_border: ScrollRectOf<S>,
     ) -> Result<Option<ScrollRectOf<S>>, ScrollRectErrorOf<S>> {
         let margin = self.scroll_margin();
-        let origin = transformed_border.origin();
-        let size = transformed_border.size();
-        let area = ScrollRectOf::try_new(
-            Point::new(origin.x - margin.left(), origin.y - margin.top()),
-            Size::new(
-                expanded_extent(size.width, margin.left(), margin.right()),
-                expanded_extent(size.height, margin.top(), margin.bottom()),
-            ),
+        let border_origin = transformed_border.origin();
+        let origin = Point::new(
+            border_origin.x - margin.left(),
+            border_origin.y - margin.top(),
         );
-        match area {
-            Err(ScrollRectErrorOf::NegativeSize { .. }) => Ok(None),
-            result => result.map(Some),
+        let size = transformed_border.size();
+        let width = SnapDistance::sum(&[size.width, margin.left(), margin.right()], &[]);
+        let height = SnapDistance::sum(&[size.height, margin.top(), margin.bottom()], &[]);
+        if width.sign() == Ordering::Less || height.sign() == Ordering::Less {
+            ScrollRectOf::validate_origin(origin)?;
+            return Ok(None);
         }
-    }
-}
-
-fn expanded_extent<S: LayoutScalar>(extent: S, start: S, end: S) -> S {
-    let outsets = start + end;
-    if outsets.is_finite() {
-        extent + outsets
-    } else {
-        // A positive extent can offset two negative outsets whose sum overflows.
-        (extent + start) + end
+        ScrollRectOf::try_new(
+            origin,
+            Size::new(
+                width.rounded(SnapRounding::Nearest),
+                height.rounded(SnapRounding::Nearest),
+            ),
+        )
+        .map(Some)
     }
 }
 
@@ -129,8 +129,22 @@ impl<S: LayoutScalar> ScrollTargetGeometryOf<S> {
                 self.snap_align().block()
             };
             let decreasing = edge_axes.physical_axis_progression(axis).is_decreasing();
-            let anchor = |rect| alignment_anchor(rect, axis, alignment, decreasing);
-            let offset = anchor(area)? - anchor(container.snapport)?;
+            let area = RectAxis::new(area, axis);
+            let port = RectAxis::new(container.snapport, axis);
+            let origins = [area.start, -port.start];
+            let extents = [area.extent, -port.extent];
+            let distance = match alignment {
+                ScrollSnapAlignValue::None => return None,
+                ScrollSnapAlignValue::Center => SnapDistance::sum(&origins, &extents),
+                ScrollSnapAlignValue::Start | ScrollSnapAlignValue::End => {
+                    if (alignment == ScrollSnapAlignValue::End) ^ decreasing {
+                        area.end_relative_to(port)
+                    } else {
+                        SnapDistance::sum(&origins, &[])
+                    }
+                }
+            };
+            let offset = distance.rounded(SnapRounding::Nearest);
             Some(canonical_zero(container.reachable_axis(axis).clamp(offset)))
         };
         Ok(Some(ScrollSnapGeometryOf {
@@ -185,18 +199,22 @@ impl<S: LayoutScalar> ScrollSnapGeometryOf<S> {
         }
         if let (Some(previous), Some(subsequent)) = (previous, subsequent) {
             validate_physical_scroll_range(axis, previous, subsequent)?;
-            if subsequent - previous <= extent {
+            if SnapDistance::sum(&[subsequent, -previous, -extent], &[]).sign() != Ordering::Greater
+            {
                 return Ok(None);
             }
         }
 
-        let (area_start, area_end) = scroll_rect_axis_interval(self.area, axis);
-        let (port_start, port_end) = scroll_rect_axis_interval(snapport, axis);
+        let area = RectAxis::new(self.area, axis);
+        let port = RectAxis::new(snapport, axis);
         let reachable = self.container.reachable_axis(axis);
-        let minimum = (area_start - port_start)
+        // Round toward the interior so every returned scalar offset covers the port.
+        let start: S = SnapDistance::sum(&[area.start, -port.start], &[]).rounded(SnapRounding::Up);
+        let end: S = area.end_relative_to(port).rounded(SnapRounding::Down);
+        let minimum = start
             .max(reachable.minimum())
             .max(previous.unwrap_or(reachable.minimum()));
-        let maximum = (area_end - port_end)
+        let maximum = end
             .min(reachable.maximum())
             .min(subsequent.unwrap_or(reachable.maximum()));
         Ok((minimum <= maximum).then(|| {
@@ -214,9 +232,12 @@ impl<S: LayoutScalar> ScrollSnapGeometryOf<S> {
         ]
         .into_iter()
         .all(|(axis, offset)| {
-            let (area_start, area_end) = scroll_rect_axis_interval(self.area, axis);
-            let (port_start, port_end) = scroll_rect_axis_interval(self.container.snapport, axis);
-            area_start <= port_end + offset && area_end >= port_start + offset
+            let area = RectAxis::new(self.area, axis);
+            let port = RectAxis::new(self.container.snapport, axis);
+            SnapDistance::sum(&[port.start, port.extent, offset, -area.start], &[]).sign()
+                != Ordering::Less
+                && SnapDistance::sum(&[area.start, area.extent, -offset, -port.start], &[]).sign()
+                    != Ordering::Less
         })
     }
 }
@@ -228,22 +249,24 @@ fn rect_extent<S: LayoutScalar>(rect: ScrollRectOf<S>, axis: PhysicalAxis) -> S 
     }
 }
 
-fn alignment_anchor<S: LayoutScalar>(
-    rect: ScrollRectOf<S>,
-    axis: PhysicalAxis,
-    alignment: ScrollSnapAlignValue,
-    decreasing: bool,
-) -> Option<S> {
-    let (minimum, maximum) = scroll_rect_axis_interval(rect, axis);
-    match alignment {
-        ScrollSnapAlignValue::None => None,
-        ScrollSnapAlignValue::Center => Some(minimum + rect_extent(rect, axis) * S::from_f64(0.5)),
-        ScrollSnapAlignValue::Start | ScrollSnapAlignValue::End => {
-            Some(if (alignment == ScrollSnapAlignValue::End) ^ decreasing {
-                maximum
-            } else {
-                minimum
-            })
+struct RectAxis<S> {
+    start: S,
+    extent: S,
+}
+
+impl<S: LayoutScalar> RectAxis<S> {
+    fn new(rect: ScrollRectOf<S>, axis: PhysicalAxis) -> Self {
+        let origin = rect.origin();
+        Self {
+            start: match axis {
+                PhysicalAxis::Horizontal => origin.x,
+                PhysicalAxis::Vertical => origin.y,
+            },
+            extent: rect_extent(rect, axis),
         }
+    }
+
+    fn end_relative_to(self, other: Self) -> SnapDistance {
+        SnapDistance::sum(&[self.start, -other.start, self.extent, -other.extent], &[])
     }
 }
