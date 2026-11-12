@@ -179,6 +179,7 @@ pub(crate) trait Operations {
         &mut self,
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
+        reference: Option<(u32, &Root)>,
     ) -> Result<Root, Error>;
     fn project_retained_native_object(
         &mut self,

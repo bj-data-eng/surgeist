@@ -655,9 +655,9 @@ fn exercise(retain: bool) {
         assert!(!event.bubbles);
         assert!(!event.cancelable);
         assert!(!event.prevented);
-        let payload = event.payload.unwrap();
-        assert_eq!(payload.old_state(), old);
-        assert_eq!(payload.new_state(), new);
+        let payload = event.payload.as_ref().unwrap();
+        assert_eq!(String::from_utf16(payload.old_state()).unwrap(), old);
+        assert_eq!(String::from_utf16(payload.new_state()).unwrap(), new);
         assert_eq!(payload.source(), None);
         assert_eq!(event.path, expected_path);
     }

@@ -188,19 +188,10 @@ fn retarget_fullscreen(
     against: NodeId,
     candidate: Option<NodeId>,
 ) -> Result<Option<NodeId>, DomError> {
-    let Some(mut candidate) = candidate else {
+    let Some(candidate) = candidate else {
         return Ok(None);
     };
-    loop {
-        let root = snapshot.node(candidate)?.root();
-        let root = snapshot.node(root)?;
-        let Some(shadow) = root.as_shadow_root() else {
-            break;
-        };
-        if root.is_shadow_including_inclusive_ancestor_of(against)? {
-            break;
-        }
-        candidate = shadow.host();
-    }
+    let candidate =
+        snapshot.retarget_node_with(candidate, Some(against), || Ok::<(), DomError>(()))?;
     Ok((snapshot.node(candidate)?.root() == snapshot.node(against)?.root()).then_some(candidate))
 }

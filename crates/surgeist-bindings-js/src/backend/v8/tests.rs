@@ -580,6 +580,7 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     crate::callback_object::retired_prototype_refuses_before_native_allocation()?;
     refused_native_projection_preserves_prototype_root_custody()?;
     native_references_follow_only_guest_reachability()?;
+    initial_native_reference_precedes_publication()?;
     cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal()?;
     crate::conversion::tests::run()?;
     Ok(())
@@ -670,6 +671,56 @@ fn native_projection_custody_tracks_the_exact_guest_object() -> TestResult {
     drop(lease);
     assert!(payload.upgrade().is_none());
     assert!(funded.upgrade().is_none());
+    Ok(())
+}
+
+fn initial_native_reference_precedes_publication() -> TestResult {
+    use crate::{ObjectPrototype, Primitive, Scope};
+
+    let mut host = Host::new(Observations::default())?;
+    let funding = Rc::new(());
+    let refused_funding = Rc::downgrade(&funding);
+    let token = host.engine.with_context(&host.realm, |entered| {
+        let mut scope = Scope {
+            operations: entered,
+            invariant: std::marker::PhantomData,
+        };
+        let invalid = scope.primitive(Primitive::Null)?;
+        let refused = scope.project_native_object_with_reference(
+            ObjectPrototype::Default,
+            17_u32,
+            1,
+            &invalid,
+            |_| Ok::<_, Error>(funding),
+        );
+        assert!(matches!(refused, Err(Error::ExpectedObject)));
+        assert!(refused_funding.upgrade().is_none());
+        let source = scope.object(ObjectPrototype::Null)?;
+        let projected = scope.project_native_object_with_reference(
+            ObjectPrototype::Default,
+            19_u32,
+            1,
+            &source,
+            |_| Ok::<_, Error>(()),
+        )?;
+        let stored = scope
+            .native_object_reference::<u32>(&projected, 1)?
+            .unwrap();
+        assert!(scope.strict_equals(&stored, &source)?);
+        Ok(scope.native_object_token::<u32>(&projected)?.unwrap())
+    })?;
+    assert_eq!(host.engine.roots.native_objects.entries_count(), 1);
+    host.collect()?;
+    host.engine.reap();
+    assert_eq!(host.engine.roots.native_objects.entries_count(), 0);
+    host.engine.with_context(&host.realm, |entered| {
+        let mut scope = Scope {
+            operations: entered,
+            invariant: std::marker::PhantomData,
+        };
+        assert!(scope.open_native_object(&token)?.is_none());
+        Ok(())
+    })?;
     Ok(())
 }
 

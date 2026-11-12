@@ -1231,8 +1231,14 @@ fn successful_request_dispatches_real_close_and_toggle_tasks_through_their_actua
                         assert!(event.toggle_event().is_none());
                     } else {
                         let payload = event.toggle_event().unwrap();
-                        assert_eq!(payload.old_state(), "open");
-                        assert_eq!(payload.new_state(), "closed");
+                        assert_eq!(
+                            payload.old_state(),
+                            "open".encode_utf16().collect::<Vec<_>>()
+                        );
+                        assert_eq!(
+                            payload.new_state(),
+                            "closed".encode_utf16().collect::<Vec<_>>()
+                        );
                     }
                     context.delivered.push(kind.clone());
                     Ok(())

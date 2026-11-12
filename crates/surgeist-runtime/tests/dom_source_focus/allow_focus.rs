@@ -524,7 +524,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
                 delivery.calls += 1;
                 delivery.target = event.target().and_then(|target| target.node());
                 delivery.current = event.current_target();
-                delivery.payload = event.toggle_event().copied();
+                delivery.payload = event.toggle_event().cloned();
                 delivery.path = event.composed_path().collect();
                 delivery.bubbles = Some(event.bubbles());
                 let mut batch = DomBatch::new();
@@ -580,9 +580,15 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     assert_eq!(delivery.calls, 1);
     assert_eq!(delivery.target, Some(subject));
     assert_eq!(delivery.current, Some(DomEventTarget::Node(subject)));
-    let payload = delivery.payload.unwrap();
-    assert_eq!(payload.old_state(), "closed");
-    assert_eq!(payload.new_state(), "open");
+    let payload = delivery.payload.as_ref().unwrap();
+    assert_eq!(
+        payload.old_state(),
+        "closed".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        payload.new_state(),
+        "open".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(payload.source(), None);
     assert_eq!(delivery.bubbles, Some(false));
     assert_eq!(

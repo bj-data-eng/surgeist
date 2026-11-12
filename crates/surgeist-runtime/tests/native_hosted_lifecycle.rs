@@ -150,7 +150,7 @@ fn listen(
                     current: event.current_target(),
                     target: event.target().and_then(|target| target.node()),
                     phase: event.phase(),
-                    payload: event.toggle_event().copied(),
+                    payload: event.toggle_event().cloned(),
                     bubbles: event.bubbles(),
                 });
                 Ok(())
@@ -452,9 +452,15 @@ fn nonbubbling_toggle_captures_global_then_document_and_real_ancestors() {
     for observation in &context.seen {
         assert_eq!(observation.target, Some(target));
         assert!(!observation.bubbles);
-        let payload = observation.payload.unwrap();
-        assert_eq!(payload.old_state(), "closed");
-        assert_eq!(payload.new_state(), "open");
+        let payload = observation.payload.as_ref().unwrap();
+        assert_eq!(
+            payload.old_state(),
+            "closed".encode_utf16().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            payload.new_state(),
+            "open".encode_utf16().collect::<Vec<_>>()
+        );
     }
     assert_eq!(
         context
@@ -1042,7 +1048,10 @@ fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
         ));
         assert_eq!(context.seen.len(), 1);
         assert_eq!(context.seen[0].target, Some(target));
-        assert_eq!(context.seen[0].payload.unwrap().new_state(), "open");
+        assert_eq!(
+            context.seen[0].payload.as_ref().unwrap().new_state(),
+            "open".encode_utf16().collect::<Vec<_>>()
+        );
         let retained = context
             .element_tasks
             .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
@@ -1872,7 +1881,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
     assert_eq!(context.observed[0].target(), Some(target.into()));
     assert_eq!(
         context.observed[0].toggle_event().unwrap().new_state(),
-        "open"
+        "open".encode_utf16().collect::<Vec<_>>()
     );
     if let Ok(DomElementTaskProgress::Complete { receipt, .. }) = &result {
         assert_eq!(receipt.callbacks(), 1);

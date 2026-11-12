@@ -40,8 +40,10 @@ use surgeist_dom::{
 mod storage;
 pub(crate) use storage::EventStorage;
 pub use storage::{DomEventStorageLimits, DomEventType};
-use storage::{EventAllocation, equal_units};
+use storage::{EventAllocation, EventText, equal_units};
 mod objects;
+#[cfg(feature = "document-scripting")]
+pub(crate) use objects::AuthoredToggleInit;
 pub use objects::{
     DomEventConstructionError, DomEventCreationObservation, DomEventInit,
     DomEventTimestampUnavailable,
@@ -1836,26 +1838,40 @@ impl Status {
         )
     }
 }
-/// Immutable ToggleEvent data projected from the actual HTML producer states.
-/// No public constructor or arbitrary state/source injection is offered.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Immutable ToggleEvent data shared by native producers and authored events.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomToggleEvent {
-    old_state: &'static str,
-    new_state: &'static str,
+    old_state: EventText,
+    new_state: EventText,
+    source: Option<NodeId>,
 }
 impl DomToggleEvent {
-    /// Exact original state spelling supplied by the HTML producer.
-    pub const fn old_state(&self) -> &'static str {
-        self.old_state
+    fn from_producer(old_open: bool, new_open: bool) -> Self {
+        fn state(open: bool) -> EventText {
+            EventText::Static(if open {
+                &[111, 112, 101, 110]
+            } else {
+                &[99, 108, 111, 115, 101, 100]
+            })
+        }
+        Self {
+            old_state: state(old_open),
+            new_state: state(new_open),
+            source: None,
+        }
     }
-    /// Exact new state spelling supplied by the HTML producer.
-    pub const fn new_state(&self) -> &'static str {
-        self.new_state
+
+    /// Exact original state code units, including isolated surrogates and NULs.
+    pub fn old_state(&self) -> &[u16] {
+        self.old_state.code_units()
     }
-    /// Details notification and the admitted Dialog Show firing clause both
-    /// supply null. This makes no claim about future event-producing clauses.
+    /// Exact new state code units, including isolated surrogates and NULs.
+    pub fn new_state(&self) -> &[u16] {
+        self.new_state.code_units()
+    }
+    /// Original source Element identity before retargeting for an observer.
     pub const fn source(&self) -> Option<NodeId> {
-        None
+        self.source
     }
 }
 enum EventData {
@@ -2743,10 +2759,10 @@ impl NativeDomEvent {
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(
             target,
-            EventData::DetailsToggle(DomToggleEvent {
-                old_state: payload.old_state().as_str(),
-                new_state: payload.new_state().as_str(),
-            }),
+            EventData::DetailsToggle(DomToggleEvent::from_producer(
+                payload.old_state() == surgeist_html::elements::details::HtmlDetailsState::Open,
+                payload.new_state() == surgeist_html::elements::details::HtmlDetailsState::Open,
+            )),
             creation,
             backing,
         )
@@ -2784,10 +2800,10 @@ impl NativeDomEvent {
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(
             target,
-            EventData::DialogToggle(DomToggleEvent {
-                old_state: old.as_str(),
-                new_state: new.as_str(),
-            }),
+            EventData::DialogToggle(DomToggleEvent::from_producer(
+                old == surgeist_html::elements::dialog::HtmlDialogState::Open,
+                new == surgeist_html::elements::dialog::HtmlDialogState::Open,
+            )),
             creation,
             backing,
         )
@@ -2806,10 +2822,10 @@ impl NativeDomEvent {
         EventInvocationOwner::new(
             target,
             EventData::DialogBeforeToggle {
-                payload: DomToggleEvent {
-                    old_state: old.as_str(),
-                    new_state: new.as_str(),
-                },
+                payload: DomToggleEvent::from_producer(
+                    old == surgeist_html::elements::dialog::HtmlDialogState::Open,
+                    new == surgeist_html::elements::dialog::HtmlDialogState::Open,
+                ),
                 cancelable,
             },
             creation,
@@ -2821,8 +2837,7 @@ impl NativeDomEvent {
     pub fn event_type(&self) -> DomEventType {
         self.0.event_type()
     }
-    /// Immutable state strings from the actual Details task or Dialog firing
-    /// clause. Attribute edits during delivery cannot change this payload.
+    /// Immutable data initialized by a native producer or authored constructor.
     pub fn toggle_event(&self) -> Option<&DomToggleEvent> {
         self.0.toggle.as_ref()
     }

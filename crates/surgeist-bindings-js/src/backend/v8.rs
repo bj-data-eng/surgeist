@@ -1259,8 +1259,9 @@ impl Operations for Entered<'_, '_, '_> {
         &mut self,
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn std::any::Any>,
+        reference: Option<(u32, &Root)>,
     ) -> Result<Root, Error> {
-        self.project_payload(prototype, payload)
+        self.project_payload(prototype, payload, reference)
     }
 
     fn project_retained_native_object(

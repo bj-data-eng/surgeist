@@ -1,3 +1,4 @@
+mod authored_toggle;
 mod element_tasks;
 mod nested_dispatch;
 
@@ -223,6 +224,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     attached_beforetoggle_uses_the_original_toggle_event();
     element_tasks::verify_attached_element_tasks();
     nested_dispatch::verify_nested_authored_dispatch();
+    authored_toggle::verify_authored_toggle_constructor();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
     );

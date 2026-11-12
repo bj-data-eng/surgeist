@@ -157,7 +157,13 @@ fn disposed_details_owner_counter_backing_remains_in_runtime_and_source_custody(
     assert_eq!(context.tasks.pending_total_tasks().unwrap(), 0);
     let event = context.event.take().unwrap();
     let toggle = event.toggle_event().unwrap();
-    assert_eq!((toggle.old_state(), toggle.new_state()), ("closed", "open"));
+    assert_eq!(
+        (toggle.old_state(), toggle.new_state()),
+        (
+            "closed".encode_utf16().collect::<Vec<_>>().as_slice(),
+            "open".encode_utf16().collect::<Vec<_>>().as_slice()
+        )
+    );
 
     // Hold one distinct admitted allocation so the actual Binding's bytes
     // stay constant across the probe. This resource receipt grants no task

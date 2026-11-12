@@ -9,6 +9,7 @@ mod listener;
 mod sequence;
 #[cfg(test)]
 pub(crate) mod tests;
+mod toggle_event;
 
 use std::rc::Rc;
 
@@ -30,6 +31,7 @@ pub use failure::{
 };
 pub use listener::StandaloneListenerOptions;
 pub use sequence::Sequence;
+pub use toggle_event::ToggleEventOptions;
 
 use account::{Account, Storage};
 

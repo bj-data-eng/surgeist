@@ -78,7 +78,7 @@ pub(in crate::document_scripting) fn attach_public_nodes_with_registry_and_repor
             },
             registry,
             DocumentGuestEventLimits {
-                storage_bytes: 64_000,
+                storage_bytes: 65_536,
                 work: 10_000,
                 pending_exception_reports,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),
