@@ -22,6 +22,21 @@ pub(in crate::document_scripting) fn guest_attribute_writes_reach_the_native_ele
         assert_guest(scope, r#"
             (() => {
                 const target = attributeTarget;
+                let conversions = 0;
+                const input = { toString() { conversions++; return 'data-missing'; } };
+                const throwsTypeError = operation => {
+                    try { operation(); } catch (error) { return error instanceof TypeError; }
+                    return false;
+                };
+                return throwsTypeError(() => target.setAttribute(input)) &&
+                    throwsTypeError(() => target.setAttributeNS(input)) &&
+                    throwsTypeError(() => target.setAttributeNS(input, input)) &&
+                    conversions === 0;
+            })()
+        "#)?;
+        assert_guest(scope, r#"
+            (() => {
+                const target = attributeTarget;
                 const policy = trustedTypes.createPolicy('attributes', {createScript: value => value});
                 const branded = policy.createScript('A\ud800\0');
                 branded.toString = () => { throw new Error('coerced branded value'); };
