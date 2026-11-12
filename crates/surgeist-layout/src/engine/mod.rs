@@ -333,8 +333,7 @@ pub(crate) fn prepare_block_carrier_path<Tree: LayoutTree>(
 ) -> CarrierPathResult<Tree> {
     let root = path[0];
     let mut session = session::ComputeSession::new(tree, Vec::new());
-    session.bind_fragment_frame(intrinsics.target.clone(), Vec::new());
-    session.install_fragment_intrinsics(intrinsics.clone());
+    session.bind_fragment_frame_with_intrinsics(intrinsics.clone(), Vec::new());
     let input = intrinsics
         .entries
         .iter()
@@ -440,8 +439,7 @@ pub(crate) fn qualify_block_scope_entry<Tree: LayoutTree>(
 ) -> EntryQualificationResult<Tree> {
     let BlockScopeEntryRequest { pending, binding } = request;
     let mut session = session::ComputeSession::new(tree, Vec::new());
-    session.bind_fragment_frame(binding.intrinsics.target.clone(), binding.allocations);
-    session.install_fragment_intrinsics(binding.intrinsics);
+    session.bind_fragment_frame_with_intrinsics(binding.intrinsics, binding.allocations);
     session.install_block_scopes(pending.node, binding.dispatch)?;
     let context = crate::block::content::prepare(
         &mut session,
@@ -470,8 +468,7 @@ pub(crate) fn qualify_block_scope_body<Tree: LayoutTree>(
 ) -> BodyQualificationResult<Tree> {
     let BlockScopeEntryRequest { pending, binding } = request;
     let mut session = session::ComputeSession::new(tree, Vec::new());
-    session.bind_fragment_frame(binding.intrinsics.target.clone(), Vec::new());
-    session.install_fragment_intrinsics(binding.intrinsics);
+    session.bind_fragment_frame_with_intrinsics(binding.intrinsics, Vec::new());
     session.retain_block_bodies();
     let input = pending.input.with_run_mode(crate::RunMode::PerformLayout);
     let output = block_scope::ordinary(crate::block::compute_block_scoped(
@@ -536,8 +533,7 @@ pub(crate) fn compute_block_content_frame<Tree: LayoutTree>(
     .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
     let carrier_snapshot = binding.intrinsics.clone();
     let mut session = session::ComputeSession::new(tree, invalidated);
-    session.bind_fragment_frame(binding.intrinsics.target.clone(), binding.allocations);
-    session.install_fragment_intrinsics(binding.intrinsics);
+    session.bind_fragment_frame_with_intrinsics(binding.intrinsics, binding.allocations);
     session.install_block_scopes(root, binding.dispatch)?;
     session.retain_block_bodies();
     session.install_wrapping(std::sync::Arc::new(wrapping), &graph);
@@ -630,8 +626,7 @@ pub(crate) fn compute_block_scope_root_frame<Tree: LayoutTree>(
     )
     .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
     let mut session = session::ComputeSession::new(tree, invalidated);
-    session.bind_fragment_frame(binding.intrinsics.target.clone(), binding.allocations);
-    session.install_fragment_intrinsics(binding.intrinsics);
+    session.bind_fragment_frame_with_intrinsics(binding.intrinsics, binding.allocations);
     session.install_block_scopes(root, binding.dispatch)?;
     session.retain_block_bodies();
     session.install_wrapping(std::sync::Arc::new(wrapping), &graph);

@@ -70,11 +70,7 @@ where
     block_frames: Vec<super::block_scope::Frame<Tree::Node, Tree::Scalar>>,
     record_block_bodies: bool,
     block_bodies: Vec<super::block_scope::Body<Tree::Node, Tree::Scalar>>,
-    fragment_margins: Option<crate::block::fragment_margins::State<Tree::Node, Tree::Scalar>>,
-    fragment_allocations:
-        Vec<crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>>,
-    fragment_intrinsics:
-        Option<std::sync::Arc<crate::block::intrinsic::FragmentContext<Tree::Node, Tree::Scalar>>>,
+    fragmentation: Option<FragmentComputation<Tree::Node, Tree::Scalar>>,
     block_floats: crate::block::float_context::State<Tree::Node, Tree::Scalar>,
     entry_sources: Option<EntrySources<Tree>>,
     wrapping: WrappingComputation<Tree::Node, Tree::Scalar>,
@@ -84,6 +80,12 @@ where
     outputs: OutputStaging<Tree::Node, Tree::Scalar>,
     cache: CacheStaging<Tree::Node, Tree::Scalar>,
     entry_storage: Option<EntryStorage>,
+}
+
+struct FragmentComputation<Node, S: LayoutScalar> {
+    margins: crate::block::fragment_margins::State<Node, S>,
+    allocations: Vec<crate::block_fragmentation::FragmentBoxAllocation<Node, S>>,
+    intrinsics: Option<std::sync::Arc<crate::block::intrinsic::FragmentContext<Node, S>>>,
 }
 
 struct WrappingComputation<Node, S: LayoutScalar> {
@@ -288,9 +290,7 @@ where
             block_frames: Vec::new(),
             record_block_bodies: false,
             block_bodies: Vec::new(),
-            fragment_margins: None,
-            fragment_allocations: Vec::new(),
-            fragment_intrinsics: None,
+            fragmentation: None,
             block_floats: crate::block::float_context::State::new(),
             entry_sources: None,
             wrapping: WrappingComputation::new(),
@@ -396,18 +396,16 @@ where
         probe.flow_graph = self.flow_graph;
         probe.bound = self.bound.clone();
         let fragments =
-            entry_staging::copy(&self.fragment_allocations, funding_ref).map_err(error)?;
-        let (fragments, fragment_storage) = fragments.into_parts();
-        probe.fragment_allocations = fragments;
-        probe.fragment_intrinsics = self.fragment_intrinsics.clone();
-        let margins = self
-            .fragment_margins
-            .as_ref()
-            .map(|margins| margins.fork_entry(funding_ref))
-            .transpose()
-            .map_err(error)?;
-        if let Some(margins) = margins {
-            probe.fragment_margins = Some(margins);
+            entry_staging::copy(self.fragment_allocations(), funding_ref).map_err(error)?;
+        let (allocations, fragment_storage) = fragments.into_parts();
+        if let Some(fragment) = &self.fragmentation {
+            let intrinsics = fragment.intrinsics.clone();
+            let margins = fragment.margins.fork_entry(funding_ref).map_err(error)?;
+            probe.fragmentation = Some(FragmentComputation {
+                margins,
+                allocations,
+                intrinsics,
+            });
         }
         let wrapping = entry_staging::copy(&self.wrapping.uncached, funding_ref).map_err(error)?;
         let (wrapping, wrapping_storage) = wrapping.into_parts();
@@ -439,16 +437,42 @@ where
         >,
     ) {
         self.bound = Some(target);
-        self.fragment_allocations = allocations;
-        self.fragment_margins = Some(crate::block::fragment_margins::State::new());
+        self.fragmentation = Some(FragmentComputation {
+            margins: crate::block::fragment_margins::State::new(),
+            allocations,
+            intrinsics: None,
+        });
     }
 
-    pub(super) fn install_fragment_intrinsics(
+    pub(super) fn bind_fragment_frame_with_intrinsics(
         &mut self,
         context: std::sync::Arc<crate::block::intrinsic::FragmentContext<Tree::Node, Tree::Scalar>>,
+        allocations: Vec<
+            crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>,
+        >,
     ) {
-        assert_eq!(self.bound.as_ref(), Some(&context.target));
-        self.fragment_intrinsics = Some(context);
+        self.bound = Some(context.target.clone());
+        self.fragmentation = Some(FragmentComputation {
+            margins: crate::block::fragment_margins::State::new(),
+            allocations,
+            intrinsics: Some(context),
+        });
+    }
+
+    fn fragment_allocations(
+        &self,
+    ) -> &[crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>] {
+        self.fragmentation
+            .as_ref()
+            .map_or(&[], |fragment| fragment.allocations.as_slice())
+    }
+
+    fn fragment_intrinsics(
+        &self,
+    ) -> Option<&crate::block::intrinsic::FragmentContext<Tree::Node, Tree::Scalar>> {
+        self.fragmentation
+            .as_ref()
+            .and_then(|fragment| fragment.intrinsics.as_deref())
     }
 
     pub(super) fn install_wrapping(
@@ -854,8 +878,9 @@ where
             target: self.bound.expect("scope production is bound to a target"),
             entries: self.outputs.unrounded,
             margins: self
-                .fragment_margins
-                .expect("bound scope has margin provenance"),
+                .fragmentation
+                .expect("bound scope has margin provenance")
+                .margins,
             receipts,
             projections,
             clears: self.cache.clears,
@@ -1169,7 +1194,7 @@ where
     ) -> LayoutResultOf<Tree::Node, ComputeInputOf<Tree::Scalar>, Tree::Scalar, Tree::MeasureError>
     {
         let input = if input.run_mode().is_perform_layout() {
-            self.fragment_allocations
+            self.fragment_allocations()
                 .iter()
                 .find(|allocation| allocation.node == node)
                 .map_or(input, |allocation| {
@@ -1257,7 +1282,7 @@ where
         }
         let style = self.tree.node_input(node);
         if self.tree.has_leaf_measurement(node) {
-            let icb = self.fragment_intrinsics.as_ref().map(|context| {
+            let icb = self.fragment_intrinsics().map(|context| {
                 context
                     .request
                     .sizing_request()
@@ -1442,7 +1467,9 @@ where
     fn fragment_margin_state(
         &mut self,
     ) -> Option<&mut crate::block::fragment_margins::State<Self::Node, Self::Scalar>> {
-        self.fragment_margins.as_mut()
+        self.fragmentation
+            .as_mut()
+            .map(|fragment| &mut fragment.margins)
     }
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
         self.tree.has_leaf_measurement(node)
@@ -1682,7 +1709,7 @@ where
         &self,
         node: Self::Node,
     ) -> Option<crate::block::fragment_minimum::Override<Self::Scalar>> {
-        self.fragment_allocations
+        self.fragment_allocations()
             .iter()
             .find(|entry| entry.node == node)
             .and_then(|entry| {
@@ -1701,7 +1728,7 @@ where
         input: ComputeInputOf<Self::Scalar>,
         operation: crate::SizingOperation,
     ) -> LayoutResultOf<Self::Node, Option<Self::Scalar>, Self::Scalar, Tree::MeasureError> {
-        let Some(context) = &self.fragment_intrinsics else {
+        let Some(context) = self.fragment_intrinsics() else {
             return Ok(None);
         };
         let Some(entry) = context.entries.iter().find(|entry| entry.node == node) else {
@@ -1786,9 +1813,10 @@ where
                     .copied();
                 if let Some(ready) = ready {
                     if let Some(projection) = ready.projection {
-                        self.fragment_margins
+                        self.fragmentation
                             .as_mut()
                             .expect("bound Block retains margins")
+                            .margins
                             .bind(node, projection)
                             .map_err(|error| {
                                 LayoutErrorOf::new(
@@ -1988,20 +2016,22 @@ where
         observation.wrapping.context = self.wrapping.context.clone();
         observation.flow_graph = self.flow_graph;
         observation.bound = self.bound.clone();
-        observation.fragment_allocations = self.fragment_allocations.clone();
-        observation.fragment_intrinsics = self.fragment_intrinsics.clone();
-        observation.fragment_margins = self
-            .fragment_margins
-            .as_ref()
-            .map(|margins| margins.fork_entry(None))
-            .transpose()
-            .map_err(|error| {
+        if let Some(fragment) = &self.fragmentation {
+            let allocations = fragment.allocations.clone();
+            let intrinsics = fragment.intrinsics.clone();
+            let margins = fragment.margins.fork_entry(None).map_err(|error| {
                 LayoutErrorOf::new(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::ChildLayout,
                     LayoutErrorKindOf::Text(error),
                 )
             })?;
+            observation.fragmentation = Some(FragmentComputation {
+                margins,
+                allocations,
+                intrinsics,
+            });
+        }
         observation.wrapping.uncached = self.wrapping.uncached.clone();
         if let Some(text) = &self.text {
             let mut state = crate::text_layout::state::TextComputation::new(
