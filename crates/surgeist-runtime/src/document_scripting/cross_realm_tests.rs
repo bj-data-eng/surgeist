@@ -199,6 +199,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::native_document_and_fragment_use_their_registered_realm(
     );
     super::guest::tests::registered_origin::registered_origin_refusals_preserve_state();
+    super::guest::tests::registered_origin::character_data_observation_admits_native_lookup();
     super::guest::tests::registered_origin::registered_origin_character_factories_use_receiver_realm();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
     );

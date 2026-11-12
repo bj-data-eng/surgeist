@@ -400,6 +400,51 @@ pub(in crate::document_scripting) fn shadow_root_keeps_its_registered_creation_r
         .unwrap();
 }
 
+pub(in crate::document_scripting) fn character_data_observation_admits_native_lookup() {
+    let mut host = public_node_host(1_000, 20_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "globalThis.textForWork = new Text('native work probe')",
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let expected = units("native work probe");
+    let node = snapshot
+        .nodes()
+        .find(|id| {
+            matches!(
+                snapshot.node(*id).unwrap().kind(),
+                surgeist_dom::DomNodeKind::Text(data) if data.code_units() == expected
+            )
+        })
+        .unwrap();
+    let mut lookup_work = 0;
+    snapshot
+        .node_with(node, || {
+            lookup_work += 1;
+            Ok::<(), DomError>(())
+        })
+        .unwrap();
+    assert!(lookup_work >= 2);
+    let events = host.guest_events().unwrap();
+    events.budget.work.set(events.limits.work - lookup_work);
+    let result = host.in_document(&permit, |scope| {
+        assert_guest(scope, "textForWork.length === 17")
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("CharacterData read must refuse one lookup unit short: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::WorkLimit)
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), snapshot.stamp());
+}
+
 pub(in crate::document_scripting) fn registered_origin_character_factories_use_receiver_realm() {
     let RegisteredOrigin {
         mut host,
