@@ -618,8 +618,16 @@ fn install_event_interface<'scope>(
 
 struct SourceRead<'a> {
     dom: &'a surgeist_dom::Dom,
-    request: &'a surgeist_dom::DomSourceEventRequest,
+    request: SourceReadRequest<'a>,
     cancel: &'a AtomicBool,
+}
+
+enum SourceReadRequest<'a> {
+    Event(&'a surgeist_dom::DomSourceEventRequest),
+    Attribute {
+        request: surgeist_dom::DomSourceAttributeVerificationRequest,
+        registration: Rc<surgeist_dom::DomDocumentScriptRegistration>,
+    },
 }
 
 struct NativeRead<'a> {
@@ -631,9 +639,21 @@ struct NativeRead<'a> {
 impl NativeRead<'_> {
     fn step(&self) -> Result<(), DocumentGuestEventError> {
         if let Some(source) = &self.source {
-            source
-                .dom
-                .source_event_step(source.request, source.cancel)?;
+            match &source.request {
+                SourceReadRequest::Event(request) => {
+                    source.dom.source_event_step(request, source.cancel)?
+                }
+                SourceReadRequest::Attribute {
+                    request,
+                    registration,
+                } => {
+                    source.dom.source_attribute_callback_step(
+                        *request,
+                        registration,
+                        source.cancel,
+                    )?;
+                }
+            }
         }
         self.events.step()
     }
@@ -665,10 +685,19 @@ impl Callbacks {
         self.with_qualified_session(owner, request.as_ref(), |session, global| {
             let snapshot = session.snapshot();
             let dom = session.dom();
+            let request =
+                if let Some((request, registration)) = owner.active_attribute_registration()? {
+                    Some(SourceReadRequest::Attribute {
+                        request,
+                        registration,
+                    })
+                } else {
+                    request.as_ref().map(SourceReadRequest::Event)
+                };
             let read = NativeRead {
                 snapshot,
                 events,
-                source: request.as_ref().map(|request| SourceRead {
+                source: request.map(|request| SourceRead {
                     dom: dom.raw(),
                     request,
                     cancel: &owner.cancellation,
@@ -705,9 +734,18 @@ impl Callbacks {
             .session
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let status = match request {
-            Some(request) => owner.qualify_event(attachment, &mut session, request)?,
-            None => owner.observe(attachment, &mut session)?.status(),
+        let status = if let Some((request, registration)) = owner.active_attribute_registration()? {
+            session.dom().raw().source_attribute_callback_step(
+                request,
+                &registration,
+                &owner.cancellation,
+            )?;
+            HtmlScriptingStatus::Enabled
+        } else {
+            match request {
+                Some(request) => owner.qualify_event(attachment, &mut session, request)?,
+                None => owner.observe(attachment, &mut session)?.status(),
+            }
         };
         if status != HtmlScriptingStatus::Enabled {
             return Err(DocumentScriptNativeError::Revoked.into());

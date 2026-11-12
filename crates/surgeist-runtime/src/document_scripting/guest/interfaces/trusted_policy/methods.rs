@@ -108,13 +108,7 @@ impl NamedMethod {
         }
         let account = &self.capture.callbacks.conversion;
         let input = account.run(scope, |cx| cx.value(&types::DOM_STRING, input))?;
-        let [html, _, script, script_url] = &policy.payload().callbacks;
-        let callback = match self.kind {
-            TrustedTypeKind::Html => html,
-            TrustedTypeKind::Script => script,
-            TrustedTypeKind::ScriptUrl => script_url,
-        };
-        let Some(callback) = callback else {
+        let Some(callback) = policy.payload().callback(self.kind) else {
             return type_error(scope, &ascii(b"Policy callback is missing"));
         };
         let data = account.run(scope, |cx| {

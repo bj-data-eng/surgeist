@@ -132,45 +132,60 @@ impl Capture {
             .attachment
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        let (result, pending) = self.with_native(owner, |session, _| {
+        let limits = events.limits.source_edits;
+        let cancel = &owner.cancellation;
+        let mut services = DomSourceServices {
+            meta: None,
+            execution_scope: None,
+            style_policy: &mut |_| None,
+            url: None,
+        };
+        let (mut result, mut pending) = self.with_native(owner, |session, _| {
             let mut source = session.source_execution();
             let mut dom = session.dom();
-            let limits = events.limits.source_edits;
-            let cancel = &owner.cancellation;
-            let mut services = DomSourceServices {
-                meta: None,
-                execution_scope: None,
-                style_policy: &mut |_| None,
-                url: None,
-            };
             let result = source.apply(&mut dom, edit, limits, &mut services, cancel);
-            let result = match result {
-                Ok(DomSourceDriveProgress::Pending {
-                    request: DomSourceRequest::AttributeVerification(request),
-                    ..
-                }) => {
-                    let mut lease = dom.resume_source_edit(request.operation(), limits, cancel)?;
-                    let verified = verify(owner, attachment, &mut lease, request, value);
-                    if let Err(error) = verified {
-                        lease.request_cancel();
-                        // Finish the cancelled prefix even if the original caller stopped.
-                        let _ = lease.advance_for_runtime(&AtomicBool::new(false));
-                        return Err(error);
-                    }
-                    drop(lease);
-                    source.resume(&mut dom, request.operation(), limits, &mut services, cancel)
-                }
-                result => result,
-            };
             Ok((result, dom.pending_source_edit()))
         })?;
+        let mut abrupt = None;
+        if let Ok(DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::AttributeVerification(request),
+            ..
+        }) = result
+        {
+            abrupt = match self.verify_attribute(scope, owner, events, request, value) {
+                Ok(abrupt) => abrupt,
+                Err(error) => {
+                    let cleanup = AtomicBool::new(false);
+                    let _ = with_attribute_lease(owner, events, request, &cleanup, |lease| {
+                        lease.request_cancel();
+                        lease.advance_for_runtime(&cleanup)?;
+                        Ok(())
+                    });
+                    return Err(error);
+                }
+            };
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let mut source = session.source_execution();
+            let mut dom = session.dom();
+            result = source.resume(&mut dom, request.operation(), limits, &mut services, cancel);
+            pending = dom.pending_source_edit();
+        }
         match result {
             Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
                 Err(DomError::Cancelled.into())
             }
             Ok(DomSourceDriveProgress::Complete(_)) => Ok(Completion::Undefined),
             Ok(DomSourceDriveProgress::Failed(failure)) => {
-                attribute_failure(scope, failure.into_parts().1)
+                let error = failure.into_parts().1;
+                if let (DomError::SourceAttributeVerificationAbrupt, Some(original)) =
+                    (&error, abrupt)
+                {
+                    return Err(original.into());
+                }
+                attribute_failure(scope, error)
             }
             Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(error)))
                 if pending.is_none() && attribute_exception(&error).is_some() =>
@@ -187,41 +202,174 @@ impl Capture {
     }
 }
 
-fn verify(
-    owner: &NativeOwner,
-    attachment: &Attachment,
-    lease: &mut DomSourceLease<'_>,
-    request: DomSourceAttributeVerificationRequest,
-    value: &TrustedAttributeValue,
-) -> Result<(), DocumentGuestEventError> {
-    let registration = attachment
-        .registration
-        .upgrade()
-        .ok_or(DocumentScriptNativeError::Revoked)?;
-    let cancel = &owner.cancellation;
-    let expected = match request.sink() {
-        DomSourceAttributeSink::EventHandler(_) => TrustedTypeKind::Script,
-        DomSourceAttributeSink::HtmlIframeSrcdoc => TrustedTypeKind::Html,
-        DomSourceAttributeSink::HtmlScriptSrc | DomSourceAttributeSink::SvgScriptHref => {
-            TrustedTypeKind::ScriptUrl
+impl Capture {
+    fn verify_attribute(
+        &self,
+        scope: &mut Scope<'_>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        request: DomSourceAttributeVerificationRequest,
+        value: &TrustedAttributeValue,
+    ) -> Result<Option<Error>, DocumentGuestEventError> {
+        let registration = owner
+            .attachment
+            .get()
+            .and_then(|attachment| attachment.registration.upgrade())
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        let processor = owner
+            .session
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .trusted_types_csp
+            .clone();
+        let cancel = &owner.cancellation;
+        let kind = match request.sink() {
+            DomSourceAttributeSink::EventHandler(_) => TrustedTypeKind::Script,
+            DomSourceAttributeSink::HtmlIframeSrcdoc => TrustedTypeKind::Html,
+            DomSourceAttributeSink::HtmlScriptSrc | DomSourceAttributeSink::SvgScriptHref => {
+                TrustedTypeKind::ScriptUrl
+            }
+        };
+        let requires_callback = with_attribute_lease(owner, events, request, cancel, |lease| {
+            let branded =
+                matches!(value, TrustedAttributeValue::Trusted(brand) if brand.kind() == kind);
+            if !branded {
+                let processor = processor
+                    .as_ref()
+                    .map(|owner| owner.processor.try_borrow())
+                    .transpose()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                let policies = AttributePolicies::read(
+                    lease,
+                    request,
+                    &registration,
+                    processor.as_deref(),
+                    cancel,
+                )
+                .map_err(|error| match error {
+                    AttributePolicyError::Dom(error) => DocumentGuestEventError::from(error),
+                    _ => DocumentScriptNativeError::TrustedTypesPolicyUnavailable.into(),
+                })?;
+                if policies.requires_default_policy(cancel)? {
+                    return Ok(true);
+                }
+            }
+            let input = lease
+                .attribute_verification_input(request, &registration, cancel)?
+                .clone();
+            let mut outcome = Some(DomSourceAttributeVerificationOutcome::Value(input));
+            lease.accept_attribute_verification(request, &registration, &mut outcome, cancel)?;
+            Ok(false)
+        })?;
+        if !requires_callback {
+            return Ok(None);
         }
-    };
-    if !matches!(value, TrustedAttributeValue::Trusted(brand) if brand.kind() == expected) {
-        let policies = AttributePolicies::read(lease, request, &registration, None, cancel)
-            .map_err(|error| match error {
-                AttributePolicyError::Dom(error) => DocumentGuestEventError::from(error),
-                _ => DocumentScriptNativeError::TrustedTypesPolicyUnavailable.into(),
-            })?;
-        if policies.requires_default_policy(cancel)? {
-            return Err(DocumentScriptNativeError::TrustedTypesPolicyUnavailable.into());
-        }
+
+        let policy = trusted_policy::current_default_policy(scope, events)?
+            .ok_or(DocumentScriptNativeError::TrustedTypesPolicyUnavailable)?;
+        let callback = policy
+            .callback(kind)
+            .ok_or(DocumentScriptNativeError::TrustedTypesPolicyUnavailable)?;
+        let (sink, _sink_backing) = callback_sink(owner, events, request.sink())?;
+        let callback_scope = with_attribute_lease(owner, events, request, cancel, |lease| {
+            Ok(lease.open_attribute_verification_callback(request, &registration, cancel)?)
+        })?;
+        let active = ActiveAttribute {
+            slot: &owner.active_attribute,
+            previous: owner.active_attribute.replace(Some(request)),
+        };
+        let result = self.callbacks.conversion.run(scope, |conversion| {
+            conversion.invoke_default_policy(callback, kind, value.as_code_units(), &sink)
+        });
+        drop(active);
+        drop(callback_scope);
+        let (outcome, abrupt, _output_backing) = match result {
+            Ok(result) => {
+                let output = result
+                    .get()
+                    .as_ref()
+                    .ok_or(DocumentScriptNativeError::TrustedTypesPolicyUnavailable)?;
+                let (output, backing) = copy_native_data(owner, events, output.as_code_units())?;
+                (
+                    DomSourceAttributeVerificationOutcome::Value(output),
+                    None,
+                    Some(backing),
+                )
+            }
+            Err(failure) => match Error::from(failure) {
+                error @ Error::Exception(_) => (
+                    DomSourceAttributeVerificationOutcome::Abrupt,
+                    Some(error),
+                    None,
+                ),
+                error => return Err(error.into()),
+            },
+        };
+        with_attribute_lease(owner, events, request, cancel, |lease| {
+            let mut outcome = Some(outcome);
+            lease.accept_attribute_verification(request, &registration, &mut outcome, cancel)?;
+            Ok(())
+        })?;
+        Ok(abrupt)
     }
-    let input = lease
-        .attribute_verification_input(request, &registration, cancel)?
-        .clone();
-    let mut outcome = Some(DomSourceAttributeVerificationOutcome::Value(input));
-    lease.accept_attribute_verification(request, &registration, &mut outcome, cancel)?;
-    Ok(())
+}
+
+struct ActiveAttribute<'a> {
+    slot: &'a Cell<Option<DomSourceAttributeVerificationRequest>>,
+    previous: Option<DomSourceAttributeVerificationRequest>,
+}
+
+impl Drop for ActiveAttribute<'_> {
+    fn drop(&mut self) {
+        self.slot.set(self.previous);
+    }
+}
+
+fn with_attribute_lease<T>(
+    owner: &NativeOwner,
+    events: &GuestEvents,
+    request: DomSourceAttributeVerificationRequest,
+    cancel: &AtomicBool,
+    action: impl FnOnce(&mut DomSourceLease<'_>) -> Result<T, DocumentGuestEventError>,
+) -> Result<T, DocumentGuestEventError> {
+    let mut session = owner
+        .session
+        .try_borrow_mut()
+        .map_err(|_| DocumentScriptNativeError::Busy)?;
+    let mut dom = session.dom();
+    let mut lease =
+        dom.resume_source_edit(request.operation(), events.limits.source_edits, cancel)?;
+    action(&mut lease)
+}
+
+fn callback_sink(
+    owner: &NativeOwner,
+    events: &GuestEvents,
+    sink: DomSourceAttributeSink,
+) -> Result<(Vec<u16>, GuestBacking), DocumentGuestEventError> {
+    let (interface, name) = crate::trusted_types_csp::attribute_sink_name(sink);
+    let sink = || {
+        interface
+            .encode_utf16()
+            .chain([u16::from(b' ')])
+            .chain(name.encode_utf16())
+    };
+    let count = sink().count();
+    let work = u64::try_from(count).map_err(|_| DocumentGuestEventError::WorkLimit)?;
+    events.charge_work(work)?;
+    let bytes = count
+        .checked_mul(size_of::<u16>())
+        .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+    let backing = events.reserve(owner, bytes)?;
+    let mut label = Vec::new();
+    label
+        .try_reserve_exact(count)
+        .map_err(|_| Error::Allocation)?;
+    if label.capacity() != count {
+        return Err(Error::Allocation.into());
+    }
+    label.extend(sink());
+    Ok((label, backing))
 }
 
 fn attribute_exception(error: &DomError) -> Option<DomExceptionName> {

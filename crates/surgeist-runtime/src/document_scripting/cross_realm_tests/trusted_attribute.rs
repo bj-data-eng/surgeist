@@ -230,6 +230,7 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
                 const policy = trustedTypes.createPolicy('default', {
                     createScript(value, type, sink) {
                         if (type !== 'TrustedScript' || sink !== 'Element onclick') throw new Error('incorrect sink');
+                        if (protectedTarget.nodeType !== 1) throw new Error('unavailable native read');
                         protectedTarget.setAttribute('data-entered', value);
                         if (value === 'throw') throw marker;
                         return {toString() {

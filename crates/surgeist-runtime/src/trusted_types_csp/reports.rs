@@ -211,12 +211,7 @@ fn visit_sample<E>(
     let source = match sample {
         Sample::Name(name) => name,
         Sample::Attribute(attribute) => {
-            let (interface, name) = match attribute.sink {
-                DomSourceAttributeSink::EventHandler(name) => ("Element", name),
-                DomSourceAttributeSink::HtmlIframeSrcdoc => ("HTMLIFrameElement", "srcdoc"),
-                DomSourceAttributeSink::HtmlScriptSrc => ("HTMLScriptElement", "src"),
-                DomSourceAttributeSink::SvgScriptHref => ("SVGScriptElement", "href"),
-            };
+            let (interface, name) = attribute_sink_name(attribute.sink);
             visit_units(
                 interface
                     .encode_utf16()
@@ -230,6 +225,15 @@ fn visit_sample<E>(
         }
     };
     visit_units(source.iter().copied().take(40), step, &mut emit)
+}
+
+pub(crate) fn attribute_sink_name(sink: DomSourceAttributeSink) -> (&'static str, &'static str) {
+    match sink {
+        DomSourceAttributeSink::EventHandler(name) => ("Element", name),
+        DomSourceAttributeSink::HtmlIframeSrcdoc => ("HTMLIFrameElement", "srcdoc"),
+        DomSourceAttributeSink::HtmlScriptSrc => ("HTMLScriptElement", "src"),
+        DomSourceAttributeSink::SvgScriptHref => ("SVGScriptElement", "href"),
+    }
 }
 
 fn visit_units<E>(

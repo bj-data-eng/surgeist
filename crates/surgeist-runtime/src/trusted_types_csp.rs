@@ -19,6 +19,8 @@ mod reports;
 pub use attribute::{AttributeMismatch, AttributePolicies, AttributePolicyError};
 pub use factory::{AdmittedPolicyCreation, PolicyCreation, PolicyCreationError, PolicyFactory};
 pub use provider::{PolicyListCapacity, PolicyListError, PolicyProcessor};
+#[cfg(feature = "document-scripting")]
+pub(crate) use reports::attribute_sink_name;
 pub use reports::{ReportError, ViolationReport};
 
 /// The source and disposition of one delivered CSP policy.

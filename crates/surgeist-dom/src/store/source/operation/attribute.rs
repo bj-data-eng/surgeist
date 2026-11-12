@@ -692,3 +692,27 @@ impl DomSourceLease<'_> {
         Ok(())
     }
 }
+
+impl Dom {
+    /// Qualify and charge the currently entered verifier's native guest work.
+    /// The original callback scope must still be open.
+    pub fn source_attribute_callback_step(
+        &self,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &DomDocumentScriptRegistration,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        check_cancel(cancel)?;
+        let operation = self
+            .source_operation
+            .as_ref()
+            .filter(|op| !op.cancelled && op.waiting_attribute_verification() == Some(request))
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let observation = operation
+            .callback_observation()
+            .filter(|observation| observation.work.active())
+            .ok_or(DomError::InvalidSourceOperation)?;
+        operation.qualify_attribute_registration(self, request.global, &registration.0, cancel)?;
+        observation.work.step(cancel)
+    }
+}

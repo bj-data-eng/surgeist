@@ -1218,6 +1218,15 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
     );
     assert!(early.is_some());
     drop(lease);
+    let spent = dom.pending_source_edit().unwrap().spent_work();
+    assert_eq!(
+        dom.source_attribute_callback_step(request, &registration, &AtomicBool::new(true)),
+        Err(DomError::Cancelled)
+    );
+    assert_eq!(dom.pending_source_edit().unwrap().spent_work(), spent);
+    dom.source_attribute_callback_step(request, &registration, &cancel)
+        .unwrap();
+    assert!(dom.pending_source_edit().unwrap().spent_work() > spent);
     assert_eq!(
         dom.dispatch_relevant_global(constructed.node(), &cancel)
             .unwrap(),
@@ -1247,6 +1256,10 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
         .unwrap()
         .id();
     drop(scope);
+    assert_eq!(
+        dom.source_attribute_callback_step(request, &registration, &cancel),
+        Err(DomError::InvalidSourceOperation)
+    );
     assert_eq!(dom.source_dispatch_blocker(), Some(request.operation()));
     let mut lease = dom
         .resume_source_edit(request.operation(), source_limits(), &cancel)

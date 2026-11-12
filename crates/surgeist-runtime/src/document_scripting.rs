@@ -171,6 +171,7 @@ struct NativeOwner {
     session: RefCell<DomSession>,
     active_source: Cell<Option<source::ActiveSource>>,
     active_attached_event: RefCell<Option<surgeist_dom::DomSourceEventRequest>>,
+    active_attribute: Cell<Option<surgeist_dom::DomSourceAttributeVerificationRequest>>,
     trusted_types_reports: RefCell<Option<Box<guest::ViolationQueue>>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
@@ -326,6 +327,26 @@ fn csp_work_error<E: From<DocumentScriptNativeError>>(
 }
 
 impl NativeOwner {
+    fn active_attribute_registration(
+        &self,
+    ) -> Result<
+        Option<(
+            surgeist_dom::DomSourceAttributeVerificationRequest,
+            Rc<DomDocumentScriptRegistration>,
+        )>,
+        DocumentScriptNativeError,
+    > {
+        let Some(request) = self.active_attribute.get() else {
+            return Ok(None);
+        };
+        let registration = self
+            .attachment
+            .get()
+            .and_then(|attachment| attachment.registration.upgrade())
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        Ok(Some((request, registration)))
+    }
+
     fn recover(mut owner: Rc<Self>) -> Result<DomSession, Rc<Self>> {
         // Do not release the funded target body while an outstanding Weak can
         // keep its allocation alive. The installed hook is the only issuer.
@@ -456,6 +477,7 @@ impl PreparedDocumentScriptHost {
                 session: RefCell::new(session),
                 active_source: Cell::new(None),
                 active_attached_event: RefCell::new(None),
+                active_attribute: Cell::new(None),
                 trusted_types_reports: RefCell::new(None),
                 cancellation,
                 storage_limit,

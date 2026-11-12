@@ -5,7 +5,7 @@ mod methods;
 use super::*;
 use crate::trusted_types_csp::{PolicyCreationError, PolicyFactory, ReportError};
 use surgeist_bindings_js::{
-    TrustedPolicyCallback, ValueKind,
+    NativeObject, TrustedPolicyCallback, TrustedTypeKind, ValueKind,
     conversion::{Converted, types},
 };
 use surgeist_dom::{DocumentString, DomDocumentCspState};
@@ -23,6 +23,52 @@ struct RetainedPolicy {
 struct PolicyObject {
     name: DocumentString,
     callbacks: [Option<TrustedPolicyCallback>; 4],
+}
+
+impl PolicyObject {
+    fn callback(&self, kind: TrustedTypeKind) -> Option<&TrustedPolicyCallback> {
+        let [html, _, script, script_url] = &self.callbacks;
+        match kind {
+            TrustedTypeKind::Html => html,
+            TrustedTypeKind::Script => script,
+            TrustedTypeKind::ScriptUrl => script_url,
+        }
+        .as_ref()
+    }
+}
+
+pub(super) struct DefaultPolicy(Rc<NativeObject<PolicyObject>>);
+
+impl DefaultPolicy {
+    pub(super) fn callback(&self, kind: TrustedTypeKind) -> Option<&TrustedPolicyCallback> {
+        self.0.payload().callback(kind)
+    }
+}
+
+pub(super) fn current_default_policy(
+    scope: &mut Scope<'_>,
+    events: &GuestEvents,
+) -> Result<Option<DefaultPolicy>, DocumentGuestEventError> {
+    let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+    let factory = scope.open_callback_object(&public.trusted_types)?;
+    let factory = scope
+        .native_object::<Factory>(&factory)?
+        .ok_or(Error::ExpectedNativeObject)?;
+    let policy = factory
+        .payload()
+        .state
+        .try_borrow()
+        .map_err(|_| DocumentScriptNativeError::Busy)?
+        .default_policy()
+        .cloned();
+    let Some(policy) = policy else {
+        return Ok(None);
+    };
+    let object = scope.open_callback_object(&policy.object)?;
+    let object = scope
+        .native_object::<PolicyObject>(&object)?
+        .ok_or(Error::ExpectedNativeObject)?;
+    Ok(Some(DefaultPolicy(object)))
 }
 
 pub(super) fn install<'scope>(
@@ -253,7 +299,17 @@ fn publish<'scope>(
                 Ok((session.snapshot(), session.trusted_types_csp.clone()))
             })?;
     let mut step = || {
-        if let Some(request) = &request {
+        if let Some((request, registration)) = owner.active_attribute_registration()? {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            session.dom().raw().source_attribute_callback_step(
+                request,
+                &registration,
+                &owner.cancellation,
+            )?;
+        } else if let Some(request) = &request {
             let mut session = owner
                 .session
                 .try_borrow_mut()
