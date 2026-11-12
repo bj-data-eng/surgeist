@@ -2,11 +2,12 @@
 
 pub(crate) mod bounded;
 pub(crate) mod names;
+mod text;
 mod views;
 
 pub use views::{
-    BuildStr, ConstructionDoctype, ConstructionNodeKind, ConstructionProcessingInstruction,
-    HtmlAttributes, HtmlElementView, HtmlNodeKind,
+    BuildStr, BuildText, ConstructionDoctype, ConstructionNodeKind,
+    ConstructionProcessingInstruction, HtmlAttributes, HtmlElementView, HtmlNodeKind,
 };
 
 use crate::internal::accounting::{
@@ -17,13 +18,14 @@ use crate::internal::accounting::{
 use crate::internal::values::Namespace;
 use crate::{
     internal::values::DocumentString, internal::values::OrderedAttributes,
-    internal::values::QualifiedName,
+    internal::values::QualifiedName, internal::values::TextBlock,
 };
 use names::{NameEntry, NameTable};
 use std::{collections::VecDeque, error::Error, fmt, num::NonZeroU32, sync::Arc};
 use surgeist_ledger::{
     Change, Charge, Error as LedgerError, Operation, Scope, SharedOperation, Usage,
 };
+use text::{TextArena, TextRun};
 
 /// The HTML document's selected compatibility mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -212,6 +214,11 @@ pub enum HtmlConstructionCause {
     /// The builder's own arithmetic released more than it admitted. A release that the ledger
     /// refuses is [`Self::Accounting`].
     ReleaseUnderflow,
+    /// A text or comment record names a range that its storage's text arena does not hold.
+    InvalidTextReference,
+    /// A record was read through a view of a storage that has not published it, where the
+    /// operation needs the published result.
+    NotPublished,
     /// A finite resource limit would be exceeded.
     LimitExceeded {
         /// The resource that would exceed its limit.
@@ -321,6 +328,12 @@ impl fmt::Display for HtmlConstructionError {
                 f.write_str("a storage count, layout size, record index or storage serial has no representable value")
             }
             Cause::AllocationFailed => f.write_str("reserving arena or edge storage failed"),
+            Cause::InvalidTextReference => {
+                f.write_str("a text record names a range its text arena does not hold")
+            }
+            Cause::NotPublished => {
+                f.write_str("the record is read through a storage that has not published it")
+            }
             Cause::DuplicateAttribute { first, duplicate } => write!(
                 f,
                 "attribute at index {duplicate} duplicates the namespace and local name of the attribute at index {first}"
@@ -630,8 +643,12 @@ impl ElementContent {
 
 /// The stored content of a node record. Readers see it only through [`HtmlNodeKind`] and
 /// [`ConstructionNodeKind`].
+///
+/// `T` is how the content holds the units of a text or comment: a [`TextRun`] of the storage's
+/// text arena while the storage builds, and a [`DocumentString`] of the published block once it
+/// is published. A record of one form cannot hold the other.
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum NodeContent {
+enum NodeContent<T> {
     /// The Document node, carrying the compatibility mode selected when it was built.
     Document(HtmlDocumentMode),
     /// A document-fragment root.
@@ -639,14 +656,19 @@ enum NodeContent {
     /// An element with its exact qualified name and ordered raw attributes.
     Element(ElementContent),
     /// A text node; the payload preserves the exact UTF-16 code units.
-    Text(DocumentString),
+    Text(T),
     /// A comment node; the payload preserves the exact UTF-16 code units.
-    Comment(DocumentString),
+    Comment(T),
     /// A processing instruction recorded with its exact target and data.
     ProcessingInstruction(HtmlProcessingInstruction),
     /// A document type declaration.
     Doctype(HtmlDoctype),
 }
+
+/// The content of a record while its storage builds.
+type BuildContent = NodeContent<TextRun>;
+/// The content of a record of a published result.
+type PublishedContent = NodeContent<DocumentString>;
 
 /// Declarative shadow-root visibility.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -788,8 +810,8 @@ pub enum HtmlFocusedAreaDesignation {
 }
 
 #[derive(Debug)]
-struct Record {
-    kind: NodeContent,
+struct Record<T> {
+    kind: NodeContent<T>,
     document_focused_area_designation: Option<HtmlFocusedAreaDesignation>,
     parent: Option<NodeIx>,
     /// The ordinary children in order. A deque, so that taking or placing an entry near either
@@ -819,8 +841,44 @@ struct Record {
     /// counted, then read, so a stale value is never trusted.
     publish_found: u8,
 }
-impl Record {
-    fn new(kind: NodeContent, parent: Option<NodeIx>, depth: usize) -> Self {
+impl Record<TextRun> {
+    /// This record as a record of a published result, with `kind` for its content, which was made
+    /// from this record's content. Every other field moves unchanged.
+    fn published(self, kind: PublishedContent) -> Record<DocumentString> {
+        let Self {
+            kind: _,
+            document_focused_area_designation,
+            parent,
+            children,
+            depth,
+            population,
+            walk_cursor,
+            level_count,
+            template_contents,
+            shadow,
+            shadow_properties,
+            owner,
+            publish_found,
+        } = self;
+        Record {
+            kind,
+            document_focused_area_designation,
+            parent,
+            children,
+            depth,
+            population,
+            walk_cursor,
+            level_count,
+            template_contents,
+            shadow,
+            shadow_properties,
+            owner,
+            publish_found,
+        }
+    }
+}
+impl<T> Record<T> {
+    fn new(kind: NodeContent<T>, parent: Option<NodeIx>, depth: usize) -> Self {
         let document_focused_area_designation = matches!(kind, NodeContent::Document(_))
             .then_some(HtmlFocusedAreaDesignation::Unavailable);
         Self {
@@ -841,8 +899,8 @@ impl Record {
     }
 }
 #[derive(Debug)]
-struct Arena {
-    records: Vec<Record>,
+struct Arena<T> {
+    records: Vec<Record<T>>,
     /// The names of the elements and attributes of the records.
     names: NameTable,
     usage: HtmlConstructionUsage,
@@ -855,7 +913,22 @@ struct Arena {
     // describes from those that have changed since.
     attribute_revision: u64,
 }
-impl Arena {
+/// A publication replaces the vector of records of a storage with a vector of published records
+/// and the consumer records the capacity of the one it replaces as the bank the other grows from,
+/// which holds only while the two records have one size.
+const _: () = assert!(size_of::<Record<TextRun>>() == size_of::<Record<DocumentString>>());
+/// The contents vector of a publication holds one published content for each record, and the
+/// build view of a record charges the size of its content to the inspections that read it, so the
+/// content of a record is one size in both forms.
+const _: () =
+    assert!(size_of::<NodeContent<TextRun>>() == size_of::<NodeContent<DocumentString>>());
+
+/// The arena of a storage that builds, whose text is in its storage's text arena.
+type BuildArena = Arena<TextRun>;
+/// The arena of a published result.
+type PublishedArena = Arena<DocumentString>;
+
+impl<T> Arena<T> {
     /// How many records have exactly this depth.
     fn population(&self, depth: usize) -> usize {
         self.records
@@ -869,9 +942,8 @@ impl Arena {
         }
     }
     /// The record at `position`, or `None` past the last record.
-    fn record_at(&self, position: usize) -> Option<bounded::HtmlConstructionNode<'_>> {
-        let index = NodeIx::new(position).filter(|index| index.position() < self.records.len())?;
-        Some(bounded::HtmlConstructionNode { arena: self, index })
+    fn has_record(&self, position: usize) -> Option<NodeIx> {
+        NodeIx::new(position).filter(|index| index.position() < self.records.len())
     }
     /// The record index a builder handle names: `ForeignBuilder` for another storage's handle and
     /// `UnknownNode` for an index past the records.
@@ -884,23 +956,36 @@ impl Arena {
         }
         Ok(handle.index)
     }
-    fn construction_node(
-        &self,
-        id: &HtmlNodeId,
-    ) -> Result<bounded::HtmlConstructionNode<'_>, ForeignHtmlResult> {
-        let node = self.lookup(id)?;
-        Ok(bounded::HtmlConstructionNode {
-            arena: self,
-            index: node.index,
+    /// The declarative shadow root of the host element at `index`: the association whose contents
+    /// carry shadow properties.
+    fn declarative_shadow_root(&self, index: NodeIx) -> Option<HtmlDeclarativeShadowRoot<'_>> {
+        let relation = self.records[index.position()].shadow.as_ref()?;
+        // A declarative shadow root is an association whose contents carry shadow properties.
+        let properties = self
+            .records
+            .get(relation.contents.index.position())?
+            .shadow_properties
+            .as_ref()?;
+        Some(HtmlDeclarativeShadowRoot {
+            host: relation.host,
+            contents: relation.contents,
+            properties,
         })
     }
-    fn lookup(&self, id: &HtmlNodeId) -> Result<HtmlNode<'_>, ForeignHtmlResult> {
+    /// The record index a result id names, or `ForeignHtmlResult` for the id of another storage
+    /// or one past the records.
+    fn lookup_index(&self, id: &HtmlNodeId) -> Result<NodeIx, ForeignHtmlResult> {
         if self.serial != id.tree || id.index.position() >= self.records.len() {
             return Err(ForeignHtmlResult);
         }
+        Ok(id.index)
+    }
+}
+impl PublishedArena {
+    fn lookup(&self, id: &HtmlNodeId) -> Result<HtmlNode<'_>, ForeignHtmlResult> {
         Ok(HtmlNode {
             arena: self,
-            index: id.index,
+            index: self.lookup_index(id)?,
         })
     }
 }
@@ -908,7 +993,7 @@ impl Arena {
 /// A borrowed immutable node view, with ordinary and association edges distinct.
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlNode<'a> {
-    arena: &'a Arena,
+    arena: &'a PublishedArena,
     index: NodeIx,
 }
 impl<'a> HtmlNode<'a> {
@@ -920,7 +1005,7 @@ impl<'a> HtmlNode<'a> {
     pub fn kind(self) -> HtmlNodeKind<'a> {
         self.content().published()
     }
-    fn content(self) -> &'a NodeContent {
+    fn content(self) -> &'a PublishedContent {
         &self.arena.records[self.index.position()].kind
     }
     /// Original design-mode state of this owned Document, or `None` for a
@@ -961,19 +1046,7 @@ impl<'a> HtmlNode<'a> {
     /// relation whose contents lack them (`validate_record`, `InvalidShadowAssociation`), so a
     /// published tree has no association that this answers with `None`.
     pub fn declarative_shadow_root(self) -> Option<HtmlDeclarativeShadowRoot<'a>> {
-        let relation = self.arena.records[self.index.position()].shadow.as_ref()?;
-        // A declarative shadow root is an association whose contents carry shadow properties.
-        let properties = self
-            .arena
-            .records
-            .get(relation.contents.index.position())?
-            .shadow_properties
-            .as_ref()?;
-        Some(HtmlDeclarativeShadowRoot {
-            host: relation.host,
-            contents: relation.contents,
-            properties,
-        })
+        self.arena.declarative_shadow_root(self.index)
     }
     /// Distinguishes an owning template association from a shadow reference.
     pub fn template_contents_kind(self) -> Option<HtmlTemplateContentsKind> {
@@ -999,7 +1072,7 @@ impl<'a> HtmlNode<'a> {
 /// It makes no claim about parsing, source provenance, or conformance checking.
 #[derive(Clone, Debug)]
 pub struct HtmlDocument {
-    arena: Arc<Arena>,
+    arena: Arc<PublishedArena>,
     root: NodeIx,
     /// The mode the published root Document had, which an immutable arena cannot change.
     mode: HtmlDocumentMode,
@@ -1057,7 +1130,7 @@ impl HtmlDocument {
 /// A concrete immutable HTML fragment, including associated template/shadow views.
 #[derive(Clone, Debug)]
 pub struct HtmlFragment {
-    arena: Arc<Arena>,
+    arena: Arc<PublishedArena>,
     root: NodeIx,
 }
 impl HtmlFragment {
@@ -1100,7 +1173,7 @@ impl HtmlFragment {
     }
 }
 fn fragment_view(
-    arena: &Arc<Arena>,
+    arena: &Arc<PublishedArena>,
     id: &HtmlNodeId,
 ) -> Result<Option<HtmlFragment>, ForeignHtmlResult> {
     Ok(
@@ -1183,8 +1256,8 @@ impl Creation {
                 attributes,
                 link_flags,
             } => storage.create_element(&name, attributes, link_flags, admission),
-            Self::Text(value) => storage.create_shared_text(value, admission),
-            Self::Comment(value) => storage.create_shared_comment(value, admission),
+            Self::Text(value) => storage.create_text(value.code_units(), admission),
+            Self::Comment(value) => storage.create_comment(value.code_units(), admission),
             Self::ProcessingInstruction(value) => {
                 storage.create_shared_processing_instruction(value, admission)
             }
@@ -1198,11 +1271,13 @@ impl Creation {
 /// calls the storage, so every operation of the storage is admitted here without a further check,
 /// and the builder charges no work. A bank that is filled one entry at a time (the record bank and
 /// a child order) grows to its amortized capacity, never above what the limits admit, when the
-/// admission has spare room; every other bank, and every bank of an admission without it, grows to
-/// the least capacity that suffices.
+/// admission has spare room, as does the text arena that every text and comment is copied into;
+/// every other bank, and every bank of an admission without it, grows to the least capacity that
+/// suffices.
 struct NativeAdmission {
-    /// The most records and the most child entries the limits admit, or `None` for exact growth.
-    spare_room: Option<(usize, usize)>,
+    /// The most records, the most child entries and the most text units the limits admit, or
+    /// `None` for exact growth.
+    spare_room: Option<(usize, usize, usize)>,
 }
 impl NativeAdmission {
     fn exact() -> Self {
@@ -1210,7 +1285,7 @@ impl NativeAdmission {
     }
     fn with_spare_room(limits: HtmlConstructionLimits) -> Self {
         Self {
-            spare_room: Some((limits.nodes(), limits.edges())),
+            spare_room: Some((limits.nodes(), limits.edges(), limits.utf16_units())),
         }
     }
 }
@@ -1241,10 +1316,11 @@ impl bounded::records::HtmlRecordAdmission for NativeAdmission {
         growth: bounded::records::HtmlConstructionBankGrowth,
     ) -> Result<usize, Self::Stop> {
         let ceiling = match (self.spare_room, growth.bank()) {
-            (Some((nodes, _)), bounded::records::HtmlConstructionBank::Records) => Some(nodes),
-            (Some((_, edges)), bounded::records::HtmlConstructionBank::Children { .. }) => {
+            (Some((nodes, ..)), bounded::records::HtmlConstructionBank::Records) => Some(nodes),
+            (Some((_, edges, _)), bounded::records::HtmlConstructionBank::Children { .. }) => {
                 Some(edges)
             }
+            (Some((.., units)), bounded::records::HtmlConstructionBank::TextArena) => Some(units),
             _ => None,
         };
         let minimum = growth.minimum_capacity();
@@ -1965,7 +2041,7 @@ mod tests {
             data: DocumentString::from("a?"),
         };
         let record = Record::new(
-            NodeContent::ProcessingInstruction(recovered.clone()),
+            NodeContent::<DocumentString>::ProcessingInstruction(recovered.clone()),
             None,
             0,
         );

@@ -177,6 +177,8 @@ fn construction_key(error: &HtmlConstructionError) -> &'static str {
         HtmlConstructionCause::LimitExceeded { .. } => "construction-limit",
         HtmlConstructionCause::RepresentationExhausted => "construction-representation",
         HtmlConstructionCause::AllocationFailed => "construction-allocation",
+        HtmlConstructionCause::InvalidTextReference => "text-reference",
+        HtmlConstructionCause::NotPublished => "not-published",
         _ => "other-construction",
     }
 }

@@ -58,6 +58,12 @@ impl TextBlock {
         self.units.capacity()
     }
 
+    /// Takes the units back from a block that no other holder has, or returns the block when
+    /// another holder keeps it.
+    pub(crate) fn into_units(self) -> Result<Vec<u16>, Self> {
+        Arc::try_unwrap(self.units).map_err(|units| Self { units })
+    }
+
     /// Returns the units of `range`, or `None` when it is reversed or leaves the block.
     pub fn get(&self, range: Range<usize>) -> Option<&[u16]> {
         self.units.get(range)

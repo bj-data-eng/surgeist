@@ -164,7 +164,12 @@ pub(super) fn append_descendant_text(
             .ok_or(SessionError::ForeignNode)?
             .kind()
         {
-            destination.extend_units(value.code_units(), control)?;
+            destination.extend_units(
+                value
+                    .code_units()
+                    .map_err(|error| construction_error(control, error))?,
+                control,
+            )?;
         }
         next = next_ordinary_view_node(records, control, root, node, None)?;
     }

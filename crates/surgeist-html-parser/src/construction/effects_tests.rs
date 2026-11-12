@@ -430,7 +430,7 @@ fn select_connected_empty_script_clone_text_merge_runs_children_changed_preparat
     let text = children(&session, &copy);
     assert_eq!(text.len(), 1);
     assert!(
-        matches!(session.active().unwrap().construction.node_at(text[0]).expect("retained construction position").kind(), ConstructionNodeKind::Text(value) if value.code_units() == DocumentString::from("AB").code_units())
+        matches!(session.active().unwrap().construction.node_at(text[0]).expect("retained construction position").kind(), ConstructionNodeKind::Text(value) if value.code_units().unwrap() == DocumentString::from("AB").code_units())
     );
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
@@ -474,25 +474,21 @@ fn select_clones_managed_hidden_textarea_and_exact_comment_pi_text_backing_indep
             .node_at(*copy)
             .expect("retained construction position");
         // A copy holds the same units in a string of its own.
-        let distinct = |a: surgeist_html::construction::BuildStr<'_>,
-                        b: surgeist_html::construction::BuildStr<'_>| {
+        let distinct = |a: &[u16], b: &[u16]| {
             assert_eq!(a, b);
-            assert!(!std::ptr::eq(
-                a.code_units().as_ptr(),
-                b.code_units().as_ptr()
-            ));
+            assert!(!std::ptr::eq(a.as_ptr(), b.as_ptr()));
         };
         match (first.kind(), second.kind()) {
             (ConstructionNodeKind::Text(a), ConstructionNodeKind::Text(b))
             | (ConstructionNodeKind::Comment(a), ConstructionNodeKind::Comment(b)) => {
-                distinct(a, b)
+                distinct(a.code_units().unwrap(), b.code_units().unwrap())
             }
             (
                 ConstructionNodeKind::ProcessingInstruction(a),
                 ConstructionNodeKind::ProcessingInstruction(b),
             ) => {
                 assert_eq!(a.target(), b.target());
-                distinct(a.data(), b.data());
+                distinct(a.data().code_units(), b.data().code_units());
             }
             (ConstructionNodeKind::Element(a), ConstructionNodeKind::Element(b)) => {
                 assert_eq!(a.name(), b.name());
@@ -843,7 +839,7 @@ fn select_fifo_consumes_two_actual_removal_tasks_in_source_order_and_keeps_exact
         let child = children(&session, &target);
         assert_eq!(child.len(), 1);
         assert!(
-            matches!(session.active().unwrap().construction.node_at(child[0]).expect("retained construction position").kind(), ConstructionNodeKind::Text(value) if value.code_units() == DocumentString::from(expected).code_units())
+            matches!(session.active().unwrap().construction.node_at(child[0]).expect("retained construction position").kind(), ConstructionNodeKind::Text(value) if value.code_units().unwrap() == DocumentString::from(expected).code_units())
         );
     }
     let storage = session.active().unwrap();

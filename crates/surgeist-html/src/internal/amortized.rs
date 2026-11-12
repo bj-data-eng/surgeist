@@ -81,6 +81,28 @@ pub(crate) mod fault {
         static REFUSE_FROM: Cell<Option<usize>> = const { Cell::new(None) };
         static REQUESTS: Cell<usize> = const { Cell::new(0) };
         static REFUSE_CHILDREN: Cell<bool> = const { Cell::new(false) };
+        static REFUSE_TEXT_SHARE: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Makes a publication refuse to share its block with a text record until the guard drops,
+    /// even if the test panics. The refusal is the one a range the block cannot hold gives, which
+    /// publication's own validation makes unreachable.
+    pub(crate) struct TextShareRefused;
+    impl Drop for TextShareRefused {
+        fn drop(&mut self) {
+            REFUSE_TEXT_SHARE.with(|cell| cell.set(false));
+        }
+    }
+
+    /// Refuses every share of a published text with its block while the returned guard lives.
+    pub(crate) fn refuse_text_share() -> TextShareRefused {
+        REFUSE_TEXT_SHARE.with(|cell| cell.set(true));
+        TextShareRefused
+    }
+
+    /// Whether the share of a published text with its block is refused.
+    pub(crate) fn refuses_text_share() -> bool {
+        REFUSE_TEXT_SHARE.with(Cell::get)
     }
 
     /// Makes the allocator refuse every reservation of a child order, the room needed as well as
@@ -92,7 +114,7 @@ pub(crate) mod fault {
         }
     }
 
-    /// Refuses every reservation of a child order from now on.
+    /// Refuses every reservation of a child order while the returned guard lives.
     pub(crate) fn refuse_children() -> ChildrenRefused {
         REFUSE_CHILDREN.with(|cell| cell.set(true));
         ChildrenRefused

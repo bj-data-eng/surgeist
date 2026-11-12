@@ -165,7 +165,12 @@ pub(crate) struct StartIndex {
 
 impl StartIndex {
     fn build(storage: &FrozenStorage) -> Self {
-        let id_of = |index: usize| storage.view.node_at(index).map(|node| node.as_node().id());
+        let id_of = |index: usize| {
+            storage
+                .view
+                .node_at(index)
+                .and_then(|node| node.as_node().ok().map(|node| node.id()))
+        };
         let mut index = Self::default();
         for row in &storage.payloads.values {
             match row {

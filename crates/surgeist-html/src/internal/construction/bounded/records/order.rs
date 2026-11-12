@@ -159,12 +159,9 @@ impl HtmlConstructionStorage {
         }
         .charge(charge)?;
         for index in [from, to] {
-            HtmlConstructionNode {
-                arena: &self.arena,
-                index,
-            }
-            .check_container()
-            .map_err(faulted)?;
+            HtmlConstructionNode::building(&self.arena, &self.text, index)
+                .check_container()
+                .map_err(faulted)?;
         }
         if self.is_above(to, from, charge)? {
             return Err(fault(HtmlConstructionCause::Cycle));
@@ -193,10 +190,7 @@ impl HtmlConstructionStorage {
         let before = before
             .map(|before| self.operand(before, admission))
             .transpose()?;
-        let view = |index| HtmlConstructionNode {
-            arena: &self.arena,
-            index,
-        };
+        let view = |index| HtmlConstructionNode::building(&self.arena, &self.text, index);
         view(parent).check_container().map_err(faulted)?;
         view(node).check_detachment().map_err(faulted)?;
         if let Some(before) = before {
@@ -283,12 +277,9 @@ impl HtmlConstructionStorage {
         admission: &mut A,
     ) -> Result<(), HtmlConstructionRecordError<A::Stop>> {
         let node = self.operand(node, admission)?;
-        HtmlConstructionNode {
-            arena: &self.arena,
-            index: node,
-        }
-        .check_detachment()
-        .map_err(faulted)?;
+        HtmlConstructionNode::building(&self.arena, &self.text, node)
+            .check_detachment()
+            .map_err(faulted)?;
         let Some(old) = self.record(node).map_err(faulted)?.parent else {
             return Ok(());
         };

@@ -104,7 +104,17 @@ impl ParseControl {
                     Err(stop) => self.fail(stop),
                 }
             }
+            HtmlConstructionBank::TextArena => {
+                self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                Ok(Self::text_growth_target(
+                    growth.before().capacity(),
+                    minimum,
+                ))
+            }
             HtmlConstructionBank::Text
+            | HtmlConstructionBank::TextBlock
+            | HtmlConstructionBank::PublishedRecords
+            | HtmlConstructionBank::PublishedContents
             | HtmlConstructionBank::Wrapper
             | HtmlConstructionBank::NameSlots
             | HtmlConstructionBank::NameEntry => Ok(minimum),
@@ -136,9 +146,8 @@ impl ParseControl {
         else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        // A string that has no vector yet holds no wrapper either.
-        let old = if growth.before().capacity() == 0 && growth.bank() == HtmlConstructionBank::Text
-        {
+        // A bank that has no allocation yet holds no wrapper either.
+        let old = if growth.before().capacity() == 0 {
             Some(0)
         } else {
             Self::bank_bytes(growth, growth.before().capacity())
@@ -207,7 +216,7 @@ impl ParseControl {
         capacity: usize,
         first: bool,
     ) -> Result<u64, HtmlParseStop> {
-        if first && growth.bank() == HtmlConstructionBank::Text && capacity == 0 {
+        if first && capacity == 0 {
             return Ok(0);
         }
         Self::bank_bytes(growth, capacity).ok_or(HtmlParseStop::InternalInvariant(

@@ -1007,7 +1007,7 @@ impl<'a> Resolver<'a> {
     fn native(&self, index: usize) -> Result<HtmlNode<'a>, Fault> {
         self.arena
             .node_at(index)
-            .map(|node| node.as_node())
+            .and_then(|node| node.as_node().ok())
             .ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))
     }
     fn optional_native(&self, index: Option<usize>) -> Result<Option<HtmlNode<'a>>, Fault> {

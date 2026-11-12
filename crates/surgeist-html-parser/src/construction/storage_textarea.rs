@@ -108,10 +108,13 @@ impl SessionStorage {
                         .ok_or_else(|| latch_registry_row(control))?
                         .kind()
                 {
+                    let text_units = value
+                        .code_units()
+                        .map_err(|error| construction_error(control, error))?;
                     if let RawValue::Copy(raw) = &mut raw {
-                        raw.extend_units(value.code_units(), control)?;
+                        raw.extend_units(text_units, control)?;
                     }
-                    let added = value.len();
+                    let added = text_units.len();
                     let end = units.checked_add(added).ok_or_else(|| {
                         control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                     })?;
@@ -228,10 +231,13 @@ impl SessionStorage {
         let Some(ConstructionNodeKind::Text(text)) = last else {
             return Err(latch_registry_row(control));
         };
-        let Some(delta) = text
+        let text_units = text
+            .code_units()
+            .map_err(|error| construction_error(control, error))?;
+        let Some(delta) = text_units
             .len()
             .checked_sub(added)
-            .and_then(|start| text.code_units().get(start..))
+            .and_then(|start| text_units.get(start..))
         else {
             return Err(latch_registry_row(control));
         };

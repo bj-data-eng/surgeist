@@ -97,7 +97,7 @@ fn textarea_raw_is_independent_exact_child_text_and_retired_backing_is_disposed(
         panic!("text node")
     };
     assert!(!std::ptr::eq(
-        native.code_units().as_ptr(),
+        native.code_units().unwrap().as_ptr(),
         raw.code_units().as_ptr()
     ));
     let mut b = next_text(&mut tokenizer, &mut c);

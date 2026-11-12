@@ -529,15 +529,25 @@ fn a_parked_installation_draft_and_another_batch_charge_a_shared_block_once() {
     let done = dom.apply(batch, &cancel).unwrap();
     let parent = done.created(&parent).unwrap().unwrap();
     drop(done);
-    let block = spare_block();
+    // The fragment copies its text into the one block of the fragment, which the installation
+    // lists and another batch borrows.
     let mut fragment = surgeist_html::construction::HtmlFragment::builder(
-        surgeist_html::construction::HtmlConstructionLimits::new(16, 16, 16, 256, 16),
+        surgeist_html::construction::HtmlConstructionLimits::new(16, 16, 16, 4096, 16),
     )
     .unwrap();
     fragment
-        .append_text(&fragment.root(), block.string(0..4).unwrap())
+        .append_text(&fragment.root(), "a".repeat(600))
         .unwrap();
     let source = fragment.finish().unwrap();
+    let surgeist_html::construction::HtmlNodeKind::Text(text) = source
+        .node(&source.root().children().next().unwrap())
+        .unwrap()
+        .kind()
+    else {
+        panic!("the fragment holds one text")
+    };
+    let block = text.block().clone();
+    assert!(block.capacity() >= 600);
     let stamp = dom.snapshot().document(document).unwrap().stamp();
     // The installation stages a draft that lists the block and does not publish yet.
     let staged = dom

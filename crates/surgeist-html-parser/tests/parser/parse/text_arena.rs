@@ -141,6 +141,13 @@ fn the_text_merged_around_a_table_keeps_the_same_bound() {
             pairs + 1 + pairs,
             "the merged text and the style texts"
         );
+        // The text before the table is `a` and the `b` of each merge, in the order the merges
+        // appended them, and each style holds `x`.
+        let units_of = |text: &DocumentString| String::from_utf16(text.code_units()).unwrap();
+        let (merged, styles) = texts.split_first().unwrap();
+        assert_eq!(units_of(merged), format!("a{}", "b".repeat(pairs)));
+        assert_eq!(styles.len(), pairs);
+        assert!(styles.iter().all(|style| units_of(style) == "x"));
         let bytes = retained_text_bytes(&texts);
         let bound = 2 * units + (2 * units).div_ceil(3) + 1024;
         assert!(

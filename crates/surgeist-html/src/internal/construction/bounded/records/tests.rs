@@ -30,6 +30,8 @@ struct Meter {
     huge: Option<Huge>,
     /// Chooses a capacity of `isize::MAX` bytes for this bank, which the allocator refuses.
     huge_bank: Option<HtmlConstructionBank>,
+    /// The record of a growth this consumer refused.
+    refused_record: Option<HtmlConstructionGrowthRecord>,
 }
 /// The kinds of bank a [`Meter`] can choose a capacity for that the allocator refuses.
 #[derive(Clone, Copy)]
@@ -101,8 +103,10 @@ impl HtmlRecordAdmission for Meter {
         self.growths.push(growth);
         let refused = matches!(
             (self.huge, growth.bank()),
-            (Some(Huge::Text), HtmlConstructionBank::Text)
-                | (Some(Huge::Children), HtmlConstructionBank::Children { .. })
+            (
+                Some(Huge::Text),
+                HtmlConstructionBank::Text | HtmlConstructionBank::TextArena
+            ) | (Some(Huge::Children), HtmlConstructionBank::Children { .. })
                 | (Some(Huge::Records), HtmlConstructionBank::Records)
         );
         if refused || self.huge_bank == Some(growth.bank()) {
@@ -119,7 +123,10 @@ impl HtmlRecordAdmission for Meter {
         })
     }
     fn record_growth(&mut self, record: HtmlConstructionGrowthRecord) -> Result<(), Refused> {
-        self.call("record_growth")?;
+        if let Err(refused) = self.call("record_growth") {
+            self.refused_record = Some(record);
+            return Err(refused);
+        }
         self.records.push(record);
         Ok(())
     }
@@ -189,15 +196,44 @@ fn children(storage: &HtmlConstructionStorage, node: &HtmlBuilderNode) -> Vec<us
 }
 /// The logical state of the storage: what a refused operation must leave as it was.
 fn snapshot(storage: &HtmlConstructionStorage) -> Vec<String> {
-    arena_snapshot(&storage.arena)
+    let mut rows = arena_snapshot(&storage.arena);
+    // The text arena: the units it holds and the units its records hold.
+    rows.push(format!(
+        "text {:?} used {}",
+        storage.text,
+        storage.text.used()
+    ));
+    rows
+}
+/// The units of a text or comment of either form of record, as the length they have.
+trait Leaf: std::fmt::Debug {
+    fn units(&self) -> usize;
+}
+impl Leaf for TextRun {
+    fn units(&self) -> usize {
+        self.len()
+    }
+}
+impl Leaf for DocumentString {
+    fn units(&self) -> usize {
+        self.len()
+    }
+}
+/// The content of a record without the way it holds its text, which differs between the forms.
+fn kind_shape<T: Leaf>(kind: &NodeContent<T>) -> String {
+    match kind {
+        NodeContent::Text(text) => format!("Text of {} units", text.units()),
+        NodeContent::Comment(text) => format!("Comment of {} units", text.units()),
+        other => format!("{other:?}"),
+    }
 }
 /// The logical state of an arena.
-fn arena_snapshot(arena: &Arena) -> Vec<String> {
+fn arena_snapshot<T: Leaf>(arena: &Arena<T>) -> Vec<String> {
     let mut rows = vec![format!("{:?}", arena.usage)];
     for (index, record) in arena.records.iter().enumerate() {
         rows.push(format!(
-            "{index} {:?} parent {:?} children {:?} depth {} population {} contents {:?} shadow {:?} properties {:?} owner {:?} designation {:?}",
-            record.kind,
+            "{index} {} parent {:?} children {:?} depth {} population {} contents {:?} shadow {:?} properties {:?} owner {:?} designation {:?}",
+            kind_shape(&record.kind),
             record.parent.map(NodeIx::position),
             record.children.iter().map(|child| child.position()).collect::<Vec<_>>(),
             record.depth,
@@ -259,9 +295,11 @@ fn creations_make_the_records_they_name_and_count_what_they_hold() {
         kind(&document),
         Kind::Document(HtmlDocumentMode::Quirks)
     ));
-    assert!(matches!(kind(&text), Kind::Text(value) if value.code_units() == utf16("ab\u{1f642}")));
     assert!(
-        matches!(kind(&comment), Kind::Comment(value) if value.code_units() == [0xd800, 0, 0xdc00])
+        matches!(kind(&text), Kind::Text(value) if value.code_units().unwrap() == utf16("ab\u{1f642}"))
+    );
+    assert!(
+        matches!(kind(&comment), Kind::Comment(value) if value.code_units().unwrap() == [0xd800, 0, 0xdc00])
     );
     assert!(matches!(
         kind(&instruction),
@@ -338,26 +376,32 @@ fn a_creation_charges_its_rows_its_units_and_its_growth() {
     let mut storage = storage();
     let mut meter = Meter::default();
     ok(storage.create_text(&utf16("abc"), &mut meter));
-    // One record bank and one string grow; each charges one provider call.
+    // One record bank and the text arena grow; each charges one provider call.
     assert_eq!(meter.work[PROVIDER], 2);
     assert_eq!(meter.growths.len(), 2);
     assert_eq!(meter.growths[0].bank(), HtmlConstructionBank::Records);
     assert_eq!(meter.growths[0].minimum_capacity(), 1);
-    assert_eq!(meter.growths[0].element_size(), size_of::<Record>());
-    assert_eq!(meter.growths[1].bank(), HtmlConstructionBank::Text);
+    assert_eq!(
+        meter.growths[0].element_size(),
+        size_of::<Record<TextRun>>()
+    );
+    assert_eq!(meter.growths[1].bank(), HtmlConstructionBank::TextArena);
     assert_eq!(meter.growths[1].minimum_capacity(), 3);
     assert_eq!(meter.growths[1].element_size(), 2);
-    assert_eq!(meter.growths[1].wrapper_bytes(), size_of::<Vec<u16>>());
+    assert_eq!(meter.growths[1].wrapper_bytes(), 0);
     // The rows and the usage, then 3 units = 6 bytes in one run.
     assert_eq!(
         meter.work[COPY] as usize,
-        size_of::<Record>() + size_of::<usize>() + size_of::<HtmlConstructionUsage>() + 6
+        size_of::<Record<TextRun>>() + size_of::<usize>() + size_of::<HtmlConstructionUsage>() + 6
     );
     // Two writes per record, one for the usage, one for the run of units.
     assert_eq!(meter.work[WRITE], 2 + 1 + 1);
     assert_eq!(meter.work[VISIT], 0);
     let largest = meter.largest.clone();
-    assert!(largest.contains(&(HtmlResource::AtomicLayoutBytes, size_of::<Record>() as u64)));
+    assert!(largest.contains(&(
+        HtmlResource::AtomicLayoutBytes,
+        size_of::<Record<TextRun>>() as u64
+    )));
     assert!(largest.contains(&(HtmlResource::TreeDepth, 0)));
     // The first record of each growth is the capacity chosen; the second is absent when the
     // reservation reached what was chosen.
@@ -374,13 +418,18 @@ fn a_creation_charges_its_rows_its_units_and_its_growth() {
     assert!(storage.arena.records.capacity() >= 10);
     let mut roomy = Meter::default();
     ok(storage.create_comment(&[], &mut roomy));
-    assert_eq!(
-        roomy.growths.len(),
-        1,
-        "only the empty string grows: the records have room"
+    assert!(
+        roomy.growths.is_empty(),
+        "an empty string needs no unit of the arena, and the records have room"
     );
-    assert_eq!(roomy.growths[0].bank(), HtmlConstructionBank::Text);
-    assert_eq!(roomy.growths[0].minimum_capacity(), 0);
+    // A comment whose units the arena has no room for grows the arena once, from its length.
+    let mut grown = Meter::default();
+    ok(storage.create_comment(&utf16("de"), &mut grown));
+    assert_eq!(grown.growths.len(), 1);
+    assert_eq!(grown.growths[0].bank(), HtmlConstructionBank::TextArena);
+    assert_eq!(grown.growths[0].before().initialized_len(), 3);
+    assert_eq!(grown.growths[0].before().capacity(), 3);
+    assert_eq!(grown.growths[0].minimum_capacity(), 5);
 }
 
 #[test]
@@ -709,15 +758,27 @@ fn a_publication_validates_the_tree_and_hands_the_storage_back_when_refused() {
             Ok(_) => panic!("published a bad root"),
         }
     }
-    let before = snapshot(&storage);
+    let before = arena_snapshot(&storage.arena);
     let mut meter = Meter::default();
     let Ok(result) = storage.publish(&root, &mut meter) else {
         panic!("publication refused");
     };
     assert_eq!(result.len(), 3);
     assert_eq!(result.usage().nodes(), 3);
-    assert_eq!(meter.growths.len(), 1);
-    assert_eq!(meter.growths[0].bank(), HtmlConstructionBank::Wrapper);
+    // The result is a published vector of records and the contents made for them, and the shared
+    // arena. The one text of three units has no spare units, so no block is packed.
+    assert_eq!(
+        meter
+            .growths
+            .iter()
+            .map(|growth| growth.bank())
+            .collect::<Vec<_>>(),
+        [
+            HtmlConstructionBank::Wrapper,
+            HtmlConstructionBank::PublishedContents,
+            HtmlConstructionBank::PublishedRecords,
+        ]
+    );
     assert!(meter.changes.is_empty());
     // The result holds the records exactly as the storage did.
     assert_eq!(arena_snapshot(result.arena()), before);
@@ -984,7 +1045,7 @@ fn every_operation_refused_at_each_admission_point_leaves_the_storage_as_it_was(
 /// The records the consumer saw for the bank of `kind`, in order.
 fn growth_records(
     meter: &Meter,
-    kind: fn(HtmlConstructionBank) -> bool,
+    kind: impl Fn(HtmlConstructionBank) -> bool,
 ) -> Vec<HtmlConstructionGrowthRecord> {
     meter
         .records
@@ -1004,7 +1065,7 @@ fn an_allocator_that_refuses_the_spare_room_is_asked_again_for_the_room_needed()
         ..Meter::default()
     };
     let text = ok(storage.create_text(&utf16("abc"), &mut meter));
-    let records = growth_records(&meter, |bank| bank == HtmlConstructionBank::Text);
+    let records = growth_records(&meter, |bank| bank == HtmlConstructionBank::TextArena);
     assert_eq!(records.len(), 2, "the choice and the capacity reached");
     assert_eq!(records[0].chosen(), isize::MAX as usize / 2);
     assert_eq!(records[0].recorded().capacity(), 0);
@@ -1015,7 +1076,7 @@ fn an_allocator_that_refuses_the_spare_room_is_asked_again_for_the_room_needed()
     assert_eq!(meter.work[PROVIDER], 3);
     assert!(matches!(
         storage.node(&text).unwrap().kind(),
-        crate::internal::construction::ConstructionNodeKind::Text(value) if value.code_units() == utf16("abc")
+        crate::internal::construction::ConstructionNodeKind::Text(value) if value.code_units().unwrap() == utf16("abc")
     ));
 
     // A child order of two entries that is full: the push asks for room for three.
@@ -1186,7 +1247,7 @@ fn a_growth_chosen_too_small_or_unrepresentable_is_a_typed_fault() {
 
 // ---- exactness of depths ----
 
-fn histogram_is_exact(arena: &Arena) -> bool {
+fn histogram_is_exact(arena: &BuildArena) -> bool {
     (0..arena.records.len()).all(|depth| {
         arena.population(depth)
             == arena
@@ -1199,7 +1260,7 @@ fn histogram_is_exact(arena: &Arena) -> bool {
 
 /// Checks every cached depth, the usage depth and the histogram against depths recounted from
 /// each record's own parent or owner.
-fn assert_exact(arena: &Arena, context: &str) {
+fn assert_exact(arena: &BuildArena, context: &str) {
     use super::shape::owning_parent;
     let recount = |start: NodeIx| {
         let (mut index, mut depth) = (start, 0usize);
@@ -1612,36 +1673,348 @@ fn rolling_back_a_native_append_removes_its_records_from_the_histogram() {
     assert_eq!(storage.arena.population(0), 1);
 }
 
+/// The tree of [`tree`] whose text arena has room for many more units than its text holds, so
+/// that a publication packs it.
+fn spare_tree() -> (HtmlConstructionStorage, [HtmlBuilderNode; 4]) {
+    let (mut storage, nodes) = tree();
+    storage.text.reserve_exact(100).unwrap();
+    (storage, nodes)
+}
+
+fn publish_tree(
+    storage: HtmlConstructionStorage,
+    root: &HtmlBuilderNode,
+    meter: &mut Meter,
+) -> Result<
+    crate::internal::construction::bounded::HtmlConstructionResult,
+    Box<(
+        HtmlConstructionStorage,
+        HtmlConstructionRecordError<Refused>,
+    )>,
+> {
+    storage
+        .publish(root, meter)
+        .map_err(|refusal| Box::new(refusal.into_parts()))
+}
+
+/// The text node of the published `tree`, whose text record is its fourth.
+fn published_text(
+    result: &crate::internal::construction::bounded::HtmlConstructionResult,
+) -> DocumentString {
+    let node = result.node_at(3).unwrap().as_node().unwrap();
+    let crate::internal::construction::HtmlNodeKind::Text(text) = node.kind() else {
+        panic!("a text record");
+    };
+    text
+}
+
 #[test]
-fn a_shared_string_is_held_as_it_is_without_a_bank_or_a_copy() {
-    let text = DocumentString::from_utf16(utf16("shared text"));
-    let mut storage = storage();
-    let mut shared = Meter::default();
-    let node = ok(storage.create_shared_text(text.clone(), &mut shared));
-    let mut copied = Meter::default();
-    ok(storage.create_text(text.code_units(), &mut copied));
-    // The record holds the caller's string itself.
-    let Some(crate::internal::construction::ConstructionNodeKind::Text(held)) =
-        storage.node(&node).ok().map(|node| node.kind())
-    else {
-        panic!("a text record");
+fn a_publication_packs_an_arena_with_more_than_a_quarter_of_its_units_spare() {
+    let (storage, [root, ..]) = spare_tree();
+    let spare = storage.text.capacity();
+    assert!(spare > 100);
+    let mut meter = Meter::default();
+    let Ok(result) = publish_tree(storage, &root, &mut meter) else {
+        panic!("publication refused");
     };
-    assert_eq!(held.code_units(), text.code_units());
-    let NodeContent::Text(stored) = &storage.arena.records[0].kind else {
-        panic!("a text record");
+    let banks: Vec<_> = meter.growths.iter().map(|growth| growth.bank()).collect();
+    assert_eq!(
+        banks,
+        [
+            HtmlConstructionBank::Wrapper,
+            HtmlConstructionBank::PublishedContents,
+            HtmlConstructionBank::TextBlock,
+            HtmlConstructionBank::PublishedRecords,
+        ]
+    );
+    // The block is exactly the units the texts hold, and its growth names the arena it replaces.
+    let block = meter.growths[2];
+    assert_eq!(block.before().capacity(), spare);
+    assert_eq!(block.minimum_capacity(), 1);
+    assert_eq!(block.element_size(), 2);
+    let text = published_text(&result);
+    assert_eq!(text.code_units(), utf16("t"));
+    assert_eq!(text.block().capacity(), 1);
+    // The published records replace the vector of the storage, of the same record size.
+    let records = meter.growths[3];
+    assert!(records.before().capacity() >= result.len());
+    assert_eq!(records.before().initialized_len(), 0);
+    assert_eq!(records.minimum_capacity(), result.len());
+    assert_eq!(records.element_size(), size_of::<Record<TextRun>>());
+    assert_eq!(
+        meter.growths[1].element_size(),
+        size_of::<NodeContent<DocumentString>>()
+    );
+}
+
+#[test]
+fn a_publication_of_an_arena_without_spare_units_makes_the_arena_its_block() {
+    let (storage, [root, ..]) = tree();
+    let capacity = storage.text.capacity();
+    let mut meter = Meter::default();
+    let Ok(result) = publish_tree(storage, &root, &mut meter) else {
+        panic!("publication refused");
     };
-    assert!(stored.shares_storage_with(&text));
-    assert_eq!(storage.usage().utf16_units(), 2 * text.len());
-    // Only the copy asks for a bank for its units and copies them, in runs of at most 256 bytes.
-    let banks = |meter: &Meter| {
+    assert!(
         meter
             .growths
             .iter()
-            .filter(|growth| growth.bank() == HtmlConstructionBank::Text)
-            .count()
+            .all(|growth| growth.bank() != HtmlConstructionBank::TextBlock)
+    );
+    let text = published_text(&result);
+    assert_eq!(text.code_units(), utf16("t"));
+    assert_eq!(text.block().capacity(), capacity);
+    // The wrapper holds the vector header that shares the block.
+    assert_eq!(meter.growths[0].bank(), HtmlConstructionBank::Wrapper);
+    assert_eq!(meter.growths[0].wrapper_bytes(), size_of::<Vec<u16>>());
+}
+
+/// The banks the records of a consumer leave it holding something for: each with the dimensions
+/// the bank had before its growth and the dimensions the consumer holds after the last record.
+fn consumer_holdings(
+    meter: &Meter,
+) -> Vec<(
+    HtmlConstructionBank,
+    HtmlConstructionBankCapacity,
+    HtmlConstructionBankCapacity,
+)> {
+    let mut banks: Vec<(
+        HtmlConstructionBank,
+        HtmlConstructionBankCapacity,
+        HtmlConstructionBankCapacity,
+    )> = Vec::new();
+    for record in &meter.records {
+        let growth = record.growth();
+        match banks.iter_mut().find(|bank| bank.0 == growth.bank()) {
+            Some(bank) => bank.2 = record.reached(),
+            None => banks.push((growth.bank(), growth.before(), record.reached())),
+        }
+    }
+    banks
+}
+
+/// Whether the consumer holds for every bank what it held before the publication.
+fn holds_nothing_of_the_publication(meter: &Meter) -> bool {
+    consumer_holdings(meter)
+        .iter()
+        .all(|(_, before, held)| before == held)
+}
+
+#[test]
+fn a_publication_refused_at_any_step_leaves_the_consumer_holding_nothing_of_it() {
+    type Make = fn() -> (HtmlConstructionStorage, [HtmlBuilderNode; 4]);
+    // The banks whose allocator refuses the room chosen too make a second record of the growth,
+    // which the sweep then refuses as well.
+    for (make, huge_bank) in [
+        (spare_tree as Make, None),
+        (tree as Make, None),
+        (spare_tree as Make, Some(HtmlConstructionBank::TextBlock)),
+        (
+            spare_tree as Make,
+            Some(HtmlConstructionBank::PublishedRecords),
+        ),
+        (tree as Make, Some(HtmlConstructionBank::PublishedContents)),
+    ] {
+        let mut refusals_after_a_record = 0;
+        for index in 0..10_000 {
+            let (storage, [root, ..]) = make();
+            let before = snapshot(&storage);
+            let mut meter = Meter {
+                huge_bank,
+                ..Meter::refusing_at(index)
+            };
+            let (storage, error) = match publish_tree(storage, &root, &mut meter) {
+                Err(refusal) => *refusal,
+                Ok(_) => {
+                    assert!(index > 0);
+                    break;
+                }
+            };
+            assert!(matches!(error, HtmlChargedError::Stopped(Refused)));
+            assert_eq!(snapshot(&storage), before, "refused at the call {index}");
+            // A consumer that refuses to take a record back holds it; every other refusal
+            // leaves it holding nothing.
+            let refused_take_back = meter.refused_record.is_some_and(|record| {
+                record.reached() == record.growth().before()
+                    && record.recorded() != record.growth().before()
+            });
+            if refused_take_back {
+                continue;
+            }
+            if !meter.records.is_empty() {
+                refusals_after_a_record += 1;
+            }
+            assert!(
+                holds_nothing_of_the_publication(&meter),
+                "refused at the call {index} ({:?}): the consumer holds {:?}",
+                meter.calls.last(),
+                consumer_holdings(&meter)
+            );
+        }
+        assert!(
+            refusals_after_a_record >= 4,
+            "the refusals after a record are the later steps"
+        );
+    }
+}
+
+#[test]
+fn a_publication_that_packs_is_refused_at_every_admission_point_with_the_storage_as_it_was() {
+    let calls = sweep(spare_tree, |storage, [root, ..], meter| {
+        let taken = std::mem::replace(
+            storage,
+            ok(HtmlConstructionStorage::new(&mut Meter::default())),
+        );
+        match publish_tree(taken, root, meter) {
+            Ok(_) => Ok(()),
+            Err(refusal) => {
+                let (back, error) = *refusal;
+                *storage = back;
+                Err(error)
+            }
+        }
+    });
+    assert!(calls.iter().filter(|call| **call == "admit_growth").count() >= 4);
+}
+
+#[test]
+fn an_allocator_that_refuses_the_spare_room_of_a_publication_bank_is_asked_for_the_room_needed() {
+    for (bank, needed) in [
+        (HtmlConstructionBank::TextBlock, 1),
+        (HtmlConstructionBank::PublishedRecords, 5),
+        (HtmlConstructionBank::PublishedContents, 5),
+    ] {
+        let (storage, [root, ..]) = spare_tree();
+        let mut meter = Meter {
+            huge_bank: Some(bank),
+            ..Meter::default()
+        };
+        let Ok(result) = publish_tree(storage, &root, &mut meter) else {
+            panic!("publication of {bank:?} refused");
+        };
+        let records = growth_records(&meter, |kind| kind == bank);
+        assert_eq!(
+            records.len(),
+            2,
+            "{bank:?}: the choice and the capacity reached"
+        );
+        assert_eq!(
+            records[0].chosen(),
+            isize::MAX as usize
+                / meter
+                    .growths
+                    .iter()
+                    .find(|g| g.bank() == bank)
+                    .unwrap()
+                    .element_size()
+        );
+        assert_eq!(records[1].reached().capacity(), needed, "{bank:?}");
+        assert_eq!(result.len(), 5);
+        assert_eq!(published_text(&result).code_units(), utf16("t"));
+    }
+}
+
+#[test]
+fn a_text_the_block_cannot_share_refuses_the_publication_and_returns_the_text_whole() {
+    for (name, make) in [
+        (
+            "packed",
+            spare_tree as fn() -> (HtmlConstructionStorage, [HtmlBuilderNode; 4]),
+        ),
+        (
+            "not packed",
+            tree as fn() -> (HtmlConstructionStorage, [HtmlBuilderNode; 4]),
+        ),
+    ] {
+        let (storage, [root, ..]) = make();
+        let before = snapshot(&storage);
+        let units = storage.text.len();
+        let refused = crate::internal::amortized::fault::refuse_text_share();
+        let mut meter = Meter::default();
+        let (mut storage, error) = match publish_tree(storage, &root, &mut meter) {
+            Err(refusal) => *refusal,
+            Ok(_) => panic!("{name}: published a text the block cannot share"),
+        };
+        assert!(
+            holds_nothing_of_the_publication(&meter),
+            "{name}: the consumer holds {:?}",
+            consumer_holdings(&meter)
+        );
+        assert!(
+            consumer_holdings(&meter).len() >= 3,
+            "{name}: the banks were recorded before the refusal"
+        );
+        let HtmlChargedError::Faulted(error) = error else {
+            panic!("{name}: the consumer refused");
+        };
+        assert_eq!(
+            error.cause(),
+            HtmlConstructionCause::InvalidTextReference,
+            "{name}"
+        );
+        drop(refused);
+        // The arena holds the units it held, and the text reads as before.
+        assert_eq!(snapshot(&storage), before, "{name}");
+        assert_eq!(storage.text.len(), units, "{name}");
+        let kind = storage.node_at(3).unwrap().kind();
+        assert!(
+            matches!(kind, crate::internal::construction::ConstructionNodeKind::Text(text)
+                if text.code_units().unwrap() == utf16("t")),
+            "{name}"
+        );
+        // The storage publishes when the share is not refused.
+        let Ok(result) = publish_tree(
+            std::mem::replace(
+                &mut storage,
+                ok(HtmlConstructionStorage::new(&mut Meter::default())),
+            ),
+            &root,
+            &mut Meter::default(),
+        ) else {
+            panic!("{name}: the storage did not publish after the refusal");
+        };
+        assert_eq!(published_text(&result).code_units(), utf16("t"), "{name}");
+    }
+}
+
+#[test]
+fn a_text_record_that_names_units_the_arena_lacks_refuses_the_publication() {
+    let (mut storage, [root, ..]) = tree();
+    storage.arena.records[3].kind = NodeContent::Text(TextRun::invalid());
+    let before = snapshot(&storage);
+    let (storage, error) = match publish_tree(storage, &root, &mut Meter::default()) {
+        Err(refusal) => *refusal,
+        Ok(_) => panic!("published a text with no units"),
     };
-    assert_eq!((banks(&shared), banks(&copied)), (0, 1));
-    let units_bytes = (text.len() * size_of::<u16>()) as u64;
-    assert_eq!(copied.work[COPY] - shared.work[COPY], units_bytes);
-    assert_eq!(copied.work[PROVIDER] - shared.work[PROVIDER], 1);
+    let HtmlChargedError::Faulted(error) = error else {
+        panic!("the consumer refused");
+    };
+    assert_eq!(error.cause(), HtmlConstructionCause::InvalidTextReference);
+    assert_eq!(snapshot(&storage), before);
+}
+
+#[test]
+fn a_node_of_a_storage_has_no_published_view_and_a_node_of_its_result_has() {
+    let (storage, [root, ..]) = tree();
+    let error = storage.node_at(3).unwrap().as_node().unwrap_err();
+    assert_eq!(error.cause(), HtmlConstructionCause::NotPublished);
+    let Ok(result) = publish_tree(storage, &root, &mut Meter::default()) else {
+        panic!("publication refused");
+    };
+    assert!(result.node_at(3).unwrap().as_node().is_ok());
+}
+
+#[test]
+fn rolling_back_a_native_append_takes_the_units_of_its_texts_out_of_the_count() {
+    let mut storage = storage();
+    ok(storage.create_fragment(&mut Meter::default()));
+    let (len, usage) = (storage.len(), storage.usage());
+    ok(storage.create_text(&utf16("abc"), &mut Meter::default()));
+    ok(storage.create_comment(&utf16("de"), &mut Meter::default()));
+    assert_eq!(storage.text.used(), 5);
+    storage.rollback_native_append(len, usage).unwrap();
+    assert_eq!(storage.len(), len);
+    assert_eq!(storage.text.used(), 0);
+    // The units stay written, so the arena has room for a later text only past them.
+    assert_eq!(storage.text.len(), 5);
 }

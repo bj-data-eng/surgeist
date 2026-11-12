@@ -107,7 +107,7 @@ impl DepthPlan {
     /// Places the planned records at their planned depths. Planning read every record placed
     /// here, so the unknown-node and conflict defects are the only failures, and they are
     /// returned.
-    pub(super) fn apply(&self, arena: &mut Arena) -> Result<(), HtmlConstructionError> {
+    pub(super) fn apply(&self, arena: &mut BuildArena) -> Result<(), HtmlConstructionError> {
         match &self.plan {
             Plan::Fast { node, depth, .. } => {
                 arena.place(*node, *depth)?;
@@ -131,7 +131,7 @@ impl DepthPlan {
 
 impl HtmlConstructionStorage {
     /// The record at `index`, or the unknown-node error.
-    pub(super) fn record(&self, index: NodeIx) -> Result<&Record, HtmlConstructionError> {
+    pub(super) fn record(&self, index: NodeIx) -> Result<&Record<TextRun>, HtmlConstructionError> {
         self.arena
             .records
             .get(index.position())

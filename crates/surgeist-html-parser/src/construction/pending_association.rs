@@ -1482,7 +1482,7 @@ fn native(storage: &FrozenStorage, index: usize) -> Result<HtmlNode<'_>, Fault> 
     storage
         .view
         .node_at(index)
-        .map(|node| node.as_node())
+        .and_then(|node| node.as_node().ok())
         .ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))
 }
 fn identity(anchor: Anchor<'_>, slot: usize) -> HtmlParseAssociationOccurrenceId {

@@ -84,7 +84,7 @@ impl FieldRef {
         };
         match (self, records.node_at(node)?.kind()) {
             (Self::Text(_), ConstructionNodeKind::Text(value))
-            | (Self::Comment(_), ConstructionNodeKind::Comment(value)) => Some(value.code_units()),
+            | (Self::Comment(_), ConstructionNodeKind::Comment(value)) => value.code_units().ok(),
             (
                 Self::ProcessingInstructionTarget(_),
                 ConstructionNodeKind::ProcessingInstruction(value),

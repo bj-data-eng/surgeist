@@ -490,7 +490,7 @@ fn elements_of_one_name_in_a_published_result_borrow_one_name() {
     let mut views = Vec::new();
     for handle in &ids {
         let position = result.position(handle).unwrap();
-        let node = result.node_at(position).unwrap().as_node();
+        let node = result.node_at(position).unwrap().as_node().unwrap();
         let crate::internal::construction::HtmlNodeKind::Element(view) = node.kind() else {
             panic!("an element");
         };

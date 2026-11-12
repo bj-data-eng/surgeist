@@ -66,7 +66,9 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let offset = old.len();
+        let offset = old
+            .len()
+            .map_err(|error| construction_error(control, error))?;
         let added = incoming.len();
         // Two live strings' lengths: their sum is bounded by the address space.
         let Some(total) = offset.checked_add(added) else {

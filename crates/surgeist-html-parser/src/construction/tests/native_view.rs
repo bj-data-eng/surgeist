@@ -149,9 +149,11 @@ impl<'a> NativeView<'a> {
             ConstructionNodeKind::Element(element) => {
                 NativeKind::Element(self.name(element.name()))
             }
-            ConstructionNodeKind::Text(value) => NativeKind::Text(self.string(value.code_units())),
+            ConstructionNodeKind::Text(value) => {
+                NativeKind::Text(self.string(value.code_units().unwrap()))
+            }
             ConstructionNodeKind::Comment(value) => {
-                NativeKind::Comment(self.string(value.code_units()))
+                NativeKind::Comment(self.string(value.code_units().unwrap()))
             }
             ConstructionNodeKind::ProcessingInstruction(value) => {
                 NativeKind::ProcessingInstruction {

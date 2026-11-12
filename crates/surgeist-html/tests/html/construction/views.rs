@@ -214,7 +214,12 @@ fn text_comment_instruction_and_doctype_views_carry_the_authored_data() {
         panic!("expected text");
     };
     assert_eq!(shown.code_units(), [0x61, 0, 0xDC00, 0xD800]);
-    assert!(shown.shares_storage_with(&text));
+    // The builder copies the text and the comment into the one block of the document.
+    let HtmlNodeKind::Comment(shown_comment) = &kinds[2] else {
+        panic!("expected a comment");
+    };
+    assert!(shown.block().shares_allocation_with(shown_comment.block()));
+    assert!(!shown.block().shares_allocation_with(text.block()));
     // A present empty system identifier stays distinct from an absent one.
     let HtmlNodeKind::Doctype(shown) = &kinds[0] else {
         panic!("expected a doctype");

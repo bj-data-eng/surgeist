@@ -426,7 +426,7 @@ impl ParserArenaSession {
         let mut taken = self.storage.take().ok_or(SessionError::Consumed)?;
         let records = taken.construction;
         let published = publish_records(control, &taken.control, &mut taken.holds, records, &root);
-        let result = match published {
+        let (result, contents) = match published {
             Ok(published) => published,
             Err((records, error)) => {
                 taken.construction = records;
@@ -477,7 +477,7 @@ impl ParserArenaSession {
                 HtmlConstructionResult::Fragment(value)
             }
         };
-        Ok(FrozenArena {
+        let mut frozen = FrozenArena {
             storage: Some(FrozenStorage {
                 view,
                 control: owner,
@@ -487,7 +487,19 @@ impl ParserArenaSession {
                 evidence,
                 fragment,
             }),
-        })
+        };
+        // The contents vector of the publication is freed with the move of the records. It stays
+        // in the high-water marks of the bytes held and leaves what is held. The frozen arena
+        // owns every hold, so a refused release credits all of them and strands none.
+        let released = match frozen.storage.as_mut() {
+            Some(storage) => storage.holds.release_contents(control, contents),
+            None => Err(SessionError::Consumed),
+        };
+        if let Err(error) = released {
+            let _ = frozen.release(control);
+            return Err(error);
+        }
+        Ok(frozen)
     }
     /// Strict private completed-assembly preflight. Generic native freezing
     /// remains separate; no backing is cloned to test actual ownership.

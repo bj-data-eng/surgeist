@@ -2,45 +2,49 @@
 //!
 //! An append is one method of [`HtmlConstructionStorage`]. It qualifies the record, charges its
 //! consumer for the work of the copy, and asks the consumer once to admit the append. Only then
-//! does it change the text: it reserves room, records the units, and writes them. A refusal at
+//! does it change the text: it reserves room in the text arena, records the units, and writes them. A refusal at
 //! any step before the write leaves the text, its length and the usage of the storage as they
 //! were. Two residues remain. When the allocator reserves more room than was admitted, or
 //! refuses the admitted room and the fallback reserves the room that is needed, and the consumer
-//! then refuses to record the capacity the text reached, the text keeps the capacity it reached
+//! then refuses to record the capacity the arena reached, the arena keeps the capacity it reached
 //! while the consumer holds the capacity it recorded before. When the consumer refuses to record
-//! the units after the room is reserved, the text keeps the room it reserved. Neither changes a
-//! unit of the text.
+//! the units after the room is reserved, the arena keeps the room it reserved. Neither changes a
+//! unit of any text.
 //!
 //! The consumer owns the policy: it charges work through [`Charge`], decides the capacity a
-//! growing text reserves, and records the capacity and the units.
+//! growing text arena reserves, and records the capacity and the units.
 
 use super::*;
 use crate::internal::accounting::{HtmlChargedError, HtmlResource, HtmlWork, wide};
+use crate::internal::construction::text::Append;
 use surgeist_ledger::{Change, Charge};
 
 /// The units one charge covers when an append copies a run of units, so that a consumer that
 /// polls at its charges polls within every quantum of the work.
 const CHUNK_UNITS: usize = 256 / size_of::<u16>();
 
-/// Actual dimensions of the data of a text record; no allocation or release authority.
+/// Actual dimensions of the text arena of a storage, which holds the units of every text and
+/// comment record; no allocation or release authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlConstructionTextCapacity {
     initialized_len: usize,
     capacity: usize,
 }
 impl HtmlConstructionTextCapacity {
-    /// The number of UTF-16 units the text holds.
+    /// The number of UTF-16 units written to the arena, which includes the units that no text
+    /// holds any more.
     pub fn initialized_len(self) -> usize {
         self.initialized_len
     }
-    /// The reserved capacity in units; at least [`initialized_len`](Self::initialized_len).
+    /// The reserved capacity of the arena in units; at least
+    /// [`initialized_len`](Self::initialized_len).
     pub fn capacity(self) -> usize {
         self.capacity
     }
 }
 
 /// What an append asks its consumer to admit before it changes anything: `added` more units on
-/// a text that must then hold at least [`minimum_capacity`](Self::minimum_capacity) units.
+/// a text, which need an arena of at least [`minimum_capacity`](Self::minimum_capacity) units.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlConstructionTextGrowth {
     before: HtmlConstructionTextCapacity,
@@ -48,7 +52,7 @@ pub struct HtmlConstructionTextGrowth {
     minimum_capacity: usize,
 }
 impl HtmlConstructionTextGrowth {
-    /// The dimensions of the text before the append.
+    /// The dimensions of the text arena before the append.
     pub fn before(self) -> HtmlConstructionTextCapacity {
         self.before
     }
@@ -56,38 +60,39 @@ impl HtmlConstructionTextGrowth {
     pub fn added(self) -> usize {
         self.added
     }
-    /// The least capacity that holds the text after the append.
+    /// The least capacity of the arena that holds the units the append writes: its length plus
+    /// the units of an in-place extension, or of the region a relocated text moves to.
     pub fn minimum_capacity(self) -> usize {
         self.minimum_capacity
     }
-    /// Whether the text must reserve room: its capacity is below the minimum. An append that
-    /// does not grow the text reserves nothing and records no capacity.
+    /// Whether the arena must reserve room: its capacity is below the minimum. An append that
+    /// does not grow the arena reserves nothing and records no capacity.
     pub fn grows(self) -> bool {
         self.minimum_capacity > self.before.capacity
     }
 }
 
 /// The consumer of a text append. It charges the append's work like any [`Charge`], admits the
-/// append, decides the capacity that a growing text reserves, and records the capacity and the
-/// units.
+/// append, decides the capacity that a growing text arena reserves, and records the capacity and
+/// the units.
 pub trait HtmlTextAdmission: Charge<HtmlWork, HtmlResource> {
     /// Admits one append before anything changes. Returns the capacity to reserve when the
-    /// growth grows the text, which must be at least its minimum; a smaller one is refused with
+    /// growth grows the arena, which must be at least its minimum; a smaller one is refused with
     /// the capacity-mismatch cause and nothing is reserved. The value is ignored for an append
-    /// that does not grow the text. Nothing is recorded or reserved before this call, so a
+    /// that does not grow the arena. Nothing is recorded or reserved before this call, so a
     /// refusal changes nothing.
     fn admit_append(&mut self, growth: HtmlConstructionTextGrowth) -> Result<usize, Self::Stop>;
 
-    /// Records the capacity of the text. It is called with the capacity the consumer chose
+    /// Records the capacity of the arena. It is called with the capacity the consumer chose
     /// before the room is reserved, so a refusal there leaves the text as it was. It is called
     /// again with the capacity the reservation reached when that differs from the one chosen,
     /// which includes the unchanged capacity of a reservation the allocator refused. A refusal
-    /// of that second record leaves the text with the capacity it reached and no unit added.
+    /// of that second record leaves the arena with the capacity it reached and no unit added.
     fn record_growth(&mut self, reached: HtmlConstructionTextCapacity) -> Result<(), Self::Stop>;
 
     /// Records the units the append adds, after the room for them is reserved and before the
-    /// first is written. A refusal leaves the text without the units and with the room it
-    /// reserved.
+    /// first is written. A refusal leaves the text without the units and the arena with the room
+    /// it reserved.
     fn record_units(&mut self, added: usize) -> Result<(), Self::Stop>;
 }
 
@@ -131,40 +136,31 @@ impl Work {
 }
 
 impl HtmlConstructionStorage {
-    /// The position of `node` when it is a text record.
-    fn text_target(&self, node: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
+    /// The position of `node` and the run of its text, when it is a text record.
+    fn text_target(
+        &self,
+        node: &HtmlBuilderNode,
+    ) -> Result<(usize, TextRun), HtmlConstructionError> {
         let position = self.position(node)?;
         match self.arena.records.get(position).map(|record| &record.kind) {
-            Some(NodeContent::Text(_)) => Ok(position),
-            _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
-        }
-    }
-
-    /// The units of the text at `target` for a change. Refused with the shared-allocation cause
-    /// when another string holds the text's block, so that the units never change under it.
-    fn text_units_mut(&mut self, target: usize) -> Result<&mut Vec<u16>, HtmlConstructionError> {
-        match self
-            .arena
-            .records
-            .get_mut(target)
-            .map(|record| &mut record.kind)
-        {
-            Some(NodeContent::Text(value)) => value
-                .unique_units_mut()
-                .ok_or_else(|| HtmlConstructionCause::SharedAllocationAliased.into()),
+            Some(NodeContent::Text(run)) => Ok((position, *run)),
             _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
         }
     }
 
     /// Appends `units` to the data of the text record `node` and returns the length the text
-    /// had, which is the offset of the first appended unit. The block of the text must have no
-    /// other holder, or the append is refused with the shared-allocation cause.
+    /// had, which is the offset of the first appended unit.
+    ///
+    /// The units of every text and comment are in one arena. A text that has room reserved after
+    /// it, or that ends at the tail of the arena, takes the units in place. Any other text moves
+    /// once, to a region at the tail twice the size of the text it becomes, so the units copied
+    /// by `n` appends to one text are linear in the units it holds at the end.
     ///
     /// The append charges the work of its copy, admits itself once through `admission`, reserves
-    /// the room the admission chose when the text is full, records the units, and writes them.
-    /// The text grows in place, to the capacity the consumer chooses, so a consumer that at
-    /// least doubles the capacity makes the units copied by `n` appends of `m` units in all
-    /// linear in `n * m`. Appending no unit changes nothing.
+    /// the room the admission chose when the arena is full, records the units, and writes them.
+    /// The arena grows to the capacity the consumer chooses, so a consumer that at least doubles
+    /// the capacity makes the units written by `n` appends of `m` units in all linear in
+    /// `n * m`. Appending no unit changes nothing.
     pub fn append_text<A: HtmlTextAdmission>(
         &mut self,
         node: &HtmlBuilderNode,
@@ -177,35 +173,46 @@ impl HtmlConstructionStorage {
             ..Work::default()
         }
         .charge(admission)?;
-        let target = self.text_target(node).map_err(HtmlChargedError::Faulted)?;
+        let (target, run) = self.text_target(node).map_err(HtmlChargedError::Faulted)?;
         let added = units.len();
-        let before = {
-            let vector = self
-                .text_units_mut(target)
-                .map_err(HtmlChargedError::Faulted)?;
-            HtmlConstructionTextCapacity {
-                initialized_len: vector.len(),
-                capacity: vector.capacity(),
-            }
-        };
+        let offset = run.len();
+        self.text
+            .get(run.text())
+            .map_err(HtmlChargedError::Faulted)?;
         if added == 0 {
-            return Ok(before.initialized_len);
+            return Ok(offset);
         }
-        let grown = plus(before.initialized_len, added).map_err(HtmlChargedError::Faulted)?;
+        let plan = self
+            .text
+            .plan(run, added)
+            .map_err(HtmlChargedError::Faulted)?;
+        let written = plan.written(added);
+        let before = HtmlConstructionTextCapacity {
+            initialized_len: self.text.len(),
+            capacity: self.text.capacity(),
+        };
+        let grown = plus(before.initialized_len, written).map_err(HtmlChargedError::Faulted)?;
         let mut usage = self.arena.usage;
         usage.utf16_units = plus(usage.utf16_units, added).map_err(HtmlChargedError::Faulted)?;
         grown
             .checked_mul(size_of::<u16>())
             .filter(|bytes| *bytes <= isize::MAX as usize)
             .ok_or_else(|| fault(HtmlConstructionCause::RepresentationExhausted))?;
-        // Every copy is charged before any change is made.
-        for chunk in units.chunks(CHUNK_UNITS) {
+        // Every copy is charged before any change is made: the units of the append, and for a
+        // text that moves the units it copies and the room it zero-fills.
+        let mut remaining = match plan {
+            Append::Relocate { region } => region,
+            Append::Room | Append::Tail => added,
+        };
+        while remaining > 0 {
+            let chunk = remaining.min(CHUNK_UNITS);
             Work {
-                copied_bytes: size_of_val(chunk),
+                copied_bytes: chunk * size_of::<u16>(),
                 record_writes: 1,
                 ..Work::default()
             }
             .charge(admission)?;
+            remaining -= chunk;
         }
         Work {
             record_visits: 2,
@@ -223,23 +230,35 @@ impl HtmlConstructionStorage {
             .admit_append(growth)
             .map_err(HtmlChargedError::Stopped)?;
         if growth.grows() {
-            self.grow_text(target, growth, capacity, admission)?;
+            self.grow_text(growth, capacity, admission)?;
         }
         admission
             .record_units(added)
             .map_err(HtmlChargedError::Stopped)?;
-        self.text_units_mut(target)
-            .map_err(HtmlChargedError::Faulted)?
-            .extend_from_slice(units);
+        // Nothing below refuses on a record this append read, and the run is replaced after the
+        // units are written.
+        let Some(NodeContent::Text(slot)) = self
+            .arena
+            .records
+            .get_mut(target)
+            .map(|record| &mut record.kind)
+        else {
+            return Err(HtmlChargedError::Faulted(
+                HtmlConstructionCause::WrongNodeKind.into(),
+            ));
+        };
+        *slot = self
+            .text
+            .append(run, units, plan)
+            .map_err(HtmlChargedError::Faulted)?;
         self.arena.usage = usage;
-        Ok(before.initialized_len)
+        Ok(offset)
     }
 
-    /// Reserves the room of a growth of the text at `target`: records the capacity the consumer
-    /// chose, reserves it, and records the capacity reached.
+    /// Reserves the room of a growth of the text arena: records the capacity the consumer chose,
+    /// reserves it, and records the capacity reached.
     fn grow_text<A: HtmlTextAdmission>(
         &mut self,
-        target: usize,
         growth: HtmlConstructionTextGrowth,
         capacity: usize,
         admission: &mut A,
@@ -256,19 +275,14 @@ impl HtmlConstructionStorage {
                 capacity,
             })
             .map_err(HtmlChargedError::Stopped)?;
-        let reserve = |storage: &mut Self, additional: usize| {
-            storage.text_units_mut(target).map(|vector| {
-                let result = vector.try_reserve_exact(additional);
-                (result, vector.capacity())
-            })
-        };
         let needed = minus(minimum, before.initialized_len).map_err(HtmlChargedError::Faulted)?;
         let spare = minus(capacity, before.initialized_len).map_err(HtmlChargedError::Faulted)?;
-        let (mut result, mut reached) = reserve(self, spare).map_err(HtmlChargedError::Faulted)?;
+        let mut result = self.text.reserve_exact(spare);
         // Only an allocator refusal of the spare room falls back to the room that is needed.
         if result.is_err() && capacity > minimum {
-            (result, reached) = reserve(self, needed).map_err(HtmlChargedError::Faulted)?;
+            result = self.text.reserve_exact(needed);
         }
+        let reached = self.text.capacity();
         // An overshoot, or the unchanged capacity of a reservation the allocator refused, takes
         // the place of the capacity recorded above.
         if reached != capacity {
@@ -380,16 +394,16 @@ mod tests {
         (storage, node)
     }
     fn units(storage: &HtmlConstructionStorage, node: &HtmlBuilderNode) -> Vec<u16> {
-        match &storage.arena.records[storage.position(node).unwrap()].kind {
-            NodeContent::Text(value) => value.code_units().to_vec(),
+        match storage.node(node).unwrap().kind() {
+            crate::internal::construction::ConstructionNodeKind::Text(text) => {
+                text.code_units().unwrap().to_vec()
+            }
             _ => panic!("a text record"),
         }
     }
-    fn capacity(storage: &HtmlConstructionStorage, node: &HtmlBuilderNode) -> usize {
-        match &storage.arena.records[storage.position(node).unwrap()].kind {
-            NodeContent::Text(value) => value.retained_units(),
-            _ => panic!("a text record"),
-        }
+    /// The capacity of the arena that holds the units of the text.
+    fn capacity(storage: &HtmlConstructionStorage, _: &HtmlBuilderNode) -> usize {
+        storage.text.capacity()
     }
     fn cause(error: HtmlConstructionTextError<Refused>) -> HtmlConstructionCause {
         match error {
@@ -614,26 +628,6 @@ mod tests {
     }
 
     #[test]
-    fn a_text_another_string_holds_is_refused_and_unchanged() {
-        let (mut storage, node) = text_node("ab".into());
-        // A text node made by the storage holds its own string, so another owner is given a
-        // handle on it the way a reader of the record would be.
-        let position = storage.position(&node).unwrap();
-        let held = match &storage.arena.records[position].kind {
-            NodeContent::Text(text) => text.clone(),
-            _ => panic!("a text node"),
-        };
-        let usage = storage.usage();
-        let error = storage
-            .append_text(&node, &utf16("c"), &mut Meter::default())
-            .unwrap_err();
-        assert_eq!(cause(error), HtmlConstructionCause::SharedAllocationAliased);
-        assert_eq!(held.code_units(), utf16("ab"));
-        assert_eq!(units(&storage, &node), utf16("ab"));
-        assert_eq!(storage.usage(), usage);
-    }
-
-    #[test]
     fn a_node_that_is_not_text_is_refused() {
         let mut storage = make_storage();
         let node = super::super::free::comment(&mut storage, "ab");
@@ -737,5 +731,151 @@ mod tests {
             works.push(meter.work);
         }
         assert!(works.iter().all(|work| *work == works[0]), "{works:?}");
+    }
+
+    /// A storage whose arena holds two texts, so that the first is not at the tail.
+    fn two_texts() -> (HtmlConstructionStorage, HtmlBuilderNode, HtmlBuilderNode) {
+        let mut storage = make_storage();
+        let first = super::super::free::text(&mut storage, &utf16("ab"));
+        let second = super::super::free::text(&mut storage, &utf16("xy"));
+        (storage, first, second)
+    }
+
+    #[test]
+    fn a_text_that_is_not_at_the_tail_moves_once_and_then_extends_in_the_room_it_took() {
+        let (mut storage, first, second) = two_texts();
+        assert_eq!((storage.text.len(), storage.text.used()), (4, 4));
+        let mut meter = Meter::default();
+        let offset = storage
+            .append_text(&first, &utf16("c"), &mut meter)
+            .unwrap();
+        assert_eq!(offset, 2);
+        assert_eq!(units(&storage, &first), utf16("abc"));
+        assert_eq!(units(&storage, &second), utf16("xy"));
+        // The text moved to a region of twice its new length at the tail: the arena asked for
+        // the region, not for the unit.
+        let growth = meter.growths[0];
+        assert_eq!(growth.added(), 1);
+        assert_eq!(growth.before().initialized_len(), 4);
+        assert_eq!(growth.minimum_capacity(), 4 + 6);
+        assert_eq!((storage.text.len(), storage.text.used()), (10, 5));
+        assert_eq!(storage.usage().utf16_units(), 5);
+        // The next append takes the room the move left: no growth, no unit written beyond it.
+        let mut meter = Meter::default();
+        storage
+            .append_text(&first, &utf16("de"), &mut meter)
+            .unwrap();
+        assert!(!meter.growths[0].grows());
+        assert!(meter.recorded.is_empty());
+        assert_eq!(units(&storage, &first), utf16("abcde"));
+        assert_eq!((storage.text.len(), storage.text.used()), (10, 7));
+        assert_eq!(units(&storage, &second), utf16("xy"));
+    }
+
+    #[test]
+    fn the_units_written_by_appends_around_another_text_are_linear_in_the_units_appended() {
+        let written = |appends: usize| {
+            let (mut storage, first, second) = two_texts();
+            let mut meter = Meter::default();
+            for _ in 0..appends {
+                storage.append_text(&first, &[0x61], &mut meter).unwrap();
+                storage.append_text(&second, &[0x62], &mut meter).unwrap();
+            }
+            assert_eq!(units(&storage, &first).len(), appends + 2);
+            assert_eq!(units(&storage, &second).len(), appends + 2);
+            // Bytes the appends copied: the units of every region written.
+            meter.copied
+        };
+        let costs: Vec<u64> = [1_000, 2_000, 4_000, 8_000].map(written).to_vec();
+        for pair in costs.windows(2) {
+            // A doubling of the appends at most doubles the work, with a tenth to spare.
+            assert!(pair[1] * 10 <= pair[0] * 22, "{} then {}", pair[0], pair[1]);
+        }
+        // Every append charges the rewrite of the usage. The rest is the units written to the
+        // arena: each region once, with the units it holds and the room it keeps, which is fewer
+        // than five times the units of the final texts for each of the two texts, at two bytes
+        // each.
+        for (copied, appends) in costs.iter().zip([1_000u64, 2_000, 4_000, 8_000]) {
+            let usage = 2 * appends * size_of::<HtmlConstructionUsage>() as u64;
+            let written = copied - usage;
+            assert!(
+                written < 5 * 2 * 2 * (appends + 2),
+                "{written} bytes of units for {appends} appends to each text"
+            );
+        }
+    }
+
+    #[test]
+    fn a_refusal_at_every_step_of_an_append_that_moves_a_text_leaves_the_texts_and_the_usage() {
+        let incoming = vec![0x63u16; 300];
+        let (storage, first, _) = two_texts();
+        let mut probe = storage;
+        let mut counting = Meter::default();
+        probe.append_text(&first, &incoming, &mut counting).unwrap();
+        let total = counting.charges;
+        assert!(
+            total > 4,
+            "the copy of a 600-unit region is charged in quanta"
+        );
+        let mut refusals = Vec::new();
+        for cut in 0..=total {
+            refusals.push(Meter {
+                refuse_from_charge: Some(cut),
+                ..Meter::default()
+            });
+        }
+        for (admission, first_record, units_refused) in [
+            (true, None, false),
+            (false, Some(0), false),
+            (false, None, true),
+        ] {
+            refusals.push(Meter {
+                refuse_admission: admission,
+                refuse_record_from: first_record,
+                refuse_units: units_refused,
+                ..Meter::default()
+            });
+        }
+        for (case, mut meter) in refusals.into_iter().enumerate() {
+            let (mut storage, first, second) = two_texts();
+            let usage = storage.usage();
+            let (len, used) = (storage.text.len(), storage.text.used());
+            match storage.append_text(&first, &incoming, &mut meter) {
+                Ok(offset) => {
+                    assert!(case <= total, "case {case} completed");
+                    assert_eq!(offset, 2);
+                    assert_eq!(units(&storage, &first).len(), 302);
+                    assert_eq!(storage.usage().utf16_units(), 304);
+                }
+                Err(error) => {
+                    assert_eq!(error, HtmlChargedError::Stopped(Refused), "case {case}");
+                    assert_eq!(units(&storage, &first), utf16("ab"), "case {case}");
+                    assert_eq!(units(&storage, &second), utf16("xy"), "case {case}");
+                    assert_eq!(storage.usage(), usage, "case {case}");
+                    // The arena keeps the room a growth reserved and writes no unit.
+                    assert_eq!((storage.text.len(), storage.text.used()), (len, used));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_text_record_that_names_units_the_arena_lacks_is_refused_and_read_as_invalid() {
+        let (mut storage, first, _) = two_texts();
+        let position = storage.position(&first).unwrap();
+        storage.arena.records[position].kind = NodeContent::Text(TextRun::invalid());
+        let usage = storage.usage();
+        let error = storage
+            .append_text(&first, &utf16("c"), &mut Meter::default())
+            .unwrap_err();
+        assert_eq!(cause(error), HtmlConstructionCause::InvalidTextReference);
+        assert_eq!(storage.usage(), usage);
+        let kind = storage.node(&first).unwrap().kind();
+        let crate::internal::construction::ConstructionNodeKind::Text(text) = kind else {
+            panic!("a text record");
+        };
+        let error = text.code_units().unwrap_err();
+        assert_eq!(error.cause(), HtmlConstructionCause::InvalidTextReference);
+        assert!(text.len().is_err() && text.is_empty().is_err());
     }
 }

@@ -129,9 +129,41 @@ impl<'a> BuildStr<'a> {
     }
 }
 
+/// The text or comment of a record of a construction storage: the units it holds when the view is
+/// made, or the refusal that the record names units its storage does not hold.
+///
+/// Like [`BuildStr`] it holds no share of a block, so it cannot outlive the borrow of the storage.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuildText<'a> {
+    /// The units of the text.
+    Units(&'a [u16]),
+    /// The record names a range its text arena does not hold. A storage never makes one; the
+    /// view reports it as a typed refusal instead of a text.
+    Invalid,
+}
+impl<'a> BuildText<'a> {
+    /// The exact code units, including nulls and isolated surrogates, or
+    /// [`HtmlConstructionCause::InvalidTextReference`] for a record whose range its arena does
+    /// not hold.
+    pub fn code_units(self) -> Result<&'a [u16], HtmlConstructionError> {
+        match self {
+            Self::Units(units) => Ok(units),
+            Self::Invalid => Err(HtmlConstructionCause::InvalidTextReference.error()),
+        }
+    }
+    /// The number of code units, with the refusal of [`Self::code_units`].
+    pub fn len(self) -> Result<usize, HtmlConstructionError> {
+        self.code_units().map(<[u16]>::len)
+    }
+    /// Whether there are no code units, with the refusal of [`Self::code_units`].
+    pub fn is_empty(self) -> Result<bool, HtmlConstructionError> {
+        self.code_units().map(<[u16]>::is_empty)
+    }
+}
+
 /// The content of one record of a construction storage, by value.
 ///
-/// Its text is [`BuildStr`], so the view hands out no string that construction can still
+/// Its text is [`BuildText`], so the view hands out no string that construction can still
 /// extend.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConstructionNodeKind<'a> {
@@ -142,9 +174,9 @@ pub enum ConstructionNodeKind<'a> {
     /// An element with its exact qualified name and ordered raw attributes.
     Element(HtmlElementView<'a>),
     /// A text node.
-    Text(BuildStr<'a>),
+    Text(BuildText<'a>),
     /// A comment node.
-    Comment(BuildStr<'a>),
+    Comment(BuildText<'a>),
     /// A processing instruction recorded with its exact target and data.
     ProcessingInstruction(ConstructionProcessingInstruction<'a>),
     /// A document type declaration.
@@ -190,7 +222,38 @@ impl<'a> ConstructionDoctype<'a> {
     }
 }
 
-impl NodeContent {
+impl<T> NodeContent<T> {
+    /// Whether a record of this content can hold ordinary children.
+    pub(super) fn is_container(&self) -> bool {
+        matches!(self, Self::Document(_) | Self::Fragment | Self::Element(_))
+    }
+    /// The build view of this content, with the text of a text or comment record read by `text`.
+    fn viewed<'a>(&'a self, text: impl Fn(&'a T) -> BuildText<'a>) -> ConstructionNodeKind<'a> {
+        fn units(value: &DocumentString) -> BuildStr<'_> {
+            BuildStr::new(value.code_units())
+        }
+        match self {
+            Self::Document(mode) => ConstructionNodeKind::Document(*mode),
+            Self::Fragment => ConstructionNodeKind::Fragment,
+            Self::Element(content) => ConstructionNodeKind::Element(HtmlElementView { content }),
+            Self::Text(value) => ConstructionNodeKind::Text(text(value)),
+            Self::Comment(value) => ConstructionNodeKind::Comment(text(value)),
+            Self::ProcessingInstruction(value) => {
+                ConstructionNodeKind::ProcessingInstruction(ConstructionProcessingInstruction {
+                    target: units(value.target()),
+                    data: units(value.data()),
+                })
+            }
+            Self::Doctype(value) => ConstructionNodeKind::Doctype(ConstructionDoctype {
+                name: units(value.name()),
+                public_id: value.public_id().map(units),
+                system_id: value.system_id().map(units),
+            }),
+        }
+    }
+}
+
+impl NodeContent<DocumentString> {
     /// The published view of this content.
     pub(super) fn published(&self) -> HtmlNodeKind<'_> {
         match self {
@@ -205,28 +268,58 @@ impl NodeContent {
             Self::Doctype(value) => HtmlNodeKind::Doctype(value.clone()),
         }
     }
-    /// The build view of this content.
-    pub(super) fn building(&self) -> ConstructionNodeKind<'_> {
-        fn units(value: &DocumentString) -> BuildStr<'_> {
-            BuildStr::new(value.code_units())
-        }
-        match self {
-            Self::Document(mode) => ConstructionNodeKind::Document(*mode),
-            Self::Fragment => ConstructionNodeKind::Fragment,
-            Self::Element(content) => ConstructionNodeKind::Element(HtmlElementView { content }),
-            Self::Text(value) => ConstructionNodeKind::Text(units(value)),
-            Self::Comment(value) => ConstructionNodeKind::Comment(units(value)),
-            Self::ProcessingInstruction(value) => {
-                ConstructionNodeKind::ProcessingInstruction(ConstructionProcessingInstruction {
-                    target: units(value.target()),
-                    data: units(value.data()),
-                })
+    /// The build view of this published content, which reads each text as its borrowed units.
+    pub(super) fn building_published(&self) -> ConstructionNodeKind<'_> {
+        self.viewed(|value| BuildText::Units(value.code_units()))
+    }
+}
+
+impl NodeContent<TextRun> {
+    /// The published content of this content: its text and comment units become strings of
+    /// `block`. With `cursor` the units are those of a block packed in record order, whose next
+    /// text begins at `*cursor`; without it they are the ranges the records name. Nothing of this
+    /// content is moved.
+    pub(super) fn published_with(
+        &self,
+        block: &TextBlock,
+        cursor: &mut Option<usize>,
+    ) -> Result<PublishedContent, HtmlConstructionError> {
+        let mut string = |run: &TextRun| -> Result<DocumentString, HtmlConstructionError> {
+            let range = match cursor {
+                Some(next) => {
+                    let start = *next;
+                    let end = start
+                        .checked_add(run.len())
+                        .ok_or(HtmlConstructionCause::RepresentationExhausted.error())?;
+                    *next = end;
+                    start..end
+                }
+                None => run.text().range(),
+            };
+            #[cfg(test)]
+            if crate::internal::amortized::fault::refuses_text_share() {
+                return Err(HtmlConstructionCause::InvalidTextReference.error());
             }
-            Self::Doctype(value) => ConstructionNodeKind::Doctype(ConstructionDoctype {
-                name: units(value.name()),
-                public_id: value.public_id().map(units),
-                system_id: value.system_id().map(units),
-            }),
-        }
+            block
+                .string(range)
+                .map_err(|_| HtmlConstructionCause::InvalidTextReference.error())
+        };
+        Ok(match self {
+            Self::Document(mode) => NodeContent::Document(*mode),
+            Self::Fragment => NodeContent::Fragment,
+            Self::Element(content) => NodeContent::Element(content.clone()),
+            Self::Text(run) => NodeContent::Text(string(run)?),
+            Self::Comment(run) => NodeContent::Comment(string(run)?),
+            Self::ProcessingInstruction(value) => NodeContent::ProcessingInstruction(value.clone()),
+            Self::Doctype(value) => NodeContent::Doctype(value.clone()),
+        })
+    }
+    /// The build view of this content, whose text and comment units are read from `arena`.
+    pub(super) fn building<'a>(&'a self, arena: &'a TextArena) -> ConstructionNodeKind<'a> {
+        self.viewed(|run| {
+            arena
+                .get(run.text())
+                .map_or(BuildText::Invalid, BuildText::Units)
+        })
     }
 }
