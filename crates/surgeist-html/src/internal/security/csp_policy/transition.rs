@@ -349,6 +349,68 @@ impl HtmlCspProcessorAuthority {
         }
         Ok(())
     }
+    /// Establishes a new Document association from the actual response policy list.
+    /// The delivery adapter binds the association to the Document created from that
+    /// response. The processor supplies its complete, already admitted artifact,
+    /// including header order and disposition. No meta occurrence is issued.
+    ///
+    /// On refusal the original native custody is returned and neither issuer
+    /// advances. Successful admission charges only the new association and
+    /// policy record, transferring the artifact under its existing receipt.
+    pub fn attest_response_policy_with<A: HtmlCspPolicyArtifact, E>(
+        &mut self,
+        owner: &mut HtmlCspOwner,
+        profile: &HtmlCspProcessorProfile,
+        artifact: Arc<A>,
+        admit: &mut impl FnMut(HtmlCspLayout) -> Result<(), E>,
+    ) -> Result<HtmlCspAssociation, HtmlCspRejected<Arc<A>, E>> {
+        let ready = (|| {
+            admit(HtmlCspLayout::read::<Self>(12)).map_err(HtmlCspError::Interrupted)?;
+            if self.identity != profile.issuer {
+                return Err(HtmlCspProtocolErrorKind::WrongProcessor.into());
+            }
+            let document_serial = owner.next_document_serial()?;
+            let serial = self
+                .policy_serial
+                .checked_add(1)
+                .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?;
+            let native = artifact.retained_layout();
+            let record = HtmlCspArtifactLayout::inline::<PolicyRecord>(8);
+            let own = HtmlCspArtifactLayout::inline::<HtmlCspAssociation>(12).add(record)?;
+            let policy = record.add(native)?;
+            admit(HtmlCspLayout::retain::<HtmlCspAssociation>(
+                own.add(native)?,
+                native,
+                HtmlCspStorage::default(),
+                own.disposal(),
+            )?)
+            .map_err(HtmlCspError::Interrupted)?;
+            Ok((document_serial, serial, policy))
+        })();
+        let (document_serial, serial, layout) = match ready {
+            Ok(ready) => ready,
+            Err(error) => {
+                return Err(HtmlCspRejected {
+                    retained: artifact,
+                    error,
+                });
+            }
+        };
+        let policy = PolicyRecord {
+            id: HtmlCspPolicyId {
+                issuer: PolicyIssuer::External(self.identity.clone()),
+                serial,
+            },
+            revision: HtmlCspPolicyRevision(serial),
+            profile: Some(profile.clone()),
+            native: Some(artifact),
+            origin: None,
+            layout,
+        };
+        self.policy_serial = serial;
+        Ok(owner.issue_initial_association(owner.document_id(document_serial), policy))
+    }
+
     /// Attest actual complete changed processing. Native graph construction and
     /// its partial cleanup were already admitted by the supplied processor.
     /// Incoming native custody moves; only additional wrapper/clone closing
@@ -473,10 +535,7 @@ impl HtmlCspOwner {
         admit: &mut impl FnMut(HtmlCspLayout) -> Result<(), E>,
     ) -> Result<HtmlCspAssociation, HtmlCspError<E>> {
         admit(HtmlCspLayout::read::<Self>(6)).map_err(HtmlCspError::Interrupted)?;
-        let next = self
-            .document_serial
-            .checked_add(1)
-            .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?;
+        let serial = self.next_document_serial()?;
         let policy_layout = HtmlCspArtifactLayout::inline::<PolicyRecord>(8);
         let retained =
             HtmlCspArtifactLayout::inline::<HtmlCspAssociation>(12).add(policy_layout)?;
@@ -487,11 +546,8 @@ impl HtmlCspOwner {
             retained.disposal(),
         )?)
         .map_err(HtmlCspError::Interrupted)?;
-        let document = HtmlCspDocumentId {
-            owner: self.identity.clone(),
-            serial: next,
-        };
-        let policy = HtmlCspPolicyState(Arc::new(PolicyRecord {
+        let document = self.document_id(serial);
+        let policy = PolicyRecord {
             id: HtmlCspPolicyId {
                 issuer: PolicyIssuer::Initial(document.clone()),
                 serial: 0,
@@ -501,8 +557,30 @@ impl HtmlCspOwner {
             native: None,
             origin: None,
             layout: policy_layout,
-        }));
-        let result = HtmlCspAssociation {
+        };
+        Ok(self.issue_initial_association(document, policy))
+    }
+
+    fn next_document_serial(&self) -> Result<u64, HtmlCspProtocolError> {
+        self.document_serial
+            .checked_add(1)
+            .ok_or_else(|| HtmlCspProtocolErrorKind::RepresentationExhausted.error())
+    }
+
+    fn document_id(&self, serial: u64) -> HtmlCspDocumentId {
+        HtmlCspDocumentId {
+            owner: self.identity.clone(),
+            serial,
+        }
+    }
+
+    fn issue_initial_association(
+        &mut self,
+        document: HtmlCspDocumentId,
+        policy: PolicyRecord,
+    ) -> HtmlCspAssociation {
+        self.document_serial = document.serial;
+        HtmlCspAssociation {
             generation: HtmlCspAssociationGeneration {
                 document: document.clone(),
                 serial: 0,
@@ -512,11 +590,9 @@ impl HtmlCspOwner {
                 from: None,
             },
             document,
-            policy,
+            policy: HtmlCspPolicyState(Arc::new(policy)),
             latest: None,
-        };
-        self.document_serial = next;
-        Ok(result)
+        }
     }
     /// Retain the actual artifact without replay, issuing new destination
     /// authority. The adapter establishes the actual transfer/inheritance relation.

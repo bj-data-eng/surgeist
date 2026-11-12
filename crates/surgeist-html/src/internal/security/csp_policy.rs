@@ -267,8 +267,8 @@ impl HtmlCspPolicyState {
     pub fn profile(&self) -> Option<&HtmlCspProcessorProfile> {
         self.0.profile.as_ref()
     }
-    /// Returns the qualification of the meta insertion that produced this state, or
-    /// `None` for an initial empty policy.
+    /// Returns the qualification of the meta insertion that produced this state.
+    /// Initial empty and response policy states have no meta qualification.
     pub fn processing_origin(&self) -> Option<&HtmlMetaCspQualification> {
         self.0.origin.as_ref()
     }
