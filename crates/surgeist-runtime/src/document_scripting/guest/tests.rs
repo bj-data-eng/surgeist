@@ -1,5 +1,6 @@
 use super::*;
 
+pub(in crate::document_scripting) mod move_before;
 pub(in crate::document_scripting) mod registered_origin;
 pub(in crate::document_scripting) mod shadow_root;
 
