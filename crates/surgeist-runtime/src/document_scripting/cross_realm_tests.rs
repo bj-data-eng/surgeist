@@ -717,6 +717,9 @@ fn public_and_source_comment_projection_share_identity() {
                     if (comment !== publicComment || comment.marker !== 42) {
                         throw new Error("Source must delegate the original public Comment");
                     }
+                    if (comment.nodeValue !== "A's native Comment") throw new Error("wrong Source nodeValue");
+                    comment.textContent = 'new\ud800';
+                    if (comment.nodeValue !== 'new\ud800') throw new Error("wrong Source textContent");
                     detachIf(1, publicComment);
                 }"#,
                 &cancel,
@@ -939,6 +942,8 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
                 cancelChecks &&= dialog.setAttributeNode(cancelAttr) === null
                     && dialog.getAttributeNode('data-cancel') === cancelAttr
                     && dialog.removeAttributeNode(cancelAttr) === cancelAttr;
+                dialog.textContent = 'native event\ud800';
+                cancelChecks &&= dialog.textContent === 'native event\ud800';
                 event.currentTarget.removeEventListener("cancel", removed);
                 event.preventDefault();
             }, {once: true});

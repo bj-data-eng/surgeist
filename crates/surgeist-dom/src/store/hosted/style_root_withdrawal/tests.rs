@@ -1222,6 +1222,7 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
         Err(DomError::InvalidSourceOperation)
     ));
     drop(lease);
+    dom.assert_attribute_callback_unit_peak(request, &registration, &cancel);
     let spent = dom.pending_source_edit().unwrap().spent_work();
     assert_eq!(
         dom.source_attribute_callback_step(request, &registration, &AtomicBool::new(true)),

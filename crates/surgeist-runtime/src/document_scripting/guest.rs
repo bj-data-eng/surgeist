@@ -573,6 +573,24 @@ impl GuestBudget {
         limits: DocumentGuestEventLimits,
         bytes: usize,
     ) -> Result<GuestBacking, DocumentGuestEventError> {
+        self.reserve_with(limits, bytes, || {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            session
+                .hosted_execution()
+                .retain_script_payload(&mut session.dom(), bytes, &owner.cancellation)
+                .map_err(DocumentScriptNativeError::from)
+        })
+    }
+
+    fn reserve_with(
+        &self,
+        limits: DocumentGuestEventLimits,
+        bytes: usize,
+        retain: impl FnOnce() -> Result<DomHostedRuntimeRetention, DocumentScriptNativeError>,
+    ) -> Result<GuestBacking, DocumentGuestEventError> {
         self.charge_work(limits.work, 1)?;
         let total = self
             .used
@@ -582,14 +600,7 @@ impl GuestBudget {
         if total > limits.storage_bytes {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
-        let mut session = owner
-            .session
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let canonical = session
-            .hosted_execution()
-            .retain_script_payload(&mut session.dom(), bytes, &owner.cancellation)
-            .map_err(DocumentScriptNativeError::from)?;
+        let canonical = retain()?;
         self.used.set(total);
         Ok(GuestBacking {
             used: self.used.clone(),

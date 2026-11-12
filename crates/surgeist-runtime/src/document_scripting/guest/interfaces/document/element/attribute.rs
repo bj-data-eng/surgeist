@@ -153,7 +153,7 @@ impl Capture {
         let cancel = &owner.cancellation;
         let mut no_style = |_: &surgeist_dom::DomStyleSource| None;
         let mut services = attribute_services(&mut no_style);
-        let event = owner.attached_event_request();
+        let event = owner.active_event_request();
         let (mut result, mut pending, parent) =
             self.callbacks
                 .with_qualified_session(owner, event.as_ref(), |session, _| {

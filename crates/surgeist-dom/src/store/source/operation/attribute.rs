@@ -860,6 +860,21 @@ impl Dom {
             .step(cancel)
     }
 
+    /// Admit scratch UTF-16 capacity owned by an already byte-accounted
+    /// caller during the exact active attribute verification callback.
+    pub fn retain_source_attribute_callback_units(
+        &self,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &DomDocumentScriptRegistration,
+        units: usize,
+        cancel: &AtomicBool,
+    ) -> Result<crate::DomSourceAttributePayloadRetention, DomError> {
+        self.active_source_attribute_callback_work(request, registration, cancel)?;
+        let debit =
+            self.retain_source_attribute_observer_payload(custody::Usage::new(0, units), cancel)?;
+        Ok(crate::DomSourceAttributePayloadRetention { _debit: debit })
+    }
+
     pub(in crate::store) fn active_source_attribute_callback_work(
         &self,
         request: DomSourceAttributeVerificationRequest,
@@ -897,5 +912,48 @@ impl Dom {
                 cancel,
             )
         })
+    }
+}
+
+#[cfg(test)]
+impl Dom {
+    pub(in crate::store) fn assert_attribute_callback_unit_peak(
+        &mut self,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &DomDocumentScriptRegistration,
+        cancel: &AtomicBool,
+    ) {
+        fn limit(dom: &mut Dom, units: usize) -> usize {
+            let OperationDraft::AttributeObserved(observation) =
+                &mut dom.source_operation.as_mut().unwrap().draft
+            else {
+                panic!("expected observing attribute callback");
+            };
+            std::mem::replace(&mut observation.limits.retained_units, units)
+        }
+        let usage = |dom: &Dom| {
+            dom.source_observation_total(storage::Payload::default(), cancel)
+                .unwrap()
+                .units
+        };
+        let baseline = usage(self);
+        let original_units = limit(self, baseline + 8);
+        let first = self
+            .retain_source_attribute_callback_units(request, registration, 3, cancel)
+            .unwrap();
+        assert!(matches!(
+            self.retain_source_attribute_callback_units(request, registration, 6, cancel),
+            Err(DomError::ResourceLimit { resource: DomResource::SourceRetainedUnits, limit }) if limit == baseline + 8
+        ));
+        assert_eq!(usage(self), baseline + 3);
+        limit(self, baseline + 9);
+        let replacement = self
+            .retain_source_attribute_callback_units(request, registration, 6, cancel)
+            .unwrap();
+        assert_eq!(usage(self), baseline + 9);
+        drop(first);
+        drop(replacement);
+        assert_eq!(usage(self), baseline);
+        limit(self, original_units);
     }
 }

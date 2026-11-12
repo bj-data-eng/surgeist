@@ -522,6 +522,39 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     }
     result.unwrap();
 
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        let inner = batch.create_element_ns(document, Namespace::html(), "span");
+        let first = batch.create_text(document, "outer");
+        let last = batch.create_text(document, DocumentString::from_utf16([0xdfff, 0]));
+        batch.insert_before(&first, element, None);
+        batch.insert_before(&inner, element, None);
+        batch.insert_before(&last, &inner, None);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        let source = r#"
+            (() => {
+                const inputs = [];
+                globalThis.attachmentProbe = value => {
+                    inputs.push(value);
+                    if (protectedTarget.textContent !== 'outer\udfff\0')
+                        throw new Error('wrong live descendant text');
+                };
+                protectedAttr.nodeValue = 'node\ud800';
+                if (protectedAttr.textContent !== 'node\ud800!') return false;
+                protectedAttr.textContent = 'content\0';
+                delete globalThis.attachmentProbe;
+                return protectedAttr.value === 'content\0!' && protectedAttr.nodeValue === protectedAttr.value
+                    && inputs.length === 2 && inputs[0] === 'node\ud800' && inputs[1] === 'content\0';
+            })()
+        "#;
+        let result = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    }).unwrap();
+
     host.in_document(&permit, |scope| {
         let script = r#"
             (() => {

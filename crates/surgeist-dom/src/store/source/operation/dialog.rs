@@ -1090,7 +1090,7 @@ impl Dom {
         }
         Ok(payload)
     }
-    fn source_observation_total(
+    pub(super) fn source_observation_total(
         &self,
         extra: storage::Payload,
         cancel: &AtomicBool,

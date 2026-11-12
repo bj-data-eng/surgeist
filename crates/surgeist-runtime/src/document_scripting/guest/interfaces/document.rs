@@ -17,6 +17,7 @@ mod fragment;
 mod ordinary;
 mod parent_node;
 mod shadow;
+mod text;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
 
 #[derive(Clone, Copy)]
@@ -443,6 +444,7 @@ pub(super) fn install_node<'scope>(
             Callback::new(move |scope, arguments| handler.node_member(scope, arguments, member)),
         )?;
     }
+    text::install(scope, &node, capture)?;
     let root = capture(size_of::<Capture>())?;
     let root_name = &ascii(b"getRootNode");
     let method = scope.bounded_function(

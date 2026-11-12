@@ -511,6 +511,69 @@ impl<'a> DomNode<'a> {
             shadow: false,
         }
     }
+    /// Visit only ordinary descendant Text payloads, in tree order. The
+    /// receiver, shadow trees hosted by descendants, and hosted Template
+    /// contents are outside the traversal.
+    ///
+    /// Admit each child edge and canonical lookup page through `step`. The
+    /// caller owns any work it does with the borrowed Text. `reserve` receives
+    /// the full byte extent of each new scratch allocation, with the previous
+    /// allocation still retained. Its returned backing lives with the scratch.
+    /// The first failed step, reservation, lookup, or visit ends traversal.
+    pub fn visit_descendant_text_with<E: From<DomError>, Backing>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+        mut reserve: impl FnMut(usize) -> Result<Backing, E>,
+        mut visit: impl FnMut(&'a DocumentString) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let mut remaining = self.children();
+        // Keep the allocation before its backing so unwind releases it first.
+        let mut pending = (Vec::<&[NodeId]>::new(), None);
+        loop {
+            let Some((&child, siblings)) = remaining.split_first() else {
+                let Some(siblings) = pending.0.pop() else {
+                    return Ok(());
+                };
+                remaining = siblings;
+                continue;
+            };
+            step()?;
+            let child = self.snapshot.node_with(child, &mut step)?;
+            if let DomNodeKind::Text(text) = child.kind() {
+                visit(text)?;
+            }
+            remaining = child.children();
+            if remaining.is_empty() {
+                remaining = siblings;
+            } else if !siblings.is_empty() {
+                if pending.0.len() == pending.0.capacity() {
+                    let capacity = pending
+                        .0
+                        .capacity()
+                        .checked_mul(2)
+                        .ok_or(DomError::RepresentationExhausted)?
+                        .max(1);
+                    let bytes = capacity
+                        .checked_mul(size_of::<&[NodeId]>())
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    let backing = reserve(bytes)?;
+                    let mut replacement = Vec::new();
+                    replacement
+                        .try_reserve_exact(capacity)
+                        .map_err(|_| DomError::AllocationFailed)?;
+                    if replacement.capacity() > capacity {
+                        return Err(DomError::AllocationFailed.into());
+                    }
+                    for &frame in &pending.0 {
+                        step()?;
+                        replacement.push(frame);
+                    }
+                    pending = (replacement, Some(backing));
+                }
+                pending.0.push(siblings);
+            }
+        }
+    }
     /// Inclusive preorder visiting each hosted root immediately after its host,
     /// before the host's ordinary children, independent of open/closed mode.
     pub fn shadow_including_tree_order(self) -> DomTreeOrder<'a> {

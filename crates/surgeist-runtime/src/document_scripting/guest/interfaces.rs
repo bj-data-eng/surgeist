@@ -625,12 +625,6 @@ fn install_event_interface<'scope>(
     Ok(())
 }
 
-struct SourceRead<'a> {
-    dom: &'a surgeist_dom::Dom,
-    request: SourceReadRequest<'a>,
-    cancel: &'a AtomicBool,
-}
-
 enum SourceReadRequest<'a> {
     Event(&'a surgeist_dom::DomSourceEventRequest),
     Attribute {
@@ -642,29 +636,100 @@ enum SourceReadRequest<'a> {
 struct NativeRead<'a> {
     snapshot: DomSnapshot,
     events: &'a GuestEvents,
-    source: Option<SourceRead<'a>>,
+    source: Option<SourceReadRequest<'a>>,
+    dom: RefCell<crate::DomEventDom<'a>>,
+    hosted: HostedRuntime,
+    cancel: &'a AtomicBool,
+}
+
+enum NativeTextUnits {
+    Event {
+        _retained: surgeist_dom::DomSourceEventRetention,
+    },
+    Attribute {
+        _retained: surgeist_dom::DomSourceAttributePayloadRetention,
+    },
 }
 
 impl NativeRead<'_> {
-    fn step(&self) -> Result<(), DocumentGuestEventError> {
-        if let Some(source) = &self.source {
-            match &source.request {
+    fn source_step(&self) -> Result<(), DocumentGuestEventError> {
+        if self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(DomError::Cancelled.into());
+        }
+        if let Some(request) = &self.source {
+            let dom = self
+                .dom
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            match request {
                 SourceReadRequest::Event(request) => {
-                    source.dom.source_event_step(request, source.cancel)?
+                    dom.raw().source_event_step(request, self.cancel)?
                 }
                 SourceReadRequest::Attribute {
                     request,
                     registration,
                 } => {
-                    source.dom.source_attribute_callback_step(
+                    dom.raw().source_attribute_callback_step(
                         *request,
                         registration,
-                        source.cancel,
+                        self.cancel,
                     )?;
                 }
             }
         }
+        Ok(())
+    }
+
+    fn step(&self) -> Result<(), DocumentGuestEventError> {
+        self.source_step()?;
         self.events.step()
+    }
+
+    fn reserve(&self, bytes: usize) -> Result<GuestBacking, DocumentGuestEventError> {
+        self.source_step()?;
+        self.events
+            .budget
+            .reserve_with(self.events.limits, bytes, || {
+                let mut dom = self
+                    .dom
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                self.hosted
+                    .retain_script_payload(&mut dom, bytes, self.cancel)
+                    .map_err(DocumentScriptNativeError::from)
+            })
+    }
+
+    fn retain_text_units(
+        &self,
+        units: usize,
+    ) -> Result<Option<NativeTextUnits>, DocumentGuestEventError> {
+        let Some(request) = &self.source else {
+            return Ok(None);
+        };
+        let dom = self
+            .dom
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let retained = match request {
+            SourceReadRequest::Event(request) => NativeTextUnits::Event {
+                _retained: dom
+                    .raw()
+                    .retain_source_event_payload(request, 0, units, self.cancel)?,
+            },
+            SourceReadRequest::Attribute {
+                request,
+                registration,
+            } => NativeTextUnits::Attribute {
+                _retained: dom.raw().retain_source_attribute_callback_units(
+                    *request,
+                    registration,
+                    units,
+                    self.cancel,
+                )?,
+            },
+        };
+        Ok(Some(retained))
     }
 
     fn node(
@@ -690,9 +755,10 @@ impl Callbacks {
         events: &GuestEvents,
         action: impl FnOnce(&NativeRead<'_>, DomHostedGlobalId) -> Result<T, DocumentGuestEventError>,
     ) -> Result<T, DocumentGuestEventError> {
-        let request = owner.attached_event_request();
+        let request = owner.active_event_request();
         self.with_qualified_session(owner, request.as_ref(), |session, global| {
             let snapshot = session.snapshot();
+            let hosted = session.hosted_execution();
             let dom = session.dom();
             let request =
                 if let Some((request, registration)) = owner.active_attribute_registration()? {
@@ -706,11 +772,10 @@ impl Callbacks {
             let read = NativeRead {
                 snapshot,
                 events,
-                source: request.map(|request| SourceRead {
-                    dom: dom.raw(),
-                    request,
-                    cancel: &owner.cancellation,
-                }),
+                source: request,
+                dom: RefCell::new(dom),
+                hosted,
+                cancel: &owner.cancellation,
             };
             action(&read, global)
         })
