@@ -47,6 +47,382 @@ pub(super) struct GridLines {
     pub(super) row_explicit_count: usize,
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum FinalGridChildGeometry<'a, S: LayoutScalar> {
+    Ordinary {
+        columns: &'a UsedGridAxisGeometryOf<S>,
+        rows: &'a UsedGridAxisGeometryOf<S>,
+    },
+    Lanes {
+        grid_axis: GridAxisKind,
+    },
+}
+
+struct FinalGridChildRequest<'a, S: LayoutScalar> {
+    input: ComputeInputOf<S>,
+    parent_axes: FlowAxes,
+    sizing_stage: GridSizingStage,
+    geometry: FinalGridChildGeometry<'a, S>,
+    standalone_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
+}
+
+type FinalGridChildResult<Node, S, M> = LayoutResultOf<
+    Node,
+    (
+        ComputeOutputOf<S>,
+        Option<ExecutedBaselineInventory<Node, S>>,
+    ),
+    S,
+    M,
+>;
+
+fn compute_final_grid_child<'input, Tree, M>(
+    tree: &mut Tree,
+    container: Tree::Node,
+    child: Tree::Node,
+    context: SubgridChildParentContextInput<'input, '_, Tree::Node, Tree::Scalar>,
+    request: FinalGridChildRequest<'_, Tree::Scalar>,
+) -> FinalGridChildResult<Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let input = request.input;
+    let (mut output, executed_baselines) = if context.item.needs_context() {
+        let (minimum, columns, rows) = match request.geometry {
+            FinalGridChildGeometry::Ordinary { columns, rows } => {
+                (request.standalone_minimum, Some(columns), Some(rows))
+            }
+            FinalGridChildGeometry::Lanes { .. } => (Size::NONE, None, None),
+        };
+        let child_axes = FlowAxes::new(
+            context.child_style.writing_mode,
+            context.child_style.direction,
+        );
+        let stage = request.sizing_stage.mapped(request.parent_axes, child_axes);
+        // The nested grid uses the current parent's track and scrollbar context.
+        let result = compute_grid_with_context_source(
+            tree,
+            child,
+            input,
+            minimum,
+            context.container(),
+            stage,
+            |constants| {
+                subgrid_child_parent_context_with_geometry(
+                    context.for_scrollbar_pass(constants),
+                    columns,
+                    rows,
+                )
+                .map_err(|error| subgrid_child_context_container_error(container, child, error))
+            },
+        )?;
+        let source = require_executed_baselines(
+            container,
+            child,
+            child_axes,
+            result.output,
+            input,
+            stage,
+            result.executed_baselines,
+        )?;
+        (result.output, Some(source))
+    } else {
+        (tree.compute_child(child, input)?, None)
+    };
+    output.scroll_geometry = Some(
+        retained_grid_child_scroll_geometry(
+            context.child_style,
+            output.size,
+            output.content_size,
+            context.padding,
+            context.border,
+            output.scroll_geometry,
+        )
+        .map_err(|error| layout_child_geometry_error(container, child, error))?,
+    );
+    Ok((output, executed_baselines))
+}
+
+pub(super) enum GridItemDisposition<S: LayoutScalar> {
+    Skip,
+    Hidden,
+    Placed {
+        area: GridArea<S>,
+        space: GridItemLayoutSpace<S>,
+    },
+}
+
+pub(super) struct GridChildItemsInput<'input, 'a, Node, S: LayoutScalar> {
+    pub(super) children: &'a [Node],
+    pub(super) item_count: usize,
+    pub(super) style: &'a GridContainerProjection<'a, S>,
+    pub(super) constants: &'a Constants<S>,
+    pub(super) columns: &'a [S],
+    pub(super) rows: &'a [S],
+    pub(super) row_tracks: &'a [TrackSizingOf<S>],
+    pub(super) minimum_functions: GridMinimumParentFunctions<'a, S>,
+    pub(super) track_basis: LogicalSizeOf<Option<S>>,
+    pub(super) gap: LogicalSizeOf<S>,
+    pub(super) named_columns: &'a NamedGridLines,
+    pub(super) named_rows: &'a NamedGridLines,
+    pub(super) area_facts: Option<&'a GridAreaNameFacts>,
+    pub(super) subgrid_report: &'a GridSubgridReport<Node>,
+    pub(super) placements: &'a GridPlacementContext<'input, Node, S>,
+    pub(super) containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
+    pub(super) sizing_stage: GridSizingStage,
+    pub(super) geometry: FinalGridChildGeometry<'a, S>,
+}
+
+pub(super) struct PendingGridItems<'input, Node, S: LayoutScalar> {
+    pub(super) in_flow: Vec<PendingGridItem<'input, Node, S>>,
+    pub(super) absolute: Vec<(usize, Node, GridPlacement, GridPlacement)>,
+}
+
+type PendingGridItemsResult<'input, Node, S, M> =
+    LayoutResultOf<Node, PendingGridItems<'input, Node, S>, S, M>;
+
+pub(super) fn stage_hidden_grid_child<'input, Tree, M>(
+    tree: &mut Tree,
+    child: Tree::Node,
+    source_index: usize,
+    input: ComputeInputOf<Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        child,
+        crate::output::NormalGeometryOf::metadata(Point::ZERO, Size::ZERO),
+        NodeOutputOf::with_source_index(crate::SourceIndex::new(source_index)),
+    ));
+    tree.compute_child(child, input).map(|_| ())
+}
+
+pub(super) fn layout_grid_child_items<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: GridChildItemsInput<'input, '_, Tree::Node, Tree::Scalar>,
+    mut place: impl FnMut(
+        usize,
+        &GridItemProjection<'input, Tree::Scalar>,
+    ) -> GridItemDisposition<Tree::Scalar>,
+) -> PendingGridItemsResult<'input, Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let GridChildItemsInput {
+        children,
+        item_count,
+        style,
+        constants,
+        columns,
+        rows,
+        row_tracks,
+        minimum_functions,
+        track_basis,
+        gap,
+        named_columns,
+        named_rows,
+        area_facts,
+        subgrid_report,
+        placements,
+        containing_auto_scrollbar_pass,
+        sizing_stage,
+        geometry,
+    } = input;
+    let flow = constants.flow_axes;
+    let hidden_context =
+        crate::ContainingLayoutContext::new(flow, crate::ParentFormattingContext::Grid);
+    let hidden = match geometry {
+        FinalGridChildGeometry::Ordinary { .. } => ComputeInputOf::hidden_in_containing_pass(
+            hidden_context,
+            containing_auto_scrollbar_pass,
+        ),
+        FinalGridChildGeometry::Lanes { .. } => ComputeInputOf::hidden(hidden_context),
+    };
+    let mut in_flow = Vec::new();
+    let mut absolute = Vec::new();
+    for (source_index, (child, placement)) in placements
+        .checked_child_placements(children)
+        .take(item_count)
+        .enumerate()
+    {
+        let child_style = placements.item_input(source_index).clone();
+        if child_style.display == Display::None {
+            stage_hidden_grid_child(tree, child, source_index, hidden)?;
+            continue;
+        }
+        if child_style.position == Position::Absolute {
+            absolute.push((
+                source_index,
+                child,
+                placement.absolute_column,
+                placement.absolute_row,
+            ));
+            continue;
+        }
+        let (area, space) = match place(source_index, &child_style) {
+            GridItemDisposition::Skip => continue,
+            GridItemDisposition::Hidden => {
+                stage_hidden_grid_child(tree, child, source_index, hidden)?;
+                continue;
+            }
+            GridItemDisposition::Placed { area, space } => (area, space),
+        };
+        let containing_size = space.containing_size;
+        let subgrid_item = subgrid_report.items[source_index];
+        let FinalGridItemPreparation {
+            sizing: item,
+            input: child_input,
+            padding,
+            border,
+            content_box_size: subgrid_content_box_size,
+        } = prepare_final_grid_item::<Tree, M>(
+            tree,
+            child,
+            &child_style,
+            style,
+            subgrid_item,
+            space,
+            GridItemRequestContext {
+                containing_auto_scrollbar_pass,
+                orthogonal_fallback: constants.child_orthogonal_fallback,
+            },
+        )?;
+        let child_input = grid_item_baseline_demand(style, &child_style, None, child_input)
+            .map_err(|error| grid_baseline_error(node, child, error))?;
+        let child_container = placements.nested_container_input(source_index).copied();
+        let child_context = SubgridChildParentContextInput {
+            item: subgrid_item,
+            parent_baseline_references: style.baseline_references,
+            child_style: &child_style,
+            child_container,
+            area,
+            content_box_size: subgrid_content_box_size,
+            columns,
+            rows,
+            minimum_functions,
+            gap,
+            parent_named_columns: named_columns,
+            parent_named_rows: named_rows,
+            parent_area_facts: area_facts,
+            margin: item.unresolved_margin,
+            border,
+            padding,
+            scrollbar_gutter: Edges::ZERO,
+        };
+        let (output, executed_baselines) = compute_final_grid_child(
+            tree,
+            node,
+            child,
+            child_context,
+            FinalGridChildRequest {
+                input: child_input,
+                parent_axes: flow,
+                sizing_stage,
+                geometry,
+                standalone_minimum: item.standalone_intrinsic_minimum,
+            },
+        )?;
+        let logical_output_size = flow.logical_size(output.size);
+        let logical_margin = flow.logical_edges(item.unresolved_margin);
+        let inline_axis = logical_grid_item_axis(
+            area.size.inline,
+            logical_output_size.inline,
+            logical_margin.inline_start,
+            logical_margin.inline_end,
+            item.justify_self,
+        );
+        let block_axis = logical_grid_item_axis(
+            area.size.block,
+            logical_output_size.block,
+            logical_margin.block_start,
+            logical_margin.block_end,
+            item.align_self,
+        );
+        let child_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
+        let (reference, block_auto_margins, cyclic) = match geometry {
+            FinalGridChildGeometry::Ordinary { .. } => (
+                style.baseline_references.rows,
+                logical_margin.block_start.is_none() || logical_margin.block_end.is_none(),
+                grid_baseline_span_would_cycle(
+                    row_tracks.get(area.row..area.row_end).unwrap_or(&[]),
+                    track_basis.block,
+                ),
+            ),
+            FinalGridChildGeometry::Lanes { grid_axis } => (
+                if grid_axis == GridAxisKind::Row {
+                    style.baseline_references.rows
+                } else {
+                    crate::GridBaselineReference::Physical
+                },
+                child_axes.line_over_edge(item.unresolved_margin).is_none()
+                    || child_axes.line_under_edge(item.unresolved_margin).is_none(),
+                false,
+            ),
+        };
+        let participate = || {
+            grid_baseline_participation(
+                reference,
+                item.align_self,
+                block_auto_margins,
+                cyclic,
+                output,
+                child_axes,
+                flow.block_axis(),
+            )
+            .map_err(|error| grid_baseline_error(node, child, error))
+        };
+        let relative_offset = || {
+            child_style
+                .inset
+                .zip_size(containing_size.map(Some), resolve_auto_optional)
+                .transpose_with_node(tree, child)
+                .map(|inset| logical_relative_inset_offset(inset, flow, child_style.position))
+        };
+        let (baseline_participation, logical_relative_offset) = match geometry {
+            FinalGridChildGeometry::Ordinary { .. } => (participate()?, relative_offset()?),
+            FinalGridChildGeometry::Lanes { .. } => {
+                let offset = relative_offset()?;
+                (participate()?, offset)
+            }
+        };
+        let margin = flow.physical_edges(LogicalEdgesOf::new(
+            inline_axis.margin_start,
+            inline_axis.margin_end,
+            block_axis.margin_start,
+            block_axis.margin_end,
+        ));
+        let baselines = output.baselines();
+        let overflow =
+            UsedOverflow::from_computed(child_style.overflow, child_style.item_is_replaced);
+        in_flow.push(PendingGridItem {
+            executed_baselines: PendingExecutedBaselines::Uncaptured(executed_baselines),
+            node: child,
+            style: child_style,
+            nested_container: child_container,
+            source_index,
+            area,
+            output,
+            horizontal_axis: inline_axis,
+            vertical_axis: block_axis,
+            child_flow_axes: child_axes,
+            logical_relative_offset,
+            first_baseline: baselines.first_or_synthesize_block_baseline(child_axes, output.size),
+            last_baseline: baselines.last_or_synthesize_block_baseline(child_axes, output.size),
+            location: Point::ZERO,
+            block_offset: block_axis.offset,
+            block_auto_margins,
+            baseline_participation,
+            margin,
+            border,
+            padding,
+            overflow,
+        });
+    }
+    Ok(PendingGridItems { in_flow, absolute })
+}
+
 pub(super) fn layout_grid_children<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
@@ -194,240 +570,53 @@ where
         Some(&row_geometry),
     );
     let mut child_contributions = Vec::new();
-    let mut pending_items = Vec::new();
-    let mut pending_absolute = Vec::new();
-    for (source_index, (((child, placement), area), subgrid_item)) in placements
-        .checked_child_placements(&children)
-        .zip(placed_areas.iter().copied())
-        .zip(subgrid_report.items.iter())
-        .enumerate()
-    {
-        let child_style = placements.item_input(source_index).clone();
-        if child_style.display == super::Display::None {
-            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-                child,
-                crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
-                NodeOutputOf::with_source_index(crate::SourceIndex::new(source_index)),
-            ));
-            tree.compute_child(
-                child,
-                ComputeInputOf::hidden_in_containing_pass(
-                    crate::ContainingLayoutContext::new(
-                        constants.flow_axes,
-                        crate::ParentFormattingContext::Grid,
-                    ),
-                    containing_auto_scrollbar_pass,
-                ),
-            )?;
-            continue;
-        }
-        if child_style.position == Position::Absolute {
-            pending_absolute.push((
-                source_index,
-                child,
-                placement.absolute_column,
-                placement.absolute_row,
-            ));
-            continue;
-        }
-
-        let Some(area) = area else {
-            continue;
-        };
-        if area.row >= rows.len() || area.column >= columns.len() {
-            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-                child,
-                crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
-                NodeOutputOf::with_source_index(crate::SourceIndex::new(source_index)),
-            ));
-            tree.compute_child(
-                child,
-                ComputeInputOf::hidden_in_containing_pass(
-                    crate::ContainingLayoutContext::new(
-                        constants.flow_axes,
-                        crate::ParentFormattingContext::Grid,
-                    ),
-                    containing_auto_scrollbar_pass,
-                ),
-            )?;
-            continue;
-        }
-
-        let physical_area_size = grid_area_physical_size(constants.flow_axes, area.size);
-        let FinalGridItemPreparation {
-            sizing: item,
-            input: child_input,
-            padding,
-            border,
-            content_box_size: subgrid_content_box_size,
-        } = prepare_final_grid_item::<Tree, M>(
-            tree,
-            child,
-            &child_style,
+    let PendingGridItems {
+        in_flow: mut pending_items,
+        absolute: pending_absolute,
+    } = layout_grid_child_items(
+        tree,
+        node,
+        GridChildItemsInput {
+            children: &children,
+            item_count: placed_areas.len().min(subgrid_report.items.len()),
             style,
-            *subgrid_item,
-            GridItemLayoutSpace {
-                alignment_size: physical_area_size,
-                containing_size: physical_area_size,
-                natural_stacking_margin_box: None,
-            },
-            GridItemRequestContext {
-                containing_auto_scrollbar_pass,
-                orthogonal_fallback: constants.child_orthogonal_fallback,
-            },
-        )?;
-        let child_input = grid_item_baseline_demand(style, &child_style, None, child_input)
-            .map_err(|error| grid_baseline_error(node, child, error))?;
-        let child_container = placements.nested_container_input(source_index).copied();
-        let child_context_input = SubgridChildParentContextInput {
-            item: *subgrid_item,
-            parent_baseline_references: style.baseline_references,
-            child_style: &child_style,
-            child_container,
-            area,
-            content_box_size: subgrid_content_box_size,
+            constants,
             columns,
             rows,
+            row_tracks,
             minimum_functions,
+            track_basis,
             gap,
-            parent_named_columns: &named_columns,
-            parent_named_rows: &named_rows,
-            parent_area_facts: area_facts.as_ref(),
-            margin: item.unresolved_margin,
-            border,
-            padding,
-            scrollbar_gutter: Edges::ZERO,
-        };
-        let (mut output, executed_baselines) = if child_context_input.item.needs_context() {
-            // Subgrid layout depends on the parent grid's used tracks, so this
-            // intentionally bypasses the generic child layout cache until that
-            // cache can include context-sensitive grid keys.
-            let result = compute_grid_with_context_source(
-                tree,
-                child,
-                child_input,
-                item.standalone_intrinsic_minimum,
-                child_context_input.container(),
-                sizing_stage.mapped(
-                    constants.flow_axes,
-                    FlowAxes::new(child_style.writing_mode, child_style.direction),
-                ),
-                |constants| {
-                    subgrid_child_parent_context_with_geometry(
-                        child_context_input.for_scrollbar_pass(constants),
-                        Some(&column_geometry),
-                        Some(&row_geometry),
-                    )
-                    .map_err(|error| subgrid_child_context_container_error(node, child, error))
+            named_columns: &named_columns,
+            named_rows: &named_rows,
+            area_facts: area_facts.as_ref(),
+            subgrid_report,
+            placements,
+            containing_auto_scrollbar_pass,
+            sizing_stage,
+            geometry: FinalGridChildGeometry::Ordinary {
+                columns: &column_geometry,
+                rows: &row_geometry,
+            },
+        },
+        |source_index, _| {
+            let Some(area) = placed_areas[source_index] else {
+                return GridItemDisposition::Skip;
+            };
+            if area.row >= rows.len() || area.column >= columns.len() {
+                return GridItemDisposition::Hidden;
+            }
+            let size = grid_area_physical_size(constants.flow_axes, area.size);
+            GridItemDisposition::Placed {
+                area,
+                space: GridItemLayoutSpace {
+                    alignment_size: size,
+                    containing_size: size,
+                    natural_stacking_margin_box: None,
                 },
-            )?;
-            let source = require_executed_baselines(
-                node,
-                child,
-                FlowAxes::new(child_style.writing_mode, child_style.direction),
-                result.output,
-                child_input,
-                sizing_stage.mapped(
-                    constants.flow_axes,
-                    FlowAxes::new(child_style.writing_mode, child_style.direction),
-                ),
-                result.executed_baselines,
-            )?;
-            (result.output, Some(source))
-        } else {
-            (tree.compute_child(child, child_input)?, None)
-        };
-        let scroll_geometry = retained_grid_child_scroll_geometry(
-            &child_style,
-            output.size,
-            output.content_size,
-            padding,
-            border,
-            output.scroll_geometry,
-        )
-        .map_err(|error| layout_child_geometry_error(node, child, error))?;
-        output.scroll_geometry = Some(scroll_geometry);
-        let logical_output_size = constants.flow_axes.logical_size(output.size);
-        let logical_unresolved_margin = constants.flow_axes.logical_edges(item.unresolved_margin);
-        let inline_axis = logical_grid_item_axis(
-            area.size.inline,
-            logical_output_size.inline,
-            logical_unresolved_margin.inline_start,
-            logical_unresolved_margin.inline_end,
-            item.justify_self,
-        );
-        let block_axis = logical_grid_item_axis(
-            area.size.block,
-            logical_output_size.block,
-            logical_unresolved_margin.block_start,
-            logical_unresolved_margin.block_end,
-            item.align_self,
-        );
-        let margin = constants.flow_axes.physical_edges(LogicalEdgesOf::new(
-            inline_axis.margin_start,
-            inline_axis.margin_end,
-            block_axis.margin_start,
-            block_axis.margin_end,
-        ));
-        let baselines = output.baselines();
-        let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
-        let first_baseline =
-            baselines.first_or_synthesize_block_baseline(child_flow_axes, output.size);
-        let last_baseline =
-            baselines.last_or_synthesize_block_baseline(child_flow_axes, output.size);
-        let block_auto_margins = logical_unresolved_margin.block_start.is_none()
-            || logical_unresolved_margin.block_end.is_none();
-        let row_span_tracks = row_tracks.get(area.row..area.row_end).unwrap_or(&[]);
-        let baseline_participation = grid_baseline_participation(
-            style.baseline_references.rows,
-            item.align_self,
-            block_auto_margins,
-            grid_baseline_span_would_cycle(row_span_tracks, track_basis.block),
-            output,
-            child_flow_axes,
-            constants.flow_axes.block_axis(),
-        )
-        .map_err(|error| grid_baseline_error(node, child, error))?;
-        pending_items.push(PendingGridItem {
-            executed_baselines: PendingExecutedBaselines::Uncaptured(executed_baselines),
-            node: child,
-            style: child_style.clone(),
-            nested_container: placements.nested_container_input(source_index).cloned(),
-            source_index,
-            area,
-            output,
-            horizontal_axis: inline_axis,
-            vertical_axis: block_axis,
-            child_flow_axes,
-            logical_relative_offset: logical_relative_inset_offset(
-                child_style
-                    .inset
-                    .zip_size(
-                        Size::new(
-                            Some(physical_area_size.width),
-                            Some(physical_area_size.height),
-                        ),
-                        resolve_auto_optional,
-                    )
-                    .transpose_with_node(tree, child)?,
-                constants.flow_axes,
-                child_style.position,
-            ),
-            first_baseline,
-            last_baseline,
-            location: Point::ZERO,
-            block_offset: block_axis.offset,
-            block_auto_margins,
-            baseline_participation,
-            margin,
-            border,
-            padding,
-            overflow: UsedOverflow::from_computed(
-                child_style.overflow,
-                child_style.item_is_replaced,
-            ),
-        });
-    }
+            }
+        },
+    )?;
 
     let executed_frame = ExecutedBaselineFrame {
         style,
