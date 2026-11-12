@@ -1,4 +1,5 @@
 //! Resolved shifts retain actual named child facts before numeric placement.
+use super::placement::checked_shift_projection;
 use super::*;
 use crate::{Display, InlineMetricsOf, WritingMode};
 
