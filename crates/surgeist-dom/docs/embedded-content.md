@@ -144,16 +144,24 @@ The exact HTML expanded names `audio` and `video` establish the unloaded media
 state through ordinary native creation, Source creation, cloning, and authored
 immutable installation. Read it through `DomElement::initial_media_state`.
 The network is empty, no media data is available, playback is paused, and the
-show-poster flag is set. The initial playback time is zero and the current
-resource address is empty. The canonical node owns this state and its lifetime.
+show-poster and autoplay eligibility flags are set. The initial playback time
+is zero, the current resource address is empty, and media does not delay the
+Document load event. The canonical node owns this state and its lifetime.
 
 Setting a null-namespace `src` reaches the load algorithm. A Source inserted
 under unloaded media reaches resource selection. A nonempty Video `poster`
 reaches poster determination. Each operation returns
 `DomError::MediaResourceEffectUnavailable` with its exact effect before
 publication. An empty or absent Video poster retains the absent frame and
-null resumption. Parser-created media requires its original lifecycle evidence,
-which the current immutable parse report does not supply.
-[Pinned HTML media lifecycle](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L42334).
+null resumption.
+
+Removing media from an ordinary Document tree reaches the stable-state
+removal steps. The edit returns `DomError::MediaRemovalStableStateUnavailable`
+before publication. Removing nodes from an ordinary detached fragment or
+removing a host that contains media only in its shadow tree does not reach this
+hook. Parser-created media requires its original lifecycle evidence, which the
+current immutable parse report does not supply.
+[Pinned HTML removal steps](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L41444)
+· [Pinned parser lifecycle](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L42334).
 
 [Back to surgeist-dom](../README.md).

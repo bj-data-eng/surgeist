@@ -2,8 +2,9 @@
 //! initialization and §2.5.6 nonce attribute/IDL/insertion/cloning clauses.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentString, Dom, DomBatch, DomChange, DomError, DomLimits, DomResource, DomSourceEdit,
-    DomSourceLimits, DomSourceProgress, HtmlCustomElementState, Namespace,
+    DocumentString, Dom, DomBatch, DomChange, DomError, DomLimits, DomResource, DomShadowRootInit,
+    DomSourceEdit, DomSourceLimits, DomSourceProgress, HtmlCustomElementState, HtmlShadowRootMode,
+    Namespace,
 };
 use surgeist_html::{
     elements::media::{HtmlInitialMediaState, HtmlMediaResourceEffect},
@@ -224,6 +225,8 @@ fn fresh_native_audio_and_video_preserve_exact_namespaces() {
             assert!(state.network_is_empty());
             assert!(!state.has_media_data());
             assert!(state.paused());
+            assert!(state.can_autoplay());
+            assert!(!state.delays_load_event());
             assert!(state.show_poster());
             assert_eq!(state.current_time(), 0.0);
             assert!(state.current_src().is_empty());
@@ -311,28 +314,44 @@ fn removing_media_from_a_document_requires_its_stable_state_steps() {
     let video = batch.create_element_ns(&document, Namespace::html(), "video");
     let fragment = batch.create_fragment(&document);
     let detached = batch.create_element_ns(&document, Namespace::html(), "audio");
+    let shadow_host = batch.create_element_ns(&document, Namespace::html(), "section");
+    let shadow = batch.attach_shadow(
+        &shadow_host,
+        DomShadowRootInit::new(HtmlShadowRootMode::Open),
+    );
+    let hosted = batch.create_element_ns(&document, Namespace::html(), "video");
     batch.insert_before(&container, &document, None);
     batch.insert_before(&audio, &container, None);
     batch.insert_before(&video, &container, None);
     batch.insert_before(&detached, &fragment, None);
+    batch.insert_before(&shadow_host, &container, None);
+    batch.insert_before(&hosted, &shadow, None);
     let commit = apply(&mut dom, batch);
     let container = commit.created(&container).unwrap().unwrap();
     let audio = commit.created(&audio).unwrap().unwrap();
     let video = commit.created(&video).unwrap().unwrap();
     let detached = commit.created(&detached).unwrap().unwrap();
+    let shadow_host = commit.created(&shadow_host).unwrap().unwrap();
+    let hosted = commit.created(&hosted).unwrap().unwrap();
     let cancel = AtomicBool::new(false);
 
     let mut remove_detached = DomBatch::new();
     remove_detached.detach(detached);
+    remove_detached.detach(shadow_host);
     apply(&mut dom, remove_detached);
     assert!(dom.snapshot().node(detached).unwrap().parent().is_none());
+    assert!(dom.snapshot().node(shadow_host).unwrap().parent().is_none());
+    assert!(dom.snapshot().node(hosted).unwrap().parent().is_some());
 
     let before = dom.snapshot().stamp();
     let usage = dom.usage();
     for node in [audio, container] {
         let mut batch = DomBatch::new();
         batch.detach(node);
-        assert!(dom.apply(batch, &cancel).is_err());
+        assert_eq!(
+            dom.apply(batch, &cancel).unwrap_err(),
+            DomError::MediaRemovalStableStateUnavailable
+        );
         assert_eq!(dom.snapshot().stamp(), before);
         assert_eq!(dom.usage(), usage);
     }
@@ -341,7 +360,7 @@ fn removing_media_from_a_document_requires_its_stable_state_steps() {
         Ok(mut lease) => lease.advance(&cancel).map(drop),
         Err(error) => Err(error),
     };
-    assert!(result.is_err());
+    assert_eq!(result, Err(DomError::MediaRemovalStableStateUnavailable));
     assert_eq!(dom.snapshot().stamp(), before);
     assert_eq!(dom.usage(), usage);
     assert_eq!(

@@ -51,6 +51,16 @@ impl HtmlInitialMediaState {
         true
     }
 
+    /// The initial autoplay eligibility flag.
+    pub const fn can_autoplay(self) -> bool {
+        true
+    }
+
+    /// Whether the initial media state delays the Document's load event.
+    pub const fn delays_load_event(self) -> bool {
+        false
+    }
+
     /// The initial show-poster flag. Its rendering applies to Video.
     pub const fn show_poster(self) -> bool {
         true
