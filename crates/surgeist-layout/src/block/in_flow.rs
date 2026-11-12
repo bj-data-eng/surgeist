@@ -8,6 +8,16 @@ use super::sizing::{maximum_size, minimum_size, preferred_size, resolve_length_o
 use super::*;
 use crate::AxisSizingRequestOf;
 
+mod child_compute;
+mod placement;
+
+use child_compute::{InFlowBoxComputation, InFlowComputedBox, compute_in_flow_box};
+use placement::{
+    InFlowBoxOrigins, InFlowBoxPlacement, InFlowChildMargins, InFlowFloatItem, InFlowFloatPass,
+    InFlowFloatState, SharedInFlowPlacement, begin_in_flow_child_margins, place_in_flow_box,
+    place_in_flow_float,
+};
+
 /// Raw baseline or float work needed even by an otherwise definite size query.
 /// This does not establish named absence or discharge a named-fact demand.
 pub(super) fn normal_flow_children_need_physical_sizing_work<'input, Tree, M>(
@@ -126,17 +136,91 @@ pub(super) struct InFlowPassContext<'a, S: LayoutScalar, Node> {
     pub(super) projection: Option<content::Projection<S>>,
 }
 
-enum InFlowChildStart<'a, S: LayoutScalar> {
+enum InFlowChildStart<'input, Node, S: LayoutScalar> {
     VisibleInlineRun(VisibleInlineRunTransition),
-    FlowBox(BlockChildProjection<'a, S>),
+    FlowBox {
+        child: Node,
+        style: BlockChildProjection<'input, S>,
+    },
+    Hidden {
+        child: Node,
+        compute_box: bool,
+    },
+    Positioned {
+        child: Node,
+        geometry: StaticPositionGeometry,
+    },
 }
 
-/// Amount and border have distinct floating-point associations. The common
-/// BFC bound owns the border; signed clearance owns adjoining progression.
-#[derive(Clone, Copy)]
-struct ClearanceSettlement<S: LayoutScalar> {
-    amount: S,
-    border: S,
+type InFlowChildStartResult<'input, Node, S, M> =
+    LayoutResultOf<Node, InFlowChildStart<'input, Node, S>, S, M>;
+
+fn start_native_child<'input, Tree, S, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    children: &[Tree::Node],
+    constants: &Constants<S>,
+    index: usize,
+    semantic_end: usize,
+) -> InFlowChildStartResult<'input, Tree::Node, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let child = children[index];
+    let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
+    // The captured run owns transparent-leading children and their effects.
+    let captured_start = tree
+        .text_computation()
+        .is_some_and(|state| state.run_starting(node, &children[index..]).is_some());
+    if !captured_start {
+        match projection.kind() {
+            InlineParticipantKindOf::Box(style) => {
+                if style.display == crate::Display::None {
+                    return Ok(InFlowChildStart::Hidden {
+                        child,
+                        compute_box: true,
+                    });
+                }
+                if style.common.position == Position::Absolute {
+                    let geometry = if style.display.is_inline_level() {
+                        StaticPositionGeometry::Point
+                    } else {
+                        StaticPositionGeometry::BlockStart
+                    };
+                    return Ok(InFlowChildStart::Positioned { child, geometry });
+                }
+                if !crate::inline::starts_run(tree.layout_input(child)) {
+                    return Ok(InFlowChildStart::FlowBox { child, style });
+                }
+            }
+            InlineParticipantKindOf::InlineText(_) | InlineParticipantKindOf::TextControl(_) => {}
+            InlineParticipantKindOf::LineBreak(line_break) => {
+                if line_break.display().is_none() {
+                    return Ok(InFlowChildStart::Hidden {
+                        child,
+                        compute_box: false,
+                    });
+                }
+                visible_line_break_in_flow(tree, node, child, constants.flow_axes)?;
+            }
+            InlineParticipantKindOf::InlineBoundary(_) => {
+                visible_inline_boundary_in_flow(tree, node, child, constants.flow_axes)?;
+            }
+        }
+    }
+    let end = inline_run_end(
+        tree,
+        node,
+        children,
+        constants,
+        index + 1,
+        semantic_end,
+        None,
+    )?;
+    Ok(InFlowChildStart::VisibleInlineRun(
+        VisibleInlineRunTransition::new(index, end),
+    ))
 }
 
 pub(super) fn layout_in_flow_children<'input, Tree, S, M>(
@@ -304,176 +388,57 @@ where
         let semantic_end = slots
             .get(slot_cursor)
             .map_or(children.len(), |slot| slot.gap);
-        let (child_start, native_child) = if let Some(slot) =
-            slots.get(slot_cursor).filter(|slot| slot.gap == index)
-        {
-            slot_cursor += 1;
-            (
-                InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::semantic(slot)),
-                None,
-            )
-        } else {
-            let child = children[index];
-            let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
-            // Dispatch the complete admitted capture before transparent-leading
-            // nodes are handled individually. The run owner retains their normal
-            // hidden computation and absolute static-position side effects.
-            let captured_start = tree
-                .text_computation()
-                .is_some_and(|state| state.run_starting(node, &children[index..]).is_some());
-            let child_start = if captured_start {
-                let run_start = index;
-                index = inline_run_end(
-                    tree,
-                    node,
-                    children,
-                    constants,
-                    index + 1,
-                    semantic_end,
-                    None,
-                )?;
-                InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                    run_start, index,
-                ))
+        let child_start =
+            if let Some(slot) = slots.get(slot_cursor).filter(|slot| slot.gap == index) {
+                slot_cursor += 1;
+                InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::semantic(slot))
             } else {
-                match projection.kind() {
-                    InlineParticipantKindOf::Box(style) => {
-                        if style.display == crate::Display::None {
-                            if set_layout {
-                                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-                                    child,
-                                    crate::output::NormalGeometryOf::metadata(
-                                        crate::Point::ZERO,
-                                        crate::Size::ZERO,
-                                    ),
-                                    NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
-                                        source_index,
-                                    )),
-                                ));
-                                tree.compute_child(
-                                    child,
-                                    ComputeInputOf::<S>::hidden_in_containing_pass(
-                                        ContainingLayoutContext::new(
-                                            constants.flow_axes,
-                                            ParentFormattingContext::BlockFlow,
-                                        ),
-                                        input.settled_auto_scrollbars(),
-                                    ),
-                                )?;
-                            }
-                            index += 1;
-                            continue;
-                        }
-                        if style.common.position == Position::Absolute {
-                            let geometry = if style.display.is_inline_level() {
-                                StaticPositionGeometry::Point
-                            } else {
-                                StaticPositionGeometry::BlockStart
-                            };
-                            static_positions.push((
-                                child,
-                                absolute_static_position(
-                                    adjoining.cursor + adjoining.active.resolve(),
-                                    constants,
-                                    containing_size,
-                                    geometry,
+                start_native_child(tree, node, children, constants, index, semantic_end)?
+            };
+        let (child, child_style) = match child_start {
+            InFlowChildStart::Hidden { child, compute_box } => {
+                if set_layout {
+                    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+                        child,
+                        crate::output::NormalGeometryOf::metadata(
+                            crate::Point::ZERO,
+                            crate::Size::ZERO,
+                        ),
+                        NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(source_index)),
+                    ));
+                    if compute_box {
+                        tree.compute_child(
+                            child,
+                            ComputeInputOf::<S>::hidden_in_containing_pass(
+                                ContainingLayoutContext::new(
+                                    constants.flow_axes,
+                                    ParentFormattingContext::BlockFlow,
                                 ),
-                            ));
-                            index += 1;
-                            continue;
-                        }
-                        if crate::inline::starts_run(tree.layout_input(child)) {
-                            let run_start = index;
-                            index = inline_run_end(
-                                tree,
-                                node,
-                                children,
-                                constants,
-                                index + 1,
-                                semantic_end,
-                                None,
-                            )?;
-                            InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                                run_start, index,
-                            ))
-                        } else {
-                            InFlowChildStart::FlowBox(style)
-                        }
-                    }
-                    InlineParticipantKindOf::InlineText(_)
-                    | InlineParticipantKindOf::TextControl(_) => {
-                        let run_start = index;
-                        index = inline_run_end(
-                            tree,
-                            node,
-                            children,
-                            constants,
-                            index + 1,
-                            semantic_end,
-                            None,
+                                input.settled_auto_scrollbars(),
+                            ),
                         )?;
-                        InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                            run_start, index,
-                        ))
-                    }
-                    InlineParticipantKindOf::LineBreak(line_break) => {
-                        if line_break.display().is_none() {
-                            if set_layout {
-                                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-                                    child,
-                                    crate::output::NormalGeometryOf::metadata(
-                                        crate::Point::ZERO,
-                                        crate::Size::ZERO,
-                                    ),
-                                    NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
-                                        source_index,
-                                    )),
-                                ));
-                            }
-                            index += 1;
-                            continue;
-                        }
-                        visible_line_break_in_flow(tree, node, child, constants.flow_axes)?;
-
-                        let run_start = index;
-                        index = inline_run_end(
-                            tree,
-                            node,
-                            children,
-                            constants,
-                            index + 1,
-                            semantic_end,
-                            None,
-                        )?;
-                        InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                            run_start, index,
-                        ))
-                    }
-                    InlineParticipantKindOf::InlineBoundary(_) => {
-                        visible_inline_boundary_in_flow(tree, node, child, constants.flow_axes)?;
-
-                        let run_start = index;
-                        index = inline_run_end(
-                            tree,
-                            node,
-                            children,
-                            constants,
-                            index + 1,
-                            semantic_end,
-                            None,
-                        )?;
-                        InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                            run_start, index,
-                        ))
                     }
                 }
-            };
-            (child_start, Some(child))
-        };
-        let child_style = match child_start {
+                index += 1;
+                continue;
+            }
+            InFlowChildStart::Positioned { child, geometry } => {
+                static_positions.push((
+                    child,
+                    absolute_static_position(
+                        adjoining.cursor + adjoining.active.resolve(),
+                        constants,
+                        containing_size,
+                        geometry,
+                    ),
+                ));
+                index += 1;
+                continue;
+            }
             InFlowChildStart::VisibleInlineRun(transition) => {
                 let run_start = transition.start;
                 let run_end = transition.end;
+                index = run_end;
                 transition.apply(
                     tree,
                     node,
@@ -540,10 +505,8 @@ where
                 first_in_flow &= inline_indent_state.is_none();
                 continue;
             }
-            InFlowChildStart::FlowBox(style) => style,
+            InFlowChildStart::FlowBox { child, style } => (child, style),
         };
-
-        let child = native_child.expect("only a real native child reaches block-box dispatch");
         if child_style.float.is_none() {
             if tail_active {
                 tail_ledger.child_block();
@@ -564,456 +527,73 @@ where
                 first_in_flow: &mut first_in_flow,
             },
         )?;
-        let child_indent_context = prepared
-            .input
-            .block_indent_context()
-            .expect("shared child preparation supplies generating context");
-        let unresolved_margin = prepared.unresolved_margin;
-        let child_padding = prepared.padding;
-        let child_border = prepared.border;
-        let parent_logical_unresolved_margin = constants.flow_axes.logical_edges(unresolved_margin);
-        let parent_logical_available = constants.flow_axes.logical_size(pass_request.axes());
-        let child_flow_axes = child_style.common.flow_axes;
-        let child_parent_size = prepared.parent_size;
-        let child_logical_node_inner_size = child_flow_axes.logical_size(child_parent_size);
-        let child_logical_available = prepared.logical_available;
-        let available_child_inline = prepared.available_inline;
-        let mut child_input = prepared
-            .input
-            .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
-            .with_physical_baseline_demand(
-                input.physical_baseline_demand() && child_style.float.is_none(),
-            )
-            .with_named_baseline_demand(if child_style.float.is_none() {
-                baselines.demand_for_following(input.named_baseline_demand())
-            } else {
-                crate::output::NamedBaselineDemand::None
-            });
-        let avoids_float_exclusions =
-            block_child_avoids_float_exclusions(&child_style, constants.flow_axes.writing_mode());
-        let inherits_float_exclusions = physical_float_context
-            && float_context::shares_parent_context(
-                tree.node_input(child),
-                constants.flow_axes,
-                ParentFormattingContext::BlockFlow,
-            )
-            && !tree.has_leaf_measurement(child)
-            && (!float_exclusions.is_empty() || tree.block_float_work(child));
-        let mut shared_child = None;
-        let mut clearance_funding = None;
-        let resident_cut = remaining_cut;
-        let mut introduced_cut = resident_cut
-            .filter(|cut| cut.container == node && cut.node == child && cut.index == index);
-        let mut accepted_shared_origin = None;
-        let mut accepted_float_position = None;
-        let places_against_float_exclusions =
-            physical_float_context && avoids_float_exclusions && !float_exclusions.is_empty();
-        let child_request = scope::Ordinary {
-            node: child,
-            entry: None,
-            input: if inherits_float_exclusions || places_against_float_exclusions {
-                child_input.with_run_mode(RunMode::ComputeSize)
-            } else {
-                child_input
-            },
-        };
-        let child_request = if normal_operation
-            && input.run_mode().is_perform_layout()
-            && (tree.block_scope_child(child) || tree.block_scope_path(child))
-        {
-            let pending = scope::prepare(
-                tree,
-                node,
-                child_request,
-                &child_style,
-                constants,
-                &prepared,
-                scope::ParentEntry {
-                    reference: containing_size,
-                    cursor: adjoining.cursor,
-                    occupied: occupied_block_end,
-                    active: adjoining.active,
-                    top: adjoining.top,
-                    first: adjoining.start_open,
-                },
-            )?;
-            if tree.block_scope_child(child) {
-                scope::ChildRequest::Scope(pending)
-            } else {
-                scope::ChildRequest::Ordinary(scope::Ordinary {
-                    node: child,
-                    input: pending.input,
-                    entry: Some(pending),
-                })
-            }
-        } else {
-            scope::ChildRequest::Ordinary(child_request)
-        };
-        let mut output = if inherits_float_exclusions {
-            // Resolve the complete counterfactual component before committing
-            // this child's origin or producing its actual body.
-            let pending = scope::prepare(
-                tree,
-                node,
-                scope::Ordinary {
-                    node: child,
-                    input: child_input,
-                    entry: None,
-                },
-                &child_style,
-                constants,
-                &prepared,
-                scope::ParentEntry {
-                    reference: containing_size,
-                    cursor: adjoining.cursor,
-                    occupied: occupied_block_end,
-                    active: adjoining.active,
-                    top: adjoining.top,
-                    first: adjoining.start_open,
-                },
-            )?;
-            let entry_input = child_input
-                .with_run_mode(RunMode::ComputeSize)
-                .with_settled_auto_scrollbars(crate::scroll::SettledAutoScrollbarState::INITIAL);
-            clearance_funding = match tree.text_computation() {
-                Some(state) => {
-                    state
-                        .prepare_entry()
-                        .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
-                    state
-                        .entry_funding()
-                        .map_err(|error| super::inline_run::text_run_error(child, error.into()))?
-                }
-                None => None,
-            };
-            let funding = clearance_funding.as_ref();
-            let frame = std::sync::Arc::new(
-                float_exclusions
-                    .for_entry_child(LogicalPointOf::new(S::ZERO, S::ZERO), funding)
-                    .map_err(|error| super::inline_run::text_run_error(child, error.into()))?,
-            );
-            let position = entry::canonical::EntryPosition {
-                cursor: adjoining.cursor,
-                active: adjoining.active,
-                start_open: adjoining.start_open,
-                collapses_start: constants.collapse_top_margin,
-                child_adjoins_parent: pending.child_collapses,
-                own_start: CollapsibleMarginOf::ZERO
-                    .collapse_with_margin(pending.margin.block_start),
-                inline_offset: pending.inline_offset,
-            };
-            let summary = match tree.qualify_entry(entry::EntryQuery {
-                node: child,
-                input: entry_input,
-                reporting_side: constants.flow_axes.block_start(),
-                purpose: entry::EntryPurpose::Component,
-                incoming: Some(float_context::Incoming {
-                    node: child,
-                    request: entry_input,
-                    frame: frame.clone(),
-                    cut: resident_cut,
-                }),
-                position: Some(position),
-            })? {
-                entry::EntryObservation::Summary(summary) => summary,
-                entry::EntryObservation::Demand(demand) => {
-                    return Err(float_context::missing(demand.node).into());
-                }
-            };
-            let hypothetical = frame
-                .common_border(position.hypothetical(summary.start_fact().margin))
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-            let bound = frame.entry_relevant_bound(
-                child,
-                child_style.clear,
-                constants.flow_axes,
-                funding,
-            )?;
-            introduced_cut = resident_cut
-                .filter(|cut| cut.container == node && cut.node == child && cut.index == index);
-            if introduced_cut.is_none()
-                && let Some(bound) = bound
-                && hypothetical < bound
-            {
-                introduced_cut = Some(entry::canonical::Separation::own(
-                    node,
-                    child,
-                    index,
-                    hypothetical,
-                    bound,
-                ));
-            }
-            let location = if let Some(cut) = introduced_cut {
-                let current = bound.ok_or_else(|| float_context::missing(child))?;
-                let origin = frame
-                    .common_border(S::ZERO)
-                    .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-                LogicalPointOf::new(
-                    pending.inline_offset,
-                    current.get().max(cut.hypothetical.get()) - origin.get(),
-                )
-            } else {
-                pending.resolve::<M>(summary.start_fact())?.location
-            };
-            let child_cut = if introduced_cut.is_some() {
-                None
-            } else {
-                summary.separation.or(resident_cut)
-            };
-            let accepted = tree.compute_child_with_float_context(
-                child,
-                child_input.with_settled_auto_scrollbars(
-                    crate::scroll::SettledAutoScrollbarState::INITIAL,
-                ),
-                float_exclusions
-                    .for_entry_child(location, funding)
-                    .map_err(|error| super::inline_run::text_run_error(child, error.into()))?,
-                child_cut,
-            )?;
-            if let Some(previous) = remaining_cut
-                && child_cut.is_some_and(|cut| cut.same_cut(previous))
-                && accepted.floats.remaining_cut.is_none()
-            {
-                remaining_cut = None;
-            }
-            accepted_shared_origin = Some(location);
-            shared_child = Some(accepted.floats);
-            accepted.output
-        } else {
-            tree.compute_block_child(child_request)?
-        };
-
-        let mut logical_child_size = constants.flow_axes.logical_size(output.size);
-        let mut logical_child_margin = resolve_logical_in_flow_margin(
-            parent_logical_unresolved_margin,
+        let InFlowComputedBox {
+            output,
+            child_input,
+            child_margin,
+            child_padding,
+            child_border,
+            logical_child_margin,
             logical_child_size,
-            logical_node_inner_size.inline.or(parent_logical_available
-                .inline
-                .space()
-                .definite_size()
-                .map(crate::NonNegativeFiniteOf::get)),
-        );
-        let mut child_margin = constants.flow_axes.physical_edges(logical_child_margin);
-        if places_against_float_exclusions {
-            let block_start_for = |output: ComputeOutputOf<S>, margin: Edges<S>| {
-                let preview_top_margin = output
-                    .block_margin_collapse
-                    .at(constants.flow_axes.block_start())
-                    .collapse_with_margin(
-                        margin.at_physical_side(constants.flow_axes.block_start()),
-                    );
-                let start = adjoining.reduce_start(
-                    constants.collapse_top_margin,
-                    child_margin_can_collapse_with_parent(&child_style),
-                    preview_top_margin,
-                );
-                adjoining.cursor + start.offset
-            };
-            let preview_cursor_block = block_start_for(output, child_margin);
-            let inline_size_can_shrink =
-                parent_inline_size_can_shrink(&child_style, constants.flow_axes);
-            let band_request = |tree: &Tree,
-                                available_inline|
-             -> ComputeResult<Tree::Node, ComputeInputOf<S>, S, M> {
-                let band_child_inline =
-                    crate::layout_math::remaining_available_extent(available_inline, S::ZERO)
-                        .map_err(|error| {
-                            crate::error::sizing_resolution_error(child, error.into())
-                        })?;
-                let band_available_child_inline =
-                    if child_flow_axes.inline_axis() == constants.flow_axes.inline_axis() {
-                        Some(band_child_inline)
-                    } else {
-                        available_child_inline
-                    };
-                let band_child_known = in_flow_child_known_size::<Tree, M>(
-                    tree,
-                    child,
-                    &child_style,
-                    child_padding + child_border,
-                    child_flow_axes,
-                    child_logical_node_inner_size,
-                    (child_logical_available.inline.operation() == crate::SizingOperation::Normal)
-                        .then_some(band_available_child_inline)
-                        .flatten(),
-                )?;
-                let mut band_available = child_flow_axes.physical_size(LogicalSizeOf::new(
-                    in_flow_child_inline_request(
-                        &child_style,
-                        tree.has_leaf_measurement(child),
-                        child_flow_axes,
-                        band_available_child_inline,
-                        child_logical_available.inline,
-                    )
-                    .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?,
-                    in_flow_child_block_request(child_logical_available.block),
-                ));
-                set_parent_inline_space(
-                    &mut band_available,
-                    constants.flow_axes,
-                    band_child_inline,
-                )
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-                Ok(ComputeInputOf::<S>::for_child(
-                    child_run_mode,
-                    SizingMode::InherentSize,
-                    RequestedAxis::Both,
-                    band_child_known,
-                    child_parent_size,
-                    ContainingLayoutContext::new(
-                        constants.flow_axes,
-                        ParentFormattingContext::BlockFlow,
-                    ),
-                    pass_request.with_axes(band_available),
-                )
-                .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
-                .with_block_indent_context(child_indent_context)
-                .with_baseline_demand_from(child_input))
-            };
-
-            if inline_size_can_shrink {
-                let mut block =
-                    float_exclusions.clearance_block(preview_cursor_block, child_style.clear);
-                loop {
-                    let (available_inline, next) = float_exclusions
-                        .rectangular_bfc_opportunity(block, parent_logical_unresolved_margin);
-                    let request = band_request(tree, available_inline)?;
-                    let packet = if request.run_mode().is_perform_layout() {
-                        Some(tree.probe_float_child(
-                            child,
-                            request,
-                            crate::engine::FloatChildTrial::InFlow,
-                        )?)
-                    } else {
-                        None
-                    };
-                    let measured = match &packet {
-                        Some(packet) => packet.output,
-                        None => tree.compute_child(child, request)?,
-                    };
-                    let size = constants.flow_axes.logical_size(measured.size);
-                    let margin = resolve_logical_in_flow_margin(
-                        parent_logical_unresolved_margin,
-                        size,
-                        logical_node_inner_size.inline.or(parent_logical_available
-                            .inline
-                            .space()
-                            .definite_size()
-                            .map(crate::NonNegativeFiniteOf::get)),
-                    );
-                    let physical_margin = constants.flow_axes.physical_edges(margin);
-                    let minimum_block = block_start_for(measured, physical_margin);
-                    if minimum_block > block {
-                        block = minimum_block;
-                        continue;
-                    }
-                    let Some(location) = float_exclusions.rectangular_bfc_position(
-                        block,
-                        size,
-                        parent_logical_unresolved_margin,
-                        in_flow_child_inline_offset(size.inline, margin, constants),
-                    ) else {
-                        block = next.expect("an intersecting float has a later boundary");
-                        continue;
-                    };
-                    if let Some(packet) = packet {
-                        tree.accept_float_child(&packet)?;
-                    }
-                    output = measured;
-                    child_input = request;
-                    accepted_float_position = Some(location);
-                    break;
-                }
-            }
-
-            if accepted_float_position.is_none() {
-                output = tree.compute_child(child, child_input)?;
-            }
-            logical_child_size = constants.flow_axes.logical_size(output.size);
-            logical_child_margin = resolve_logical_in_flow_margin(
-                parent_logical_unresolved_margin,
-                logical_child_size,
-                logical_node_inner_size.inline.or(parent_logical_available
-                    .inline
-                    .space()
-                    .definite_size()
-                    .map(crate::NonNegativeFiniteOf::get)),
-            );
-            if let Some(position) = accepted_float_position {
-                let inline_offset =
-                    position.inline - constants.logical_content_box_inset().inline_start;
-                if matches!(
-                    parent_logical_unresolved_margin.inline_start,
-                    ResolvedLengthAutoOf::Auto
-                ) {
-                    logical_child_margin.inline_start = inline_offset;
-                }
-                if matches!(
-                    parent_logical_unresolved_margin.inline_end,
-                    ResolvedLengthAutoOf::Auto
-                ) {
-                    logical_child_margin.inline_end =
-                        content_inline_size - inline_offset - logical_child_size.inline;
-                }
-            }
-            child_margin = constants.flow_axes.physical_edges(logical_child_margin);
-        }
+            avoids_float_exclusions,
+            accepted_float_position,
+            shared_child,
+            mut clearance_funding,
+            introduced_cut,
+        } = compute_in_flow_box(
+            tree,
+            InFlowBoxComputation {
+                node,
+                child,
+                index,
+                child_style: &child_style,
+                constants,
+                prepared: &prepared,
+                adjoining: &adjoining,
+                baselines: &baselines,
+                float_exclusions: &float_exclusions,
+                input,
+                pass_request,
+                child_run_mode,
+                normal_operation,
+                physical_float_context,
+                containing_size,
+                inner_inline: logical_node_inner_size.inline,
+                content_inline_size,
+                occupied_block_end,
+            },
+            &mut remaining_cut,
+        )?;
+        let child_flow_axes = child_style.common.flow_axes;
         if !child_style.float.is_none() {
-            let margin_box_inline = logical_child_size.inline + logical_child_margin.inline_sum();
-            float_intrinsics.add(margin_box_inline, child_style.float, child_style.clear);
-            intrinsic_inline_demand = intrinsic_inline_demand.max(float_intrinsics.result());
-            if !physical_float_context && inline_operation != crate::SizingOperation::MaxContent {
-                index += 1;
-                continue;
-            }
-            // Project the otherwise-empty anonymous parent's border without
-            // consuming the component. Exported start groups stay outside;
-            // internal groups precede its own zero top margin, not a later
-            // in-flow sibling's margin.
-            let anonymous_start = adjoining.reduce_start(
-                constants.collapse_top_margin,
-                true,
-                CollapsibleMarginOf::ZERO,
-            );
-            let mut pending_float = PendingFloat {
-                placement: super::floats::PendingPlacement::Unresolved,
-                node: child,
-                source_index,
-                side: child_style.float,
-                clear: child_style.clear,
-                block_start: adjoining.cursor + anonymous_start.offset,
-                size: output.size,
-                named_baselines: output.named_baselines,
-                content_size: output.content_size,
-                border: child_border,
-                padding: child_padding,
-                margin: child_margin,
-                float_exclusion: child_style.float_exclusion,
-                child_compute_geometry: output.scroll_geometry,
-            };
-            // Intrinsic Max needs the actual rectangular cohort, without
-            // querying Shape or pretending an indefinite line has zero width.
-            let placement = if inline_operation == crate::SizingOperation::MaxContent {
-                float_exclusions.place_float_intrinsic(node, &pending_float)?
-            } else {
-                float_exclusions.place_float_for_line(node, &pending_float, None)?
-            };
-            let logical_location = placement.logical;
-            let intrinsic_float_demand = placement.intrinsic_inline_demand;
-            if set_layout {
-                float_exclusions.retain_native(&mut pending_float, placement);
-                pending_floats.push(pending_float);
-            }
-            let content_box_inset = constants.logical_content_box_inset();
-            let float_inline_end = logical_location.inline
-                + logical_child_size.inline
-                + logical_child_margin.inline_end
-                - content_box_inset.inline_start;
-            let float_block_end =
-                logical_location.block + logical_child_size.block + logical_child_margin.block_end;
-            intrinsic_inline_demand =
-                intrinsic_inline_demand.max(intrinsic_float_demand.unwrap_or(float_inline_end));
-            owned_float_block_end = owned_float_block_end.max(float_block_end);
+            place_in_flow_float(
+                node,
+                InFlowFloatItem {
+                    child,
+                    source_index,
+                    child_style: &child_style,
+                    output,
+                    child_border,
+                    child_padding,
+                    child_margin,
+                    logical_child_size,
+                    logical_child_margin,
+                },
+                InFlowFloatPass {
+                    constants,
+                    adjoining: &adjoining,
+                    inline_operation,
+                    physical_float_context,
+                    set_layout,
+                },
+                InFlowFloatState {
+                    float_exclusions: &mut float_exclusions,
+                    float_intrinsics: &mut float_intrinsics,
+                    pending_floats: &mut pending_floats,
+                    intrinsic_inline_demand: &mut intrinsic_inline_demand,
+                    owned_float_block_end: &mut owned_float_block_end,
+                },
+            )?;
             index += 1;
             continue;
         }
@@ -1050,252 +630,54 @@ where
                 constants.flow_axes,
             )?
         };
-        let top_margin_set = output
-            .block_margin_collapse
-            .at(constants.flow_axes.block_start())
-            .collapse_with_margin(child_margin.at_physical_side(constants.flow_axes.block_start()));
-        let bottom_margin_set = output
-            .block_margin_collapse
-            .at(constants.flow_axes.block_end())
-            .collapse_with_margin(child_margin.at_physical_side(constants.flow_axes.block_end()));
-        let child_margin_can_collapse_with_parent =
-            child_margin_can_collapse_with_parent(&child_style);
-        let collapses_through = output
-            .block_margin_collapse
-            .can_collapse_through(constants.flow_axes);
-        let bound_frame = &float_exclusions;
-        if child_style.clear != Clear::None
-            && !float_exclusions.is_empty()
-            && clearance_funding.is_none()
-            && let Some(state) = tree.text_computation()
-        {
-            state
-                .prepare_entry()
-                .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
-            clearance_funding = state
-                .entry_funding()
-                .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
-        }
-        if introduced_cut.is_none() && child_style.clear != Clear::None {
-            let hypothetical = bound_frame
-                .common_border(
-                    adjoining.cursor
-                        + adjoining
-                            .reduce_start(
-                                constants.collapse_top_margin,
-                                child_margin_can_collapse_with_parent,
-                                top_margin_set,
-                            )
-                            .offset,
-                )
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-            if let Some(bound) = bound_frame.entry_relevant_bound(
+        let margin_placement = begin_in_flow_child_margins(
+            tree,
+            InFlowChildMargins {
+                node,
                 child,
-                child_style.clear,
-                constants.flow_axes,
-                clearance_funding.as_ref(),
-            )? && hypothetical < bound
-            {
-                introduced_cut = Some(entry::canonical::Separation::own(
-                    node,
-                    child,
-                    index,
-                    hypothetical,
-                    bound,
-                ));
-            }
-        }
-        let base_block = adjoining.cursor;
-        let prior_internal = if adjoining.start_open {
-            S::ZERO
-        } else {
-            adjoining.active.resolve()
-        };
-        let clearance = if let Some(cut) = introduced_cut {
-            let uncollapsed = bound_frame
-                .common_border(base_block + prior_internal + top_margin_set.resolve())
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-            let current = bound_frame
-                .entry_relevant_bound(
-                    child,
-                    child_style.clear,
-                    constants.flow_axes,
-                    clearance_funding.as_ref(),
-                )?
-                .ok_or_else(|| float_context::missing(child))?;
-            let origin = bound_frame
-                .common_border(S::ZERO)
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-            Some(ClearanceSettlement {
-                amount: (current.get() - uncollapsed.get())
-                    .max(cut.hypothetical.get() - uncollapsed.get()),
-                border: current.get().max(cut.hypothetical.get()) - origin.get(),
-            })
-        } else {
-            None
-        };
-        let margin_error =
-            |error: surgeist_text::Error| super::inline_run::text_run_error(child, error.into());
-        let margin_groups = tree
-            .fragment_margin_state()
-            .map(|state| {
-                Ok::<_, surgeist_text::Error>((
-                    state.child(child, constants.flow_axes.block_start())?,
-                    state.child(child, constants.flow_axes.block_end())?,
-                ))
-            })
-            .transpose()
-            .map_err(margin_error)?;
-        if let Some(settlement) = clearance {
-            if let Some(previous) = remaining_cut
-                && introduced_cut.is_some_and(|cut| cut.same_cut(previous))
-            {
-                remaining_cut = None;
-            }
-            adjoining.begin_clearance(settlement.border);
-            if let Some(flow) = &mut fragment_margins {
-                flow.started = true;
-                flow.active = None;
-            }
-        }
-        if let (Some(flow), Some((top, bottom)), Some(state)) = (
+                index,
+                child_style: &child_style,
+                output: &output,
+                child_margin,
+                constants,
+                float_exclusions: &float_exclusions,
+                clearance_funding: &mut clearance_funding,
+                introduced_cut,
+            },
+            &mut adjoining,
+            &mut remaining_cut,
             &mut fragment_margins,
-            margin_groups,
-            tree.fragment_margin_state(),
-        ) && !flow.started
-        {
-            flow.initial = state.join(flow.initial, top).map_err(margin_error)?;
-            if output
-                .block_margin_collapse
-                .can_collapse_through(constants.flow_axes)
-            {
-                flow.initial = state.join(flow.initial, bottom).map_err(margin_error)?;
-            } else {
-                flow.started = true;
-            }
-        }
-        let start = adjoining.reduce_start(
-            constants.collapse_top_margin,
-            child_margin_can_collapse_with_parent,
-            top_margin_set,
-        );
-        if let (Some(flow), Some((top, _)), Some(state)) = (
-            &fragment_margins,
-            margin_groups,
-            tree.fragment_margin_state(),
-        ) {
-            let group = if start.exposes_child {
-                flow.active
-            } else {
-                state.join(flow.active, top).map_err(margin_error)?
-            };
-            state
-                .record_entry(child, constants.flow_axes, group)
-                .map_err(margin_error)?;
-        }
-        if adjoining.start_open
-            && start.exposes_child
-            && let (Some(flow), Some((top, bottom)), Some(state)) = (
-                &mut fragment_margins,
-                margin_groups,
-                tree.fragment_margin_state(),
-            )
-        {
-            flow.top = state.join(flow.top, top).map_err(margin_error)?;
-            if collapses_through {
-                flow.top = state.join(flow.top, bottom).map_err(margin_error)?;
-            }
-        }
-        if clearance.is_none() {
-            adjoining.begin_child(&start, top_margin_set, bottom_margin_set, collapses_through);
-        }
-        let logical_location = LogicalPointOf::new(
-            in_flow_child_inline_offset(logical_child_size.inline, logical_child_margin, constants),
-            adjoining.cursor,
-        );
-        if accepted_shared_origin.is_some_and(|origin| origin != logical_location) {
-            return Err(float_context::missing(child).into());
-        }
-        let fallback_location = constants.flow_axes.physical_point(
-            logical_location,
-            logical_child_size,
-            containing_size,
-        );
-        let flow_location = if let Some(location) = accepted_float_position {
-            constants
-                .flow_axes
-                .physical_point(location, logical_child_size, containing_size)
-        } else if avoids_float_exclusions {
-            let location = float_exclusions.place_bfc_block(
-                adjoining.cursor,
-                logical_child_size,
-                logical_child_margin,
-                child_style.clear,
-                logical_location.inline,
-            );
-            constants
-                .flow_axes
-                .physical_point(location, logical_child_size, containing_size)
-        } else {
-            fallback_location
-        };
-        let location = Point::new(
-            flow_location.x + inset_offset.x,
-            flow_location.y + inset_offset.y,
-        );
-        if let Some(shared) = shared_child {
-            let flow_origin = logical_location;
-            if !float_exclusions
-                .import_child(&shared, flow_origin)
-                .map_err(|error| super::inline_run::text_run_error(child, error.into()))?
-            {
-                return Err(float_context::missing(child).into());
-            }
-            owned_float_block_end = owned_float_block_end.max(float_exclusions.bottom());
-        }
-        if set_layout {
-            let scroll_geometry = with_block_scroll_projections::<Tree, M, _>(
-                tree,
+        )?;
+        let InFlowBoxOrigins {
+            logical: logical_location,
+            normal: flow_location,
+        } = place_in_flow_box(
+            tree,
+            InFlowBoxPlacement {
+                node,
                 child,
-                |box_projection, target_projection| {
-                    retained_child_scroll_geometry(
-                        box_projection,
-                        target_projection,
-                        output.size,
-                        output.content_size,
-                        child_padding,
-                        child_border,
-                        output.scroll_geometry,
-                    )
-                },
-            )
-            .map_err(|error| layout_child_geometry_error(node, child, error))?;
-            if !deferred_inset {
-                contributions
-                    .include_in_flow_geometry(location, child_margin, scroll_geometry)
-                    .map_err(|error| layout_child_geometry_error(node, child, error))?;
-            }
-            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-                child,
-                crate::output::NormalGeometryOf::box_geometry(
-                    flow_location,
-                    output.size,
-                    scroll_geometry.content_box(),
-                ),
-                NodeOutputOf::<S> {
-                    source_index: crate::SourceIndex::new(source_index),
-                    location,
-                    size: output.size,
-                    named_baselines: output.named_baselines,
-                    content_size: output.content_size,
-                    border: child_border,
-                    padding: child_padding,
-                    margin: child_margin,
-                    ..NodeOutputOf::new()
-                }
-                .with_scroll_geometry(Some(scroll_geometry)),
-            ));
-        }
+                source_index,
+                constants,
+                cursor: adjoining.cursor,
+                containing_size,
+                child_size: logical_child_size,
+                logical_margin: logical_child_margin,
+                child_margin,
+                child_border,
+                child_padding,
+                output: &output,
+                clear: child_style.clear,
+                avoids_float_exclusions,
+                accepted_float_position,
+                shared_child,
+                inset_offset,
+                deferred_inset,
+                set_layout,
+            },
+            &mut float_exclusions,
+            &mut owned_float_block_end,
+            &mut contributions,
+        )?;
 
         let child_block_end = if avoids_float_exclusions {
             constants
@@ -1344,32 +726,14 @@ where
                     },
                 )
             })?;
-        if collapses_through {
-            if let (Some(flow), Some((top, bottom)), Some(state)) = (
-                &mut fragment_margins,
-                margin_groups,
-                tree.fragment_margin_state(),
-            ) {
-                let joined = state.join(flow.active, top).map_err(margin_error)?;
-                flow.active = state.join(joined, bottom).map_err(margin_error)?;
-            }
-        } else if let (Some(flow), Some((_, bottom))) = (&mut fragment_margins, margin_groups) {
-            flow.active = bottom;
-        }
-        let next_cursor = if collapses_through {
-            base_block
-                + clearance.map_or(S::ZERO, |settlement| prior_internal + settlement.amount)
-                + logical_child_size.block
-        } else {
-            child_block_end
-        };
-        adjoining.finish_child(
-            next_cursor,
-            top_margin_set,
-            bottom_margin_set,
-            collapses_through,
-            child_margin_can_collapse_with_parent,
-        );
+        margin_placement.finish(
+            tree,
+            child,
+            &mut adjoining,
+            &mut fragment_margins,
+            logical_child_size.block,
+            child_block_end,
+        )?;
         index += 1;
     }
 
@@ -1416,48 +780,6 @@ pub(super) fn child_margin_can_collapse_with_parent<S: LayoutScalar>(
     style: &BlockChildProjection<'_, S>,
 ) -> bool {
     style.display == crate::Display::Block && style.common.position == Position::Relative
-}
-
-fn block_child_avoids_float_exclusions<S: LayoutScalar>(
-    style: &BlockChildProjection<'_, S>,
-    parent_writing_mode: crate::WritingMode,
-) -> bool {
-    style.display != crate::Display::None
-        && !style.display.is_inline_level()
-        && style.common.position != Position::Absolute
-        && style.float.is_none()
-        && super::flow_root::establishes_flow_root(
-            style.display,
-            style.float,
-            style.block_flow_context,
-            &style.common,
-            parent_writing_mode,
-        )
-}
-
-fn parent_inline_size_can_shrink<S: LayoutScalar>(
-    style: &BlockChildProjection<'_, S>,
-    parent_flow_axes: crate::geometry::FlowAxes,
-) -> bool {
-    !style.common.item_is_replaced
-        && match parent_flow_axes.inline_axis() {
-            PhysicalAxis::Horizontal => style.common.size.width.is_auto(),
-            PhysicalAxis::Vertical => style.common.size.height.is_auto(),
-        }
-}
-
-fn set_parent_inline_space<S: LayoutScalar>(
-    requests: &mut Size<AxisSizingRequestOf<S>>,
-    parent_flow_axes: crate::geometry::FlowAxes,
-    value: S,
-) -> Result<(), crate::LengthResolutionStatus<S>> {
-    let space = crate::layout_math::checked_available_space(value)?;
-    let request = match parent_flow_axes.inline_axis() {
-        PhysicalAxis::Horizontal => &mut requests.width,
-        PhysicalAxis::Vertical => &mut requests.height,
-    };
-    *request = request.with_space(space);
-    Ok(())
 }
 
 pub(super) struct PreparedChild<S: LayoutScalar> {
