@@ -15,70 +15,10 @@ use crate::sizing::resolve::{
     resolve_preferred_sizing,
 };
 use crate::{
-    AvailableSpaceOf, AxisSizingRequestOf, BoxSizing, CacheAccess, Compute, ComputeInputOf,
-    ComputeOutputOf, Edges, LayoutInputViewOf, LayoutScalar, NodeInputOf, NodeOutputOf, Point,
-    Size, SizingOperation, SizingRequestOf, Traverse,
+    AvailableSpaceOf, AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf, ComputeOutputOf,
+    Edges, LayoutScalar, NodeInputOf, NodeOutputOf, Point, Size, SizingOperation, SizingRequestOf,
+    Traverse,
 };
-
-pub(crate) fn compute_hidden<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    source_index: crate::SourceIndex,
-    containing_layout_context: crate::ContainingLayoutContext,
-    containing_auto_scrollbar_pass: SettledAutoScrollbarState,
-) -> LayoutResultOf<
-    <Tree as Traverse>::Node,
-    ComputeOutputOf<<Tree as Traverse>::Scalar>,
-    <Tree as Traverse>::Scalar,
-    M,
->
-where
-    Tree: Compute<'input, M>
-        + CacheAccess<M, Node = <Tree as Traverse>::Node, Scalar = <Tree as Traverse>::Scalar>,
-{
-    tree.cache_clear(node)?;
-    tree.set_unrounded_inline_fragment_state(node, None);
-    tree.set_unrounded(crate::LayoutOutputEntryOf::hidden_unrounded(
-        node,
-        source_index,
-    ));
-
-    for index in 0..tree.child_count(node) {
-        let child = tree.child(node, index);
-        match tree.layout_input(child) {
-            LayoutInputViewOf::Box(_) => {
-                tree.set_unrounded(crate::LayoutOutputEntryOf::hidden_unrounded(
-                    child,
-                    crate::SourceIndex::new(index),
-                ));
-                let descendant_context = crate::ContainingLayoutContext::new(
-                    containing_layout_context.flow_axes(),
-                    crate::ParentFormattingContext::NoParent,
-                );
-                tree.compute_child(
-                    child,
-                    ComputeInputOf::hidden_in_containing_pass(
-                        descendant_context,
-                        containing_auto_scrollbar_pass,
-                    ),
-                )?;
-            }
-            LayoutInputViewOf::InlineText(_)
-            | LayoutInputViewOf::LineBreak(_)
-            | LayoutInputViewOf::InlineBoundary(_)
-            | LayoutInputViewOf::TextControl(_) => {
-                tree.cache_clear(child)?;
-                tree.set_unrounded_inline_fragment_state(child, None);
-                tree.set_unrounded(crate::LayoutOutputEntryOf::hidden_unrounded(
-                    child,
-                    crate::SourceIndex::new(index),
-                ));
-            }
-        }
-    }
-
-    Ok(ComputeOutputOf::HIDDEN)
-}
 
 pub(crate) fn compute_root<'input, Tree, M>(
     tree: &mut Tree,

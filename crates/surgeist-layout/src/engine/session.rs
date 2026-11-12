@@ -5,6 +5,7 @@ use super::contracts::{
     CacheAccess, ChildCacheRequest, Compute, Round, UnroundedInlineFragmentState,
 };
 use super::entry_staging::{self, Rows};
+use super::hidden::{HiddenChildren, HiddenRequest};
 use crate::error::{
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
     LayoutResultOf,
@@ -26,11 +27,7 @@ type SessionResult<Tree, T> = LayoutResultOf<
 
 enum ChildAdmission<Node, S: LayoutScalar> {
     Ready(ComputeOutputOf<S>),
-    Hidden {
-        source_index: crate::SourceIndex,
-        containing_context: crate::ContainingLayoutContext,
-        containing_pass: SettledAutoScrollbarState,
-    },
+    Hidden(HiddenRequest<Node>),
     Uncached {
         input: ComputeInputOf<S>,
         cache: Option<ChildCacheRequest<Node, S>>,
@@ -1430,11 +1427,7 @@ where
                     input.containing_auto_scrollbar_pass(),
                 ));
             });
-            return Ok(ChildAdmission::Hidden {
-                source_index: self.staged_source_index(node),
-                containing_context: input.containing_layout_context(),
-                containing_pass: input.containing_auto_scrollbar_pass(),
-            });
+            return Ok(ChildAdmission::Hidden(self.hidden_request(node, input)));
         }
 
         if let Some(memo) = &self.entry_sources {
@@ -1479,6 +1472,68 @@ where
             input: uncached_input,
             cache: Some(cache),
         })
+    }
+
+    fn hidden_request(
+        &self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+    ) -> HiddenRequest<Tree::Node> {
+        HiddenRequest {
+            node,
+            source_index: self.staged_source_index(node),
+            containing_context: input.containing_layout_context(),
+            containing_pass: input.containing_auto_scrollbar_pass(),
+        }
+    }
+
+    fn drive_hidden(
+        &mut self,
+        request: HiddenRequest<Tree::Node>,
+    ) -> SessionResult<Tree, ComputeOutputOf<Tree::Scalar>> {
+        let mut children = HiddenChildren::begin(self, request)?;
+        let mut pending = Vec::new();
+        loop {
+            let Some((node, input)) = children.next_box(self)? else {
+                let Some(parent) = pending.pop() else {
+                    return Ok(ComputeOutputOf::HIDDEN);
+                };
+                children = parent;
+                continue;
+            };
+            match self.admit_child(node, input)? {
+                ChildAdmission::Hidden(request) => {
+                    if children.has_remaining() {
+                        pending.try_reserve(1).map_err(|_| {
+                            LayoutErrorOf::new(
+                                LayoutErrorSiteOf::Node(node),
+                                LayoutOperation::ChildLayout,
+                                LayoutErrorKindOf::Allocation,
+                            )
+                        })?;
+                        pending.push(children);
+                    }
+                    children = HiddenChildren::begin(self, request)?;
+                }
+                ChildAdmission::Ready(_) => {}
+                ChildAdmission::Uncached { input, cache } => {
+                    self.complete_admitted_child(node, input, cache)?;
+                }
+            }
+        }
+    }
+
+    fn complete_admitted_child(
+        &mut self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+        cache: Option<ChildCacheRequest<Tree::Node, Tree::Scalar>>,
+    ) -> SessionResult<Tree, ComputeOutputOf<Tree::Scalar>> {
+        let output = self.compute_child_uncached(node, input)?;
+        if let Some(cache) = cache {
+            cache.store(self, output)?;
+        }
+        Ok(output)
     }
 
     fn compute_child_uncached(
@@ -1618,14 +1673,9 @@ where
             crate::Display::Grid | crate::Display::GridLanes => {
                 crate::grid::compute_grid(self, node, input).map_err(Into::into)
             }
-            crate::Display::None => super::compute_hidden(
-                self,
-                node,
-                self.staged_source_index(node),
-                input.containing_layout_context(),
-                input.containing_auto_scrollbar_pass(),
-            )
-            .map_err(Into::into),
+            crate::Display::None => self
+                .drive_hidden(self.hidden_request(node, input))
+                .map_err(Into::into),
             crate::Display::InlineBlock
             | crate::Display::InlineGrid
             | crate::Display::InlineGridLanes => {
@@ -2065,23 +2115,9 @@ where
     {
         match self.admit_child(node, input)? {
             ChildAdmission::Ready(output) => Ok(output),
-            ChildAdmission::Hidden {
-                source_index,
-                containing_context,
-                containing_pass,
-            } => super::compute_hidden(
-                self,
-                node,
-                source_index,
-                containing_context,
-                containing_pass,
-            ),
+            ChildAdmission::Hidden(request) => self.drive_hidden(request),
             ChildAdmission::Uncached { input, cache } => {
-                let output = self.compute_child_uncached(node, input)?;
-                if let Some(cache) = cache {
-                    cache.store(self, output)?;
-                }
-                Ok(output)
+                self.complete_admitted_child(node, input, cache)
             }
         }
     }
