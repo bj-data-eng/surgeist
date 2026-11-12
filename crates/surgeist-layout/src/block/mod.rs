@@ -73,8 +73,7 @@ use sizing::{
 #[cfg(test)]
 pub(crate) use in_flow::resolve_logical_in_flow_margin;
 use in_flow::{
-    InFlowPassContext, InFlowStep, InFlowTraversal, layout_in_flow_children,
-    normal_flow_children_need_physical_sizing_work,
+    InFlowPassContext, InFlowStep, InFlowTraversal, normal_flow_children_need_physical_sizing_work,
 };
 
 #[cfg(test)]
@@ -574,43 +573,7 @@ where
         }));
     }
     let normal_block_fill = intrinsic::normal_fill(&style, input, tree.node_input(node).float);
-    let accepted_inline_outer =
-        intrinsic::accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
-            if let Some(content) = tree.fragment_inline_content(node, input, operation)? {
-                return Ok(content);
-            }
-            let measured = ordinary(layout_in_flow_children(
-                tree,
-                node,
-                &children,
-                &constants,
-                input,
-                InFlowPassContext {
-                    inline_operation: operation,
-                    inner_inline: None,
-                    set_layout: false,
-                    inherited,
-                    projection: None,
-                },
-            ))?;
-            Ok(measured.intrinsic_inline_demand)
-        })?;
-    let sizing = BlockFlowSizing::prepare(
-        tree,
-        &style,
-        &constants,
-        &children,
-        BlockFlowRequest {
-            node,
-            input,
-            contained_size,
-            inherited: inherited.is_some(),
-            semantic_work,
-            float_role,
-            normal_block_fill,
-            accepted_inline_outer,
-        },
-    )?;
+    let extent = intrinsic::begin_inline::<Tree, M>(tree, node, &style, &constants, input);
     let flow = BlockFlow {
         node,
         input,
@@ -618,12 +581,14 @@ where
         children,
         constants,
         float_role,
-        sizing,
-        final_refit: None,
+        contained_size,
+        semantic_work,
+        normal_block_fill,
+        normal_preview: None,
     };
-    let traversal = flow.begin_normal(tree, inherited)?;
+    let active = flow.begin_inline_or_normal(tree, inherited, extent)?;
     Ok(ControlFlow::Continue(BlockPass {
-        active: Some(ActiveBlockPass { flow, traversal }),
+        active: Some(active),
     }))
 }
 
@@ -633,7 +598,18 @@ struct BlockPass<'input, Node, S: LayoutScalar> {
 
 struct ActiveBlockPass<'input, Node, S: LayoutScalar> {
     flow: BlockFlow<'input, Node, S>,
+    constants: Constants<S>,
     traversal: InFlowTraversal<Node, S>,
+    phase: BlockPassPhase<S>,
+}
+
+enum BlockPassPhase<S: LayoutScalar> {
+    Inline(intrinsic::InlineMeasurement<S>),
+    Normal(BlockFlowSizing<S>),
+    Final {
+        provisional: LogicalSizeOf<S>,
+        ratio_block_outer: Option<S>,
+    },
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
@@ -647,11 +623,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
     {
         loop {
             let active = self.active.as_mut().expect("active Block pass");
-            match active.traversal.step(
-                tree,
-                &active.flow.children,
-                active.flow.pass_constants(),
-            )? {
+            match active
+                .traversal
+                .step(tree, &active.flow.children, &active.constants)?
+            {
                 InFlowStep::Continue => {}
                 InFlowStep::Child(child) => return Ok(ControlFlow::Continue(child)),
                 InFlowStep::Complete => {
@@ -672,17 +647,57 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         let ActiveBlockPass {
-            mut flow,
+            flow,
+            constants,
             traversal,
+            phase,
         } = self.active.take().expect("completed Block pass");
         let completed = traversal.finish(tree)?;
-        if flow.final_refit.is_none() && flow.sizing.needs_final_pass {
-            let traversal = flow.begin_final(tree, inherited, completed)?;
-            self.active = Some(ActiveBlockPass { flow, traversal });
-            Ok(None)
-        } else {
-            flow.finish(tree, completed).map(Some)
-        }
+        let next = match phase {
+            BlockPassPhase::Inline(measurement) => {
+                let extent = measurement.accept(&flow.constants, completed.intrinsic_inline_demand);
+                drop(completed);
+                flow.begin_inline_or_normal(tree, inherited, extent)?
+            }
+            BlockPassPhase::Normal(sizing) => {
+                let provisional = sizing.provisional_output_size(
+                    &flow.constants,
+                    &constants,
+                    flow.input,
+                    &completed,
+                    flow.float_role,
+                );
+                if sizing.needs_final_pass {
+                    flow.begin_final(
+                        tree,
+                        inherited,
+                        completed,
+                        provisional,
+                        sizing.ratio_block_outer,
+                    )?
+                } else {
+                    return flow
+                        .finish(
+                            tree,
+                            &constants,
+                            completed,
+                            provisional,
+                            sizing.ratio_block_outer,
+                        )
+                        .map(Some);
+                }
+            }
+            BlockPassPhase::Final {
+                provisional,
+                ratio_block_outer,
+            } => {
+                return flow
+                    .finish(tree, &constants, completed, provisional, ratio_block_outer)
+                    .map(Some);
+            }
+        };
+        self.active = Some(next);
+        Ok(None)
     }
 
     fn accept_child<Tree, M>(
@@ -697,7 +712,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
         let active = self.active.as_mut().expect("active Block pass");
         active
             .traversal
-            .accept_child(tree, active.flow.pass_constants(), pending, output)
+            .accept_child(tree, &active.constants, pending, output)
     }
 }
 
@@ -708,71 +723,132 @@ struct BlockFlow<'input, Node, S: LayoutScalar> {
     children: Vec<Node>,
     constants: Constants<S>,
     float_role: float_context::Role,
-    sizing: BlockFlowSizing<S>,
-    final_refit: Option<FinalRefit<Node, S>>,
-}
-
-struct FinalRefit<Node, S: LayoutScalar> {
-    constants: Constants<S>,
-    provisional: LogicalSizeOf<S>,
+    contained_size: Size<Option<S>>,
+    semantic_work: bool,
+    normal_block_fill: bool,
     // Keep the measured flow alive through final placement.
-    _normal_pass: in_flow::InFlowResult<Node, S>,
+    normal_preview: Option<in_flow::InFlowResult<Node, S>>,
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockFlow<'input, Node, S> {
-    fn pass_constants(&self) -> &Constants<S> {
-        self.final_refit
-            .as_ref()
-            .map_or(&self.sizing.normal_constants, |refit| &refit.constants)
+    fn begin_inline_or_normal<Tree, M>(
+        self,
+        tree: &mut Tree,
+        inherited: Option<&InheritedFloatExclusions<S, Node>>,
+        mut extent: intrinsic::InlineExtent<S>,
+    ) -> ComputeResult<Node, ActiveBlockPass<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            match extent {
+                intrinsic::InlineExtent::Resolved(accepted_inline) => {
+                    return self.begin_normal(tree, inherited, accepted_inline);
+                }
+                intrinsic::InlineExtent::Measure(measurement) => {
+                    let operation = measurement.operation();
+                    if let Some(content) =
+                        tree.fragment_inline_content(self.node, self.input, operation)?
+                    {
+                        extent = measurement.accept(&self.constants, content);
+                        continue;
+                    }
+                    let constants = self.constants;
+                    let traversal = InFlowTraversal::begin(
+                        tree,
+                        self.node,
+                        &constants,
+                        self.input,
+                        InFlowPassContext {
+                            inline_operation: operation,
+                            inner_inline: None,
+                            set_layout: false,
+                            inherited,
+                            projection: None,
+                        },
+                    )?;
+                    return Ok(ActiveBlockPass {
+                        flow: self,
+                        constants,
+                        traversal,
+                        phase: BlockPassPhase::Inline(measurement),
+                    });
+                }
+            }
+        }
     }
 
     fn begin_normal<Tree, M>(
-        &self,
+        self,
         tree: &mut Tree,
         inherited: Option<&InheritedFloatExclusions<S, Node>>,
-    ) -> ComputeResult<Node, InFlowTraversal<Node, S>, S, M>
+        accepted_inline_outer: S,
+    ) -> ComputeResult<Node, ActiveBlockPass<'input, Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        InFlowTraversal::begin(
+        let PreparedNormalFlow {
+            sizing,
+            constants,
+            input,
+            inner_inline,
+            set_layout,
+        } = BlockFlowSizing::prepare(
+            tree,
+            &self.style,
+            &self.constants,
+            &self.children,
+            BlockFlowRequest {
+                node: self.node,
+                input: self.input,
+                contained_size: self.contained_size,
+                inherited: inherited.is_some(),
+                semantic_work: self.semantic_work,
+                float_role: self.float_role,
+                normal_block_fill: self.normal_block_fill,
+                accepted_inline_outer,
+            },
+        )?;
+        let traversal = InFlowTraversal::begin(
             tree,
             self.node,
-            &self.sizing.normal_constants,
-            self.sizing.normal_input,
+            &constants,
+            input,
             InFlowPassContext {
                 inline_operation: crate::SizingOperation::Normal,
-                inner_inline: Some(self.sizing.accepted_inline_inner),
-                set_layout: self.sizing.set_normal_layout,
+                inner_inline: Some(inner_inline),
+                set_layout,
                 inherited,
                 projection: None,
             },
-        )
+        )?;
+        Ok(ActiveBlockPass {
+            flow: self,
+            constants,
+            traversal,
+            phase: BlockPassPhase::Normal(sizing),
+        })
     }
 
     fn begin_final<Tree, M>(
-        &mut self,
+        mut self,
         tree: &mut Tree,
         inherited: Option<&InheritedFloatExclusions<S, Node>>,
         normal_pass: in_flow::InFlowResult<Node, S>,
-    ) -> ComputeResult<Node, InFlowTraversal<Node, S>, S, M>
+        provisional: LogicalSizeOf<S>,
+        ratio_block_outer: Option<S>,
+    ) -> ComputeResult<Node, ActiveBlockPass<'input, Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        let provisional = self.sizing.provisional_output_size(
-            &self.constants,
-            self.input,
-            &normal_pass,
-            self.float_role,
-        );
         let inset = self.constants.logical_content_box_inset();
         let logical_inner_size = LogicalSizeOf::new(
             Some((provisional.inline - inset.inline_sum()).max(S::ZERO)),
             Some((provisional.block - inset.block_sum()).max(S::ZERO)),
         );
-        let constants = self.constants.with_logical_node_inner_size(
-            logical_inner_size,
-            self.sizing.ratio_block_outer.is_some(),
-        );
+        let constants = self
+            .constants
+            .with_logical_node_inner_size(logical_inner_size, ratio_block_outer.is_some());
         let traversal = InFlowTraversal::begin(
             tree,
             self.node,
@@ -786,34 +862,29 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockFlow<'input, Node, S> {
                 projection: None,
             },
         )?;
-        self.final_refit = Some(FinalRefit {
+        self.normal_preview = Some(normal_pass);
+        Ok(ActiveBlockPass {
+            flow: self,
             constants,
-            provisional,
-            _normal_pass: normal_pass,
-        });
-        Ok(traversal)
+            traversal,
+            phase: BlockPassPhase::Final {
+                provisional,
+                ratio_block_outer,
+            },
+        })
     }
 
     fn finish<Tree, M>(
         self,
         tree: &mut Tree,
+        final_constants: &Constants<S>,
         final_pass: in_flow::InFlowResult<Node, S>,
+        provisional_logical_output_size: LogicalSizeOf<S>,
+        ratio_block_outer: Option<S>,
     ) -> ComputeResult<Node, BlockResult<Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        let provisional_logical_output_size = self.final_refit.as_ref().map_or_else(
-            || {
-                self.sizing.provisional_output_size(
-                    &self.constants,
-                    self.input,
-                    &final_pass,
-                    self.float_role,
-                )
-            },
-            |refit| refit.provisional,
-        );
-        let final_constants = self.pass_constants();
         let Self {
             node,
             input,
@@ -823,7 +894,6 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockFlow<'input, Node, S> {
             float_role,
             ..
         } = self;
-        let ratio_block_outer = self.sizing.ratio_block_outer;
         if let Some(text) = tree.text_computation() {
             text.formatted_record_flow(&final_pass.formatted)
                 .map_err(|error| inline_run::text_run_error(node, error.into()))?;
@@ -878,13 +948,17 @@ struct BlockFlowRequest<Node, S: LayoutScalar> {
 
 struct BlockFlowSizing<S: LayoutScalar> {
     accepted_inline_outer: S,
-    accepted_inline_inner: S,
     ratio_block_outer: Option<S>,
     ratio_needs_content_minimum: bool,
-    normal_constants: Constants<S>,
-    normal_input: ComputeInputOf<S>,
-    set_normal_layout: bool,
     needs_final_pass: bool,
+}
+
+struct PreparedNormalFlow<S: LayoutScalar> {
+    sizing: BlockFlowSizing<S>,
+    constants: Constants<S>,
+    input: ComputeInputOf<S>,
+    inner_inline: S,
+    set_layout: bool,
 }
 
 impl<S: LayoutScalar> BlockFlowSizing<S> {
@@ -894,7 +968,7 @@ impl<S: LayoutScalar> BlockFlowSizing<S> {
         constants: &Constants<S>,
         children: &[Tree::Node],
         request: BlockFlowRequest<Tree::Node, S>,
-    ) -> ComputeResult<Tree::Node, Self, S, M>
+    ) -> ComputeResult<Tree::Node, PreparedNormalFlow<S>, S, M>
     where
         Tree: Compute<'input, M, Scalar = S>,
     {
@@ -1020,26 +1094,29 @@ impl<S: LayoutScalar> BlockFlowSizing<S> {
         };
         let set_normal_layout = normal_pass_input.run_mode().is_perform_layout()
             && (!needs_final_pass || measured_inset_demand);
-        Ok(Self {
-            accepted_inline_outer,
-            accepted_inline_inner,
-            ratio_block_outer,
-            ratio_needs_content_minimum,
-            normal_constants,
-            normal_input: normal_pass_input,
-            set_normal_layout,
-            needs_final_pass,
+        Ok(PreparedNormalFlow {
+            sizing: Self {
+                accepted_inline_outer,
+                ratio_block_outer,
+                ratio_needs_content_minimum,
+                needs_final_pass,
+            },
+            constants: normal_constants,
+            input: normal_pass_input,
+            inner_inline: accepted_inline_inner,
+            set_layout: set_normal_layout,
         })
     }
 
     fn provisional_output_size<Node>(
         &self,
         constants: &Constants<S>,
+        normal_constants: &Constants<S>,
         input: ComputeInputOf<S>,
         normal_pass: &in_flow::InFlowResult<Node, S>,
         float_role: float_context::Role,
     ) -> LogicalSizeOf<S> {
-        let auto_block = normal_pass.auto_block(&self.normal_constants, float_role);
+        let auto_block = normal_pass.auto_block(normal_constants, float_role);
         let block = self.ratio_block_outer.map_or(auto_block, |ratio_block| {
             if self.ratio_needs_content_minimum {
                 ratio_block.max(auto_block)

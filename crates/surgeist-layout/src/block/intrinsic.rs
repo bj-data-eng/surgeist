@@ -17,13 +17,13 @@ pub(super) fn normal_fill<S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
-enum InlineExtent<S> {
+pub(super) enum InlineExtent<S> {
     Resolved(S),
     Measure(InlineMeasurement<S>),
 }
 
 #[derive(Clone, Copy)]
-enum InlineMeasurement<S> {
+pub(super) enum InlineMeasurement<S> {
     MinContent,
     MaxContent,
     FitMaximum { available: S },
@@ -31,14 +31,14 @@ enum InlineMeasurement<S> {
 }
 
 impl<S: LayoutScalar> InlineMeasurement<S> {
-    fn operation(&self) -> SizingOperation {
+    pub(super) fn operation(&self) -> SizingOperation {
         match self {
             Self::MinContent | Self::FitMinimum { .. } => SizingOperation::MinContent,
             Self::MaxContent | Self::FitMaximum { .. } => SizingOperation::MaxContent,
         }
     }
 
-    fn accept(self, constants: &Constants<S>, measured: S) -> InlineExtent<S> {
+    pub(super) fn accept(self, constants: &Constants<S>, measured: S) -> InlineExtent<S> {
         let content = match self {
             Self::MinContent | Self::MaxContent => measured,
             Self::FitMaximum { available } => {
@@ -62,7 +62,7 @@ fn outer_inline<S: LayoutScalar>(constants: &Constants<S>, content: S) -> S {
         .max(constants.logical_padding_border_size().inline)
 }
 
-fn begin_inline<'input, Tree, M>(
+pub(super) fn begin_inline<'input, Tree, M>(
     tree: &Tree,
     node: Tree::Node,
     style: &BlockContainerProjection<'_, Tree::Scalar>,
