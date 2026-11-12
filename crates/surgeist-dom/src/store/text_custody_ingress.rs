@@ -9,18 +9,13 @@ impl Draft {
         retained_occurrence: bool,
         cancel: &AtomicBool,
     ) -> Result<custody::Held<NewNode>, DomError> {
-        // A Text or Comment node lists the block its string borrows, whether this holder charges
-        // the string itself or the formation that made it already did.
-        let (NewNode::Text(text) | NewNode::Comment(text)) = incoming.value() else {
-            return Ok(incoming);
+        let text = match incoming.value() {
+            NewNode::Text(text) | NewNode::Comment(text) => text,
+            NewNode::Attr(attribute) => attribute.value(),
+            _ => return Ok(incoming),
         };
-        self.blocks.adopt(
-            text,
-            |next| self.admit_custody_usage(next, cancel),
-            || self.source_step(cancel),
-        )?;
-        // Only a Text holder charges its string here: a Comment's is charged where its payload is
-        // formed, after the block is listed.
+        self.list_block(text, cancel)?;
+        // Comment and Attr occurrences are charged by their typed payloads.
         if matches!(incoming.value(), NewNode::Text(_)) && !retained_occurrence {
             let mut original = source::storage::Payload::default();
             original.listed_string(text)?;

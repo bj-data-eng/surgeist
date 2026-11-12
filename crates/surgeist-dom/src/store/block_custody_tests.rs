@@ -642,17 +642,28 @@ fn a_block_is_released_once_no_attribute_holds_it() {
     let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();
     let node = done.created(&element).unwrap().unwrap();
     assert!(dom.custody_registry.block_listed(&block));
+    let [first, second] = ["data-a", "data-b"].map(|name| {
+        dom.snapshot()
+            .node(node)
+            .unwrap()
+            .get_attribute_node(&name.into())
+            .unwrap()
+            .id()
+    });
     drop(done);
     drop(block);
-    // Removing one attribute leaves the block with the other.
+    // A detached Attr still owns its value.
     let mut batch = crate::DomBatch::new();
     batch.remove_attribute(node, "data-a");
-    dom.apply(batch, &AtomicBool::new(false)).unwrap();
-    assert_eq!(dom.custody_registry.listed_blocks(), 1);
-    let mut batch = crate::DomBatch::new();
     batch.remove_attribute(node, "data-b");
     dom.apply(batch, &AtomicBool::new(false)).unwrap();
-    assert_eq!(dom.custody_registry.listed_blocks(), 0);
+    assert_eq!(dom.custody_registry.listed_blocks(), 1);
+    for (attr, blocks) in [(first, 1), (second, 0)] {
+        let mut batch = crate::DomBatch::new();
+        batch.destroy(attr.node());
+        dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        assert_eq!(dom.custody_registry.listed_blocks(), blocks);
+    }
 }
 
 /// A store whose element and group limits admit the families the attribute tests build.
@@ -794,7 +805,7 @@ fn store_with_attribute(tag: &str, name: &str, value: DocumentString) -> (Dom, c
 }
 
 #[test]
-fn removing_the_attribute_of_each_retention_releases_the_block() {
+fn destroying_the_detached_attr_of_each_retention_releases_the_block() {
     for (tag, name) in [
         ("script", "nonce"),
         ("input", "name"),
@@ -804,10 +815,21 @@ fn removing_the_attribute_of_each_retention_releases_the_block() {
         let block = spare_block();
         let weak = block.downgrade();
         let (mut dom, node) = store_with_attribute(tag, name, block.string(0..4).unwrap());
+        let attr = dom
+            .snapshot()
+            .node(node)
+            .unwrap()
+            .get_attribute_node(&name.into())
+            .unwrap()
+            .id();
         assert!(dom.custody_registry.block_listed(&block), "{tag} {name}");
         drop(block);
         let mut batch = crate::DomBatch::new();
         batch.remove_attribute(node, name);
+        dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        assert!(weak.holders() > 0, "{tag} {name}");
+        let mut batch = crate::DomBatch::new();
+        batch.destroy(attr.node());
         dom.apply(batch, &AtomicBool::new(false)).unwrap();
         // The attribute, the nonce slot, the control facts and the input value no longer hold
         // the block, so the next sweep gives its charge back.

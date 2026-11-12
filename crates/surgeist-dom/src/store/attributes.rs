@@ -206,7 +206,7 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         let formation = source::formation::Formation::new(self, cancel)?;
-        let value = retain_string(value, formation.as_ref(), cancel)?;
+        let value = retain_attribute_value(self, value, formation.as_ref(), cancel)?;
         let replacement = Attribute::from_parts(old.name().clone(), value);
         self.replace_attr_value_formed(key, replacement, formation, cancel)?;
         self.units = units;
@@ -568,8 +568,10 @@ impl Draft {
             .transpose()?;
         let formation = source::formation::Formation::new(self, cancel)?;
         let nonce = nonce_after_effect(self, nonce, formation.as_ref(), cancel)?;
-        let replacement =
-            Attribute::from_parts(name, retain_attribute_value(self, value, name_formation.as_ref(), cancel)?);
+        let replacement = Attribute::from_parts(
+            name,
+            retain_attribute_value(self, value, name_formation.as_ref(), cancel)?,
+        );
         let index = position.unwrap_or(previous.len());
         let next = previous.edited(index, position.is_some(), Some(&replacement))?;
         let formed = {
@@ -699,9 +701,9 @@ impl Draft {
             cancel,
         )?;
         let old_value = previous_value
-            .map(|value| retain_string(value.value(), hook.as_ref(), cancel))
+            .map(|value| retain_attribute_value(self, value.value(), hook.as_ref(), cancel))
             .transpose()?;
-        let new_value = retain_string(replacement.value(), hook.as_ref(), cancel)?;
+        let new_value = retain_attribute_value(self, replacement.value(), hook.as_ref(), cancel)?;
         let element = read.language();
         let old_units = element.units().ok_or(DomError::RepresentationExhausted)?;
         let formation = source::formation::Formation::new(self, cancel)?;
@@ -709,6 +711,7 @@ impl Draft {
             self.source_step(cancel)?;
         }
         let nonce = nonce_after_effect(
+            self,
             surgeist_html::security::nonce::nonce_attribute_change(
                 element.name(),
                 &changed,
@@ -723,6 +726,7 @@ impl Draft {
             let mut admit = |usage| self.admit_custody_usage(usage, cancel);
             let context = ElementFormation::new(
                 self.custody_registry(),
+                &self.blocks,
                 formation.as_ref(),
                 cancel,
                 &mut admit,

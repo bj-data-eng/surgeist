@@ -1378,8 +1378,8 @@ mod tests {
         assert_eq!((listed, none), (1, 0));
     }
     /// The units a second edit of the `style` attribute to a range of `block` adds to the custody
-    /// of a recording draft, and the number of blocks listed after it, when the transaction has
-    /// given up the listing the first edit made (`unlisted`) and when it has not.
+    /// of a recording draft, and the number of blocks listed after it, when the first edit
+    /// retained an owned value (`unlisted`) or a range of the same block.
     fn second_edit_adds(
         block: &surgeist_html::values::TextBlock,
         unlisted: bool,
@@ -1396,12 +1396,17 @@ mod tests {
             .unwrap();
         let mut draft = Draft::new(&dom, batch.owner, &cancel()).unwrap();
         draft.inline_recording = Some(recording);
+        let initial = if unlisted {
+            DocumentString::from_utf16(value.code_units().to_vec())
+        } else {
+            value.clone()
+        };
         draft
             .set_attribute(
                 Key::Existing(first),
                 None,
                 &"style".into(),
-                &value,
+                &initial,
                 dom.limits,
                 &cancel(),
             )
@@ -1411,19 +1416,13 @@ mod tests {
             .unwrap()
             .element()
             .unwrap()
-            .language()
             .attributes()
             .iter()
             .next()
             .unwrap()
             .name()
             .clone();
-        if unlisted {
-            // The transaction gives up the listing the attribute bank made, as if no path had
-            // listed the block of the value that the next edit records.
-            draft.blocks = block_custody::BlockAdoptions::new(dom.custody_registry.clone());
-            assert_eq!(dom.custody_registry.listed_blocks(), 0);
-        }
+        assert_eq!(dom.custody_registry.listed_blocks(), usize::from(!unlisted));
         let before = dom.custody_registry.ledger().total().units();
         draft
             .inline_attribute(Key::Existing(first), &name, Some(&value), &cancel())
