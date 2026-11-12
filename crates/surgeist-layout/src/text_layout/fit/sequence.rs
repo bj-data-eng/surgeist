@@ -29,6 +29,21 @@ struct PrimaryLineChoice {
     zone_basis: ZoneBasis,
 }
 
+struct ConditionalLineSearch<'a> {
+    line: SequenceLineSearch<'a>,
+    position: &'a CandidatePosition,
+    start_boundary: &'a PreparedBoundary,
+    wrapping: Option<&'a WrappingClassifier<'a>>,
+    purpose: ConditionalPurpose,
+    ceiling: surgeist_text::PreparedOpportunity,
+    skipped_ordinary: &'a [ConditionalDisposition],
+}
+
+struct ConditionalLineChoice {
+    candidate: EvaluatedCandidate,
+    minimal_progress: Option<EvaluatedCandidate>,
+}
+
 impl<B, C, A, R, X> CandidateEnvironment<B, C, A, R, X>
 where
     B: FnMut(f64, f64) -> Result<Band, FitError>,
@@ -49,9 +64,6 @@ where
     ) -> Result<Option<AcceptedCandidate>, FitError> {
         let SequenceLineSearch {
             progress,
-            accepted_prefix,
-            rejected_choices,
-            goal,
             constrained,
             ..
         } = search;
@@ -83,7 +95,7 @@ where
             // A rejected fitting nonhyphenating terminal branch does not
             // authorize overflow/emergency in an otherwise fitting word.
             let choice = choice.filter(|candidate| !constrained || candidate.fits || !fitting_none);
-            let Some(mut candidate) = choice else {
+            let Some(candidate) = choice else {
                 return Ok(None);
             };
             let purpose = match input.available.operation() {
@@ -96,182 +108,38 @@ where
                 }
                 crate::SizingOperation::Normal | crate::SizingOperation::MaxContent => None,
             };
-            let mut minimal_progress = None;
-            if let Some(purpose) = purpose
+            let ConditionalLineChoice {
+                mut candidate,
+                minimal_progress,
+            } = if let Some(purpose) = purpose
                 && let Some(ceiling) = first_ceiling
                 && ceiling.view().boundary().view().participant_offset() > start
             {
-                let frame = (purpose == ConditionalPurpose::Overflow)
-                    .then(|| conditional_query_frame(input, &candidate))
-                    .transpose()?;
-                let recipe = frame.as_ref().map(|frame| ConditionalQueryRecipe {
-                    frame: frame.clone(),
-                    ceiling: ceiling.clone(),
-                });
-                let search = input.segment.conditional_search(
-                    &start_boundary,
-                    progress.incoming.as_ref(),
-                    &ceiling,
-                    purpose,
-                    &skipped_ordinary,
-                    frame.as_ref().map_or(
-                        surgeist_text::ConditionalLineContext::Unframed {
-                            inline_boxes: input.inline_boxes,
-                        },
-                        surgeist_text::ConditionalLineContext::Finalized,
-                    ),
-                )?;
-                let query = EndpointContext {
-                    accepted_prefix,
-                    preceding: None,
-                    start: &start_boundary,
-                    line_box_context: progress.line_box_context,
-                    incoming: progress.incoming.as_ref(),
-                    position: &position,
-                    indent_state: progress.indent_state,
-                    hyphenation_state: progress.hyphenation_state,
-                    rejected_choices,
-                    conditional: true,
-                    operation: CandidateOperation::Primary,
-                    conditional_recipe: recipe.as_ref(),
+                let Some(choice) = self.choose_conditional_line(
+                    input,
+                    ConditionalLineSearch {
+                        line: search,
+                        position: &position,
+                        start_boundary: &start_boundary,
+                        wrapping,
+                        purpose,
+                        ceiling,
+                        skipped_ordinary: &skipped_ordinary,
+                    },
+                    candidate,
+                    &mut zone_basis,
+                    &mut phrase_basis,
+                )?
+                else {
+                    return Ok(None);
                 };
-                let mut decisions = Vec::new();
-                for portion in search.phrase_portions() {
-                    let (decision, basis) =
-                        self.measure_phrase(input, &query, &candidate, portion)?;
-                    decisions.push(decision);
-                    phrase_basis.push(basis);
+                choice
+            } else {
+                ConditionalLineChoice {
+                    candidate,
+                    minimal_progress: None,
                 }
-                let mut batch = search.begin(&decisions)?;
-                let mut restored_fallback = false;
-                loop {
-                    let stage = batch.stage();
-                    let mut dispositions = Vec::new();
-                    let mut stage_choice: Option<EvaluatedCandidate>;
-                    let mut blocked_none;
-                    let mut stage_progress;
-                    let progress_already_present = minimal_progress.is_some();
-                    let zone_start = zone_basis.references.len();
-                    let mut comparison_basis: Option<ComparisonBasis> = None;
-                    loop {
-                        dispositions.clear();
-                        zone_basis.references.truncate(zone_start);
-                        stage_choice = None;
-                        blocked_none = false;
-                        stage_progress = None;
-                        let mut ends = FittingEnds::default();
-                        let mut scoped = ScopedChoices {
-                            goal,
-                            ..ScopedChoices::default()
-                        };
-                        let mut from = 0;
-                        while from < batch.opportunities().len() {
-                            let boundary = batch.opportunities()[from].boundary();
-                            let mut to = from + 1;
-                            while to < batch.opportunities().len()
-                                && batch.opportunities()[to].boundary() == boundary
-                            {
-                                to += 1;
-                            }
-                            let endpoint = self.choose_endpoint(
-                                input,
-                                &query,
-                                batch.opportunities()[from..to].iter().cloned().map(
-                                    |opportunity| {
-                                        let alternative = opportunity.alternative();
-                                        LineEndpoint {
-                                            boundary: opportunity.boundary(),
-                                            termination: PreparedTermination::Conditional(
-                                                opportunity,
-                                            ),
-                                            alternative,
-                                            ending: LineEnd::Soft,
-                                        }
-                                    },
-                                ),
-                                &mut zone_basis,
-                            )?;
-                            blocked_none |= endpoint.fitting_none && endpoint.candidate.is_none();
-                            dispositions.extend(endpoint.dispositions);
-                            if let Some(trial) = endpoint.candidate {
-                                if wrapping.is_some() {
-                                    ends.observe(&trial, goal.is_some());
-                                }
-                                if comparison_basis.is_some()
-                                    && trial.fits
-                                    && trial.disposition.is_formatted()
-                                {
-                                    scoped.consider(
-                                        wrapping.expect("comparison has a scope loan"),
-                                        trial.clone(),
-                                    );
-                                }
-                                if purpose == ConditionalPurpose::MinContent {
-                                    stage_choice = Some(trial);
-                                    break;
-                                }
-                                if stage == ConditionalStage::Arbitrary
-                                    && !trial.fits
-                                    && !progress_already_present
-                                    && stage_progress.is_none()
-                                {
-                                    stage_progress = Some(trial);
-                                } else if (stage_choice.is_none() || trial.fits)
-                                    && prefer_candidate(goal, &trial, stage_choice.as_ref())?
-                                {
-                                    stage_choice = Some(trial);
-                                }
-                            }
-                            from = to;
-                        }
-                        if wrapping.is_some() {
-                            let observed = ComparisonBasis {
-                                position: position.clone(),
-                                normal: stage_choice.as_ref().map(|candidate| candidate.observed()),
-                                terminal: None,
-                                progress: stage_progress
-                                    .as_ref()
-                                    .map(|candidate| candidate.observed()),
-                                ceiling: None,
-                                fitting_none: blocked_none,
-                                ends,
-                            };
-                            if let Some(prior) = &comparison_basis {
-                                if prior != &observed {
-                                    return Err(FitError::FeedbackCycle);
-                                }
-                                if let Some(preferred) = scoped.preferred()? {
-                                    stage_choice = Some(preferred);
-                                }
-                            } else if observed.ends.multiple {
-                                comparison_basis = Some(observed);
-                                continue;
-                            }
-                        }
-                        break;
-                    }
-                    if !progress_already_present {
-                        minimal_progress = stage_progress;
-                    }
-                    if blocked_none && stage_choice.as_ref().is_none_or(|choice| !choice.fits) {
-                        return Ok(None);
-                    }
-                    if let Some(choice) = stage_choice {
-                        if choice.fits || purpose == ConditionalPurpose::MinContent {
-                            candidate = choice;
-                            break;
-                        }
-                        if stage != ConditionalStage::Arbitrary && !restored_fallback {
-                            candidate = choice;
-                            restored_fallback = true;
-                        }
-                    }
-                    let Some(next) = batch.advance(&dispositions)? else {
-                        break;
-                    };
-                    batch = next;
-                }
-            }
+            };
             self.restore(input, &candidate)?;
             let basis = (
                 candidate.request.clone(),
@@ -518,6 +386,205 @@ where
             skipped_ordinary,
             zone_basis,
         })
+    }
+
+    fn choose_conditional_line(
+        &mut self,
+        input: &FitInput<'_>,
+        query: ConditionalLineSearch<'_>,
+        mut candidate: EvaluatedCandidate,
+        zone_basis: &mut ZoneBasis,
+        phrase_basis: &mut Vec<PhraseBasis>,
+    ) -> Result<Option<ConditionalLineChoice>, FitError> {
+        let ConditionalLineSearch {
+            line:
+                SequenceLineSearch {
+                    progress,
+                    accepted_prefix,
+                    rejected_choices,
+                    goal,
+                    ..
+                },
+            position,
+            start_boundary,
+            wrapping,
+            purpose,
+            ceiling,
+            skipped_ordinary,
+        } = query;
+        let mut minimal_progress = None;
+        let frame = (purpose == ConditionalPurpose::Overflow)
+            .then(|| conditional_query_frame(input, &candidate))
+            .transpose()?;
+        let recipe = frame.as_ref().map(|frame| ConditionalQueryRecipe {
+            frame: frame.clone(),
+            ceiling: ceiling.clone(),
+        });
+        let search = input.segment.conditional_search(
+            start_boundary,
+            progress.incoming.as_ref(),
+            &ceiling,
+            purpose,
+            skipped_ordinary,
+            frame.as_ref().map_or(
+                surgeist_text::ConditionalLineContext::Unframed {
+                    inline_boxes: input.inline_boxes,
+                },
+                surgeist_text::ConditionalLineContext::Finalized,
+            ),
+        )?;
+        let query = EndpointContext {
+            accepted_prefix,
+            preceding: None,
+            start: start_boundary,
+            line_box_context: progress.line_box_context,
+            incoming: progress.incoming.as_ref(),
+            position,
+            indent_state: progress.indent_state,
+            hyphenation_state: progress.hyphenation_state,
+            rejected_choices,
+            conditional: true,
+            operation: CandidateOperation::Primary,
+            conditional_recipe: recipe.as_ref(),
+        };
+        let mut decisions = Vec::new();
+        for portion in search.phrase_portions() {
+            let (decision, basis) = self.measure_phrase(input, &query, &candidate, portion)?;
+            decisions.push(decision);
+            phrase_basis.push(basis);
+        }
+        let mut batch = search.begin(&decisions)?;
+        let mut restored_fallback = false;
+        loop {
+            let stage = batch.stage();
+            let mut dispositions = Vec::new();
+            let mut stage_choice: Option<EvaluatedCandidate>;
+            let mut blocked_none;
+            let mut stage_progress;
+            let progress_already_present = minimal_progress.is_some();
+            let zone_start = zone_basis.references.len();
+            let mut comparison_basis: Option<ComparisonBasis> = None;
+            loop {
+                dispositions.clear();
+                zone_basis.references.truncate(zone_start);
+                stage_choice = None;
+                blocked_none = false;
+                stage_progress = None;
+                let mut ends = FittingEnds::default();
+                let mut scoped = ScopedChoices {
+                    goal,
+                    ..ScopedChoices::default()
+                };
+                let mut from = 0;
+                while from < batch.opportunities().len() {
+                    let boundary = batch.opportunities()[from].boundary();
+                    let mut to = from + 1;
+                    while to < batch.opportunities().len()
+                        && batch.opportunities()[to].boundary() == boundary
+                    {
+                        to += 1;
+                    }
+                    let endpoint = self.choose_endpoint(
+                        input,
+                        &query,
+                        batch.opportunities()[from..to]
+                            .iter()
+                            .cloned()
+                            .map(|opportunity| {
+                                let alternative = opportunity.alternative();
+                                LineEndpoint {
+                                    boundary: opportunity.boundary(),
+                                    termination: PreparedTermination::Conditional(opportunity),
+                                    alternative,
+                                    ending: LineEnd::Soft,
+                                }
+                            }),
+                        zone_basis,
+                    )?;
+                    blocked_none |= endpoint.fitting_none && endpoint.candidate.is_none();
+                    dispositions.extend(endpoint.dispositions);
+                    if let Some(trial) = endpoint.candidate {
+                        if wrapping.is_some() {
+                            ends.observe(&trial, goal.is_some());
+                        }
+                        if comparison_basis.is_some()
+                            && trial.fits
+                            && trial.disposition.is_formatted()
+                        {
+                            scoped.consider(
+                                wrapping.expect("comparison has a scope loan"),
+                                trial.clone(),
+                            );
+                        }
+                        if purpose == ConditionalPurpose::MinContent {
+                            stage_choice = Some(trial);
+                            break;
+                        }
+                        if stage == ConditionalStage::Arbitrary
+                            && !trial.fits
+                            && !progress_already_present
+                            && stage_progress.is_none()
+                        {
+                            stage_progress = Some(trial);
+                        } else if (stage_choice.is_none() || trial.fits)
+                            && prefer_candidate(goal, &trial, stage_choice.as_ref())?
+                        {
+                            stage_choice = Some(trial);
+                        }
+                    }
+                    from = to;
+                }
+                if wrapping.is_some() {
+                    let observed = ComparisonBasis {
+                        position: position.clone(),
+                        normal: stage_choice.as_ref().map(|candidate| candidate.observed()),
+                        terminal: None,
+                        progress: stage_progress
+                            .as_ref()
+                            .map(|candidate| candidate.observed()),
+                        ceiling: None,
+                        fitting_none: blocked_none,
+                        ends,
+                    };
+                    if let Some(prior) = &comparison_basis {
+                        if prior != &observed {
+                            return Err(FitError::FeedbackCycle);
+                        }
+                        if let Some(preferred) = scoped.preferred()? {
+                            stage_choice = Some(preferred);
+                        }
+                    } else if observed.ends.multiple {
+                        comparison_basis = Some(observed);
+                        continue;
+                    }
+                }
+                break;
+            }
+            if !progress_already_present {
+                minimal_progress = stage_progress;
+            }
+            if blocked_none && stage_choice.as_ref().is_none_or(|choice| !choice.fits) {
+                return Ok(None);
+            }
+            if let Some(choice) = stage_choice {
+                if choice.fits || purpose == ConditionalPurpose::MinContent {
+                    candidate = choice;
+                    break;
+                }
+                if stage != ConditionalStage::Arbitrary && !restored_fallback {
+                    candidate = choice;
+                    restored_fallback = true;
+                }
+            }
+            let Some(next) = batch.advance(&dispositions)? else {
+                break;
+            };
+            batch = next;
+        }
+        Ok(Some(ConditionalLineChoice {
+            candidate,
+            minimal_progress,
+        }))
     }
 
     pub(super) fn accept_line(
