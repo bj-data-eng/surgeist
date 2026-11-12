@@ -32,7 +32,13 @@ fn guest_document(
 fn root_host(
     mode: Option<HtmlShadowRootMode>,
 ) -> (DocumentScriptHost, DocumentScriptPermit, Option<NodeId>) {
-    let mut host = public_node_host(1_000, 20_000);
+    prepare_root_host(public_node_host(1_000, 20_000), mode)
+}
+
+fn prepare_root_host(
+    mut host: DocumentScriptHost,
+    mode: Option<HtmlShadowRootMode>,
+) -> (DocumentScriptHost, DocumentScriptPermit, Option<NodeId>) {
     let permit = host.permit().unwrap();
     let cancel = host.native.cancellation.clone();
     let document = guest_document(
@@ -325,4 +331,133 @@ pub(in crate::document_scripting) fn scripted_attach_publishes_the_exact_native_
             DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
         ))
     ));
+}
+
+pub(in crate::document_scripting) fn scripted_shadow_conversion_preserves_order_and_identity() {
+    let (mut host, permit, _) = root_host(None);
+    let before = host.snapshot().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+                const attach = Element.prototype.attachShadow;
+                let calls = 0;
+                const forged = Object.create(Element.prototype);
+                try {
+                    attach.call(forged, { get mode() { ++calls; return "open"; } });
+                    return false;
+                } catch (error) {
+                    if (!(error instanceof TypeError) || calls !== 0) return false;
+                }
+                for (const options of [undefined, null, {}, { mode: "Open" }]) {
+                    try { attach.call(shadowHost, options); return false; }
+                    catch (error) { if (!(error instanceof TypeError)) return false; }
+                }
+                try { attach.call(shadowHost); return false; }
+                catch (error) { if (!(error instanceof TypeError)) return false; }
+                const seen = [];
+                const abort = {};
+                try {
+                    attach.call(shadowHost, {
+                        get clonable() { seen.push("clonable"); return false; },
+                        get customElementRegistry() { seen.push("registry"); return {}; },
+                        get delegatesFocus() { ++calls; return false; },
+                    });
+                    return false;
+                } catch (error) {
+                    if (!(error instanceof TypeError) || seen.join() !== "clonable,registry" || calls !== 0)
+                        return false;
+                }
+                try {
+                    attach.call(shadowHost, {
+                        get mode() { throw abort; },
+                        get serializable() { ++calls; return true; },
+                    });
+                    return false;
+                } catch (error) {
+                    if (error !== abort || calls !== 0 || shadowHost.shadowRoot !== null) return false;
+                }
+                seen.length = 0;
+                const closed = attach.call(shadowHost, {
+                    get clonable() { seen.push("clonable"); return undefined; },
+                    get customElementRegistry() { seen.push("registry"); return null; },
+                    get delegatesFocus() { seen.push("focus"); return undefined; },
+                    get mode() { seen.push("mode"); return "closed"; },
+                    get serializable() { seen.push("serializable"); return undefined; },
+                    get slotAssignment() { seen.push("slot"); return undefined; },
+                });
+                try { attach.call(shadowHost, { mode: "closed" }); return false; }
+                catch (error) {
+                    if (!(error instanceof DOMException) || error.name !== "NotSupportedError") return false;
+                }
+                return seen.join() === "clonable,registry,focus,mode,serializable,slot"
+                    && closed.mode === "closed" && closed.host === shadowHost && shadowHost.shadowRoot === null
+                    && closed.slotAssignment === "named" && !closed.delegatesFocus
+                    && !closed.clonable && !closed.serializable;
+            })()"#)
+    }).unwrap();
+    let after = host.snapshot().unwrap();
+    let mut roots = after.nodes().filter(|node| before.node(*node).is_err());
+    let closed = after.shadow_root(roots.next().unwrap()).unwrap();
+    assert!(roots.next().is_none());
+    assert_eq!(closed.state().mode(), HtmlShadowRootMode::Closed);
+    assert_eq!(
+        after.node(closed.host()).unwrap().hosted_shadow_root(),
+        Some(closed.id())
+    );
+}
+
+pub(in crate::document_scripting) fn scripted_shadow_revalidates_after_reentry() {
+    let (mut host, permit, _) = root_host(None);
+    let before = host.snapshot().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+                let inner;
+                try {
+                    shadowHost.attachShadow({get mode() {
+                        inner = shadowHost.attachShadow({mode: "closed"});
+                        return "open";
+                    }});
+                    return false;
+                } catch (error) {
+                    return error instanceof DOMException && error.name === "NotSupportedError"
+                        && inner.mode === "closed" && inner.host === shadowHost
+                        && shadowHost.shadowRoot === null;
+                }
+            })()"#,
+        )
+    })
+    .unwrap();
+    let after = host.snapshot().unwrap();
+    assert_eq!(
+        after
+            .nodes()
+            .filter(|node| before.node(*node).is_err())
+            .count(),
+        1
+    );
+}
+
+pub(in crate::document_scripting) fn scripted_shadow_source_refusal_keeps_the_original_state() {
+    let (mut host, permit, _) = prepare_root_host(public_node_host(1_000, 1), None);
+    let before = host.snapshot().unwrap();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units("shadowHost.attachShadow({mode: 'open'})"))
+            .map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("one Source work unit cannot publish a native shadow root: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(
+                DomError::SourceWorkLimit { limit: 1 }
+            ))
+        ))
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
+    host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
+        .unwrap();
 }

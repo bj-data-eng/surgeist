@@ -112,15 +112,16 @@ impl Draft {
                 | surgeist_html::elements::native::HtmlCustomElementState::Undefined
         ));
         if node.shadow_root().is_some() {
-            // Every admitted root is non-declarative. Declarative reuse has no
-            // native caller toggle and remains an installation capability.
+            // A parsed declarative root can exist. Reusing it through native
+            // attachment requires its own removal and publication contract.
             return Err(DomError::NotSupported);
         }
         let document = node.document();
-        self.document_metadata(document)?;
-        let registry = element.custom_element_registry();
+        let registry = self.document_metadata(document)?.custom_element_registry();
         let mut state = crate::DomShadowRootState::native(init);
-        state.select_global_registry(registry);
+        if !init.null_registry {
+            state.select_global_registry(registry);
+        }
         let root = self.allocate(NewNode::ShadowRoot(state), document, limits, cancelled)?;
         let mut relation = self.host_mut(root, cancelled)?;
         *relation = Some(host);

@@ -11,10 +11,13 @@ using HTML's actual custom-name grammar. `DomShadowRootInit::new(mode)` requires
 open or closed mode and selects named assignment plus false delegates-focus,
 clonable and serializable defaults. Actual `HtmlShadowRootProperties` can select
 all five values. The native root stores false declarative/available-to-internals/
-keep-registry-null flags and retains the host's actual canonical registry binding:
-null or a qualified Global registry, including after hosted teardown. Duplicate
-native attachment rejects. Custom definitions and execution, declarative reuse,
-focus execution and serialization remain unavailable.
+keep-registry-null flags. Its registry defaults to the host's node Document's
+canonical registry, including after hosted teardown. An explicit null registry
+applies at creation. A clonable root retains a null registry when copied.
+`attach_shadow_with_node_retirement_watch` admits the watch on the same Source
+publication as the new root. Duplicate attachment rejects. Custom definitions
+and execution, declarative reuse, focus execution and serialization remain
+unavailable.
 
 A root has a non-null reciprocal host relation and no ordinary parent. Its
 children are the ordinary children of its own separate tree. `hosted_shadow_root`

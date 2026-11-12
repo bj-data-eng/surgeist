@@ -1,7 +1,14 @@
 //! Canonical ShadowRoot interface and its native host relationship.
 
 use super::*;
-use surgeist_dom::{HtmlShadowRootMode, HtmlSlotAssignment};
+use surgeist_bindings_js::{
+    conversion::{ArgumentValue, declarations::element_attach_shadow_0_init},
+    declarations::{ShadowRootMode, SlotAssignmentMode},
+    dom_exception::DomExceptionName,
+};
+use surgeist_dom::{
+    DomShadowRootInit, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+};
 
 const OPEN: &[u16] = &ascii(b"open");
 const CLOSED: &[u16] = &ascii(b"closed");
@@ -22,6 +29,29 @@ enum Observation {
     Host(NodeId),
     Boolean(bool),
     Keyword(&'static [u16]),
+}
+
+pub(super) fn install_attachment<'scope>(
+    scope: &mut Scope<'scope>,
+    element: &Value<'scope>,
+    capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+) -> Result<(), DocumentGuestEventError> {
+    let handler = capture(size_of::<Capture>())?;
+    let name = &ascii(b"attachShadow");
+    let function = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| handler.attach_shadow(scope, arguments)),
+        FunctionMetadata { name, length: 1 },
+    )?;
+    define_data(
+        scope,
+        element,
+        PropertyKey::String(name),
+        &function,
+        true,
+        true,
+        true,
+    )
+    .map_err(Into::into)
 }
 
 pub(super) fn install<'scope>(
@@ -75,6 +105,98 @@ pub(super) fn install<'scope>(
 }
 
 impl Capture {
+    fn attach_shadow<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let receiver = scope.native_object::<GuestNodeProjection>(arguments.receiver())?;
+        let Some(GuestNode::Element(host)) = receiver.and_then(|node| node.payload().id()) else {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Element required"))?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let descriptor = element_attach_shadow_0_init();
+            let converted = self
+                .callbacks
+                .conversion
+                .run(scope, |cx| {
+                    cx.argument(&descriptor, arguments.get(descriptor.index()))
+                })
+                .map_err(Error::from)?;
+            let ArgumentValue::Present(init) = *converted.get() else {
+                return Err(Error::BackendUnavailable.into());
+            };
+            scope.check_active()?;
+            let mode = match init.mode {
+                ShadowRootMode::Open => HtmlShadowRootMode::Open,
+                ShadowRootMode::Closed => HtmlShadowRootMode::Closed,
+            };
+            let assignment = match init.slot_assignment {
+                SlotAssignmentMode::Named => HtmlSlotAssignment::Named,
+                SlotAssignmentMode::Manual => HtmlSlotAssignment::Manual,
+            };
+            let mut native = DomShadowRootInit::from(HtmlShadowRootProperties::new(
+                mode,
+                assignment,
+                init.delegates_focus,
+                init.clonable,
+                init.serializable,
+            ));
+            if init.custom_element_registry_is_null {
+                native = native.with_null_registry();
+            }
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let document = self.with_native(&owner, |session, _| {
+                let snapshot = session.snapshot();
+                let node = snapshot.node_with(host, || events.step())?;
+                node.owner_document()
+                    .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
+            })?;
+            let mut publish = |prototypes: &DocumentPrototypes| {
+                public.document.ordinary.create(
+                    scope,
+                    &owner,
+                    &events,
+                    ordinary::NodePrototype::Creation(&prototypes.shadow),
+                    ordinary::CreationRefusal::NotSupportedException,
+                    |inbox, key| {
+                        self.with_native(&owner, |session, _| {
+                            let (_, root, watch) = session
+                                .dom()
+                                .raw_mut()
+                                .attach_shadow_with_node_retirement_watch(
+                                    host,
+                                    native,
+                                    inbox,
+                                    key,
+                                    (events.limits.source_edits, events.limits.node_retirement),
+                                    &owner.cancellation,
+                                )?
+                                .into_parts();
+                            Ok((GuestNode::ShadowRoot(root), watch))
+                        })
+                    },
+                )
+            };
+            if let Some(origin) = public.other_document_origin(&owner, &events, document)? {
+                public.with_origin(&events, origin, |origin| publish(&origin.documents))
+            } else {
+                publish(&public.document.prototypes)
+            }
+        })();
+        match result {
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Native(
+                DocumentScriptNativeError::Dom(DomError::NotSupported),
+            ))) => Ok(Completion::Throw(
+                scope.dom_exception(DomExceptionName::NotSupportedError, &[])?,
+            )),
+            _ => complete(scope, &events, result),
+        }
+    }
+
     fn shadow_member<'scope>(
         &self,
         scope: &mut Scope<'scope>,

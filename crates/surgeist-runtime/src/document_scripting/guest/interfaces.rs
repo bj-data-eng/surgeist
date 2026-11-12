@@ -205,6 +205,7 @@ impl PublicEventBindings {
             WorkTable {
                 Value: work,
                 CodeUnit: work,
+                EnumerationLookup: work,
                 Argument: work,
                 DictionaryMember: work,
                 ..WorkTable::splat(0)

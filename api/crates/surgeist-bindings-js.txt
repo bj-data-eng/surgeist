@@ -61,6 +61,7 @@ pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_document_type_0_public_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_document_type_0_system_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_html_document_0_title() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::element_attach_shadow_0_init() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::ShadowRootInit>>
 pub fn surgeist_bindings_js::conversion::declarations::element_closest_0_selectors() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::element_get_attribute_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::element_get_attribute_node_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -127,6 +128,7 @@ pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_se
 pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_set_attribute_0_value() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_toggle_attribute_0_force() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<bool>>
 pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_toggle_attribute_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::shadow_root_init() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::ShadowRootInit>
 pub fn surgeist_bindings_js::conversion::declarations::shadow_root_mode() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::ShadowRootMode>
 pub fn surgeist_bindings_js::conversion::declarations::slot_assignment_mode() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::SlotAssignmentMode>
 pub fn surgeist_bindings_js::conversion::declarations::text_constructor_0_data() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -348,6 +350,13 @@ pub struct surgeist_bindings_js::declarations::EventListenerOptions
 pub surgeist_bindings_js::declarations::EventListenerOptions::capture: bool
 pub struct surgeist_bindings_js::declarations::GetRootNodeOptions
 pub surgeist_bindings_js::declarations::GetRootNodeOptions::composed: bool
+pub struct surgeist_bindings_js::declarations::ShadowRootInit
+pub surgeist_bindings_js::declarations::ShadowRootInit::clonable: bool
+pub surgeist_bindings_js::declarations::ShadowRootInit::custom_element_registry_is_null: bool
+pub surgeist_bindings_js::declarations::ShadowRootInit::delegates_focus: bool
+pub surgeist_bindings_js::declarations::ShadowRootInit::mode: surgeist_bindings_js::declarations::ShadowRootMode
+pub surgeist_bindings_js::declarations::ShadowRootInit::serializable: bool
+pub surgeist_bindings_js::declarations::ShadowRootInit::slot_assignment: surgeist_bindings_js::declarations::SlotAssignmentMode
 pub mod surgeist_bindings_js::dom_exception
 #[non_exhaustive] pub enum surgeist_bindings_js::dom_exception::DomExceptionName
 pub surgeist_bindings_js::dom_exception::DomExceptionName::AbortError

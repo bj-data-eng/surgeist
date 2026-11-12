@@ -306,6 +306,11 @@ Native ShadowRoots inherit DocumentFragment and expose their canonical host,
 mode, focus delegation, slot assignment, clonability and serializability.
 Element.shadowRoot exposes open roots. Node root reads and event paths use
 canonical identities and preserve closed-root visibility and retargeting.
+`Element.attachShadow` converts its options before revalidating the live host.
+It publishes through native Source and returns the exact ShadowRoot in the
+host's current node Document's creation realm with an admitted retirement watch.
+Both open and closed modes are supported. Declarative reuse and native custom
+element registry objects are unavailable in this profile.
 `DocumentGuestEventLimits` includes the native watch storage and work limits.
 The `Text` and `Comment` constructors and Document factories use the same
 creation and retirement boundary. The factories use the receiver Document's

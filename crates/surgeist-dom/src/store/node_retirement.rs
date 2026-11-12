@@ -36,6 +36,7 @@ struct OrdinaryAdmission<'a> {
     limits: DomNodeRetirementLimits,
     remaining: Cell<u64>,
     cancel: &'a AtomicBool,
+    source: Option<&'a super::source::formation::Formation>,
 }
 
 impl<'a> OrdinaryAdmission<'a> {
@@ -45,10 +46,11 @@ impl<'a> OrdinaryAdmission<'a> {
             limits,
             remaining: Cell::new(limits.work),
             cancel,
+            source: None,
         }
     }
 
-    fn admit_work(&self, steps: u64) -> Result<(), DomError> {
+    fn admit_local_work(&self, steps: u64) -> Result<(), DomError> {
         check_cancel(self.cancel)?;
         let remaining =
             self.remaining
@@ -61,12 +63,25 @@ impl<'a> OrdinaryAdmission<'a> {
         Ok(())
     }
 
+    fn admit_work(&self, steps: u64) -> Result<(), DomError> {
+        self.admit_local_work(steps)?;
+        if let Some(source) = self.source {
+            for _ in 0..steps {
+                source.step(self.cancel)?;
+            }
+        }
+        Ok(())
+    }
+
     fn retain(&self, bytes: usize) -> Result<Debit, DomError> {
         self.dom
             .custody_registry
             .ledger()
             .retain(Usage::new(bytes, 0), |next| {
-                self.admit_work(1)?;
+                self.admit_local_work(1)?;
+                if let Some(source) = self.source {
+                    source.admit_custody_usage(next, self.cancel)?;
+                }
                 admit(
                     next.bytes(),
                     self.limits.canonical_bytes,
@@ -133,7 +148,7 @@ impl DomNodeRetirementNotice {
     }
 }
 
-/// A canonical batch publication and the watch of one node it created.
+/// A canonical publication and the watch of one node it created.
 pub struct DomWatchedCreation {
     commit: DomCommit,
     node: NodeId,
@@ -141,6 +156,14 @@ pub struct DomWatchedCreation {
 }
 
 impl DomWatchedCreation {
+    pub(super) fn new(commit: DomCommit, node: NodeId, watch: DomNodeRetirementWatch) -> Self {
+        Self {
+            commit,
+            node,
+            watch,
+        }
+    }
+
     /// The exact newly published generation.
     pub const fn node(&self) -> NodeId {
         self.node
@@ -759,11 +782,7 @@ impl Dom {
             // Index insertion ends admission. Publication cannot refuse.
             let watch = self.finish_watch(prepared, node);
             let commit = self.publish_prepared(publication);
-            Ok(DomWatchedCreation {
-                commit,
-                node,
-                watch,
-            })
+            Ok(DomWatchedCreation::new(commit, node, watch))
         })();
         if result.is_err() {
             // Abandoned staged frontiers have dropped. Release their registry
@@ -771,6 +790,34 @@ impl Dom {
             self.custody_registry.reconcile_releases();
         }
         result
+    }
+
+    pub(super) fn watch_prepared_source_creation(
+        &mut self,
+        publication: &super::PreparedPublication,
+        node: NodeId,
+        inbox: &DomNodeRetirementInbox,
+        custody_key: usize,
+        limits: DomNodeRetirementLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomNodeRetirementWatch, DomError> {
+        if inbox.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        let source = publication
+            ._formation
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let mut admission = OrdinaryAdmission::new(self, limits, cancel);
+        admission.source = Some(source);
+        let admission =
+            self.watch_admission(&publication.state, node, inbox, custody_key, admission)?;
+        let prepared = arm(
+            self.node_retirements.as_ref(),
+            &admission,
+            publication.node_retirement_publication.as_ref(),
+        )?;
+        Ok(self.finish_watch(prepared, node))
     }
 
     fn ordinary_watch_admission<'a>(
@@ -783,8 +830,20 @@ impl Dom {
         cancel: &'a AtomicBool,
     ) -> Result<WatchAdmission<'a>, DomError> {
         let ordinary = OrdinaryAdmission::new(self, limits, cancel);
+        self.watch_admission(state, node, inbox, custody_key, ordinary)
+    }
+
+    fn watch_admission<'a>(
+        &self,
+        state: &State,
+        node: NodeId,
+        inbox: &'a DomNodeRetirementInbox,
+        custody_key: usize,
+        ordinary: OrdinaryAdmission<'a>,
+    ) -> Result<WatchAdmission<'a>, DomError> {
         ordinary.admit_work(1)?;
         state.node_with(self.owner, node, &mut || ordinary.admit_work(1))?;
+        let cancel = ordinary.cancel;
         Ok(WatchAdmission {
             funding: Funding::Ordinary(ordinary),
             inbox,

@@ -15,13 +15,19 @@ pub(super) enum NodePrototype<'value, 'scope> {
     Creation(&'value RetainedCallbackObject),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum CreationRefusal {
+    Host,
+    NotSupportedException,
+}
+
 enum Publication<Publish> {
-    Pending(Publish),
+    Pending(Publish, CreationRefusal),
     Watched(GuestNode, DomNodeRetirementWatch),
 }
 
 enum Projection<'prototype, 'scope, Publish> {
-    Create(NodePrototype<'prototype, 'scope>, Publish),
+    Create(NodePrototype<'prototype, 'scope>, Publish, CreationRefusal),
     Watch(&'prototype RetainedCallbackObject, Publish),
 }
 
@@ -240,6 +246,7 @@ impl OrdinaryBindings {
         owner: &NativeOwner,
         events: &GuestEvents,
         prototype: NodePrototype<'_, 'scope>,
+        refusal: CreationRefusal,
         create: impl FnOnce(
             &DomNodeRetirementInbox,
             usize,
@@ -249,7 +256,7 @@ impl OrdinaryBindings {
         self.project(
             scope,
             Admission::ordinary(owner, events),
-            Projection::Create(prototype, create),
+            Projection::Create(prototype, create, refusal),
         )
     }
 
@@ -348,18 +355,18 @@ impl OrdinaryBindings {
             lifetime: Some(lifetime.clone()),
         };
         let (holder, publication) = match projection {
-            Projection::Create(NodePrototype::Selected(prototype), create) => (
+            Projection::Create(NodePrototype::Selected(prototype), create, refusal) => (
                 admission.events.project(
                     admission.owner,
                     scope,
                     ObjectPrototype::Object(prototype),
                     payload,
                 )?,
-                Publication::Pending(create),
+                Publication::Pending(create, refusal),
             ),
-            Projection::Create(NodePrototype::Creation(prototype), create) => (
+            Projection::Create(NodePrototype::Creation(prototype), create, refusal) => (
                 Self::form_in_prototype_realm(scope, admission, prototype, payload, || Ok(()))?,
-                Publication::Pending(create),
+                Publication::Pending(create, refusal),
             ),
             Projection::Watch(prototype, watch) => {
                 let mut watched = None;
@@ -398,16 +405,26 @@ impl OrdinaryBindings {
         });
         let (node, watch) = match publication {
             Publication::Watched(node, watch) => (node, watch),
-            Publication::Pending(publish) => match publish(&inbox, key) {
+            Publication::Pending(publish, refusal) => match publish(&inbox, key) {
                 Ok(created) => created,
                 Err(error) => {
-                    let first = refuse(scope, &admission.events.refusal, error);
+                    let first = if refusal == CreationRefusal::NotSupportedException
+                        && matches!(
+                            &error,
+                            DocumentGuestEventError::Document(DocumentScriptError::Native(
+                                DocumentScriptNativeError::Dom(DomError::NotSupported)
+                            ))
+                        ) {
+                        Err(error)
+                    } else {
+                        refuse(scope, &admission.events.refusal, error).map_err(Into::into)
+                    };
                     let pin = {
                         let allocation = pin;
                         *allocation
                     };
                     let _ = scope.release_callback_object(pin.holder);
-                    return first.map_err(Into::into);
+                    return first;
                 }
             },
         };

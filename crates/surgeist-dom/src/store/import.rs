@@ -322,8 +322,11 @@ impl Draft {
                 self.source_shadow(&frame.source, cancel)?
                 && state.clonable()
             {
-                let root =
-                    self.attach_shadow(frame.copy, state.properties().into(), limits, cancel)?;
+                let mut init = crate::DomShadowRootInit::from(state.properties());
+                if state.custom_element_registry() == crate::DomRegistryBinding::Null {
+                    init = init.with_null_registry();
+                }
+                let root = self.attach_shadow(frame.copy, init, limits, cancel)?;
                 let document = frame.document;
                 self.push_effect_retained(select::Effect::Clone(frame), scoped, payload, cancel)?;
                 self.push_effect_retained(

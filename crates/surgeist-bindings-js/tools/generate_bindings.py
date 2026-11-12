@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the source-qualified description and emit typed brand-free IDL values.
+"""Validate the source-qualified description and emit typed IDL values.
 
 Run --check or --write explicitly. No downloads, build-time generation, native
 algorithms or runtime handlers are supplied. The authored JSON is the only
@@ -14,6 +14,7 @@ import json
 from pathlib import Path, PurePosixPath
 import re
 import sys
+import textwrap
 from urllib.parse import urlsplit
 
 
@@ -689,11 +690,22 @@ def field_name(name):
     return "r#" + result if result in keywords else result
 
 
-def lower_values(data):
-    """Lower validated declarations, excluding whole dictionaries needing brands.
+def null_registry_member(member):
+    return (member.get("id") == "ShadowRootInit.customElementRegistry"
+            and member["type"] == {"kind": "nullable", "inner": {"kind": "named", "name": "CustomElementRegistry"}}
+            and not member["required"] and "default" not in member)
 
-    This first value-model boundary supports Boolean and enumeration members.
-    Other kinds remain in the authored description, not successful partial DTOs.
+
+def member_field(member):
+    name = field_name(member["name"])
+    return name + "_is_null" if null_registry_member(member) else name
+
+
+def lower_values(data):
+    """Lower validated declarations for the selected conversion profiles.
+
+    Boolean and enumeration members need no interface brand. ShadowRootInit
+    also admits the null alternative of its unavailable registry interface.
     The normalized member order is also the later conversion read order.
     """
     definitions = {d["name"]: d for d in data["declarations"] if not d.get("partial", False)}
@@ -714,14 +726,15 @@ def lower_values(data):
         result = list(inherited)
         for m in sorted(d["members"], key=lambda m: m["name"]):
             ty = m["type"]
-            if ty["kind"] != "named" or ty.get("attributes"):
-                return None
-            target = definitions.get(ty["name"])
-            if ty["name"] != "boolean" and (target is None or target["kind"] != "enumeration"):
-                return None
+            if not null_registry_member(m):
+                if ty["kind"] != "named" or ty.get("attributes"):
+                    return None
+                target = definitions.get(ty["name"])
+                if ty["name"] != "boolean" and (target is None or target["kind"] != "enumeration"):
+                    return None
             require(all(previous["name"] != m["name"] for previous in result), "duplicate inherited dictionary member")
             result.append(m)
-        fields = [field_name(m["name"]) for m in result]
+        fields = [member_field(m) for m in result]
         require(len(set(fields)) == len(fields), "dictionary Rust field collision")
         return result
 
@@ -745,12 +758,16 @@ def units_literal(value):
 
 
 def member_type(member):
+    if null_registry_member(member):
+        return "bool"
     name = member["type"]["name"]
     value = "bool" if name == "boolean" else name
     return value if member["required"] or "default" in member else "Option<" + value + ">"
 
 
 def member_default(member, enumerations):
+    if null_registry_member(member):
+        return "false"
     value = member.get("default")
     if value is None:
         require(not member["required"], "required dictionary member has no default")
@@ -790,15 +807,20 @@ def emit_values(model):
         defaults = None if any(m["required"] for m in d["members"]) else [member_default(m, enumerations) for m in d["members"]]
         derive_default = defaults is not None and all(value in {"false", "None"} for value in defaults)
         derives = "Clone, Copy, Debug, " + ("Default, " if derive_default else "") + "PartialEq, Eq"
-        result += ["/// Complete brand-free `" + d["name"] + "` dictionary value.",
+        doc = ("Complete `" + d["name"] + "` dictionary value for the admitted registry profile."
+               if any(null_registry_member(m) for m in d["members"])
+               else "Complete brand-free `" + d["name"] + "` dictionary value.")
+        result += ["/// " + doc,
                    "#[derive(" + derives + ")]", "pub struct " + d["name"] + " {"]
         for m in d["members"]:
-            result += ["    /// The declared `" + m["name"] + "` member.",
-                       "    pub " + field_name(m["name"]) + ": " + member_type(m) + ","]
+            doc = ("Whether `customElementRegistry` was explicitly supplied as null."
+                   if null_registry_member(m) else "The declared `" + m["name"] + "` member.")
+            result += ["    /// " + doc,
+                       "    pub " + member_field(m) + ": " + member_type(m) + ","]
         result += ["}", ""]
         if defaults is not None and not derive_default:
             result += ["impl Default for " + d["name"] + " {", "    fn default() -> Self {", "        Self {"]
-            result += ["            " + field_name(m["name"]) + ": " + value + "," for m, value in zip(d["members"], defaults)]
+            result += ["            " + member_field(m) + ": " + value + "," for m, value in zip(d["members"], defaults)]
             result += ["        }", "    }", "}", ""]
     return "\n".join(result)
 
@@ -908,28 +930,38 @@ def emit_conversions(model, arguments=(), annotated_setters=()):
                    ") -> Result<Converted<" + name + ">, Failure> {",
                    "    let object = cx.dictionary(" + json.dumps(name) + ", input)?;"]
         for member in definition["members"]:
-            field = field_name(member["name"])
-            descriptor = conversion_type(member["type"], model)[2]
-            optional = not member["required"] and "default" not in member
-            member_arguments = "input, object, &" + units_literal(member["name"])
+            field = member_field(member)
+            member_units = units_literal(member["name"])
+            member_arguments = "input, object, &" + member_units
             if len(member_arguments) <= 60:
                 result.append("    let " + field + " = match cx.member(" + member_arguments + ")? {")
             else:
-                result += ["    let " + field + " = match cx.member(", "        input,", "        object,",
-                           "        &" + units_literal(member["name"]) + ",", "    )? {"]
-            result += ["        Some(value) => " + ("Some(" if optional else "") + "*cx.value(&" + descriptor + ", &value)?.get()" + (")" if optional else "") + ","]
+                result += ["    let " + field + " = match cx.member(", "        input,", "        object,"]
+                if len(member_units) <= 60:
+                    result += ["        &" + member_units + ","]
+                else:
+                    result += ["        &["]
+                    result += ["            " + line for line in textwrap.wrap(member_units[1:-1] + ",", width=88)]
+                    result += ["        ],"]
+                result += ["    )? {"]
+            if null_registry_member(member):
+                result += ["        Some(value) => cx.null_interface_member(\"CustomElementRegistry\", &value)?,"]
+            else:
+                descriptor = conversion_type(member["type"], model)[2]
+                optional = not member["required"] and "default" not in member
+                result += ["        Some(value) => " + ("Some(" if optional else "") + "*cx.value(&" + descriptor + ", &value)?.get()" + (")" if optional else "") + ","]
             if member["required"]:
                 result.append("        None => return Err(cx.validation(super::Rule::RequiredMember(" + json.dumps(member["id"]) + "))),")
             else:
                 default = member_default(member, enumerations)
                 result.append("        None => " + default + ",")
             result += ["    };"]
-        fields = ", ".join(field_name(m["name"]) for m in definition["members"])
+        fields = ", ".join(member_field(m) for m in definition["members"])
         if len(fields) <= 18:
             result += ["    Ok(cx.plain(" + name + " { " + fields + " }))", "}", ""]
         else:
             result += ["    Ok(cx.plain(" + name + " {"]
-            result += ["        " + field_name(m["name"]) + "," for m in definition["members"]]
+            result += ["        " + member_field(m) + "," for m in definition["members"]]
             result += ["    }))", "}", ""]
     for namespace in model["namespaces"]:
         stem = "WINDOW_" + field_name(namespace["name"]).upper()

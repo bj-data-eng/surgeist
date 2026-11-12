@@ -6,10 +6,12 @@ use surgeist_html::construction::{
 
 /// Native attach options. Mode is required; the other source defaults are
 /// named slot assignment and false delegates-focus, clonable and serializable.
-/// Registry objects and declarative installation are not admitted capabilities.
+/// The registry defaults to the host's node Document registry. Explicit null
+/// is supported. Registry objects and declarative reuse are unavailable.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomShadowRootInit {
     pub(crate) properties: HtmlShadowRootProperties,
+    pub(crate) null_registry: bool,
 }
 impl DomShadowRootInit {
     pub fn new(mode: HtmlShadowRootMode) -> Self {
@@ -21,15 +23,25 @@ impl DomShadowRootInit {
                 false,
                 false,
             ),
+            null_registry: false,
         }
     }
     pub fn properties(self) -> HtmlShadowRootProperties {
         self.properties
     }
+
+    /// Select null for the new root's initial registry.
+    pub fn with_null_registry(mut self) -> Self {
+        self.null_registry = true;
+        self
+    }
 }
 impl From<HtmlShadowRootProperties> for DomShadowRootInit {
     fn from(properties: HtmlShadowRootProperties) -> Self {
-        Self { properties }
+        Self {
+            properties,
+            null_registry: false,
+        }
     }
 }
 

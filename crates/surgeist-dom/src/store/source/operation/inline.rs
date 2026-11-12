@@ -35,6 +35,7 @@ pub(super) struct Execution<'a> {
     pub(super) publication: Option<DomInlineStyleSourcePublication>,
     pub(super) native: Option<meta::Execution>,
     pub(super) hosted_events: bool,
+    pub(super) creation_watch: Option<shadow::CreationWatch<'a>>,
 }
 impl Execution<'_> {
     pub(super) fn disabled() -> Self {
@@ -43,6 +44,7 @@ impl Execution<'_> {
             publication: None,
             native: None,
             hosted_events: false,
+            creation_watch: None,
         }
     }
 }
@@ -151,6 +153,7 @@ impl DomSourceLease<'_> {
             publication: None,
             native: None,
             hosted_events,
+            creation_watch: None,
         };
         match self.advance_execution(&mut execution, None, cancel) {
             Ok(source) => Ok(DomSourceAdvance::Progress(DomInlineStyleSourceProgress {
@@ -259,6 +262,12 @@ impl Operation {
             .inline_recording
             .as_ref()
             .is_some_and(Recording::has_inputs);
+        if let Some(watch) = execution.creation_watch.as_mut() {
+            if incomplete || has_inputs {
+                return Err(DomError::InvalidSourceOperation.into());
+            }
+            watch.arm(dom, &segment, cancel)?;
+        }
         let inline = if has_inputs {
             // Current inline-bearing public roots return immediately after this
             // publication. No lifetime history or overwrite/recovery API exists.

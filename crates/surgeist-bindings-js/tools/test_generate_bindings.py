@@ -304,7 +304,7 @@ class ValueLoweringTests(unittest.TestCase):
     def test_current_dictionary_outputs_cover_their_admitted_profiles(self):
         model = g.lower_values(g.load())
         self.assertEqual([d["name"] for d in model["dictionaries"]],
-                         ["GetRootNodeOptions", "EventInit", "EventListenerOptions", "ShadowRootInit"])
+                         ["GetRootNodeOptions", "ShadowRootInit", "EventInit", "EventListenerOptions"])
         self.assertEqual([d["name"] for d in model["enumerations"]],
                          ["ShadowRootMode", "SlotAssignmentMode", "DocumentReadyState", "DocumentVisibilityState"])
         # No member may be discarded. Signal, native registry and source
