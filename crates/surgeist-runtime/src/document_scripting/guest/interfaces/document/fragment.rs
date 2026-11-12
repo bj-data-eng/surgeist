@@ -2,58 +2,23 @@
 
 use super::*;
 
-const FRAGMENT: &[u16] = &ascii(b"DocumentFragment");
+pub(super) const FRAGMENT: &[u16] = &ascii(b"DocumentFragment");
 const CREATE_FRAGMENT: &[u16] = &ascii(b"createDocumentFragment");
 
-pub(super) struct FragmentBindings {
-    pub(super) prototype: RetainedCallbackObject,
-}
-
-impl FragmentBindings {
-    pub(super) fn install<'scope>(
-        scope: &mut Scope<'scope>,
-        node: &Value<'scope>,
-        node_constructor: &Value<'scope>,
-        capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
-        fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
-    ) -> Result<Self, DocumentGuestEventError> {
-        let prototype = scope.object(ObjectPrototype::Object(node))?;
-        let fallback = capture(size_of::<Capture>())?;
-        let constructor = capture(size_of::<Capture>())?;
-        let callback = ConstructorCallback::bounded(
-            0,
-            move |scope| {
-                let (_, events) = fallback.active(scope)?;
-                let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-                scope.open_callback_object(&public.document.fragment.prototype)
-            },
-            move |scope, arguments| constructor.construct_fragment(scope, arguments),
-        );
-        let interface = scope.constructor(
-            &callback,
-            FunctionMetadata {
-                name: FRAGMENT,
-                length: 0,
-            },
-        )?;
-        scope.set_prototype(&interface, ObjectPrototype::Object(node_constructor))?;
-        scope.define_property(
-            &interface,
-            PropertyKey::String(PROTOTYPE),
-            PropertyDescriptor::Data {
-                value: &prototype,
-                writable: false,
-                enumerable: false,
-                configurable: false,
-            },
-        )?;
-        let global = scope.global()?;
-        install_interface(scope, &global, FRAGMENT, &interface, &prototype)?;
-        let observed = scope.callback_object(&prototype)?;
-        Ok(Self {
-            prototype: scope.retain_callback_object(observed, fund)?,
-        })
-    }
+pub(super) fn constructor(
+    capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+) -> Result<ConstructorCallback, DocumentGuestEventError> {
+    let fallback = capture(size_of::<Capture>())?;
+    let constructor = capture(size_of::<Capture>())?;
+    Ok(ConstructorCallback::bounded(
+        0,
+        move |scope| {
+            let (_, events) = fallback.active(scope)?;
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            scope.open_callback_object(&public.document.prototypes.fragment)
+        },
+        move |scope, arguments| constructor.construct_fragment(scope, arguments),
+    ))
 }
 
 pub(super) fn install_factory<'scope>(
@@ -100,7 +65,7 @@ impl Capture {
                 &owner,
                 &events,
                 attachment.target.document(),
-                selected.prototype(),
+                ordinary::NodePrototype::Selected(selected.prototype()),
             )
         })();
         match result {
@@ -126,13 +91,21 @@ impl Capture {
         };
         let (owner, events) = self.active(scope)?;
         let result = (|| {
-            let bindings = &events
-                .public
-                .as_ref()
-                .ok_or(Error::ExpiredIdentity)?
-                .document;
-            let prototype = scope.open_callback_object(&bindings.fragment.prototype)?;
-            self.publish_fragment(scope, &owner, &events, document, &prototype)
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let mut project = |prototypes: &DocumentPrototypes| {
+                self.publish_fragment(
+                    scope,
+                    &owner,
+                    &events,
+                    document,
+                    ordinary::NodePrototype::Creation(&prototypes.fragment),
+                )
+            };
+            if let Some(global) = public.other_document_origin(&owner, &events, document)? {
+                public.with_origin(&events, global, |origin| project(&origin.documents))
+            } else {
+                project(&public.document.prototypes)
+            }
         })();
         complete(scope, &events, result)
     }
@@ -143,7 +116,7 @@ impl Capture {
         owner: &NativeOwner,
         events: &GuestEvents,
         document: DocumentId,
-        prototype: &Value<'scope>,
+        prototype: ordinary::NodePrototype<'_, 'scope>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let bindings = &events
             .public
@@ -151,31 +124,25 @@ impl Capture {
             .ok_or(Error::ExpiredIdentity)?
             .document
             .ordinary;
-        bindings.project(
-            scope,
-            owner,
-            events,
-            ordinary::NodePrototype::Selected(prototype),
-            |inbox, key| {
-                self.with_native(owner, |session, _| {
-                    let mut batch = DomBatch::new();
-                    let ticket = batch.create_fragment(document);
-                    let (_, node, watch) = session
-                        .dom()
-                        .raw_mut()
-                        .apply_with_node_retirement_watch(
-                            batch,
-                            &ticket,
-                            inbox,
-                            key,
-                            events.limits.node_retirement,
-                            &owner.cancellation,
-                        )
-                        .map_err(DocumentScriptNativeError::from)?
-                        .into_parts();
-                    Ok((GuestNode::Fragment(node), watch))
-                })
-            },
-        )
+        bindings.project(scope, owner, events, prototype, |inbox, key| {
+            self.with_native(owner, |session, _| {
+                let mut batch = DomBatch::new();
+                let ticket = batch.create_fragment(document);
+                let (_, node, watch) = session
+                    .dom()
+                    .raw_mut()
+                    .apply_with_node_retirement_watch(
+                        batch,
+                        &ticket,
+                        inbox,
+                        key,
+                        events.limits.node_retirement,
+                        &owner.cancellation,
+                    )
+                    .map_err(DocumentScriptNativeError::from)?
+                    .into_parts();
+                Ok((GuestNode::Fragment(node), watch))
+            })
+        })
     }
 }

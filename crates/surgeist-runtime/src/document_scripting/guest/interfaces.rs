@@ -98,6 +98,7 @@ impl OriginAuthority {
 struct OriginBindings {
     global: DomHostedGlobalId,
     target: RetainedCallbackObject,
+    documents: document::DocumentPrototypes,
     elements: document::element::ElementBindings,
     next: Option<Box<Self>>,
     _backing: GuestBacking,
@@ -415,6 +416,15 @@ impl PublicEventBindings {
         let target = install_target_prototype(scope, &capture)?;
         install_event_interface(scope, Interface::Target, &target, &capture)?;
         let (constructor, node) = document::install_node(scope, &target, &capture)?;
+        let documents = document::DocumentPrototypes::install_origin(
+            scope,
+            &node,
+            &constructor,
+            &OriginInterfaceFunding {
+                capture: &capture,
+                retain: &fund,
+            },
+        )?;
         let elements = document::element::ElementBindings::install(
             scope,
             &node,
@@ -432,6 +442,7 @@ impl PublicEventBindings {
         let record = Box::new(OriginBindings {
             global,
             target,
+            documents,
             elements,
             next: origins.take(),
             _backing: backing,

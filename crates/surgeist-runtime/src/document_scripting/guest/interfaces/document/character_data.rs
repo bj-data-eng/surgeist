@@ -296,12 +296,15 @@ impl Capture {
             let data =
                 self.character_argument(scope, &descriptor, arguments.get(descriptor.index()))?;
             scope.check_active()?;
-            let bindings = &events
-                .public
-                .as_ref()
-                .ok_or(Error::ExpiredIdentity)?
-                .document;
-            let prototype = scope.open_callback_object(bindings.character_data.prototype(kind))?;
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            if public
+                .other_document_origin(&owner, &events, document)?
+                .is_some()
+            {
+                return Err(DocumentScriptNativeError::CreationGlobalUnavailable.into());
+            }
+            let prototype =
+                scope.open_callback_object(public.document.character_data.prototype(kind))?;
             self.publish_character(scope, &owner, &events, &prototype, (kind, document), &data)
         })();
         complete(scope, &events, result)

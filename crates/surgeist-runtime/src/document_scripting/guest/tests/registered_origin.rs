@@ -1,10 +1,18 @@
 //! Native Documents and Fragments in registered creation realms.
 
 use super::*;
+use surgeist_dom::{DomBatch, NodeId};
 
-pub(in crate::document_scripting) fn native_document_and_fragment_use_their_registered_realm() {
-    use surgeist_dom::DomBatch;
+struct RegisteredOrigin {
+    host: DocumentScriptHost,
+    permit: DocumentScriptPermit,
+    origin: DomHostedTopLevel,
+    fragment: NodeId,
+    element: NodeId,
+    cancellation: Arc<AtomicBool>,
+}
 
+fn retired_origin_with_moved_element() -> RegisteredOrigin {
     let cancellation = Arc::new(AtomicBool::new(false));
     let (mut session, target) =
         crate::document_scripting::cross_realm_tests::hosted_session(&cancellation, 0);
@@ -70,6 +78,25 @@ pub(in crate::document_scripting) fn native_document_and_fragment_use_their_regi
         dom.apply(move_child, &cancellation).unwrap();
     })
     .unwrap();
+    RegisteredOrigin {
+        host,
+        permit,
+        origin,
+        fragment,
+        element,
+        cancellation,
+    }
+}
+
+pub(in crate::document_scripting) fn native_document_and_fragment_use_their_registered_realm() {
+    let RegisteredOrigin {
+        mut host,
+        permit,
+        origin,
+        fragment,
+        element,
+        cancellation,
+    } = retired_origin_with_moved_element();
     let projected = host.in_document(&permit, |scope| {
         let wrapper = scope.evaluate(&units("originChild.ownerDocument"))?;
         let realm = scope
@@ -136,6 +163,22 @@ pub(in crate::document_scripting) fn native_document_and_fragment_use_their_regi
             Ok(scope.retain(&wrapper))
         })
         .unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+                const document = originChild.ownerDocument;
+                const root = originChild.parentNode;
+                const actual = document.createDocumentFragment();
+                const borrowed = Document.prototype.createDocumentFragment.call(document);
+                return actual !== borrowed && actual !== root && borrowed !== root
+                    && Object.getPrototypeOf(actual) === Object.getPrototypeOf(root)
+                    && Object.getPrototypeOf(borrowed) === Object.getPrototypeOf(root)
+                    && actual.ownerDocument === document && borrowed.ownerDocument === document;
+            })()"#,
+        )
+    })
+    .unwrap();
     let engine = host.engine.as_mut().unwrap();
     let registered = engine
         .creations
@@ -178,4 +221,121 @@ pub(in crate::document_scripting) fn native_document_and_fragment_use_their_regi
             Ok(())
         })
         .unwrap();
+
+    host.with_native(|dom, _, _| {
+        let mut retire = DomBatch::new();
+        retire.detach(element);
+        retire.destroy(fragment);
+        dom.apply(retire, &cancellation).unwrap();
+    })
+    .unwrap();
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        host.in_document(&permit, |scope| {
+            let global = scope.global()?;
+            let retired = scope.import(&fragment_wrapper)?;
+            scope.set(
+                &global,
+                PropertyKey::String(&units("retiredOriginFragment")),
+                &retired,
+            )?;
+            scope
+                .evaluate(&units("retiredOriginFragment.nodeType"))
+                .map(drop)
+        })
+    else {
+        panic!("the original Fragment wrapper must observe native retirement");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
+        ))
+    ));
+}
+
+pub(in crate::document_scripting) fn registered_origin_refusals_preserve_state() {
+    assert_projection_admission();
+
+    let RegisteredOrigin {
+        mut host, permit, ..
+    } = retired_origin_with_moved_element();
+    let before = host.snapshot().unwrap().stamp();
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        host.in_document(&permit, |scope| {
+            scope
+                .evaluate(&units(
+                    "Document.prototype.createTextNode.call(originChild.ownerDocument, 'text')",
+                ))
+                .map(drop)
+        })
+    else {
+        panic!("a borrowed factory requires its receiver's CharacterData profile");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::CreationGlobalUnavailable)
+        ))
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), before);
+}
+
+fn assert_projection_admission() {
+    let read = |scope: &mut Scope<'_>| {
+        scope
+            .evaluate(&units("originChild.ownerDocument"))
+            .map(drop)
+    };
+    let (work, bytes) = {
+        let RegisteredOrigin {
+            mut host, permit, ..
+        } = retired_origin_with_moved_element();
+        let events = host.guest_events().unwrap();
+        let before = (events.budget.work.get(), events.budget.used.get());
+        host.in_document(&permit, read).unwrap();
+        (
+            events.budget.work.get() - before.0,
+            events.budget.used.get() - before.1,
+        )
+    };
+    assert!(work > 0 && bytes > 0);
+    for (work_available, bytes_available) in [(work, bytes), (work - 1, bytes), (work, bytes - 1)] {
+        let RegisteredOrigin {
+            mut host, permit, ..
+        } = retired_origin_with_moved_element();
+        let events = host.guest_events().unwrap();
+        let stamp = host.snapshot().unwrap().stamp();
+        let original_bytes = events.budget.used.get();
+        let reserve = events.limits.storage_bytes - original_bytes - bytes_available;
+        let reservation = events.reserve(&host.native, reserve).unwrap();
+        events.budget.work.set(events.limits.work - work_available);
+        let before = events.budget.used.get();
+        let result = host.in_document(&permit, read);
+        assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+        if work_available == work && bytes_available == bytes {
+            result.unwrap();
+            assert_eq!(events.budget.work.get(), events.limits.work);
+            assert_eq!(events.budget.used.get(), events.limits.storage_bytes);
+            continue;
+        }
+        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+            panic!("one-short Document projection must refuse");
+        };
+        assert!(matches!(
+            (
+                work_available < work,
+                failure.cause::<DocumentGuestEventError>()
+            ),
+            (true, Some(DocumentGuestEventError::WorkLimit))
+                | (
+                    false,
+                    Some(DocumentGuestEventError::Document(
+                        DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+                    ))
+                )
+        ));
+        assert_eq!(events.budget.used.get(), before);
+        drop(reservation);
+        assert_eq!(events.budget.used.get(), original_bytes);
+    }
 }
