@@ -726,3 +726,55 @@ fn notification_order_uses_creation_across_reversed_registration_and_slot_reuse(
         assert_eq!(delivery.observer(), expected);
     }
 }
+
+#[test]
+fn transient_and_reference_admission_refuse_without_leaking_a_partial_registration() {
+    let Tree {
+        mut dom,
+        root,
+        first,
+        branch,
+        last,
+        ..
+    } = tree();
+    let cancel = AtomicBool::new(false);
+    let limits = |registrations, references| {
+        DomChildListObservationLimits::new(1, registrations, 1, references).unwrap()
+    };
+    dom.set_limits(dom.limits().with_child_list_observation(limits(1, 4)))
+        .unwrap();
+    let observer = observe(&mut dom, root, true);
+    let before = dom.snapshot().stamp();
+    for (registrations, references, resource, limit) in [
+        (1, 4, DomResource::ChildListRegistrations, 1),
+        (2, 3, DomResource::ChildListRecordReferences, 3),
+    ] {
+        dom.set_limits(
+            dom.limits()
+                .with_child_list_observation(limits(registrations, references)),
+        )
+        .unwrap();
+        let mut detach = DomBatch::new();
+        detach.detach(branch);
+        assert_eq!(
+            dom.apply(detach, &cancel).unwrap_err(),
+            DomError::ResourceLimit { resource, limit }
+        );
+        assert_eq!(dom.snapshot().stamp(), before);
+        assert_eq!(dom.snapshot().node(branch).unwrap().parent(), Some(root));
+        assert_eq!(dom.pending_native_tasks(), 0);
+        assert!(
+            dom.take_child_list_records(observer, &cancel)
+                .unwrap()
+                .is_empty()
+        );
+    }
+    dom.set_limits(dom.limits().with_child_list_observation(limits(2, 4)))
+        .unwrap();
+    let mut detach = DomBatch::new();
+    detach.detach(branch);
+    dom.apply(detach, &cancel).unwrap();
+    let records = dom.take_child_list_records(observer, &cancel).unwrap();
+    assert_eq!(records.len(), 1);
+    assert_record(&records[0], root, &[], &[branch], Some(first), Some(last));
+}
