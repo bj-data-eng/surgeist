@@ -1,5 +1,7 @@
 //! Trusted Types factory on the registered Window.
 
+mod methods;
+
 use super::*;
 use crate::trusted_types_csp::{PolicyCreationError, PolicyFactory};
 use surgeist_bindings_js::{
@@ -20,7 +22,7 @@ struct RetainedPolicy {
 
 struct PolicyObject {
     name: DocumentString,
-    _callbacks: [Option<TrustedPolicyCallback>; 4],
+    callbacks: [Option<TrustedPolicyCallback>; 4],
 }
 
 pub(super) fn install<'scope>(
@@ -39,6 +41,7 @@ pub(super) fn install<'scope>(
         },
     )?;
     define_accessor(scope, &policy_prototype, &ascii(b"name"), &name, None, true)?;
+    methods::install(scope, &policy_prototype, capture)?;
     let observed = scope.callback_object(&policy_prototype)?;
     let policy_prototype = scope.retain_callback_object(observed, fund)?;
 
@@ -311,7 +314,7 @@ fn publish<'scope>(
         ObjectPrototype::Object(&prototype),
         PolicyObject {
             name: name.clone(),
-            _callbacks: retained,
+            callbacks: retained,
         },
         |bytes| {
             events.reserve(
