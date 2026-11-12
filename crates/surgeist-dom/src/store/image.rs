@@ -451,22 +451,22 @@ impl Draft {
             let update = match effect {
                 HtmlImageAttributeEffect::CompareCrossOrigin => {
                     let old = surgeist_html::bounded::attributes::crossorigin_processing_with(
-                        old,
+                        old.map(surgeist_html::values::DocumentString::code_units),
                         |_| self.source_step(cancel),
                     )?;
                     let new = surgeist_html::bounded::attributes::crossorigin_processing_with(
-                        new,
+                        new.map(surgeist_html::values::DocumentString::code_units),
                         |_| self.source_step(cancel),
                     )?;
                     surgeist_html::elements::image::image_crossorigin_changed(old, new)
                 }
                 HtmlImageAttributeEffect::CompareReferrerPolicy => {
                     let old = surgeist_html::bounded::attributes::referrerpolicy_processing_with(
-                        old,
+                        old.map(surgeist_html::values::DocumentString::code_units),
                         |_| self.source_step(cancel),
                     )?;
                     let new = surgeist_html::bounded::attributes::referrerpolicy_processing_with(
-                        new,
+                        new.map(surgeist_html::values::DocumentString::code_units),
                         |_| self.source_step(cancel),
                     )?;
                     surgeist_html::elements::image::image_referrerpolicy_changed(old, new)

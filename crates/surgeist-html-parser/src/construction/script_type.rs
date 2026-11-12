@@ -1,22 +1,20 @@
 //! Script element type and language attribute classification.
 
 use super::*;
-use surgeist_html::{
-    construction::HtmlElementView, elements::script::HtmlScriptKind, values::DocumentString,
-};
+use surgeist_html::{construction::ConstructionElementView, elements::script::HtmlScriptKind};
 
 pub(super) fn script_attribute<'a>(
     control: &mut ParseControl,
-    element: HtmlElementView<'a>,
+    element: ConstructionElementView<'a>,
     local: &str,
-) -> Result<Option<&'a DocumentString>, SessionError> {
+) -> Result<Option<&'a [u16]>, SessionError> {
     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    for attribute in element.attributes().iter() {
+    for attribute in element.attributes().each(control)? {
         control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         if attribute.name().namespace().uri().is_none()
             && exact_ascii(control, Some(attribute.name().local_name()), local)?
         {
-            return Ok(Some(attribute.value()));
+            return Ok(Some(attribute.value().units(control)?));
         }
     }
     Ok(None)
@@ -24,7 +22,7 @@ pub(super) fn script_attribute<'a>(
 
 pub(super) fn classify_script(
     control: &mut ParseControl,
-    element: HtmlElementView<'_>,
+    element: ConstructionElementView<'_>,
 ) -> Result<Option<HtmlScriptKind>, SessionError> {
     let explicit = script_attribute(control, element, "type")?;
     let language = script_attribute(control, element, "language")?;

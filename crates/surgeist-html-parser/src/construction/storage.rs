@@ -172,7 +172,6 @@ impl SessionStorage {
                 prepared_entries: 0,
                 literals: [None; LITERALS],
                 preexisting_units: 0,
-                preexisting_attributes: 0,
                 selectedcontent_rows: 0,
                 repeated_unique_rows: 0,
                 tree_stamp: NonZeroU32::new(1),
@@ -290,7 +289,6 @@ impl SessionStorage {
     }
 }
 
-#[cfg(test)]
 impl SessionStorage {
     /// The readers of leaf strings over the registry and the records at rest.
     pub(super) fn leaf_strings(&self) -> provenance::LeafStrings<'_> {

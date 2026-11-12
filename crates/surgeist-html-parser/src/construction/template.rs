@@ -12,7 +12,6 @@ use surgeist_html::{
         HtmlTemplateContentsOwnerDocument, HtmlTemplateFreshInsertionState,
         template_contents_owner_document,
     },
-    values::DocumentString,
 };
 
 /// A real Document node qualified by the issuing arena. The index is private.
@@ -248,7 +247,7 @@ impl SessionStorage {
         &self,
         c: &mut ParseControl,
         scope: usize,
-        name: &DocumentString,
+        name: &[u16],
     ) -> Result<(Option<usize>, Option<usize>), SessionError> {
         use surgeist_html::bounded::template::{
             HtmlTemplateMarkerFirst as First, HtmlTemplateMarkerSiblings as Siblings,

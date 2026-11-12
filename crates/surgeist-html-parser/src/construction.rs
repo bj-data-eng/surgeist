@@ -45,6 +45,7 @@ use surgeist_html::{
 };
 
 mod activity;
+mod attribute_view;
 mod detail_origins;
 mod dialog;
 use detail_origins::DetailOrigins;
@@ -134,12 +135,12 @@ use formatting_creation::{
     check_formatting_text, copy_formatting_tag, discard_formatting_tag, release_formatting_tag,
 };
 pub(crate) use input_values::input_tag_state;
+use input_values::{
+    InputSource, ValueSource, copy_input_value, copy_preserved_input_value,
+    copy_selected_input_value, input_type_state, validate_initial_input_origins,
+};
 #[cfg(test)]
 use input_values::{append_input_content, find_input_sources, find_input_state};
-use input_values::{
-    copy_input_value, copy_preserved_input_value, copy_selected_input_value, input_type_state,
-    validate_initial_input_origins,
-};
 use metadata_rows::{
     admitted_input_string, find_form_association_state, find_textarea_state, script_metadata,
     set_form_association_state, set_script_metadata, textarea_raw,
@@ -189,6 +190,8 @@ use session_error::{
 use string_storage::ReleasedStorage;
 pub(crate) use string_storage::{FieldRef, RecordString, TextInsertion};
 mod attribute_admission;
+pub(crate) use attribute_view::ElementAttributes;
+use attribute_view::{AttributesIn, UnitsIn, transient_string};
 mod form_effects;
 mod record_admission;
 mod storage;
@@ -200,7 +203,6 @@ use record_admission::{
     NewRecord, ShadowAttachment, associated_document_parent_of, attach_shadow_of, publish_records,
     record_error,
 };
-use storage_attributes::StagedAttributes;
 use storage_holds::{NAME_INDEX_MIN_ENTRIES, NAME_INDEX_SPARE_ENTRIES, StorageHolds};
 mod storage_input;
 mod storage_insertion;
@@ -229,9 +231,7 @@ pub(crate) use frozen_arena::FrozenArena;
 use frozen_arena::FrozenStorage;
 pub(crate) use session::ParserArenaSession;
 pub(crate) use session_creation::RootKind;
-use session_creation::{
-    CreationProfile, ImpliedHtmlName, OrderedCreation, validate_parser_attributes,
-};
+use session_creation::{CreationProfile, ImpliedHtmlName, OrderedCreation};
 #[cfg(test)]
 pub(crate) use storage_allocation::PreexistingElement;
 #[derive(Clone, Copy, Debug)]

@@ -70,10 +70,6 @@ pub(super) fn release_parts(
     for (resource, units) in [
         (HtmlParseResource::ManagedEdges, edges),
         (
-            HtmlParseResource::ManagedAttributes,
-            payloads.preexisting_attributes as u64,
-        ),
-        (
             HtmlParseResource::ManagedUtf16Units,
             payloads.preexisting_units as u64,
         ),

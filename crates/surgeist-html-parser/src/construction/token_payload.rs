@@ -61,16 +61,33 @@ pub(super) fn check_text_source(
     Ok(())
 }
 
+/// A value that is a run of UTF-16 code units: a string, or the units of a record that is still
+/// being built.
+pub(super) trait Units16 {
+    fn units16(&self) -> &[u16];
+}
+impl Units16 for [u16] {
+    fn units16(&self) -> &[u16] {
+        self
+    }
+}
+impl Units16 for DocumentString {
+    fn units16(&self) -> &[u16] {
+        self.code_units()
+    }
+}
+
 pub(super) fn exact_string_equal(
     control: &mut ParseControl,
-    left: &DocumentString,
-    right: &DocumentString,
+    left: &(impl Units16 + ?Sized),
+    right: &(impl Units16 + ?Sized),
 ) -> Result<bool, SessionError> {
+    let (left, right) = (left.units16(), right.units16());
     control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
     if left.len() != right.len() {
         return Ok(false);
     }
-    for (left, right) in left.code_units().iter().zip(right.code_units()) {
+    for (left, right) in left.iter().zip(right) {
         control.charge(HtmlParseWorkCategory::InspectByte, 4)?;
         if left != right {
             return Ok(false);

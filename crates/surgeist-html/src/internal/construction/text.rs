@@ -19,6 +19,17 @@ pub(crate) struct TextRef {
 }
 
 impl TextRef {
+    /// The range of no units at the start of an arena.
+    pub(crate) const EMPTY: Self = Self { start: 0, len: 0 };
+    /// The range of `len` units from `start`, for the tests of the modules that hold ranges.
+    #[cfg(test)]
+    pub(crate) fn at(start: u32, len: u32) -> Self {
+        Self { start, len }
+    }
+    /// The number of units in the range.
+    pub(crate) fn len(self) -> usize {
+        self.len as usize
+    }
     /// The range as indices. An end that `usize` cannot hold saturates, which no arena holds, so
     /// the range is then one that `get` refuses.
     pub(crate) fn range(self) -> Range<usize> {
@@ -278,6 +289,37 @@ impl TextArena {
                 })
             }
         }
+    }
+
+    /// Writes `units` over the range `text` names, which they do not exceed, and returns the
+    /// range they take. The units of `text` beyond them stay written and no longer count as held.
+    pub(crate) fn overwrite(
+        &mut self,
+        text: TextRef,
+        units: &[u16],
+    ) -> Result<TextRef, HtmlConstructionError> {
+        let released = text
+            .len()
+            .checked_sub(units.len())
+            .ok_or_else(|| HtmlConstructionCause::CapacityMismatch.error())?;
+        let used = self
+            .used
+            .checked_sub(released)
+            .ok_or_else(|| HtmlConstructionCause::ReleaseUnderflow.error())?;
+        let start = text.range().start;
+        let end = start
+            .checked_add(units.len())
+            .ok_or_else(|| HtmlConstructionCause::RepresentationExhausted.error())?;
+        self.units
+            .get_mut(start..end)
+            .ok_or_else(|| HtmlConstructionCause::InvalidTextReference.error())?
+            .copy_from_slice(units);
+        self.used = used;
+        Ok(TextRef {
+            start: text.start,
+            // The count fits `u32`: it does not exceed the length of `text`.
+            len: units.len() as u32,
+        })
     }
 
     /// Takes `units` out of the count of units that records' texts hold, for records rolled back.

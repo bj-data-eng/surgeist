@@ -304,6 +304,19 @@ mod tests {
             }
         }
     }
+    /// The local names and exact value units of the attributes of an element, in producer order.
+    fn attributes_of(
+        session: &ParserArenaSession,
+        c: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Vec<(DocumentString, Vec<u16>)> {
+        let mut attributes = session.element_attributes(c, node).unwrap().unwrap();
+        let mut read = Vec::new();
+        while let Some((name, units)) = attributes.next(c).unwrap() {
+            read.push((name.local_name().clone(), units.to_vec()));
+        }
+        read
+    }
     fn script(
         session: &mut ParserArenaSession,
         c: &mut ParseControl,
@@ -379,14 +392,7 @@ mod tests {
                     .flags
                     .already_processed()
             );
-            let attributes = session
-                .element_attributes(&mut c, &node)
-                .unwrap()
-                .unwrap()
-                .as_slice()
-                .iter()
-                .map(|a| (a.name().local_name().clone(), a.value().clone()))
-                .collect::<Vec<_>>();
+            let attributes = attributes_of(&session, &mut c, &node);
             assert_eq!(
                 session.process_disabled_svg(&mut c, &node, &proof).unwrap(),
                 SvgScriptProcessing::RestrictedProcessed
@@ -402,17 +408,7 @@ mod tests {
                     .flags
                     .already_processed()
             );
-            assert_eq!(
-                session
-                    .element_attributes(&mut c, &node)
-                    .unwrap()
-                    .unwrap()
-                    .as_slice()
-                    .iter()
-                    .map(|a| (a.name().local_name().clone(), a.value().clone()))
-                    .collect::<Vec<_>>(),
-                attributes
-            );
+            assert_eq!(attributes_of(&session, &mut c, &node), attributes);
             no_executable_or_notification_work(&session, &mut c);
             drop(attributes);
             lexer.release(&mut c).unwrap();

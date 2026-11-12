@@ -272,7 +272,10 @@ impl Draft {
             surgeist_html::values::Namespace::from_uri,
         );
         match surgeist_html::elements::details::details_attribute_effect(
-            &namespace, attribute, old, new,
+            &namespace,
+            attribute,
+            old.map(surgeist_html::values::DocumentString::code_units),
+            new.map(surgeist_html::values::DocumentString::code_units),
         ) {
             HtmlDetailsAttributeEffect::None => Ok(()),
             HtmlDetailsAttributeEffect::CloseGiven => {

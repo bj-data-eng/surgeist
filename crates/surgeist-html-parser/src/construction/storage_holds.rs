@@ -4,7 +4,6 @@
 use super::*;
 use crate::HtmlParseInvariant;
 use surgeist_html::bounded::values::{HtmlAttributeNameIndex, HtmlNameIndexSlot};
-use surgeist_html::values::Attribute;
 
 /// Attribute lists at least this long are edited through a table of their names, so that the
 /// check for a repeated name costs work in proportion to the list instead of its square. A
@@ -23,9 +22,6 @@ pub(super) struct StorageHolds {
     /// The bytes held for the record bank, the child order of every record and the shared arena
     /// of a publication: the capacity each reserved.
     pub(super) bank_bytes: u64,
-    /// The bytes held for every attribute list: the capacity each reserved and the shared
-    /// wrapper each record holds its list in.
-    pub(super) attribute_bytes: u64,
     /// The logical attribute slots held for the attributes of the storage.
     pub(super) attribute_entries: u64,
     /// The units held for the strings of the non-element fields of the storage: the text,
@@ -42,7 +38,6 @@ impl StorageHolds {
             name_index: None,
             name_index_slots: None,
             bank_bytes: 0,
-            attribute_bytes: 0,
             attribute_entries: 0,
             string_units: 0,
             string_bytes: 0,
@@ -110,33 +105,21 @@ impl StorageHolds {
         release_vector(control, index.into_storage(), ticket)
     }
 
-    /// Takes the accounting of a list built by the parse and handed to the storage in a record,
-    /// which the parse releases with the lists it holds.
-    pub(super) fn absorb_attribute_list(
+    /// Credits `units` of the strings the parse holds that it stopped storing, which the
+    /// storage's attributes held.
+    pub(super) fn release_string_units(
         &mut self,
         control: &mut ParseControl,
-        capacity: VectorCapacity<Attribute>,
-        shared: SharedAllocation<Vec<Attribute>>,
+        units: u64,
     ) -> Result<(), SessionError> {
-        let bytes = control.absorb_attribute_list(capacity, shared)?;
-        self.attribute_bytes = self
-            .attribute_bytes
-            .checked_add(bytes)
-            .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
-        Ok(())
-    }
-
-    /// Acquires the logical slot of one attribute that the parse is about to store.
-    pub(super) fn acquire_attribute(
-        &mut self,
-        control: &mut ParseControl,
-    ) -> Result<(), SessionError> {
-        let held = self
-            .attribute_entries
-            .checked_add(1)
-            .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedAttributes))?;
-        control.acquire(HtmlParseResource::ManagedAttributes, 1)?;
-        self.attribute_entries = held;
+        if units == 0 {
+            return Ok(());
+        }
+        let Some(held) = self.string_units.checked_sub(units) else {
+            return Err(latch_registry_row(control));
+        };
+        control.release(HtmlParseResource::ManagedUtf16Units, units)?;
+        self.string_units = held;
         Ok(())
     }
 
@@ -164,13 +147,6 @@ impl StorageHolds {
     ) -> Result<(), SessionError> {
         let mut refused = None;
         keep_first(&mut refused, self.retire_name_index(control));
-        let bytes = std::mem::take(&mut self.attribute_bytes);
-        keep_first(
-            &mut refused,
-            control
-                .release_attribute_lists(bytes)
-                .map_err(SessionError::Stop),
-        );
         let entries = std::mem::take(&mut self.attribute_entries);
         keep_first(
             &mut refused,

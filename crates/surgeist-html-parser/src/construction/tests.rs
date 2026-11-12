@@ -5,7 +5,7 @@ use surgeist_html::{
     construction::{ConstructionNodeKind, HtmlDocumentMode, HtmlFragment},
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
-mod attribute_validation;
+mod attribute_leaves;
 mod body_recovery;
 mod child_order;
 mod element_guard;
@@ -402,11 +402,6 @@ pub(super) fn control_without_detail() -> ParseControl {
 
 pub(super) fn control() -> ParseControl {
     ParseControl::new(limits(), HtmlParseCancellation::new())
-}
-/// How many holders share an element's attribute backing, not counting the clone the view makes.
-fn attribute_holders(attributes: surgeist_html::construction::HtmlAttributes<'_>) -> usize {
-    let owned = attributes.to_ordered();
-    Arc::strong_count(owned.shared_attributes()) - 1
 }
 fn element(namespace: Namespace, local: &str) -> PreexistingElement {
     PreexistingElement::new(

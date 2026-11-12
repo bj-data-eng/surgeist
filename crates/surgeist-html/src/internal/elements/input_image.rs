@@ -1,8 +1,6 @@
 //! HTML877d Image Button observation/history and pre-resource guards.
 //! Consumers qualify source storage and the explicit disabled-images premise.
-use crate::{
-    internal::elements::input::HtmlInputImageCoordinate, internal::values::DocumentString,
-};
+use crate::internal::elements::input::HtmlInputImageCoordinate;
 
 /// Actual last Image-state source. S belongs to the consumer's storage phase:
 /// e.g. its qualified retained-string slot or admitted immutable string value.
@@ -98,12 +96,13 @@ pub enum HtmlInputImageUpdateGuard {
     ImagesDisabled,
 }
 impl HtmlInputImageUpdateGuard {
-    /// Observe presence/exact emptiness before requiring any environment fact.
+    /// Observe presence/exact emptiness of the `src` attribute's UTF-16 code units before
+    /// requiring any environment fact.
     /// The owner admits the borrowed source/header read before calling.
-    pub fn for_source(source: Option<&DocumentString>) -> Self {
+    pub fn for_source(source: Option<&[u16]>) -> Self {
         match source {
             None => Self::NoSource,
-            Some(source) if source.is_empty() => Self::EmptySource,
+            Some([]) => Self::EmptySource,
             Some(_) => Self::NeedsImageEnvironment,
         }
     }

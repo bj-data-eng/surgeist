@@ -523,7 +523,7 @@ impl SessionStorage {
         let raw = self.form_attribute(c, node, name)?;
         payload_write::<Option<DocumentString>>(c, 1)?;
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        Ok(raw.cloned())
+        raw.map(|units| transient_string(c, units)).transpose()
     }
     fn meta_range(
         c: &mut ParseControl,
@@ -1281,7 +1281,7 @@ impl SessionStorage {
         let ConstructionNodeKind::Element(element) = record.kind() else {
             return Ok(());
         };
-        let len = element.attributes().len();
+        let len = element.attributes().count(c)?;
         for position in 0..len {
             self.initial_meta_attribute(c, node, position)?;
         }
@@ -1306,7 +1306,7 @@ impl SessionStorage {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let attribute = element
             .attributes()
-            .get(position)
+            .at(c, position)?
             .ok_or(SessionError::WrongToken)?;
         if attribute.name().namespace().uri().is_some() {
             return Ok(());
@@ -1434,14 +1434,15 @@ fn matches_without_environment(c: &mut ParseControl, media: &[u16]) -> Result<bo
 }
 fn meta_ascii(
     c: &mut ParseControl,
-    value: &DocumentString,
+    value: &(impl token_payload::Units16 + ?Sized),
     expected: &str,
 ) -> Result<bool, SessionError> {
+    let value = value.units16();
     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     if value.len() != expected.len() {
         return Ok(false);
     }
-    for (unit, byte) in value.code_units().iter().zip(expected.bytes()) {
+    for (unit, byte) in value.iter().zip(expected.bytes()) {
         c.charge_unit_inspection()?;
         if !surgeist_html::bounded::lexical::ascii_case_insensitive_unit(*unit, byte) {
             return Ok(false);

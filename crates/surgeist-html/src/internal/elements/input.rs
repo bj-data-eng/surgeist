@@ -13,7 +13,6 @@ use crate::{
     internal::accounting::{HtmlChange, HtmlResource, HtmlWork},
     internal::attributes::HtmlInputType,
     internal::elements::control_values::HtmlTextControlValueSetterFinish,
-    internal::values::DocumentString,
 };
 use surgeist_ledger::{Change, Charge};
 
@@ -981,22 +980,22 @@ impl HtmlInputRuleWork {
 #[derive(Debug)]
 enum TypeStep<'a> {
     Row,
-    Length(&'a DocumentString, &'static str, HtmlInputType),
-    Unit(&'a DocumentString, &'static str, HtmlInputType, usize),
+    Length(&'a [u16], &'static str, HtmlInputType),
+    Unit(&'a [u16], &'static str, HtmlInputType, usize),
     Done(HtmlInputType),
 }
 /// Borrowed recognizer over the authoritative attributes-owned 22-state rows.
 /// No trimming, allocation, copied keyword table or whole-string advance.
 #[derive(Debug)]
 pub struct HtmlInputTypeCursor<'a> {
-    value: Option<&'a DocumentString>,
+    value: Option<&'a [u16]>,
     row: usize,
     step: TypeStep<'a>,
 }
 impl<'a> HtmlInputTypeCursor<'a> {
     /// Starts recognition of `value`, the `type` attribute's content, where `None` means the
     /// attribute is absent. The slice is borrowed and nothing is copied.
-    pub fn new(value: Option<&'a DocumentString>) -> Self {
+    pub fn new(value: Option<&'a [u16]>) -> Self {
         Self {
             value,
             row: 0,
@@ -1053,7 +1052,7 @@ impl<'a> HtmlInputTypeCursor<'a> {
             }
             TypeStep::Unit(value, keyword, state, position) => {
                 if !crate::internal::microsyntax::tokens::ascii_case_insensitive_unit(
-                    value.code_units()[position],
+                    value[position],
                     keyword.as_bytes()[position],
                 ) {
                     TypeStep::Row
@@ -1083,12 +1082,12 @@ impl<'a> HtmlInputTypeCursor<'a> {
 enum ColorSpaceStep<'a> {
     Row,
     Length(
-        &'a DocumentString,
+        &'a [u16],
         &'static str,
         crate::internal::attributes::input_colorspace::HtmlInputColorSpace,
     ),
     Unit(
-        &'a DocumentString,
+        &'a [u16],
         &'static str,
         crate::internal::attributes::input_colorspace::HtmlInputColorSpace,
         usize,
@@ -1099,14 +1098,14 @@ enum ColorSpaceStep<'a> {
 /// No trimming, allocation, copied keyword table or whole-string advance.
 #[derive(Debug)]
 pub struct HtmlInputColorSpaceCursor<'a> {
-    value: Option<&'a DocumentString>,
+    value: Option<&'a [u16]>,
     row: usize,
     step: ColorSpaceStep<'a>,
 }
 impl<'a> HtmlInputColorSpaceCursor<'a> {
     /// Starts recognition of `value`, the `colorspace` attribute's content, where `None` means the
     /// attribute is absent. The slice is borrowed and nothing is copied.
-    pub fn new(value: Option<&'a DocumentString>) -> Self {
+    pub fn new(value: Option<&'a [u16]>) -> Self {
         Self {
             value,
             row: 0,
@@ -1163,7 +1162,7 @@ impl<'a> HtmlInputColorSpaceCursor<'a> {
             }
             ColorSpaceStep::Unit(value, keyword, state, position) => {
                 if !crate::internal::microsyntax::tokens::ascii_case_insensitive_unit(
-                    value.code_units()[position],
+                    value[position],
                     keyword.as_bytes()[position],
                 ) {
                     ColorSpaceStep::Row

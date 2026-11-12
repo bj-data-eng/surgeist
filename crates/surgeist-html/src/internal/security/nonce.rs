@@ -93,8 +93,9 @@ pub enum HtmlNonceAttributeEffect<'a> {
     Ignore,
     /// The attribute was removed: set the cryptographic nonce slot to the empty string.
     ClearSlot,
-    /// The attribute now has this value: set the cryptographic nonce slot to it.
-    CopyValue(&'a DocumentString),
+    /// The attribute now has this value, given as its exact UTF-16 code units: set the
+    /// cryptographic nonce slot to it.
+    CopyValue(&'a [u16]),
 }
 
 // Length rejection precedes inspection. Even arbitrary unmatched inputs cannot
@@ -126,11 +127,12 @@ pub fn is_nonce_element(
         .any(|literal| exact(uri, literal))
     })
 }
-/// Attribute-change decision. Prefix metadata does not change expanded identity.
+/// Attribute-change decision. Prefix metadata does not change expanded identity. `new_value` is the
+/// attribute's exact UTF-16 code units, or `None` once it is removed.
 pub fn nonce_attribute_change<'a>(
     element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
     attribute: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
-    new_value: Option<&'a DocumentString>,
+    new_value: Option<&'a [u16]>,
 ) -> HtmlNonceAttributeEffect<'a> {
     if !is_nonce_element(element)
         || attribute.namespace_uri().is_some()
@@ -143,15 +145,16 @@ pub fn nonce_attribute_change<'a>(
         HtmlNonceAttributeEffect::CopyValue,
     )
 }
-/// Insertion-only decision. A known false conjunct discharges unrelated gaps.
+/// Insertion-only decision. A known false conjunct discharges unrelated gaps. `content` is the
+/// `nonce` content attribute's exact UTF-16 code units, or `None` when it is absent.
 pub fn nonce_insertion_effect(
     element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
-    content: Option<&DocumentString>,
+    content: Option<&[u16]>,
     connection: HtmlNonceConnection,
     policy: HtmlHeaderDeliveredCsp,
 ) -> HtmlNonceInsertionEffect {
     if !is_nonce_element(element)
-        || content.is_none_or(DocumentString::is_empty)
+        || content.is_none_or(<[u16]>::is_empty)
         || connection == HtmlNonceConnection::NotBrowsingContextConnected
         || policy == HtmlHeaderDeliveredCsp::Absent
     {

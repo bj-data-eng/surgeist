@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::internal::construction::{HtmlShadowRootMode, HtmlSlotAssignment};
-use crate::internal::values::Namespace;
+use crate::internal::values::{Attribute, Namespace};
 
 mod names_tests;
 
@@ -203,10 +203,12 @@ fn snapshot(storage: &HtmlConstructionStorage) -> Vec<String> {
         storage.text,
         storage.text.used()
     ));
+    // The attribute table: its rows and runs.
+    rows.push(format!("attributes {:?}", storage.attrs));
     rows
 }
 /// The units of a text or comment of either form of record, as the length they have.
-trait Leaf: std::fmt::Debug {
+trait Leaf: Cell + std::fmt::Debug {
     fn units(&self) -> usize;
 }
 impl Leaf for TextRun {
@@ -2017,4 +2019,663 @@ fn rolling_back_a_native_append_takes_the_units_of_its_texts_out_of_the_count() 
     assert_eq!(storage.text.used(), 0);
     // The units stay written, so the arena has room for a later text only past them.
     assert_eq!(storage.text.len(), 5);
+}
+
+/// A fragment with one `div` that has the attributes `a`, `b` and `c`, a text and a comment, and an
+/// `em` that follows it and has no attribute, whose
+/// arena has more than a quarter of its units spare when `spare` and whose attribute `b` was
+/// replaced by a longer value, which leaves its old units as dead units.
+fn attributed_tree(spare: bool) -> (HtmlConstructionStorage, [HtmlBuilderNode; 4]) {
+    let mut storage = storage();
+    let root = ok(storage.create_fragment(&mut Meter::default()));
+    let parent = element(&mut storage, "div");
+    for (local, value) in [("a", "1"), ("b", "22"), ("c", "333")] {
+        ok(storage.append_attribute(
+            &parent,
+            &Attribute::new(QualifiedName::new(Namespace::none(), None, local), value),
+            None,
+            &mut Meter::default(),
+        ));
+    }
+    ok(storage.replace_attribute(
+        &parent,
+        1,
+        &Attribute::new(
+            QualifiedName::new(Namespace::none(), None, "b"),
+            "twenty-two",
+        ),
+        &mut Meter::default(),
+    ));
+    let text = ok(storage.create_text(&utf16("t"), &mut Meter::default()));
+    let comment = ok(storage.create_comment(&utf16("cc"), &mut Meter::default()));
+    let fresh = element(&mut storage, "em");
+    insert(&mut storage, &parent, &root);
+    insert(&mut storage, &fresh, &root);
+    insert(&mut storage, &text, &parent);
+    insert(&mut storage, &comment, &parent);
+    if spare {
+        storage.text.reserve_exact(100).unwrap();
+    }
+    (storage, [root, parent, fresh, text])
+}
+
+fn published_attributes(
+    result: &crate::internal::construction::bounded::HtmlConstructionResult,
+    position: usize,
+) -> Vec<(String, String, usize)> {
+    let node = result.node_at(position).unwrap().as_node().unwrap();
+    let crate::internal::construction::HtmlNodeKind::Element(element) = node.kind() else {
+        panic!("an element record");
+    };
+    element
+        .attributes()
+        .iter()
+        .map(|attribute| {
+            (
+                attribute.name().local_name().to_utf8().unwrap(),
+                attribute.value().to_utf8().unwrap(),
+                attribute.value().borrowed_block().unwrap().address(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn the_published_attributes_read_back_exactly_in_the_one_block_with_the_text() {
+    for spare in [false, true] {
+        let (storage, [root, parent, fresh, ..]) = attributed_tree(spare);
+        let mut meter = Meter::default();
+        let Ok(result) = publish_tree(storage, &root, &mut meter) else {
+            panic!("publication refused");
+        };
+        let banks: Vec<_> = meter.growths.iter().map(|growth| growth.bank()).collect();
+        assert_eq!(
+            banks[..3],
+            [
+                HtmlConstructionBank::Wrapper,
+                HtmlConstructionBank::PublishedContents,
+                HtmlConstructionBank::PublishedAttributes,
+            ]
+        );
+        assert_eq!(
+            banks.contains(&HtmlConstructionBank::TextBlock),
+            spare,
+            "the arena is packed when more than a quarter is spare"
+        );
+        // The table of the result is exact: three rows of 24 bytes, whatever the storage held.
+        assert_eq!(meter.growths[2].minimum_capacity(), 3);
+        assert_eq!(
+            meter.growths[2].element_size(),
+            size_of::<crate::internal::construction::attribute_table::PublishedAttr>()
+        );
+        let at = result.position(&parent).unwrap();
+        let attributes = published_attributes(&result, at);
+        let seen: Vec<(&str, &str)> = attributes
+            .iter()
+            .map(|(name, value, _)| (name.as_str(), value.as_str()))
+            .collect();
+        assert_eq!(seen, [("a", "1"), ("b", "twenty-two"), ("c", "333")]);
+        // Every value and every text borrows the one block.
+        let node = result.node_at(at).unwrap().as_node().unwrap();
+        let text = node.children().next().unwrap();
+        let crate::internal::construction::HtmlNodeKind::Text(text) =
+            result.node(&text).unwrap().kind()
+        else {
+            panic!("a text record");
+        };
+        let block = text.borrowed_block().unwrap().address();
+        assert!(attributes.iter().all(|(_, _, held)| *held == block));
+        // The element with attributes reads them back, and an index past the end reads as none.
+        let node = result.node_at(at).unwrap().as_node().unwrap();
+        let crate::internal::construction::HtmlNodeKind::Element(element) = node.kind() else {
+            panic!("an element record");
+        };
+        assert_eq!(element.attributes().len(), 3);
+        assert!(element.attributes().get(3).is_none());
+        assert!(element.attributes().get(usize::MAX).is_none());
+        assert_eq!(element.attributes().to_ordered().len(), 3);
+        // The element without attributes holds none.
+        let empty = result.position(&fresh).unwrap();
+        let node = result.node_at(empty).unwrap().as_node().unwrap();
+        let crate::internal::construction::HtmlNodeKind::Element(element) = node.kind() else {
+            panic!("an element record");
+        };
+        assert_eq!(element.attributes().len(), 0);
+        assert!(element.attributes().is_empty());
+        assert!(element.attributes().get(0).is_none());
+        assert!(element.attributes().iter().next().is_none());
+    }
+}
+
+/// A fragment of three elements: `p` with the attributes `x` and `y`, `q` with `a`, `b`, `c`,
+/// `d` and `e`, and `r` with none. The rows of `q` do not start at the first row of the table.
+fn three_elements() -> (HtmlConstructionStorage, HtmlBuilderNode) {
+    let mut storage = storage();
+    let root = ok(storage.create_fragment(&mut Meter::default()));
+    for (local, attributes) in [
+        ("p", &["x", "y"][..]),
+        ("q", &["a", "b", "c", "d", "e"][..]),
+        ("r", &[][..]),
+    ] {
+        let node = element(&mut storage, local);
+        for attribute in attributes {
+            ok(storage.append_attribute(
+                &node,
+                &Attribute::new(
+                    QualifiedName::new(Namespace::none(), None, *attribute),
+                    format!("v-{attribute}").as_str(),
+                ),
+                None,
+                &mut Meter::default(),
+            ));
+        }
+        insert(&mut storage, &node, &root);
+    }
+    (storage, root)
+}
+
+#[test]
+fn an_attribute_is_read_at_every_index_of_a_build_row_and_a_published_row() {
+    let expected: [&[&str]; 3] = [&["x", "y"], &["a", "b", "c", "d", "e"], &[]];
+    // Records 1 to 3 are the elements, after the fragment root.
+    let (storage, root) = three_elements();
+    for (record, names) in expected.iter().enumerate() {
+        let view = storage.node_at(record + 1).unwrap().kind();
+        let crate::internal::construction::ConstructionNodeKind::Element(element) = view else {
+            panic!("an element record");
+        };
+        let attributes = element.attributes();
+        assert_eq!(attributes.len().unwrap(), names.len());
+        for (index, local) in names.iter().enumerate() {
+            let attribute = attributes
+                .get(index)
+                .unwrap()
+                .expect("an attribute at the index");
+            assert_eq!(attribute.name().local_name().to_utf8().unwrap(), *local);
+            assert_eq!(
+                attribute.value().code_units().unwrap(),
+                format!("v-{local}").encode_utf16().collect::<Vec<_>>()
+            );
+        }
+        assert!(attributes.get(names.len()).unwrap().is_none());
+        assert!(attributes.get(usize::MAX).unwrap().is_none());
+        // The iterator reaches an index by `nth` and `nth_back` too.
+        for (index, local) in names.iter().enumerate() {
+            let reached = attributes.iter().unwrap().nth(index).unwrap();
+            assert_eq!(reached.name().local_name().to_utf8().unwrap(), *local);
+            let back = names.len() - 1 - index;
+            let reached = attributes.iter().unwrap().nth_back(index).unwrap();
+            assert_eq!(reached.name().local_name().to_utf8().unwrap(), names[back]);
+        }
+        assert!(attributes.iter().unwrap().nth(names.len()).is_none());
+        assert!(attributes.iter().unwrap().nth_back(names.len()).is_none());
+    }
+    let Ok(result) = publish_tree(storage, &root, &mut Meter::default()) else {
+        panic!("publication refused");
+    };
+    for (record, names) in expected.iter().enumerate() {
+        let node = result.node_at(record + 1).unwrap().as_node().unwrap();
+        let crate::internal::construction::HtmlNodeKind::Element(element) = node.kind() else {
+            panic!("an element record");
+        };
+        let attributes = element.attributes();
+        assert_eq!(attributes.len(), names.len());
+        for (index, local) in names.iter().enumerate() {
+            let attribute = attributes.get(index).expect("an attribute at the index");
+            assert_eq!(attribute.name().local_name().to_utf8().unwrap(), *local);
+            assert_eq!(attribute.value().to_utf8().unwrap(), format!("v-{local}"));
+        }
+        assert!(attributes.get(names.len()).is_none());
+        assert!(attributes.get(usize::MAX).is_none());
+        for (index, local) in names.iter().enumerate() {
+            let reached = attributes.iter().nth(index).unwrap();
+            assert_eq!(reached.name().local_name().to_utf8().unwrap(), *local);
+            let reached = attributes.iter().nth_back(index).unwrap();
+            assert_eq!(
+                reached.name().local_name().to_utf8().unwrap(),
+                names[names.len() - 1 - index]
+            );
+        }
+        assert!(attributes.iter().nth(names.len()).is_none());
+        assert!(attributes.iter().nth_back(names.len()).is_none());
+    }
+}
+
+/// The writes the reservation of room for `additional` attributes charges for the element `node`.
+fn reservation_writes(
+    storage: &mut HtmlConstructionStorage,
+    node: &HtmlBuilderNode,
+    additional: usize,
+) -> u64 {
+    let mut meter = Meter::default();
+    if storage
+        .reserve_attributes(node, additional, &mut meter)
+        .is_err()
+    {
+        panic!("the reservation is refused");
+    }
+    meter.work[WRITE]
+}
+
+#[test]
+fn a_reservation_charges_a_write_for_every_row_it_fills() {
+    let attribute =
+        |local: &str| Attribute::new(QualifiedName::new(Namespace::none(), None, local), "v");
+    // An element without a run gets a new run of the rows reserved: the two writes of the run
+    // and one write for each filler row.
+    let mut storage = storage();
+    let fresh = element(&mut storage, "p");
+    assert_eq!(reservation_writes(&mut storage, &fresh, 5), 2 + 5);
+    // A run that is not at the tail of the table moves to a region of twice its new size: one
+    // write for each of its two live rows that moves, the two writes of the run, and one write
+    // for each of the ten rows of the region, which the old rows' filler and the room fill.
+    let mut storage = storage_with_two_runs(attribute);
+    let first = storage.node_at(0).map(|record| record.handle()).unwrap();
+    assert_eq!(reservation_writes(&mut storage, &first, 3), 2 + 2 + 10);
+}
+
+/// A storage with an element of two attributes whose run is followed by that of another.
+fn storage_with_two_runs(attribute: impl Fn(&str) -> Attribute) -> HtmlConstructionStorage {
+    let mut storage = storage();
+    for (local, attributes) in [("p", &["a", "b"][..]), ("q", &["c"][..])] {
+        let node = element(&mut storage, local);
+        for name in attributes {
+            ok(storage.append_attribute(&node, &attribute(name), None, &mut Meter::default()));
+        }
+    }
+    storage
+}
+
+/// A consumer whose ledger holds the usage of every change it recorded, which refuses a change
+/// that takes its attributes past `attribute_limit` and the call numbered `refuse_at`.
+#[derive(Default)]
+struct Ledger {
+    attribute_limit: Option<usize>,
+    /// The room a bank is given beyond the minimum it needs.
+    spare: usize,
+    refuse_at: Option<usize>,
+    calls: usize,
+    nodes: usize,
+    attributes: usize,
+    units: usize,
+}
+impl Ledger {
+    fn call(&mut self) -> Result<(), Refused> {
+        let index = self.calls;
+        self.calls += 1;
+        if self.refuse_at == Some(index) {
+            Err(Refused)
+        } else {
+            Ok(())
+        }
+    }
+    fn holds_nothing(&self) -> bool {
+        (self.nodes, self.attributes, self.units) == (0, 0, 0)
+    }
+}
+impl Charge<HtmlWork, HtmlResource> for Ledger {
+    type Stop = Refused;
+    fn charge(&mut self, _: &[Change<HtmlWork, HtmlResource>]) -> Result<(), Refused> {
+        self.call()
+    }
+    fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), Refused> {
+        self.call()
+    }
+}
+impl HtmlRecordAdmission for Ledger {
+    fn admit_change(
+        &mut self,
+        _: &HtmlConstructionStorage,
+        change: HtmlConstructionChange,
+    ) -> Result<(), Refused> {
+        self.call()?;
+        let added = change.after().attributes() - change.before().attributes();
+        match self.attribute_limit {
+            Some(limit) if self.attributes + added > limit => Err(Refused),
+            _ => Ok(()),
+        }
+    }
+    fn admit_growth(&mut self, growth: HtmlConstructionBankGrowth) -> Result<usize, Refused> {
+        self.call()?;
+        Ok(growth.minimum_capacity() + self.spare)
+    }
+    fn record_growth(&mut self, _: HtmlConstructionGrowthRecord) -> Result<(), Refused> {
+        self.call()
+    }
+    fn record_change(
+        &mut self,
+        _: &HtmlConstructionStorage,
+        change: HtmlConstructionChange,
+    ) -> Result<(), Refused> {
+        self.call()?;
+        self.nodes += change.after().nodes() - change.before().nodes();
+        self.attributes += change.after().attributes() - change.before().attributes();
+        self.units += change.after().utf16_units() - change.before().utf16_units();
+        Ok(())
+    }
+}
+
+/// An element `p` with the attributes `a0` to `a3`, whose names the storage has interned.
+fn authored_element(storage: &mut HtmlConstructionStorage) -> (QualifiedName, OrderedAttributes) {
+    let attributes: Vec<Attribute> = (0..4)
+        .map(|index| {
+            Attribute::new(
+                QualifiedName::new(Namespace::none(), None, format!("a{index}").as_str()),
+                format!("value {index}").as_str(),
+            )
+        })
+        .collect();
+    let element = name("p");
+    for qualified in std::iter::once(&element).chain(attributes.iter().map(Attribute::name)) {
+        ok(storage.intern_name(
+            qualified.namespace(),
+            qualified.prefix(),
+            qualified.local_name().code_units(),
+            &mut Meter::default(),
+        ));
+    }
+    (element, OrderedAttributes::new(attributes).unwrap())
+}
+
+#[test]
+fn a_consumer_limit_that_refuses_an_authored_attribute_leaves_its_ledger_unchanged() {
+    let mut storage = storage();
+    let (element, attributes) = authored_element(&mut storage);
+    let before = snapshot(&storage);
+    for limit in 0..4 {
+        let mut ledger = Ledger {
+            attribute_limit: Some(limit),
+            ..Ledger::default()
+        };
+        let outcome = storage.create_element(&element, attributes.clone(), None, &mut ledger);
+        assert!(
+            matches!(outcome, Err(HtmlChargedError::Stopped(Refused))),
+            "limit {limit}"
+        );
+        assert!(
+            ledger.holds_nothing(),
+            "limit {limit}: the ledger holds {} nodes, {} attributes and {} units",
+            ledger.nodes,
+            ledger.attributes,
+            ledger.units
+        );
+        assert_eq!(snapshot(&storage), before, "limit {limit}");
+    }
+    // A limit that admits every attribute admits the element: its name, then each attribute.
+    let mut ledger = Ledger {
+        attribute_limit: Some(4),
+        ..Ledger::default()
+    };
+    ok(storage.create_element(&element, attributes.clone(), None, &mut ledger));
+    let units = |qualified: &QualifiedName, value: usize| {
+        qualified.local_name().len() + qualified.prefix().map_or(0, DocumentString::len) + value
+    };
+    let expected_units = units(&element, 0)
+        + element.namespace().uri().map_or(0, DocumentString::len)
+        + attributes
+            .iter()
+            .map(|attribute| units(attribute.name(), attribute.value().len()))
+            .sum::<usize>();
+    assert_eq!(
+        (ledger.nodes, ledger.attributes, ledger.units),
+        (1, 4, expected_units)
+    );
+}
+
+#[test]
+fn a_refusal_at_any_step_of_creating_an_authored_element_leaves_storage_and_ledger_as_they_were() {
+    // Each attempt has a fresh storage, so that every attempt makes the calls of a creation that
+    // grows every bank: a bank that an earlier refused attempt grew keeps its room.
+    let mut refused = 0;
+    for index in 0.. {
+        let mut storage = storage();
+        let (element, attributes) = authored_element(&mut storage);
+        let before = snapshot(&storage);
+        let mut ledger = Ledger {
+            refuse_at: Some(index),
+            ..Ledger::default()
+        };
+        match storage.create_element(&element, attributes, None, &mut ledger) {
+            Ok(_) => break,
+            Err(HtmlChargedError::Stopped(Refused)) => {
+                refused += 1;
+                assert!(ledger.holds_nothing(), "refused at call {index}");
+                assert_eq!(snapshot(&storage), before, "refused at call {index}");
+            }
+            Err(other) => panic!("call {index}: {other:?}"),
+        }
+    }
+    // The calls the consumer receives, from the code of the creation of `p` with four attributes
+    // in a storage that holds the five names and no record:
+    // - the layout of the vector of interned names: 1;
+    // - the lookup of each of the five names: a charge for the visit, a charge for the probe
+    //   allowance and a charge for the one comparison of an equal hash: 3 x 5;
+    // - the layouts of the record, the run, the rows and the depth, and the admission of the
+    //   change: 5;
+    // - the charge of the writes: 1, of the filled rows (one quantum): 1, and of the run: 1;
+    // - for each attribute the charge of its value (one chunk) and of its row: 2 x 4;
+    // - the admission of the four banks (records, text, runs, rows): 4, and the record of each
+    //   at the capacity chosen, which the allocator reaches exactly: 4;
+    // - the record of the change: 1.
+    let expected = 1 + 3 * 5 + 5 + (1 + 1 + 1) + 2 * 4 + 4 + 4 + 1;
+    assert_eq!(expected, 41);
+    assert_eq!(refused, expected, "the creation made {refused} calls");
+}
+
+#[test]
+fn a_refused_allocator_request_at_each_point_of_creating_an_authored_element_is_all_or_nothing() {
+    use crate::internal::amortized::fault;
+    // The creation makes five requests: the vector of the interned names of the attributes, then
+    // the banks it grows (records, text, runs and rows), each with spare room.
+    let mut counted = storage();
+    let (element, attributes) = authored_element(&mut counted);
+    let mut ledger = Ledger {
+        spare: 4,
+        ..Ledger::default()
+    };
+    let counting = fault::count_only();
+    ok(counted.create_element(&element, attributes, None, &mut ledger));
+    let requests = fault::requests();
+    drop(counting);
+    assert_eq!(requests, 1 + 4);
+    let units = ledger.units;
+    for refuse_from in 1..=requests {
+        let mut storage = storage();
+        let (element, attributes) = authored_element(&mut storage);
+        let before = snapshot(&storage);
+        let mut ledger = Ledger {
+            spare: 4,
+            ..Ledger::default()
+        };
+        let _armed = fault::arm(refuse_from);
+        let outcome = storage.create_element(&element, attributes, None, &mut ledger);
+        if refuse_from == 1 {
+            // The vector of names has no fallback: its refusal is the allocation failure of the
+            // creation, which leaves the storage and the ledger as they were.
+            match outcome {
+                Err(HtmlChargedError::Faulted(error)) => {
+                    assert_eq!(error.cause(), HtmlConstructionCause::AllocationFailed);
+                }
+                other => panic!("request {refuse_from}: {other:?}"),
+            }
+            assert!(ledger.holds_nothing(), "request {refuse_from}");
+            assert_eq!(snapshot(&storage), before, "request {refuse_from}");
+        } else {
+            // A refusal of spare room falls back to the room that is needed.
+            let node = ok(outcome);
+            assert_eq!(
+                (ledger.nodes, ledger.attributes, ledger.units),
+                (1, 4, units),
+                "request {refuse_from}"
+            );
+            let at = storage.position(&node).unwrap();
+            let crate::internal::construction::ConstructionNodeKind::Element(element) =
+                storage.node_at(at).unwrap().kind()
+            else {
+                panic!("an element record");
+            };
+            assert_eq!(element.attributes().len().unwrap(), 4);
+        }
+    }
+}
+
+#[test]
+fn an_authored_template_with_attributes_reads_them_back_built_and_published() {
+    use crate::internal::construction::{ConstructionNodeKind, HtmlNodeKind};
+    let mut storage = storage();
+    let root = ok(storage.create_fragment(&mut Meter::default()));
+    let attributes = OrderedAttributes::new([
+        Attribute::new(QualifiedName::new(Namespace::none(), None, "id"), "shell"),
+        Attribute::new(QualifiedName::new(Namespace::none(), None, "class"), "a b"),
+    ])
+    .unwrap();
+    let template =
+        ok(storage.create_element(&name("template"), attributes, None, &mut Meter::default()));
+    // The template record is followed by its owned contents, which carry no attributes.
+    assert_eq!(storage.len(), 3);
+    let at = position(&storage, &template);
+    let expected = [("id", "shell"), ("class", "a b")];
+    let ConstructionNodeKind::Element(element) = storage.node_at(at).unwrap().kind() else {
+        panic!("an element record");
+    };
+    let attributes = element.attributes();
+    assert_eq!(attributes.len().unwrap(), 2);
+    for (index, (local, value)) in expected.iter().enumerate() {
+        let attribute = attributes.get(index).unwrap().expect("an attribute");
+        assert_eq!(attribute.name().local_name().to_utf8().unwrap(), *local);
+        assert_eq!(attribute.value().code_units().unwrap(), utf16(value));
+    }
+    let contents = storage
+        .node(&template)
+        .unwrap()
+        .template_contents()
+        .unwrap();
+    assert_eq!(contents.position(), at + 1);
+    insert(&mut storage, &template, &root);
+    let Ok(result) = publish_tree(storage, &root, &mut Meter::default()) else {
+        panic!("publication refused");
+    };
+    let published = published_attributes(&result, 1);
+    let seen: Vec<(&str, &str)> = published
+        .iter()
+        .map(|(name, value, _)| (name.as_str(), value.as_str()))
+        .collect();
+    assert_eq!(seen, expected);
+    let node = result.node_at(1).unwrap().as_node().unwrap();
+    let HtmlNodeKind::Element(element) = node.kind() else {
+        panic!("an element record");
+    };
+    assert_eq!(element.attributes().len(), 2);
+}
+
+#[test]
+fn a_publication_with_attributes_is_refused_at_every_admission_point_and_takes_every_bank_back() {
+    for spare in [false, true] {
+        let setup = move || attributed_tree(spare);
+        let calls = sweep(setup, |storage, [root, ..], meter| {
+            let taken = std::mem::replace(
+                storage,
+                ok(HtmlConstructionStorage::new(&mut Meter::default())),
+            );
+            match publish_tree(taken, root, meter) {
+                Ok(_) => Ok(()),
+                Err(refusal) => {
+                    let (back, error) = *refusal;
+                    *storage = back;
+                    Err(error)
+                }
+            }
+        });
+        let growths = calls.iter().filter(|call| **call == "admit_growth").count();
+        assert_eq!(growths, 4 + usize::from(spare), "spare: {spare}");
+    }
+    // The consumer's own ledger: a refusal after every bank was recorded leaves it holding
+    // what it held before the publication, the published attribute table included.
+    for spare in [false, true] {
+        let (storage, [root, ..]) = attributed_tree(spare);
+        let refused = crate::internal::amortized::fault::refuse_text_share();
+        let mut meter = Meter::default();
+        let Err(refusal) = publish_tree(storage, &root, &mut meter) else {
+            panic!("published a value the block cannot share");
+        };
+        drop(refused);
+        let (_, error) = *refusal;
+        let HtmlChargedError::Faulted(error) = error else {
+            panic!("the consumer refused");
+        };
+        assert_eq!(error.cause(), HtmlConstructionCause::InvalidTextReference);
+        assert!(holds_nothing_of_the_publication(&meter), "spare: {spare}");
+        assert!(
+            consumer_holdings(&meter)
+                .iter()
+                .any(|(bank, ..)| *bank == HtmlConstructionBank::PublishedAttributes),
+            "the table was recorded before the refusal"
+        );
+    }
+}
+
+#[test]
+fn a_value_the_arena_lacks_and_a_run_the_table_lacks_refuse_the_publication_and_read_as_invalid() {
+    use crate::internal::construction::attribute_table::AttrRow;
+    // A value whose range the text arena does not hold.
+    let (mut storage, [root, ..]) = attributed_tree(false);
+    let target = storage.attrs.live(match &storage.arena.records[1].kind {
+        NodeContent::Element(element) => element.attrs,
+        _ => panic!("the first child record is the div"),
+    });
+    let first = target.unwrap()[0].entry().clone();
+    let run = match &storage.arena.records[1].kind {
+        NodeContent::Element(element) => element.attrs.unwrap(),
+        _ => unreachable!(),
+    };
+    storage
+        .attrs
+        .replace(run, 0, AttrRow::new(first, TextRun::invalid().text()))
+        .unwrap();
+    let before = snapshot(&storage);
+    let view = storage.node_at(1).unwrap().kind();
+    let crate::internal::construction::ConstructionNodeKind::Element(element) = view else {
+        panic!("an element record");
+    };
+    let value = element.attributes().get(0).unwrap().unwrap().value();
+    assert_eq!(
+        value.code_units().unwrap_err().cause(),
+        HtmlConstructionCause::InvalidTextReference
+    );
+    let (storage, error) = match publish_tree(storage, &root, &mut Meter::default()) {
+        Err(refusal) => *refusal,
+        Ok(_) => panic!("published a value with no units"),
+    };
+    let HtmlChargedError::Faulted(error) = error else {
+        panic!("the consumer refused");
+    };
+    assert_eq!(error.cause(), HtmlConstructionCause::InvalidTextReference);
+    assert_eq!(snapshot(&storage), before);
+    // An element that names a run the table does not hold.
+    let (mut storage, [root, ..]) = attributed_tree(false);
+    if let NodeContent::Element(element) = &mut storage.arena.records[1].kind {
+        element.attrs = Some(crate::internal::construction::attribute_table::RunIx::beyond());
+    }
+    let view = storage.node_at(1).unwrap().kind();
+    let crate::internal::construction::ConstructionNodeKind::Element(element) = view else {
+        panic!("an element record");
+    };
+    assert_eq!(
+        element.attributes().len().unwrap_err().cause(),
+        HtmlConstructionCause::InvalidAttributeReference
+    );
+    assert!(element.attributes().iter().is_err());
+    let before = snapshot(&storage);
+    let (storage, error) = match publish_tree(storage, &root, &mut Meter::default()) {
+        Err(refusal) => *refusal,
+        Ok(_) => panic!("published an element with no run"),
+    };
+    let HtmlChargedError::Faulted(error) = error else {
+        panic!("the consumer refused");
+    };
+    assert_eq!(
+        error.cause(),
+        HtmlConstructionCause::InvalidAttributeReference
+    );
+    assert_eq!(snapshot(&storage), before);
 }

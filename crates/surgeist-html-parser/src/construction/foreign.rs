@@ -14,7 +14,7 @@
 use super::*;
 use surgeist_html::{
     construction::ConstructionNodeKind,
-    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+    values::{DocumentString, Namespace},
     vocabulary::SVG_TAG_NAME_ADJUSTMENTS,
 };
 
@@ -160,25 +160,27 @@ impl ParserArenaSession {
             svg,
         )
     }
+    /// The attributes of an element, read where the storage holds them, or `None` for a node that
+    /// is not an element.
     pub(crate) fn element_attributes(
         &self,
         c: &mut ParseControl,
         node: &ParserNode,
-    ) -> Result<Option<OrderedAttributes>, SessionError> {
+    ) -> Result<Option<ElementAttributes<'_>>, SessionError> {
         let storage = self.active()?;
         let index = storage.index(c, node)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        Ok(
-            match storage
-                .construction
-                .node_at(index)
-                .ok_or_else(|| latch_registry_row(c))?
-                .kind()
-            {
-                ConstructionNodeKind::Element(value) => Some(value.attributes().to_ordered()),
-                _ => None,
-            },
-        )
+        match storage
+            .construction
+            .node_at(index)
+            .ok_or_else(|| latch_registry_row(c))?
+            .kind()
+        {
+            ConstructionNodeKind::Element(value) => {
+                Ok(Some(ElementAttributes::new(value.attributes().each(c)?)))
+            }
+            _ => Ok(None),
+        }
     }
     pub(crate) fn replace_foreign_nulls(
         &mut self,
@@ -235,14 +237,16 @@ impl ParserArenaSession {
 }
 
 impl SessionStorage {
-    fn register_foreign_text(
+    /// The string of the name of a foreign element or attribute, adjusted by `replacement` when it
+    /// is: the adjusted units keep a reference to the group of the original's origins.
+    fn foreign_text_field(
         &mut self,
         c: &mut ParseControl,
         original: Text,
         replacement: Option<(&str, usize)>,
-    ) -> Result<(DocumentString, usize), SessionError> {
+    ) -> Result<FieldString, SessionError> {
         let Some((replacement, skip)) = replacement else {
-            return self.register_text(c, original);
+            return self.text_field(c, original);
         };
         let adjusted = match adjusted_text(c, &original, replacement, skip) {
             Ok(value) => value,
@@ -251,55 +255,51 @@ impl SessionStorage {
                 return Err(error);
             }
         };
-        let original = match self.register_text(c, original) {
+        // The original name is not the string of a field, so its units stay in a row of the
+        // registry, which its group's leaf names, as the history of the adjustment.
+        let slot = match self.register_text(c, original) {
             Ok((value, slot)) => {
                 drop(value);
-                match self.payloads.values.get(slot) {
-                    Some(RetainedPayload::String {
-                        origins: Some(group),
-                        ..
-                    }) => match self
-                        .evidence
-                        .as_ref()
-                        .ok_or(SessionError::WrongToken)
-                        .and_then(|evidence| evidence.copy_group_reference(c, group))
-                    {
-                        Ok(original) => Some(original),
-                        Err(error) => {
-                            adjusted.release(c)?;
-                            return Err(error);
-                        }
-                    },
-                    Some(RetainedPayload::String { origins: None, .. }) => None,
-                    _ => {
-                        // The invariant is the first stop; a release refusal
-                        // is secondary and latched by its owner.
-                        let invariant = latch_registry_row(c);
-                        let _ = adjusted.release(c);
-                        return Err(invariant);
-                    }
-                }
+                slot
             }
             Err(error) => {
                 adjusted.release(c)?;
                 return Err(error);
             }
         };
-        self.register_field_copy(
+        let reference = match self.payloads.row_group(slot).and_then(|group| {
+            group
+                .map(|group| {
+                    self.evidence
+                        .as_ref()
+                        .ok_or(SessionError::WrongToken)
+                        .and_then(|evidence| evidence.copy_group_reference(c, group))
+                })
+                .transpose()
+        }) {
+            Ok(reference) => reference,
+            Err(error) => {
+                adjusted.release(c)?;
+                return Err(error);
+            }
+        };
+        self.field_copy_string(
             c,
             provenance::FieldCopy {
                 value: adjusted.value,
                 origins: adjusted.origins,
-                original,
+                original: reference,
             },
         )
     }
+    /// The adjusted name of a foreign attribute: its local name as a field, and the namespace and
+    /// prefix of the qualified names HTML's adjustment makes.
     fn foreign_attribute(
         &mut self,
         c: &mut ParseControl,
         original: Text,
         foreign: ForeignNamespace,
-    ) -> Result<(QualifiedName, usize, Option<usize>, Option<usize>), SessionError> {
+    ) -> Result<(FieldString, storage_attributes::QualifiedFields), SessionError> {
         let classified = (|| {
             let adjustment = match foreign {
                 ForeignNamespace::Svg => {
@@ -349,39 +349,24 @@ impl SessionStorage {
                 return Err(error);
             }
         };
-        let (local, ticket) = self.register_foreign_text(c, original, adjustment)?;
-        let (namespace, namespace_ticket) = match namespace {
-            Some(uri) => {
-                let (value, ticket) = match Literal::of_uri(uri) {
-                    Some(literal) => self.register_literal(c, literal)?,
-                    None => {
-                        let value = literal_string(c, uri.as_bytes())?;
-                        self.register_string(c, value, None)?
-                    }
-                };
-                (Namespace::from_uri(value), Some(ticket))
+        let local = self.foreign_text_field(c, original, adjustment)?;
+        let mut qualified = storage_attributes::QualifiedFields::default();
+        let literals = (|| {
+            if let Some(uri) = namespace {
+                let literal = Literal::of_uri(uri).ok_or_else(|| latch_registry_row(c))?;
+                qualified.namespace = Some(self.literal_field(c, literal)?);
             }
-            None => (Namespace::none(), None),
-        };
-        let (prefix, prefix_ticket) = match prefix {
-            Some(prefix) => {
-                let (value, ticket) = match Literal::of_prefix(prefix) {
-                    Some(literal) => self.register_literal(c, literal)?,
-                    None => {
-                        let value = literal_string(c, prefix.as_bytes())?;
-                        self.register_string(c, value, None)?
-                    }
-                };
-                (Some(value), Some(ticket))
+            if let Some(prefix) = prefix {
+                let literal = Literal::of_prefix(prefix).ok_or_else(|| latch_registry_row(c))?;
+                qualified.prefix = Some(self.literal_field(c, literal)?);
             }
-            None => (None, None),
-        };
-        Ok((
-            QualifiedName::new(namespace, prefix, local),
-            ticket,
-            namespace_ticket,
-            prefix_ticket,
-        ))
+            Ok::<_, SessionError>(())
+        })();
+        if let Err(error) = literals {
+            local.value.release(c)?;
+            return Err(error);
+        }
+        Ok((local, qualified))
     }
 }
 
@@ -601,47 +586,49 @@ mod tests {
             )
             .unwrap();
         let storage = session.active().unwrap();
+        // The original names are the units of rows of the registry, which the leaves of their
+        // groups name; the adjusted names are the attributes' own.
         let mut original = None;
-        let mut adjusted = None;
-        let mut href = None;
         for (slot, entry) in storage.payloads.values.iter().enumerate() {
-            if let RetainedPayload::String {
-                value, location, ..
-            } = entry
-                && let Some(maps) = storage.payloads.row_group(&mut c, slot).unwrap()
+            if let RetainedPayload::String { value, .. } = entry
+                && let Some(maps) = storage.payloads.row_group(slot).unwrap()
+                && value == &DocumentString::from("viewbox")
             {
-                if value == &DocumentString::from("viewbox") {
-                    original = Some((
-                        value.code_units().as_ptr(),
-                        storage.observed_origins(maps, &mut c).unwrap()[0]
-                            .source
-                            .clone(),
-                        storage.observed_origins(maps, &mut c).unwrap()[0].kind,
-                    ));
-                }
-                if matches!(location, FieldRef::AttributeName(_, 0)) {
-                    adjusted = Some((
-                        value.code_units().as_ptr(),
-                        storage.observed_origins(maps, &mut c).unwrap()[0]
-                            .source
-                            .clone(),
-                        storage.observed_origins(maps, &mut c).unwrap()[0].kind,
-                    ));
-                }
-                if matches!(location, FieldRef::AttributeName(_, 1)) {
-                    href = Some((
-                        storage.observed_origins(maps, &mut c).unwrap().len(),
-                        storage.observed_origins(maps, &mut c).unwrap()[0].start,
-                        storage.observed_origins(maps, &mut c).unwrap()[0].end,
-                        storage.observed_origins(maps, &mut c).unwrap()[0]
-                            .source
-                            .clone(),
-                    ));
-                }
+                original = Some((
+                    value.code_units().as_ptr(),
+                    storage.observed_origins(maps, &mut c).unwrap()[0]
+                        .source
+                        .clone(),
+                    storage.observed_origins(maps, &mut c).unwrap()[0].kind,
+                ));
             }
         }
+        let origins_of = |position: usize, c: &mut ParseControl| {
+            let group = storage
+                .payloads
+                .detail_origins
+                .get(c, FieldRef::AttributeName(node.index, position))
+                .unwrap()
+                .expect("the adjusted name has a group");
+            storage.observed_origins(group, c).unwrap()
+        };
+        let adjusted_origins = origins_of(0, &mut c);
+        let adjusted = (
+            FieldRef::AttributeName(node.index, 0)
+                .units(ConstructionView::Active(&storage.construction))
+                .unwrap()
+                .as_ptr(),
+            adjusted_origins[0].source.clone(),
+            adjusted_origins[0].kind,
+        );
+        let href_origins = origins_of(1, &mut c);
+        let href = (
+            href_origins.len(),
+            href_origins[0].start,
+            href_origins[0].end,
+            href_origins[0].source.clone(),
+        );
         let original = original.unwrap();
-        let adjusted = adjusted.unwrap();
         assert_ne!(original.0, adjusted.0);
         assert_eq!(original.1, original_view);
         assert_eq!(adjusted.1, original_view);
@@ -653,7 +640,7 @@ mod tests {
             adjusted.2,
             crate::parser::tokenizer::token::HtmlParseOriginKind::RecoverySyntax
         );
-        assert_eq!(href.unwrap(), (4, 0, 1, original_href));
+        assert_eq!(href, (4, 0, 1, original_href));
         session
             .insert(&mut c, &root, &node, None, Some(&capability))
             .unwrap();
@@ -817,7 +804,7 @@ mod tests {
                         panic!("native clone");
                     };
                     assert_eq!(cloned.name().namespace(), &Namespace::svg());
-                    let attrs: Vec<_> = cloned.attributes().iter().collect();
+                    let attrs = test_support::attributes_of(cloned);
                     assert_eq!(attrs.len(), 2);
                     assert_eq!(
                         attrs[0].name().namespace().uri(),
@@ -828,14 +815,20 @@ mod tests {
                         Some(&DocumentString::from("xlink"))
                     );
                     assert_eq!(attrs[0].name().local_name(), &DocumentString::from("href"));
-                    assert_eq!(attrs[0].value(), &DocumentString::from("#y"));
+                    assert_eq!(
+                        test_support::value_units(attrs[0]),
+                        DocumentString::from("#y").code_units()
+                    );
                     assert_eq!(
                         attrs[1].name().namespace().uri(),
                         Some(&DocumentString::from(XML))
                     );
                     assert_eq!(attrs[1].name().prefix(), Some(&DocumentString::from("xml")));
                     assert_eq!(attrs[1].name().local_name(), &DocumentString::from("lang"));
-                    assert_eq!(attrs[1].value(), &DocumentString::from("en"));
+                    assert_eq!(
+                        test_support::value_units(attrs[1]),
+                        DocumentString::from("en").code_units()
+                    );
                 }
                 Err(SessionError::Stop(first)) => {
                     assert_eq!(c.stop(), Some(first));
@@ -861,68 +854,6 @@ mod tests {
         }
         assert!(stopped_after_element);
         assert!(completed);
-    }
-
-    /// One foreign allocation with `credits` of work, its next unsharing
-    /// refused. Returns the work spent after setup and after the allocation,
-    /// and whether the refusal reached the unvalidated attributes, which then
-    /// must stay in the registry for the owner's release to drain.
-    fn allocate_with_refused_unsharing(credits: Option<u64>) -> (u64, u64, bool) {
-        let work = |c: &ParseControl| c.usage().resource(HtmlParseResource::WorkCredits).current;
-        let mut limits = super::super::tests::limits().into_builder();
-        if let Some(credits) = credits {
-            limits = limits.work_credits(credits);
-        }
-        let request = crate::HtmlDocumentParseRequest::offline(
-            crate::HtmlSource::utf8("<svg a=1 b=2>"),
-            limits.finish().unwrap(),
-        );
-        let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
-        let root = session.root(&mut c).unwrap();
-        let (lexer, mut input, range) = lexical(request.source(), &mut c);
-        let setup = work(&c);
-        c.refuse_next_shared_release();
-        let _ = session.allocate_foreign_tag_for_creation(
-            &mut c,
-            &mut input,
-            &root,
-            ForeignNamespace::Svg,
-            &range,
-            &capability,
-        );
-        let spent = work(&c);
-        // Only a validation that stopped consumes the armed refusal, in the release of its
-        // shared list, whose accounting stays with the owner for the release to credit.
-        let reached = !c.shared_release_refusal_pending();
-        let released = lexer.release(&mut c);
-        let mut cleanup = session.release(&mut c);
-        if matches!(cleanup, Err(SessionError::Stop(_))) {
-            cleanup = session.release(&mut c);
-        }
-        // A refusal that no unsharing consumed stays armed and would refuse
-        // the release of an unrelated element's attributes.
-        if reached {
-            released.unwrap();
-            cleanup.unwrap();
-            zero(&c);
-        }
-        (setup, spent, reached)
-    }
-
-    #[test]
-    fn a_stopped_foreign_attribute_validation_with_a_refused_release_keeps_the_shared_attributes() {
-        let (setup, spent, reached) = allocate_with_refused_unsharing(None);
-        assert!(
-            !reached && spent > setup,
-            "an unrestricted allocation validates"
-        );
-        // A work limit between setup and completion stops at some step of the
-        // allocation; one of them stops its validation, whose unsharing the
-        // refusal then rejects. Scan back from the end of the allocation.
-        let reached = (setup..spent)
-            .rev()
-            .any(|credits| allocate_with_refused_unsharing(Some(credits)).2);
-        assert!(reached, "no work limit stopped the validation");
     }
 }
 
@@ -1037,7 +968,11 @@ impl SessionStorage {
                     return Err(error);
                 }
             };
-            let (name, name_ticket) = self.register_foreign_text(control, name, replacement)?;
+            let (name, name_ticket) = {
+                let field = self.foreign_text_field(control, name, replacement)?;
+                let FieldString { value, group } = field;
+                self.register_group_string_owned(control, value, group)?
+            };
             // The selected HTML namespace is a defining literal, copied through
             // the same admitted exact buffer as token-created units.
             let (namespace, namespace_ticket) = if let Some(uri) = foreign.uri() {
@@ -1052,115 +987,10 @@ impl SessionStorage {
             } else {
                 self.copy_context_namespace(control)?
             };
-            let name_units = name.len();
             drop(name);
             let (name_id, _) = self.intern_row_name(control, name_ticket, &namespace)?;
-            control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-            let mut units = name_units
-                .checked_add(namespace.uri().map_or(0, DocumentString::len))
-                .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
-            let mut stage = StagedAttributes::new(control)?;
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let original_len = attributes.len();
-            // The record this creation makes is the next one, and names its attributes' strings.
-            let node_index = self.construction.len();
-            let first_row = self.payloads.values.len();
-            let staged = (|| {
-                while let Some(attribute) = attributes.try_pop(control)? {
-                    let adjusted = self.foreign_attribute(control, attribute.name, foreign);
-                    let (qualified, local_ticket, namespace_ticket, prefix_ticket) = match adjusted
-                    {
-                        Ok(value) => value,
-                        Err(error) => {
-                            attribute.value.release(control)?;
-                            return Err(error);
-                        }
-                    };
-                    let (value, value_ticket) = self.register_text(control, attribute.value)?;
-                    control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-                    units = units
-                        .checked_add(qualified.local_name().len())
-                        .and_then(|sum| {
-                            sum.checked_add(
-                                qualified.namespace().uri().map_or(0, DocumentString::len),
-                            )
-                        })
-                        .and_then(|sum| {
-                            sum.checked_add(qualified.prefix().map_or(0, DocumentString::len))
-                        })
-                        .and_then(|sum| sum.checked_add(value.len()))
-                        .ok_or_else(|| {
-                            control.stop_representation(HtmlParseResource::ManagedUtf16Units)
-                        })?;
-                    self.holds.acquire_attribute(control)?;
-                    stage.push_plain(control, Attribute::new(qualified, value), original_len)?;
-                    payload_write::<[FieldRef; 2]>(control, 2)?;
-                    if namespace_ticket.is_some() {
-                        payload_write::<FieldRef>(control, 1)?;
-                    }
-                    if prefix_ticket.is_some() {
-                        payload_write::<FieldRef>(control, 1)?;
-                    }
-                    let position = attributes.len();
-                    self.bind_string(local_ticket, FieldRef::AttributeName(node_index, position))?;
-                    self.bind_string(value_ticket, FieldRef::AttributeValue(node_index, position))?;
-                    if let Some(ticket) = namespace_ticket {
-                        self.bind_string(
-                            ticket,
-                            FieldRef::AttributeNamespace(node_index, position),
-                        )?;
-                    }
-                    if let Some(ticket) = prefix_ticket {
-                        self.bind_string(ticket, FieldRef::AttributePrefix(node_index, position))?;
-                    }
-                }
-                stage.reverse(control)
-            })();
-            if let Err(error) = staged {
-                stage.release(control)?;
-                return Err(error);
-            }
-            let (values, allocation) = stage.into_parts();
-            let (backing, shared) = match control.share_owned(values) {
-                Ok(value) => value,
-                Err((stop, values)) => {
-                    release_vector(control, values, allocation)?;
-                    return Err(stop.into());
-                }
-            };
-            let ordered = match validate_parser_attributes(backing, control) {
-                Ok(values) => values,
-                Err((error, backing)) => {
-                    // Preserve the admitted shared wrapper even when intrinsic duplicate
-                    // checking or work stops.
-                    return match control.release_shared(backing, shared) {
-                        Ok(values) => {
-                            release_vector(control, values, allocation)?;
-                            Err(error)
-                        }
-                        Err(refused) => {
-                            // Unpublished backing is uniquely owned, so a refusal is an
-                            // invariant stop. The accounting of the refused list stays with
-                            // the owner for its release.
-                            let (_, backing, shared) = refused.into_parts();
-                            drop(backing);
-                            self.holds
-                                .absorb_attribute_list(control, allocation, shared)?;
-                            Err(latch_registry_row(control))
-                        }
-                    };
-                }
-            };
-            // The list belongs to the record from here on, and the parse accounts for it with
-            // the other lists of its storage.
-            self.holds
-                .absorb_attribute_list(control, allocation, shared)?;
-            control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-            control.charge(
-                HtmlParseWorkCategory::CopyByte,
-                mem::size_of::<OrderedAttributes>() as u64,
-            )?;
-            let attributes = ordered;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
+            let count = attributes.len();
             let template = false;
             // Preadmit the actual native-alias bindings and both usage writes.
             // Successful allocation and binding have no fallible alias gap.
@@ -1173,9 +1003,10 @@ impl SessionStorage {
             if svg.is_some() {
                 payload_write::<Option<usize>>(control, 1)?;
             }
+            let node_index = self.construction.len();
             let node = self.allocate_prepared_owned(
                 control,
-                NewRecord::NamedElement(name_id, attributes, None),
+                NewRecord::NamedElement(name_id, None),
                 template,
                 0,
                 0,
@@ -1191,7 +1022,42 @@ impl SessionStorage {
             if let Some(ticket) = namespace_ticket {
                 self.bind_string(ticket, FieldRef::Namespace(node.index))?;
             }
-            self.flush_attribute_origins(control, first_row)?;
+            // The attributes of the token are adjusted and appended in source order.
+            if count >= NAME_INDEX_MIN_ENTRIES {
+                self.holds
+                    .provide_name_index(control, count.saturating_add(NAME_INDEX_SPARE_ENTRIES))?;
+            }
+            self.reverse_attributes(control, &mut attributes)?;
+            let installed = (|| {
+                self.reserve_attributes(control, node.index, count)?;
+                for _ in 0..count {
+                    let Some(attribute) = attributes.try_pop(control)? else {
+                        return Err(latch_registry_row(control));
+                    };
+                    let crate::parser::tokenizer::token::Attribute { name, value, .. } = attribute;
+                    let (name, qualified) = match self.foreign_attribute(control, name, foreign) {
+                        Ok(adjusted) => adjusted,
+                        Err(error) => {
+                            value.release(control)?;
+                            return Err(error);
+                        }
+                    };
+                    let value = match self.text_field(control, value) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            name.value.release(control)?;
+                            return Err(error);
+                        }
+                    };
+                    self.append_qualified_fields(
+                        control, node.index, qualified, name, value, false, false,
+                    )?;
+                }
+                Ok(())
+            })();
+            let retired = self.holds.retire_name_index(control);
+            installed?;
+            retired?;
 
             self.initial_nonce_attributes(control, node.index)?;
             Ok(node)

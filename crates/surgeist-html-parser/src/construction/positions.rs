@@ -42,7 +42,7 @@ impl SessionStorage {
             if element.name().namespace() != &Namespace::html() {
                 return Ok(());
             }
-            let Some(attribute) = element.attributes().get(index) else {
+            let Some(attribute) = element.attributes().at(c, index)? else {
                 return Ok(());
             };
             let handler = if attribute.name().namespace().uri().is_none() {
@@ -91,7 +91,7 @@ impl SessionStorage {
             .ok_or(SessionError::ForeignNode)?
             .kind()
         {
-            ConstructionNodeKind::Element(element) => Ok(element.attributes().len()),
+            ConstructionNodeKind::Element(element) => element.attributes().count(c),
             _ => Ok(0),
         }
     }

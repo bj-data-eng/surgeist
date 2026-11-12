@@ -2,6 +2,7 @@
 
 use super::shape::validate_record;
 use super::*;
+use crate::internal::construction::attribute_table::{PublishedAttr, RowSlice};
 
 /// A publication the storage or the consumer refused, which hands the storage back unchanged.
 #[derive(Debug)]
@@ -29,7 +30,7 @@ struct Prepared {
 /// refusal can take each record back.
 #[derive(Default)]
 struct BankTrail {
-    entries: [Option<TrailEntry>; 4],
+    entries: [Option<TrailEntry>; 5],
     len: usize,
 }
 
@@ -41,13 +42,21 @@ struct TrailEntry {
 }
 
 impl BankTrail {
-    /// Notes a bank the consumer holds `recorded` for. A publication grows at most four banks,
-    /// so the room of the trail is never short.
-    fn note(&mut self, growth: HtmlConstructionBankGrowth, recorded: HtmlConstructionBankCapacity) {
-        if let Some(slot) = self.entries.get_mut(self.len) {
-            *slot = Some(TrailEntry { growth, recorded });
-            self.len += 1;
-        }
+    /// Notes a bank the consumer holds `recorded` for. A publication grows at most five banks,
+    /// so the room of the trail is never short; a full trail is the typed capacity-mismatch
+    /// defect, which the publication takes back like any other refusal.
+    fn note(
+        &mut self,
+        growth: HtmlConstructionBankGrowth,
+        recorded: HtmlConstructionBankCapacity,
+    ) -> Result<(), HtmlConstructionError> {
+        let slot = self
+            .entries
+            .get_mut(self.len)
+            .ok_or(HtmlConstructionCause::CapacityMismatch.error())?;
+        *slot = Some(TrailEntry { growth, recorded });
+        self.len += 1;
+        Ok(())
     }
 }
 
@@ -58,17 +67,19 @@ impl HtmlConstructionStorage {
     /// text and usage as they were. The validation pass may leave its scratch counts written,
     /// which are not state.
     ///
-    /// The result holds its text as one block and its records in a vector of their own, because a
-    /// record of a storage names its text by a range of the storage's text arena and a record of
-    /// the result holds a string of the block. Every allocation of the publication is reserved
-    /// before the conversion, each admitted and recorded in turn: the shared arena, the contents
-    /// the published records are made from, the block when the arena has more than a quarter of
-    /// its units spare, which it is then packed into, and the published records. A refusal at any
-    /// step takes back, in reverse order, each record the consumer accepted, so the consumer holds
-    /// what it held before the publication; the consumer's own refusal of a take-back is the
-    /// refusal returned. The conversion that follows allocates no reservation: it moves the
-    /// records into their vector and frees the vector they were in. The handle of the shared
-    /// block is made before the conversion and the handle of the shared arena in the move, for
+    /// The result holds its text as one block, its attributes in one table and its records in a
+    /// vector of their own, because a record of a storage names its text by a range of the
+    /// storage's text arena and a record of the result holds a string of the block. Every
+    /// allocation of the publication is reserved before the conversion, each admitted and recorded
+    /// in turn: the shared arena, the contents the published records are made from, the
+    /// published attributes (one row for each live row of every run), the block when the arena has
+    /// more than a quarter of its units spare, which it is then packed into, and the published
+    /// records. A refusal at any step takes back, in reverse order, each record the consumer
+    /// accepted, so the consumer holds what it held before the publication; the consumer's own
+    /// refusal of a take-back is the refusal returned. The conversion that follows allocates no
+    /// reservation: it moves the records into their vector and frees the vector they were in. The
+    /// handle of the shared block is made before the conversion, the handle of the table of
+    /// published attributes in its first pass and the handle of the shared arena in the move, for
     /// which stable Rust has no fallible constructor: an allocator failure there aborts, as any
     /// infallible allocation does. The contents are freed when the move ends, which the consumer
     /// that recorded them accounts for itself.
@@ -127,7 +138,7 @@ impl HtmlConstructionStorage {
         let mut recorded = growth.before;
         let outcome = self.grow_tracked(growth, chosen, admission, reserve, &mut recorded);
         if recorded != growth.before {
-            trail.note(growth, recorded);
+            trail.note(growth, recorded).map_err(faulted)?;
         }
         outcome
     }
@@ -221,23 +232,46 @@ impl HtmlConstructionStorage {
                 return Err(fault(HtmlConstructionCause::ParentChildConflict));
             }
         }
-        // Every range a text or comment record names is in the arena, before anything is reserved
-        // or moved.
+        // Every range a text or comment record names, and every run and value an element names,
+        // is in the storage, before anything is reserved or moved.
         let mut used = 0usize;
+        let mut rows_total = 0usize;
         for record in &self.arena.records {
-            if let NodeContent::Text(run) | NodeContent::Comment(run) = record.kind {
-                self.text.get(run.text()).map_err(faulted)?;
-                used = plus(used, run.len()).map_err(faulted)?;
+            match &record.kind {
+                NodeContent::Text(run) | NodeContent::Comment(run) => {
+                    self.text.get(run.text()).map_err(faulted)?;
+                    used = plus(used, run.len()).map_err(faulted)?;
+                }
+                NodeContent::Element(element) => {
+                    let rows = self.attrs.live(element.attrs).map_err(faulted)?;
+                    for row in rows {
+                        self.text.get(row.value()).map_err(faulted)?;
+                        used = plus(used, row.value().len()).map_err(faulted)?;
+                    }
+                    rows_total = plus(rows_total, rows.len()).map_err(faulted)?;
+                }
+                _ => {}
             }
         }
         let pack = self.text.wants_packing();
+        let has_rows = rows_total != 0;
         let wrapper = HtmlConstructionBankGrowth {
             bank: HtmlConstructionBank::Wrapper,
             before: HtmlConstructionBankCapacity::default(),
             minimum_capacity: 1,
             element_size: size_of::<PublishedArena>(),
-            wrapper_bytes: size_of::<Vec<u16>>(),
+            // The handle of the shared block, and the handle of the shared attribute table when
+            // an element has attributes.
+            wrapper_bytes: times(size_of::<Vec<u16>>(), 1 + usize::from(has_rows))
+                .map_err(faulted)?,
         };
+        let attributes = has_rows.then_some(HtmlConstructionBankGrowth {
+            bank: HtmlConstructionBank::PublishedAttributes,
+            before: HtmlConstructionBankCapacity::default(),
+            minimum_capacity: rows_total,
+            element_size: size_of::<PublishedAttr>(),
+            wrapper_bytes: 0,
+        });
         let block = pack.then_some(HtmlConstructionBankGrowth {
             bank: HtmlConstructionBank::TextBlock,
             before: HtmlConstructionBankCapacity {
@@ -265,7 +299,7 @@ impl HtmlConstructionStorage {
             element_size: size_of::<PublishedContent>(),
             wrapper_bytes: 0,
         };
-        let allocations = 3 + usize::from(pack) + 2;
+        let allocations = 3 + usize::from(pack) + 2 + 2 * usize::from(has_rows);
         Work {
             provider_calls: allocations,
             ..Work::default()
@@ -288,12 +322,16 @@ impl HtmlConstructionStorage {
         }
         Work {
             record_visits: count,
-            copied_bytes: times(
-                count,
-                size_of::<Record<DocumentString>>() + size_of::<PublishedContent>(),
+            copied_bytes: plus(
+                times(
+                    count,
+                    size_of::<Record<DocumentString>>() + size_of::<PublishedContent>(),
+                )
+                .map_err(faulted)?,
+                times(rows_total, size_of::<PublishedAttr>()).map_err(faulted)?,
             )
             .map_err(faulted)?,
-            record_writes: times(count, 2).map_err(faulted)?,
+            record_writes: plus(times(count, 2).map_err(faulted)?, rows_total).map_err(faulted)?,
             ..Work::default()
         }
         .charge(admission)?;
@@ -330,6 +368,21 @@ impl HtmlConstructionStorage {
                 }
             },
         )?;
+        let mut published_rows = Vec::new();
+        if let Some(growth) = attributes {
+            let chosen = Self::admit_bank(growth, admission)?;
+            self.grow_recorded(trail, growth, chosen, admission, |_, additional| {
+                published_rows = Vec::new();
+                let ok = published_rows.try_reserve_exact(additional).is_ok();
+                Reserved {
+                    ok,
+                    reached: HtmlConstructionBankCapacity {
+                        initialized_len: 0,
+                        capacity: published_rows.capacity(),
+                    },
+                }
+            })?;
+        }
         let mut packed = Vec::new();
         if let Some(growth) = block {
             let chosen = Self::admit_bank(growth, admission)?;
@@ -365,12 +418,20 @@ impl HtmlConstructionStorage {
             },
         )?;
         // The contents are made from the block while the storage still holds its records, so that
-        // a text the block cannot share is refused here, with the storage whole. Nothing after
-        // this point refuses.
+        // a text or value the block cannot share is refused here, with the storage whole. Nothing
+        // after this point refuses.
         let units = if pack {
             for record in &self.arena.records {
-                if let NodeContent::Text(run) | NodeContent::Comment(run) = record.kind {
-                    packed.extend_from_slice(self.text.get(run.text()).map_err(faulted)?);
+                match &record.kind {
+                    NodeContent::Text(run) | NodeContent::Comment(run) => {
+                        packed.extend_from_slice(self.text.get(run.text()).map_err(faulted)?);
+                    }
+                    NodeContent::Element(element) => {
+                        for row in self.attrs.live(element.attrs).map_err(faulted)? {
+                            packed.extend_from_slice(self.text.get(row.value()).map_err(faulted)?);
+                        }
+                    }
+                    _ => {}
                 }
             }
             None
@@ -378,25 +439,26 @@ impl HtmlConstructionStorage {
             Some(self.text.take_units())
         };
         let block = TextBlock::from_utf16(units.unwrap_or(packed));
-        let mut cursor = pack.then_some(0usize);
-        for record in &self.arena.records {
-            match record.kind.published_with(&block, &mut cursor) {
-                Ok(content) => kinds.push(content),
-                Err(error) => {
-                    // The strings made so far are the only other holders of the block, and they
-                    // are dropped before the units are taken back, so `block` is then the only
-                    // holder and `into_units` returns the vector. Its refusal is a typed defect,
-                    // not a state this function reaches.
-                    drop(kinds);
-                    if !pack {
-                        let Ok(units) = block.into_units() else {
-                            return Err(fault(HtmlConstructionCause::SharedAllocationAliased));
-                        };
-                        self.text.restore(units);
-                    }
-                    return Err(fault(error.cause()));
-                }
+        // The first pass makes the rows of every element in record order, and the second makes
+        // the contents, an element getting the slice of the table that holds its rows. Each
+        // reads the units of the packed block in the same order, the units of a text or of the
+        // values of an element at a time.
+        let made = self.publish_rows(&block, pack, has_rows.then_some(published_rows));
+        let rows = match made {
+            Ok(rows) => rows,
+            Err(error) => {
+                // The strings made so far are the only other holders of the block, and they are
+                // dropped before the units are taken back, so `block` is then the only holder
+                // and `into_units` returns the vector. Its refusal is a typed defect, not a
+                // state this function reaches.
+                return Err(self.restore_block(block, pack, error));
             }
+        };
+        let made = self.publish_contents(&block, pack, rows.as_ref(), &mut kinds);
+        if let Err(error) = made {
+            drop(kinds);
+            drop(rows);
+            return Err(self.restore_block(block, pack, error));
         }
         Ok(Prepared {
             root,
@@ -404,6 +466,105 @@ impl HtmlConstructionStorage {
             records,
             kinds,
         })
+    }
+
+    /// Hands the units of an unpacked block back to the text arena after a refused conversion,
+    /// and returns the refusal. Every string of the block was dropped by the caller.
+    fn restore_block<S>(
+        &mut self,
+        block: TextBlock,
+        pack: bool,
+        error: HtmlConstructionError,
+    ) -> HtmlConstructionRecordError<S> {
+        if !pack {
+            let Ok(units) = block.into_units() else {
+                return fault(HtmlConstructionCause::SharedAllocationAliased);
+            };
+            self.text.restore(units);
+        }
+        fault(error.cause())
+    }
+
+    /// The first pass of the conversion: the published rows of every element, in record order,
+    /// made in `rows`, the vector reserved for them, and shared as one table. `None` when the
+    /// storage has no live row.
+    fn publish_rows(
+        &self,
+        block: &TextBlock,
+        pack: bool,
+        rows: Option<Vec<PublishedAttr>>,
+    ) -> Result<Option<Arc<Vec<PublishedAttr>>>, HtmlConstructionError> {
+        let Some(mut rows) = rows else {
+            return Ok(None);
+        };
+        let mut cursor = pack.then_some(0usize);
+        for record in &self.arena.records {
+            match &record.kind {
+                NodeContent::Element(element) => {
+                    for row in self.attrs.live(element.attrs)? {
+                        let value = block_string(block, &mut cursor, row.value())?;
+                        rows.push(PublishedAttr::new(row.entry().clone(), value));
+                    }
+                }
+                NodeContent::Text(run) | NodeContent::Comment(run) => {
+                    skip_units(&mut cursor, run.len())?;
+                }
+                _ => {}
+            }
+        }
+        Ok(Some(Arc::new(rows)))
+    }
+
+    /// The second pass of the conversion: the published content of every record, in record
+    /// order, pushed to `kinds`. The first element's slice starts at the first row; each later
+    /// slice starts after the rows of the elements before it.
+    fn publish_contents(
+        &self,
+        block: &TextBlock,
+        pack: bool,
+        rows: Option<&Arc<Vec<PublishedAttr>>>,
+        kinds: &mut Vec<PublishedContent>,
+    ) -> Result<(), HtmlConstructionError> {
+        let mut cursor = pack.then_some(0usize);
+        let mut next_row = 0usize;
+        for record in &self.arena.records {
+            let content = match &record.kind {
+                NodeContent::Document(mode) => NodeContent::Document(*mode),
+                NodeContent::Fragment => NodeContent::Fragment,
+                NodeContent::Element(element) => {
+                    let live = self.attrs.live(element.attrs)?;
+                    for row in live {
+                        skip_units(&mut cursor, row.value().len())?;
+                    }
+                    let attrs = match rows {
+                        Some(rows) if !live.is_empty() => {
+                            Some(RowSlice::new(rows, next_row, live.len())?)
+                        }
+                        _ => None,
+                    };
+                    next_row = next_row
+                        .checked_add(live.len())
+                        .ok_or(HtmlConstructionCause::RepresentationExhausted.error())?;
+                    NodeContent::Element(ElementContent {
+                        link_flags: element.link_flags,
+                        name: element.name.clone(),
+                        attrs,
+                    })
+                }
+                NodeContent::Text(run) => {
+                    NodeContent::Text(block_string(block, &mut cursor, run.text())?)
+                }
+                NodeContent::Comment(run) => {
+                    NodeContent::Comment(block_string(block, &mut cursor, run.text())?)
+                }
+                NodeContent::ProcessingInstruction(value) => {
+                    NodeContent::ProcessingInstruction(value.clone())
+                }
+                NodeContent::Doctype(value) => NodeContent::Doctype(value.clone()),
+            };
+            kinds.push(content);
+        }
+        Ok(())
     }
 
     /// Moves the records into the vector reserved for them, and the arena into its shared wrapper.
@@ -439,4 +600,41 @@ impl HtmlConstructionStorage {
             None => HtmlConstructionResult::Fragment(HtmlFragment { arena, root }),
         }
     }
+}
+
+/// The string of `block` for the units of `text`: the range `text` names, or the next range of a
+/// packed block, whose units follow in record order, when `cursor` holds its position.
+fn block_string(
+    block: &TextBlock,
+    cursor: &mut Option<usize>,
+    text: crate::internal::construction::text::TextRef,
+) -> Result<DocumentString, HtmlConstructionError> {
+    let range = match cursor {
+        Some(next) => {
+            let start = *next;
+            let end = start
+                .checked_add(text.len())
+                .ok_or(HtmlConstructionCause::RepresentationExhausted.error())?;
+            *next = end;
+            start..end
+        }
+        None => text.range(),
+    };
+    #[cfg(test)]
+    if crate::internal::amortized::fault::refuses_text_share() {
+        return Err(HtmlConstructionCause::InvalidTextReference.error());
+    }
+    block
+        .string(range)
+        .map_err(|_| HtmlConstructionCause::InvalidTextReference.error())
+}
+
+/// Moves a packed block's cursor past `units` units that this pass does not make a string of.
+fn skip_units(cursor: &mut Option<usize>, units: usize) -> Result<(), HtmlConstructionError> {
+    if let Some(next) = cursor {
+        *next = next
+            .checked_add(units)
+            .ok_or(HtmlConstructionCause::RepresentationExhausted.error())?;
+    }
+    Ok(())
 }

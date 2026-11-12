@@ -476,7 +476,9 @@ impl Draft {
     pub(super) fn append_attribute(
         &mut self,
         node: Key,
-        attribute: &surgeist_html::values::Attribute,
+        attribute: &impl surgeist_html::values::HtmlAttributeInput<
+            Name = surgeist_html::values::QualifiedName,
+        >,
         cause: AttributeCause,
         limits: DomLimits,
         cancelled: &AtomicBool,
@@ -554,7 +556,7 @@ impl Draft {
         let nonce = surgeist_html::security::nonce::nonce_attribute_change(
             element.name(),
             &name,
-            Some(value),
+            Some(value.code_units()),
         );
         let old_nonce_units = element.nonce().map_or(0, DocumentString::len);
         let nonce_units = match &nonce {
@@ -586,7 +588,7 @@ impl Draft {
             .map(|attr| retain_attribute_value(self, attr.value(), hook.as_ref(), cancel))
             .transpose()?;
         let formation = source::formation::Formation::new(self, cancel)?;
-        let nonce = nonce_after_effect(self, nonce, formation.as_ref(), cancel)?;
+        let nonce = nonce_after_effect(self, nonce, Some(value), formation.as_ref(), cancel)?;
         let replacement = Attribute::from_parts(
             name,
             retain_attribute_value(self, value, name_formation.as_ref(), cancel)?,
@@ -734,8 +736,9 @@ impl Draft {
             surgeist_html::security::nonce::nonce_attribute_change(
                 element.name(),
                 &changed,
-                Some(replacement.value()),
+                Some(replacement.value().code_units()),
             ),
+            Some(replacement.value()),
             formation.as_ref(),
             cancel,
         )?;
@@ -1042,7 +1045,7 @@ impl Draft {
         }
         let nonce_value =
             surgeist_html::security::nonce::nonce_attribute_change(element.name(), &changed, None);
-        let nonce = nonce_after_effect(self, nonce_value, candidate.as_ref(), cancelled)?;
+        let nonce = nonce_after_effect(self, nonce_value, None, candidate.as_ref(), cancelled)?;
         let next = previous.edited(position, true, None)?;
         let staged = {
             let mut admit = |usage| self.admit_custody_usage(usage, cancelled);
@@ -1111,6 +1114,7 @@ impl Draft {
 fn nonce_after_effect(
     draft: &Draft,
     effect: surgeist_html::security::nonce::HtmlNonceAttributeEffect<'_>,
+    shared: Option<&DocumentString>,
     budget: Option<&source::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<NonceUpdate, DomError> {
@@ -1120,9 +1124,13 @@ fn nonce_after_effect(
         HtmlNonceAttributeEffect::ClearSlot => {
             source::formation::units(&[], false, budget, cancel).map(NonceUpdate::Set)
         }
-        HtmlNonceAttributeEffect::CopyValue(value) => {
-            retain_attribute_value(draft, value, budget, cancel).map(NonceUpdate::Set)
+        // The written value is retained as it is, sharing its block; without one, the units the
+        // rule returned are copied.
+        HtmlNonceAttributeEffect::CopyValue(units) => match shared {
+            Some(value) => retain_attribute_value(draft, value, budget, cancel),
+            None => source::formation::units(units, false, budget, cancel),
         }
+        .map(NonceUpdate::Set),
     }
 }
 

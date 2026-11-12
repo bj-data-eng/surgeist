@@ -1339,7 +1339,7 @@ impl Draft {
             if attribute.name().namespace_uri().is_none()
                 && attribute.name().local_name().code_units() == [0x6e, 0x6f, 0x6e, 0x63, 0x65]
             {
-                content = Some(attribute.value());
+                content = Some(attribute.value().code_units());
                 break;
             }
         }

@@ -6,14 +6,11 @@ use super::*;
 use crate::meta_csp::{Account, Caller};
 use crate::schema_support::{charged, through_ledger};
 use surgeist_html::{
-    accounting::{HtmlChargedError, HtmlWork},
-    bounded::{
-        script::HtmlScriptTypeCursor,
-        values::{HtmlAttributeNameIndex, HtmlAttributeStorage, HtmlNameIndexSlot},
-    },
+    accounting::HtmlChargedError,
+    bounded::script::HtmlScriptTypeCursor,
     elements::input::HtmlInputTypeCursor,
     security::csp::{HtmlCspDisposalWork, HtmlCspLayout, HtmlCspStorage},
-    values::{Attribute, DocumentString, Namespace, QualifiedName},
+    values::DocumentString,
 };
 
 #[test]
@@ -28,14 +25,18 @@ fn script_classification_charges_what_the_stock_ledger_charger_records() {
         let explicit = explicit.map(DocumentString::from);
         let language = language.map(DocumentString::from);
         let mut c = control();
-        let mut parser_cursor =
-            HtmlScriptTypeCursor::preparation(explicit.as_ref(), language.as_ref());
+        let mut parser_cursor = HtmlScriptTypeCursor::preparation(
+            explicit.as_ref().map(DocumentString::code_units),
+            language.as_ref().map(DocumentString::code_units),
+        );
         while parser_cursor.result().is_none() {
             parser_cursor.advance(&mut c).unwrap();
         }
         let expected = through_ledger(|charge| {
-            let mut cursor =
-                HtmlScriptTypeCursor::preparation(explicit.as_ref(), language.as_ref());
+            let mut cursor = HtmlScriptTypeCursor::preparation(
+                explicit.as_ref().map(DocumentString::code_units),
+                language.as_ref().map(DocumentString::code_units),
+            );
             while cursor.result().is_none() {
                 cursor.advance(charge)?;
             }
@@ -58,74 +59,15 @@ fn input_type_recognition_charges_what_the_stock_ledger_charger_records() {
     ] {
         let raw = DocumentString::from(text);
         let mut c = control();
-        super::super::input_values::input_type_state(&mut c, &raw).unwrap();
+        super::super::input_values::input_type_state(&mut c, raw.code_units()).unwrap();
         let expected = through_ledger(|charge| {
-            let mut cursor = HtmlInputTypeCursor::new(Some(&raw));
+            let mut cursor = HtmlInputTypeCursor::new(Some(raw.code_units()));
             while cursor.result().is_none() {
                 cursor.advance(charge)?;
             }
             Ok(())
         });
         assert_eq!(charged(&c), expected, "{text:?}");
-    }
-}
-
-#[test]
-fn attribute_validation_charges_what_the_stock_ledger_charger_records() {
-    // A short list compares every pair. A list of at least the index threshold
-    // validates through a table of names, which also copies and writes slots.
-    let indexed = super::super::storage_holds::NAME_INDEX_MIN_ENTRIES + 3;
-    for count in [2, 5, indexed] {
-        let backing: Vec<Attribute> = (0..count)
-            .map(|index| {
-                Attribute::new(
-                    QualifiedName::new(Namespace::from_uri("urn:a"), None, format!("a{index}")),
-                    "v",
-                )
-            })
-            .collect();
-        let backing = Arc::new(backing);
-        let mut c = control();
-        validate_parser_attributes(backing.clone(), &mut c).unwrap();
-        let storage = HtmlAttributeStorage::from_shared_attributes(backing);
-        let mut validation = match HtmlAttributeNameIndex::slots_required(count) {
-            Some(slots) if count >= super::super::storage_holds::NAME_INDEX_MIN_ENTRIES => {
-                storage.validate_indexed(HtmlAttributeNameIndex::new(Vec::with_capacity(slots)))
-            }
-            _ => storage.validate(),
-        };
-        let mut steps = through_ledger(|charge| {
-            while let Some(action) = validation.next_action().unwrap() {
-                match action.advance(charge) {
-                    Ok(()) => {}
-                    Err(HtmlChargedError::Stopped(stop)) => return Err(stop),
-                    Err(HtmlChargedError::Faulted(fault)) => panic!("validation fault: {fault}"),
-                }
-            }
-            Ok(())
-        });
-        if let Some(slots) = HtmlAttributeNameIndex::slots_required(count)
-            .filter(|_| count >= super::super::storage_holds::NAME_INDEX_MIN_ENTRIES)
-        {
-            // The name table's vector is reserved and released around the loop;
-            // those charges are not part of any validation action.
-            let mut table = control();
-            let (mut vector, mut ticket) = table.new_vector::<HtmlNameIndexSlot>().unwrap();
-            table
-                .reserve_vector(&mut vector, &mut ticket, slots)
-                .unwrap();
-            super::super::cleanup::release_vector(&mut table, vector, ticket).unwrap();
-            let reserve = charged(&table);
-            for (total, extra) in steps.categories.iter_mut().zip(reserve.categories) {
-                *total += extra;
-            }
-            steps.credits += reserve.credits;
-        }
-        if count == indexed {
-            assert_ne!(steps.categories[HtmlWork::RecordWrite as usize], 0);
-            assert_ne!(steps.categories[HtmlWork::CopyByte as usize], 0);
-        }
-        assert_eq!(charged(&c), steps, "{count} attributes");
     }
 }
 

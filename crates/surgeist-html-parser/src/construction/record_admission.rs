@@ -3,8 +3,6 @@
 use super::template::template_slot_of;
 use super::*;
 use surgeist_html::construction::HtmlConstructionCause;
-#[cfg(test)]
-use surgeist_html::values::QualifiedName;
 use surgeist_html::{
     accounting::{HtmlChange, HtmlChargedError, HtmlResource, HtmlWork},
     bounded::construction::{
@@ -13,7 +11,7 @@ use surgeist_html::{
         HtmlRecordAdmission, NameId,
     },
     construction::{HtmlConstructionResult, HtmlDocumentMode, HtmlShadowRootProperties},
-    values::{Namespace, OrderedAttributes},
+    values::Namespace,
 };
 use surgeist_ledger::Charge;
 
@@ -26,20 +24,16 @@ pub(super) enum NewRecord<'a> {
     Comment(&'a [u16]),
     ProcessingInstruction(&'a [u16], &'a [u16]),
     Doctype(&'a [u16], &'a [u16], &'a [u16]),
-    /// An element of a name that its caller holds, which the storage interns by content. Only an
-    /// element that exists before the parse has no string rows to share its name.
+    /// An element of a name that its caller holds, which the storage interns by content and whose
+    /// strings it shares. Only an element that exists before the parse has no string rows to share
+    /// its name. It has no attributes: they are appended.
     #[cfg(test)]
     Element(
-        QualifiedName,
-        OrderedAttributes,
+        surgeist_html::values::QualifiedName,
         Option<surgeist_html::elements::link::HtmlLinkFlags>,
     ),
     /// An element of a name the storage has interned.
-    NamedElement(
-        NameId,
-        OrderedAttributes,
-        Option<surgeist_html::elements::link::HtmlLinkFlags>,
-    ),
+    NamedElement(NameId, Option<surgeist_html::elements::link::HtmlLinkFlags>),
     ShadowContents(HtmlShadowRootProperties),
 }
 
@@ -76,8 +70,13 @@ pub(super) struct RecordAdmission<'a> {
     requests: &'a [(HtmlParseResource, u64)],
     /// The bytes of the layout the growth under way was admitted to.
     layout: u64,
-    /// Whether the units the operation adds are the strings of a leaf, which the parse holds.
-    leaf: bool,
+    /// Whether the units the operation adds are strings the parse holds: those of a leaf, or the
+    /// name and value of an attribute.
+    pub(super) leaf: bool,
+    /// Whether the operation adds attributes, whose logical slots the parse holds.
+    pub(super) attributes: bool,
+    /// The units the operation adds that the parse already counted when it made their strings.
+    pub(super) counted: u64,
     insertion: Option<Insertion<'a>>,
     /// The bytes the parse holds for the contents vector of a publication, which that
     /// publication frees when its records move.
@@ -104,6 +103,12 @@ impl HtmlRecordAdmission for RecordAdmission<'_> {
     ) -> Result<(), SessionError> {
         let _ = change;
         let Some(insertion) = self.insertion.as_mut() else {
+            // An edit of an attribute acquires its logical slots and units before any bank
+            // grows, so a refusal by a logical limit allocates nothing. An append carries the
+            // attribute slot and the units; a replacement carries only the units it adds.
+            if self.attributes || self.leaf {
+                self.control.check_acquire_many(self.requests)?;
+            }
             return Ok(());
         };
         // Source semantics stay between the depth and the edge checks, before any scratch bank.
@@ -182,10 +187,28 @@ impl HtmlRecordAdmission for RecordAdmission<'_> {
                 .after()
                 .utf16_units()
                 .saturating_sub(change.before().utf16_units()) as u64;
+            let added = added.saturating_sub(self.counted);
             Some(self.holds.string_units.checked_add(added).ok_or_else(|| {
                 self.control
                     .stop_representation(HtmlParseResource::ManagedUtf16Units)
             })?)
+        } else {
+            None
+        };
+        let attributes = if self.attributes {
+            let added = change
+                .after()
+                .attributes()
+                .saturating_sub(change.before().attributes()) as u64;
+            Some(
+                self.holds
+                    .attribute_entries
+                    .checked_add(added)
+                    .ok_or_else(|| {
+                        self.control
+                            .stop_representation(HtmlParseResource::ManagedAttributes)
+                    })?,
+            )
         } else {
             None
         };
@@ -194,12 +217,15 @@ impl HtmlRecordAdmission for RecordAdmission<'_> {
         if let Some(held) = held {
             self.holds.string_units = held;
         }
+        if let Some(entries) = attributes {
+            self.holds.attribute_entries = entries;
+        }
         Ok(())
     }
 }
 
 impl<'a> RecordAdmission<'a> {
-    fn new(
+    pub(super) fn new(
         control: &'a mut ParseControl,
         identity: &'a ControlIdentity,
         holds: &'a mut StorageHolds,
@@ -212,6 +238,8 @@ impl<'a> RecordAdmission<'a> {
             requests,
             layout: 0,
             leaf: false,
+            attributes: false,
+            counted: 0,
             insertion: None,
             contents: 0,
         }
@@ -219,7 +247,7 @@ impl<'a> RecordAdmission<'a> {
 
     /// The session error for an operation's refusal. An allocation the allocator refused reports
     /// the layout the growth was admitted to.
-    fn error(self, error: HtmlConstructionRecordError<SessionError>) -> SessionError {
+    pub(super) fn error(self, error: HtmlConstructionRecordError<SessionError>) -> SessionError {
         match error {
             HtmlChargedError::Stopped(error) => error,
             HtmlChargedError::Faulted(error) => {
@@ -302,11 +330,14 @@ impl SessionStorage {
                 construction.create_doctype(name, Some(public), Some(system), &mut admission)
             }
             #[cfg(test)]
-            NewRecord::Element(name, attributes, flags) => {
-                construction.create_element(&name, attributes, flags, &mut admission)
-            }
-            NewRecord::NamedElement(name, attributes, flags) => {
-                construction.create_element_named(&name, attributes, flags, &mut admission)
+            NewRecord::Element(name, flags) => construction.create_element(
+                &name,
+                surgeist_html::values::OrderedAttributes::default(),
+                flags,
+                &mut admission,
+            ),
+            NewRecord::NamedElement(name, flags) => {
+                construction.create_element_named(&name, flags, &mut admission)
             }
             NewRecord::ShadowContents(properties) => {
                 construction.create_shadow_contents(properties, &mut admission)
@@ -322,6 +353,16 @@ impl SessionStorage {
         namespace: &Namespace,
         units: &[u16],
     ) -> Result<NameId, SessionError> {
+        self.intern_qualified_name(control, namespace, None, units)
+    }
+    /// Interns the name of `namespace`, `prefix` and the local name `units` in the storage.
+    pub(super) fn intern_qualified_name(
+        &mut self,
+        control: &mut ParseControl,
+        namespace: &Namespace,
+        prefix: Option<&surgeist_html::values::DocumentString>,
+        units: &[u16],
+    ) -> Result<NameId, SessionError> {
         control.require_identity(&self.control)?;
         let Self {
             construction,
@@ -331,7 +372,7 @@ impl SessionStorage {
         } = self;
         let mut admission = RecordAdmission::new(control, identity, holds, &[]);
         construction
-            .intern_name(namespace, None, units, &mut admission)
+            .intern_name(namespace, prefix, units, &mut admission)
             .map_err(|error| admission.error(error))
     }
     /// Inserts `node` below `parent`, before `before` or last. `form_effects` says that the

@@ -201,7 +201,9 @@ impl<'a> NativeView<'a> {
             .ok_or_else(SessionError::registry_row)?
             .kind()
         {
-            ConstructionNodeKind::Element(element) => Ok(element.attributes().len()),
+            ConstructionNodeKind::Element(element) => {
+                Ok(test_support::attributes_of(element).len())
+            }
             _ => Err(SessionError::WrongToken),
         }
     }
@@ -222,7 +224,8 @@ impl<'a> NativeView<'a> {
         else {
             return Err(SessionError::WrongToken);
         };
-        if position >= element.attributes().len() {
+        let held = test_support::attributes_of(element);
+        if position >= held.len() {
             return Ok(None);
         }
         self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -234,10 +237,10 @@ impl<'a> NativeView<'a> {
             HtmlParseWorkCategory::CopyByte,
             mem::size_of::<NativeAttribute>() as u64,
         )?;
-        let attribute = &element.attributes().get(position).unwrap();
+        let attribute = held[position];
         Ok(Some(NativeAttribute {
             name: self.name(attribute.name()),
-            value: self.string(attribute.value().code_units()),
+            value: self.string(test_support::value_units(attribute)),
         }))
     }
     #[cfg(test)]

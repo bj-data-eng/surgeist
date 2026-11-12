@@ -261,35 +261,15 @@ fn real_tokenizer_case_duplicate_recovery_and_reference_data_reach_managed_nativ
         element.name().local_name().code_units(),
         &[0x64, 0x69, 0x76]
     );
-    assert_eq!(element.attributes().len(), 2);
+    let held = test_support::attributes_of(element);
+    assert_eq!(held.len(), 2);
+    assert_eq!(held[0].name().local_name().code_units(), &[0x7a]);
+    assert_eq!(test_support::value_units(held[0]), &[0x78]);
     assert_eq!(
-        element
-            .attributes()
-            .get(0)
-            .unwrap()
-            .name()
-            .local_name()
-            .code_units(),
-        &[0x7a]
-    );
-    assert_eq!(
-        element.attributes().get(0).unwrap().value().code_units(),
-        &[0x78]
-    );
-    assert_eq!(
-        element
-            .attributes()
-            .get(1)
-            .unwrap()
-            .name()
-            .local_name()
-            .code_units(),
+        held[1].name().local_name().code_units(),
         &[0x61, 0x3a, 0x62]
     );
-    assert_eq!(
-        element.attributes().get(1).unwrap().value().code_units(),
-        &[0xd83d, 0xde00]
-    );
+    assert_eq!(test_support::value_units(held[1]), &[0xd83d, 0xde00]);
     let mut frozen = session.freeze(&mut c).unwrap();
     assert_eq!(frozen.fragment().unwrap().root().children().count(), 1);
     frozen.release(&mut c).unwrap();

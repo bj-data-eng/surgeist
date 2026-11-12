@@ -2,7 +2,7 @@
 //! Production attribute edits live in the parent; nothing here is compiled
 //! outside tests.
 use super::*;
-use surgeist_html::values::{DocumentString, Namespace};
+use surgeist_html::values::Namespace;
 
 #[derive(Clone, Copy)]
 pub(in crate::construction) enum ManagedFamily {
@@ -56,8 +56,8 @@ impl SessionStorage {
         family: ManagedFamily,
         node: usize,
         local: &str,
-        old: Option<&DocumentString>,
-        new: Option<&DocumentString>,
+        old: Option<&[u16]>,
+        new: Option<&[u16]>,
     ) -> Result<ManagedEffect, SessionError> {
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<ManagedEffect>(c, 1)?;
@@ -175,7 +175,7 @@ impl SessionStorage {
                     unreachable!()
                 };
                 let mut position = None;
-                for (i, a) in element.attributes().iter().enumerate() {
+                for (i, a) in element.attributes().each(c)?.enumerate() {
                     c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                     if a.name().namespace().uri().is_none()
                         && exact_ascii(c, Some(a.name().local_name()), "type")?
@@ -236,59 +236,6 @@ impl SessionStorage {
             }
         }
     }
-
-    /// The rows a scan of the registry finds for the attribute at `position`
-    /// of `node`, indexed as name, value, namespace and prefix.
-    pub(super) fn scanned_attribute_rows(
-        &self,
-        node: usize,
-        position: usize,
-    ) -> [Option<usize>; 4] {
-        let mut rows = [None; 4];
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
-            if let RetainedPayload::String { location, .. } = payload {
-                let which = match *location {
-                    FieldRef::AttributeName(o, p) if o == node && p == position => 0,
-                    FieldRef::AttributeValue(o, p) if o == node && p == position => 1,
-                    FieldRef::AttributeNamespace(o, p) if o == node && p == position => 2,
-                    FieldRef::AttributePrefix(o, p) if o == node && p == position => 3,
-                    _ => continue,
-                };
-                rows[which] = Some(slot);
-            }
-        }
-        rows
-    }
-    /// Checks that a verified layout names exactly the rows a registry scan finds.
-    pub(super) fn assert_verified_layout(
-        &self,
-        node: usize,
-        index: usize,
-        count: usize,
-        last_name: usize,
-    ) {
-        let mut expected: Vec<usize> = Vec::new();
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
-            if let RetainedPayload::String { location, .. } = payload
-                && let FieldRef::AttributeName(owner, position)
-                | FieldRef::AttributeValue(owner, position)
-                | FieldRef::AttributeNamespace(owner, position)
-                | FieldRef::AttributePrefix(owner, position) = *location
-                && owner == node
-                && position >= index
-            {
-                expected.push(slot);
-            }
-        }
-        let mut hinted: Vec<usize> = (index..count)
-            .flat_map(|position| attribute_row_slots(last_name, count, position).unwrap())
-            .collect();
-        hinted.sort_unstable();
-        assert_eq!(
-            hinted, expected,
-            "a verified layout names the rows a scan finds"
-        );
-    }
 }
 
 impl ParserArenaSession {
@@ -348,7 +295,7 @@ impl ParserArenaSession {
         if matches!(family, ManagedFamily::Input) {
             let (_, state) = find_input_state(&storage.payloads, c, node)?;
             if local == "type" {
-                let next = input_type_state(c, attr.value.value.text())?;
+                let next = input_type_state(c, attr.value.value.text().code_units())?;
                 let file_image = matches!(
                     state.flags.input_type(),
                     surgeist_html::attributes::HtmlInputType::File
@@ -385,7 +332,7 @@ impl ParserArenaSession {
         else {
             unreachable!()
         };
-        for (index, old) in element.attributes().iter().enumerate() {
+        for (index, old) in element.attributes().each(c)?.enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if old.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(old.name().local_name()), local)?
@@ -400,35 +347,38 @@ impl ParserArenaSession {
             node,
             local,
             position
-                .and_then(|p| element.attributes().get(p))
-                .map(|a| a.value()),
-            Some(attr.value.value.text()),
+                .and_then(|p| test_support::attributes_of(element).get(p).copied())
+                .map(test_support::value_units),
+            Some(attr.value.value.text().code_units()),
         )?;
         storage.preflight_managed_effect(c, node, effect)?;
         let previous = storage.begin_attribute_change(c, node, Some(&attr.source))?;
         payload_write::<Option<crate::parser::tokenizer::token::Attribute>>(c, 1)?;
         let attr = input.take().expect("qualified original owner");
         let result = (|| {
-            let (name, name_slot) = match storage.register_attribute_name(c, attr.name) {
-                Ok(value) => value,
+            let name = match storage.text_field(c, attr.name) {
+                Ok(name) => name,
                 Err(error) => {
                     attr.value.release(c)?;
                     return Err(error);
                 }
             };
-            let (value, value_slot) = storage.register_text(c, attr.value)?;
-            payload_write::<Attribute>(c, 1)?;
-            let incoming = Attribute::new(name, value);
+            let value = match storage.text_field(c, attr.value) {
+                Ok(value) => value,
+                Err(error) => {
+                    name.value.release(c)?;
+                    return Err(error);
+                }
+            };
+            if let Err(error) = payload_write::<[FieldString; 2]>(c, 1) {
+                name.release(c)?;
+                value.release(c)?;
+                return Err(error);
+            }
             if let Some(position) = position {
-                storage.replace_registered_attribute(
-                    c,
-                    node,
-                    position,
-                    incoming,
-                    [name_slot, value_slot],
-                )?;
+                storage.replace_registered_attribute(c, node, position, name, value)?;
             } else {
-                storage.append_registered_attribute(c, node, incoming, [name_slot, value_slot])?;
+                storage.append_registered_attribute(c, node, name, value)?;
             }
             storage.managed_change(c, node, effect)?;
             storage.drain_construction_effects(c)?;

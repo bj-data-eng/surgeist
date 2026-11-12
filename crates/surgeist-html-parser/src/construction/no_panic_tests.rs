@@ -4,7 +4,7 @@
 //! the stop is latched first, and that the owner's own release drains every
 //! resource afterwards.
 use super::effects::tests::{graph, named, request};
-use super::tests::{body_lexical_value, control, fresh_script_owner, lexical_kind, storage_zero};
+use super::tests::{body_lexical_value, control, storage_zero};
 use super::*;
 use crate::parser::control::HtmlParseInvariant;
 use surgeist_html::construction::ConstructionNodeKind;
@@ -177,34 +177,6 @@ fn a_text_run_slot_that_was_already_transferred_reports_the_registry_row() {
     stolen.text.release(&mut c).unwrap();
     assert_registry_row(runs.take_next(&mut c), &c);
     runs.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
-#[test]
-fn a_refused_release_after_failed_attribute_validation_keeps_the_shared_attributes() {
-    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
-    let request = request("<div a=1 b=2>");
-    let (mut c, mut session, _proof) = fresh_script_owner(&request);
-    let mut lexer =
-        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
-    let TokenKind::Tag(mut tag) = lexical_kind(&mut lexer, &mut c) else {
-        panic!("start tag")
-    };
-    // Rename the second attribute to the first's name so validation refuses it.
-    let first = copy_formatting_text(&mut c, &tag.attributes.as_slice()[0].name).unwrap();
-    let second = tag.attributes.get_mut(1, &mut c).unwrap().unwrap();
-    mem::replace(&mut second.name, first)
-        .release(&mut c)
-        .unwrap();
-    // Validation refuses, and the release of the shared attributes refuses too.
-    c.refuse_next_shared_release();
-    let aliased = HtmlParseStop::InternalInvariant(HtmlParseInvariant::SharedAllocationAliased);
-    let result = session.allocate_html_tag(&mut c, &mut Some(tag));
-    assert_eq!(result.err(), Some(SessionError::Stop(aliased)));
-    assert_eq!(c.stop(), Some(aliased));
-    // The refused Arc and ticket stayed with the registry, so release drains.
-    lexer.release(&mut c).unwrap();
-    session.release(&mut c).unwrap();
     storage_zero(&c);
 }
 

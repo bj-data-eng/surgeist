@@ -4,7 +4,7 @@ use super::*;
 use surgeist_html::values::DocumentString;
 use surgeist_html::{
     construction::{ConstructionNodeKind, HtmlFragmentOwner},
-    values::{Attribute, Namespace, QualifiedName},
+    values::QualifiedName,
 };
 
 impl SessionStorage {
@@ -88,7 +88,7 @@ impl SessionStorage {
         else {
             return Ok(());
         };
-        let count = element.attributes().len();
+        let count = element.attributes().count(c)?;
         for position in 0..count {
             self.initial_nonce_attribute(c, node, position)?;
         }
@@ -100,17 +100,14 @@ impl SessionStorage {
         node: usize,
         position: usize,
     ) -> Result<(), SessionError> {
-        self.install_nonce_attribute(c, node, position, None)
+        self.install_nonce_attribute(c, node, position)
     }
-    /// As [`Self::initial_nonce_attribute`], for an attribute whose value the
-    /// caller has just registered at `registered`: that row is used when it
-    /// still backs the attribute's value, instead of looking the value up.
+    /// Copies the value of the nonce attribute at `position` into the nonce slot of the element.
     fn install_nonce_attribute(
         &mut self,
         c: &mut ParseControl,
         node: usize,
         position: usize,
-        registered: Option<usize>,
     ) -> Result<(), SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
@@ -127,41 +124,21 @@ impl SessionStorage {
         };
         let attribute = element
             .attributes()
-            .get(position)
+            .at(c, position)?
             .ok_or(SessionError::WrongToken)?;
-        if matches!(
+        let value = attribute.value().units(c)?;
+        let ignored = matches!(
             surgeist_html::security::nonce::nonce_attribute_change(
                 element.name(),
                 attribute.name(),
-                Some(attribute.value())
+                Some(value)
             ),
             surgeist_html::security::nonce::HtmlNonceAttributeEffect::Ignore
-        ) {
+        );
+        if ignored {
             return Ok(());
         }
-        // Ordered installation may still have an active field redirect; select the
-        // real installed value backing through its existing ownership lender.
-        let mut known = None;
-        if let Some(slot) = registered {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(slot) {
-                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                if value.shares_storage_with(attribute.value()) {
-                    #[cfg(test)]
-                    assert_eq!(
-                        self.payloads.first_string_sharing(attribute.value()),
-                        Some(slot),
-                        "a verified registered row names the row a scan finds"
-                    );
-                    known = Some(slot);
-                }
-            }
-        }
-        let source = match known {
-            Some(slot) => slot,
-            None => self.attribute_value_slot(c, node, position)?,
-        };
-        let raw = self.copy_raw_field(c, source)?;
+        let raw = self.copy_attribute_value(c, node, position)?;
         let (slot, _) = self
             .nonce_slot(c, node)?
             .ok_or(SessionError::NonceMetadataUnavailable)?;
@@ -372,21 +349,23 @@ impl SessionStorage {
             return Ok(());
         };
         let mut selected = None;
-        for (position, attribute) in element.attributes().iter().enumerate() {
+        for (position, attribute) in element.attributes().each(c)?.enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
                 HtmlParseWorkCategory::InspectByte,
                 surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
             )?;
-            if !matches!(
+            let value = attribute.value().units(c)?;
+            let ignored = matches!(
                 surgeist_html::security::nonce::nonce_attribute_change(
                     element.name(),
                     attribute.name(),
-                    Some(attribute.value())
+                    Some(value)
                 ),
                 surgeist_html::security::nonce::HtmlNonceAttributeEffect::Ignore
-            ) {
-                if attribute.value().is_empty() {
+            );
+            if !ignored {
+                if value.is_empty() {
                     return Ok(());
                 }
                 selected = Some(position);
@@ -403,12 +382,14 @@ impl SessionStorage {
         )?;
         let element = element_record(&self.construction, c, node)?;
         let attribute = element_attribute(&self.construction, c, node, position)?;
-        match surgeist_html::security::nonce::nonce_insertion_effect(
+        let value = attribute.value().units(c)?;
+        let effect = surgeist_html::security::nonce::nonce_insertion_effect(
             element.name(),
-            Some(attribute.value()),
+            Some(value),
             connection,
             policy,
-        ) {
+        );
+        match effect {
             surgeist_html::security::nonce::HtmlNonceInsertionEffect::KeepContent => Ok(()),
             surgeist_html::security::nonce::HtmlNonceInsertionEffect::Unavailable(fact) => {
                 Err(SessionError::ContextFactUnavailable(match fact {
@@ -639,42 +620,48 @@ impl SessionStorage {
             return Err(SessionError::NonceMetadataUnavailable);
         }
         let mut position = None;
-        for (index, attribute) in element.attributes().iter().enumerate() {
+        for (index, attribute) in element.attributes().each(c)?.enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
                 HtmlParseWorkCategory::InspectByte,
                 surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
             )?;
-            if !matches!(
+            let units = attribute.value().units(c)?;
+            let ignored = matches!(
                 surgeist_html::security::nonce::nonce_attribute_change(
                     element.name(),
                     attribute.name(),
-                    Some(attribute.value())
+                    Some(units)
                 ),
                 surgeist_html::security::nonce::HtmlNonceAttributeEffect::Ignore
-            ) {
+            );
+            if !ignored {
                 position = Some(index);
                 break;
             }
         }
         if let Some(value) = value.take() {
-            let (value, value_slot) = self.register_string_owned(c, value, None)?;
-            let name = literal_string(c, b"nonce")?;
-            let (name, name_slot) = self.register_string_owned(c, name, None)?;
-            payload_write::<Attribute>(c, 1)?;
-            let incoming = Attribute::new(QualifiedName::new(Namespace::none(), None, name), value);
+            let value = self.field_string_owned(c, value, None)?;
+            let name = match literal_string(c, b"nonce")
+                .and_then(|name| self.field_string_owned(c, name, None))
+            {
+                Ok(name) => name,
+                Err(error) => {
+                    value.release(c)?;
+                    return Err(error);
+                }
+            };
+            if let Err(error) = payload_write::<[FieldString; 2]>(c, 1) {
+                name.release(c)?;
+                value.release(c)?;
+                return Err(error);
+            }
             if let Some(position) = position {
-                self.replace_registered_attribute(
-                    c,
-                    node,
-                    position,
-                    incoming,
-                    [name_slot, value_slot],
-                )?;
-                self.install_nonce_attribute(c, node, position, Some(value_slot))
+                self.replace_registered_attribute(c, node, position, name, value)?;
+                self.install_nonce_attribute(c, node, position)
             } else {
                 // The actual merge owner invokes the same installation hook.
-                self.append_registered_attribute(c, node, incoming, [name_slot, value_slot])
+                self.append_registered_attribute(c, node, name, value)
             }
         } else {
             self.remove_managed_field(c, node, "nonce")?;
@@ -860,8 +847,7 @@ mod tests {
                 .unwrap()
                 .form_attribute(&mut c, node.index, "nonce")
                 .unwrap()
-                .unwrap()
-                .code_units(),
+                .unwrap(),
             &[65]
         );
         let copy = session
@@ -883,8 +869,7 @@ mod tests {
                 .unwrap()
                 .form_attribute(&mut c, copy.index, "nonce")
                 .unwrap()
-                .unwrap()
-                .code_units(),
+                .unwrap(),
             &[65]
         );
         let value = supplied(&mut c, &[66]);
@@ -954,8 +939,7 @@ mod tests {
                 .unwrap()
                 .form_attribute(&mut c, node.index, "nonce")
                 .unwrap()
-                .unwrap()
-                .code_units(),
+                .unwrap(),
             &[65]
         );
         session.release(&mut c).unwrap();
@@ -1227,8 +1211,7 @@ mod tests {
                 .unwrap()
                 .form_attribute(c, node.index, "nonce")
                 .unwrap()
-                .unwrap()
-                .code_units(),
+                .unwrap(),
             &[]
         );
         let value = supplied(c, &[83]);
@@ -1251,8 +1234,7 @@ mod tests {
                 .unwrap()
                 .form_attribute(c, node.index, "nonce")
                 .unwrap()
-                .unwrap()
-                .code_units(),
+                .unwrap(),
             &[66]
         );
         let value = supplied(c, &[83]);
@@ -1283,8 +1265,7 @@ mod tests {
                 .unwrap()
                 .form_attribute(c, node.index, "nonce")
                 .unwrap()
-                .unwrap()
-                .code_units(),
+                .unwrap(),
             &[]
         );
         let document = session
@@ -1308,8 +1289,7 @@ mod tests {
                 .unwrap()
                 .form_attribute(c, copy.index, "nonce")
                 .unwrap()
-                .unwrap()
-                .code_units(),
+                .unwrap(),
             &[]
         );
         driver.release().unwrap();

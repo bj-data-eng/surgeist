@@ -397,7 +397,7 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let count = element.attributes().len();
+        let count = element.attributes().count(c)?;
         // The immutable backing may be fused: this closed prefix cannot observe
         // a later attribute. URL parses use only the reached unique href;
         // image starts stop at Document activity before reading image sources.
@@ -422,7 +422,7 @@ impl SessionStorage {
         };
         let attr = element
             .attributes()
-            .get(position)
+            .at(c, position)?
             .ok_or(SessionError::WrongToken)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if attr.name().namespace().uri().is_some() {
@@ -452,7 +452,8 @@ impl SessionStorage {
             if surgeist_html::elements::link::hyperlink_attribute_effect(attr.name().namespace(), name, false)
                 == surgeist_html::elements::link::HtmlHyperlinkAttributeEffect::SetUrlThenConsiderSpeculativeLoads
             {
-                let raw = self.attribute_value_slot(c, node, position)?;
+                // The hyperlink state keeps the row of its own copy of the value.
+                let raw = self.copy_attribute_value(c, node, position)?;
                 self.set_hyperlink(c, node, Some(raw))?;
             }
         } else if tag == Some(KnownHtmlElement::Img) {
@@ -465,37 +466,42 @@ impl SessionStorage {
                 HtmlImageAttributeEffect::Update(flags) => Some(flags),
                 HtmlImageAttributeEffect::CompareCrossOrigin
                 | HtmlImageAttributeEffect::CompareReferrerPolicy => {
-                    let mut admit = |step| {
-                        match step {
-                        surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::ValueHeader
-                        | surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::KeywordHeader => {
-                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)
+                    let value = attr.value().units(c)?;
+                    let changed = {
+                        let mut admit = |step| {
+                            match step {
+                            surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::ValueHeader
+                            | surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::KeywordHeader => {
+                                c.charge(HtmlParseWorkCategory::RecordVisit, 1)
+                            }
+                            surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::KeywordPair => {
+                                c.charge_unit_literal_comparison()
+                            }
                         }
-                        surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::KeywordPair => {
-                            c.charge_unit_literal_comparison()
+                        };
+                        if effect == HtmlImageAttributeEffect::CompareCrossOrigin {
+                            let old =
+                                surgeist_html::bounded::attributes::crossorigin_processing_with(
+                                    None, &mut admit,
+                                )?;
+                            let new =
+                                surgeist_html::bounded::attributes::crossorigin_processing_with(
+                                    Some(value),
+                                    &mut admit,
+                                )?;
+                            surgeist_html::elements::image::image_crossorigin_changed(old, new)
+                        } else {
+                            let old =
+                                surgeist_html::bounded::attributes::referrerpolicy_processing_with(
+                                    None, &mut admit,
+                                )?;
+                            let new =
+                                surgeist_html::bounded::attributes::referrerpolicy_processing_with(
+                                    Some(value),
+                                    &mut admit,
+                                )?;
+                            surgeist_html::elements::image::image_referrerpolicy_changed(old, new)
                         }
-                    }
-                    };
-                    let changed = if effect == HtmlImageAttributeEffect::CompareCrossOrigin {
-                        let old = surgeist_html::bounded::attributes::crossorigin_processing_with(
-                            None, &mut admit,
-                        )?;
-                        let new = surgeist_html::bounded::attributes::crossorigin_processing_with(
-                            Some(attr.value()),
-                            &mut admit,
-                        )?;
-                        surgeist_html::elements::image::image_crossorigin_changed(old, new)
-                    } else {
-                        let old =
-                            surgeist_html::bounded::attributes::referrerpolicy_processing_with(
-                                None, &mut admit,
-                            )?;
-                        let new =
-                            surgeist_html::bounded::attributes::referrerpolicy_processing_with(
-                                Some(attr.value()),
-                                &mut admit,
-                            )?;
-                        surgeist_html::elements::image::image_referrerpolicy_changed(old, new)
                     };
                     changed.then_some(HtmlImageUpdateFlags::new(false, false))
                 }
@@ -759,8 +765,12 @@ impl SessionStorage {
             },
         );
         let old_usage = old.usage;
+        let old_raw = old.raw;
         drop(old);
         old_usage.release(c, &self.control)?;
+        if let Some(old_raw) = old_raw {
+            self.retire_registered_string(c, old_raw)?;
+        }
         Ok(())
     }
     fn image_document_activity(

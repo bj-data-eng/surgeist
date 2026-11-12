@@ -34,13 +34,13 @@ impl HtmlLinkFlags {
     pub fn explicitly_enabled(self) -> bool {
         self.explicitly_enabled
     }
-    /// Invoke only for the actual disabled attribute change. Copying attributes
-    /// into a new element does not simulate a removal.
+    /// Invoke only for the actual disabled attribute change, with the values' UTF-16 code units.
+    /// Copying attributes into a new element does not simulate a removal.
     pub fn disabled_attribute_changed(
         &mut self,
         namespace: &crate::internal::values::Namespace,
-        old: Option<&DocumentString>,
-        new: Option<&DocumentString>,
+        old: Option<&[u16]>,
+        new: Option<&[u16]>,
     ) {
         if namespace.uri().is_none() && old.is_some() && new.is_none() {
             self.disabled_removed();

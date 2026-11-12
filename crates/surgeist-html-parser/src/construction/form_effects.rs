@@ -7,7 +7,6 @@ use surgeist_html::{
     },
     construction::ConstructionNodeKind,
     elements::form::HtmlNativeFormAssociationKind,
-    values::DocumentString,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -207,7 +206,7 @@ impl SessionStorage {
         control: &mut ParseControl,
         node: usize,
         local: &str,
-    ) -> Result<Option<&'a DocumentString>, SessionError> {
+    ) -> Result<Option<&'a [u16]>, SessionError> {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let record = self
             .construction
@@ -216,12 +215,12 @@ impl SessionStorage {
         let ConstructionNodeKind::Element(element) = record.kind() else {
             return Ok(None);
         };
-        for attribute in element.attributes().iter() {
+        for attribute in element.attributes().each(control)? {
             control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(control, Some(attribute.name().local_name()), local)?
             {
-                return Ok(Some(attribute.value()));
+                return Ok(Some(attribute.value().units(control)?));
             }
         }
         Ok(None)
@@ -237,7 +236,7 @@ impl SessionStorage {
         &self,
         control: &mut ParseControl,
         node: usize,
-        value: &DocumentString,
+        value: &[u16],
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         let root = self.ordinary_root(control, node, detached)?;

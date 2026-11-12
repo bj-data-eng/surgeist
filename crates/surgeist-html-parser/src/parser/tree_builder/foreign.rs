@@ -18,7 +18,10 @@ use super::{
     tag_sets, write,
 };
 use crate::{
-    construction::{BodyTextKind, BodyTextRuns, ForeignNamespace, ParserNode, partition_body_text},
+    construction::{
+        BodyTextKind, BodyTextRuns, ElementAttributes, ForeignNamespace, ParserNode,
+        partition_body_text,
+    },
     parser::{
         control::{HtmlParseUnsupportedState, HtmlParseWorkCategory, ParseControl},
         tokenizer::token::{TagKind, Text},
@@ -30,7 +33,6 @@ use surgeist_html::{
     bounded::parsing::{
         HtmlIntegrationPointComparison, HtmlIntegrationPointRule, HtmlMathmlTextPointTest,
     },
-    values::DocumentString,
     vocabulary::{KnownMathmlElement, KnownSvgElement},
 };
 
@@ -39,15 +41,36 @@ const MATHML: &str = "http://www.w3.org/1998/Math/MathML";
 const SVG: &str = "http://www.w3.org/2000/svg";
 
 fn integration_comparison(
-    value: &DocumentString,
+    value: &[u16],
     literal: &'static str,
     comparison: HtmlIntegrationPointComparison,
     c: &mut ParseControl,
 ) -> Result<bool, HeadError> {
     match comparison {
-        HtmlIntegrationPointComparison::Exact => Ok(tag_sets::ascii_eq(value, literal, c)?),
+        HtmlIntegrationPointComparison::Exact => Ok(tag_sets::ascii_units_eq(value, literal, c)?),
         HtmlIntegrationPointComparison::AsciiCaseInsensitive => {
-            Ok(c.ascii_case_insensitive_literal_matches(value, literal)?)
+            Ok(c.ascii_case_insensitive_units_match(value, literal)?)
+        }
+    }
+}
+
+/// The attributes of an element that a rule reads in producer order, each as its name and the
+/// exact units of its value, where they are held: a captured fragment context element holds its
+/// values as strings, and a record of the construction storage as ranges of its text arena.
+enum ReadAttributes<'a> {
+    Captured(std::slice::Iter<'a, surgeist_html::values::Attribute>),
+    Stored(ElementAttributes<'a>),
+}
+impl<'a> ReadAttributes<'a> {
+    fn next(
+        &mut self,
+        c: &mut ParseControl,
+    ) -> Result<Option<(&'a surgeist_html::values::QualifiedName, &'a [u16])>, HeadError> {
+        match self {
+            Self::Captured(attributes) => Ok(attributes
+                .next()
+                .map(|attribute| (attribute.name(), attribute.value().code_units()))),
+            Self::Stored(attributes) => Ok(attributes.next(c)?),
         }
     }
 }
@@ -66,18 +89,17 @@ fn integration_rule(
 }
 
 fn integration_encoding(
-    attributes: &surgeist_html::values::OrderedAttributes,
+    mut attributes: ReadAttributes<'_>,
     c: &mut ParseControl,
 ) -> Result<bool, HeadError> {
-    for attribute in attributes.as_slice() {
+    while let Some((name, value)) = attributes.next(c)? {
         // Visit the attribute and borrow its name, namespace, URI, local name
         // and value. Variable UTF-16 inspections remain comparison-owned.
         c.charge(HtmlParseWorkCategory::RecordVisit, 6)?;
-        let name = attribute.name();
         if let Some(result) = bounded::parsing::html_integration_point_encoding_attribute(
             name.namespace().uri(),
             name.local_name(),
-            attribute.value(),
+            value,
             |value, literal, comparison| integration_comparison(value, literal, comparison, c),
         )? {
             return Ok(result);
@@ -127,7 +149,7 @@ impl HeadState<'_> {
     fn adjusted_current_attributes(
         &self,
         c: &mut ParseControl,
-    ) -> Result<surgeist_html::values::OrderedAttributes, HeadError> {
+    ) -> Result<ReadAttributes<'_>, HeadError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.before.kernel.stack()?.len() == 1
             && let Some(context) = self.before.kernel.session.fragment_context(c)?
@@ -140,13 +162,16 @@ impl HeadState<'_> {
             let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
                 return Err(crate::construction::SessionError::ContextUnavailable.into());
             };
-            return Ok(element.attributes().clone());
+            return Ok(ReadAttributes::Captured(
+                element.attributes().as_slice().iter(),
+            ));
         }
         let current = self.before.kernel.current(c)?;
         self.before
             .kernel
             .session
             .element_attributes(c, &current)?
+            .map(ReadAttributes::Stored)
             .ok_or_else(|| KernelError::NotElement.into())
     }
     pub(super) fn foreign_namespace(
@@ -183,7 +208,9 @@ impl HeadState<'_> {
         };
         let equal = match (name.namespace().uri(), element.name().namespace().uri()) {
             (None, None) => true,
-            (Some(left), Some(right)) => tag_sets::equal_units(left, right, c)?,
+            (Some(left), Some(right)) => {
+                tag_sets::equal_units(left.code_units(), right.code_units(), c)?
+            }
             _ => false,
         };
         if !equal {
@@ -223,7 +250,7 @@ impl HeadState<'_> {
                     .session
                     .element_attributes(c, node)?
                     .ok_or(KernelError::EmptyStack)?;
-                integration_encoding(&attrs, c)
+                integration_encoding(ReadAttributes::Stored(attrs), c)
             }
         }
     }
@@ -267,7 +294,7 @@ impl HeadState<'_> {
             HtmlIntegrationPointRule::Never => Ok(false),
             HtmlIntegrationPointRule::Always => Ok(true),
             HtmlIntegrationPointRule::EncodingAttribute => {
-                integration_encoding(&self.adjusted_current_attributes(c)?, c)
+                integration_encoding(self.adjusted_current_attributes(c)?, c)
             }
         }
     }
@@ -338,18 +365,18 @@ impl HeadState<'_> {
             ("xlink", Some("http://www.w3.org/1999/xlink")),
         ] {
             let mut mismatch = false;
-            let attrs = self
+            let mut attrs = self
                 .before
                 .kernel
                 .session
                 .element_attributes(c, node)?
                 .ok_or(KernelError::EmptyStack)?;
-            for attribute in attrs.as_slice() {
+            while let Some((attribute, value)) = attrs.next(c)? {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-                if tag_sets::namespace(attribute.name(), "http://www.w3.org/2000/xmlns/", c)?
-                    && tag_sets::ascii_eq(attribute.name().local_name(), local, c)?
+                if tag_sets::namespace(attribute, "http://www.w3.org/2000/xmlns/", c)?
+                    && tag_sets::ascii_eq(attribute.local_name(), local, c)?
                     && !(if let Some(expected) = expected {
-                        tag_sets::ascii_eq(attribute.value(), expected, c)?
+                        tag_sets::ascii_units_eq(value, expected, c)?
                     } else {
                         let name = self
                             .before
@@ -358,7 +385,7 @@ impl HeadState<'_> {
                             .element_name(c, node)?
                             .ok_or(KernelError::NotElement)?;
                         match name.namespace().uri() {
-                            Some(uri) => tag_sets::equal_units(attribute.value(), uri, c)?,
+                            Some(uri) => tag_sets::equal_units(value, uri.code_units(), c)?,
                             None => false,
                         }
                     })
@@ -901,7 +928,11 @@ mod tests {
             // Inspecting all 1,001 attribute records cannot fit this budget.
             let mut control = control(1000, HtmlParseCancellation::new());
             assert_eq!(
-                integration_encoding(&attributes, &mut control).unwrap(),
+                integration_encoding(
+                    ReadAttributes::Captured(attributes.as_slice().iter()),
+                    &mut control
+                )
+                .unwrap(),
                 expected
             );
             assert_eq!(control.stop(), None);
@@ -912,18 +943,36 @@ mod tests {
     fn encoding_comparison_exact_and_one_short_preserve_first_stop_and_cancellation() {
         let attributes = OrderedAttributes::new([encoding("ApPlIcAtIoN/XhTmL+XmL")]).unwrap();
         let mut measured = control(1000, HtmlParseCancellation::new());
-        assert!(integration_encoding(&attributes, &mut measured).unwrap());
+        assert!(
+            integration_encoding(
+                ReadAttributes::Captured(attributes.as_slice().iter()),
+                &mut measured
+            )
+            .unwrap()
+        );
         let required = measured
             .usage()
             .resource(HtmlParseResource::WorkCredits)
             .current;
         let mut exact = control(required, HtmlParseCancellation::new());
-        assert!(integration_encoding(&attributes, &mut exact).unwrap());
+        assert!(
+            integration_encoding(
+                ReadAttributes::Captured(attributes.as_slice().iter()),
+                &mut exact
+            )
+            .unwrap()
+        );
         assert_eq!(exact.stop(), None);
 
         let cancellation = HtmlParseCancellation::new();
         let mut short = control(required - 1, cancellation.clone());
-        assert!(integration_encoding(&attributes, &mut short).is_err());
+        assert!(
+            integration_encoding(
+                ReadAttributes::Captured(attributes.as_slice().iter()),
+                &mut short
+            )
+            .is_err()
+        );
         let first = short.stop();
         assert!(matches!(
             first,
@@ -937,7 +986,13 @@ mod tests {
             .resource(HtmlParseResource::WorkCredits)
             .current;
         cancellation.cancel();
-        assert!(integration_encoding(&attributes, &mut short).is_err());
+        assert!(
+            integration_encoding(
+                ReadAttributes::Captured(attributes.as_slice().iter()),
+                &mut short
+            )
+            .is_err()
+        );
         assert_eq!(short.stop(), first);
         assert_eq!(
             short
@@ -950,7 +1005,13 @@ mod tests {
         let cancellation = HtmlParseCancellation::new();
         let mut cancelled = control(required, cancellation.clone());
         cancellation.cancel();
-        assert!(integration_encoding(&attributes, &mut cancelled).is_err());
+        assert!(
+            integration_encoding(
+                ReadAttributes::Captured(attributes.as_slice().iter()),
+                &mut cancelled
+            )
+            .is_err()
+        );
         assert_eq!(cancelled.stop(), Some(crate::HtmlParseStop::Cancelled));
         assert_eq!(
             cancelled

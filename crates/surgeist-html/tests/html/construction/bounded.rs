@@ -4,7 +4,7 @@ mod order;
 mod text;
 mod views;
 use crate::html::support::{Cause, Direct, cause, granted, has_cause};
-use std::sync::Arc;
+
 use surgeist_html::{
     bounded::construction::{HtmlConstructionBank, HtmlConstructionNode, HtmlConstructionStorage},
     construction::{
@@ -733,7 +733,6 @@ fn element_creation_installs_supplied_link_history_with_the_record() {
             "stylesheet",
         )])
         .unwrap();
-        let backing = attributes.shared_attributes().clone();
         let (owner, link) = create(
             owner,
             Make::Element {
@@ -746,19 +745,16 @@ fn element_creation_installs_supplied_link_history_with_the_record() {
             panic!()
         };
         assert_eq!(element.link_flags(), supplied);
-        assert!(Arc::ptr_eq(
-            element.attributes().to_ordered().shared_attributes(),
-            &backing
-        ));
         assert_eq!(
             element
                 .attributes()
                 .get(0)
                 .unwrap()
+                .unwrap()
                 .value()
-                .to_utf8()
+                .code_units()
                 .unwrap(),
-            "stylesheet"
+            "stylesheet".encode_utf16().collect::<Vec<_>>()
         );
         assert_eq!(owner.usage().attributes(), 1);
     }

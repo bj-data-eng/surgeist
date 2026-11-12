@@ -334,8 +334,9 @@ impl Draft {
                 };
                 let alpha = self.control_attribute(key, A::Alpha, cancel)?.is_some();
                 let space = self.input_raw(key, A::Colorspace, cancel)?;
-                let mut cursor =
-                    HtmlInputColorSpaceCursor::new(space.as_ref().map(|raw| &raw.value));
+                let mut cursor = HtmlInputColorSpaceCursor::new(
+                    space.as_ref().map(|raw| raw.value.code_units()),
+                );
                 let mut steps = StepMeter(&mut || self.source_step(cancel));
                 while cursor.result().is_none() {
                     cursor.advance(&mut steps)?;
@@ -586,7 +587,7 @@ impl Draft {
         }
         self.source_step(cancel)?;
         let guard = surgeist_html::elements::input::HtmlInputImageUpdateGuard::for_source(
-            raw.as_ref().map(|raw| &raw.value),
+            raw.as_ref().map(|raw| raw.value.code_units()),
         );
         let guard = if guard
             == surgeist_html::elements::input::HtmlInputImageUpdateGuard::NeedsImageEnvironment
@@ -670,7 +671,7 @@ impl Draft {
         if self.input_attribute_is(name, A::Type, cancel)? {
             let raw = self.input_raw(key, A::Type, cancel)?;
             let mut cursor = surgeist_html::elements::input::HtmlInputTypeCursor::new(
-                raw.as_ref().map(|raw| &raw.value),
+                raw.as_ref().map(|raw| raw.value.code_units()),
             );
             let mut steps = StepMeter(&mut || self.source_step(cancel));
             while cursor.result().is_none() {

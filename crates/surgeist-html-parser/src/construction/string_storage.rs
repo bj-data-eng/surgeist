@@ -7,9 +7,9 @@ use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
 /// attributes. An attribute field names its element and the attribute's position in the
 /// element's list, so it moves with the list when attributes are removed.
 ///
-/// The strings of the non-element fields (text, comment, processing-instruction and doctype) are
-/// the record's own, and their origin groups live in [`DetailOrigins`]. The strings of the other
-/// fields are held by registry rows.
+/// The strings of the non-element fields (text, comment, processing-instruction and doctype) and
+/// of the attributes (name, value, namespace and prefix) are the record's own, and their origin
+/// groups live in [`DetailOrigins`]. The strings of the other fields are held by registry rows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum FieldRef {
     Detached,
@@ -31,8 +31,10 @@ pub(crate) enum FieldRef {
 }
 
 impl FieldRef {
-    /// Whether this is a field of a non-element record, whose string the record itself holds.
-    pub(super) fn is_record_string(self) -> bool {
+    /// Whether this is a field whose string a record holds: a string of a non-element record, or
+    /// the name, value, namespace or prefix of an attribute, which the element's attributes hold.
+    /// No registry row holds such a string.
+    pub(super) fn is_held_by_record(self) -> bool {
         matches!(
             self,
             Self::Text(_)
@@ -42,6 +44,10 @@ impl FieldRef {
                 | Self::DoctypeName(_)
                 | Self::DoctypePublic(_)
                 | Self::DoctypeSystem(_)
+                | Self::AttributeName(..)
+                | Self::AttributeValue(..)
+                | Self::AttributeNamespace(..)
+                | Self::AttributePrefix(..)
         )
     }
 
@@ -69,8 +75,10 @@ impl FieldRef {
         }
     }
 
-    /// The units of the string of a non-element field in the record it belongs to. `None` for a
-    /// field of another kind, a record of another kind, or an identifier the doctype lacks.
+    /// The units of the string of a field in the record it belongs to: a string of a non-element
+    /// record, or the name, value, namespace or prefix of an attribute of an element, read from
+    /// the element's attributes. `None` for a field of another kind, a record of another kind, an
+    /// attribute the element lacks, or an identifier the doctype lacks.
     pub(super) fn units<'a>(self, records: ConstructionView<'a>) -> Option<&'a [u16]> {
         let node = match self {
             Self::Text(node)
@@ -80,6 +88,25 @@ impl FieldRef {
             | Self::DoctypeName(node)
             | Self::DoctypePublic(node)
             | Self::DoctypeSystem(node) => node,
+            Self::AttributeName(node, index)
+            | Self::AttributeValue(node, index)
+            | Self::AttributeNamespace(node, index)
+            | Self::AttributePrefix(node, index) => {
+                let ConstructionNodeKind::Element(element) = records.node_at(node)?.kind() else {
+                    return None;
+                };
+                let attribute = element.attributes().get(index).ok()??;
+                return match self {
+                    Self::AttributeName(..) => Some(attribute.name().local_name().code_units()),
+                    Self::AttributeValue(..) => attribute.value().code_units().ok(),
+                    Self::AttributeNamespace(..) => attribute
+                        .name()
+                        .namespace()
+                        .uri()
+                        .map(DocumentString::code_units),
+                    _ => attribute.name().prefix().map(DocumentString::code_units),
+                };
+            }
             _ => return None,
         };
         match (self, records.node_at(node)?.kind()) {
@@ -129,14 +156,18 @@ impl FieldRef {
                 }
             }
             Self::Detached => None,
-            // A non-element field has no registry row: its string is the record's.
+            // A field of a record has no registry row: its string is the record's.
             Self::Text(_)
             | Self::Comment(_)
             | Self::ProcessingInstructionTarget(_)
             | Self::ProcessingInstructionData(_)
             | Self::DoctypeName(_)
             | Self::DoctypePublic(_)
-            | Self::DoctypeSystem(_) => return Err(SessionError::WrongToken),
+            | Self::DoctypeSystem(_)
+            | Self::AttributeName(..)
+            | Self::AttributeValue(..)
+            | Self::AttributeNamespace(..)
+            | Self::AttributePrefix(..) => return Err(SessionError::WrongToken),
             Self::ElementName(index) | Self::Namespace(index) => {
                 cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
                 match records.node_at(index).map(|record| record.kind()) {
@@ -146,22 +177,6 @@ impl FieldRef {
                     },
                     _ => None,
                 }
-            }
-            Self::AttributeName(node, index)
-            | Self::AttributeValue(node, index)
-            | Self::AttributeNamespace(node, index)
-            | Self::AttributePrefix(node, index) => {
-                cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 2)?;
-                let attribute = match records.node_at(node).map(|record| record.kind()) {
-                    Some(ConstructionNodeKind::Element(element)) => element.attributes().get(index),
-                    _ => None,
-                };
-                attribute.and_then(|attribute| match self {
-                    Self::AttributeName(..) => Some(attribute.name().local_name()),
-                    Self::AttributeNamespace(..) => attribute.name().namespace().uri(),
-                    Self::AttributePrefix(..) => attribute.name().prefix(),
-                    _ => Some(attribute.value()),
-                })
             }
         };
         if value.is_none() && !matches!(self, Self::Detached) {
@@ -236,7 +251,7 @@ impl RecordString {
 
 /// Which string of an attribute a field names.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum AttributeString {
+pub(crate) enum AttributeString {
     Name,
     Value,
     Namespace,

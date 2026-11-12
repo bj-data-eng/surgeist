@@ -248,18 +248,18 @@ impl SessionStorage {
         drop(native);
         Ok(ValueRow(row))
     }
-    /// A copy of the text of the record at `node` in a row of its own, as
+    /// A copy of the string of `field`, a field of a record, in a row of its own, as
     /// [`Self::association_string`] makes of a row's string.
-    fn association_text(
+    fn association_field(
         &mut self,
         c: &mut ParseControl,
-        node: usize,
+        field: FieldRef,
     ) -> Result<ValueRow, SessionError> {
         let mut buffer = Utf16Buffer::new(c)?;
         let read = (|| {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let records = ConstructionView::Active(&self.construction);
-            let Some(units) = FieldRef::Text(node).units(records) else {
+            let Some(units) = field.units(records) else {
                 return Err(latch_registry_row(c));
             };
             buffer.extend_units(units, c).map_err(SessionError::from)
@@ -288,7 +288,7 @@ impl SessionStorage {
         else {
             return Ok(None);
         };
-        for (index, attr) in element.attributes().iter().enumerate() {
+        for (index, attr) in element.attributes().each(c)?.enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if attr.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attr.name().local_name()), local)?
@@ -300,25 +300,8 @@ impl SessionStorage {
         let Some(position) = position else {
             return Ok(None);
         };
-        // The value row is the one sharing the attribute's backing; creation's
-        // hint finds it without a scan, and test builds compare it with the
-        // row registered at the attribute value's location.
-        let slot = self.attribute_value_slot(c, node, position)?;
-        #[cfg(test)]
-        {
-            // An uncharged scan, so the cross-check does not enter the work.
-            assert_eq!(
-                self.payloads.values.iter().position(|row| matches!(
-                    row,
-                    RetainedPayload::String {
-                        location: FieldRef::AttributeValue(owner, at),
-                        ..
-                    } if *owner == node && *at == position
-                )),
-                Some(slot)
-            );
-        }
-        self.association_string(c, slot).map(Some)
+        self.association_field(c, FieldRef::AttributeValue(node, position))
+            .map(Some)
     }
     /// The internal nonce row's value, separate from the potentially hidden
     /// authored attribute. One join cell and one row, whatever else is retained.
@@ -371,10 +354,11 @@ impl SessionStorage {
         }
         let (state, parser_document) = state.ok_or(SessionError::WrongToken)?;
         let connected = self.shadow_including_connected(c, node, detached)?;
-        let type_eligible = surgeist_html::elements::style::style_type_allows_css_with(
-            self.form_attribute(c, node, "type")?,
-            || c.charge(HtmlParseWorkCategory::RecordVisit, 1),
-        )?;
+        let type_units = self.form_attribute(c, node, "type")?;
+        let type_eligible =
+            surgeist_html::elements::style::style_type_allows_css_with(type_units, || {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)
+            })?;
         let root = self.ordinary_root(c, node, detached)?;
         let document_tree = matches!(
             self.construction
@@ -414,7 +398,7 @@ impl SessionStorage {
                     continue;
                 }
                 if matches!(record.kind(), ConstructionNodeKind::Text(_)) {
-                    let group = self.association_text(c, child)?;
+                    let group = self.association_field(c, FieldRef::Text(child))?;
                     text.try_push_geometric(c, group)?;
                 }
             }
@@ -1195,7 +1179,7 @@ impl SessionStorage {
         };
         let attr = element
             .attributes()
-            .get(position)
+            .at(c, position)?
             .ok_or(SessionError::WrongToken)?;
         let effect =
             surgeist_html::vocabulary::KnownHtmlAttribute::from_name(attr.name()).map(|name| {
@@ -1234,7 +1218,7 @@ impl SessionStorage {
         else {
             return Ok(());
         };
-        let count = element.attributes().len();
+        let count = element.attributes().count(c)?;
         for position in 0..count {
             self.association_attribute_hook(c, node, position)?;
         }
@@ -1282,8 +1266,7 @@ impl SessionStorage {
         let Some(rel) = self.form_attribute(c, node, "rel")? else {
             return Ok(());
         };
-        let mut cursor =
-            surgeist_html::bounded::lexical::HtmlSpaceTokenCursor::new(rel.code_units());
+        let mut cursor = surgeist_html::bounded::lexical::HtmlSpaceTokenCursor::new(rel);
         let mut stylesheet = false;
         let mut extension = false;
         loop {
@@ -1312,7 +1295,7 @@ impl SessionStorage {
                             Err(SessionError::WrongToken)
                         }
                     }
-                    let Some(token) = rel.code_units().get(start..end) else {
+                    let Some(token) = rel.get(start..end) else {
                         return Err(latch_registry_row(c));
                     };
                     let (keyword, _) = surgeist_html::bounded::rel::classify_rel(

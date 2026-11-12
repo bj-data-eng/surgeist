@@ -137,6 +137,7 @@ enum Records<'a> {
     Build {
         arena: &'a BuildArena,
         text: &'a TextArena,
+        attrs: &'a AttributeTable,
     },
     Published(&'a PublishedArena),
 }
@@ -160,9 +161,14 @@ pub struct HtmlConstructionNode<'a> {
 }
 impl<'a> HtmlConstructionNode<'a> {
     /// A view of the record at `index` of a storage that builds.
-    pub(super) fn building(arena: &'a BuildArena, text: &'a TextArena, index: NodeIx) -> Self {
+    pub(super) fn building(
+        arena: &'a BuildArena,
+        text: &'a TextArena,
+        attrs: &'a AttributeTable,
+        index: NodeIx,
+    ) -> Self {
         Self {
-            records: Records::Build { arena, text },
+            records: Records::Build { arena, text, attrs },
             index,
         }
     }
@@ -263,9 +269,9 @@ impl<'a> HtmlConstructionNode<'a> {
     /// The record's content, by value, with its text as borrowed code units.
     pub fn kind(self) -> ConstructionNodeKind<'a> {
         match self.records {
-            Records::Build { arena, text } => {
-                arena.records[self.index.position()].kind.building(text)
-            }
+            Records::Build { arena, text, attrs } => arena.records[self.index.position()]
+                .kind
+                .building(text, attrs),
             Records::Published(arena) => arena.records[self.index.position()]
                 .kind
                 .building_published(),
@@ -340,7 +346,7 @@ struct RecordFields {
     fragment: bool,
 }
 impl RecordFields {
-    fn of<T>(record: &Record<T>) -> Self {
+    fn of<T: Cell>(record: &Record<T>) -> Self {
         Self {
             parent: record.parent,
             has_template_contents: record.template_contents.is_some(),
@@ -356,8 +362,11 @@ impl RecordFields {
 #[derive(Debug)]
 pub struct HtmlConstructionStorage {
     arena: BuildArena,
-    /// The units of the text and comment records of `arena`.
+    /// The units of the text and comment records of `arena`, and of the values of the attributes
+    /// of its element records.
     text: TextArena,
+    /// The rows and runs of the attributes of the element records of `arena`.
+    attrs: AttributeTable,
 }
 impl HtmlConstructionStorage {
     /// The admitted usage; it is zero for a new owner.
@@ -374,9 +383,9 @@ impl HtmlConstructionStorage {
     }
     /// The record at `position`, or `None` past the last created record.
     pub fn node_at(&self, position: usize) -> Option<HtmlConstructionNode<'_>> {
-        self.arena
-            .has_record(position)
-            .map(|index| HtmlConstructionNode::building(&self.arena, &self.text, index))
+        self.arena.has_record(position).map(|index| {
+            HtmlConstructionNode::building(&self.arena, &self.text, &self.attrs, index)
+        })
     }
     /// Resolves a builder handle to its record view. Returns the foreign-builder error for another
     /// owner's handle and the unknown-node error for an ordinal past the created records.
@@ -388,6 +397,7 @@ impl HtmlConstructionStorage {
         Ok(HtmlConstructionNode::building(
             &self.arena,
             &self.text,
+            &self.attrs,
             index,
         ))
     }
@@ -401,6 +411,7 @@ impl HtmlConstructionStorage {
         Ok(HtmlConstructionNode::building(
             &self.arena,
             &self.text,
+            &self.attrs,
             index,
         ))
     }
@@ -439,11 +450,24 @@ impl HtmlConstructionStorage {
                 .records
                 .get(index)
                 .ok_or(HtmlConstructionCause::UnknownNode.error())?;
-            if let NodeContent::Text(run) | NodeContent::Comment(run) = record.kind {
-                forgotten = forgotten
-                    .checked_add(run.len())
-                    .ok_or(HtmlConstructionCause::RepresentationExhausted.error())?;
-            }
+            let units = match &record.kind {
+                NodeContent::Text(run) | NodeContent::Comment(run) => run.len(),
+                // The values of the attributes of an element stay written in the arena as spare,
+                // and the rows of its run stay in the table until publication leaves them out.
+                NodeContent::Element(element) => {
+                    let mut units = 0usize;
+                    for row in self.attrs.live(element.attrs)? {
+                        units = units
+                            .checked_add(row.value().len())
+                            .ok_or(HtmlConstructionCause::RepresentationExhausted.error())?;
+                    }
+                    units
+                }
+                _ => 0,
+            };
+            forgotten = forgotten
+                .checked_add(units)
+                .ok_or(HtmlConstructionCause::RepresentationExhausted.error())?;
             let depth = record.depth;
             self.arena.unpopulate(depth)?;
         }

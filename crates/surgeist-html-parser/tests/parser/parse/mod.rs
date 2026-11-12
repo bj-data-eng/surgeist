@@ -1,5 +1,6 @@
 //! Document and fragment parsing, construction limits and immutable reports.
 
+mod attribute_arena;
 mod construction_limits;
 mod diagnostic_cap;
 mod frameset_noscript;

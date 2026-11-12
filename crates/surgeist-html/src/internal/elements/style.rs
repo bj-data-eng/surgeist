@@ -328,10 +328,11 @@ impl HtmlStyleUpdateCursor {
         Ok(())
     }
 }
-/// Exact absent/empty or ASCII-insensitive text/css; parameters are ineligible.
+/// Exact absent/empty or ASCII-insensitive text/css; parameters are ineligible. `value` is the
+/// `type` attribute's exact UTF-16 code units.
 /// Each read code unit invokes the consumer's actual cancellation/admission hook.
 pub fn style_type_allows_css_with<E>(
-    value: Option<&DocumentString>,
+    value: Option<&[u16]>,
     mut step: impl FnMut() -> Result<(), E>,
 ) -> Result<bool, E> {
     let Some(value) = value else { return Ok(true) };
@@ -341,7 +342,7 @@ pub fn style_type_allows_css_with<E>(
     if value.len() != 8 {
         return Ok(false);
     }
-    for (&actual, expected) in value.code_units().iter().zip("text/css".bytes()) {
+    for (&actual, expected) in value.iter().zip("text/css".bytes()) {
         step()?;
         if !crate::internal::microsyntax::tokens::ascii_case_insensitive_unit(actual, expected) {
             return Ok(false);

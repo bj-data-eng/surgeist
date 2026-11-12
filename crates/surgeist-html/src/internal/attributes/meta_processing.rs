@@ -48,7 +48,7 @@ pub fn meta_referrer_policy_with<E>(
             state: policy,
             conforming: false,
         };
-        if enum_keyword_matches_with(raw, &keyword, false, &mut |_| admit())? {
+        if enum_keyword_matches_with(raw.code_units(), &keyword, false, &mut |_| admit())? {
             return Ok(Some(policy));
         }
     }

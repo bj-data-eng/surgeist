@@ -404,8 +404,8 @@ impl Draft {
                         surgeist_html::values::Namespace::none,
                         surgeist_html::values::Namespace::from_uri,
                     ),
-                    old,
-                    new,
+                    old.map(surgeist_html::values::DocumentString::code_units),
+                    new.map(surgeist_html::values::DocumentString::code_units),
                 );
             link.commit(cancel)?;
         }

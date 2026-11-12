@@ -2454,7 +2454,7 @@ pub const fn surgeist_html::bounded::attributes::HtmlWritingSuggestionsProcessin
 pub const fn surgeist_html::bounded::attributes::HtmlWritingSuggestionsProcessing::recognition(&self) -> surgeist_html::attributes::HtmlAttributeRecognition
 pub fn surgeist_html::bounded::attributes::autocomplete_materialization_work_bound(input_code_units: usize) -> core::option::Option<usize>
 pub fn surgeist_html::bounded::attributes::button_submitter_context_with<E>(state: surgeist_html::attributes::HtmlButtonTypeState, facts: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlButtonSubmitterFact) -> core::result::Result<bool, E>) -> core::result::Result<surgeist_html::attributes::HtmlButtonSubmitterContext, E>
-pub fn surgeist_html::bounded::attributes::crossorigin_processing_with<E>(raw: core::option::Option<&surgeist_html::values::DocumentString>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlCrossOriginState, E>
+pub fn surgeist_html::bounded::attributes::crossorigin_processing_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlCrossOriginState, E>
 pub fn surgeist_html::bounded::attributes::embedded_dimension_applicability(element: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>, context: core::option::Option<surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicabilityContext>) -> surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicability
 pub fn surgeist_html::bounded::attributes::input_list_applies(state: surgeist_html::attributes::HtmlInputType) -> bool
 pub fn surgeist_html::bounded::attributes::input_readonly_applies(state: surgeist_html::attributes::HtmlInputType) -> bool
@@ -2463,17 +2463,20 @@ pub fn surgeist_html::bounded::attributes::meta_language_token_with<E>(raw: &sur
 pub fn surgeist_html::bounded::attributes::meta_pragma_state_with<E>(raw: &surgeist_html::values::DocumentString, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::attributes::meta_pragma::HtmlMetaPragmaState>, E>
 pub fn surgeist_html::bounded::attributes::meta_referrer_policy_with<E>(raw: &surgeist_html::values::DocumentString, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::attributes::HtmlReferrerPolicy>, E>
 pub fn surgeist_html::bounded::attributes::meta_refresh_syntax_with<E>(raw: &surgeist_html::values::DocumentString, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlMetaRefreshAction) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::bounded::attributes::HtmlMetaRefreshSyntaxTarget>, E>
-pub fn surgeist_html::bounded::attributes::referrerpolicy_processing_with<E>(raw: core::option::Option<&surgeist_html::values::DocumentString>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlReferrerPolicy, E>
+pub fn surgeist_html::bounded::attributes::referrerpolicy_processing_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlReferrerPolicy, E>
 pub fn surgeist_html::bounded::attributes::stylesheet_link_context_work_bound(input_code_units: usize) -> core::option::Option<usize>
 pub fn surgeist_html::bounded::attributes::th_scope_state(raw: core::option::Option<&surgeist_html::values::DocumentString>) -> surgeist_html::attributes::table_header_scope::HtmlTableHeaderScopeState
 pub fn surgeist_html::bounded::attributes::th_scope_work_bound(input_units: usize) -> core::option::Option<usize>
 pub mod surgeist_html::bounded::construction
 pub enum surgeist_html::bounded::construction::HtmlConstructionBank
+pub surgeist_html::bounded::construction::HtmlConstructionBank::AttributeRows
+pub surgeist_html::bounded::construction::HtmlConstructionBank::AttributeRuns
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Children
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Children::position: usize
 pub surgeist_html::bounded::construction::HtmlConstructionBank::NameEntry
 pub surgeist_html::bounded::construction::HtmlConstructionBank::NameSlots
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Names
+pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedAttributes
 pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedContents
 pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedRecords
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Records
@@ -2487,10 +2490,6 @@ pub surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity::ini
 impl surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity
 pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity::element_alignment(self) -> usize
 pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity::element_size(self) -> usize
-pub struct surgeist_html::bounded::construction::HtmlConstructionAttributeGrowth
-impl surgeist_html::bounded::construction::HtmlConstructionAttributeGrowth
-pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeGrowth::before(self) -> surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity
-pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeGrowth::minimum_capacity(self) -> usize
 pub struct surgeist_html::bounded::construction::HtmlConstructionBankCapacity
 impl surgeist_html::bounded::construction::HtmlConstructionBankCapacity
 pub fn surgeist_html::bounded::construction::HtmlConstructionBankCapacity::capacity(self) -> usize
@@ -2537,12 +2536,14 @@ impl<S> surgeist_html::bounded::construction::HtmlConstructionPublishRefusal<S>
 pub fn surgeist_html::bounded::construction::HtmlConstructionPublishRefusal<S>::into_parts(self) -> (surgeist_html::bounded::construction::HtmlConstructionStorage, surgeist_html::bounded::construction::HtmlConstructionRecordError<S>)
 pub struct surgeist_html::bounded::construction::HtmlConstructionStorage
 impl surgeist_html::bounded::construction::HtmlConstructionStorage
-pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::append_attribute<A: surgeist_html::bounded::construction::HtmlAttributeAdmission>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, incoming: &mut core::option::Option<surgeist_html::values::Attribute>, names: core::option::Option<&mut surgeist_html::bounded::values::HtmlAttributeNameIndex>, admission: &mut A) -> core::result::Result<usize, surgeist_html::bounded::construction::HtmlConstructionAttributeError<<A as surgeist_ledger::charge::Charge>::Stop>>
-pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::append_planned_attribute<A: surgeist_html::bounded::construction::HtmlAttributeAdmission>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, incoming: &mut core::option::Option<surgeist_html::values::Attribute>, candidate: &surgeist_html::values::DocumentString, names: core::option::Option<&mut surgeist_html::bounded::values::HtmlAttributeNameIndex>, admission: &mut A) -> core::result::Result<usize, surgeist_html::bounded::construction::HtmlConstructionAttributeError<<A as surgeist_ledger::charge::Charge>::Stop>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::append_attribute<A: surgeist_html::bounded::construction::HtmlRecordAdmission, I: surgeist_html::values::HtmlAttributeInput + ?core::marker::Sized>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, incoming: &I, names: core::option::Option<&mut surgeist_html::bounded::values::HtmlAttributeNameIndex>, admission: &mut A) -> core::result::Result<usize, surgeist_html::bounded::construction::HtmlConstructionAttributeError<<A as surgeist_ledger::charge::Charge>::Stop>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::append_named_attribute<A: surgeist_html::bounded::construction::HtmlRecordAdmission>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, name: &surgeist_html::bounded::construction::NameId, value: &[u16], candidate: core::option::Option<&surgeist_html::values::DocumentString>, names: core::option::Option<&mut surgeist_html::bounded::values::HtmlAttributeNameIndex>, admission: &mut A) -> core::result::Result<usize, surgeist_html::bounded::construction::HtmlConstructionAttributeError<<A as surgeist_ledger::charge::Charge>::Stop>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::append_planned_attribute<A: surgeist_html::bounded::construction::HtmlRecordAdmission, I: surgeist_html::values::HtmlAttributeInput + ?core::marker::Sized>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, incoming: &I, candidate: &surgeist_html::values::DocumentString, names: core::option::Option<&mut surgeist_html::bounded::values::HtmlAttributeNameIndex>, admission: &mut A) -> core::result::Result<usize, surgeist_html::bounded::construction::HtmlConstructionAttributeError<<A as surgeist_ledger::charge::Charge>::Stop>>
 pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::plan_attribute_merge<M: surgeist_html::bounded::construction::HtmlAttributeMerge>(&self, node: &surgeist_html::construction::HtmlBuilderNode, names: core::option::Option<&mut surgeist_html::bounded::values::HtmlAttributeNameIndex>, merge: &mut M) -> core::result::Result<usize, surgeist_html::bounded::construction::HtmlConstructionAttributeError<<M as surgeist_ledger::charge::Charge>::Stop>>
-pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::remove_attribute<A: surgeist_html::bounded::construction::HtmlAttributeAdmission>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, index: usize, admission: &mut A) -> core::result::Result<surgeist_html::values::Attribute, surgeist_html::bounded::construction::HtmlConstructionAttributeError<<A as surgeist_ledger::charge::Charge>::Stop>>
-pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::replace_attribute<A: surgeist_html::bounded::construction::HtmlAttributeAdmission>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, index: usize, incoming: &mut core::option::Option<surgeist_html::values::Attribute>, admission: &mut A) -> core::result::Result<surgeist_html::values::Attribute, surgeist_html::bounded::construction::HtmlConstructionAttributeError<<A as surgeist_ledger::charge::Charge>::Stop>>
-pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::reserve_attributes<A: surgeist_html::bounded::construction::HtmlAttributeAdmission>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, additional: usize, admission: &mut A) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity, surgeist_html::bounded::construction::HtmlConstructionAttributeError<<A as surgeist_ledger::charge::Charge>::Stop>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::remove_attribute<A: surgeist_html::bounded::construction::HtmlRecordAdmission>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, index: usize, admission: &mut A) -> core::result::Result<(), surgeist_html::bounded::construction::HtmlConstructionAttributeError<<A as surgeist_ledger::charge::Charge>::Stop>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::replace_attribute<A: surgeist_html::bounded::construction::HtmlRecordAdmission, I: surgeist_html::values::HtmlAttributeInput + ?core::marker::Sized>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, index: usize, incoming: &I, admission: &mut A) -> core::result::Result<(), surgeist_html::bounded::construction::HtmlConstructionAttributeError<<A as surgeist_ledger::charge::Charge>::Stop>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::replace_named_attribute<A: surgeist_html::bounded::construction::HtmlRecordAdmission>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, index: usize, name: &surgeist_html::bounded::construction::NameId, value: &[u16], admission: &mut A) -> core::result::Result<(), surgeist_html::bounded::construction::HtmlConstructionAttributeError<<A as surgeist_ledger::charge::Charge>::Stop>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::reserve_attributes<A: surgeist_html::bounded::construction::HtmlRecordAdmission>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, additional: usize, admission: &mut A) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity, surgeist_html::bounded::construction::HtmlConstructionAttributeError<<A as surgeist_ledger::charge::Charge>::Stop>>
 impl surgeist_html::bounded::construction::HtmlConstructionStorage
 pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::append_text<A: surgeist_html::bounded::construction::HtmlTextAdmission>(&mut self, node: &surgeist_html::construction::HtmlBuilderNode, units: &[u16], admission: &mut A) -> core::result::Result<usize, surgeist_html::bounded::construction::HtmlConstructionTextError<<A as surgeist_ledger::charge::Charge>::Stop>>
 impl surgeist_html::bounded::construction::HtmlConstructionStorage
@@ -2563,7 +2564,7 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::create_pro
 pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::create_shadow_contents<A: surgeist_html::bounded::construction::HtmlRecordAdmission>(&mut self, properties: surgeist_html::construction::HtmlShadowRootProperties, admission: &mut A) -> core::result::Result<surgeist_html::construction::HtmlBuilderNode, surgeist_html::bounded::construction::HtmlConstructionRecordError<<A as surgeist_ledger::charge::Charge>::Stop>>
 pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::create_text<A: surgeist_html::bounded::construction::HtmlRecordAdmission>(&mut self, units: &[u16], admission: &mut A) -> core::result::Result<surgeist_html::construction::HtmlBuilderNode, surgeist_html::bounded::construction::HtmlConstructionRecordError<<A as surgeist_ledger::charge::Charge>::Stop>>
 impl surgeist_html::bounded::construction::HtmlConstructionStorage
-pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::create_element_named<A: surgeist_html::bounded::construction::HtmlRecordAdmission>(&mut self, name: &surgeist_html::bounded::construction::NameId, attributes: surgeist_html::values::OrderedAttributes, link_flags: core::option::Option<surgeist_html::elements::link::HtmlLinkFlags>, admission: &mut A) -> core::result::Result<surgeist_html::construction::HtmlBuilderNode, surgeist_html::bounded::construction::HtmlConstructionRecordError<<A as surgeist_ledger::charge::Charge>::Stop>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::create_element_named<A: surgeist_html::bounded::construction::HtmlRecordAdmission>(&mut self, name: &surgeist_html::bounded::construction::NameId, link_flags: core::option::Option<surgeist_html::elements::link::HtmlLinkFlags>, admission: &mut A) -> core::result::Result<surgeist_html::construction::HtmlBuilderNode, surgeist_html::bounded::construction::HtmlConstructionRecordError<<A as surgeist_ledger::charge::Charge>::Stop>>
 pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::intern_name<A: surgeist_html::bounded::construction::HtmlRecordAdmission>(&mut self, namespace: &surgeist_html::values::Namespace, prefix: core::option::Option<&surgeist_html::values::DocumentString>, local_name: &[u16], admission: &mut A) -> core::result::Result<surgeist_html::bounded::construction::NameId, surgeist_html::bounded::construction::HtmlConstructionRecordError<<A as surgeist_ledger::charge::Charge>::Stop>>
 pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::name(&self, id: &surgeist_html::bounded::construction::NameId) -> core::result::Result<&surgeist_html::values::QualifiedName, surgeist_html::construction::HtmlConstructionError>
 impl surgeist_html::bounded::construction::HtmlConstructionStorage
@@ -2595,9 +2596,6 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionTextGrowth::minimum
 pub struct surgeist_html::bounded::construction::NameId
 impl core::fmt::Debug for surgeist_html::bounded::construction::NameId
 pub fn surgeist_html::bounded::construction::NameId::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub trait surgeist_html::bounded::construction::HtmlAttributeAdmission: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>
-pub fn surgeist_html::bounded::construction::HtmlAttributeAdmission::admit_growth(&mut self, growth: surgeist_html::bounded::construction::HtmlConstructionAttributeGrowth) -> core::result::Result<usize, Self::Stop>
-pub fn surgeist_html::bounded::construction::HtmlAttributeAdmission::record_growth(&mut self, reached: surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity) -> core::result::Result<(), Self::Stop>
 pub trait surgeist_html::bounded::construction::HtmlAttributeMerge: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>
 pub fn surgeist_html::bounded::construction::HtmlAttributeMerge::candidates(&self) -> usize
 pub fn surgeist_html::bounded::construction::HtmlAttributeMerge::keep(&mut self, index: usize) -> core::result::Result<(), Self::Stop>
@@ -3217,8 +3215,8 @@ pub enum surgeist_html::bounded::parsing::HtmlMathmlTextPointTest<'a>
 pub surgeist_html::bounded::parsing::HtmlMathmlTextPointTest::Local(&'a [&'static str])
 pub surgeist_html::bounded::parsing::HtmlMathmlTextPointTest::Namespace(&'static str)
 pub fn surgeist_html::bounded::parsing::fragment_initial_modes<E>(effective: surgeist_html::parsing::HtmlParserScriptingMode, compare: impl core::ops::function::FnMut(surgeist_html::bounded::parsing::HtmlFragmentNameTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<(surgeist_html::parsing::HtmlFragmentTokenizerState, surgeist_html::parsing::HtmlFragmentInsertionMode), E>
-pub fn surgeist_html::bounded::parsing::html_integration_point_encoding_attribute<E>(namespace: core::option::Option<&surgeist_html::values::DocumentString>, local: &surgeist_html::values::DocumentString, value: &surgeist_html::values::DocumentString, compare: impl core::ops::function::FnMut(&surgeist_html::values::DocumentString, &'static str, surgeist_html::bounded::parsing::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<bool>, E>
-pub fn surgeist_html::bounded::parsing::html_integration_point_rule<E>(namespace: core::option::Option<&surgeist_html::values::DocumentString>, local: &surgeist_html::values::DocumentString, compare: impl core::ops::function::FnMut(&surgeist_html::values::DocumentString, &'static str, surgeist_html::bounded::parsing::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<surgeist_html::bounded::parsing::HtmlIntegrationPointRule, E>
+pub fn surgeist_html::bounded::parsing::html_integration_point_encoding_attribute<E>(namespace: core::option::Option<&surgeist_html::values::DocumentString>, local: &surgeist_html::values::DocumentString, value: &[u16], compare: impl core::ops::function::FnMut(&[u16], &'static str, surgeist_html::bounded::parsing::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<bool>, E>
+pub fn surgeist_html::bounded::parsing::html_integration_point_rule<E>(namespace: core::option::Option<&surgeist_html::values::DocumentString>, local: &surgeist_html::values::DocumentString, compare: impl core::ops::function::FnMut(&[u16], &'static str, surgeist_html::bounded::parsing::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<surgeist_html::bounded::parsing::HtmlIntegrationPointRule, E>
 pub fn surgeist_html::bounded::parsing::mathml_text_integration_point<E>(compare: impl core::ops::function::FnMut(surgeist_html::bounded::parsing::HtmlMathmlTextPointTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<bool, E>
 pub fn surgeist_html::bounded::parsing::stack_reset_insertion_mode<E>(compare: impl core::ops::function::FnMut(&'static str) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<surgeist_html::parsing::HtmlFragmentInsertionMode>, E>
 pub mod surgeist_html::bounded::rel
@@ -3358,8 +3356,8 @@ pub fn surgeist_html::bounded::script::HtmlScriptPreparationCursor::default() ->
 pub struct surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>
 impl<'a> surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>
 pub fn surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>::advance<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&mut self, charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
-pub fn surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>::content(explicit: core::option::Option<&'a surgeist_html::values::DocumentString>) -> Self
-pub fn surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>::preparation(explicit: core::option::Option<&'a surgeist_html::values::DocumentString>, language: core::option::Option<&'a surgeist_html::values::DocumentString>) -> Self
+pub fn surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>::content(explicit: core::option::Option<&'a [u16]>) -> Self
+pub fn surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>::preparation(explicit: core::option::Option<&'a [u16]>, language: core::option::Option<&'a [u16]>) -> Self
 pub fn surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>::result(&self) -> core::option::Option<core::option::Option<surgeist_html::elements::script::HtmlScriptKind>>
 pub mod surgeist_html::bounded::security
 pub const surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND: usize
@@ -3695,7 +3693,7 @@ pub enum surgeist_html::construction::ConstructionNodeKind<'a>
 pub surgeist_html::construction::ConstructionNodeKind::Comment(surgeist_html::construction::BuildText<'a>)
 pub surgeist_html::construction::ConstructionNodeKind::Doctype(surgeist_html::construction::ConstructionDoctype<'a>)
 pub surgeist_html::construction::ConstructionNodeKind::Document(surgeist_html::construction::HtmlDocumentMode)
-pub surgeist_html::construction::ConstructionNodeKind::Element(surgeist_html::construction::HtmlElementView<'a>)
+pub surgeist_html::construction::ConstructionNodeKind::Element(surgeist_html::construction::ConstructionElementView<'a>)
 pub surgeist_html::construction::ConstructionNodeKind::Fragment
 pub surgeist_html::construction::ConstructionNodeKind::ProcessingInstruction(surgeist_html::construction::ConstructionProcessingInstruction<'a>)
 pub surgeist_html::construction::ConstructionNodeKind::Text(surgeist_html::construction::BuildText<'a>)
@@ -3711,6 +3709,7 @@ pub surgeist_html::construction::HtmlConstructionCause::DuplicateAttribute::dupl
 pub surgeist_html::construction::HtmlConstructionCause::DuplicateAttribute::first: usize
 pub surgeist_html::construction::HtmlConstructionCause::ForeignBuilder
 pub surgeist_html::construction::HtmlConstructionCause::IndexUnavailable
+pub surgeist_html::construction::HtmlConstructionCause::InvalidAttributeReference
 pub surgeist_html::construction::HtmlConstructionCause::InvalidContentsReference
 pub surgeist_html::construction::HtmlConstructionCause::InvalidOutputRoot
 pub surgeist_html::construction::HtmlConstructionCause::InvalidShadowAssociation
@@ -3797,6 +3796,29 @@ pub fn surgeist_html::construction::HtmlSlotAssignment::into_shadowrootslotassig
 pub enum surgeist_html::construction::HtmlTemplateContentsKind
 pub surgeist_html::construction::HtmlTemplateContentsKind::Owned
 pub surgeist_html::construction::HtmlTemplateContentsKind::ShadowReference
+pub struct surgeist_html::construction::BuildAttribute<'a>
+impl<'a> surgeist_html::construction::BuildAttribute<'a>
+pub fn surgeist_html::construction::BuildAttribute<'a>::name(self) -> &'a surgeist_html::values::QualifiedName
+pub fn surgeist_html::construction::BuildAttribute<'a>::value(self) -> surgeist_html::construction::BuildText<'a>
+pub struct surgeist_html::construction::BuildAttributeIter<'a>(_)
+impl core::iter::traits::double_ended::DoubleEndedIterator for surgeist_html::construction::BuildAttributeIter<'_>
+pub fn surgeist_html::construction::BuildAttributeIter<'_>::next_back(&mut self) -> core::option::Option<Self::Item>
+pub fn surgeist_html::construction::BuildAttributeIter<'_>::nth_back(&mut self, n: usize) -> core::option::Option<Self::Item>
+impl core::iter::traits::exact_size::ExactSizeIterator for surgeist_html::construction::BuildAttributeIter<'_>
+impl<'a> core::iter::traits::iterator::Iterator for surgeist_html::construction::BuildAttributeIter<'a>
+pub type surgeist_html::construction::BuildAttributeIter<'a>::Item = surgeist_html::construction::BuildAttribute<'a>
+pub fn surgeist_html::construction::BuildAttributeIter<'a>::next(&mut self) -> core::option::Option<Self::Item>
+pub fn surgeist_html::construction::BuildAttributeIter<'a>::nth(&mut self, n: usize) -> core::option::Option<Self::Item>
+pub fn surgeist_html::construction::BuildAttributeIter<'a>::size_hint(&self) -> (usize, core::option::Option<usize>)
+pub struct surgeist_html::construction::BuildAttributes<'a>
+impl<'a> surgeist_html::construction::BuildAttributes<'a>
+pub fn surgeist_html::construction::BuildAttributes<'a>::get(self, index: usize) -> core::result::Result<core::option::Option<surgeist_html::construction::BuildAttribute<'a>>, surgeist_html::construction::HtmlConstructionError>
+pub fn surgeist_html::construction::BuildAttributes<'a>::is_empty(self) -> core::result::Result<bool, surgeist_html::construction::HtmlConstructionError>
+pub fn surgeist_html::construction::BuildAttributes<'a>::iter(self) -> core::result::Result<surgeist_html::construction::BuildAttributeIter<'a>, surgeist_html::construction::HtmlConstructionError>
+pub fn surgeist_html::construction::BuildAttributes<'a>::len(self) -> core::result::Result<usize, surgeist_html::construction::HtmlConstructionError>
+impl core::cmp::Eq for surgeist_html::construction::BuildAttributes<'_>
+impl core::cmp::PartialEq for surgeist_html::construction::BuildAttributes<'_>
+pub fn surgeist_html::construction::BuildAttributes<'_>::eq(&self, other: &Self) -> bool
 pub struct surgeist_html::construction::BuildStr<'a>(_)
 impl<'a> surgeist_html::construction::BuildStr<'a>
 pub fn surgeist_html::construction::BuildStr<'a>::code_units(self) -> &'a [u16]
@@ -3807,6 +3829,11 @@ impl<'a> surgeist_html::construction::ConstructionDoctype<'a>
 pub fn surgeist_html::construction::ConstructionDoctype<'a>::name(self) -> surgeist_html::construction::BuildStr<'a>
 pub fn surgeist_html::construction::ConstructionDoctype<'a>::public_id(self) -> core::option::Option<surgeist_html::construction::BuildStr<'a>>
 pub fn surgeist_html::construction::ConstructionDoctype<'a>::system_id(self) -> core::option::Option<surgeist_html::construction::BuildStr<'a>>
+pub struct surgeist_html::construction::ConstructionElementView<'a>
+impl<'a> surgeist_html::construction::ConstructionElementView<'a>
+pub fn surgeist_html::construction::ConstructionElementView<'a>::attributes(self) -> surgeist_html::construction::BuildAttributes<'a>
+pub fn surgeist_html::construction::ConstructionElementView<'a>::link_flags(self) -> core::option::Option<surgeist_html::elements::link::HtmlLinkFlags>
+pub fn surgeist_html::construction::ConstructionElementView<'a>::name(self) -> &'a surgeist_html::values::QualifiedName
 pub struct surgeist_html::construction::ConstructionProcessingInstruction<'a>
 impl<'a> surgeist_html::construction::ConstructionProcessingInstruction<'a>
 pub fn surgeist_html::construction::ConstructionProcessingInstruction<'a>::data(self) -> surgeist_html::construction::BuildStr<'a>
@@ -3815,17 +3842,25 @@ pub struct surgeist_html::construction::ForeignHtmlResult
 impl core::error::Error for surgeist_html::construction::ForeignHtmlResult
 impl core::fmt::Display for surgeist_html::construction::ForeignHtmlResult
 pub fn surgeist_html::construction::ForeignHtmlResult::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::construction::HtmlAttribute<'a>
+impl<'a> surgeist_html::construction::HtmlAttribute<'a>
+pub fn surgeist_html::construction::HtmlAttribute<'a>::name(self) -> &'a surgeist_html::values::QualifiedName
+pub fn surgeist_html::construction::HtmlAttribute<'a>::value(self) -> &'a surgeist_html::values::DocumentString
+impl surgeist_html::values::HtmlAttributeInput for surgeist_html::construction::HtmlAttribute<'_>
+pub type surgeist_html::construction::HtmlAttribute<'_>::Name = surgeist_html::values::QualifiedName
+pub fn surgeist_html::construction::HtmlAttribute<'_>::name(&self) -> &surgeist_html::values::QualifiedName
+pub fn surgeist_html::construction::HtmlAttribute<'_>::value(&self) -> &surgeist_html::values::DocumentString
 pub struct surgeist_html::construction::HtmlAttributes<'a>
 impl<'a> surgeist_html::construction::HtmlAttributes<'a>
-pub fn surgeist_html::construction::HtmlAttributes<'a>::find(self, namespace: &surgeist_html::values::Namespace, local_name: &surgeist_html::values::DocumentString) -> core::option::Option<&'a surgeist_html::values::Attribute>
-pub fn surgeist_html::construction::HtmlAttributes<'a>::get(self, index: usize) -> core::option::Option<&'a surgeist_html::values::Attribute>
+pub fn surgeist_html::construction::HtmlAttributes<'a>::find(self, namespace: &surgeist_html::values::Namespace, local_name: &surgeist_html::values::DocumentString) -> core::option::Option<surgeist_html::construction::HtmlAttribute<'a>>
+pub fn surgeist_html::construction::HtmlAttributes<'a>::get(self, index: usize) -> core::option::Option<surgeist_html::construction::HtmlAttribute<'a>>
 pub fn surgeist_html::construction::HtmlAttributes<'a>::is_empty(self) -> bool
-pub fn surgeist_html::construction::HtmlAttributes<'a>::iter(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = &'a surgeist_html::values::Attribute> + core::iter::traits::double_ended::DoubleEndedIterator + 'a
+pub fn surgeist_html::construction::HtmlAttributes<'a>::iter(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_html::construction::HtmlAttribute<'a>> + core::iter::traits::double_ended::DoubleEndedIterator + 'a
 pub fn surgeist_html::construction::HtmlAttributes<'a>::len(self) -> usize
 pub fn surgeist_html::construction::HtmlAttributes<'a>::to_ordered(self) -> surgeist_html::values::OrderedAttributes
 impl surgeist_html::values::HtmlAttributesInput for surgeist_html::construction::HtmlAttributes<'_>
-pub type surgeist_html::construction::HtmlAttributes<'_>::Attribute<'a> where Self: 'a = &'a surgeist_html::values::Attribute
-pub fn surgeist_html::construction::HtmlAttributes<'_>::get(&self, index: usize) -> core::option::Option<&surgeist_html::values::Attribute>
+pub type surgeist_html::construction::HtmlAttributes<'_>::Attribute<'a> where Self: 'a = surgeist_html::construction::HtmlAttribute<'a>
+pub fn surgeist_html::construction::HtmlAttributes<'_>::get(&self, index: usize) -> core::option::Option<surgeist_html::construction::HtmlAttribute<'_>>
 pub fn surgeist_html::construction::HtmlAttributes<'_>::len(&self) -> usize
 pub struct surgeist_html::construction::HtmlAuthoredProcessingInstruction
 impl surgeist_html::construction::HtmlAuthoredProcessingInstruction
@@ -3982,7 +4017,7 @@ impl surgeist_html::elements::details::HtmlDetailsToggleEvent
 pub const fn surgeist_html::elements::details::HtmlDetailsToggleEvent::new_state(self) -> surgeist_html::elements::details::HtmlDetailsState
 pub const fn surgeist_html::elements::details::HtmlDetailsToggleEvent::old_state(self) -> surgeist_html::elements::details::HtmlDetailsState
 pub const fn surgeist_html::elements::details::HtmlDetailsToggleEvent::queued(old: surgeist_html::elements::details::HtmlDetailsState, new: surgeist_html::elements::details::HtmlDetailsState, tracked_old: core::option::Option<surgeist_html::elements::details::HtmlDetailsState>) -> Self
-pub fn surgeist_html::elements::details::details_attribute_effect(namespace: &surgeist_html::values::Namespace, attribute: surgeist_html::elements::details::HtmlDetailsAttribute, old: core::option::Option<&surgeist_html::values::DocumentString>, new: core::option::Option<&surgeist_html::values::DocumentString>) -> surgeist_html::elements::details::HtmlDetailsAttributeEffect
+pub fn surgeist_html::elements::details::details_attribute_effect(namespace: &surgeist_html::values::Namespace, attribute: surgeist_html::elements::details::HtmlDetailsAttribute, old: core::option::Option<&[u16]>, new: core::option::Option<&[u16]>) -> surgeist_html::elements::details::HtmlDetailsAttributeEffect
 pub mod surgeist_html::elements::dialog
 pub enum surgeist_html::elements::dialog::HtmlAllowFocusDecision
 pub surgeist_html::elements::dialog::HtmlAllowFocusDecision::Allowed
@@ -4459,7 +4494,7 @@ pub surgeist_html::elements::input::HtmlInputImageUpdateGuard::ImagesDisabled
 pub surgeist_html::elements::input::HtmlInputImageUpdateGuard::NeedsImageEnvironment
 pub surgeist_html::elements::input::HtmlInputImageUpdateGuard::NoSource
 impl surgeist_html::elements::input::HtmlInputImageUpdateGuard
-pub fn surgeist_html::elements::input::HtmlInputImageUpdateGuard::for_source(source: core::option::Option<&surgeist_html::values::DocumentString>) -> Self
+pub fn surgeist_html::elements::input::HtmlInputImageUpdateGuard::for_source(source: core::option::Option<&[u16]>) -> Self
 pub fn surgeist_html::elements::input::HtmlInputImageUpdateGuard::with_disabled_images(self, _: surgeist_html::elements::input::HtmlInputImagesDisabled) -> Self
 pub enum surgeist_html::elements::input::HtmlInputImagesDisabled
 pub surgeist_html::elements::input::HtmlInputImagesDisabled::ExplicitlyDisabled
@@ -4536,7 +4571,7 @@ pub fn surgeist_html::elements::input::HtmlInputColorSerialization::next_effect(
 pub struct surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>
 impl<'a> surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>
 pub fn surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>::advance<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&mut self, charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
-pub fn surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>::new(value: core::option::Option<&'a surgeist_html::values::DocumentString>) -> Self
+pub fn surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>::new(value: core::option::Option<&'a [u16]>) -> Self
 pub fn surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>::result(&self) -> core::option::Option<surgeist_html::attributes::input_colorspace::HtmlInputColorSpace>
 pub struct surgeist_html::elements::input::HtmlInputFilenameInvalidState
 impl core::error::Error for surgeist_html::elements::input::HtmlInputFilenameInvalidState
@@ -4612,7 +4647,7 @@ pub fn surgeist_html::elements::input::HtmlInputTypeChange::next_effect(&mut sel
 pub struct surgeist_html::elements::input::HtmlInputTypeCursor<'a>
 impl<'a> surgeist_html::elements::input::HtmlInputTypeCursor<'a>
 pub fn surgeist_html::elements::input::HtmlInputTypeCursor<'a>::advance<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&mut self, charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
-pub fn surgeist_html::elements::input::HtmlInputTypeCursor<'a>::new(value: core::option::Option<&'a surgeist_html::values::DocumentString>) -> Self
+pub fn surgeist_html::elements::input::HtmlInputTypeCursor<'a>::new(value: core::option::Option<&'a [u16]>) -> Self
 pub fn surgeist_html::elements::input::HtmlInputTypeCursor<'a>::result(&self) -> core::option::Option<surgeist_html::attributes::HtmlInputType>
 pub struct surgeist_html::elements::input::HtmlInputValueComparison
 impl surgeist_html::elements::input::HtmlInputValueComparison
@@ -4758,7 +4793,7 @@ impl core::fmt::Display for surgeist_html::elements::link::HtmlHyperlinkSetUrlEr
 pub fn surgeist_html::elements::link::HtmlHyperlinkSetUrlError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::elements::link::HtmlLinkFlags
 impl surgeist_html::elements::link::HtmlLinkFlags
-pub fn surgeist_html::elements::link::HtmlLinkFlags::disabled_attribute_changed(&mut self, namespace: &surgeist_html::values::Namespace, old: core::option::Option<&surgeist_html::values::DocumentString>, new: core::option::Option<&surgeist_html::values::DocumentString>)
+pub fn surgeist_html::elements::link::HtmlLinkFlags::disabled_attribute_changed(&mut self, namespace: &surgeist_html::values::Namespace, old: core::option::Option<&[u16]>, new: core::option::Option<&[u16]>)
 pub fn surgeist_html::elements::link::HtmlLinkFlags::explicitly_enabled(self) -> bool
 pub fn surgeist_html::elements::link::HtmlLinkFlags::fresh() -> Self
 pub struct surgeist_html::elements::link::HtmlLinkHistory
@@ -5084,7 +5119,7 @@ pub const fn surgeist_html::elements::style::document_allows_render_blocking(con
 pub fn surgeist_html::elements::style::document_body_role_with<E>(name: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, admit: impl core::ops::function::FnMut(surgeist_html::bounded::native::HtmlElementNameRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::elements::style::HtmlDocumentBodyRole, E>
 pub fn surgeist_html::elements::style::style_attribute_effect(namespace: &surgeist_html::values::Namespace, attribute: surgeist_html::vocabulary::KnownHtmlAttribute) -> surgeist_html::elements::style::HtmlStyleAttributeEffect
 pub const fn surgeist_html::elements::style::style_is_potentially_render_blocking(explicit: surgeist_html::attributes::token_declarations::HtmlBlockingTokens, state: surgeist_html::elements::style::HtmlStyleState, created_by_current_document_parser: bool) -> bool
-pub fn surgeist_html::elements::style::style_type_allows_css_with<E>(value: core::option::Option<&surgeist_html::values::DocumentString>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
+pub fn surgeist_html::elements::style::style_type_allows_css_with<E>(value: core::option::Option<&[u16]>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 pub const fn surgeist_html::elements::style::style_update_is_required(trigger: surgeist_html::elements::style::HtmlStyleTrigger) -> bool
 pub mod surgeist_html::elements::template
 pub enum surgeist_html::elements::template::HtmlTemplateContentsOwnerDocument
@@ -6248,7 +6283,7 @@ pub surgeist_html::security::nonce::HtmlHeaderDeliveredCsp::Present
 pub surgeist_html::security::nonce::HtmlHeaderDeliveredCsp::Unavailable
 pub enum surgeist_html::security::nonce::HtmlNonceAttributeEffect<'a>
 pub surgeist_html::security::nonce::HtmlNonceAttributeEffect::ClearSlot
-pub surgeist_html::security::nonce::HtmlNonceAttributeEffect::CopyValue(&'a surgeist_html::values::DocumentString)
+pub surgeist_html::security::nonce::HtmlNonceAttributeEffect::CopyValue(&'a [u16])
 pub surgeist_html::security::nonce::HtmlNonceAttributeEffect::Ignore
 pub enum surgeist_html::security::nonce::HtmlNonceConnection
 pub surgeist_html::security::nonce::HtmlNonceConnection::BrowsingContextConnected
@@ -6266,8 +6301,8 @@ impl surgeist_html::security::nonce::HtmlNonceDocumentEnvironment
 pub fn surgeist_html::security::nonce::HtmlNonceDocumentEnvironment::browsing_context(self) -> surgeist_html::security::nonce::HtmlBrowsingContextPresence
 pub fn surgeist_html::security::nonce::HtmlNonceDocumentEnvironment::header_delivered_csp(self) -> surgeist_html::security::nonce::HtmlHeaderDeliveredCsp
 pub fn surgeist_html::security::nonce::HtmlNonceDocumentEnvironment::new(browsing_context: surgeist_html::security::nonce::HtmlBrowsingContextPresence, header_delivered_csp: surgeist_html::security::nonce::HtmlHeaderDeliveredCsp) -> Self
-pub fn surgeist_html::security::nonce::nonce_attribute_change<'a>(element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, attribute: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, new_value: core::option::Option<&'a surgeist_html::values::DocumentString>) -> surgeist_html::security::nonce::HtmlNonceAttributeEffect<'a>
-pub fn surgeist_html::security::nonce::nonce_insertion_effect(element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, content: core::option::Option<&surgeist_html::values::DocumentString>, connection: surgeist_html::security::nonce::HtmlNonceConnection, policy: surgeist_html::security::nonce::HtmlHeaderDeliveredCsp) -> surgeist_html::security::nonce::HtmlNonceInsertionEffect
+pub fn surgeist_html::security::nonce::nonce_attribute_change<'a>(element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, attribute: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, new_value: core::option::Option<&'a [u16]>) -> surgeist_html::security::nonce::HtmlNonceAttributeEffect<'a>
+pub fn surgeist_html::security::nonce::nonce_insertion_effect(element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, content: core::option::Option<&[u16]>, connection: surgeist_html::security::nonce::HtmlNonceConnection, policy: surgeist_html::security::nonce::HtmlHeaderDeliveredCsp) -> surgeist_html::security::nonce::HtmlNonceInsertionEffect
 pub mod surgeist_html::security::opener_policy
 pub enum surgeist_html::security::opener_policy::HtmlOpenerPolicyValue
 pub surgeist_html::security::opener_policy::HtmlOpenerPolicyValue::NoopenerAllowPopups
@@ -6705,13 +6740,13 @@ pub fn surgeist_html::values::Namespace::uri(&self) -> core::option::Option<&sur
 pub struct surgeist_html::values::OrderedAttributes
 impl surgeist_html::values::OrderedAttributes
 pub fn surgeist_html::values::OrderedAttributes::as_slice(&self) -> &[surgeist_html::values::Attribute]
+pub fn surgeist_html::values::OrderedAttributes::capacity(&self) -> usize
 pub fn surgeist_html::values::OrderedAttributes::get(&self, namespace: &surgeist_html::values::Namespace, local_name: &surgeist_html::values::DocumentString) -> core::option::Option<&surgeist_html::values::Attribute>
 pub fn surgeist_html::values::OrderedAttributes::into_shared_attributes(self) -> alloc::sync::Arc<alloc::vec::Vec<surgeist_html::values::Attribute>>
 pub fn surgeist_html::values::OrderedAttributes::is_empty(&self) -> bool
 pub fn surgeist_html::values::OrderedAttributes::iter(&self) -> core::slice::iter::Iter<'_, surgeist_html::values::Attribute>
 pub fn surgeist_html::values::OrderedAttributes::len(&self) -> usize
 pub fn surgeist_html::values::OrderedAttributes::new(attributes: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::values::Attribute>) -> core::result::Result<Self, surgeist_html::values::DuplicateAttributeError>
-pub fn surgeist_html::values::OrderedAttributes::shared_attributes(&self) -> &alloc::sync::Arc<alloc::vec::Vec<surgeist_html::values::Attribute>>
 impl core::convert::From<surgeist_html::values::OrderedAttributes> for surgeist_html::bounded::values::HtmlValidatedAttributes
 pub fn surgeist_html::bounded::values::HtmlValidatedAttributes::from(value: surgeist_html::values::OrderedAttributes) -> Self
 impl surgeist_html::values::HtmlAttributesInput for surgeist_html::values::OrderedAttributes
@@ -6780,6 +6815,10 @@ pub trait surgeist_html::values::HtmlAttributeInput
 pub type surgeist_html::values::HtmlAttributeInput::Name: surgeist_html::values::HtmlNameInput + ?core::marker::Sized
 pub fn surgeist_html::values::HtmlAttributeInput::name(&self) -> &Self::Name
 pub fn surgeist_html::values::HtmlAttributeInput::value(&self) -> &surgeist_html::values::DocumentString
+impl surgeist_html::values::HtmlAttributeInput for surgeist_html::construction::HtmlAttribute<'_>
+pub type surgeist_html::construction::HtmlAttribute<'_>::Name = surgeist_html::values::QualifiedName
+pub fn surgeist_html::construction::HtmlAttribute<'_>::name(&self) -> &surgeist_html::values::QualifiedName
+pub fn surgeist_html::construction::HtmlAttribute<'_>::value(&self) -> &surgeist_html::values::DocumentString
 impl surgeist_html::values::HtmlAttributeInput for surgeist_html::values::Attribute
 pub type surgeist_html::values::Attribute::Name = surgeist_html::values::QualifiedName
 pub fn surgeist_html::values::Attribute::name(&self) -> &Self::Name
@@ -6794,8 +6833,8 @@ pub fn surgeist_html::values::HtmlAttributesInput::get(&self, index: usize) -> c
 pub fn surgeist_html::values::HtmlAttributesInput::is_empty(&self) -> bool
 pub fn surgeist_html::values::HtmlAttributesInput::len(&self) -> usize
 impl surgeist_html::values::HtmlAttributesInput for surgeist_html::construction::HtmlAttributes<'_>
-pub type surgeist_html::construction::HtmlAttributes<'_>::Attribute<'a> where Self: 'a = &'a surgeist_html::values::Attribute
-pub fn surgeist_html::construction::HtmlAttributes<'_>::get(&self, index: usize) -> core::option::Option<&surgeist_html::values::Attribute>
+pub type surgeist_html::construction::HtmlAttributes<'_>::Attribute<'a> where Self: 'a = surgeist_html::construction::HtmlAttribute<'a>
+pub fn surgeist_html::construction::HtmlAttributes<'_>::get(&self, index: usize) -> core::option::Option<surgeist_html::construction::HtmlAttribute<'_>>
 pub fn surgeist_html::construction::HtmlAttributes<'_>::len(&self) -> usize
 impl surgeist_html::values::HtmlAttributesInput for surgeist_html::values::OrderedAttributes
 pub type surgeist_html::values::OrderedAttributes::Attribute<'a> = &'a surgeist_html::values::Attribute

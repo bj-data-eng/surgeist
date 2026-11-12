@@ -60,12 +60,7 @@ fn owned_values_admit_actual_reserved_capacity_exactly_and_refuse_one_byte_short
     values.push(Attribute::new(qname("a"), "value"));
     let attrs = OrderedAttributes::new(values).unwrap();
     let saved = DocumentString::from("saved");
-    let expected = raw_element_bytes(
-        &name,
-        attrs.as_slice(),
-        attrs.shared_attributes().capacity(),
-        Some(&saved),
-    );
+    let expected = raw_element_bytes(&name, attrs.as_slice(), attrs.capacity(), Some(&saved));
     let (mut owner, doc) = builder(expected - 1);
     let before = owner.usage();
     assert_eq!(
@@ -97,17 +92,15 @@ fn owned_values_admit_actual_reserved_capacity_exactly_and_refuse_one_byte_short
     let HtmlCapturedNodeKind::Element(value) = &owner.data.records[subject.index].kind else {
         panic!("element")
     };
-    assert!(Arc::ptr_eq(
-        value.attributes.shared_attributes(),
-        attrs.shared_attributes()
-    ));
+    // The captured list is the caller's list, not a copy of its rows.
+    assert!(std::ptr::eq(value.attributes.as_slice(), attrs.as_slice()));
     assert!(
         value
             .name
             .local_name()
             .shares_storage_with(name.local_name())
     );
-    assert!(attrs.shared_attributes().capacity() > attrs.len());
+    assert!(attrs.capacity() > attrs.len());
 }
 
 /// An owner of the units of `text` whose backing holds exactly them.

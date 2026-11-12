@@ -1,10 +1,15 @@
-//! The HTML report's attribute rows and DOM snapshots' Attr identity sequences.
-//! The inventory borrows the owners and measures their respective containers.
+//! The HTML report's attribute rows and DOM snapshots' Attr identity sequences. The HTML array of
+//! a parse is its one published table of rows, which holds exactly its live rows. The inventory
+//! borrows the owners and measures their respective containers.
 
 use std::collections::BTreeMap;
 use std::mem::size_of_val;
 
 use super::*;
+
+/// The bytes of a published row: the handle of its name and the handle of its value.
+const HTML_ROW_BYTES: usize =
+    size_of::<Arc<()>>() + size_of::<surgeist_html::values::DocumentString>();
 
 #[derive(Default)]
 struct Arrays {
@@ -49,18 +54,14 @@ pub(super) fn report(
         let mut occurrences = 0;
         for id in report_ids {
             if let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() {
-                let owned = element.attributes().to_ordered();
-                let bank = owned.shared_attributes();
-                occurrences += bank.len();
-                html.record(
-                    Arc::as_ptr(bank) as usize,
-                    bank.len(),
-                    bank.capacity(),
-                    size_of_val(bank.as_ref()),
-                );
+                occurrences += element.attributes().len();
             }
         }
         assert_eq!(occurrences, expected_occurrences);
+        // One table holds the rows of every element, in a row of a name handle and a value, and
+        // its capacity is its length. It has no address of its own here: the key 0 is never the
+        // address of a DOM array.
+        html.record(0, occurrences, occurrences, occurrences * HTML_ROW_BYTES);
     }
     let mut dom = Arrays::default();
     for snapshot in snapshots {
@@ -89,10 +90,6 @@ pub(super) fn report(
         parsed.is_some(),
         snapshots.len()
     );
-    html.report(
-        "html_report",
-        stage,
-        size_of::<surgeist_html::values::Attribute>(),
-    );
+    html.report("html_report", stage, HTML_ROW_BYTES);
     dom.report("dom_snapshot_union", stage, size_of::<NodeId>());
 }

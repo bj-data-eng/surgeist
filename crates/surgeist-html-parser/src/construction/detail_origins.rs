@@ -227,6 +227,20 @@ impl DetailOrigins {
         Ok(())
     }
 
+    /// Charges the rewriting of the leaves of `count` groups before it happens, in quanta: the
+    /// visit of each group and the write of its leaf.
+    fn charge_leaf_writes(control: &mut ParseControl, count: usize) -> Result<(), SessionError> {
+        let mut remaining = count;
+        let per_quantum = WORK_QUANTUM.max(1);
+        while remaining != 0 {
+            let chunk = remaining.min(per_quantum);
+            control.charge(HtmlParseWorkCategory::RecordVisit, chunk as u64)?;
+            control.charge(HtmlParseWorkCategory::RecordWrite, chunk as u64)?;
+            remaining = remaining.saturating_sub(chunk);
+        }
+        Ok(())
+    }
+
     /// Charges the filling of `count` empty slots before it happens, in quanta. Like the growth
     /// of a vector it visits no record: the slots are not looked up.
     fn charge_fill(control: &mut ParseControl, count: usize) -> Result<(), SessionError> {
@@ -458,11 +472,15 @@ impl DetailOrigins {
     }
 
     /// The entries of the attributes of `node` after position `removed` name one place lower, as
-    /// the attributes themselves do once the one at `removed` is gone. The fields of the removed
-    /// attribute have been taken out already.
+    /// the attributes themselves do once the one at `removed` is gone, and so do the leaves of
+    /// their groups that name the attributes' strings in `evidence`. The fields of the removed
+    /// attribute have been taken out already. Each moved entry costs one write of its field and
+    /// one write of its group's leaf, so the step costs what the entries after the removed
+    /// attribute are.
     pub(super) fn close_gap(
         &mut self,
         control: &mut ParseControl,
+        evidence: &mut ParseEvidence,
         node: usize,
         removed: usize,
     ) -> Result<(), SessionError> {
@@ -482,6 +500,7 @@ impl DetailOrigins {
         };
         let moved = run.entries.len().saturating_sub(first);
         Self::charge_moves(control, moved, size_of::<DetailOrigin>())?;
+        Self::charge_leaf_writes(control, moved)?;
         let entries = run.entries.as_mut_slice_prepaid(control)?;
         let Some(tail) = entries.get_mut(first..) else {
             return Err(latch_registry_row(control));
@@ -495,11 +514,12 @@ impl DetailOrigins {
                 .and_then(|(_, index, string)| {
                     index
                         .checked_sub(1)
-                        .map(|lower| FieldRef::of_attribute(node, lower, string))
+                        .map(|lower| (lower, string, FieldRef::of_attribute(node, lower, string)))
                 });
-            let Some(lowered) = lowered else {
+            let Some((lower, string, lowered)) = lowered else {
                 return Err(latch_registry_row(control));
             };
+            evidence.lower_attribute_leaf(control, &entry.group, node, lower, string)?;
             entry.field = lowered;
         }
         Ok(())

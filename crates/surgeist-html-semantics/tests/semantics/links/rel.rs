@@ -411,7 +411,11 @@ fn link_history_is_conditional_and_imported_flags_are_qualified_by_capture() {
     let parser = element(&mut b, &d, "link", &[("rel", "stylesheet")]);
     let other = element(&mut b, &d, "link", &[("rel", "stylesheet")]);
     let mut flags = HtmlLinkFlags::fresh();
-    flags.disabled_attribute_changed(&Namespace::none(), Some(&DocumentString::from("")), None);
+    flags.disabled_attribute_changed(
+        &Namespace::none(),
+        Some(DocumentString::from("").code_units()),
+        None,
+    );
     let history = HtmlLinkHistory::new(flags, true);
     b.establish_link_history(&parser, history).unwrap();
     b.establish_link_history(&other, HtmlLinkHistory::new(HtmlLinkFlags::fresh(), false))

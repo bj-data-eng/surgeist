@@ -200,9 +200,8 @@ fn fixed_stack_reset_excludes_state_sensitive_fragment_only_rows() {
     }
 }
 
-fn compare(value: &DocumentString, literal: &str, comparison: Comparison) -> bool {
+fn compare(value: &[u16], literal: &str, comparison: Comparison) -> bool {
     value
-        .code_units()
         .iter()
         .copied()
         .map(|unit| match comparison {
@@ -251,7 +250,7 @@ fn html_integration_uses_expanded_names_and_exact_unpadded_mime_values() {
         html_integration_point_encoding_attribute(
             Namespace::html().uri(),
             &"encoding".into(),
-            &"text/html".into(),
+            &units("text/html"),
             |_, _, _| {
                 calls += 1;
                 Err::<bool, _>("unreached")
@@ -260,6 +259,24 @@ fn html_integration_uses_expanded_names_and_exact_unpadded_mime_values() {
         Ok(None)
     );
     assert_eq!(calls, 0);
+    // The encoding attribute decides from the exact units of its value: a MIME type compares
+    // ASCII case-insensitively and an unrelated name is not the encoding attribute.
+    let decide = |local: &str, value: &str| {
+        html_integration_point_encoding_attribute(
+            None,
+            &local.into(),
+            &units(value),
+            |value, literal, comparison| Ok::<_, ()>(compare(value, literal, comparison)),
+        )
+    };
+    assert_eq!(decide("encoding", "TEXT/HTML"), Ok(Some(true)));
+    assert_eq!(decide("encoding", "Application/XHTML+xml"), Ok(Some(true)));
+    assert_eq!(decide("encoding", " text/html"), Ok(Some(false)));
+    assert_eq!(decide("charset", "text/html"), Ok(None));
+}
+
+fn units(text: &str) -> Vec<u16> {
+    text.encode_utf16().collect()
 }
 
 #[test]
@@ -285,7 +302,7 @@ fn html_integration_callback_refusal_preserves_the_first_reached_error() {
         html_integration_point_encoding_attribute(
             None,
             &"encoding".into(),
-            &"text/html".into(),
+            &units("text/html"),
             |_, literal, comparison| {
                 seen.push((literal, comparison));
                 if literal == "encoding" {

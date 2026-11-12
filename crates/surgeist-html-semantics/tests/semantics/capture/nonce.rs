@@ -22,8 +22,8 @@ fn nonce_expanded_identity_and_unrestricted_units() {
         let element = name(ns, "unknown-element");
         let attribute = QualifiedName::new(Namespace::none(), Some("prefix".into()), "nonce");
         assert_eq!(
-            nonce_attribute_change(&element, &attribute, Some(&raw)),
-            HtmlNonceAttributeEffect::CopyValue(&raw)
+            nonce_attribute_change(&element, &attribute, Some(raw.code_units())),
+            HtmlNonceAttributeEffect::CopyValue(raw.code_units())
         );
         assert_eq!(
             nonce_attribute_change(&element, &attribute, None),
@@ -34,7 +34,7 @@ fn nonce_expanded_identity_and_unrestricted_units() {
             name(Namespace::html(), "nonce"),
         ] {
             assert_eq!(
-                nonce_attribute_change(&element, &attribute, Some(&raw)),
+                nonce_attribute_change(&element, &attribute, Some(raw.code_units())),
                 HtmlNonceAttributeEffect::Ignore
             );
         }
@@ -43,7 +43,7 @@ fn nonce_expanded_identity_and_unrestricted_units() {
         nonce_attribute_change(
             &name(Namespace::none(), "div"),
             &name(Namespace::none(), "nonce"),
-            Some(&raw)
+            Some(raw.code_units())
         ),
         HtmlNonceAttributeEffect::Ignore
     );
@@ -56,7 +56,7 @@ fn nonce_insertion_conjunction_preserves_unknown_and_false_independently() {
     let element = name(Namespace::html(), "div");
     let nonempty = DocumentString::from(" A ");
     let empty = DocumentString::default();
-    for content in [None, Some(&empty)] {
+    for content in [None, Some(empty.code_units())] {
         assert_eq!(
             nonce_insertion_effect(&element, content, C::Unavailable, P::Unavailable),
             E::KeepContent
@@ -65,24 +65,34 @@ fn nonce_insertion_conjunction_preserves_unknown_and_false_independently() {
     assert_eq!(
         nonce_insertion_effect(
             &element,
-            Some(&nonempty),
+            Some(nonempty.code_units()),
             C::NotBrowsingContextConnected,
             P::Unavailable
         ),
         E::KeepContent
     );
     assert_eq!(
-        nonce_insertion_effect(&element, Some(&nonempty), C::Unavailable, P::Absent),
+        nonce_insertion_effect(
+            &element,
+            Some(nonempty.code_units()),
+            C::Unavailable,
+            P::Absent
+        ),
         E::KeepContent
     );
     assert_eq!(
-        nonce_insertion_effect(&element, Some(&nonempty), C::Unavailable, P::Present),
+        nonce_insertion_effect(
+            &element,
+            Some(nonempty.code_units()),
+            C::Unavailable,
+            P::Present
+        ),
         E::Unavailable(HtmlNonceMissing::Connection)
     );
     assert_eq!(
         nonce_insertion_effect(
             &element,
-            Some(&nonempty),
+            Some(nonempty.code_units()),
             C::BrowsingContextConnected,
             P::Unavailable
         ),
@@ -91,7 +101,7 @@ fn nonce_insertion_conjunction_preserves_unknown_and_false_independently() {
     assert_eq!(
         nonce_insertion_effect(
             &element,
-            Some(&nonempty),
+            Some(nonempty.code_units()),
             C::BrowsingContextConnected,
             P::Present
         ),

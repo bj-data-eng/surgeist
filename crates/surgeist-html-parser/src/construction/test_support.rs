@@ -3,9 +3,92 @@
 use super::*;
 use surgeist_html::{
     construction::HtmlConstructionResult,
-    construction::{ConstructionNodeKind, HtmlFragmentOwner},
-    values::{DocumentString, QualifiedName},
+    construction::{
+        BuildAttribute, ConstructionElementView, ConstructionNodeKind, HtmlFragmentOwner,
+    },
+    values::{Attribute, DocumentString, OrderedAttributes, QualifiedName},
 };
+
+/// Uncharged: the attributes of an element in order. An element whose run its storage does not
+/// hold has none.
+pub(super) fn attributes_of<'a>(
+    element: impl std::borrow::Borrow<ConstructionElementView<'a>>,
+) -> Vec<BuildAttribute<'a>> {
+    element
+        .borrow()
+        .attributes()
+        .iter()
+        .map(|attributes| attributes.collect::<Vec<_>>())
+        .unwrap_or_default()
+}
+
+/// Uncharged: the units of the value of an attribute, which the storage holds.
+pub(super) fn value_units(attribute: BuildAttribute<'_>) -> &[u16] {
+    attribute
+        .value()
+        .code_units()
+        .expect("the storage holds the value")
+}
+
+/// The attributes the run of the element at `node` holds and the room it has, as the storage
+/// reports them to a reservation of none. The call is charged as an edit is.
+pub(super) fn run_dimensions(
+    storage: &mut SessionStorage,
+    control: &mut ParseControl,
+    node: usize,
+) -> surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity {
+    let handle = storage
+        .construction
+        .node_at(node)
+        .expect("a retained record")
+        .handle();
+    let SessionStorage {
+        construction,
+        holds,
+        control: identity,
+        ..
+    } = storage;
+    let mut admission =
+        super::record_admission::RecordAdmission::new(control, identity, holds, &[]);
+    match construction.reserve_attributes(&handle, 0, &mut admission) {
+        Ok(dimensions) => dimensions,
+        Err(_) => panic!("the element has a run"),
+    }
+}
+
+/// Uncharged: the value of an attribute as text, which the storage holds as well-formed UTF-16.
+pub(super) fn value_text(attribute: BuildAttribute<'_>) -> String {
+    String::from_utf16(value_units(attribute)).expect("well-formed UTF-16")
+}
+
+/// Uncharged: the name and value units of each attribute of an element in order.
+pub(super) fn attribute_units<'a>(
+    element: impl std::borrow::Borrow<ConstructionElementView<'a>>,
+) -> Vec<(Vec<u16>, Vec<u16>)> {
+    attributes_of(element)
+        .into_iter()
+        .map(|attribute| {
+            (
+                attribute.name().local_name().code_units().to_vec(),
+                value_units(attribute).to_vec(),
+            )
+        })
+        .collect()
+}
+
+/// Uncharged: the attributes of an element as an owned list, which a test compares or hands to an
+/// authored element.
+pub(super) fn owned_attributes<'a>(
+    element: impl std::borrow::Borrow<ConstructionElementView<'a>>,
+) -> OrderedAttributes {
+    OrderedAttributes::new(attributes_of(element).into_iter().map(|attribute| {
+        Attribute::new(
+            attribute.name().clone(),
+            DocumentString::from_utf16(value_units(attribute).to_vec()),
+        )
+    }))
+    .expect("the attributes of an element are distinct")
+}
 
 /// Lets a test make one step of a cleanup walk refuse after it did its work, as
 /// a reported refusal would. Call it before [`keep_first`] for that step.
@@ -162,7 +245,7 @@ impl SessionStorage {
         else {
             return false;
         };
-        element.attributes().iter().any(|attribute| {
+        attributes_of(element).into_iter().any(|attribute| {
             attribute.name().namespace().uri().is_none()
                 && attribute.name().local_name().to_utf8().as_deref() == Ok(local)
         })
@@ -270,14 +353,13 @@ impl SessionStorage {
         while let Some(node) = stack.pop() {
             let record = self.construction.node_at(node).expect("a retained node");
             if let ConstructionNodeKind::Element(element) = record.kind()
-                && element
-                    .attributes()
-                    .iter()
+                && attributes_of(element)
+                    .into_iter()
                     .find(|attribute| {
                         attribute.name().namespace().uri().is_none()
                             && attribute.name().local_name().to_utf8().as_deref() == Ok("id")
                     })
-                    .is_some_and(|id| !id.value().is_empty())
+                    .is_some_and(|id| !value_units(id).is_empty())
             {
                 return true;
             }

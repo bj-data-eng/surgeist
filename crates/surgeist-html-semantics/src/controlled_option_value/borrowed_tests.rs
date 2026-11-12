@@ -136,8 +136,8 @@ fn borrowed_destination_and_old_record_bank_fit_exactly_and_refuse_one_short() {
         panic!("element")
     };
     assert_eq!(element.attributes().as_slice(), source.as_slice());
-    assert_eq!(element.attributes().shared_attributes().capacity(), 1);
-    assert!(source.capacity() > element.attributes().shared_attributes().capacity());
+    assert_eq!(element.attributes().capacity(), 1);
+    assert!(source.capacity() > element.attributes().capacity());
     assert!(
         element.attributes().as_slice()[0]
             .value()

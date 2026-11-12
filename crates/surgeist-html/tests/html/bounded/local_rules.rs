@@ -43,33 +43,45 @@ fn script_content_and_preparation_preserve_their_distinct_whitespace_rules() {
     }
     let javascript = DocumentString::from(" \tTEXT/JAVASCRIPT\n ");
     assert_eq!(
-        finish(HtmlScriptTypeCursor::content(Some(&javascript))),
+        finish(HtmlScriptTypeCursor::content(Some(javascript.code_units()))),
         None
     );
     assert_eq!(
-        finish(HtmlScriptTypeCursor::preparation(Some(&javascript), None)),
+        finish(HtmlScriptTypeCursor::preparation(
+            Some(javascript.code_units()),
+            None
+        )),
         Some(HtmlScriptKind::Classic)
     );
     let module = DocumentString::from("module");
     let padded_module = DocumentString::from(" module ");
     assert_eq!(
-        finish(HtmlScriptTypeCursor::preparation(Some(&module), None)),
+        finish(HtmlScriptTypeCursor::preparation(
+            Some(module.code_units()),
+            None
+        )),
         Some(HtmlScriptKind::Module)
     );
     assert_eq!(
         finish(HtmlScriptTypeCursor::preparation(
-            Some(&padded_module),
+            Some(padded_module.code_units()),
             None
         )),
         None
     );
     let language = DocumentString::from("javascript");
     assert_eq!(
-        finish(HtmlScriptTypeCursor::preparation(None, Some(&language))),
+        finish(HtmlScriptTypeCursor::preparation(
+            None,
+            Some(language.code_units())
+        )),
         Some(HtmlScriptKind::Classic)
     );
     let invalid = DocumentString::from_utf16([0xd800, 0, 0xdc00]);
-    assert_eq!(finish(HtmlScriptTypeCursor::content(Some(&invalid))), None);
+    assert_eq!(
+        finish(HtmlScriptTypeCursor::content(Some(invalid.code_units()))),
+        None
+    );
     assert_eq!(invalid.code_units(), [0xd800, 0, 0xdc00]);
 }
 

@@ -1640,10 +1640,14 @@ fn range_small_decimal_committed_cell_and_power_cancellation_keep_real_owners() 
             .ingress_fixture_state();
         assert_eq!(coefficient, [1]);
         assert_eq!((right, trial), (0, 0));
-        let RetainedPayload::String { value, .. } = &storage.payloads.values[source] else {
-            panic!("actual source backing");
+        // The staging reads the `value` attribute of the input from the element.
+        let InputSource::Attribute { node, position } = source else {
+            panic!("the staging reads an attribute")
         };
-        assert_eq!(value.code_units(), [46, 49]);
+        let value = FieldRef::AttributeValue(node, position)
+            .units(ConstructionView::Active(&storage.construction))
+            .expect("the attribute holds its value");
+        assert_eq!(value, [46, 49]);
         let cursor = cursor.unwrap();
         assert!(cursor.result().is_none());
         let headers = cursor.headers();
@@ -1905,13 +1909,8 @@ fn range_copy_requires_actual_generated_group_and_rejects_a_foreign_controller()
         .0;
     let copied = {
         let storage = session.active().unwrap();
-        provenance::copy_generated_input_value(
-            &storage.payloads,
-            storage.evidence.as_ref(),
-            &mut c,
-            raw,
-        )
-        .unwrap()
+        let value = storage.value_source(&mut c, InputSource::Row(raw)).unwrap();
+        provenance::copy_generated_input_value(storage.evidence.as_ref(), &mut c, value).unwrap()
     };
     assert_eq!(copied.value.text().code_units(), [53, 48]);
     assert!(copied.origins.as_slice().is_empty());
@@ -1922,12 +1921,15 @@ fn range_copy_requires_actual_generated_group_and_rejects_a_foreign_controller()
     let before = c.usage().clone();
     let refused = {
         let storage = session.active().unwrap();
-        provenance::copy_generated_input_value(
-            &storage.payloads,
-            storage.evidence.as_ref(),
-            &mut foreign,
-            raw,
-        )
+        storage
+            .value_source(&mut foreign, InputSource::Row(raw))
+            .and_then(|value| {
+                provenance::copy_generated_input_value(
+                    storage.evidence.as_ref(),
+                    &mut foreign,
+                    value,
+                )
+            })
     };
     assert!(matches!(
         refused,
@@ -1945,12 +1947,11 @@ fn range_copy_requires_actual_generated_group_and_rejects_a_foreign_controller()
         matches!(value, RetainedPayload::String { location: FieldRef::ElementName(id), .. } if *id == body.index)).unwrap();
     let refused = {
         let storage = session.active().unwrap();
-        provenance::copy_generated_input_value(
-            &storage.payloads,
-            storage.evidence.as_ref(),
-            &mut c,
-            literal,
-        )
+        storage
+            .value_source(&mut c, InputSource::Row(literal))
+            .and_then(|value| {
+                provenance::copy_generated_input_value(storage.evidence.as_ref(), &mut c, value)
+            })
     };
     assert!(matches!(
         refused,
@@ -2017,7 +2018,6 @@ fn range_absent_default_to_image_creates_actual_value_attribute_before_default_m
             .form_attribute(&mut c, node.index, "value")
             .unwrap()
             .unwrap()
-            .code_units()
             .to_vec();
         session
             .append_input_internal_value(&mut c, &node, &mut value)

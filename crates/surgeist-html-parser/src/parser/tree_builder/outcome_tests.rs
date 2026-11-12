@@ -263,7 +263,6 @@ pub(super) fn every_session_error() -> Vec<SessionError> {
         SessionError::TemplateInsertionStateUnavailable,
         SessionError::NotDocument,
         SessionError::OriginSplitUnavailable,
-        SessionError::AttributeStorageUnavailable,
         SessionError::ScriptMetadataUnavailable,
         SessionError::SvgScriptMetadataUnavailable,
         SessionError::ImageFormMetadataUnavailable,
@@ -304,7 +303,6 @@ pub(super) fn every_session_error() -> Vec<SessionError> {
             | SessionError::TemplateInsertionStateUnavailable
             | SessionError::NotDocument
             | SessionError::OriginSplitUnavailable
-            | SessionError::AttributeStorageUnavailable
             | SessionError::ScriptMetadataUnavailable
             | SessionError::SvgScriptMetadataUnavailable
             | SessionError::ImageFormMetadataUnavailable

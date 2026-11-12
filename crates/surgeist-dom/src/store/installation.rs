@@ -616,7 +616,7 @@ impl Dom {
                     draft
                         .append_attribute(
                             key,
-                            attribute,
+                            &attribute,
                             attributes::AttributeCause::Change,
                             self.limits,
                             cancelled,

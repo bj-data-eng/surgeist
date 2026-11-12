@@ -148,9 +148,6 @@ impl Attribute {
     }
 }
 
-/// What reserving capacity in a construction backing did: its result, and the capacity after it.
-pub(crate) type ReserveOutcome = (Result<(), std::collections::TryReserveError>, usize);
-
 /// Immutable attributes in input order, unique by namespace and local name.
 ///
 /// Prefixes and values do not participate in duplicate identity. Native
@@ -184,37 +181,18 @@ impl OrderedAttributes {
         })
     }
 
-    /// Borrows the actual immutable backing, including retained spare capacity.
-    /// This observation does not clone, validate or allocate.
-    pub fn shared_attributes(&self) -> &Arc<Vec<Attribute>> {
-        &self.attributes
+    /// The attributes of an element of a published result, whose names are unique by the
+    /// storage that published them.
+    pub(crate) fn from_unique(attributes: Vec<Attribute>) -> Self {
+        Self {
+            attributes: Arc::new(attributes),
+        }
     }
 
-    /// Only the controlled construction owner may mutate a uniquely owned
-    /// backing after proving expanded-name uniqueness and admission.
-    ///
-    /// This is the one way to change the attributes of an element of a construction storage in
-    /// place. Taking the backing advances the storage's attribute `revision`, which a table of
-    /// attribute names compares to know that its element's attributes have not changed since it
-    /// described them, so no writer can skip it.
-    pub(crate) fn construction_backing_mut(
-        &mut self,
-        revision: &mut u64,
-    ) -> &mut Arc<Vec<Attribute>> {
-        *revision = revision.wrapping_add(1);
-        &mut self.attributes
-    }
-
-    /// Reserves exactly `additional` slots in a uniquely held backing and reports the capacity it
-    /// has afterwards, or `None` when the backing is shared. Capacity is not content, so the
-    /// revision does not advance.
-    pub(crate) fn reserve_exact_in_construction(
-        &mut self,
-        additional: usize,
-    ) -> Option<ReserveOutcome> {
-        let backing = Arc::get_mut(&mut self.attributes)?;
-        let result = backing.try_reserve_exact(additional);
-        Some((result, backing.capacity()))
+    /// The capacity of the actual immutable backing, including retained spare capacity. This
+    /// observation does not clone, validate or allocate.
+    pub fn capacity(&self) -> usize {
+        self.attributes.capacity()
     }
 
     /// Returns the actual backing without copying or revalidating its attributes.

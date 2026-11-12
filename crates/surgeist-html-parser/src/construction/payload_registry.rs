@@ -2,12 +2,12 @@
 
 use super::*;
 use surgeist_html::{
-    construction::{ConstructionNodeKind, HtmlElementView},
+    construction::{BuildAttribute, ConstructionElementView, ConstructionNodeKind},
     elements::{
         form::{HtmlNativeFormAssociationKind, HtmlTextareaFlags},
         script::{HtmlScriptFlags, HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult},
     },
-    values::{Attribute, DocumentString},
+    values::DocumentString,
 };
 
 /// Actual backing and exact record-qualified ownership, not allocation proxies.
@@ -35,7 +35,6 @@ pub(super) struct PayloadStorage {
     /// The row of the first registration of each literal string, which later registrations share.
     pub(super) literals: [Option<usize>; LITERALS],
     pub(super) preexisting_units: usize,
-    pub(super) preexisting_attributes: usize,
     /// Registry rows of selectedcontent metadata. Rows are never removed, so zero
     /// proves that no select has a selectedcontent descendant to update.
     pub(super) selectedcontent_rows: usize,
@@ -49,7 +48,7 @@ pub(super) struct PayloadStorage {
     /// How many topology changes have been announced, or `None` once the count
     /// cannot go on; see [`tree_root`].
     pub(super) topology_changes: Option<u64>,
-    /// The origin groups of the attribute fields that rows hold the strings of.
+    /// The origin groups of the string fields of records.
     pub(super) detail_origins: DetailOrigins,
 }
 
@@ -385,7 +384,7 @@ pub(super) fn element_record<'a>(
     construction: &'a surgeist_html::bounded::construction::HtmlConstructionStorage,
     control: &mut ParseControl,
     node: usize,
-) -> Result<HtmlElementView<'a>, SessionError> {
+) -> Result<ConstructionElementView<'a>, SessionError> {
     match construction.node_at(node).map(|record| record.kind()) {
         Some(ConstructionNodeKind::Element(element)) => Ok(element),
         _ => Err(latch_registry_row(control)),
@@ -399,10 +398,10 @@ pub(super) fn element_attribute<'a>(
     control: &mut ParseControl,
     node: usize,
     position: usize,
-) -> Result<&'a Attribute, SessionError> {
+) -> Result<BuildAttribute<'a>, SessionError> {
     match element_record(construction, control, node)?
         .attributes()
-        .get(position)
+        .at(control, position)?
     {
         Some(attribute) => Ok(attribute),
         None => Err(latch_registry_row(control)),
@@ -432,23 +431,15 @@ impl PayloadStorage {
             None => Err(latch_registry_row(control)),
         }
     }
-    /// The origin group of the string the row at `slot` holds. A string bound to an attribute
-    /// field has its group in the table of origins once the install of the attribute is done;
-    /// until then, and for every other string a row holds, the row holds it. The strings of the
-    /// non-element fields have no row: their groups are in the table of origins.
-    pub(super) fn row_group(
-        &self,
-        control: &mut ParseControl,
-        slot: usize,
-    ) -> Result<Option<&OriginGroupRef>, SessionError> {
+    /// The origin group of the string the row at `slot` holds, which the row holds. The strings
+    /// of the fields of records, such as an attribute's, have no row: their groups are in the
+    /// table of origins.
+    pub(super) fn row_group(&self, slot: usize) -> Result<Option<&OriginGroupRef>, SessionError> {
         match self.values.get(slot) {
             Some(RetainedPayload::String {
                 origins: Some(group),
                 ..
             }) => Ok(Some(group)),
-            Some(RetainedPayload::String { location, .. }) if location.attribute().is_some() => {
-                self.detail_origins.get(control, *location)
-            }
             Some(RetainedPayload::String { .. }) => Ok(None),
             // A string disposed of as an aggregate keeps the group of the units it held.
             Some(RetainedPayload::HistoricalString { origins }) => Ok(Some(origins)),
@@ -661,58 +652,9 @@ impl PayloadStorage {
             self.values.push(row);
         }
     }
-    /// Records where creation registered the record's attribute strings: the
-    /// name of its last attribute, followed by that attribute's value, then the
-    /// previous attribute's name and value, and so on.
-    pub(super) fn record_attribute_strings(
-        &mut self,
-        node: usize,
-        last_name_slot: usize,
-    ) -> Result<(), SessionError> {
-        let cell = self
-            .node_joins
-            .get_mut(node)
-            .ok_or_else(SessionError::registry_row)?;
-        cell.attribute_strings = Some(joined_cell(last_name_slot)?);
-        Ok(())
-    }
-    /// An attribute edit makes the creation-time layout unreliable.
-    pub(super) fn forget_attribute_strings(&mut self, node: usize) {
-        if let Some(cell) = self.node_joins.get_mut(node) {
-            cell.attribute_strings = None;
-        }
-    }
-    /// The slot where `position`'s value row sits if the record's attributes
-    /// are as creation registered them. Only a candidate: the caller verifies
-    /// the row's identity before use.
-    pub(super) fn attribute_value_candidate(
-        &self,
-        node: usize,
-        attribute_count: usize,
-        position: usize,
-    ) -> Option<usize> {
-        let last_name = cell_slot(self.node_joins.get(node)?.attribute_strings?)?;
-        let from_last = attribute_count.checked_sub(1)?.checked_sub(position)?;
-        last_name
-            .checked_add(from_last.checked_mul(2)?)?
-            .checked_add(1)
-    }
-    /// The first registry string row sharing `value`'s backing: what the
-    /// fallback scan finds. Test builds compare every verified hint with it.
-    #[cfg(test)]
-    pub(super) fn first_string_sharing(&self, value: &DocumentString) -> Option<usize> {
-        self.values.iter().position(|row| {
-            matches!(row, RetainedPayload::String { value: stored, .. }
-                if value.shares_storage_with(stored))
-        })
-    }
     #[cfg(test)]
     /// Every join must name exactly what a front-to-back scan of the registry
     /// finds, and every list exactly the rows of its kind.
-    ///
-    /// A latched registry-row stop does not name its row. When one is latched, an attribute join
-    /// that names a row a lost edit emptied is accepted, at most one such join; every other join
-    /// and every other stop is still checked.
     fn assert_joins_match_registry(&self) {
         let mut expected: Vec<NodeJoins> = vec![NodeJoins::default(); self.node_joins.len()];
         let mut lists: [Vec<usize>; KIND_LISTS] = Default::default();

@@ -101,7 +101,10 @@ impl Draft {
         // Obsolete language is not in the modern attribute vocabulary. The
         // canonical type cursor owns its meaning; this is only an exact lookup.
         let language = self.script_attribute(node, "language", cancel)?;
-        let mut cursor = HtmlScriptTypeCursor::preparation(explicit, language);
+        let mut cursor = HtmlScriptTypeCursor::preparation(
+            explicit.map(DocumentString::code_units),
+            language.map(DocumentString::code_units),
+        );
         let mut work = TypeWork {
             draft: self,
             cancel,

@@ -145,7 +145,7 @@ pub(crate) fn prepare_public_readers(
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 match records.node_at(owner).map(|record| record.kind()) {
                     Some(ConstructionNodeKind::Element(element))
-                        if index < element.attributes().len() => {}
+                        if index < element.attributes().count(c)? => {}
                     _ => return Err(SessionError::WrongToken),
                 }
                 node(records, c, owner)

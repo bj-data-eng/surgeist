@@ -7,7 +7,7 @@ use surgeist_html::{
         HtmlBuilderNode, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode,
         HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
     },
-    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
+    values::{Namespace, OrderedAttributes, QualifiedName},
 };
 
 fn invariant(invariant: HtmlParseInvariant) -> SessionError {
@@ -50,14 +50,16 @@ fn allocate_element(
     local: &str,
     template: bool,
 ) -> HtmlBuilderNode {
-    let node = storage
-        .allocate(
+    let id = storage
+        .intern_qualified_name(
             control,
-            NewRecord::Element(html_name(local), OrderedAttributes::default(), None),
-            template,
-            0,
-            0,
+            html_name(local).namespace(),
+            None,
+            html_name(local).local_name().code_units(),
         )
+        .unwrap();
+    let node = storage
+        .allocate(control, NewRecord::NamedElement(id, None), template, 0, 0)
         .unwrap();
     node.handle
 }
@@ -391,17 +393,18 @@ fn an_edit_of_an_absent_record_is_a_foreign_node() {
     assert_eq!(control.usage().actual_capacity_bytes, 0);
 }
 
-fn attribute(name: &str, value: &str) -> Attribute {
-    Attribute::new(QualifiedName::new(Namespace::none(), None, name), value)
+fn units(text: &str) -> Vec<u16> {
+    text.encode_utf16().collect()
 }
 
 fn held(storage: &SessionStorage) -> Vec<String> {
     match storage.construction.node_at(1).unwrap().kind() {
-        surgeist_html::construction::ConstructionNodeKind::Element(element) => element
-            .attributes()
-            .iter()
-            .map(|held| held.name().local_name().to_utf8().unwrap())
-            .collect(),
+        surgeist_html::construction::ConstructionNodeKind::Element(element) => {
+            test_support::attributes_of(element)
+                .into_iter()
+                .map(|held| held.name().local_name().to_utf8().unwrap())
+                .collect()
+        }
         _ => panic!("an element"),
     }
 }
@@ -409,14 +412,17 @@ fn held(storage: &SessionStorage) -> Vec<String> {
 #[test]
 fn an_append_that_the_capacity_limit_refuses_leaves_the_list_and_every_figure_as_it_was() {
     let (mut control, mut session) = with_element();
+    let storage = session.active_mut().unwrap();
+    let name = storage
+        .intern_name(&mut control, &Namespace::none(), &units("a"))
+        .unwrap();
     let before = control.usage().clone();
     let held_bytes = before
         .resource(HtmlParseResource::ManagedCapacityBytes)
         .current();
+    let (banks, strings) = (storage.holds.bank_bytes, storage.holds.string_bytes);
     control.test_limit(HtmlParseResource::ManagedCapacityBytes, held_bytes);
-    let mut incoming = Some(attribute("a", "v"));
-    let storage = session.active_mut().unwrap();
-    let result = storage.append_attribute(&mut control, 1, &mut incoming, None);
+    let result = storage.append_named_attribute(&mut control, 1, &name, &units("v"), None, 0);
     assert!(matches!(
         result,
         Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
@@ -424,7 +430,6 @@ fn an_append_that_the_capacity_limit_refuses_leaves_the_list_and_every_figure_as
             ..
         }))
     ));
-    assert!(incoming.is_some(), "the attribute stays with the caller");
     assert!(held(storage).is_empty());
     assert_eq!(
         control
@@ -434,35 +439,36 @@ fn an_append_that_the_capacity_limit_refuses_leaves_the_list_and_every_figure_as
         held_bytes,
         "no capacity was charged for the refused growth"
     );
-    assert_eq!(storage.holds.attribute_bytes, 0);
+    assert_eq!(
+        (storage.holds.bank_bytes, storage.holds.string_bytes),
+        (banks, strings)
+    );
     session.release(&mut control).unwrap();
     assert_eq!(control.usage().actual_capacity_bytes, 0);
 }
 
 #[test]
-fn appended_attributes_grow_the_list_geometrically_and_are_released_with_the_storage() {
+fn appended_attributes_extend_the_run_of_their_element_and_are_released_with_the_storage() {
     let (mut control, mut session) = with_element();
     let storage = session.active_mut().unwrap();
+    let banks = storage.holds.bank_bytes;
     for name in ["a", "b", "c", "d", "e"] {
+        let id = storage
+            .intern_name(&mut control, &Namespace::none(), &units(name))
+            .unwrap();
         storage
-            .append_attribute(&mut control, 1, &mut Some(attribute(name, "v")), None)
+            .append_named_attribute(&mut control, 1, &id, &units("v"), None, 0)
             .unwrap();
     }
     assert_eq!(held(storage), ["a", "b", "c", "d", "e"]);
-    let capacity = match storage.construction.node_at(1).unwrap().kind() {
-        surgeist_html::construction::ConstructionNodeKind::Element(element) => element
-            .attributes()
-            .to_ordered()
-            .shared_attributes()
-            .capacity(),
-        _ => unreachable!(),
-    };
-    // One slot, then doubling: 1, 2, 4, 8 for five attributes.
-    assert_eq!(capacity, 8);
-    assert_eq!(
-        storage.holds.attribute_bytes,
-        (capacity * mem::size_of::<Attribute>()) as u64,
-        "the parse holds exactly the capacity its lists reserved"
+    // The run is the last the table holds, so each append extends it in place by the one row it
+    // needs.
+    let dimensions = test_support::run_dimensions(storage, &mut control, 1);
+    assert_eq!((dimensions.initialized_len, dimensions.capacity), (5, 5));
+    assert!(
+        storage.holds.bank_bytes
+            >= banks + (dimensions.capacity * dimensions.element_size()) as u64,
+        "the parse holds the bytes of the rows its banks reserved"
     );
     session.release(&mut control).unwrap();
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -491,4 +497,249 @@ fn a_refused_record_after_a_bank_reserve_leaves_the_bank_credited_for_what_was_a
     ));
     session.release(&mut control).unwrap();
     crate::parser::tree_builder::tests::assert_released(&control);
+}
+
+#[test]
+fn a_logical_limit_refuses_an_attribute_before_any_bank_grows() {
+    use surgeist_html::values::Attribute;
+    // An element of `count` attributes: `held` short ones and, when `count` exceeds that, one
+    // whose value is longer than the room the text arena has. The limit on attributes admits
+    // `held`, so the last one is refused by the limit. Its append would grow the text arena and,
+    // when the run is full, the rows, so the capacity the parse holds after the refusal must be
+    // what it holds for the admitted attributes and the interned name of the refused one.
+    let long = "x".repeat(5000);
+    let element = |held: usize, count: usize| {
+        let mut attributes: Vec<Attribute> = (0..held)
+            .map(|index| {
+                Attribute::new(
+                    QualifiedName::new(Namespace::none(), None, format!("a{index}")),
+                    "v",
+                )
+            })
+            .collect();
+        if count > held {
+            attributes.push(Attribute::new(
+                QualifiedName::new(Namespace::none(), None, "z"),
+                long.as_str(),
+            ));
+        }
+        PreexistingElement::new(
+            QualifiedName::new(Namespace::none(), None, "x"),
+            OrderedAttributes::new(attributes).unwrap(),
+        )
+    };
+    let mut full_runs = 0;
+    for held in 1..=4_usize {
+        let limits = crate::construction::tests::limits()
+            .into_builder()
+            .managed_attributes(held as u64)
+            .finish()
+            .unwrap();
+        // The reference holds the admitted attributes and the name of the refused one.
+        let mut reference = ParseControl::new(limits, crate::HtmlParseCancellation::new());
+        let mut session = ParserArenaSession::new(&mut reference, RootKind::Fragment).unwrap();
+        let node = session
+            .allocate_element(&mut reference, element(held, held))
+            .unwrap();
+        let dimensions = crate::construction::test_support::run_dimensions(
+            session.active_mut().unwrap(),
+            &mut reference,
+            node.index,
+        );
+        full_runs += usize::from(dimensions.initialized_len == dimensions.capacity);
+        session
+            .active_mut()
+            .unwrap()
+            .intern_qualified_name(&mut reference, &Namespace::none(), None, &[u16::from(b'z')])
+            .unwrap();
+        let expected = reference.usage().actual_capacity_bytes;
+        session.release(&mut reference).unwrap();
+
+        let mut control = ParseControl::new(limits, crate::HtmlParseCancellation::new());
+        let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
+        let refused = session.allocate_element(&mut control, element(held, held + 1));
+        assert!(
+            matches!(
+                refused,
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
+                    resource: HtmlParseResource::ManagedAttributes,
+                    ..
+                }))
+            ),
+            "held {held}: {refused:?}"
+        );
+        assert_eq!(
+            control.usage().actual_capacity_bytes,
+            expected,
+            "held {held}: a refused attribute grew a bank"
+        );
+        session.release(&mut control).unwrap();
+    }
+    assert!(full_runs > 0, "no count made the refused append need rows");
+}
+
+#[test]
+fn a_units_limit_refuses_a_longer_replacement_value_before_the_text_arena_grows() {
+    use surgeist_html::values::Attribute;
+    let element = || {
+        PreexistingElement::new(
+            QualifiedName::new(Namespace::none(), None, "x"),
+            OrderedAttributes::new([Attribute::new(
+                QualifiedName::new(Namespace::none(), None, "n"),
+                "v",
+            )])
+            .unwrap(),
+        )
+    };
+    let value: Vec<u16> = "y".repeat(5000).encode_utf16().collect();
+    let units = |control: &ParseControl| {
+        control
+            .usage()
+            .resource(HtmlParseResource::ManagedUtf16Units)
+            .current
+    };
+    // The units the element holds, with room for 10 more: the replacement adds 4999.
+    let mut reference = ParseControl::new(
+        crate::construction::tests::limits(),
+        crate::HtmlParseCancellation::new(),
+    );
+    let mut session = ParserArenaSession::new(&mut reference, RootKind::Fragment).unwrap();
+    session.allocate_element(&mut reference, element()).unwrap();
+    let held = units(&reference);
+    session.release(&mut reference).unwrap();
+
+    let limits = crate::construction::tests::limits()
+        .into_builder()
+        .managed_utf16_units(held + 10)
+        .finish()
+        .unwrap();
+    let mut control = ParseControl::new(limits, crate::HtmlParseCancellation::new());
+    let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
+    let node = session.allocate_element(&mut control, element()).unwrap();
+    let id = session
+        .active_mut()
+        .unwrap()
+        .intern_qualified_name(&mut control, &Namespace::none(), None, &[u16::from(b'n')])
+        .unwrap();
+    let capacity = control.usage().actual_capacity_bytes;
+    let refused = session.active_mut().unwrap().replace_named_attribute(
+        &mut control,
+        node.index,
+        0,
+        &id,
+        &value,
+    );
+    assert!(
+        matches!(
+            refused,
+            Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
+                resource: HtmlParseResource::ManagedUtf16Units,
+                ..
+            }))
+        ),
+        "{refused:?}"
+    );
+    assert_eq!(units(&control), held, "a refused replacement kept units");
+    assert_eq!(
+        control.usage().actual_capacity_bytes,
+        capacity,
+        "a refused replacement grew a bank"
+    );
+    session.release(&mut control).unwrap();
+}
+
+#[test]
+fn removing_or_replacing_a_namespaced_attribute_is_refused_and_changes_nothing() {
+    use surgeist_html::values::{Attribute, DocumentString};
+    let xlink = || {
+        QualifiedName::new(
+            Namespace::from_uri(DocumentString::from("http://www.w3.org/1999/xlink")),
+            Some(DocumentString::from("xlink")),
+            "href",
+        )
+    };
+    let element = || {
+        PreexistingElement::new(
+            QualifiedName::new(Namespace::none(), None, "x"),
+            OrderedAttributes::new([
+                Attribute::new(xlink(), "value"),
+                Attribute::new(QualifiedName::new(Namespace::none(), None, "id"), "i"),
+            ])
+            .unwrap(),
+        )
+    };
+    let held = |control: &ParseControl| {
+        let usage = control.usage();
+        (
+            usage.resource(HtmlParseResource::ManagedUtf16Units).current,
+            usage.resource(HtmlParseResource::ManagedAttributes).current,
+            usage.actual_capacity_bytes,
+        )
+    };
+    for replace in [false, true] {
+        let mut control = ParseControl::new(
+            crate::construction::tests::limits(),
+            crate::HtmlParseCancellation::new(),
+        );
+        let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
+        let node = session.allocate_element(&mut control, element()).unwrap();
+        let attributes = |session: &ParserArenaSession| {
+            let storage = session.active().unwrap();
+            let Some(ConstructionNodeKind::Element(element)) =
+                storage.construction.node_at(node.index).map(|r| r.kind())
+            else {
+                panic!("an element record");
+            };
+            crate::construction::test_support::attribute_units(element)
+        };
+        let before = (held(&control), attributes(&session));
+        let storage = session.active_mut().unwrap();
+        let refused = if replace {
+            let id = storage
+                .intern_qualified_name(&mut control, &Namespace::none(), None, &[u16::from(b'n')])
+                .unwrap();
+            storage.replace_named_attribute(&mut control, node.index, 0, &id, &[u16::from(b'v')])
+        } else {
+            storage.remove_attribute(&mut control, node.index, 0)
+        };
+        assert_eq!(
+            refused,
+            Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::RegistryRow
+            ))),
+            "replace: {replace}"
+        );
+        // The interned name of the replacement is held by the table of names, which is not an
+        // edit of the attribute, so only the units and slots the attribute holds are compared.
+        let after = (held(&control), attributes(&session));
+        assert_eq!(after.0.0, before.0.0, "units, replace: {replace}");
+        assert_eq!(after.0.1, before.0.1, "slots, replace: {replace}");
+        assert_eq!(after.1, before.1, "attributes, replace: {replace}");
+        session.release(&mut control).unwrap();
+    }
+    // An attribute without a namespace or a prefix is credited as before.
+    let mut control = ParseControl::new(
+        crate::construction::tests::limits(),
+        crate::HtmlParseCancellation::new(),
+    );
+    let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
+    let node = session.allocate_element(&mut control, element()).unwrap();
+    let units = control
+        .usage()
+        .resource(HtmlParseResource::ManagedUtf16Units)
+        .current;
+    session
+        .active_mut()
+        .unwrap()
+        .remove_attribute(&mut control, node.index, 1)
+        .unwrap();
+    // The attribute `id` with the value `i` counted 3 units.
+    assert_eq!(
+        control
+            .usage()
+            .resource(HtmlParseResource::ManagedUtf16Units)
+            .current,
+        units - 3
+    );
+    session.release(&mut control).unwrap();
 }

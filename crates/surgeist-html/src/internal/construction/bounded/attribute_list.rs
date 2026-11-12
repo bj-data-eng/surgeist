@@ -1,18 +1,24 @@
-//! Edits of the attribute list of an element of the construction storage.
+//! Edits of the attributes of an element of the construction storage.
 //!
-//! Each edit is one method of [`HtmlConstructionStorage`]. It reads and compares first, charging
-//! its consumer for the work before it runs, and asks the consumer once to admit the growth of
-//! the list. Only then does it change the list, so a refusal leaves the records, the usage and
-//! the attributes as they were. Two residues remain: the name index is a cache of the names of
-//! one element and a refused edit may have rebuilt it, and when the allocator refuses the room
-//! that was admitted and the consumer then refuses to record the capacity the list kept, the
-//! list holds the room the fallback reserved with no attribute changed. The consumer owns the
-//! policy: it charges work through [`Charge`], chooses the capacity a growing list reserves, and
-//! records the capacity.
+//! The attributes of every element are the rows of one table of the storage, with one run of rows
+//! for each element, and the value of an attribute is a range of the storage's text arena. Each
+//! edit is one method of [`HtmlConstructionStorage`]. It reads and compares first, charging its
+//! consumer for the work before it runs, and asks the consumer once to admit the usage and the
+//! growth of each bank it needs: the rows, the runs and the text arena, and the names of the
+//! attribute when it interns them. Only then does it change the table, so a refusal leaves the
+//! records, the usage and the attributes as they were. Residues remain: the name index is a cache
+//! of the names of one element and a refused edit may have rebuilt it; a name that an edit
+//! interned stays interned; and a bank that grew keeps the room it reserved, which the consumer
+//! holds at the capacity it last recorded. The consumer owns the policy: it charges work through
+//! [`Charge`], chooses the capacity a growing bank reserves, and records the capacity.
 
-use super::records::attribute_units;
+use super::records::{
+    HtmlConstructionChange, HtmlRecordAdmission, NameId, attribute_units, stopped,
+};
 use super::*;
 use crate::internal::accounting::{HtmlChargedError, HtmlResource, HtmlWork, wide};
+use crate::internal::construction::attribute_table::{AttrRow, AttrRun, RowAppend, RunIx};
+use crate::internal::construction::names::{NameEntry, NameKey};
 use crate::internal::values::attribute_name_index::{
     Binding, CLEAR_CHUNK, HtmlAttributeNameIndex, entry, occupant, tag,
 };
@@ -22,71 +28,36 @@ use crate::internal::values::bounded::{
 use crate::internal::values::name_index::{
     HtmlNameIndex, HtmlNameIndexSlot, HtmlNameIndexStep, HtmlNameIndexVacancy,
 };
-use crate::internal::values::{Attribute, DocumentString};
+use crate::internal::values::semantic_input::{HtmlAttributeInput, HtmlNameInput};
+use crate::internal::values::{DocumentString, Namespace};
 use surgeist_ledger::{Change, Charge};
 
 /// The most bytes one charge covers when an edit moves a run of attributes, so that a consumer
 /// that polls at its charges polls within every quantum of the work.
 const CHARGE_QUANTUM: usize = 256;
 
-/// Actual attribute-list dimensions; no allocation or release authority.
+/// The units one charge covers when an edit copies a value, so that a consumer that polls at its
+/// charges polls within every quantum of the work.
+const CHUNK_UNITS: usize = CHARGE_QUANTUM / size_of::<u16>();
+
+/// Actual dimensions of the run of one element: how many attributes it holds and how many rows it
+/// has room for; no allocation or release authority.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct HtmlConstructionAttributeCapacity {
     /// The number of attributes currently stored.
     pub initialized_len: usize,
-    /// The reserved attribute capacity; at least `initialized_len`.
+    /// The rows the run has room for; at least `initialized_len`.
     pub capacity: usize,
 }
 impl HtmlConstructionAttributeCapacity {
-    /// The size in bytes of one stored attribute.
+    /// The size in bytes of one row of the attribute table.
     pub fn element_size(self) -> usize {
-        size_of::<Attribute>()
+        size_of::<AttrRow>()
     }
-    /// The alignment in bytes of one stored attribute.
+    /// The alignment in bytes of one row of the attribute table.
     pub fn element_alignment(self) -> usize {
-        align_of::<Attribute>()
+        align_of::<AttrRow>()
     }
-}
-
-/// What an edit asks its consumer to admit before it allocates: the list of one element must hold
-/// at least [`minimum_capacity`](Self::minimum_capacity) attributes.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlConstructionAttributeGrowth {
-    before: HtmlConstructionAttributeCapacity,
-    minimum_capacity: usize,
-}
-impl HtmlConstructionAttributeGrowth {
-    /// The dimensions of the list before the growth.
-    pub fn before(self) -> HtmlConstructionAttributeCapacity {
-        self.before
-    }
-    /// The least capacity that holds the attributes the edit stores.
-    pub fn minimum_capacity(self) -> usize {
-        self.minimum_capacity
-    }
-}
-
-/// The consumer of an attribute edit. It charges the edit's work like any [`Charge`], decides the
-/// capacity that a growing list reserves, and records the capacity the reservation reached.
-pub trait HtmlAttributeAdmission: Charge<HtmlWork, HtmlResource> {
-    /// Admits the growth of one attribute list before it is reserved. Returns the capacity to
-    /// reserve, which must be at least the growth's minimum; a smaller one is refused with the
-    /// capacity-mismatch cause and nothing is reserved. A refusal leaves the edit unapplied.
-    /// Nothing is recorded or reserved before this call, so a refusal changes nothing.
-    fn admit_growth(
-        &mut self,
-        growth: HtmlConstructionAttributeGrowth,
-    ) -> Result<usize, Self::Stop>;
-
-    /// Records the capacity of the list. It is called with the capacity the consumer chose before
-    /// the list is reserved, so a refusal there leaves the list as it was. It is called again
-    /// with the capacity the reservation reached when that differs from the one chosen, which
-    /// includes the unchanged capacity of a reservation the allocator refused. A refusal of that
-    /// second record leaves the list with the capacity it reached and no attribute changed.
-    fn record_growth(
-        &mut self,
-        reached: HtmlConstructionAttributeCapacity,
-    ) -> Result<(), Self::Stop>;
 }
 
 /// The consumer of an attribute merge plan: the candidates to merge and where it keeps the
@@ -153,6 +124,8 @@ fn minus(a: usize, b: usize) -> Result<usize, HtmlConstructionError> {
     a.checked_sub(b)
         .ok_or(HtmlConstructionCause::ReleaseUnderflow.error())
 }
+/// Whether two names have one expanded name by the storage of their strings, which is the fast
+/// path of the comparison: names of one interned entry share it.
 fn identical_name(left: &QualifiedName, right: &QualifiedName) -> bool {
     let namespace = match (left.namespace().uri(), right.namespace().uri()) {
         (None, None) => true,
@@ -273,63 +246,48 @@ impl HtmlConstructionStorage {
         }
     }
 
-    fn attribute_slice(&self, target: usize) -> Result<&[Attribute], HtmlConstructionError> {
+    /// The run of the element at `target`, which is none while the element has no attribute.
+    fn element_run(&self, target: usize) -> Result<Option<RunIx>, HtmlConstructionError> {
         match self.arena.records.get(target).map(|record| &record.kind) {
-            Some(NodeContent::Element(element)) => {
-                Ok(element.attributes.shared_attributes().as_slice())
-            }
+            Some(NodeContent::Element(element)) => Ok(element.attrs),
             _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
         }
     }
 
-    fn attribute_dimensions(
-        &self,
+    /// Gives the element at `target` the run `ix`.
+    pub(super) fn set_element_run(
+        &mut self,
         target: usize,
-    ) -> Result<HtmlConstructionAttributeCapacity, HtmlConstructionError> {
-        match self.arena.records.get(target).map(|record| &record.kind) {
+        ix: RunIx,
+    ) -> Result<(), HtmlConstructionError> {
+        match self
+            .arena
+            .records
+            .get_mut(target)
+            .map(|record| &mut record.kind)
+        {
             Some(NodeContent::Element(element)) => {
-                let backing = element.attributes.shared_attributes();
-                Ok(HtmlConstructionAttributeCapacity {
-                    initialized_len: backing.len(),
-                    capacity: backing.capacity(),
-                })
-            }
-            _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
-        }
-    }
-
-    /// Refuses a list that another owner holds, before anything changes.
-    fn require_exclusive_attributes(&self, target: usize) -> Result<(), HtmlConstructionError> {
-        match self.arena.records.get(target).map(|record| &record.kind) {
-            Some(NodeContent::Element(element)) => {
-                let backing = element.attributes.shared_attributes();
-                if std::sync::Arc::strong_count(backing) != 1
-                    || std::sync::Arc::weak_count(backing) != 0
-                {
-                    return Err(HtmlConstructionCause::SharedAllocationAliased.into());
-                }
+                element.attrs = Some(ix);
                 Ok(())
             }
             _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
         }
     }
 
-    /// The element's list for a change: the storage's attribute revision advances. Only after
-    /// [`Self::require_exclusive_attributes`] passed.
-    fn attributes_for_change(
-        &mut self,
+    /// The attributes of the element at `target`, which the table holds or refuses as invalid.
+    fn attribute_slice(&self, target: usize) -> Result<&[AttrRow], HtmlConstructionError> {
+        self.attrs.live(self.element_run(target)?)
+    }
+
+    fn attribute_dimensions(
+        &self,
         target: usize,
-    ) -> Result<&mut Vec<Attribute>, HtmlConstructionError> {
-        let arena = &mut self.arena;
-        match arena.records.get_mut(target).map(|record| &mut record.kind) {
-            Some(NodeContent::Element(element)) => std::sync::Arc::get_mut(
-                element
-                    .attributes
-                    .construction_backing_mut(&mut arena.attribute_revision),
-            )
-            .ok_or_else(|| HtmlConstructionCause::SharedAllocationAliased.into()),
-            _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
-        }
+    ) -> Result<HtmlConstructionAttributeCapacity, HtmlConstructionError> {
+        let (initialized_len, capacity) = self.attrs.dimensions(self.element_run(target)?)?;
+        Ok(HtmlConstructionAttributeCapacity {
+            initialized_len,
+            capacity,
+        })
     }
 
     fn charge_qualification<C: Charge<HtmlWork, HtmlResource>>(
@@ -341,6 +299,66 @@ impl HtmlConstructionStorage {
             ..Work::default()
         }
         .charge(charge)
+    }
+
+    /// Charges the move of `rows` rows in quanta, before it runs.
+    fn charge_moved_rows<C: Charge<HtmlWork, HtmlResource>>(
+        charge: &mut C,
+        rows: usize,
+    ) -> Result<(), HtmlConstructionAttributeError<C::Stop>> {
+        let per_quantum = (CHARGE_QUANTUM / size_of::<AttrRow>()).max(1);
+        let mut remaining = rows;
+        while remaining != 0 {
+            let chunk = remaining.min(per_quantum);
+            Work {
+                record_visits: 1,
+                copied_bytes: chunk.saturating_mul(size_of::<AttrRow>()),
+                record_writes: chunk,
+                ..Work::default()
+            }
+            .charge(charge)?;
+            remaining = remaining.saturating_sub(chunk);
+        }
+        Ok(())
+    }
+
+    /// Charges the filler rows that making room writes, one write each, in quanta before any is
+    /// written: a plan writes `plan.written()` rows beyond what the copy of the live rows of a
+    /// relocation charges, which are the rows of the new run for an element without one, the rows
+    /// it gains at the tail, and for a relocation the rows of the region that the old rows and
+    /// the room are filled with.
+    pub(super) fn charge_filled_rows<C: Charge<HtmlWork, HtmlResource>>(
+        charge: &mut C,
+        plan: RowAppend,
+    ) -> Result<(), HtmlConstructionAttributeError<C::Stop>> {
+        let per_quantum = (CHARGE_QUANTUM / size_of::<AttrRow>()).max(1);
+        let mut remaining = plan.written();
+        while remaining != 0 {
+            let chunk = remaining.min(per_quantum);
+            Work {
+                record_writes: chunk,
+                ..Work::default()
+            }
+            .charge(charge)?;
+            remaining = remaining.saturating_sub(chunk);
+        }
+        Ok(())
+    }
+
+    /// Charges the copy of the units of a value in quanta, before it runs.
+    pub(super) fn charge_value<C: Charge<HtmlWork, HtmlResource>>(
+        charge: &mut C,
+        units: &[u16],
+    ) -> Result<(), HtmlConstructionAttributeError<C::Stop>> {
+        for chunk in units.chunks(CHUNK_UNITS) {
+            Work {
+                copied_bytes: size_of_val(chunk),
+                record_writes: 1,
+                ..Work::default()
+            }
+            .charge(charge)?;
+        }
+        Ok(())
     }
 
     /// What the name index describes now: the first `len` attributes of the element at `target`,
@@ -437,7 +455,7 @@ impl HtmlConstructionStorage {
         &self,
         charge: &mut C,
         index: &mut HtmlAttributeNameIndex,
-        list: &[Attribute],
+        list: &[AttrRow],
         name: &QualifiedName,
     ) -> Result<Lookup, HtmlConstructionAttributeError<C::Stop>> {
         hash_length_work().charge(charge)?;
@@ -478,7 +496,7 @@ impl HtmlConstructionStorage {
     /// The position of the attribute that has `name`, comparing every name when no index serves.
     fn find_name<C: Charge<HtmlWork, HtmlResource>>(
         charge: &mut C,
-        list: &[Attribute],
+        list: &[AttrRow],
         name: &QualifiedName,
         except: Option<usize>,
     ) -> Result<Option<usize>, HtmlConstructionAttributeError<C::Stop>> {
@@ -493,75 +511,10 @@ impl HtmlConstructionStorage {
         Ok(None)
     }
 
-    /// Grows the list of the element at `target` to at least `minimum` attributes: admits the
-    /// growth once, reserves the capacity the consumer chose, and records the capacity reached.
-    fn grow_attributes<A: HtmlAttributeAdmission>(
-        &mut self,
-        target: usize,
-        minimum: usize,
-        admission: &mut A,
-    ) -> Result<HtmlConstructionAttributeCapacity, HtmlConstructionAttributeError<A::Stop>> {
-        let before = self.attribute_dimensions(target).map_err(faulted)?;
-        minimum
-            .checked_mul(size_of::<Attribute>())
-            .filter(|bytes| *bytes <= isize::MAX as usize)
-            .ok_or_else(|| fault(HtmlConstructionCause::RepresentationExhausted))?;
-        self.require_exclusive_attributes(target).map_err(faulted)?;
-        let capacity = admission
-            .admit_growth(HtmlConstructionAttributeGrowth {
-                before,
-                minimum_capacity: minimum,
-            })
-            .map_err(HtmlChargedError::Stopped)?;
-        if capacity < minimum {
-            return Err(fault(HtmlConstructionCause::CapacityMismatch));
-        }
-        // The consumer records the capacity before anything is reserved, so that its refusal
-        // leaves the list as it was.
-        admission
-            .record_growth(HtmlConstructionAttributeCapacity {
-                initialized_len: before.initialized_len,
-                capacity,
-            })
-            .map_err(HtmlChargedError::Stopped)?;
-        let reserve = |storage: &mut Self, additional: usize| match storage
-            .arena
-            .records
-            .get_mut(target)
-            .map(|r| &mut r.kind)
-        {
-            Some(NodeContent::Element(element)) => {
-                element.attributes.reserve_exact_in_construction(additional)
-            }
-            _ => None,
-        };
-        let needed = minus(minimum, before.initialized_len).map_err(faulted)?;
-        let spare = minus(capacity, before.initialized_len).map_err(faulted)?;
-        let (mut result, mut reached) = reserve(self, spare)
-            .ok_or_else(|| fault(HtmlConstructionCause::SharedAllocationAliased))?;
-        // Only an allocator refusal of the spare room falls back to the room that is needed.
-        if result.is_err() && capacity > minimum {
-            (result, reached) = reserve(self, needed)
-                .ok_or_else(|| fault(HtmlConstructionCause::SharedAllocationAliased))?;
-        }
-        let after = HtmlConstructionAttributeCapacity {
-            initialized_len: before.initialized_len,
-            capacity: reached,
-        };
-        // An overshoot, or the unchanged capacity of a reservation the allocator refused, takes
-        // the place of the capacity recorded above.
-        if reached != capacity {
-            admission
-                .record_growth(after)
-                .map_err(HtmlChargedError::Stopped)?;
-        }
-        result.map_err(|_| fault(HtmlConstructionCause::AllocationFailed))?;
-        Ok(after)
-    }
-
-    /// Ensures the list of the element `node` can hold `additional` more attributes, admitting
-    /// the growth once when it cannot. Returns the dimensions of the list afterwards.
-    pub fn reserve_attributes<A: HtmlAttributeAdmission>(
+    /// Ensures the run of the element `node` can hold `additional` more attributes, admitting
+    /// the growth of the banks it needs once when it cannot. Returns the dimensions of the run
+    /// afterwards.
+    pub fn reserve_attributes<A: HtmlRecordAdmission>(
         &mut self,
         node: &HtmlBuilderNode,
         additional: usize,
@@ -570,30 +523,61 @@ impl HtmlConstructionStorage {
         Self::charge_qualification(admission)?;
         let target = self.attribute_target(node).map_err(faulted)?;
         let before = self.attribute_dimensions(target).map_err(faulted)?;
-        let minimum = plus(before.initialized_len, additional).map_err(faulted)?;
-        if minimum <= before.capacity {
+        if additional == 0 {
             return Ok(before);
         }
-        self.grow_attributes(target, minimum, admission)
+        let ix = self.element_run(target).map_err(faulted)?;
+        let plan = self.attrs.plan(ix, additional).map_err(faulted)?;
+        if plan == RowAppend::Room {
+            return Ok(before);
+        }
+        let moved = match plan {
+            RowAppend::Relocate { .. } => before.initialized_len,
+            _ => 0,
+        };
+        Self::charge_moved_rows(admission, moved)?;
+        Self::charge_filled_rows(admission, plan)?;
+        Work {
+            record_visits: 1,
+            copied_bytes: size_of::<AttrRun>(),
+            record_writes: 2,
+            ..Work::default()
+        }
+        .charge(admission)?;
+        self.grow_attribute_banks(plan, 0, admission)?;
+        let run = self.attrs.make_room(ix, plan).map_err(faulted)?;
+        if ix.is_none() {
+            self.set_element_run(target, run).map_err(faulted)?;
+        }
+        self.attribute_dimensions(target).map_err(faulted)
     }
 
-    /// Appends the attribute in `incoming` to the element `node`, taking it from `incoming`. The
-    /// name must not repeat an attribute of the element, or the edit is refused with the
-    /// duplicate-attribute cause. A full list grows once, through `admission`.
+    /// Appends the attribute `incoming` to the element `node`, interning its name and copying its
+    /// value to the text arena. The name must not repeat an attribute of the element, or the edit
+    /// is refused with the duplicate-attribute cause. A full run moves or extends once, through
+    /// `admission`.
     ///
     /// With `names`, a duplicate is found by probing the few names that share a hash, so that the
     /// work of appending `n` attributes is linear in `n` and the length of their names. The index
     /// describes the element's attributes while its binding matches them and is rebuilt when it
     /// does not; an index too small for the names is ignored and every name is compared. Returns
     /// the position the attribute took.
-    pub fn append_attribute<A: HtmlAttributeAdmission>(
+    pub fn append_attribute<A: HtmlRecordAdmission, I: HtmlAttributeInput + ?Sized>(
         &mut self,
         node: &HtmlBuilderNode,
-        incoming: &mut Option<Attribute>,
+        incoming: &I,
         names: Option<&mut HtmlAttributeNameIndex>,
         admission: &mut A,
     ) -> Result<usize, HtmlConstructionAttributeError<A::Stop>> {
-        self.append_one(node, incoming, names, None, admission)
+        let entry = self.intern_attribute_name(incoming.name(), admission)?;
+        self.append_entry(
+            node,
+            entry,
+            incoming.value().code_units(),
+            names,
+            None,
+            admission,
+        )
     }
 
     /// As [`append_attribute`](Self::append_attribute) for the attribute a merge plan kept for
@@ -604,43 +588,94 @@ impl HtmlConstructionStorage {
     /// the index still describes the element as the plan left it and the lookup passed the
     /// plan's entry for the position, that entry stays and nothing more is entered. Any other
     /// attribute leaves the index describing nothing, and the next edit rebuilds it.
-    pub fn append_planned_attribute<A: HtmlAttributeAdmission>(
+    pub fn append_planned_attribute<A: HtmlRecordAdmission, I: HtmlAttributeInput + ?Sized>(
         &mut self,
         node: &HtmlBuilderNode,
-        incoming: &mut Option<Attribute>,
+        incoming: &I,
         candidate: &DocumentString,
         names: Option<&mut HtmlAttributeNameIndex>,
         admission: &mut A,
     ) -> Result<usize, HtmlConstructionAttributeError<A::Stop>> {
-        self.append_one(node, incoming, names, Some(candidate), admission)
+        let entry = self.intern_attribute_name(incoming.name(), admission)?;
+        self.append_entry(
+            node,
+            entry,
+            incoming.value().code_units(),
+            names,
+            Some(candidate),
+            admission,
+        )
     }
 
-    fn append_one<A: HtmlAttributeAdmission>(
+    /// Appends an attribute of the interned name `name`, an id this storage issued, whose value
+    /// is a copy of `value`, as [`append_attribute`](Self::append_attribute) does without
+    /// interning the name again; `candidate` names the candidate of a merge plan that the
+    /// attribute is, as [`append_planned_attribute`](Self::append_planned_attribute) says. The
+    /// foreign-builder cause for the id of another storage.
+    pub fn append_named_attribute<A: HtmlRecordAdmission>(
         &mut self,
         node: &HtmlBuilderNode,
-        incoming: &mut Option<Attribute>,
+        name: &NameId,
+        value: &[u16],
+        candidate: Option<&DocumentString>,
+        names: Option<&mut HtmlAttributeNameIndex>,
+        admission: &mut A,
+    ) -> Result<usize, HtmlConstructionAttributeError<A::Stop>> {
+        Work {
+            record_visits: 1,
+            ..Work::default()
+        }
+        .charge(admission)?;
+        let entry = self.name_entry(name).map_err(faulted)?.clone();
+        self.append_entry(node, entry, value, names, candidate, admission)
+    }
+
+    /// The interned entry of an attribute name given by its components.
+    fn intern_attribute_name<A: HtmlRecordAdmission>(
+        &mut self,
+        name: &(impl HtmlNameInput + ?Sized),
+        admission: &mut A,
+    ) -> Result<Arc<NameEntry>, HtmlConstructionAttributeError<A::Stop>> {
+        let namespace = name
+            .namespace_uri()
+            .cloned()
+            .map_or_else(Namespace::none, Namespace::from_uri);
+        let key = NameKey {
+            namespace: &namespace,
+            prefix: name.prefix(),
+            local_name: name.local_name().code_units(),
+        };
+        self.intern(key, None, admission).map(|(_, entry)| entry)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn append_entry<A: HtmlRecordAdmission>(
+        &mut self,
+        node: &HtmlBuilderNode,
+        entry: Arc<NameEntry>,
+        value: &[u16],
         names: Option<&mut HtmlAttributeNameIndex>,
         candidate: Option<&DocumentString>,
         admission: &mut A,
     ) -> Result<usize, HtmlConstructionAttributeError<A::Stop>> {
         Self::charge_qualification(admission)?;
         let target = self.attribute_target(node).map_err(faulted)?;
-        let attribute = incoming
-            .as_ref()
-            .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
+        let ix = self.element_run(target).map_err(faulted)?;
         let before = self.attribute_dimensions(target).map_err(faulted)?;
         let len = before.initialized_len;
         let usage = self.arena.usage;
-        let attributes = plus(usage.attributes, 1).map_err(faulted)?;
-        let utf16_units = plus(
+        let mut after = usage;
+        after.attributes = plus(usage.attributes, 1).map_err(faulted)?;
+        after.utf16_units = plus(
             usage.utf16_units,
-            attribute_units(attribute).map_err(faulted)?,
+            attribute_units(entry.name(), value.len()).map_err(faulted)?,
         )
         .map_err(faulted)?;
         let grown = plus(len, 1).map_err(faulted)?;
+        self.text.check_add(value.len()).map_err(faulted)?;
         let is_candidate = candidate.is_some_and(|candidate| {
-            attribute.name().namespace().uri().is_none()
-                && attribute.name().local_name().shares_storage_with(candidate)
+            entry.name().namespace().uri().is_none()
+                && entry.name().local_name().shares_storage_with(candidate)
         });
         // Every comparison is charged before any change is made.
         let mut indexed = None;
@@ -652,10 +687,11 @@ impl HtmlConstructionStorage {
                 Binding::Slots { planned, .. } => planned,
                 Binding::Unbound => 0,
             };
-            // The lookup runs for a planned attribute too: the candidate is the caller's word, and
-            // an attribute whose name an earlier attribute has is refused whatever the plan says.
+            // The lookup runs for a planned attribute too: the candidate is the caller's
+            // word, and an attribute whose name an earlier attribute has is refused whatever
+            // the plan says.
             let list = self.attribute_slice(target).map_err(faulted)?;
-            match self.index_lookup(admission, index, list, attribute.name())? {
+            match self.index_lookup(admission, index, list, entry.name())? {
                 Lookup::Found(first) => return Err(fault_duplicate(first, len)),
                 Lookup::Absent {
                     vacancy,
@@ -678,29 +714,44 @@ impl HtmlConstructionStorage {
             indexed = Some(index);
         } else {
             let list = self.attribute_slice(target).map_err(faulted)?;
-            if let Some(first) = Self::find_name(admission, list, attribute.name(), None)? {
+            if let Some(first) = Self::find_name(admission, list, entry.name(), None)? {
                 return Err(fault_duplicate(first, len));
             }
         }
-        self.require_exclusive_attributes(target).map_err(faulted)?;
+        let plan = self.attrs.plan(ix, 1).map_err(faulted)?;
+        let change = HtmlConstructionChange {
+            before: usage,
+            after,
+        };
+        admission.admit_change(self, change).map_err(stopped)?;
+        let moved = match plan {
+            RowAppend::Relocate { .. } => len,
+            _ => 0,
+        };
+        Self::charge_moved_rows(admission, moved)?;
+        Self::charge_filled_rows(admission, plan)?;
+        Self::charge_value(admission, value)?;
         Work {
             record_visits: 2,
-            copied_bytes: 2 * size_of::<Attribute>(),
+            copied_bytes: size_of::<AttrRow>(),
             record_writes: 3,
             ..Work::default()
         }
         .charge(admission)?;
-        if before.capacity == len {
-            self.grow_attributes(target, grown, admission)?;
+        self.grow_attribute_banks(plan, value.len(), admission)?;
+        admission.record_change(self, change).map_err(stopped)?;
+        // The banks have room for the writes below, which allocate nothing.
+        let run = self.attrs.make_room(ix, plan).map_err(faulted)?;
+        if ix.is_none() {
+            self.set_element_run(target, run).map_err(faulted)?;
         }
-        let Some(attribute) = incoming.take() else {
-            return Err(fault(HtmlConstructionCause::OperandMissing));
-        };
-        self.attributes_for_change(target)
-            .map_err(faulted)?
-            .push(attribute);
-        self.arena.usage.attributes = attributes;
-        self.arena.usage.utf16_units = utf16_units;
+        let text = self.text.push(value).map_err(faulted)?.text();
+        let index = self
+            .attrs
+            .push(run, AttrRow::new(entry, text))
+            .map_err(faulted)?;
+        self.arena.usage = after;
+        self.arena.attribute_revision = self.arena.attribute_revision.wrapping_add(1);
         if let Some(index) = indexed {
             // Nothing but this push has changed the attributes or the table since the lookup, so
             // the vacancy is still the slot the name's probe ended at.
@@ -713,8 +764,8 @@ impl HtmlConstructionStorage {
                     tag,
                     planned: 0,
                 }) => {
-                    let placed =
-                        entry(tag, len).is_some_and(|entry| index.insert(vacancy, entry).is_ok());
+                    let placed = crate::internal::values::attribute_name_index::entry(tag, len)
+                        .is_some_and(|slot| index.insert(vacancy, slot).is_ok());
                     if placed {
                         self.described(target, grown, 0)
                     } else {
@@ -727,108 +778,164 @@ impl HtmlConstructionStorage {
             };
             index.bind(binding);
         }
-        Ok(len)
+        Ok(index)
     }
 
-    /// Replaces the attribute at `index` of the element `node` with `incoming`, which is taken,
-    /// and returns the attribute it replaced. The replacement's name must not repeat another
-    /// attribute of the element.
-    pub fn replace_attribute<A: HtmlAttributeAdmission>(
+    /// Replaces the attribute at `index` of the element `node` with `incoming`, interning its
+    /// name and copying its value. The replacement's name must not repeat another attribute of
+    /// the element. A value no longer than the one it replaces is written over its units;
+    /// a longer one is written at the tail of the text arena, and the units of the old value stay
+    /// written as spare.
+    pub fn replace_attribute<A: HtmlRecordAdmission, I: HtmlAttributeInput + ?Sized>(
         &mut self,
         node: &HtmlBuilderNode,
         index: usize,
-        incoming: &mut Option<Attribute>,
+        incoming: &I,
         admission: &mut A,
-    ) -> Result<Attribute, HtmlConstructionAttributeError<A::Stop>> {
+    ) -> Result<(), HtmlConstructionAttributeError<A::Stop>> {
         Self::charge_qualification(admission)?;
         let target = self.attribute_target(node).map_err(faulted)?;
+        let list = self.attribute_slice(target).map_err(faulted)?;
+        if list.get(index).is_none() {
+            return Err(fault(HtmlConstructionCause::OperandMissing));
+        }
+        let entry = self.intern_attribute_name(incoming.name(), admission)?;
+        self.replace_entry(
+            target,
+            index,
+            entry,
+            incoming.value().code_units(),
+            admission,
+        )
+    }
+
+    /// Replaces the attribute at `index` of the element `node` with one of the interned name
+    /// `name`, an id this storage issued, and a copy of `value`, as
+    /// [`replace_attribute`](Self::replace_attribute) does without interning the name again. The
+    /// foreign-builder cause for the id of another storage.
+    pub fn replace_named_attribute<A: HtmlRecordAdmission>(
+        &mut self,
+        node: &HtmlBuilderNode,
+        index: usize,
+        name: &NameId,
+        value: &[u16],
+        admission: &mut A,
+    ) -> Result<(), HtmlConstructionAttributeError<A::Stop>> {
+        Self::charge_qualification(admission)?;
+        let target = self.attribute_target(node).map_err(faulted)?;
+        let entry = self.name_entry(name).map_err(faulted)?.clone();
+        self.replace_entry(target, index, entry, value, admission)
+    }
+
+    fn replace_entry<A: HtmlRecordAdmission>(
+        &mut self,
+        target: usize,
+        index: usize,
+        entry: Arc<NameEntry>,
+        value: &[u16],
+        admission: &mut A,
+    ) -> Result<(), HtmlConstructionAttributeError<A::Stop>> {
+        let ix = self.element_run(target).map_err(faulted)?;
         let list = self.attribute_slice(target).map_err(faulted)?;
         let old = list
             .get(index)
             .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
-        let new = incoming
-            .as_ref()
-            .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
         let usage = self.arena.usage;
-        let utf16_units = plus(
-            minus(usage.utf16_units, attribute_units(old).map_err(faulted)?).map_err(faulted)?,
-            attribute_units(new).map_err(faulted)?,
+        let mut after = usage;
+        after.utf16_units = plus(
+            minus(
+                usage.utf16_units,
+                attribute_units(old.name(), old.value().len()).map_err(faulted)?,
+            )
+            .map_err(faulted)?,
+            attribute_units(entry.name(), value.len()).map_err(faulted)?,
         )
         .map_err(faulted)?;
-        if !identical_name(old.name(), new.name())
-            && let Some(first) = Self::find_name(admission, list, new.name(), Some(index))?
+        if !identical_name(old.name(), entry.name())
+            && let Some(first) = Self::find_name(admission, list, entry.name(), Some(index))?
         {
             return Err(fault_duplicate(first, index));
         }
-        self.require_exclusive_attributes(target).map_err(faulted)?;
+        let (old_value, in_place) = (old.value(), value.len() <= old.value().len());
+        let tail = if in_place { 0 } else { value.len() };
+        self.text.check_add(tail).map_err(faulted)?;
+        let change = HtmlConstructionChange {
+            before: usage,
+            after,
+        };
+        admission.admit_change(self, change).map_err(stopped)?;
+        Self::charge_value(admission, value)?;
         Work {
             record_visits: 2,
-            copied_bytes: 2 * size_of::<Attribute>(),
+            copied_bytes: size_of::<AttrRow>(),
             record_writes: 3,
             ..Work::default()
         }
         .charge(admission)?;
-        let Some(attribute) = incoming.take() else {
-            return Err(fault(HtmlConstructionCause::OperandMissing));
+        self.grow_attribute_banks(RowAppend::Room, tail, admission)?;
+        admission.record_change(self, change).map_err(stopped)?;
+        let run = ix.ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
+        let text = if in_place {
+            self.text.overwrite(old_value, value).map_err(faulted)?
+        } else {
+            let text = self.text.push(value).map_err(faulted)?.text();
+            self.text.forget(old_value.len()).map_err(faulted)?;
+            text
         };
-        let slot = self
-            .attributes_for_change(target)
-            .map_err(faulted)?
-            .get_mut(index)
-            .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
-        let old = std::mem::replace(slot, attribute);
-        self.arena.usage.utf16_units = utf16_units;
-        Ok(old)
+        self.attrs
+            .replace(run, index, AttrRow::new(entry, text))
+            .map_err(faulted)?;
+        self.arena.usage = after;
+        self.arena.attribute_revision = self.arena.attribute_revision.wrapping_add(1);
+        Ok(())
     }
 
     /// Removes the attribute at `index` of the element `node`, shifting the attributes after it
-    /// down by one place, and returns it. The shift is charged before it runs, in quanta.
-    pub fn remove_attribute<A: HtmlAttributeAdmission>(
+    /// down by one place. The shift is charged before it runs, in quanta, and the units of the
+    /// value stay written as spare.
+    pub fn remove_attribute<A: HtmlRecordAdmission>(
         &mut self,
         node: &HtmlBuilderNode,
         index: usize,
         admission: &mut A,
-    ) -> Result<Attribute, HtmlConstructionAttributeError<A::Stop>> {
+    ) -> Result<(), HtmlConstructionAttributeError<A::Stop>> {
         Self::charge_qualification(admission)?;
         let target = self.attribute_target(node).map_err(faulted)?;
+        let ix = self.element_run(target).map_err(faulted)?;
         let list = self.attribute_slice(target).map_err(faulted)?;
         let old = list
             .get(index)
             .ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
         let usage = self.arena.usage;
-        let attributes = minus(usage.attributes, 1).map_err(faulted)?;
-        let utf16_units =
-            minus(usage.utf16_units, attribute_units(old).map_err(faulted)?).map_err(faulted)?;
+        let mut after = usage;
+        after.attributes = minus(usage.attributes, 1).map_err(faulted)?;
+        after.utf16_units = minus(
+            usage.utf16_units,
+            attribute_units(old.name(), old.value().len()).map_err(faulted)?,
+        )
+        .map_err(faulted)?;
+        let released = old.value().len();
         let moved = minus(list.len(), plus(index, 1).map_err(faulted)?).map_err(faulted)?;
-        self.require_exclusive_attributes(target).map_err(faulted)?;
-        let mut remaining = moved;
-        let per_quantum = (CHARGE_QUANTUM / size_of::<Attribute>()).max(1);
-        while remaining != 0 {
-            let chunk = remaining.min(per_quantum);
-            Work {
-                record_visits: 1,
-                copied_bytes: chunk.saturating_mul(size_of::<Attribute>()),
-                record_writes: chunk,
-                ..Work::default()
-            }
-            .charge(admission)?;
-            remaining = remaining.saturating_sub(chunk);
-        }
+        let change = HtmlConstructionChange {
+            before: usage,
+            after,
+        };
+        admission.admit_change(self, change).map_err(stopped)?;
+        Self::charge_moved_rows(admission, moved)?;
         Work {
             record_visits: 1,
-            copied_bytes: size_of::<Attribute>(),
+            copied_bytes: size_of::<AttrRow>(),
             record_writes: 2,
             ..Work::default()
         }
         .charge(admission)?;
-        let removed = self.attributes_for_change(target).map_err(faulted)?;
-        if index >= removed.len() {
-            return Err(fault(HtmlConstructionCause::OperandMissing));
-        }
-        let old = removed.remove(index);
-        self.arena.usage.attributes = attributes;
-        self.arena.usage.utf16_units = utf16_units;
-        Ok(old)
+        admission.record_change(self, change).map_err(stopped)?;
+        let run = ix.ok_or_else(|| fault(HtmlConstructionCause::OperandMissing))?;
+        self.attrs.remove(run, index).map_err(faulted)?;
+        self.text.forget(released).map_err(faulted)?;
+        self.arena.usage = after;
+        self.arena.attribute_revision = self.arena.attribute_revision.wrapping_add(1);
+        Ok(())
     }
 
     /// Decides which candidates `merge` offers are kept: a candidate is kept when no attribute of
@@ -945,38 +1052,58 @@ fn fault_duplicate<S>(first: usize, duplicate: usize) -> HtmlConstructionAttribu
 
 #[cfg(test)]
 mod tests {
+    use super::super::records::{
+        HtmlConstructionBank, HtmlConstructionBankGrowth, HtmlConstructionGrowthRecord,
+    };
     use super::*;
-    use crate::internal::values::{Namespace, OrderedAttributes};
+    use crate::internal::values::{Attribute, OrderedAttributes};
     use std::collections::HashSet;
 
     /// The refusal of a [`Meter`].
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct Refused;
 
-    /// A consumer that records what it is asked, and refuses at a chosen charge or growth.
+    /// A consumer that records what it is asked, and refuses at a chosen call: the
+    /// `refuse_from`th call of any of its methods, counting from zero, and every call after it.
     #[derive(Default)]
     struct Meter {
-        charges: usize,
-        refuse_from_charge: Option<usize>,
+        calls: usize,
+        refuse_from: Option<usize>,
+        /// Refuses every admission of growth.
         refuse_growth: bool,
-        /// Refuses the record of a growth whose place among the records is at least this.
-        refuse_record_from: Option<usize>,
+        /// The capacity it chooses beyond the minimum.
         spare: usize,
         work: u64,
         largest_copy: u64,
-        growths: Vec<HtmlConstructionAttributeGrowth>,
-        recorded: Vec<HtmlConstructionAttributeCapacity>,
+        growths: Vec<HtmlConstructionBankGrowth>,
+        records: Vec<HtmlConstructionGrowthRecord>,
+    }
+    impl Meter {
+        fn call(&mut self) -> Result<(), Refused> {
+            let index = self.calls;
+            self.calls += 1;
+            match self.refuse_from {
+                Some(from) if index >= from => Err(Refused),
+                _ => Ok(()),
+            }
+        }
+        fn refusing_from(index: usize) -> Self {
+            Self {
+                refuse_from: Some(index),
+                ..Self::default()
+            }
+        }
+        fn banks(&self, bank: HtmlConstructionBank) -> usize {
+            self.growths
+                .iter()
+                .filter(|growth| growth.bank() == bank)
+                .count()
+        }
     }
     impl Charge<HtmlWork, HtmlResource> for Meter {
         type Stop = Refused;
         fn charge(&mut self, batch: &[Change<HtmlWork, HtmlResource>]) -> Result<(), Refused> {
-            self.charges += 1;
-            if self
-                .refuse_from_charge
-                .is_some_and(|from| self.charges > from)
-            {
-                return Err(Refused);
-            }
+            self.call()?;
             for change in batch {
                 if let Change::Work(work, amount) = *change {
                     self.work += amount;
@@ -991,29 +1118,33 @@ mod tests {
             Ok(())
         }
     }
-    impl HtmlAttributeAdmission for Meter {
-        fn admit_growth(
+    impl HtmlRecordAdmission for Meter {
+        fn admit_change(
             &mut self,
-            growth: HtmlConstructionAttributeGrowth,
-        ) -> Result<usize, Refused> {
+            _: &HtmlConstructionStorage,
+            _: HtmlConstructionChange,
+        ) -> Result<(), Refused> {
+            self.call()
+        }
+        fn admit_growth(&mut self, growth: HtmlConstructionBankGrowth) -> Result<usize, Refused> {
+            self.call()?;
             self.growths.push(growth);
             if self.refuse_growth {
                 return Err(Refused);
             }
             Ok(growth.minimum_capacity() + self.spare)
         }
-        fn record_growth(
-            &mut self,
-            reached: HtmlConstructionAttributeCapacity,
-        ) -> Result<(), Refused> {
-            if self
-                .refuse_record_from
-                .is_some_and(|from| self.recorded.len() >= from)
-            {
-                return Err(Refused);
-            }
-            self.recorded.push(reached);
+        fn record_growth(&mut self, record: HtmlConstructionGrowthRecord) -> Result<(), Refused> {
+            self.call()?;
+            self.records.push(record);
             Ok(())
+        }
+        fn record_change(
+            &mut self,
+            _: &HtmlConstructionStorage,
+            _: HtmlConstructionChange,
+        ) -> Result<(), Refused> {
+            self.call()
         }
     }
 
@@ -1080,26 +1211,36 @@ mod tests {
             .map(|held| held.name().local_name().to_utf8().unwrap())
             .collect()
     }
+    fn values_of(storage: &HtmlConstructionStorage, position: usize) -> Vec<String> {
+        storage
+            .attribute_slice(position)
+            .unwrap()
+            .iter()
+            .map(|held| String::from_utf16(storage.text.get(held.value()).unwrap()).unwrap())
+            .collect()
+    }
     /// What an edit must leave alone when it is refused.
-    fn snapshot(
-        storage: &HtmlConstructionStorage,
-    ) -> (Vec<Vec<(String, String)>>, HtmlConstructionUsage, u64) {
+    type Snapshot = (
+        Vec<Vec<(String, String)>>,
+        HtmlConstructionUsage,
+        u64,
+        usize,
+    );
+    fn snapshot(storage: &HtmlConstructionStorage) -> Snapshot {
         let lists = (0..storage.len())
             .map(|position| {
-                storage
-                    .attribute_slice(position)
-                    .unwrap()
-                    .iter()
-                    .map(|held| {
-                        (
-                            held.name().local_name().to_utf8().unwrap(),
-                            held.value().to_utf8().unwrap(),
-                        )
-                    })
+                names_of(storage, position)
+                    .into_iter()
+                    .zip(values_of(storage, position))
                     .collect()
             })
             .collect();
-        (lists, storage.usage(), storage.arena.attribute_revision)
+        (
+            lists,
+            storage.usage(),
+            storage.arena.attribute_revision,
+            storage.text.used(),
+        )
     }
     fn index(entries: usize) -> HtmlAttributeNameIndex {
         let slots = HtmlAttributeNameIndex::slots_required(entries).unwrap();
@@ -1113,17 +1254,15 @@ mod tests {
     }
 
     #[test]
-    fn an_append_adds_the_incoming_attribute_and_counts_it() {
+    fn an_append_adds_the_attribute_with_its_value_in_the_arena_and_counts_it() {
         let (mut storage, node) = make_storage(vec![attribute("a", "1"), attribute("b", "22")]);
         let before = storage.usage();
-        let mut incoming = Some(attribute("c", "333"));
-        let mut meter = Meter::default();
         let position = storage
-            .append_attribute(&node, &mut incoming, None, &mut meter)
+            .append_attribute(&node, &attribute("c", "333"), None, &mut Meter::default())
             .unwrap();
         assert_eq!(position, 2);
         assert_eq!(names_of(&storage, 0), ["a", "b", "c"]);
-        assert!(incoming.is_none(), "the appended attribute is taken");
+        assert_eq!(values_of(&storage, 0), ["1", "22", "333"]);
         // One attribute of a one-unit name and a three-unit value.
         assert_eq!(storage.usage().attributes(), before.attributes() + 1);
         assert_eq!(storage.usage().utf16_units(), before.utf16_units() + 4);
@@ -1137,10 +1276,14 @@ mod tests {
             Some("pre".into()),
             DocumentString::from("loc"),
         );
-        let mut incoming = Some(Attribute::new(name, "value"));
         let before = storage.usage().utf16_units();
         storage
-            .append_attribute(&node, &mut incoming, None, &mut Meter::default())
+            .append_attribute(
+                &node,
+                &Attribute::new(name, "value"),
+                None,
+                &mut Meter::default(),
+            )
             .unwrap();
         assert_eq!(storage.usage().utf16_units(), before + 5 + 3 + 3 + 5);
     }
@@ -1158,63 +1301,93 @@ mod tests {
             ),
             "other",
         );
-        let mut incoming = Some(repeated);
+        for indexed in [false, true] {
+            let mut table = index(16);
+            let error = storage
+                .append_attribute(
+                    &node,
+                    &repeated,
+                    indexed.then_some(&mut table),
+                    &mut Meter::default(),
+                )
+                .unwrap_err();
+            assert_eq!(
+                cause(error),
+                HtmlConstructionCause::DuplicateAttribute {
+                    first: 1,
+                    duplicate: 2
+                }
+            );
+            assert_eq!(snapshot(&storage), before);
+        }
+        // The same local name in another namespace is another name, and two prefixes of one
+        // namespace and local name are one name.
+        let other = |prefix: Option<&str>| {
+            Attribute::new(
+                QualifiedName::new(
+                    Namespace::from_uri("urn:x"),
+                    prefix.map(Into::into),
+                    DocumentString::from("b"),
+                ),
+                "v",
+            )
+        };
+        storage
+            .append_attribute(&node, &other(Some("p1")), None, &mut Meter::default())
+            .unwrap();
+        assert_eq!(names_of(&storage, 0), ["a", "b", "b"]);
         let error = storage
-            .append_attribute(&node, &mut incoming, None, &mut Meter::default())
+            .append_attribute(&node, &other(Some("p2")), None, &mut Meter::default())
             .unwrap_err();
         assert_eq!(
             cause(error),
             HtmlConstructionCause::DuplicateAttribute {
-                first: 1,
-                duplicate: 2
+                first: 2,
+                duplicate: 3
             }
         );
-        assert_eq!(snapshot(&storage), before);
-        assert!(
-            incoming.is_some(),
-            "the incoming attribute stays with the caller"
-        );
-        // The same local name in another namespace is another name.
-        let other = Attribute::new(
-            QualifiedName::new(
-                Namespace::from_uri("urn:x"),
-                None,
-                DocumentString::from("b"),
-            ),
-            "v",
-        );
-        storage
-            .append_attribute(&node, &mut Some(other), None, &mut Meter::default())
-            .unwrap();
-        assert_eq!(names_of(&storage, 0), ["a", "b", "b"]);
     }
 
     #[test]
-    fn a_full_list_grows_once_and_is_told_the_capacity_it_needs() {
+    fn a_full_run_grows_the_rows_once_and_is_told_the_capacity_it_needs() {
         let (mut storage, node) = make_storage(vec![attribute("a", "1")]);
         let before = storage.attribute_dimensions(0).unwrap();
+        assert_eq!(before.capacity, 1);
         let mut meter = Meter {
             spare: 3,
             ..Meter::default()
         };
         storage
-            .append_attribute(&node, &mut Some(attribute("b", "2")), None, &mut meter)
+            .append_attribute(&node, &attribute("b", "2"), None, &mut meter)
             .unwrap();
-        assert_eq!(meter.growths.len(), 1);
-        assert_eq!(meter.growths[0].before(), before);
-        assert_eq!(
-            meter.growths[0].minimum_capacity(),
-            before.initialized_len + 1
-        );
-        assert_eq!(meter.recorded.len(), 1);
-        assert!(meter.recorded[0].capacity >= before.initialized_len + 1 + 3);
+        // The run is at the tail of the table, so it extends there: the rows and the text arena
+        // grow once each, and the runs do not.
+        assert_eq!(meter.banks(HtmlConstructionBank::AttributeRows), 1);
+        assert_eq!(meter.banks(HtmlConstructionBank::AttributeRuns), 0);
+        let rows = meter
+            .growths
+            .iter()
+            .find(|growth| growth.bank() == HtmlConstructionBank::AttributeRows)
+            .unwrap();
+        assert_eq!(rows.element_size(), size_of::<AttrRow>());
+        assert_eq!(rows.minimum_capacity(), storage.attrs.rows_len());
+        assert!(storage.attrs.rows_capacity() >= rows.minimum_capacity() + 3);
         // The spare room the consumer chose absorbs the next appends without another growth.
+        let growths = meter.growths.len();
         for name in ["c", "d", "e"] {
             storage
-                .append_attribute(&node, &mut Some(attribute(name, "v")), None, &mut meter)
+                .append_attribute(&node, &attribute(name, "v"), None, &mut meter)
                 .unwrap();
         }
-        assert_eq!(meter.growths.len(), 1);
+        assert_eq!(
+            meter
+                .growths
+                .iter()
+                .filter(|growth| growth.bank() == HtmlConstructionBank::AttributeRows)
+                .count(),
+            1
+        );
+        assert!(meter.growths.len() >= growths);
         assert_eq!(names_of(&storage, 0), ["a", "b", "c", "d", "e"]);
     }
 
@@ -1230,18 +1403,26 @@ mod tests {
                 Ok(())
             }
         }
-        impl HtmlAttributeAdmission for Stingy {
-            fn admit_growth(
+        impl HtmlRecordAdmission for Stingy {
+            fn admit_change(
                 &mut self,
-                g: HtmlConstructionAttributeGrowth,
-            ) -> Result<usize, Refused> {
+                storage: &HtmlConstructionStorage,
+                change: HtmlConstructionChange,
+            ) -> Result<(), Refused> {
+                self.0.admit_change(storage, change)
+            }
+            fn admit_growth(&mut self, g: HtmlConstructionBankGrowth) -> Result<usize, Refused> {
                 Ok(g.minimum_capacity() - 1)
             }
-            fn record_growth(
-                &mut self,
-                _: HtmlConstructionAttributeCapacity,
-            ) -> Result<(), Refused> {
+            fn record_growth(&mut self, _: HtmlConstructionGrowthRecord) -> Result<(), Refused> {
                 panic!("nothing was reserved")
+            }
+            fn record_change(
+                &mut self,
+                storage: &HtmlConstructionStorage,
+                change: HtmlConstructionChange,
+            ) -> Result<(), Refused> {
+                self.0.record_change(storage, change)
             }
         }
         let (mut storage, node) = make_storage(vec![attribute("a", "1")]);
@@ -1249,7 +1430,7 @@ mod tests {
         let error = storage
             .append_attribute(
                 &node,
-                &mut Some(attribute("b", "2")),
+                &attribute("b", "2"),
                 None,
                 &mut Stingy(Meter::default()),
             )
@@ -1260,17 +1441,15 @@ mod tests {
 
     #[test]
     fn a_refusal_at_any_admission_point_of_an_append_changes_nothing() {
-        // Every charge and the growth are admission points; the edit passes once none refuses.
+        // Every charge, change and growth is an admission point; the edit passes once none
+        // refuses, and a refusal at any earlier point leaves the records, the usage and the
+        // values as they were.
         let mut points = 0;
         for refuse_from in 0.. {
             let (mut storage, node) = make_storage(vec![attribute("a", "1")]);
             let before = snapshot(&storage);
-            let mut incoming = Some(attribute("b", "2"));
-            let mut meter = Meter {
-                refuse_from_charge: Some(refuse_from),
-                ..Meter::default()
-            };
-            let result = storage.append_attribute(&node, &mut incoming, None, &mut meter);
+            let mut meter = Meter::refusing_from(refuse_from);
+            let result = storage.append_attribute(&node, &attribute("b", "2"), None, &mut meter);
             if result.is_ok() {
                 assert_eq!(names_of(&storage, 0), ["a", "b"]);
                 break;
@@ -1279,11 +1458,10 @@ mod tests {
             assert_eq!(
                 snapshot(&storage),
                 before,
-                "refused after {refuse_from} charges"
+                "refused after {refuse_from} calls"
             );
-            assert!(incoming.is_some());
         }
-        assert!(points >= 2, "the append makes several admission points");
+        assert!(points >= 6, "the append makes several admission points");
         let (mut storage, node) = make_storage(vec![attribute("a", "1")]);
         let before = snapshot(&storage);
         let mut meter = Meter {
@@ -1291,78 +1469,94 @@ mod tests {
             ..Meter::default()
         };
         let error = storage
-            .append_attribute(&node, &mut Some(attribute("b", "2")), None, &mut meter)
+            .append_attribute(&node, &attribute("b", "2"), None, &mut meter)
             .unwrap_err();
         assert_eq!(error, HtmlChargedError::Stopped(Refused));
         assert_eq!(snapshot(&storage), before);
     }
 
     #[test]
-    fn a_list_that_another_owner_holds_is_refused_before_it_changes() {
-        let (mut storage, node) = make_storage(vec![attribute("a", "1")]);
-        let held = match storage.node_at(0).unwrap().kind() {
-            ConstructionNodeKind::Element(element) => element.attributes().to_ordered(),
-            _ => unreachable!(),
-        };
-        let before = snapshot(&storage);
-        let error = storage
-            .append_attribute(
-                &node,
-                &mut Some(attribute("b", "2")),
-                None,
-                &mut Meter::default(),
-            )
-            .unwrap_err();
-        assert_eq!(cause(error), HtmlConstructionCause::SharedAllocationAliased);
-        assert_eq!(snapshot(&storage), before);
-        drop(held);
-    }
-
-    #[test]
     fn a_target_that_is_not_an_element_or_not_this_storage_is_refused() {
         let (mut storage, _) = make_storage(Vec::new());
-        // The initialization creates no record; a foreign handle and a missing record are refused.
         let (other, foreign) = make_storage(Vec::new());
         let error = storage
-            .append_attribute(
-                &foreign,
-                &mut Some(attribute("a", "1")),
-                None,
-                &mut Meter::default(),
-            )
+            .append_attribute(&foreign, &attribute("a", "1"), None, &mut Meter::default())
             .unwrap_err();
         assert_eq!(cause(error), HtmlConstructionCause::ForeignBuilder);
         drop(other);
+        let text = super::super::free::text(&mut storage, &[1]);
+        let error = storage
+            .append_attribute(&text, &attribute("a", "1"), None, &mut Meter::default())
+            .unwrap_err();
+        assert_eq!(cause(error), HtmlConstructionCause::WrongNodeKind);
     }
 
     #[test]
-    fn a_replacement_returns_the_old_attribute_and_updates_the_units() {
+    fn a_replacement_updates_the_value_and_the_units() {
         let (mut storage, node) = make_storage(vec![attribute("a", "1"), attribute("b", "22")]);
         let units = storage.usage().utf16_units();
-        let mut incoming = Some(attribute("a", "4444"));
-        let old = storage
-            .replace_attribute(&node, 0, &mut incoming, &mut Meter::default())
+        storage
+            .replace_attribute(&node, 0, &attribute("a", "4444"), &mut Meter::default())
             .unwrap();
-        assert_eq!(old.value().to_utf8().unwrap(), "1");
-        assert!(incoming.is_none());
+        assert_eq!(values_of(&storage, 0), ["4444", "22"]);
         assert_eq!(storage.usage().utf16_units(), units - 1 + 4);
         assert_eq!(storage.usage().attributes(), 2);
-        // The same name under a new prefix keeps the slot too.
-        let mut renamed = Some(attribute("c", "v"));
-        let old = storage
-            .replace_attribute(&node, 1, &mut renamed, &mut Meter::default())
+        storage
+            .replace_attribute(&node, 1, &attribute("c", "v"), &mut Meter::default())
             .unwrap();
-        assert_eq!(old.name().local_name().to_utf8().unwrap(), "b");
         assert_eq!(names_of(&storage, 0), ["a", "c"]);
+        assert_eq!(values_of(&storage, 0), ["4444", "v"]);
+    }
+
+    #[test]
+    fn a_value_no_longer_than_the_old_one_is_written_in_place_and_a_longer_one_at_the_tail() {
+        let (mut storage, node) = make_storage(vec![attribute("a", "abcd"), attribute("b", "xy")]);
+        let written = storage.text.len();
+        storage
+            .replace_attribute(&node, 0, &attribute("a", "ef"), &mut Meter::default())
+            .unwrap();
+        assert_eq!(values_of(&storage, 0), ["ef", "xy"]);
+        assert_eq!(storage.text.len(), written, "the units were overwritten");
+        assert_eq!(storage.text.used(), 4);
+        storage
+            .replace_attribute(&node, 1, &attribute("b", "longer"), &mut Meter::default())
+            .unwrap();
+        assert_eq!(values_of(&storage, 0), ["ef", "longer"]);
+        assert_eq!(
+            storage.text.len(),
+            written + 6,
+            "the units went to the tail"
+        );
+        assert_eq!(
+            storage.text.used(),
+            8,
+            "the old units no longer count as held"
+        );
+    }
+
+    #[test]
+    fn repeated_replacements_never_leave_more_units_than_the_text_arena_admits() {
+        let (mut storage, node) = make_storage(vec![attribute("a", "x")]);
+        let mut meter = Meter::default();
+        for round in 0..200 {
+            let value = "y".repeat(2 + round % 5);
+            storage
+                .replace_attribute(&node, 0, &attribute("a", value.as_str()), &mut meter)
+                .unwrap();
+            assert_eq!(values_of(&storage, 0), [value]);
+        }
+        // Each replacement that grows the value is one tail write of at most six units.
+        assert!(storage.text.len() <= 1 + 200 * 6);
+        assert!(storage.text.used() <= 6);
+        assert!(storage.text.capacity() >= storage.text.len());
     }
 
     #[test]
     fn a_replacement_that_repeats_another_name_or_misses_its_slot_is_refused() {
         let (mut storage, node) = make_storage(vec![attribute("a", "1"), attribute("b", "2")]);
         let before = snapshot(&storage);
-        let mut incoming = Some(attribute("b", "x"));
         let error = storage
-            .replace_attribute(&node, 0, &mut incoming, &mut Meter::default())
+            .replace_attribute(&node, 0, &attribute("b", "x"), &mut Meter::default())
             .unwrap_err();
         assert_eq!(
             cause(error),
@@ -1371,13 +1565,8 @@ mod tests {
                 duplicate: 0
             }
         );
-        assert!(incoming.is_some());
         let error = storage
-            .replace_attribute(&node, 2, &mut incoming, &mut Meter::default())
-            .unwrap_err();
-        assert_eq!(cause(error), HtmlConstructionCause::OperandMissing);
-        let error = storage
-            .replace_attribute(&node, 0, &mut None, &mut Meter::default())
+            .replace_attribute(&node, 2, &attribute("c", "x"), &mut Meter::default())
             .unwrap_err();
         assert_eq!(cause(error), HtmlConstructionCause::OperandMissing);
         assert_eq!(snapshot(&storage), before);
@@ -1385,29 +1574,27 @@ mod tests {
 
     #[test]
     fn a_refusal_at_any_admission_point_of_a_replacement_changes_nothing() {
-        for refuse_from in 0.. {
-            let (mut storage, node) = make_storage(vec![attribute("a", "1"), attribute("b", "2")]);
-            let before = snapshot(&storage);
-            let mut incoming = Some(attribute("c", "3"));
-            let mut meter = Meter {
-                refuse_from_charge: Some(refuse_from),
-                ..Meter::default()
-            };
-            if storage
-                .replace_attribute(&node, 0, &mut incoming, &mut meter)
-                .is_ok()
-            {
-                assert_eq!(names_of(&storage, 0), ["c", "b"]);
-                assert!(refuse_from > 0);
-                break;
+        for value in ["3", "3333333"] {
+            for refuse_from in 0.. {
+                let (mut storage, node) =
+                    make_storage(vec![attribute("a", "1"), attribute("b", "2")]);
+                let before = snapshot(&storage);
+                let mut meter = Meter::refusing_from(refuse_from);
+                if storage
+                    .replace_attribute(&node, 0, &attribute("c", value), &mut meter)
+                    .is_ok()
+                {
+                    assert_eq!(names_of(&storage, 0), ["c", "b"]);
+                    assert!(refuse_from > 0);
+                    break;
+                }
+                assert_eq!(snapshot(&storage), before, "{value}: from {refuse_from}");
             }
-            assert_eq!(snapshot(&storage), before);
-            assert!(incoming.is_some());
         }
     }
 
     #[test]
-    fn a_removal_closes_the_gap_and_gives_the_attribute_back() {
+    fn a_removal_closes_the_gap_and_counts_the_attribute_out() {
         let (mut storage, node) = make_storage(
             ["a", "b", "c", "d"]
                 .iter()
@@ -1415,10 +1602,9 @@ mod tests {
                 .collect(),
         );
         let before = storage.usage();
-        let removed = storage
+        storage
             .remove_attribute(&node, 1, &mut Meter::default())
             .unwrap();
-        assert_eq!(removed.name().local_name().to_utf8().unwrap(), "b");
         assert_eq!(names_of(&storage, 0), ["a", "c", "d"]);
         assert_eq!(storage.usage().attributes(), before.attributes() - 1);
         assert_eq!(storage.usage().utf16_units(), before.utf16_units() - 3);
@@ -1426,6 +1612,8 @@ mod tests {
             .remove_attribute(&node, 3, &mut Meter::default())
             .unwrap_err();
         assert_eq!(cause(error), HtmlConstructionCause::OperandMissing);
+        // The removed value's units stay written and no longer count as held.
+        assert_eq!(storage.text.used(), 6);
     }
 
     #[test]
@@ -1436,16 +1624,13 @@ mod tests {
         let (mut storage, node) = make_storage(attributes);
         let mut meter = Meter::default();
         storage.remove_attribute(&node, 0, &mut meter).unwrap();
-        // 39 attributes move; no charge covers more than the 256 byte quantum or the one
-        // attribute that leaves.
+        // 39 rows move; no charge covers more than the 256 byte quantum or the one row that
+        // leaves.
         assert!(meter.largest_copy <= CHARGE_QUANTUM as u64);
-        assert!(meter.work >= (39 * size_of::<Attribute>()) as u64);
+        assert!(meter.work >= (39 * size_of::<AttrRow>()) as u64);
         // A refusal after the first shift charge leaves the list intact.
         let before = snapshot(&storage);
-        let mut refusing = Meter {
-            refuse_from_charge: Some(3),
-            ..Meter::default()
-        };
+        let mut refusing = Meter::refusing_from(3);
         assert!(storage.remove_attribute(&node, 0, &mut refusing).is_err());
         assert_eq!(snapshot(&storage), before);
     }
@@ -1485,11 +1670,10 @@ mod tests {
         assert_eq!(merge.kept, [1, 2]);
         let mut meter = Meter::default();
         for &candidate in &merge.kept {
-            let mut incoming = Some(attribute(texts[candidate].clone(), "v"));
             storage
                 .append_planned_attribute(
                     &node,
-                    &mut incoming,
+                    &attribute(texts[candidate].clone(), "v"),
                     &texts[candidate],
                     Some(&mut table),
                     &mut meter,
@@ -1503,13 +1687,12 @@ mod tests {
             "the index describes the four attributes at the revision they left"
         );
         // A later append is compared through the same index, without a rebuild.
-        let mut later = Meter::default();
         let error = storage
             .append_attribute(
                 &node,
-                &mut Some(attribute("c", "x")),
+                &attribute("c", "x"),
                 Some(&mut table),
-                &mut later,
+                &mut Meter::default(),
             )
             .unwrap_err();
         assert_eq!(
@@ -1520,6 +1703,57 @@ mod tests {
             }
         );
         assert_eq!(table.binding(), storage.described(0, 4, 0));
+    }
+
+    #[test]
+    fn a_named_append_takes_the_interned_name_and_a_copy_of_the_units() {
+        let (mut storage, node) = make_storage(Vec::new());
+        let id = storage
+            .intern_name(
+                &Namespace::none(),
+                None,
+                &[b'k' as u16],
+                &mut crate::internal::construction::NativeAdmission::exact(),
+            )
+            .map_err(crate::internal::construction::native)
+            .unwrap();
+        let value = [b'v' as u16, 0xd800];
+        let position = storage
+            .append_named_attribute(&node, &id, &value, None, None, &mut Meter::default())
+            .unwrap();
+        assert_eq!(position, 0);
+        assert_eq!(names_of(&storage, 0), ["k"]);
+        assert_eq!(
+            storage
+                .text
+                .get(storage.attribute_slice(0).unwrap()[0].value())
+                .unwrap(),
+            value
+        );
+        // The row holds the interned entry: the same name allocation.
+        let held = storage.attribute_slice(0).unwrap()[0].name();
+        assert!(
+            held.local_name()
+                .shares_storage_with(storage.name(&id).unwrap().local_name())
+        );
+        let (other, _) = make_storage(Vec::new());
+        let error = storage
+            .append_named_attribute(
+                &node,
+                &other.arena.names.get(0).map(|_| id).unwrap_or(id),
+                &value,
+                None,
+                None,
+                &mut Meter::default(),
+            )
+            .unwrap_err();
+        assert_eq!(
+            cause(error),
+            HtmlConstructionCause::DuplicateAttribute {
+                first: 0,
+                duplicate: 1
+            }
+        );
     }
 
     #[test]
@@ -1540,7 +1774,7 @@ mod tests {
         storage
             .append_planned_attribute(
                 &node,
-                &mut Some(attribute("c", "x")),
+                &attribute("c", "x"),
                 &texts[0],
                 Some(&mut table),
                 &mut meter,
@@ -1551,7 +1785,7 @@ mod tests {
         let error = storage
             .append_planned_attribute(
                 &node,
-                &mut Some(attribute("c", "y")),
+                &attribute("c", "y"),
                 &texts[1],
                 Some(&mut table),
                 &mut meter,
@@ -1604,16 +1838,19 @@ mod tests {
                 }
                 if action == 1 && !held.is_empty() {
                     let at = usize::try_from(next(held.len() as u64)).unwrap();
-                    let mut incoming = Some(attribute(name.as_str(), "r"));
-                    let outcome =
-                        storage.replace_attribute(&node, at, &mut incoming, &mut Meter::default());
+                    let outcome = storage.replace_attribute(
+                        &node,
+                        at,
+                        &attribute(name.as_str(), "r"),
+                        &mut Meter::default(),
+                    );
                     let expected = held
                         .iter()
                         .enumerate()
                         .find(|(position, held)| *position != at && **held == name)
                         .map(|(position, _)| position);
                     match (outcome, expected) {
-                        (Ok(_), None) => held[at] = name,
+                        (Ok(()), None) => held[at] = name,
                         (Err(error), Some(first)) => assert_eq!(
                             cause(error),
                             HtmlConstructionCause::DuplicateAttribute {
@@ -1625,10 +1862,9 @@ mod tests {
                     }
                     continue;
                 }
-                let mut incoming = Some(attribute(name.as_str(), "v"));
                 let outcome = storage.append_attribute(
                     &node,
-                    &mut incoming,
+                    &attribute(name.as_str(), "v"),
                     indexed.then_some(&mut table),
                     &mut Meter {
                         spare: 4,
@@ -1722,46 +1958,13 @@ mod tests {
             storage
                 .append_attribute(
                     &node,
-                    &mut Some(attribute(format!("n{name}").as_str(), "v")),
+                    &attribute(format!("n{name}").as_str(), "v"),
                     Some(&mut table),
                     &mut meter,
                 )
                 .unwrap();
         }
         meter.work
-    }
-    /// The work of `n` merges of one new name each into one element, in total.
-    fn merges_of_one_name(n: usize) -> u64 {
-        let (mut storage, node) = make_storage(Vec::new());
-        let mut table = index(2 * n + 8);
-        let mut meter = Meter {
-            spare: n,
-            ..Meter::default()
-        };
-        let mut planning = 0;
-        for name in 0..n {
-            let texts = [DocumentString::from(format!("n{name}").as_str())];
-            let mut merge = Candidates {
-                meter: Meter::default(),
-                names: &texts,
-                kept: Vec::new(),
-            };
-            storage
-                .plan_attribute_merge(&node, Some(&mut table), &mut merge)
-                .unwrap();
-            planning += merge.meter.work;
-            assert_eq!(merge.kept, [0]);
-            storage
-                .append_planned_attribute(
-                    &node,
-                    &mut Some(attribute(texts[0].clone(), "v")),
-                    &texts[0],
-                    Some(&mut table),
-                    &mut meter,
-                )
-                .unwrap();
-        }
-        meter.work + planning
     }
     fn assert_linear(measure: impl Fn(usize) -> u64) {
         let costs: Vec<u64> = [100, 200, 400, 800].iter().map(|&n| measure(n)).collect();
@@ -1781,9 +1984,77 @@ mod tests {
         assert_linear(appends_through_an_index);
     }
 
+    /// The work of `n` appends alternating between two elements, so that the runs move each time
+    /// one outgrows its room.
+    fn alternating_appends(n: usize) -> u64 {
+        let (storage, first) = make_storage(Vec::new());
+        let (mut storage, second) = add_element(storage, "other", Vec::new());
+        let mut meter = Meter {
+            spare: 2 * n,
+            ..Meter::default()
+        };
+        for step in 0..n {
+            for node in [&first, &second] {
+                storage
+                    .append_attribute(
+                        node,
+                        &attribute(format!("n{step}").as_str(), "v"),
+                        None,
+                        &mut meter,
+                    )
+                    .unwrap();
+            }
+        }
+        meter.work
+    }
+
     #[test]
-    fn repeated_one_name_merges_cost_work_in_proportion_to_their_number() {
-        assert_linear(merges_of_one_name);
+    fn appends_alternating_between_two_elements_cost_work_in_proportion_to_their_number() {
+        // The pairwise comparison of names is quadratic, so the measure is the rows copied:
+        // the charge of moved rows alone, which relocation bounds by the rows the runs hold.
+        let moved = |n: usize| -> u64 {
+            let (storage, first) = make_storage(Vec::new());
+            let (mut storage, second) = add_element(storage, "other", Vec::new());
+            let mut meter = Meter {
+                spare: 2 * n,
+                ..Meter::default()
+            };
+            let mut relocations = 0u64;
+            for step in 0..n {
+                for node in [&first, &second] {
+                    let target = storage.attribute_target(node).unwrap();
+                    let ix = storage.element_run(target).unwrap();
+                    if let Ok(RowAppend::Relocate { .. }) = storage.attrs.plan(ix, 1) {
+                        relocations += storage
+                            .attribute_dimensions(target)
+                            .unwrap()
+                            .initialized_len as u64;
+                    }
+                    let id = storage
+                        .intern_name(
+                            &Namespace::none(),
+                            None,
+                            &[step as u16 % 97 + 1, (step / 97) as u16 + 1],
+                            &mut crate::internal::construction::NativeAdmission::exact(),
+                        )
+                        .map_err(crate::internal::construction::native)
+                        .unwrap();
+                    storage
+                        .append_named_attribute(node, &id, &[1], None, None, &mut meter)
+                        .unwrap();
+                }
+            }
+            relocations
+        };
+        for n in [100usize, 200, 400, 800] {
+            // At most four rows copied for each row appended.
+            assert!(
+                moved(n) <= 4 * 2 * n as u64,
+                "{} rows for {n} appends each",
+                moved(n)
+            );
+        }
+        let _ = alternating_appends;
     }
 
     #[test]
@@ -1796,38 +2067,18 @@ mod tests {
             ..Meter::default()
         };
         storage
-            .append_attribute(
-                &first,
-                &mut Some(attribute("c", "v")),
-                Some(&mut table),
-                &mut meter,
-            )
+            .append_attribute(&first, &attribute("c", "v"), Some(&mut table), &mut meter)
             .unwrap();
         // The index describes the first element; the second has no "c" and must accept it.
         storage
-            .append_attribute(
-                &second,
-                &mut Some(attribute("c", "v")),
-                Some(&mut table),
-                &mut meter,
-            )
+            .append_attribute(&second, &attribute("c", "v"), Some(&mut table), &mut meter)
             .unwrap();
         // Back on the first element the index describes the second, and "b" is new there.
         storage
-            .append_attribute(
-                &first,
-                &mut Some(attribute("b", "v")),
-                Some(&mut table),
-                &mut meter,
-            )
+            .append_attribute(&first, &attribute("b", "v"), Some(&mut table), &mut meter)
             .unwrap();
         let error = storage
-            .append_attribute(
-                &first,
-                &mut Some(attribute("c", "v")),
-                Some(&mut table),
-                &mut meter,
-            )
+            .append_attribute(&first, &attribute("c", "v"), Some(&mut table), &mut meter)
             .unwrap_err();
         assert_eq!(
             cause(error),
@@ -1850,19 +2101,14 @@ mod tests {
             storage
                 .append_attribute(
                     &node,
-                    &mut Some(attribute(format!("n{n}").as_str(), "v")),
+                    &attribute(format!("n{n}").as_str(), "v"),
                     Some(&mut table),
                     &mut meter,
                 )
                 .unwrap();
         }
         let error = storage
-            .append_attribute(
-                &node,
-                &mut Some(attribute("n17", "v")),
-                Some(&mut table),
-                &mut meter,
-            )
+            .append_attribute(&node, &attribute("n17", "v"), Some(&mut table), &mut meter)
             .unwrap_err();
         assert_eq!(
             cause(error),
@@ -1874,239 +2120,77 @@ mod tests {
     }
 
     #[test]
-    fn reserving_grows_the_list_only_when_it_is_short() {
-        let (mut storage, node) = make_storage(vec![attribute("a", "1")]);
+    fn reserving_makes_a_run_once_and_only_when_it_is_short() {
+        let (mut storage, node) = make_storage(Vec::new());
         let mut meter = Meter::default();
-        let held = storage.reserve_attributes(&node, 3, &mut meter).unwrap();
-        assert!(held.capacity >= 4);
-        assert_eq!(meter.growths.len(), 1);
-        assert_eq!(meter.growths[0].minimum_capacity(), 4);
-        let again = storage.reserve_attributes(&node, 3, &mut meter).unwrap();
-        assert_eq!(again, held);
-        assert_eq!(
-            meter.growths.len(),
-            1,
-            "room that is there is not admitted again"
-        );
-        assert_eq!(names_of(&storage, 0), ["a"]);
+        let reserved = storage.reserve_attributes(&node, 5, &mut meter).unwrap();
+        assert_eq!((reserved.initialized_len, reserved.capacity), (0, 5));
+        assert_eq!(reserved.element_size(), size_of::<AttrRow>());
+        assert_eq!(meter.banks(HtmlConstructionBank::AttributeRuns), 1);
+        assert_eq!(meter.banks(HtmlConstructionBank::AttributeRows), 1);
+        for name in ["a", "b", "c", "d", "e"] {
+            storage
+                .append_attribute(&node, &attribute(name, "v"), None, &mut meter)
+                .unwrap();
+        }
+        let growths = meter.growths.len();
+        // Every append took the room the reservation made: only the text arena grew.
+        assert_eq!(meter.banks(HtmlConstructionBank::AttributeRuns), 1);
+        assert_eq!(meter.banks(HtmlConstructionBank::AttributeRows), 1);
+        assert!(growths >= 2);
+        let again = storage.reserve_attributes(&node, 0, &mut meter).unwrap();
+        assert_eq!((again.initialized_len, again.capacity), (5, 5));
+        assert_eq!(meter.growths.len(), growths);
     }
 
-    /// The most attributes whose list layout is below the largest an allocation can have, which no
-    /// allocator can supply.
-    fn unallocatable() -> usize {
-        isize::MAX as usize / size_of::<Attribute>() - 16
-    }
-
-    fn weak_of_backing(
-        storage: &HtmlConstructionStorage,
-    ) -> (std::sync::Weak<Vec<Attribute>>, usize, usize) {
-        match storage.node_at(0).unwrap().kind() {
-            ConstructionNodeKind::Element(element) => {
-                let ordered = element.attributes().to_ordered();
-                let backing = ordered.shared_attributes();
-                (
-                    std::sync::Arc::downgrade(backing),
-                    backing.as_ptr() as usize,
-                    backing.capacity(),
-                )
+    #[test]
+    fn a_reservation_the_consumer_refuses_keeps_the_attributes_and_the_banks_it_recorded() {
+        for refuse_from in 0.. {
+            let (mut storage, node) = make_storage(vec![attribute("a", "1")]);
+            let before = snapshot(&storage);
+            let mut meter = Meter::refusing_from(refuse_from);
+            if storage.reserve_attributes(&node, 6, &mut meter).is_ok() {
+                assert!(refuse_from > 0);
+                break;
             }
-            _ => unreachable!(),
+            assert_eq!(
+                snapshot(&storage),
+                before,
+                "refused from call {refuse_from}"
+            );
         }
     }
 
     #[test]
-    fn a_planned_append_of_a_name_the_list_holds_is_refused_as_a_duplicate() {
-        let (mut storage, node) = make_storage(vec![attribute("a", "1"), attribute("b", "2")]);
-        let texts = names(&["b", "c", "d"]);
-        let mut table = index(32);
-        let mut merge = Candidates {
-            meter: Meter::default(),
-            names: &texts,
-            kept: Vec::new(),
-        };
-        storage
-            .plan_attribute_merge(&node, Some(&mut table), &mut merge)
-            .unwrap();
-        assert_eq!(
-            table.binding(),
-            storage.described(0, 2, 2),
-            "the plan left entries for `c` and `d`"
-        );
-        // A fresh string named like the first attribute, offered as the candidate it is.
-        let fresh = DocumentString::from("a");
+    fn a_native_creation_with_attributes_copies_the_values_to_the_arena_and_a_refusal_takes_it_back()
+     {
+        let (mut storage, _) = make_storage(Vec::new());
+        let attributes =
+            OrderedAttributes::new(vec![attribute("a", "1"), attribute("b", "22")]).unwrap();
         let before = snapshot(&storage);
-        let mut incoming = Some(attribute(fresh.clone(), "again"));
-        let error = storage
-            .append_planned_attribute(
-                &node,
-                &mut incoming,
-                &fresh,
-                Some(&mut table),
-                &mut Meter::default(),
-            )
-            .unwrap_err();
-        assert_eq!(
-            cause(error),
-            HtmlConstructionCause::DuplicateAttribute {
-                first: 0,
-                duplicate: 2
+        let mut refusals = 0;
+        for refuse_from in 0.. {
+            let mut meter = Meter::refusing_from(refuse_from);
+            let created = storage.create_element(
+                &QualifiedName::new(Namespace::none(), None, "e"),
+                attributes.clone(),
+                None,
+                &mut meter,
+            );
+            if let Ok(created) = created {
+                let position = storage.position(&created).unwrap();
+                assert_eq!(names_of(&storage, position), ["a", "b"]);
+                assert_eq!(values_of(&storage, position), ["1", "22"]);
+                break;
             }
-        );
-        assert!(incoming.is_some());
-        assert_eq!(snapshot(&storage), before);
-        assert_eq!(names_of(&storage, 0), ["a", "b"]);
-    }
-
-    #[test]
-    fn a_refused_first_record_of_a_growth_leaves_the_list_as_it_was() {
-        let (mut storage, node) = make_storage(vec![attribute("a", "1")]);
-        let before = snapshot(&storage);
-        let (_, pointer, capacity) = weak_of_backing(&storage);
-        let mut meter = Meter {
-            refuse_record_from: Some(0),
-            ..Meter::default()
-        };
-        let error = storage
-            .reserve_attributes(&node, 4, &mut meter)
-            .unwrap_err();
-        assert_eq!(error, HtmlChargedError::Stopped(Refused));
-        assert_eq!(snapshot(&storage), before);
-        assert!(meter.recorded.is_empty());
-        // Nothing was reserved: the backing is the same, with the capacity it had.
-        let (_, held, held_capacity) = weak_of_backing(&storage);
-        assert_eq!((held, held_capacity), (pointer, capacity));
-        let mut meter = Meter {
-            refuse_record_from: Some(0),
-            ..Meter::default()
-        };
-        assert_eq!(
-            storage
-                .append_attribute(&node, &mut Some(attribute("b", "2")), None, &mut meter)
-                .unwrap_err(),
-            HtmlChargedError::Stopped(Refused)
-        );
-        assert_eq!(snapshot(&storage), before);
-    }
-
-    #[test]
-    fn an_allocator_refusal_gives_the_unchanged_capacity_back_to_the_consumer() {
-        let (mut storage, node) = make_storage(vec![attribute("a", "1")]);
-        let before = snapshot(&storage);
-        let dimensions = storage.attribute_dimensions(0).unwrap();
-        let mut meter = Meter::default();
-        let error = storage
-            .reserve_attributes(&node, unallocatable(), &mut meter)
-            .unwrap_err();
-        assert_eq!(cause(error), HtmlConstructionCause::AllocationFailed);
-        assert_eq!(snapshot(&storage), before);
-        assert_eq!(storage.attribute_dimensions(0).unwrap(), dimensions);
-        // The chosen capacity was recorded, and then the capacity the list kept replaced it.
-        assert_eq!(meter.recorded.len(), 2);
-        assert_eq!(meter.recorded[0].capacity, unallocatable() + 1);
-        assert_eq!(meter.recorded[1], dimensions);
-    }
-
-    #[test]
-    fn an_allocator_refusal_of_the_spare_room_falls_back_to_the_room_that_is_needed() {
-        let (mut storage, node) = make_storage(vec![attribute("a", "1")]);
-        let mut meter = Meter {
-            spare: unallocatable(),
-            ..Meter::default()
-        };
-        storage
-            .append_attribute(&node, &mut Some(attribute("b", "2")), None, &mut meter)
-            .unwrap();
-        assert_eq!(names_of(&storage, 0), ["a", "b"]);
-        assert_eq!(meter.growths.len(), 1);
-        // The capacity the consumer chose, then the one the fallback reached.
-        assert_eq!(meter.recorded.len(), 2);
-        assert_eq!(meter.recorded[0].capacity, 2 + unallocatable());
-        assert_eq!(
-            meter.recorded[1],
-            storage
-                .attribute_dimensions(0)
-                .map(|now| {
-                    HtmlConstructionAttributeCapacity {
-                        initialized_len: 1,
-                        capacity: now.capacity,
-                    }
-                })
-                .unwrap()
-        );
-        assert!(meter.recorded[1].capacity >= 2);
-    }
-
-    #[test]
-    fn a_refused_correcting_record_leaves_the_attributes_unchanged() {
-        let (mut storage, node) = make_storage(vec![attribute("a", "1")]);
-        let before = snapshot(&storage);
-        let mut meter = Meter {
-            spare: unallocatable(),
-            refuse_record_from: Some(1),
-            ..Meter::default()
-        };
-        let error = storage
-            .append_attribute(&node, &mut Some(attribute("b", "2")), None, &mut meter)
-            .unwrap_err();
-        assert_eq!(error, HtmlChargedError::Stopped(Refused));
-        // The attributes and the usage are as they were. The list holds the room the fallback
-        // reserved, which the consumer that refused to record it has stopped for.
-        assert_eq!(snapshot(&storage), before);
-        assert_eq!(names_of(&storage, 0), ["a"]);
-        assert!(storage.attribute_dimensions(0).unwrap().capacity >= 2);
-    }
-
-    #[test]
-    fn a_list_held_by_another_owner_refuses_a_reservation_a_replacement_and_a_removal() {
-        let (mut storage, node) = make_storage(vec![attribute("a", "1"), attribute("b", "2")]);
-        let held = match storage.node_at(0).unwrap().kind() {
-            ConstructionNodeKind::Element(element) => element.attributes().to_ordered(),
-            _ => unreachable!(),
-        };
-        let before = snapshot(&storage);
-        let dimensions = storage.attribute_dimensions(0).unwrap();
-        let aliased = HtmlConstructionCause::SharedAllocationAliased;
-        let error = storage
-            .reserve_attributes(&node, 8, &mut Meter::default())
-            .unwrap_err();
-        assert_eq!(cause(error), aliased);
-        let error = storage
-            .replace_attribute(
-                &node,
-                0,
-                &mut Some(attribute("c", "3")),
-                &mut Meter::default(),
-            )
-            .unwrap_err();
-        assert_eq!(cause(error), aliased);
-        let error = storage
-            .remove_attribute(&node, 1, &mut Meter::default())
-            .unwrap_err();
-        assert_eq!(cause(error), aliased);
-        assert_eq!(snapshot(&storage), before);
-        assert_eq!(storage.attribute_dimensions(0).unwrap(), dimensions);
-        drop(held);
-    }
-
-    #[test]
-    fn a_reservation_refused_by_the_consumer_keeps_the_contents_the_capacity_and_the_weak_holder() {
-        let (mut storage, node) = make_storage(vec![attribute("a", "1"), attribute("b", "2")]);
-        let before = snapshot(&storage);
-        let (weak, pointer, capacity) = weak_of_backing(&storage);
-        // A weak holder makes the list another owner's, so the reservation is refused before the
-        // consumer is asked, and the holder still names the same backing afterwards.
-        let mut meter = Meter::default();
-        let error = storage
-            .reserve_attributes(&node, 8, &mut meter)
-            .unwrap_err();
-        assert_eq!(cause(error), HtmlConstructionCause::SharedAllocationAliased);
-        assert!(meter.growths.is_empty());
-        assert_eq!(snapshot(&storage), before);
-        let kept = weak.upgrade().unwrap();
-        assert_eq!(
-            (kept.as_ptr() as usize, kept.capacity()),
-            (pointer, capacity)
-        );
-        assert_eq!(kept.len(), 2);
+            refusals += 1;
+            // A refused creation leaves no record and no usage, though the names it interned
+            // stay interned.
+            let after = snapshot(&storage);
+            assert_eq!(after.0, before.0, "refused from call {refuse_from}");
+            assert_eq!(after.1, before.1, "refused from call {refuse_from}");
+            assert_eq!(after.3, before.3, "refused from call {refuse_from}");
+        }
+        assert!(refusals > 5);
     }
 }

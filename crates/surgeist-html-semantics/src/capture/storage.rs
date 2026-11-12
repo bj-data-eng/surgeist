@@ -43,7 +43,7 @@ pub(super) fn element_strings(
         visit(name.local_name());
     };
     name(element, visit);
-    for attribute in attributes.shared_attributes().iter() {
+    for attribute in attributes.iter() {
         name(attribute.name(), visit);
         visit(attribute.value());
     }
@@ -281,7 +281,6 @@ impl HtmlCaptureRetainedStorageUsage {
         } = element;
         self.name(name, Count::Listed, step)?;
         step().map_err(HtmlCaptureStorageError::Interrupted)?;
-        let attributes = attributes.shared_attributes();
         self.add_bytes(size_of::<Vec<surgeist_html::values::Attribute>>())?;
         self.bank::<surgeist_html::values::Attribute, E>(attributes.capacity())?;
         for attribute in attributes.iter() {
@@ -428,10 +427,9 @@ pub(crate) fn option_value_element<E>(
     let mut usage = HtmlCaptureRetainedStorageUsage { bytes: 0, units: 0 };
     usage.name(name, Count::Listed, step)?;
     step().map_err(HtmlCaptureStorageError::Interrupted)?;
-    let values = attributes.shared_attributes();
     usage.add_bytes(size_of::<Vec<surgeist_html::values::Attribute>>())?;
-    usage.bank::<surgeist_html::values::Attribute, E>(values.capacity())?;
-    for attribute in values.iter() {
+    usage.bank::<surgeist_html::values::Attribute, E>(attributes.capacity())?;
+    for attribute in attributes.iter() {
         step().map_err(HtmlCaptureStorageError::Interrupted)?;
         usage.name(attribute.name(), Count::Listed, step)?;
         usage.string(attribute.value(), Count::Listed, step)?;

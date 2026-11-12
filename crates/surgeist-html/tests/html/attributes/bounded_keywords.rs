@@ -16,10 +16,16 @@ use surgeist_html::{
 };
 
 fn cors(raw: Option<&DocumentString>) -> HtmlCrossOriginState {
-    crossorigin_processing_with(raw, |_| Ok::<_, Infallible>(())).unwrap()
+    crossorigin_processing_with(raw.map(DocumentString::code_units), |_| {
+        Ok::<_, Infallible>(())
+    })
+    .unwrap()
 }
 fn policy(raw: Option<&DocumentString>) -> HtmlReferrerPolicy {
-    referrerpolicy_processing_with(raw, |_| Ok::<_, Infallible>(())).unwrap()
+    referrerpolicy_processing_with(raw.map(DocumentString::code_units), |_| {
+        Ok::<_, Infallible>(())
+    })
+    .unwrap()
 }
 
 #[test]
@@ -137,7 +143,7 @@ fn missing_empty_and_matching_values_admit_the_actual_headers_and_pairs() {
 
     observed.clear();
     assert_eq!(
-        referrerpolicy_processing_with(Some(&DocumentString::default()), |read| {
+        referrerpolicy_processing_with(Some(DocumentString::default().code_units()), |read| {
             observed.push(read);
             Ok::<_, Infallible>(())
         })
@@ -148,7 +154,7 @@ fn missing_empty_and_matching_values_admit_the_actual_headers_and_pairs() {
 }
 
 fn cors_record(raw: &DocumentString, observed: &mut Vec<Read>) -> HtmlCrossOriginState {
-    crossorigin_processing_with(Some(raw), |read| {
+    crossorigin_processing_with(Some(raw.code_units()), |read| {
         observed.push(read);
         Ok::<_, Infallible>(())
     })
@@ -165,13 +171,13 @@ fn every_refusal_stops_at_the_exact_admitted_operand_and_preserves_error() {
         Some(DocumentString::from_utf16([0xd800; 9])),
     ] {
         let mut cors_reads = Vec::new();
-        crossorigin_processing_with(raw.as_ref(), |read| {
+        crossorigin_processing_with(raw.as_ref().map(DocumentString::code_units), |read| {
             cors_reads.push(read);
             Ok::<_, Infallible>(())
         })
         .unwrap();
         let mut policy_reads = Vec::new();
-        referrerpolicy_processing_with(raw.as_ref(), |read| {
+        referrerpolicy_processing_with(raw.as_ref().map(DocumentString::code_units), |read| {
             policy_reads.push(read);
             Ok::<_, Infallible>(())
         })
@@ -188,9 +194,17 @@ fn every_refusal_stops_at_the_exact_admitted_operand_and_preserves_error() {
                     }
                 };
                 let result = if is_cors {
-                    crossorigin_processing_with(raw.as_ref(), &mut admit).map(|_| ())
+                    crossorigin_processing_with(
+                        raw.as_ref().map(DocumentString::code_units),
+                        &mut admit,
+                    )
+                    .map(|_| ())
                 } else {
-                    referrerpolicy_processing_with(raw.as_ref(), &mut admit).map(|_| ())
+                    referrerpolicy_processing_with(
+                        raw.as_ref().map(DocumentString::code_units),
+                        &mut admit,
+                    )
+                    .map(|_| ())
                 };
                 assert_eq!(result, Err((cut, denied, "cancelled")));
                 assert_eq!(observed, reads[..=cut]);
@@ -205,7 +219,7 @@ fn exact_budget_succeeds_and_one_short_refuses_before_returning_a_state() {
     // Presence header, first keyword header and nine UTF-16/ASCII pairs.
     for (budget, succeeds) in [(29usize, true), (28, false), (0, false)] {
         let mut remaining = budget;
-        let result = crossorigin_processing_with(Some(&raw), |read| {
+        let result = crossorigin_processing_with(Some(raw.code_units()), |read| {
             let cost = if read == Read::KeywordPair { 3 } else { 1 };
             remaining = remaining.checked_sub(cost).ok_or("admission exhausted")?;
             Ok(())
@@ -228,7 +242,7 @@ fn exact_budget_succeeds_and_one_short_refuses_before_returning_a_state() {
     // Presence, five keyword headers and six actual UTF-16/ASCII pairs.
     for (budget, succeeds) in [(24usize, true), (23, false)] {
         let mut remaining = budget;
-        let result = referrerpolicy_processing_with(Some(&raw), |read| {
+        let result = referrerpolicy_processing_with(Some(raw.code_units()), |read| {
             let cost = if read == Read::KeywordPair { 3 } else { 1 };
             remaining = remaining.checked_sub(cost).ok_or("admission exhausted")?;
             Ok(())
@@ -256,7 +270,7 @@ fn long_length_mismatches_read_only_fixed_keyword_headers() {
     );
     observed.clear();
     assert_eq!(
-        referrerpolicy_processing_with(Some(&raw), |read| {
+        referrerpolicy_processing_with(Some(raw.code_units()), |read| {
             observed.push(read);
             Ok::<_, Infallible>(())
         })
