@@ -399,3 +399,79 @@ pub(in crate::document_scripting) fn shadow_root_keeps_its_registered_creation_r
         })
         .unwrap();
 }
+
+pub(in crate::document_scripting) fn registered_origin_character_factories_use_receiver_realm() {
+    let RegisteredOrigin {
+        mut host,
+        permit,
+        origin,
+        ..
+    } = retired_origin_with_moved_element();
+    let result = host.in_document(&permit, |scope| {
+        scope.evaluate(&units(
+            r#"globalThis.characterDocument = originChild.ownerDocument;
+               globalThis.originText = Document.prototype.createTextNode.call(
+                   characterDocument, "\uD800\u0000B");
+               globalThis.originComment = characterDocument.createComment("native");"#,
+        ))?;
+        assert_guest(
+            scope,
+            "originText.ownerDocument === characterDocument && originText.length === 3 \
+             && originText.data.charCodeAt(0) === 0xd800 && originText.data.charCodeAt(1) === 0 \
+             && originComment.ownerDocument === characterDocument && originComment.data === 'native'",
+        )?;
+        let text = scope.evaluate(&units("originText"))?;
+        let comment = scope.evaluate(&units("originComment"))?;
+        let realm = scope.callback_object(&text)?.associated_realm().identity();
+        assert_eq!(scope.callback_object(&comment)?.associated_realm().identity(), realm);
+        assert_ne!(scope.realm_authority()?.identity(), realm);
+        Ok((realm, scope.retain(&text), scope.retain(&comment)))
+    });
+    let (realm, text, comment) = match result {
+        Ok(value) => value,
+        Err(DocumentScriptError::Script(Error::HostFailure(failure))) => panic!(
+            "registered CharacterData factory failed: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        ),
+        Err(error) => panic!("registered CharacterData factory failed: {error:?}"),
+    };
+    let engine = host.engine.as_mut().unwrap();
+    let registered = engine
+        .creations
+        .find(origin.global(), || Ok::<(), Error>(()))
+        .unwrap()
+        .unwrap();
+    engine
+        .process
+        .execution()
+        .in_realm(registered, |scope| {
+            let global = scope.global()?;
+            let text = scope.import(&text)?;
+            let comment = scope.import(&comment)?;
+            scope.set(&global, PropertyKey::String(&units("nativeText")), &text)?;
+            scope.set(
+                &global,
+                PropertyKey::String(&units("nativeComment")),
+                &comment,
+            )?;
+            assert_eq!(scope.realm_authority()?.identity(), realm);
+            assert_guest(
+                scope,
+                "Object.getPrototypeOf(nativeText) === Text.prototype \
+             && Object.getPrototypeOf(nativeComment) === Comment.prototype \
+             && Object.getPrototypeOf(Text.prototype) === CharacterData.prototype \
+             && Object.getPrototypeOf(Comment.prototype) === CharacterData.prototype \
+             && typeof window === 'undefined'",
+            )?;
+            scope.evaluate(&units("nativeText.replaceData(2, 1, 'C')"))?;
+            Ok(())
+        })
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "originText.data.charCodeAt(2) === 67 && originText.length === 3",
+        )
+    })
+    .unwrap();
+}
