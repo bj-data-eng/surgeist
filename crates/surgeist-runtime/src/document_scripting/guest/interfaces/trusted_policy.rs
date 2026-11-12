@@ -2,7 +2,7 @@
 
 mod methods;
 
-use super::super::reports::{ViolationBacking, ViolationQueue, violation_error};
+use super::super::reports::{ViolationBacking, ViolationOrigin, ViolationQueue, violation_error};
 use super::*;
 use crate::trusted_types_csp::{PolicyCreationError, PolicyFactory};
 use surgeist_bindings_js::{
@@ -293,11 +293,15 @@ fn publish<'scope>(
     options: [Option<Value<'scope>>; 4],
 ) -> Result<Completion<'scope>, DocumentGuestEventError> {
     let request = owner.attached_event_request();
-    let (snapshot, processor) =
+    let (snapshot, processor, global) =
         capture
             .callbacks
-            .with_qualified_session(owner, request.as_ref(), |session, _| {
-                Ok((session.snapshot(), session.trusted_types_csp.clone()))
+            .with_qualified_session(owner, request.as_ref(), |session, global| {
+                Ok((
+                    session.snapshot(),
+                    session.trusted_types_csp.clone(),
+                    global,
+                ))
             })?;
     let mut step = || {
         if let Some((request, registration)) = owner.active_attribute_registration()? {
@@ -324,6 +328,10 @@ fn publish<'scope>(
     };
     step()?;
     let document = snapshot.document(capture.callbacks.permit.document)?;
+    let origin = ViolationOrigin {
+        global,
+        document: document.id(),
+    };
     let policies = match document.metadata().policy_container().csp() {
         DomDocumentCspState::ConstructorInitialEmpty => &[][..],
         DomDocumentCspState::Associated(policy) if policy.policy().profile().is_none() => &[],
@@ -403,6 +411,7 @@ fn publish<'scope>(
         .next_report(&mut step, |bytes| {
             ViolationQueue::admit_report(
                 &mut reports,
+                origin,
                 bytes,
                 |bytes, _| {
                     Ok(ViolationBacking::Guest {

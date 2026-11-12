@@ -2,6 +2,7 @@ use std::{any::Any, collections::VecDeque};
 
 use super::*;
 use crate::trusted_types_csp::{ReportError, ViolationReport};
+use surgeist_dom::DocumentId;
 
 pub(super) fn violation_error(
     error: ReportError<DocumentGuestEventError>,
@@ -24,7 +25,15 @@ pub(super) enum ViolationBacking {
     },
 }
 
+/// The native Window and its associated Document at violation formation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct ViolationOrigin {
+    pub(super) global: DomHostedGlobalId,
+    pub(super) document: DocumentId,
+}
+
 pub(in crate::document_scripting) struct ViolationQueue {
+    origin: ViolationOrigin,
     reports: VecDeque<ViolationReport<ViolationBacking>>,
     backing: Option<ViolationBacking>,
     _header: ViolationBacking,
@@ -33,6 +42,7 @@ pub(in crate::document_scripting) struct ViolationQueue {
 impl ViolationQueue {
     pub(super) fn admit_report(
         queue: &mut Option<Box<Self>>,
+        origin: ViolationOrigin,
         bytes: usize,
         mut reserve: impl FnMut(usize, usize) -> Result<ViolationBacking, DocumentGuestEventError>,
         charge_copy: impl FnOnce(u64) -> Result<(), DocumentGuestEventError>,
@@ -40,12 +50,16 @@ impl ViolationQueue {
         if queue.is_none() {
             let header = reserve(size_of::<Self>(), 0)?;
             *queue = Some(Box::new(Self {
+                origin,
                 reports: VecDeque::new(),
                 backing: None,
                 _header: header,
             }));
         }
         let queue = queue.as_mut().ok_or(DocumentScriptNativeError::Busy)?;
+        if queue.origin != origin {
+            return Err(DocumentScriptNativeError::ForeignPermit.into());
+        }
         queue.reserve(&mut reserve, charge_copy)?;
         reserve(bytes, bytes / size_of::<u16>())
     }
@@ -87,6 +101,11 @@ impl ViolationQueue {
 
     pub(super) fn push(&mut self, report: ViolationReport<ViolationBacking>) {
         self.reports.push_back(report);
+    }
+
+    #[cfg(test)]
+    pub(super) fn origin(&self) -> ViolationOrigin {
+        self.origin
     }
 
     #[cfg(test)]

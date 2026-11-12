@@ -10,6 +10,11 @@ pub(in crate::document_scripting) fn assert_queued_trusted_types_violations(
     expected: &[(usize, &str, &str)],
 ) {
     let queue = host.native.trusted_types_reports.borrow();
+    if let Some(queue) = queue.as_ref() {
+        let target = host.native.attachment.get().unwrap().target;
+        assert_eq!(queue.origin().global, target.global());
+        assert_eq!(queue.origin().document, target.document());
+    }
     let mut reports = queue.iter().flat_map(|queue| queue.iter());
     for &(policy, resource, sample) in expected {
         let report = reports.next().unwrap();

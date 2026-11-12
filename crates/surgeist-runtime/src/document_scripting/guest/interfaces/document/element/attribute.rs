@@ -5,7 +5,7 @@ use crate::{
     DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
     document_scripting::guest::{
         AttributeReply, PendingAttribute,
-        reports::{ViolationBacking, ViolationQueue, violation_error},
+        reports::{ViolationBacking, ViolationOrigin, ViolationQueue, violation_error},
     },
     trusted_types_csp::{AttributeMismatchProgress, AttributePolicies, AttributePolicyError},
 };
@@ -575,6 +575,10 @@ fn accept_mismatch(
             AttributePolicies::read(lease, request, &registration, processor.as_deref(), cancel)
                 .map_err(attribute_policy_error)?;
         let mut mismatch = policies.resume_mismatch(progress)?;
+        let origin = ViolationOrigin {
+            global: request.global(),
+            document: policies.document(),
+        };
         let mut reports = owner
             .trusted_types_reports
             .try_borrow_mut()
@@ -583,6 +587,7 @@ fn accept_mismatch(
             let next = mismatch.next_report(lease, &registration, cancel, |bytes| {
                 ViolationQueue::admit_report(
                     &mut reports,
+                    origin,
                     bytes,
                     |bytes, units| {
                         let backing = lease.retain_attribute_verification_payload(

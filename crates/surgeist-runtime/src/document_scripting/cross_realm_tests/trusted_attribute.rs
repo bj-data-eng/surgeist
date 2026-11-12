@@ -293,6 +293,68 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
         ],
     );
 
+    host.in_document(&permit, |scope| {
+        let source = "globalThis.detachedDocument = new Document()";
+        scope
+            .evaluate(&source.encode_utf16().collect::<Vec<_>>())
+            .map(drop)
+    })
+    .unwrap();
+    let after_constructor = host.snapshot().unwrap();
+    let detached = after_constructor
+        .nodes()
+        .filter_map(|node| after_constructor.node(node).unwrap().as_document())
+        .map(|document| document.id())
+        .find(|document| snapshot.document(*document).is_err())
+        .expect("the guest constructor must publish its own native Document");
+    let detached_element = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let ticket = batch.create_element_ns(detached, Namespace::html(), "div");
+            dom.apply(batch, &cancel)
+                .unwrap()
+                .created(&ticket)
+                .unwrap()
+                .unwrap()
+        })
+        .unwrap();
+    assert_eq!(
+        host.snapshot()
+            .unwrap()
+            .relevant_global(detached_element)
+            .unwrap(),
+        Some(target.global())
+    );
+    super::super::guest::tests::expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        detached_element,
+        "detachedProtectedTarget",
+    );
+    host.in_document(&permit, |scope| {
+        let source = r#"
+            (() => {
+                if (detachedProtectedTarget.ownerDocument !== detachedDocument) return false;
+                try { detachedProtectedTarget.setAttribute('onclick', 'empty'); }
+                catch (error) { return error instanceof TypeError; }
+                return false;
+            })()
+        "#;
+        let result = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    })
+    .unwrap();
+    super::super::guest::tests::assert_queued_trusted_types_violations(
+        &host,
+        &[
+            (1, "trusted-types-sink", "Element onclick|missing"),
+            (1, "trusted-types-sink", "Element onclick|empty"),
+            (0, "trusted-types-policy", "denied"),
+            (1, "trusted-types-sink", "Element onclick|empty"),
+        ],
+    );
+
     let calls = pause_guest_attribute(
         &mut host,
         &permit,
