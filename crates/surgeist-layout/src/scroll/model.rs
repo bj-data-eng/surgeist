@@ -858,9 +858,9 @@ impl FlowAxes {
 /// independent clips, gutters, the zero-anchored signed range, optimal viewing
 /// region and nested target metadata are one canonical result.
 ///
-/// This value deliberately carries no retained identity, transform, current
-/// offset, snap selection, CSSOM state, host scrollbar UI or events. Root owns
-/// those live concerns and consumes this geometry rather than recomputing it.
+/// Composition associates these facts with retained identity and transforms.
+/// Scrolling consumers use them for live offsets, destination selection, and
+/// host interaction. Runtime coordinates coherent publication.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollGeometryOf<S: LayoutScalar = DefaultScalar> {
     pub(super) source: CanonicalScrollGeometrySourceOf<S>,

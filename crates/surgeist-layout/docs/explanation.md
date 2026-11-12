@@ -154,6 +154,29 @@ consumer uses that operation's own scrolling-area origin and overflow
 direction when mapping Layout geometry to its exposed coordinates. The
 CSSOM View origin and the initial scroll position can differ.
 
+#### Scroll snap geometry
+
+Composition supplies transformed target border bounds in the scroll
+container's physical coordinate frame. `ScrollTargetGeometryOf` applies the
+target's signed scroll margins to construct its snap area. Equal edges
+retain a zero extent. Inverted intervals yield an empty area. Consumers
+can use this area for scroll-into-view with snapping disabled.
+
+A `ScrollSnapContextOf` combines the snapport at zero offset, the signed
+reachable range, and the scroller's flow axes and active snap axis.
+Alignment roles follow the scroller's block and inline axes. When the
+area exceeds the snapport along the target's own inline axis, start and
+end use the target's edge directions. The aligned offsets are clamped to
+the reachable range.
+
+For an oversized axis, the covering interval intersects the offsets that
+keep the snapport within the area, the reachable range, and the gap between
+eligible adjacent offsets. A gap between two neighbors must exceed the
+snapport extent. An absent neighbor leaves that end of the gap open.
+The scrolling consumer checks visibility at the final two-axis offset
+before selecting a destination. Shared boundary coordinates count as
+visible. [CSS Scroll Snap 1](https://www.w3.org/TR/2021/CR-css-scroll-snap-1-20210311/#scroll-snap-align)
+
 These boundaries describe the represented behavior; they do not establish broad
 CSS conformance. The [browser parity guide](../tests/layout/browser_parity/README.md)
 describes the checked-in evidence and its classified unsupported cases.

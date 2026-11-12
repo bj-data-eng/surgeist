@@ -439,8 +439,8 @@ pub enum ScrollSnapStrictness {
 
 /// Normalized scroll snap metadata for a scroll container.
 ///
-/// Layout records geometry for this value but does not select a live snap
-/// position or retain a current scroll offset.
+/// Layout derives candidates on the active axes. The scrolling consumer
+/// applies strictness when selecting a live destination.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ScrollSnapType {
     #[default]
@@ -463,8 +463,8 @@ pub enum ScrollSnapAlignValue {
 
 /// Explicit semantic block and inline snap alignments for one target.
 ///
-/// These roles remain semantic until root associates and transforms the target
-/// against its eventual snap container.
+/// Layout maps these roles through the scroller's axes when deriving offsets
+/// for the associated target.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ScrollSnapAlign {
     pub(super) block: ScrollSnapAlignValue,
