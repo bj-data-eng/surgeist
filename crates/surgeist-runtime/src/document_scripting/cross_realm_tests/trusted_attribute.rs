@@ -36,8 +36,8 @@ pub(super) fn guest_meta_retry_preserves_accepted_first_policy() {
     session.enable_trusted_types_csp(&cancel).unwrap();
     let policy_owner = session.trusted_types_csp.as_ref().unwrap().clone();
     let baseline = session.dom().usage().string_code_units();
-    // Leave room for the short first policy and its input custody, while
-    // refusing even one retained copy of the larger second policy.
+    // Admit the short first policy in the draft and refuse the larger list
+    // when the second policy is installed.
     let ceiling = baseline + 128;
     session.dom().raw_mut().set_limits(limits(ceiling)).unwrap();
     let mut host = super::super::guest::tests::attach_public_nodes(
@@ -98,8 +98,12 @@ pub(super) fn guest_meta_retry_preserves_accepted_first_policy() {
         panic!("the original second policy request must remain parked");
     };
     assert_eq!(request.subject(), Some(second));
+    assert_eq!(request.document(), Some(document));
     assert_eq!(request.operation(), parked.operation());
     session.dom().raw_mut().set_limits(limits(200_000)).unwrap();
+    assert!(
+        matches!(source.resume(&mut session.dom(), parked.operation(), SOURCE, &mut services, &cancel).unwrap(), DomSourceDriveProgress::Pending { request: DomSourceRequest::MetaCsp(reissued), .. } if reissued == request)
+    );
     session
         .service_trusted_types_meta_csp(request, SOURCE, &cancel)
         .unwrap();

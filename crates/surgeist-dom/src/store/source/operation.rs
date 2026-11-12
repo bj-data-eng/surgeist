@@ -669,8 +669,9 @@ impl Operation {
             return;
         }
         let draft = &mut self.draft;
-        draft.dom_limits.event_recipients = limits.event_recipients;
-        draft.dom_limits.child_list_observation = limits.child_list_observation;
+        // Sparse edits revalidate canonical counts with this copy after a
+        // parked Source resumes under newly admitted owner limits.
+        draft.dom_limits = limits;
         draft
             .input_processing
             .update_limits(limits.input_scratch, limits.input_work);
