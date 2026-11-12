@@ -9,7 +9,8 @@ mod prepare;
 
 use fit::{CapturedRunContext, NumericRunContext, fit_captured_run, fit_numeric_run};
 use placement::{InlineSourcePlacement, place_inline_sources};
-use prepare::{PreparedInlineRun, prepare_inline_run};
+use prepare::PreparedInlineRun;
+pub(super) use prepare::{InlineRunPreparation, PendingInlineAtomic};
 
 #[cfg(test)]
 mod baseline_offset_tests;
@@ -193,14 +194,44 @@ impl VisibleInlineRunTransition {
         }
     }
 
+    pub(super) fn begin<'input, Tree, S, M>(
+        &self,
+        tree: &mut Tree,
+        node: Tree::Node,
+        run: &[Tree::Node],
+        constants: &Constants<S>,
+        context: &InlineRunContext<S>,
+        adjoining_margin: S,
+    ) -> LayoutResultOf<Tree::Node, InlineRunPreparation<'input, Tree::Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+        S: LayoutScalar,
+    {
+        let semantic = self.semantic.as_ref().map(|segment| {
+            tree.text_computation()
+                .and_then(|state| state.semantic_run(node, segment))
+                .expect("semantic transition retains its validated actual binding")
+        });
+        InlineRunPreparation::begin(
+            tree,
+            node,
+            run,
+            semantic,
+            constants,
+            context,
+            adjoining_margin,
+        )
+    }
+
     pub(super) fn apply<'input, Tree, S, M>(
         self,
         tree: &mut Tree,
-        node: <Tree as Traverse>::Node,
-        children: &[<Tree as Traverse>::Node],
-        mut context: InlineRunContext<'_, S>,
-        state: InlineRunTransitionState<'_, <Tree as Traverse>::Node, S>,
-    ) -> LayoutResultOf<<Tree as Traverse>::Node, (), S, M>
+        node: Tree::Node,
+        run: &[Tree::Node],
+        constants: &Constants<S>,
+        request: InlineRunRequest<'input, Tree::Node, S>,
+        state: InlineRunTransitionState<'_, Tree::Node, S>,
+    ) -> LayoutResultOf<Tree::Node, (), S, M>
     where
         Tree: Compute<'input, M, Scalar = S>,
         S: LayoutScalar,
@@ -224,24 +255,13 @@ impl VisibleInlineRunTransition {
             owned_float_block_end,
             contributions,
         } = state;
-        let adjoining_margin = adjoining.adjoining_displacement();
-        context.cursor_block = adjoining.cursor;
-        let constants = context.constants;
-        let semantic = self.semantic.as_ref().map(|segment| {
-            tree.text_computation()
-                .and_then(|state| state.semantic_run(node, segment))
-                .expect("semantic transition retains its validated actual binding")
-        });
-        let publish_native = context.set_layout;
+        let publish_native = request.context.set_layout;
         let mut placement = layout_inline_run_children(
             tree,
             node,
-            &children[self.start..self.end],
-            InlineRunRequest {
-                semantic,
-                context,
-                adjoining_margin,
-            },
+            run,
+            constants,
+            request,
             float_exclusions,
             contributions,
         )?;
@@ -365,7 +385,7 @@ struct InlineRunPlacement<Node, S: LayoutScalar> {
     resolved_float_terminal_block_end: Option<S>,
 }
 
-pub(super) struct InlineRunContext<'a, S: LayoutScalar> {
+pub(super) struct InlineRunContext<S: LayoutScalar> {
     pub(super) inline_request: AxisSizingRequestOf<S>,
     pub(super) child_request: crate::SizingRequestOf<S>,
     pub(super) box_frontier: Option<crate::text_layout::boxes::BoxFrontier>,
@@ -376,7 +396,6 @@ pub(super) struct InlineRunContext<'a, S: LayoutScalar> {
     pub(super) source_index_start: usize,
     pub(super) cursor_block: S,
     pub(super) owned_float_block_end: S,
-    pub(super) constants: &'a Constants<S>,
     pub(super) input: ComputeInputOf<S>,
     pub(super) node_inner_size: Size<Option<S>>,
     pub(super) set_layout: bool,
@@ -396,10 +415,10 @@ fn resolved_inline_float_terminal_block_end<S: LayoutScalar>(
     })
 }
 
-struct InlineRunRequest<'context, 'input, Node, S: LayoutScalar> {
-    semantic: Option<crate::text_layout::AdmittedRun<'input, Node>>,
-    context: InlineRunContext<'context, S>,
-    adjoining_margin: S,
+pub(super) struct InlineRunRequest<'input, Node, S: LayoutScalar> {
+    pub(super) prepared: PreparedInlineRun<'input, Node, S>,
+    pub(super) context: InlineRunContext<S>,
+    pub(super) adjoining_margin: S,
 }
 
 pub(super) fn inline_atomic_child_request<S: LayoutScalar>(
@@ -434,7 +453,8 @@ fn layout_inline_run_children<'input, Tree, S, M>(
     tree: &mut Tree,
     container: <Tree as Traverse>::Node,
     run: &[<Tree as Traverse>::Node],
-    request: InlineRunRequest<'_, 'input, <Tree as Traverse>::Node, S>,
+    constants: &Constants<S>,
+    request: InlineRunRequest<'input, <Tree as Traverse>::Node, S>,
     float_exclusions: &mut FloatExclusions<S, <Tree as Traverse>::Node>,
     contributions: &mut BlockScrollContributions<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, InlineRunPlacement<<Tree as Traverse>::Node, S>, S, M>
@@ -443,7 +463,7 @@ where
     S: LayoutScalar,
 {
     let InlineRunRequest {
-        semantic,
+        prepared,
         context,
         adjoining_margin,
     } = request;
@@ -459,7 +479,7 @@ where
         text_atomics,
         float_events,
         absolute_children,
-    } = prepare_inline_run(tree, container, run, semantic, &context, adjoining_margin)?;
+    } = prepared;
     let InlineRunContext {
         inline_request: available_inline_extent,
         mut box_frontier,
@@ -470,7 +490,6 @@ where
         source_index_start,
         cursor_block: cursor_block_before_entry,
         owned_float_block_end,
-        constants,
         input,
         node_inner_size,
         set_layout,

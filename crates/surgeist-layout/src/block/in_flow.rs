@@ -1,7 +1,7 @@
 use super::absolute::{StaticPositionGeometry, absolute_static_position};
 use super::inline_run::{
-    InlineRunContext, InlineRunTransitionState, VisibleInlineRunTransition, inline_run_end,
-    visible_inline_boundary_in_flow, visible_line_break_in_flow,
+    InlineRunContext, InlineRunRequest, InlineRunTransitionState, VisibleInlineRunTransition,
+    inline_run_end, visible_inline_boundary_in_flow, visible_line_break_in_flow,
 };
 use super::scroll::{BlockScrollContributions, retained_child_scroll_geometry};
 use super::sizing::{maximum_size, minimum_size, preferred_size, resolve_length_or_zero};
@@ -12,7 +12,7 @@ mod child_compute;
 mod placement;
 mod traversal;
 
-pub(crate) use traversal::{InFlowChild, PendingBox};
+pub(crate) use traversal::{InFlowChild, PendingInFlowChild};
 pub(super) use traversal::{InFlowStep, InFlowTraversal};
 
 use child_compute::{
