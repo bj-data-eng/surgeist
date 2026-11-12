@@ -52,13 +52,13 @@ impl<Node, S: LayoutScalar> InFlowBoxComputation<'_, '_, Node, S> {
     }
 }
 
-struct InFlowBoxPreparation<S: LayoutScalar> {
+pub(super) struct InFlowBoxPreparation<S: LayoutScalar> {
     child_input: ComputeInputOf<S>,
     child_indent_context: crate::text_indent::BlockIndentContext<S>,
     parent_logical_unresolved_margin: LogicalEdgesOf<ResolvedLengthAutoOf<S>>,
     parent_inline_basis: Option<S>,
     avoids_float_exclusions: bool,
-    inherits_float_exclusions: bool,
+    pub(super) inherits_float_exclusions: bool,
     places_against_float_exclusions: bool,
 }
 
@@ -72,16 +72,16 @@ struct InFlowBoxOutput<Node, S: LayoutScalar> {
 type InFlowBoxRequestResult<Node, S, M> =
     ComputeResult<Node, (scope::ChildRequest<Node, S>, InFlowBoxPreparation<S>), S, M>;
 
-pub(super) fn compute_in_flow_box<'input, Tree, S, M>(
+pub(super) fn compute_shared_box<'input, Tree, S, M>(
     tree: &mut Tree,
     computation: InFlowBoxComputation<'_, 'input, Tree::Node, S>,
+    preparation: InFlowBoxPreparation<S>,
     remaining_cut: &mut Option<entry::canonical::Separation<Tree::Node, S>>,
 ) -> InFlowBoxResult<Tree::Node, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    let (request, preparation) = prepare_in_flow_box(tree, &computation)?;
     let InFlowBoxComputation {
         node,
         child,
@@ -92,46 +92,59 @@ where
         float_exclusions,
         ..
     } = computation;
-    let resident_cut = *remaining_cut;
-    let output = if preparation.inherits_float_exclusions {
-        let computed = compute_shared_in_flow_child(
-            tree,
-            SharedInFlowChild {
-                node,
-                child,
-                index,
-                child_input: preparation.child_input,
-                child_style,
-                constants,
-                prepared,
-                parent_entry: computation.parent_entry(),
-                resident_cut,
-                float_exclusions,
-            },
-        )?;
-        *remaining_cut = computed.remaining_cut;
-        InFlowBoxOutput {
-            output: computed.accepted.output,
-            shared_child: Some(SharedInFlowPlacement {
-                origin: computed.location,
-                floats: computed.accepted.floats,
-            }),
-            clearance_funding: computed.clearance_funding,
-            introduced_cut: computed.introduced_cut,
-        }
-    } else {
-        InFlowBoxOutput {
-            output: tree.compute_block_child(request)?,
-            shared_child: None,
-            clearance_funding: None,
-            introduced_cut: resident_cut
-                .filter(|cut| cut.container == node && cut.node == child && cut.index == index),
-        }
+    let computed = compute_shared_in_flow_child(
+        tree,
+        SharedInFlowChild {
+            node,
+            child,
+            index,
+            child_input: preparation.child_input,
+            child_style,
+            constants,
+            prepared,
+            parent_entry: computation.parent_entry(),
+            resident_cut: *remaining_cut,
+            float_exclusions,
+        },
+    )?;
+    *remaining_cut = computed.remaining_cut;
+    let output = InFlowBoxOutput {
+        output: computed.accepted.output,
+        shared_child: Some(SharedInFlowPlacement {
+            origin: computed.location,
+            floats: computed.accepted.floats,
+        }),
+        clearance_funding: computed.clearance_funding,
+        introduced_cut: computed.introduced_cut,
     };
     finish_in_flow_box(tree, &computation, preparation, output)
 }
 
-fn prepare_in_flow_box<'input, Tree, S, M>(
+pub(super) fn finish_requested_box<'input, Tree, S, M>(
+    tree: &mut Tree,
+    computation: InFlowBoxComputation<'_, 'input, Tree::Node, S>,
+    preparation: InFlowBoxPreparation<S>,
+    output: ComputeOutputOf<S>,
+    resident_cut: Option<entry::canonical::Separation<Tree::Node, S>>,
+) -> InFlowBoxResult<Tree::Node, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let output = InFlowBoxOutput {
+        output,
+        shared_child: None,
+        clearance_funding: None,
+        introduced_cut: resident_cut.filter(|cut| {
+            cut.container == computation.node
+                && cut.node == computation.child
+                && cut.index == computation.index
+        }),
+    };
+    finish_in_flow_box(tree, &computation, preparation, output)
+}
+
+pub(super) fn prepare_in_flow_box<'input, Tree, S, M>(
     tree: &mut Tree,
     computation: &InFlowBoxComputation<'_, 'input, Tree::Node, S>,
 ) -> InFlowBoxRequestResult<Tree::Node, S, M>

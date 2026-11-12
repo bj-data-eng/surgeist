@@ -12,7 +12,10 @@ mod child_compute;
 mod placement;
 mod traversal;
 
-use child_compute::{InFlowBoxComputation, InFlowComputedBox, compute_in_flow_box};
+use child_compute::{
+    InFlowBoxComputation, InFlowBoxPreparation, InFlowComputedBox, compute_shared_box,
+    finish_requested_box, prepare_in_flow_box,
+};
 use placement::{
     InFlowBoxOrigins, InFlowBoxPlacement, InFlowChildMargins, InFlowFloatItem, InFlowFloatPass,
     InFlowFloatState, SharedInFlowPlacement, begin_in_flow_child_margins, place_in_flow_box,
@@ -241,9 +244,12 @@ where
         match traversal.step(tree, children, constants)? {
             traversal::InFlowStep::Continue => {}
             traversal::InFlowStep::Complete => return traversal.finish(tree),
-            traversal::InFlowStep::HiddenChild { node, input } => {
-                tree.compute_child(node, input)?;
-                traversal.accept_hidden_child();
+            traversal::InFlowStep::Child { request, pending } => {
+                let output = match &pending {
+                    Some(_) => tree.compute_block_child(request)?,
+                    None => tree.compute_child(request.node, request.input)?,
+                };
+                traversal.accept_child(tree, constants, pending, output)?;
             }
         }
     }

@@ -1,12 +1,19 @@
 use super::*;
 
-pub(super) enum InFlowStep<Node, S: LayoutScalar> {
+pub(super) enum InFlowStep<'input, Node, S: LayoutScalar> {
     Continue,
     Complete,
-    HiddenChild {
-        node: Node,
-        input: ComputeInputOf<S>,
+    Child {
+        request: scope::ChildRequest<Node, S>,
+        pending: Option<PendingBox<'input, Node, S>>,
     },
+}
+
+pub(super) struct PendingBox<'input, Node, S: LayoutScalar> {
+    child: Node,
+    style: BlockChildProjection<'input, S>,
+    prepared: PreparedChild<S>,
+    preparation: InFlowBoxPreparation<S>,
 }
 
 pub(super) struct InFlowTraversal<Node, S: LayoutScalar> {
@@ -258,7 +265,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
         tree: &mut Tree,
         children: &[Node],
         constants: &Constants<S>,
-    ) -> ComputeResult<Node, InFlowStep<Node, S>, S, M>
+    ) -> ComputeResult<Node, InFlowStep<'input, Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -294,15 +301,19 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                         NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(source_index)),
                     ));
                     if compute_box {
-                        return Ok(InFlowStep::HiddenChild {
-                            node: child,
-                            input: ComputeInputOf::<S>::hidden_in_containing_pass(
-                                ContainingLayoutContext::new(
-                                    constants.flow_axes,
-                                    ParentFormattingContext::BlockFlow,
+                        return Ok(InFlowStep::Child {
+                            request: scope::ChildRequest {
+                                node: child,
+                                input: ComputeInputOf::<S>::hidden_in_containing_pass(
+                                    ContainingLayoutContext::new(
+                                        constants.flow_axes,
+                                        ParentFormattingContext::BlockFlow,
+                                    ),
+                                    input.settled_auto_scrollbars(),
                                 ),
-                                input.settled_auto_scrollbars(),
-                            ),
+                                entry: None,
+                            },
+                            pending: None,
                         });
                     }
                 }
@@ -415,37 +426,80 @@ impl<Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<Node, S> {
                 first_in_flow: &mut self.first_in_flow,
             },
         )?;
-        let computed = compute_in_flow_box(
-            tree,
-            InFlowBoxComputation {
-                node,
+        let computation = self.box_computation(child, &child_style, &prepared, constants);
+        let (request, preparation) = prepare_in_flow_box(tree, &computation)?;
+        if preparation.inherits_float_exclusions {
+            let mut remaining_cut = self.remaining_cut;
+            let computed = compute_shared_box(tree, computation, preparation, &mut remaining_cut)?;
+            self.remaining_cut = remaining_cut;
+            self.accept_box(tree, constants, source_index, child, &child_style, computed)?;
+            self.index += 1;
+            return Ok(InFlowStep::Continue);
+        }
+        Ok(InFlowStep::Child {
+            request,
+            pending: Some(PendingBox {
                 child,
-                index: self.index,
-                child_style: &child_style,
-                constants,
-                prepared: &prepared,
-                adjoining: &self.adjoining,
-                baselines: &self.baselines,
-                float_exclusions: &self.float_exclusions,
-                input,
-                pass_request: self.pass_request,
-                child_run_mode: self.child_run_mode,
-                normal_operation: self.normal_operation,
-                physical_float_context: self.physical_float_context,
-                containing_size: self.containing_size,
-                inner_inline: self.logical_node_inner_size.inline,
-                content_inline_size: self.content_inline_size,
-                occupied_block_end: self.occupied_block_end,
-            },
-            &mut self.remaining_cut,
-        )?;
-        self.accept_box(tree, constants, source_index, child, &child_style, computed)?;
-        self.index += 1;
-        Ok(InFlowStep::Continue)
+                style: child_style,
+                prepared,
+                preparation,
+            }),
+        })
     }
 
-    pub(super) fn accept_hidden_child(&mut self) {
+    fn box_computation<'a, 'input>(
+        &'a self,
+        child: Node,
+        child_style: &'a BlockChildProjection<'input, S>,
+        prepared: &'a PreparedChild<S>,
+        constants: &'a Constants<S>,
+    ) -> InFlowBoxComputation<'a, 'input, Node, S> {
+        InFlowBoxComputation {
+            node: self.node,
+            child,
+            index: self.index,
+            child_style,
+            constants,
+            prepared,
+            adjoining: &self.adjoining,
+            baselines: &self.baselines,
+            float_exclusions: &self.float_exclusions,
+            input: self.input,
+            pass_request: self.pass_request,
+            child_run_mode: self.child_run_mode,
+            normal_operation: self.normal_operation,
+            physical_float_context: self.physical_float_context,
+            containing_size: self.containing_size,
+            inner_inline: self.logical_node_inner_size.inline,
+            content_inline_size: self.content_inline_size,
+            occupied_block_end: self.occupied_block_end,
+        }
+    }
+
+    pub(super) fn accept_child<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        constants: &Constants<S>,
+        pending: Option<PendingBox<'input, Node, S>>,
+        output: ComputeOutputOf<S>,
+    ) -> ComputeResult<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        if let Some(PendingBox {
+            child,
+            style,
+            prepared,
+            preparation,
+        }) = pending
+        {
+            let computation = self.box_computation(child, &style, &prepared, constants);
+            let computed =
+                finish_requested_box(tree, computation, preparation, output, self.remaining_cut)?;
+            self.accept_box(tree, constants, self.index, child, &style, computed)?;
+        }
         self.index += 1;
+        Ok(())
     }
 
     fn accept_box<'input, Tree, M>(
