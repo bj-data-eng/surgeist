@@ -2,6 +2,10 @@
 use super::*;
 use crate::meta_atomic::{DomMetaAtomicLimits, DomMetaRuntimeUsage};
 
+mod csp;
+pub(super) use csp::CspDelivery;
+pub use csp::{DomSourceMetaCspError, DomSourceMetaCspProcessorFailure};
+
 #[cfg(test)]
 mod tests;
 
@@ -40,7 +44,15 @@ impl Operation {
                 ordinal
             }
         };
-        Ok(DomSourceMetaCspRequest {
+        Ok(self.meta_csp_request(frame, ordinal))
+    }
+
+    fn meta_csp_request(
+        &self,
+        frame: crate::store::meta::CspInsertion,
+        ordinal: u64,
+    ) -> DomSourceMetaCspRequest {
+        DomSourceMetaCspRequest {
             operation: self.id,
             occurrence: crate::source::watcher::HookOccurrence {
                 command: self.index,
@@ -51,7 +63,7 @@ impl Operation {
                 .draft
                 .published_id(frame.document)
                 .map(crate::DocumentId),
-        })
+        }
     }
 }
 

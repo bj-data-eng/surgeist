@@ -1395,7 +1395,9 @@ impl Draft {
                         self.attribute_after_script(frame, payload, limits, cancel)?
                     }
                     Effect::Script(frame) => self.script_effect(frame, cancel)?,
-                    Effect::MetaCsp(_) => return Err(DomError::InvalidSourceOperation),
+                    Effect::MetaCsp(frame) => {
+                        self.finish_meta_insertion(frame.subject, frame.document, limits, cancel)?
+                    }
                     Effect::Style(frame) => self.style_effect(frame, cancel)?,
                     Effect::XmlDocument(frame) => {
                         self.xml_document_effect(frame, payload, limits, cancel)?

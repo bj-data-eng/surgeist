@@ -34,7 +34,16 @@ fn hosted_session_with_details(
     source_jobs: usize,
     details_intentions: usize,
 ) -> (DomSession, DomHostedTopLevel) {
-    let dom = Dom::new(
+    hosted_session_with_dom_limits(cancel, source_jobs, details_intentions, |limits| limits)
+}
+
+fn hosted_session_with_dom_limits(
+    cancel: &AtomicBool,
+    source_jobs: usize,
+    details_intentions: usize,
+    configure: impl FnOnce(DomLimits) -> DomLimits,
+) -> (DomSession, DomHostedTopLevel) {
+    let dom = Dom::new(configure(
         DomLimits::new(
             128,
             200_000,
@@ -51,7 +60,7 @@ fn hosted_session_with_details(
         )
         .with_details_toggle_intentions(details_intentions)
         .unwrap(),
-    )
+    ))
     .unwrap();
     let mut session = DomSession::new(
         dom,
@@ -228,6 +237,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     nested_dispatch::verify_nested_authored_dispatch();
     authored_toggle::verify_authored_toggle_constructor();
     trusted_attribute::hosted_attribute_policy_reads_charge_the_parked_source_and_preserve_exact_input();
+    trusted_attribute::hosted_meta_source_publishes_ordered_csp_for_the_registered_attribute_verifier();
     trusted_attribute::default_factory_retains_the_real_guest_callback();
     super::guest::tests::trusted_policy::window_factory_creates_the_exact_default_policy();
     super::guest::tests::trusted_policy::guest_attribute_writes_reach_the_native_element();

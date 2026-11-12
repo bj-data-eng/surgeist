@@ -123,6 +123,9 @@ impl SelectedCsp {
             layout,
         }))
     }
+    pub(crate) fn association(&self) -> &HtmlCspAssociation {
+        &self.0.association
+    }
     pub(crate) fn wrapper_bytes() -> usize {
         // The protocol receipt already includes the inline association.
         size_of::<CspAssociation>() - size_of::<HtmlCspAssociation>()

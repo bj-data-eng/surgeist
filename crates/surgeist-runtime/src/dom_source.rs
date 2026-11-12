@@ -196,6 +196,8 @@ pub enum DomSourceRuntimeError {
     Hosted(DomHostedRuntimeError),
     /// The named native installation refused its actual input or target.
     NativeInstallation(DomNativeHtmlInstallError),
+    /// The processor or original Source controller refused a reached CSP pragma.
+    MetaCsp(surgeist_dom::DomSourceMetaCspError<crate::trusted_types_csp::PolicyListCapacity>),
 }
 impl std::fmt::Display for DomSourceRuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -212,6 +214,7 @@ impl std::error::Error for DomSourceRuntimeError {
             Self::ElementTasks(error) => Some(error),
             Self::Hosted(error) => Some(error),
             Self::NativeInstallation(error) => Some(error),
+            Self::MetaCsp(error) => Some(error),
         }
     }
 }
@@ -306,6 +309,23 @@ impl DomSourceRuntime {
         dom.resume_source_edit(operation, limits, cancel)?
             .cancel_script_preparation(cancel)?;
         Ok(())
+    }
+
+    /// Apply the named processor to the actual reached Meta pragma. Use the
+    /// same processor for subsequent insertions and reads of this policy.
+    /// The ordinary Source resume publishes the prepared policy and tree.
+    pub fn service_meta_csp(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        request: surgeist_dom::DomSourceMetaCspRequest,
+        processor: &mut crate::trusted_types_csp::PolicyProcessor,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomSourceRuntimeError> {
+        self.qualify_source_owners(dom)?;
+        dom.resume_source_edit(request.operation(), limits, cancel)?
+            .process_meta_csp(request, processor, cancel)
+            .map_err(DomSourceRuntimeError::MetaCsp)
     }
 
     /// Dispatch exactly the issued event and accept its actual receipt. This

@@ -14,11 +14,17 @@ mod tests_css;
 pub(super) struct CspInsertion {
     pub(super) subject: Key,
     pub(super) document: Key,
+    pub(super) content: usize,
     pub(super) ordinal: Option<u64>,
+    pub(super) applied: bool,
 }
 
 impl Draft {
     pub(super) fn pending_meta_csp(&self) -> Option<CspInsertion> {
+        self.retained_meta_csp().filter(|frame| !frame.applied)
+    }
+
+    pub(super) fn retained_meta_csp(&self) -> Option<CspInsertion> {
         match self.effects.last()?.effect {
             select::Effect::MetaCsp(frame) => Some(frame),
             _ => None,
@@ -78,10 +84,20 @@ impl Draft {
         attribute: Attr,
         cancel: &AtomicBool,
     ) -> Result<Option<&DocumentString>, DomError> {
+        Ok(self
+            .meta_attribute_index(key, attribute, cancel)?
+            .map(|(_, value)| value))
+    }
+    fn meta_attribute_index(
+        &self,
+        key: Key,
+        attribute: Attr,
+        cancel: &AtomicBool,
+    ) -> Result<Option<(usize, &DocumentString)>, DomError> {
         let transaction::KindRead::Element(element) = &self.node(key)?.kind() else {
             return Ok(None);
         };
-        for entry in element.attributes().iter() {
+        for (index, entry) in element.attributes().iter().enumerate() {
             self.meta_step(cancel)?;
             if entry.name().namespace_uri().is_none()
                 && self.meta_ascii(
@@ -93,7 +109,7 @@ impl Draft {
             {
                 #[cfg(test)]
                 source_observation::retained(self, entry.value(), false, cancel)?;
-                return Ok(Some(entry.value()));
+                return Ok(Some((index, entry.value())));
             }
         }
         Ok(None)
@@ -166,7 +182,9 @@ impl Draft {
                 return Ok(());
             }
         }
-        let Some(content) = self.meta_attribute(key, Attr::Content, cancel)? else {
+        let Some((content_index, content)) =
+            self.meta_attribute_index(key, Attr::Content, cancel)?
+        else {
             return Ok(());
         };
         match state {
@@ -303,7 +321,9 @@ impl Draft {
                     select::Effect::MetaCsp(CspInsertion {
                         subject: key,
                         document,
+                        content: content_index,
                         ordinal: None,
+                        applied: false,
                     }),
                     self.effect_scoped,
                     cancel,
@@ -488,8 +508,33 @@ impl Draft {
             return Ok(());
         };
         self.meta_pragma(key, document, limits, cancel)?;
+        self.finish_meta_insertion(key, document, limits, cancel)
+    }
+    pub(super) fn finish_meta_insertion(
+        &mut self,
+        key: Key,
+        document: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         self.meta_referrer(key, cancel)?;
         self.meta_candidates(document, true, true, limits, cancel)
+    }
+
+    pub(super) fn meta_csp_content(
+        &self,
+        frame: CspInsertion,
+        cancel: &AtomicBool,
+    ) -> Result<&DocumentString, DomError> {
+        self.meta_step(cancel)?;
+        let transaction::KindRead::Element(element) = self.node(frame.subject)?.kind() else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        element
+            .attributes()
+            .get(frame.content)
+            .map(crate::DomAttribute::value)
+            .ok_or(DomError::InvalidSourceOperation)
     }
     pub(super) fn meta_removed(
         &mut self,

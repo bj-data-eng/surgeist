@@ -84,6 +84,7 @@ pub(in crate::store) struct Operation {
     inline_source: Option<inline::SourceInline>,
     meta_policy: Option<meta::Policy>,
     pending_meta: Option<meta::Pending>,
+    meta_csp: Option<Box<meta::CspDelivery>>,
     draft: dialog::OperationDraft,
     commands: OperationRoot,
     index: usize,
@@ -172,11 +173,12 @@ impl Drop for DomSourceLease<'_> {
             !o.published
                 && !o.event_exposed
                 && !o.script_parked
+                    && o.meta_csp.is_none()
                 && o.attribute_verification.is_none()
                 && matches!(
                     &o.draft,
                     dialog::OperationDraft::Segment(draft)
-                        if draft.compound_failure().is_none() && draft.pending_meta_csp().is_none()
+                            if draft.compound_failure().is_none() && draft.retained_meta_csp().is_none()
                 )
                 && o.meta_policy.is_none()
         }) {
@@ -375,6 +377,7 @@ impl Dom {
             inline_source: None,
             meta_policy: None,
             pending_meta: None,
+            meta_csp: None,
             commands,
             index: 0,
             started: false,
@@ -3648,6 +3651,7 @@ impl Dom {
                 inline_source: None,
                 meta_policy: None,
                 pending_meta: None,
+                meta_csp: None,
                 commands: OperationRoot::NativeInstallation,
                 index: 0,
                 started: false,
