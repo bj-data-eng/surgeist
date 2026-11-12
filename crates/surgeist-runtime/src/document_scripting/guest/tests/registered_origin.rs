@@ -739,3 +739,43 @@ pub(in crate::document_scripting) fn scripted_shadow_uses_the_current_document_c
         })
         .unwrap();
 }
+
+pub(in crate::document_scripting) fn native_document_constructor_refusal_releases_private_wrapper()
+{
+    let mut host = public_node_host(1_000, 20_000);
+    let permit = host.permit().unwrap();
+    let cancel = host.native.cancellation.clone();
+    let limit = host
+        .with_native(|dom, _, _| {
+            let limit = dom.limits().managed_nodes();
+            let existing = dom.snapshot().nodes().count();
+            let mut batch = DomBatch::new();
+            for _ in existing..limit {
+                batch.create_comment(permit.document(), "");
+            }
+            dom.apply(batch, &cancel).unwrap();
+            assert_eq!(dom.snapshot().nodes().count(), limit);
+            limit
+        })
+        .unwrap();
+    let before = host.snapshot().unwrap();
+    let events = host.guest_events().unwrap();
+    let backing = events.budget.used.get();
+    let outcome = host.in_document(&permit, |scope| {
+        scope.evaluate(&units("new Document()")).map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = outcome else {
+        panic!("native node admission must refuse the new Document: {outcome:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(DocumentScriptError::Native(
+            DocumentScriptNativeError::Dom(DomError::ResourceLimit {
+                resource: surgeist_dom::DomResource::ManagedNodes,
+                limit: observed,
+            })
+        ))) if *observed == limit
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
+    assert_eq!(events.budget.used.get(), backing);
+}

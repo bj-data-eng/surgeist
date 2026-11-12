@@ -65,7 +65,7 @@ impl GuestNodeProjection {
 }
 
 struct DocumentPin {
-    document: Option<DocumentId>,
+    document: DocumentId,
     holder: RetainedCallbackObject,
     next: Option<Box<DocumentPin>>,
     _backing: GuestBacking,
@@ -274,7 +274,7 @@ impl DocumentBindings {
         let mut next = pins.as_deref();
         while let Some(pin) = next {
             events.step()?;
-            if pin.document.is_some_and(|document| document.node() == node) {
+            if pin.document.node() == node {
                 return Ok(Some(scope.open_callback_object(&pin.holder)?));
             }
             next = pin.next.as_deref();
@@ -299,50 +299,33 @@ impl DocumentBindings {
             node: Cell::new(None),
             lifetime: None,
         };
-        let holder = match prototype {
-            ordinary::NodePrototype::Selected(prototype) => {
-                events.project(owner, scope, ObjectPrototype::Object(prototype), payload)?
-            }
-            ordinary::NodePrototype::Creation(prototype) => {
-                events.step()?;
-                scope.project_retained_native_object_in_prototype_realm(
-                    prototype,
-                    payload,
-                    |payload, holder| {
-                        Ok::<_, DocumentGuestEventError>((
-                            events.reserve(owner, payload)?,
-                            events.reserve(owner, holder)?,
-                        ))
-                    },
-                )?
-            }
-        };
-        let value = scope.open_callback_object(&holder)?;
-        let projection = scope
-            .native_object::<GuestNodeProjection>(&value)?
-            .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-        let mut pin = Box::new(DocumentPin {
-            document: None,
-            holder,
-            next: None,
-            _backing: backing,
-        });
-        let document = match resolve() {
-            Ok(document) => document,
-            Err(error) => {
-                let first = refuse(scope, &events.refusal, error);
-                let pin = *pin;
-                let _ = scope.release_callback_object(pin.holder);
-                return first.map_err(Into::into);
-            }
-        };
-        projection
-            .payload()
-            .node
-            .set(Some(GuestNode::Document(document)));
-        pin.document = Some(document);
-        pin.next = pins.take();
-        *pins = Some(pin);
+        events.step()?;
+        let allocation = Box::new_uninit();
+        let (value, holder, document) = scope.try_project_retained_native_object(
+            prototype.projection(),
+            payload,
+            |payload, holder| {
+                Ok::<_, DocumentGuestEventError>((
+                    events.reserve(owner, payload)?,
+                    events.reserve(owner, holder)?,
+                ))
+            },
+            |payload| {
+                let document = resolve()?;
+                payload.node.set(Some(GuestNode::Document(document)));
+                Ok(document)
+            },
+        )?;
+        let next = pins.take();
+        *pins = Some(Box::write(
+            allocation,
+            DocumentPin {
+                document,
+                holder,
+                next,
+                _backing: backing,
+            },
+        ));
         Ok(value)
     }
 
