@@ -1312,3 +1312,122 @@ fn a_registry_binding_lists_the_block_of_the_saved_is_it_reforms() {
     assert_eq!((count, kept_count), (1, 1));
     assert_eq!(listed.units(), kept.units());
 }
+
+/// A parsed document of one element with `attributes` attributes, each with a value of `units`
+/// letters, installed into a store of its own. Returns the custody total, the number of blocks
+/// the store lists, and the block the report's attribute values borrow.
+fn parsed_install(attributes: usize, units: usize) -> (custody::Usage, usize, TextBlock) {
+    use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseLimits, HtmlSource};
+    use surgeist_html_semantics::{
+        HtmlBaseEncoding, HtmlBaseFactsRevision, HtmlBaseProducerId, HtmlBaseUrlRecord,
+        HtmlBaseUrlScheme,
+    };
+
+    let mut source = String::from("<!DOCTYPE html><html><body><div");
+    for index in 0..attributes {
+        source.push_str(&format!(" data-a{index}=\"{}\"", "v".repeat(units)));
+    }
+    source.push_str("></div></body></html>");
+    let limits = HtmlParseLimits::builder()
+        .source_units(1 << 20)
+        .buffered_utf16_units(1 << 20)
+        .token_attributes(10_000)
+        .auxiliary_entries(1_000_000)
+        .active_formatting_entries(1_000_000)
+        .managed_nodes(1024)
+        .managed_edges(1024)
+        .managed_attributes(1024)
+        .managed_utf16_units(1 << 20)
+        .source_map_entries(100_000)
+        .source_map_payload_units(100_000)
+        .diagnostics(100_000)
+        .diagnostic_payload_units(100_000)
+        .context_effects(100_000)
+        .open_elements(100)
+        .tree_depth(100)
+        .managed_capacity_bytes(100_000_000)
+        .peak_transient_bytes(100_000_000)
+        .atomic_layout_bytes(100_000_000)
+        .work_credits(100_000_000)
+        .finish()
+        .unwrap();
+    let report = Arc::new(
+        HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits)
+            .parse()
+            .unwrap(),
+    );
+    // The block of the first attribute value of the report, which the others of it share when
+    // the parse holds its values in one block.
+    let document = report.document().unwrap();
+    let mut pending: Vec<_> = document.root().children().collect();
+    let mut value = None;
+    while let Some(id) = pending.pop() {
+        let node = document.node(&id).unwrap();
+        if let surgeist_html::construction::HtmlNodeKind::Element(element) = node.kind()
+            && let Some(attribute) = element.attributes().iter().next()
+        {
+            value = Some(attribute.value().clone());
+        }
+        pending.extend(node.children());
+    }
+    let value = value.expect("the document has an attribute");
+    let block = value.block().clone();
+
+    let mut dom = dom();
+    let mut batch = crate::DomBatch::new();
+    let origin_document = batch.create_document();
+    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let origin = dom
+        .snapshot()
+        .document(commit.document(&origin_document).unwrap())
+        .unwrap()
+        .metadata()
+        .origin()
+        .clone();
+    drop(commit);
+    let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
+    let url = HtmlBaseUrlRecord::observed(
+        revision,
+        "https://example.test/custody/".into(),
+        HtmlBaseUrlScheme::Other,
+        false,
+        None,
+    )
+    .unwrap();
+    let environment = crate::DomParsedDocumentEnvironment::headless(
+        origin,
+        url,
+        HtmlBaseEncoding::fresh(),
+        "UTF-8".into(),
+        crate::DomNativeInputPlatform::headless(),
+    );
+    let before = dom.snapshot().stamp();
+    let installed = dom
+        .install_parsed_html_document(
+            before,
+            report.clone(),
+            environment,
+            crate::DomParsedHtmlInstallLimits::new(1024, 10_000_000, 16_000_000, 100_000_000),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    drop(installed);
+    (total(&dom), dom.custody_registry.listed_blocks(), block)
+}
+
+#[test]
+fn the_attribute_values_of_a_parse_charge_their_lengths_and_the_one_block_of_the_parse() {
+    let (small, small_listed, small_block) = parsed_install(8, 4);
+    let (large, large_listed, large_block) = parsed_install(8, 400);
+    // The documents differ only in the length of the eight values, so the units of the stores
+    // differ by those lengths and by the capacity of the one block each parse made, which every
+    // value is a range of and which the store charges once. A value that owned its own block would
+    // charge that block's capacity itself, eight times.
+    let lengths = 8 * (400 - 4);
+    assert_eq!(
+        large.units() - small.units(),
+        lengths + large_block.capacity() - small_block.capacity()
+    );
+    // The store lists the block of the parse once.
+    assert_eq!((small_listed, large_listed), (1, 1));
+}
