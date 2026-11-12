@@ -203,6 +203,10 @@ pub(in crate::document_scripting) fn element_methods_return_the_exact_attribute(
     expose_public_node_for_source_test(&mut host, &permit, element, "element");
     expose_public_node_for_source_test(&mut host, &permit, other, "other");
     let removed = host.in_document(&permit, |scope| {
+        let has_value_getters = scope.evaluate(&units(
+            "Element.prototype.getAttribute?.length === 1 && Element.prototype.getAttributeNS?.length === 2",
+        ))?;
+        assert!(scope.boolean(&has_value_getters)?, "missing standard attribute value getters");
         let value = scope.evaluate(&units(r#"
             (() => {
                 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -210,6 +214,28 @@ pub(in crate::document_scripting) fn element_methods_return_the_exact_attribute(
                     try { operation(); } catch (error) { return error.name === name; }
                     return false;
                 };
+                assert(element.getAttribute('DATA-OLD') === 'native'
+                    && element.getAttributeNS('', 'data-old') === 'native'
+                    && element.getAttributeNS(null, 'DATA-OLD') === null
+                    && other.getAttribute('data-old') === null, 'qualified and expanded values');
+                const getNS = Element.prototype.getAttributeNS;
+                const order = [];
+                const uri = { toString() { order.push('namespace'); return 'urn:test'; } };
+                const name = { toString() {
+                    order.push('name');
+                    element.setAttributeNS('urn:test', 'p:read', '\ud800\0');
+                    return 'read';
+                } };
+                assert(throws(() => getNS.call(Object.create(Element.prototype), uri, name), 'TypeError')
+                    && throws(() => getNS.call(element, uri), 'TypeError')
+                    && order.length === 0, 'receiver and arity before conversion');
+                assert(getNS.call(element, uri, name) === '\ud800\0'
+                    && order.join(',') === 'namespace,name', 'one conversion each before the native read');
+                const read = element.getAttributeNodeNS('urn:test', 'read');
+                read.value = '';
+                assert(element.getAttribute('P:READ') === '', 'empty live value');
+                element.removeAttributeNode(read);
+                assert(element.getAttribute('p:read') === null, 'removed value');
                 const plain = document.createAttribute('data-old');
                 const old = element.setAttributeNode(plain);
                 assert(old instanceof Attr && old !== plain && old.ownerElement === null
