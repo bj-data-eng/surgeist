@@ -1,5 +1,8 @@
+use super::super::relative::{self, InsetReference};
+use super::super::scroll::retained_child_scroll_geometry;
 use super::prepare::InlineRunControl;
 use super::*;
+use crate::inline::InlineSourcePositionOf;
 
 type TextFragmentGroup<Node, S> = (
     Node,
@@ -614,4 +617,71 @@ where
     }
 
     Ok(())
+}
+
+fn atomic_inset_offset<'input, Tree, S, M>(
+    tree: &Tree,
+    child: Tree::Node,
+    projection: &BlockChildProjection<'_, S>,
+    axes: FlowAxes,
+    inner_size: Size<Option<S>>,
+    captured: bool,
+) -> LayoutResultOf<Tree::Node, Point<S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    if captured || relative::needs_basis(*projection.common.inset, axes) {
+        // Captured offsets are sealed by the real converter. Native percentage
+        // offsets are deferred until this parent's performed normal size exists.
+        return Ok(Point::ZERO);
+    }
+    relative::resolve(
+        tree,
+        child,
+        *projection.common.inset,
+        InsetReference::Measurement(inner_size),
+        axes,
+    )
+}
+
+/// Compare the actual post-match displacement inside the same retained frame.
+/// Reconstructing the matched point does not refit or renormalize the line.
+pub(super) fn checked_shift_projection<S: LayoutScalar>(
+    alignment: VerticalAlignOf<S>,
+    axes: FlowAxes,
+    block: S,
+    project: impl Fn(S) -> Point<S>,
+) -> Result<Point<S>, crate::group_alignment::NumericError> {
+    let actual = project(block);
+    if let VerticalAlignOf::Shift(offset) = alignment
+        && offset.get() != S::ZERO
+    {
+        let inverse = if axes.line_over() == axes.block_start() {
+            offset.get()
+        } else {
+            -offset.get()
+        };
+        let matched = project(crate::baseline_offset::displaced(block, inverse)?);
+        let before = axes.block_axis_coordinate(matched);
+        let after = axes.block_axis_coordinate(actual);
+        let delta = match axes.line_over() {
+            PhysicalSide::Top | PhysicalSide::Left => -offset.get(),
+            PhysicalSide::Right | PhysicalSide::Bottom => offset.get(),
+        };
+        crate::baseline_offset::displaced(before, delta)?;
+        if !after.is_finite() {
+            return Err(crate::group_alignment::NumericError::new(
+                after.to_f64(),
+                crate::LayoutTextNumericError::NonFinite,
+            ));
+        }
+        if after == before {
+            return Err(crate::group_alignment::NumericError::new(
+                offset.get().to_f64(),
+                crate::LayoutTextNumericError::NonZeroLost,
+            ));
+        }
+    }
+    Ok(actual)
 }

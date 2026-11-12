@@ -645,3 +645,99 @@ where
         formatted,
     })
 }
+
+fn resolve_atomic_receiver<'input, Tree, S, M>(
+    tree: &mut Tree,
+    container: Tree::Node,
+    children: &mut [RetainedAtomicChild<'input, Tree::Node, S>],
+    source_index: usize,
+    expected: crate::InlineBaselineContext,
+    axes: FlowAxes,
+) -> LayoutResultOf<Tree::Node, crate::inline::ReferencedInlineStrutOf<S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let invalid = |node| {
+        LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::ChildLayout,
+            LayoutErrorKindOf::InternalInvariant(
+                crate::LayoutInternalInvariant::InvalidAtomicReceiverBasis,
+            ),
+        )
+    };
+    let index = children
+        .binary_search_by_key(&source_index, |row| row.source_index)
+        .map_err(|_| invalid(container))?;
+    let row = &mut children[index];
+    let InlineParticipantKindOf::Box(style) = row.projection.kind() else {
+        return Err(invalid(row.node));
+    };
+    let crate::InlineBaselineContext::Named(name) = expected else {
+        return Err(invalid(row.node));
+    };
+    if row.request.containing_flow_axes() != axes
+        || !matches!(
+            style.vertical_align,
+            VerticalAlignOf::Top | VerticalAlignOf::Bottom
+        )
+        || !style.float.is_none()
+    {
+        return Err(invalid(row.node));
+    }
+    let demand =
+        crate::output::NamedBaselineDemand::for_source(name, style.baseline_source, style.display);
+    let (_, fact) = demand
+        .selected_fact(row.output.named_baselines)
+        .expect("an actual named receiver selects one fact");
+    if matches!(fact, crate::BaselineFactOf::Unknown)
+        && row.request.run_mode() == RunMode::ComputeSize
+        && row.request.named_baseline_demand() == crate::output::NamedBaselineDemand::None
+    {
+        // Refine only the missing fact under the original computation frame.
+        // Complete performed outputs are never speculatively placed again.
+        let refined =
+            tree.compute_child(row.node, row.request.with_named_baseline_demand(demand))?;
+        if refined.size != row.output.size {
+            return Err(invalid(row.node));
+        }
+        let (_, fact) = demand
+            .selected_fact(refined.named_baselines)
+            .expect("the retained source still selects one named fact");
+        let pair = row.output.named_baselines.get(name);
+        let pair = if style.baseline_source.prefers_last(style.display) {
+            crate::BaselinePairOf::new(pair.first(), fact)
+        } else {
+            crate::BaselinePairOf::new(fact, pair.last())
+        };
+        row.output.named_baselines = row.output.named_baselines.with(name, pair);
+    }
+    let inner =
+        named_atomic_baseline(&style, row.output, row.margin, axes, name).map_err(|kind| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(row.node),
+                LayoutOperation::ChildLayout,
+                kind,
+            )
+        })?;
+    let margin = axes.logical_edges(row.margin);
+    let metrics = crate::inline::InlineMetricContributionOf {
+        baseline: margin.block_start + inner,
+        after_baseline: axes.logical_size(row.output.size).block - inner + margin.block_end,
+    };
+    for value in [metrics.baseline, metrics.after_baseline] {
+        if !value.is_finite() {
+            return Err(LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(row.node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value }),
+            ));
+        }
+    }
+    Ok(crate::inline::ReferencedInlineStrutOf {
+        metrics,
+        reference: expected,
+        source: crate::inline::InlineStrutSource::Atomic { source_index },
+    })
+}

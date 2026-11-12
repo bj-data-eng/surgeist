@@ -1,11 +1,6 @@
 use super::absolute::{StaticPositionGeometry, absolute_static_position};
-use super::relative::{self, InsetReference};
-use super::scroll::{
-    BlockScrollContributions, child_scrollbar_size, retained_child_scroll_geometry,
-};
-use super::sizing::{resolve_auto_optional, resolve_length_or_zero};
+use super::scroll::{BlockScrollContributions, child_scrollbar_size};
 use super::*;
-use crate::inline::InlineSourcePositionOf;
 use crate::{AxisSizingRequestOf, FlowAxes};
 
 mod fit;
@@ -401,44 +396,6 @@ fn resolved_inline_float_terminal_block_end<S: LayoutScalar>(
     })
 }
 
-fn forced_line_break_control<S: LayoutScalar>(
-    source_index: usize,
-    input: LineBreakInputOf<S>,
-    available_inline_extent: AxisSizingRequestOf<S>,
-) -> ForcedLineBreakControlOf<S> {
-    ForcedLineBreakControlOf::new(
-        source_index,
-        InlineFlowOf::new(
-            input.writing_mode(),
-            input.direction(),
-            available_inline_extent,
-        ),
-        input.metrics(),
-        input.vertical_align(),
-        input.clear(),
-    )
-}
-
-fn inline_boundary_control<S: LayoutScalar>(
-    source_index: usize,
-    input: InlineBoundaryInputOf<S>,
-    available_inline_extent: AxisSizingRequestOf<S>,
-) -> InlineBoundaryControlOf<S> {
-    InlineBoundaryControlOf::new(
-        source_index,
-        input.kind(),
-        InlineFlowOf::new(
-            input.writing_mode(),
-            input.direction(),
-            available_inline_extent,
-        ),
-        input.metrics(),
-        input.vertical_align(),
-        input.edge(),
-        input.parent_edge_axes(),
-    )
-}
-
 struct InlineRunRequest<'context, 'input, Node, S: LayoutScalar> {
     semantic: Option<crate::text_layout::AdmittedRun<'input, Node>>,
     context: InlineRunContext<'context, S>,
@@ -767,73 +724,6 @@ struct AtomicInlineContext {
     baseline: crate::InlineBaselineContext,
 }
 
-fn atomic_inset_offset<'input, Tree, S, M>(
-    tree: &Tree,
-    child: Tree::Node,
-    projection: &BlockChildProjection<'_, S>,
-    axes: FlowAxes,
-    inner_size: Size<Option<S>>,
-    captured: bool,
-) -> LayoutResultOf<Tree::Node, Point<S>, S, M>
-where
-    Tree: Compute<'input, M, Scalar = S>,
-    S: LayoutScalar,
-{
-    if captured || relative::needs_basis(*projection.common.inset, axes) {
-        // Captured offsets are sealed by the real converter. Native percentage
-        // offsets are deferred until this parent's performed normal size exists.
-        return Ok(Point::ZERO);
-    }
-    relative::resolve(
-        tree,
-        child,
-        *projection.common.inset,
-        InsetReference::Measurement(inner_size),
-        axes,
-    )
-}
-
-/// Compare the actual post-match displacement inside the same retained frame.
-/// Reconstructing the matched point does not refit or renormalize the line.
-fn checked_shift_projection<S: LayoutScalar>(
-    alignment: VerticalAlignOf<S>,
-    axes: FlowAxes,
-    block: S,
-    project: impl Fn(S) -> Point<S>,
-) -> Result<Point<S>, crate::group_alignment::NumericError> {
-    let actual = project(block);
-    if let VerticalAlignOf::Shift(offset) = alignment
-        && offset.get() != S::ZERO
-    {
-        let inverse = if axes.line_over() == axes.block_start() {
-            offset.get()
-        } else {
-            -offset.get()
-        };
-        let matched = project(crate::baseline_offset::displaced(block, inverse)?);
-        let before = axes.block_axis_coordinate(matched);
-        let after = axes.block_axis_coordinate(actual);
-        let delta = match axes.line_over() {
-            PhysicalSide::Top | PhysicalSide::Left => -offset.get(),
-            PhysicalSide::Right | PhysicalSide::Bottom => offset.get(),
-        };
-        crate::baseline_offset::displaced(before, delta)?;
-        if !after.is_finite() {
-            return Err(crate::group_alignment::NumericError::new(
-                after.to_f64(),
-                crate::LayoutTextNumericError::NonFinite,
-            ));
-        }
-        if after == before {
-            return Err(crate::group_alignment::NumericError::new(
-                offset.get().to_f64(),
-                crate::LayoutTextNumericError::NonZeroLost,
-            ));
-        }
-    }
-    Ok(actual)
-}
-
 fn named_atomic_demand<S: LayoutScalar>(
     child: &BlockChildProjection<'_, S>,
     context: crate::InlineBaselineContext,
@@ -1012,106 +902,6 @@ fn named_atomic_baseline<S: LayoutScalar, M>(
         ));
     }
     Ok(logical)
-}
-
-fn resolve_atomic_receiver<'input, Tree, S, M>(
-    tree: &mut Tree,
-    container: Tree::Node,
-    children: &mut [RetainedAtomicChild<'input, Tree::Node, S>],
-    source_index: usize,
-    expected: crate::InlineBaselineContext,
-    axes: FlowAxes,
-) -> LayoutResultOf<Tree::Node, crate::inline::ReferencedInlineStrutOf<S>, S, M>
-where
-    Tree: Compute<'input, M, Scalar = S>,
-    S: LayoutScalar,
-{
-    let invalid = |node| {
-        LayoutErrorOf::new(
-            LayoutErrorSiteOf::Node(node),
-            LayoutOperation::ChildLayout,
-            LayoutErrorKindOf::InternalInvariant(
-                crate::LayoutInternalInvariant::InvalidAtomicReceiverBasis,
-            ),
-        )
-    };
-    let index = children
-        .binary_search_by_key(&source_index, |row| row.source_index)
-        .map_err(|_| invalid(container))?;
-    let row = &mut children[index];
-    let InlineParticipantKindOf::Box(style) = row.projection.kind() else {
-        return Err(invalid(row.node));
-    };
-    let crate::InlineBaselineContext::Named(name) = expected else {
-        return Err(invalid(row.node));
-    };
-    if row.request.containing_flow_axes() != axes
-        || !matches!(
-            style.vertical_align,
-            VerticalAlignOf::Top | VerticalAlignOf::Bottom
-        )
-        || !style.float.is_none()
-    {
-        return Err(invalid(row.node));
-    }
-    let demand =
-        crate::output::NamedBaselineDemand::for_source(name, style.baseline_source, style.display);
-    let (_, fact) = demand
-        .selected_fact(row.output.named_baselines)
-        .expect("an actual named receiver selects one fact");
-    if matches!(fact, crate::BaselineFactOf::Unknown)
-        && row.request.run_mode() == RunMode::ComputeSize
-        && row.request.named_baseline_demand() == crate::output::NamedBaselineDemand::None
-    {
-        // Refine only the missing fact under the original computation frame.
-        // Complete performed outputs are never speculatively placed again.
-        let refined =
-            tree.compute_child(row.node, row.request.with_named_baseline_demand(demand))?;
-        if refined.size != row.output.size {
-            return Err(invalid(row.node));
-        }
-        let (_, fact) = demand
-            .selected_fact(refined.named_baselines)
-            .expect("the retained source still selects one named fact");
-        let pair = row.output.named_baselines.get(name);
-        let pair = if style.baseline_source.prefers_last(style.display) {
-            crate::BaselinePairOf::new(pair.first(), fact)
-        } else {
-            crate::BaselinePairOf::new(fact, pair.last())
-        };
-        row.output.named_baselines = row.output.named_baselines.with(name, pair);
-    }
-    let inner =
-        named_atomic_baseline(&style, row.output, row.margin, axes, name).map_err(|kind| {
-            LayoutErrorOf::new(
-                LayoutErrorSiteOf::Node(row.node),
-                LayoutOperation::ChildLayout,
-                kind,
-            )
-        })?;
-    let margin = axes.logical_edges(row.margin);
-    let metrics = crate::inline::InlineMetricContributionOf {
-        baseline: margin.block_start + inner,
-        after_baseline: axes.logical_size(row.output.size).block - inner + margin.block_end,
-    };
-    for value in [metrics.baseline, metrics.after_baseline] {
-        if !value.is_finite() {
-            return Err(LayoutErrorOf::new(
-                LayoutErrorSiteOf::Node(row.node),
-                LayoutOperation::ChildLayout,
-                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value }),
-            ));
-        }
-    }
-    Ok(crate::inline::ReferencedInlineStrutOf {
-        metrics,
-        reference: expected,
-        source: crate::inline::InlineStrutSource::Atomic { source_index },
-    })
-}
-
-fn resolve_atomic_inline_margin<S: LayoutScalar>(margin: Edges<Option<S>>) -> Edges<S> {
-    margin.map(|value| value.unwrap_or(S::ZERO))
 }
 
 /// One source-backed endpoint allocation shared by actual fitting and entry

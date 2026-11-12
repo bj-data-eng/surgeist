@@ -1,3 +1,5 @@
+use super::super::relative::{self, InsetReference};
+use super::super::sizing::{resolve_auto_optional, resolve_length_or_zero};
 use super::super::{float_text, in_flow};
 use super::*;
 
@@ -467,4 +469,46 @@ where
         float_events,
         absolute_children,
     })
+}
+
+fn forced_line_break_control<S: LayoutScalar>(
+    source_index: usize,
+    input: LineBreakInputOf<S>,
+    available_inline_extent: AxisSizingRequestOf<S>,
+) -> ForcedLineBreakControlOf<S> {
+    ForcedLineBreakControlOf::new(
+        source_index,
+        InlineFlowOf::new(
+            input.writing_mode(),
+            input.direction(),
+            available_inline_extent,
+        ),
+        input.metrics(),
+        input.vertical_align(),
+        input.clear(),
+    )
+}
+
+fn inline_boundary_control<S: LayoutScalar>(
+    source_index: usize,
+    input: InlineBoundaryInputOf<S>,
+    available_inline_extent: AxisSizingRequestOf<S>,
+) -> InlineBoundaryControlOf<S> {
+    InlineBoundaryControlOf::new(
+        source_index,
+        input.kind(),
+        InlineFlowOf::new(
+            input.writing_mode(),
+            input.direction(),
+            available_inline_extent,
+        ),
+        input.metrics(),
+        input.vertical_align(),
+        input.edge(),
+        input.parent_edge_axes(),
+    )
+}
+
+fn resolve_atomic_inline_margin<S: LayoutScalar>(margin: Edges<Option<S>>) -> Edges<S> {
+    margin.map(|value| value.unwrap_or(S::ZERO))
 }
