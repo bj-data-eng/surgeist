@@ -12,7 +12,7 @@ use surgeist_bindings_js::{
         },
     },
 };
-use surgeist_dom::DomSourceEventRequest;
+use surgeist_dom::{DomDetachedNodeCreation, DomSourceEventRequest};
 
 const CHARACTER_DATA: &[u16] = &ascii(b"CharacterData");
 const TEXT: &[u16] = &ascii(b"Text");
@@ -48,15 +48,10 @@ impl CharacterKind {
         }
     }
 
-    fn create(
-        self,
-        batch: &mut DomBatch,
-        document: DocumentId,
-        data: DocumentString,
-    ) -> surgeist_dom::CreatedNode {
+    fn creation(self, data: DocumentString) -> DomDetachedNodeCreation {
         match self {
-            Self::Text => batch.create_text(document, data),
-            Self::Comment => batch.create_comment(document, data),
+            Self::Text => DomDetachedNodeCreation::Text(data),
+            Self::Comment => DomDetachedNodeCreation::Comment(data),
         }
     }
 
@@ -372,26 +367,13 @@ impl Capture {
             .ok_or(Error::ExpiredIdentity)?
             .document
             .ordinary;
-        ordinary.create(scope, owner, events, prototype, |inbox, key| {
-            self.with_native(owner, |session, _| {
-                let mut batch = DomBatch::new();
-                let ticket = kind.create(&mut batch, document, data);
-                let (_, node, watch) = session
-                    .dom()
-                    .raw_mut()
-                    .apply_with_node_retirement_watch(
-                        batch,
-                        &ticket,
-                        inbox,
-                        key,
-                        events.limits.node_retirement,
-                        &owner.cancellation,
-                    )
-                    .map_err(DocumentScriptNativeError::from)?
-                    .into_parts();
-                Ok((kind.project(node), watch))
-            })
-        })
+        ordinary.create_detached(
+            scope,
+            self,
+            (owner, events),
+            prototype,
+            (document, kind.creation(data)),
+        )
     }
 
     fn character_member<'scope>(

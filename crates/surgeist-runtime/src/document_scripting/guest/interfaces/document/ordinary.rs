@@ -3,8 +3,8 @@
 use super::*;
 use surgeist_bindings_js::NativeProjectionPrototype;
 use surgeist_dom::{
-    DomDocumentScriptRegistration, DomNodeRetirementWatch, DomSourceAttributeVerificationRequest,
-    DomSourceEventRequest,
+    DomDetachedNodeCreation, DomDocumentScriptRegistration, DomNodeRetirementWatch,
+    DomSourceAttributeVerificationRequest, DomSourceEventRequest,
 };
 
 pub(super) struct OrdinaryBindings {
@@ -291,6 +291,78 @@ impl OrdinaryBindings {
             Admission::ordinary(owner, events),
             Projection::Create(prototype, create),
         )
+    }
+
+    pub(super) fn create_detached<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        capture: &Capture,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        prototype: NodePrototype<'_, 'scope>,
+        (document, creation): (DocumentId, DomDetachedNodeCreation),
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let event = owner.active_event_request();
+        let attribute = owner.active_attribute_registration()?;
+        let admission = match (&attribute, &event) {
+            (Some((request, registration)), _) => {
+                Admission::attribute(owner, events, *request, registration)
+            }
+            (None, Some(request)) => Admission::source(owner, events, request),
+            (None, None) => Admission::ordinary(owner, events),
+        };
+        let publish = |inbox: &DomNodeRetirementInbox, key| {
+            capture
+                .callbacks
+                .with_qualified_session(owner, event.as_ref(), |session, _| {
+                    let project = match &creation {
+                        DomDetachedNodeCreation::Attribute(_)
+                        | DomDetachedNodeCreation::AttributeNs(..) => GuestNode::Attr,
+                        DomDetachedNodeCreation::Fragment => GuestNode::Fragment,
+                        DomDetachedNodeCreation::Text(_) => GuestNode::Text,
+                        DomDetachedNodeCreation::Comment(_) => GuestNode::Comment,
+                    };
+                    let mut dom = session.dom();
+                    let dom = dom.raw_mut();
+                    let cancel = &owner.cancellation;
+                    let watched = if matches!(admission.route, AdmissionRoute::Ordinary) {
+                        let mut batch = DomBatch::new();
+                        let ticket = match creation {
+                            DomDetachedNodeCreation::Attribute(name) => {
+                                batch.create_attribute(document, name)
+                            }
+                            DomDetachedNodeCreation::AttributeNs(namespace, name) => {
+                                batch.create_attribute_ns(document, namespace, name)
+                            }
+                            DomDetachedNodeCreation::Fragment => batch.create_fragment(document),
+                            DomDetachedNodeCreation::Text(data) => {
+                                batch.create_text(document, data)
+                            }
+                            DomDetachedNodeCreation::Comment(data) => {
+                                batch.create_comment(document, data)
+                            }
+                        };
+                        dom.apply_with_node_retirement_watch(
+                            batch,
+                            &ticket,
+                            inbox,
+                            key,
+                            events.limits.node_retirement,
+                            cancel,
+                        )?
+                    } else {
+                        dom.create_detached_with_node_retirement_watch(
+                            document,
+                            creation,
+                            (inbox, key),
+                            (events.limits.source_edits, events.limits.node_retirement),
+                            cancel,
+                        )?
+                    };
+                    let (_, node, watch) = watched.into_parts();
+                    Ok((project(node), watch))
+                })
+        };
+        self.project(scope, admission, Projection::Create(prototype, publish))
     }
 
     pub(super) fn watch<'scope>(

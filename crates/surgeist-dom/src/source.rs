@@ -423,6 +423,31 @@ impl DomSourceNativeHtmlInstallLimits {
 pub struct DomSourceEdit {
     pub(crate) command: crate::batch::Command,
 }
+
+/// One ordinary detached node creation with no connected-tree effects.
+#[derive(Debug)]
+pub enum DomDetachedNodeCreation {
+    Attribute(DocumentString),
+    AttributeNs(Namespace, DocumentString),
+    Fragment,
+    Text(DocumentString),
+    Comment(DocumentString),
+}
+
+impl DomDetachedNodeCreation {
+    pub(crate) fn into_edit(self, document: crate::DocumentId) -> DomSourceEdit {
+        match self {
+            Self::Attribute(name) => DomSourceEdit::create_attribute(document, name),
+            Self::AttributeNs(namespace, name) => {
+                DomSourceEdit::create_attribute_ns(document, namespace, name)
+            }
+            Self::Fragment => DomSourceEdit::create_fragment(document.node()),
+            Self::Text(data) => DomSourceEdit::create_text(document.node(), data),
+            Self::Comment(data) => DomSourceEdit::create_comment(document.node(), data),
+        }
+    }
+}
+
 impl DomSourceEdit {
     pub fn exit_fullscreen(document: crate::DocumentId) -> Self {
         Self {

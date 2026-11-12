@@ -67,6 +67,78 @@ fn creation_and_watch_refusal_preserve_the_original_dom_publication() {
 }
 
 #[test]
+fn source_detached_creation_and_watch_publish_together() {
+    use crate::{DomDetachedNodeCreation, DomSourceLimits};
+
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, _) = fixture(&cancel);
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let source = DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2);
+    let name = || DomDetachedNodeCreation::Attribute("DATA-NEW".into());
+    let before = dom.snapshot();
+    let one_short = DomNodeRetirementLimits::new(16_000_000, 0);
+    // A refused Source can grow reusable owner indexes. After the first
+    // attempt, repeating it must release all per-attempt custody.
+    let attempt = |dom: &mut Dom| {
+        dom.create_detached_with_node_retirement_watch(
+            document,
+            name(),
+            (&inbox, 7),
+            (source, one_short),
+            &cancel,
+        )
+    };
+    dom.custody_registry.reconcile_releases();
+    let initial = bytes(&dom);
+    let initial_names = dom.names.inspect_usage().bytes();
+    assert!(matches!(
+        attempt(&mut dom),
+        Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+    ));
+    dom.custody_registry.reconcile_releases();
+    let retained = bytes(&dom);
+    assert_eq!(
+        retained - initial,
+        dom.names.inspect_usage().bytes() - initial_names
+    );
+    assert!(matches!(
+        attempt(&mut dom),
+        Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert!(dom.pending_source_edit().is_none());
+    assert!(dom.node_retirements.is_none());
+    assert!(inbox.take().is_none());
+    dom.custody_registry.reconcile_releases();
+    assert_eq!(bytes(&dom), retained);
+
+    let (commit, node, watch) = dom
+        .create_detached_with_node_retirement_watch(
+            document,
+            name(),
+            (&inbox, 7),
+            (source, GENEROUS),
+            &cancel,
+        )
+        .unwrap()
+        .into_parts();
+    assert_eq!(commit.changes().from(), before.stamp());
+    let snapshot = dom.snapshot();
+    assert_eq!(commit.changes().to(), snapshot.stamp());
+    let attr = snapshot.attr(node).unwrap();
+    assert_eq!(attr.owner_document(), document);
+    assert!(attr.owner_element().is_none());
+    assert_eq!(attr.name().local_name(), &"DATA-NEW".into());
+    let mut retire = DomBatch::new();
+    retire.destroy(node);
+    dom.apply(retire, &cancel).unwrap();
+    let notice = inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (node, 7));
+    assert!(inbox.take().is_none());
+    drop(watch);
+}
+
+#[test]
 fn source_shadow_creation_admits_the_watch_before_publication() {
     use crate::{DomShadowRootInit, DomSourceLimits, HtmlShadowRootMode};
     use surgeist_html::values::Namespace;

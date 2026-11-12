@@ -3,6 +3,7 @@
 use super::*;
 use character_data::copy_native_data;
 use surgeist_bindings_js::{conversion::declarations, dom_exception::DomExceptionName};
+use surgeist_dom::DomDetachedNodeCreation;
 use surgeist_html::values::Namespace;
 
 pub(super) fn install<'scope>(
@@ -90,39 +91,21 @@ impl Capture {
                 _ => None,
             };
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-            let mut batch = DomBatch::new();
-            let ticket = if namespaced {
+            let creation = if namespaced {
                 let namespace = uri
                     .as_ref()
                     .map_or_else(Namespace::none, |(uri, _)| Namespace::from_uri(uri.clone()));
-                batch.create_attribute_ns(document, namespace, name)
+                DomDetachedNodeCreation::AttributeNs(namespace, name)
             } else {
-                batch.create_attribute(document, name)
+                DomDetachedNodeCreation::Attribute(name)
             };
             let create = |scope: &mut Scope<'scope>, prototypes: &DocumentPrototypes| {
-                public.document.ordinary.create(
+                public.document.ordinary.create_detached(
                     scope,
-                    &owner,
-                    &events,
+                    self,
+                    (&owner, &events),
                     ordinary::NodePrototype::Creation(&prototypes.attr),
-                    |inbox, key| {
-                        self.with_native(&owner, |session, _| {
-                            let (_, node, watch) = session
-                                .dom()
-                                .raw_mut()
-                                .apply_with_node_retirement_watch(
-                                    batch,
-                                    &ticket,
-                                    inbox,
-                                    key,
-                                    events.limits.node_retirement,
-                                    &owner.cancellation,
-                                )
-                                .map_err(DocumentScriptNativeError::from)?
-                                .into_parts();
-                            Ok((GuestNode::Attr(node), watch))
-                        })
-                    },
+                    (document, creation),
                 )
             };
             if let Some(global) = public.other_document_origin(&owner, &events, document)? {

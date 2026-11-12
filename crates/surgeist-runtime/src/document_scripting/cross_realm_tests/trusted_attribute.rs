@@ -1249,7 +1249,7 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
                     plain.value = fragment.textContent;
                     firstOwner.setAttributeNode(plain);
                     replacement = document.createAttributeNS(null, 'onclick');
-                    replacement.value = policy.createScript('nested\udfff');
+                    replacement.value = policy.createScript('nested\udfff', 'TrustedScript', 'Element onclick');
                     if (protectedTarget.setAttributeNode(replacement) !== hiddenOwnerAttr)
                         throw new Error('nested attachment selected the wrong Attr');
                 };

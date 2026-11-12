@@ -1048,7 +1048,10 @@ fn actual_parked_source_keeps_its_mandatory_tail_and_original_cleanup_custody() 
 
 #[test]
 fn trusted_attribute_sink_parks_for_its_registered_global() {
-    use crate::{DomSourceAttributeSink, DomSourceAttributeVerificationOutcome};
+    use crate::{
+        DomDetachedNodeCreation, DomNodeRetirementLimits, DomSourceAttributeSink,
+        DomSourceAttributeVerificationOutcome,
+    };
     use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
     use surgeist_html::security::csp::{HtmlCspDisposalWork, HtmlCspLayout, HtmlCspStorage};
     use surgeist_html::values::Namespace;
@@ -1111,6 +1114,8 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
     let (_binding, registration) = source
         .attach_document_script_host(&mut dom, global, document, facts, backing, &cancel)
         .unwrap();
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1000);
+    let inbox = dom.node_retirement_inbox(watch_limits, &cancel).unwrap();
 
     let before = dom.snapshot();
     let receiver = before.node(element).unwrap();
@@ -1236,6 +1241,42 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
         dom.dispatch_relevant_global(constructed.node(), &cancel)
             .unwrap(),
         Some(global)
+    );
+    let snapshot = dom.snapshot();
+    let parent = dom.pending_source_edit().unwrap();
+    let before_work = parent.spent_work();
+    assert!(matches!(
+        dom.create_detached_with_node_retirement_watch(
+            constructed,
+            DomDetachedNodeCreation::Attribute("callback-attr".into()),
+            (&inbox, 8),
+            (source_limits(), DomNodeRetirementLimits::new(16_000_000, 0)),
+            &cancel,
+        ),
+        Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+    ));
+    let current = dom.pending_source_edit().unwrap();
+    assert_eq!(current.operation(), parent.operation());
+    assert_eq!(current.phase(), parent.phase());
+    assert!(current.spent_work() > before_work);
+    assert_eq!(dom.snapshot().stamp(), snapshot.stamp());
+    let (_, created, _watch) = dom
+        .create_detached_with_node_retirement_watch(
+            constructed,
+            DomDetachedNodeCreation::Attribute("callback-attr".into()),
+            (&inbox, 8),
+            (source_limits(), watch_limits),
+            &cancel,
+        )
+        .unwrap()
+        .into_parts();
+    assert_eq!(
+        dom.pending_source_edit().unwrap().operation(),
+        request.operation()
+    );
+    assert_eq!(
+        dom.snapshot().attr(created).unwrap().owner_document(),
+        constructed
     );
     let mut nested = dom
         .begin_source_edit(

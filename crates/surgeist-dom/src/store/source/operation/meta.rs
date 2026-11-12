@@ -811,7 +811,7 @@ impl<'lease, 'dom> DomMetaSourceRuntimeHold<'lease, 'dom> {
                         runtime: self.usage,
                     }),
                     hosted_events: clock == crate::DomSourceEventClockMode::Hosted,
-                    shadow_attachment: None,
+                    synchronous_node: None,
                 };
                 // Receipt validation already holds this exact producer lock
                 // through the Source advance and its publication fence.

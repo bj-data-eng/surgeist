@@ -35,7 +35,7 @@ pub(super) struct Execution<'a> {
     pub(super) publication: Option<DomInlineStyleSourcePublication>,
     pub(super) native: Option<meta::Execution>,
     pub(super) hosted_events: bool,
-    pub(super) shadow_attachment: Option<shadow::SynchronousAttachment<'a>>,
+    pub(super) synchronous_node: Option<synchronous_node::SynchronousNode<'a>>,
 }
 impl Execution<'_> {
     pub(super) fn disabled() -> Self {
@@ -44,7 +44,7 @@ impl Execution<'_> {
             publication: None,
             native: None,
             hosted_events: false,
-            shadow_attachment: None,
+            synchronous_node: None,
         }
     }
 }
@@ -153,7 +153,7 @@ impl DomSourceLease<'_> {
             publication: None,
             native: None,
             hosted_events,
-            shadow_attachment: None,
+            synchronous_node: None,
         };
         match self.advance_execution(&mut execution, None, cancel) {
             Ok(source) => Ok(DomSourceAdvance::Progress(DomInlineStyleSourceProgress {
@@ -262,11 +262,11 @@ impl Operation {
             .inline_recording
             .as_ref()
             .is_some_and(Recording::has_inputs);
-        if let Some(attachment) = execution.shadow_attachment.as_mut() {
+        if let Some(node) = execution.synchronous_node.as_mut() {
             if incomplete || has_inputs {
                 return Err(DomError::IncompleteSourceOperation.into());
             }
-            if let shadow::SynchronousAttachment::Watch(watch) = attachment {
+            if let synchronous_node::SynchronousNode::Watch(watch) = node {
                 watch.arm(dom, &segment, cancel)?;
             }
         }

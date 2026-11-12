@@ -607,10 +607,9 @@ impl PublicEventBindings {
         events: &GuestEvents,
         document: DocumentId,
     ) -> Result<Option<DomHostedGlobalId>, DocumentGuestEventError> {
-        self.callbacks.with_native(owner, |session, attached| {
-            let snapshot = session.snapshot();
-            let node = snapshot.node_with(document.node(), || events.step())?;
-            events.step()?;
+        self.callbacks.with_read(owner, events, |read, attached| {
+            let node = read.node(document.node())?;
+            read.step()?;
             let origin = node
                 .relevant_global()
                 .map_err(DomHostedRuntimeError::Dom)

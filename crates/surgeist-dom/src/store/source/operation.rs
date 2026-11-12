@@ -26,8 +26,8 @@ mod scope;
 #[cfg(test)]
 mod scope_tests;
 mod script;
-mod shadow;
 mod show_modal;
+mod synchronous_node;
 mod watcher;
 use super::Invocation;
 use super::*;
@@ -2282,7 +2282,7 @@ impl DomSourceLease<'_> {
                         op.admit_current_command(self.dom, cancel)?;
                         continue;
                     }
-                    if execution.shadow_attachment.is_some() {
+                    if execution.synchronous_node.is_some() {
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
                         op.started = started;
