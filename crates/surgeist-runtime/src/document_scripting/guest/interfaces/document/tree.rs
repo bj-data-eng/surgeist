@@ -53,7 +53,66 @@ pub(super) fn projected_node<'scope>(
         .and_then(|projection| projection.payload().id()))
 }
 
+pub(super) fn install_adoption<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let name = &ascii(b"adoptNode");
+    let handler = capture(size_of::<Capture>())?;
+    let method = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| handler.adopt_node(scope, arguments)),
+        FunctionMetadata { name, length: 1 },
+    )?;
+    define_data(
+        scope,
+        document,
+        PropertyKey::String(name),
+        &method,
+        true,
+        true,
+        true,
+    )?;
+    Ok(())
+}
+
 impl Capture {
+    fn adopt_node<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let Some(GuestNode::Document(document)) = projected_node(scope, arguments.receiver())?
+        else {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Document required"))?,
+            ));
+        };
+        let (_, values) = arguments.into_parts();
+        let Some(value) = values.into_iter().next() else {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Node required"))?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            events.step()?;
+            let Some(node) = projected_node(scope, &value)? else {
+                return Ok(Completion::Throw(
+                    scope.type_error(&ascii(b"Node required"))?,
+                ));
+            };
+            self.apply_tree_edit(
+                scope,
+                &owner,
+                &events,
+                DomSourceEdit::adopt(node.node(), document.node()),
+                Completion::Return(value),
+            )
+        })();
+        tree_completion(scope, &events, result)
+    }
+
     fn edit_tree<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -221,6 +280,7 @@ fn tree_exception(error: &DomError) -> Option<DomExceptionName> {
     match error {
         DomError::HierarchyRequest => Some(DomExceptionName::HierarchyRequestError),
         DomError::NotFound => Some(DomExceptionName::NotFoundError),
+        DomError::NotSupported => Some(DomExceptionName::NotSupportedError),
         _ => None,
     }
 }

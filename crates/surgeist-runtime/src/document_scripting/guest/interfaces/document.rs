@@ -148,6 +148,7 @@ impl DocumentPrototypes {
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
         fragment::install_factory(scope, &document, &funding.capture)?;
         attr_factory::install(scope, &document, &funding.capture)?;
+        tree::install_adoption(scope, &document, funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
         parent_node::install(
             scope,
