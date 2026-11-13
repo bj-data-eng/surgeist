@@ -1,4 +1,4 @@
-//! Reflected attributes over authenticated live HTML elements and Source edits.
+//! Reflected attributes over authenticated live elements and Source edits.
 
 use super::{element::HTML_NAMESPACE, *};
 use surgeist_bindings_js::conversion::types::{BOOLEAN, DOM_STRING};
@@ -17,6 +17,7 @@ pub(super) enum Reflection {
 
 #[derive(Clone, Copy)]
 pub(super) enum Receiver {
+    Element,
     Template,
     Meta,
 }
@@ -24,6 +25,7 @@ pub(super) enum Receiver {
 impl Receiver {
     fn matches(self, node: DomNode<'_>) -> bool {
         match self {
+            Self::Element => node.as_element().is_some(),
             Self::Template => node.as_template().is_some(),
             Self::Meta => node.as_element().is_some_and(|element| {
                 let name = element.name();
@@ -38,6 +40,7 @@ impl Receiver {
 
     fn error_message(self) -> &'static [u16] {
         match self {
+            Self::Element => const { &ascii(b"Element required") },
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
             Self::Meta => const { &ascii(b"HTMLMetaElement required") },
         }

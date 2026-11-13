@@ -36,6 +36,30 @@ const OBSOLETE_GENERIC: &[&str] = &[
     "strike",
     "tt",
 ];
+const REFLECTIONS: &[super::reflection::Member] = &[
+    (
+        &ascii(b"id"),
+        &ascii(b"get id"),
+        &ascii(b"set id"),
+        &ascii(b"id"),
+        super::reflection::Reflection::String,
+    ),
+    (
+        &ascii(b"className"),
+        &ascii(b"get className"),
+        &ascii(b"set className"),
+        &ascii(b"class"),
+        super::reflection::Reflection::String,
+    ),
+    (
+        &ascii(b"slot"),
+        &ascii(b"get slot"),
+        &ascii(b"set slot"),
+        &ascii(b"slot"),
+        super::reflection::Reflection::String,
+    ),
+];
+
 const OBSOLETE_SPECIAL: &[(&str, &str)] = &[
     ("dir", "HTMLDirectoryElement"),
     ("font", "HTMLFontElement"),
@@ -104,6 +128,27 @@ impl ElementBindings {
     ) -> Result<Self, DocumentGuestEventError> {
         let global = scope.global()?;
         let (constructor, element) = install(scope, &global, ELEMENT, node_constructor, node)?;
+        let unscopables = scope.object(ObjectPrototype::Null)?;
+        let yes = scope.primitive(Primitive::Boolean(true))?;
+        define_data(
+            scope,
+            &unscopables,
+            PropertyKey::String(&ascii(b"slot")),
+            &yes,
+            true,
+            true,
+            true,
+        )?;
+        let key = scope.well_known_symbol(WellKnownSymbol::Unscopables)?;
+        define_data(
+            scope,
+            &element,
+            PropertyKey::Value(&key),
+            &unscopables,
+            false,
+            false,
+            true,
+        )?;
         let (_, mathml) = install(scope, &global, MATHML_ELEMENT, &constructor, &element)?;
         let svg = svg::SvgBindings::install(scope, &global, &constructor, &element, fund)?;
         let (html_constructor, html) = install_html_constructor(
@@ -202,11 +247,6 @@ impl ElementBindings {
                 &ascii(b"tagName")[..],
                 &ascii(b"get tagName")[..],
             ),
-            (
-                ElementMember::ShadowRoot,
-                &ascii(b"shadowRoot")[..],
-                &ascii(b"get shadowRoot")[..],
-            ),
         ] {
             let handler = capture(size_of::<(Capture, ElementMember)>())?;
             install_getter(
@@ -220,6 +260,24 @@ impl ElementBindings {
                 }),
             )?;
         }
+        super::reflection::install(
+            scope,
+            &element,
+            capture,
+            super::reflection::Receiver::Element,
+            REFLECTIONS,
+        )?;
+        let handler = capture(size_of::<(Capture, ElementMember)>())?;
+        install_getter(
+            scope,
+            &element,
+            &ascii(b"shadowRoot"),
+            &ascii(b"get shadowRoot"),
+            true,
+            Callback::new(move |scope, arguments| {
+                handler.element_member(scope, arguments, ElementMember::ShadowRoot)
+            }),
+        )?;
         super::shadow::install_attachment(scope, &element, capture)?;
         custom_elements::install_node_getter(
             scope,

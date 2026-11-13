@@ -8,7 +8,7 @@ pub(super) fn element_reflections_use_the_exact_native_attributes() {
     let (session, target) = hosted_session(&cancel, 0);
     let mut host = attach_public_nodes(session, target, cancel.clone(), 8_000, 80_000);
     let permit = host.permit().unwrap();
-    let node = host.in_document(&permit, |scope| {
+    let (node, slot) = host.in_document(&permit, |scope| {
         let result = evaluate(scope, r#"
             (() => {
                 const prototype = Element.prototype;
@@ -56,19 +56,49 @@ pub(super) fn element_reflections_use_the_exact_native_attributes() {
                     try { name.set.call(receiver, {toString() { coerced = true; }}); return 'setter receiver'; }
                     catch (error) { if (!(error instanceof TypeError) || coerced) return 'setter error order'; }
                 }
-                element.slot = null;
-                if (element.slot !== 'null' || element.getAttributeNS(null, 'slot') !== 'null')
-                    return 'DOMString null';
-                if (Function('element', 'var slot = 42; with (element) { return slot; }')(element) !== 42)
-                    return 'slot scopes';
+                const host = document.createElement('div');
+                const root = host.attachShadow({mode: 'open'});
+                const slot = root.appendChild(document.createElement('slot'));
+                slot.setAttribute('name', 'selected');
+                host.appendChild(element);
+                element.slot = 'selected';
+                globalThis.reflectionSlot = slot;
                 globalThis.reflectedElement = element;
                 return 'ok';
             })()
         "#)?;
         assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
         let element = evaluate(scope, "reflectedElement")?;
-        projected_node_id(scope, &element)
+        let slot = evaluate(scope, "reflectionSlot")?;
+        Ok((projected_node_id(scope, &element)?, projected_node_id(scope, &slot)?))
     }).unwrap();
+    let snapshot = host.snapshot().unwrap();
+    assert_eq!(
+        snapshot.node(node).unwrap().assigned_slot(&cancel).unwrap(),
+        Some(slot)
+    );
+    assert_eq!(snapshot.slot(slot).unwrap().assigned_nodes(), &[node]);
+    host.in_document(&permit, |scope| {
+        let result = evaluate(scope, r#"
+            (() => {
+                const element = reflectedElement;
+                element.slot = null;
+                if (element.slot !== 'null' || element.getAttributeNS(null, 'slot') !== 'null')
+                    return 'DOMString null';
+                if (Function('element', 'var slot = 42; with (element) { return slot; }')(element) !== 42)
+                    return 'slot scopes';
+                return 'ok';
+            })()
+        "#)?;
+        assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
+        Ok(())
+    }).unwrap();
+    let snapshot = host.snapshot().unwrap();
+    assert_eq!(
+        snapshot.node(node).unwrap().assigned_slot(&cancel).unwrap(),
+        None
+    );
+    assert!(snapshot.slot(slot).unwrap().assigned_nodes().is_empty());
     host.with_native(|dom, _, _| {
         let mut batch = DomBatch::new();
         batch.set_attribute_ns(node, Namespace::none(), "id", "native");
