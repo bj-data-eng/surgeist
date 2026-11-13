@@ -173,6 +173,41 @@ pub(in crate::document_scripting) fn element_factory_qualifies_the_explicit_regi
     }).unwrap();
 }
 
+pub(in crate::document_scripting) fn direct_registered_constructors_create_canonical_elements() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            class Unregistered extends HTMLElement {}
+            let rejected = false;
+            try { new Unregistered(); } catch (error) { rejected = error instanceof TypeError; }
+            class Autonomous extends HTMLElement {
+                constructor() { super(); this.setAttribute('data-constructed', 'autonomous'); }
+            }
+            class Customized extends HTMLButtonElement {
+                constructor() { super(); this.setAttribute('data-constructed', 'customized'); }
+            }
+            customElements.define('x-direct-element', Autonomous);
+            customElements.define('x-direct-button', Customized, {extends: 'button'});
+            const first = new Autonomous();
+            const second = new Autonomous();
+            const button = new Customized();
+            return rejected && first !== second && first instanceof Autonomous
+                && first.localName === 'x-direct-element' && first.ownerDocument === document
+                && first.parentNode === null && first.customElementRegistry === customElements
+                && first.getAttribute('data-constructed') === 'autonomous'
+                && button instanceof Customized && button.localName === 'button'
+                && button.ownerDocument === document && button.parentNode === null
+                && button.customElementRegistry === customElements
+                && button.getAttribute('data-constructed') === 'customized';
+        })()"#,
+        )
+    })
+    .unwrap();
+}
+
 pub(in crate::document_scripting) fn registry_define_upgrades_existing_candidates_in_tree_order() {
     let mut host = public_node_host(20_000, 200_000);
     let permit = host.permit().unwrap();

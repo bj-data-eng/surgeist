@@ -250,6 +250,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registry_upgrade_retains_unfinished_candidates_on_refusal();
     super::guest::tests::registry_upgrade_attempts_adopted_candidate_and_reports_callback();
     super::guest::tests::document_factories_execute_the_reached_custom_constructor();
+    super::guest::tests::direct_registered_constructors_create_canonical_elements();
     super::guest::tests::registered_origin::custom_element_factories_use_the_correct_realm();
     super::guest::tests::registered_origin::registered_origin_registry_keeps_exact_wrapper();
     super::guest::tests::registered_origin::registered_character_factory_refuses_without_publication(
