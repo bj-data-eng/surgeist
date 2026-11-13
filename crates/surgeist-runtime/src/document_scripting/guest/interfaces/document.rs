@@ -66,6 +66,7 @@ impl DocumentScriptHost {
         &mut self,
         permit: &DocumentScriptPermit,
         terminal: GuestTerminalSource<'_>,
+        shadow_reactions: Option<surgeist_dom::DomSynchronousReactionQueue>,
     ) -> Result<(), DocumentGuestEventError> {
         if self.attachment()?.realm.check_owner_active().is_err()
             || self
@@ -105,6 +106,9 @@ impl DocumentScriptHost {
                     origin: None,
                     _backing: events.reserve(&owner, size_of::<Capture>())?,
                 };
+                if let Some(queue) = shadow_reactions {
+                    capture.drain_routed_reactions(scope, &owner, &events, Some(queue))?;
+                }
                 capture.drain_native_reactions(scope, &owner, &events, terminal.operation)
             };
             if let Some(cause) = terminal.error {
