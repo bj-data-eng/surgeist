@@ -1,10 +1,14 @@
 //! Reflected attributes over authenticated live elements and Source edits.
 
 use super::{element::HTML_NAMESPACE, *};
+use std::fmt::Write;
+use surgeist_bindings_js::conversion::IntegerType;
 use surgeist_bindings_js::conversion::types::{BOOLEAN, DOM_STRING};
+use surgeist_bindings_js::{IntegerKind, IntegerMode, IntegerValue};
 use surgeist_dom::{DomNode, DomSourceEdit, Namespace};
 use surgeist_html::bounded::attributes::{
-    dir_keyword_with, popover_keyword_with, template_shadow_root_mode_keyword_with,
+    dir_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
+    popover_keyword_with, template_shadow_root_mode_keyword_with,
     template_shadow_root_slot_assignment_keyword_with,
 };
 
@@ -16,6 +20,7 @@ pub(super) enum Reflection {
     SlotAssignment,
     Direction,
     Popover,
+    HeadingOffset,
 }
 
 #[derive(Clone, Copy)]
@@ -155,6 +160,9 @@ impl Capture {
                     Reflection::Popover => {
                         Reflected::Keyword(popover_keyword_with(units, |_| read.step())?)
                     }
+                    Reflection::HeadingOffset => {
+                        Reflected::Unsigned(heading_offset_reflection_with(units, |_| read.step())?)
+                    }
                 }))
             })?;
             let Some(value) = value else {
@@ -165,6 +173,9 @@ impl Capture {
             let output = match value {
                 Reflected::Write => None,
                 Reflected::Boolean(value) => Some(scope.primitive(Primitive::Boolean(value))?),
+                Reflected::Unsigned(value) => {
+                    Some(scope.primitive(Primitive::Number(f64::from(value)))?)
+                }
                 Reflected::String(value) => Some(self.copy_dom_units(
                     scope,
                     value.as_ref().map_or(&[], DocumentString::code_units),
@@ -215,6 +226,40 @@ impl Capture {
                     .as_ref()
                     .map(|value| copy_native_data(&owner, &events, value.as_code_units()))
                     .transpose()?
+            } else if matches!(reflection, Reflection::HeadingOffset) {
+                let converted = self
+                    .callbacks
+                    .conversion
+                    .run(scope, |cx| {
+                        cx.value(
+                            &IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+                            input,
+                        )
+                    })
+                    .map_err(Error::from)?;
+                scope.check_active()?;
+                let IntegerValue::UnsignedLong(value) = *converted.get() else {
+                    return Err(Error::BackendUnavailable.into());
+                };
+                events.step()?;
+                let value = heading_offset_setter_value(value);
+                // A u32 decimal has at most ten digits. Fund the requested
+                // UTF-8 capacity before formatting, then copy via stack UTF-16.
+                let _format_backing = events.reserve(&owner, 10)?;
+                let mut text = String::new();
+                text.try_reserve_exact(10).map_err(|_| Error::Allocation)?;
+                events.step()?;
+                write!(&mut text, "{value}")
+                    .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?;
+                let mut units = [0_u16; 10];
+                for (byte, unit) in text.as_bytes().iter().zip(&mut units) {
+                    events.step()?;
+                    *unit = u16::from(*byte);
+                }
+                let units = units
+                    .get(..text.len())
+                    .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                Some(copy_native_data(&owner, &events, units)?)
             } else {
                 let converted = self
                     .callbacks
@@ -254,6 +299,7 @@ impl Capture {
 enum Reflected {
     Write,
     Boolean(bool),
+    Unsigned(u8),
     String(Option<DocumentString>),
     Keyword(Option<&'static str>),
 }

@@ -1,3 +1,7 @@
+use surgeist_html::bounded::attributes::{
+    HtmlIntegerAttributeRead as IntegerRead, heading_offset_reflection_with,
+    heading_offset_setter_value,
+};
 use surgeist_html::{
     attributes::{
         HtmlAttributeApplicability, HtmlAttributeObservation,
@@ -13,6 +17,118 @@ use surgeist_html::{
     },
     vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
+
+#[test]
+fn reflected_offset_getter_and_setter_follow_their_distinct_numeric_domains() {
+    assert_eq!(
+        heading_offset_reflection_with(None, |_| Ok::<_, ()>(())).unwrap(),
+        0
+    );
+    for (input, expected) in [
+        ("", 0),
+        ("0", 0),
+        ("7", 7),
+        ("8", 8),
+        ("9", 8),
+        (" +12tail", 8),
+        ("-0", 0),
+        ("-0009", 0),
+        ("7.9", 7),
+        ("0x10", 0),
+        ("unknown", 0),
+        ("\u{ff19}", 0),
+    ] {
+        let units: Vec<_> = input.encode_utf16().collect();
+        assert_eq!(
+            heading_offset_reflection_with(Some(&units), |_| Ok::<_, ()>(())).unwrap(),
+            expected,
+            "{input}"
+        );
+    }
+    for (input, expected) in [
+        (vec![0xd800], 0),
+        (vec![0x37, 0xd800], 7),
+        (vec![0x39; 100_000], 8),
+    ] {
+        assert_eq!(
+            heading_offset_reflection_with(Some(&input), |_| Ok::<_, ()>(())).unwrap(),
+            expected
+        );
+    }
+    for (input, expected) in [
+        (0, 0),
+        (8, 8),
+        (9, 9),
+        (2_147_483_647, 2_147_483_647),
+        (2_147_483_648, 0),
+        (u32::MAX, 0),
+    ] {
+        assert_eq!(heading_offset_setter_value(input), expected);
+    }
+}
+
+#[test]
+fn integer_reflection_admits_exact_work_and_stops_every_refusal_prefix() {
+    // Present "7" feeds one unit, projects one digit, and admits its two
+    // attribute headers. Negative one additionally reads its sign and rejects
+    // its first nonzero negative digit before projection.
+    for (input, cost, expected) in [
+        (None, 1, 0),
+        (Some(""), 2, 0),
+        (Some("7"), 4, 7),
+        (Some("-1"), 5, 0),
+    ] {
+        let units = input.map(|input| input.encode_utf16().collect::<Vec<_>>());
+        for limit in [cost, cost - 1] {
+            let mut remaining: usize = limit;
+            let result = heading_offset_reflection_with(units.as_deref(), |_| {
+                remaining = remaining.checked_sub(1).ok_or("work exhausted")?;
+                Ok(())
+            });
+            assert_eq!(
+                result,
+                if limit == cost {
+                    Ok(expected)
+                } else {
+                    Err("work exhausted")
+                }
+            );
+            assert_eq!(remaining, 0);
+        }
+    }
+    for input in [
+        None,
+        Some(""),
+        Some("  +12tail"),
+        Some("-0009"),
+        Some("-0000"),
+    ] {
+        let units = input.map(|input| input.encode_utf16().collect::<Vec<_>>());
+        let mut reads = Vec::new();
+        heading_offset_reflection_with(units.as_deref(), |read| {
+            reads.push(read);
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        assert_eq!(reads.first(), Some(&IntegerRead::ValueHeader));
+        if input.is_some() {
+            assert_eq!(reads.last(), Some(&IntegerRead::ResultSelection));
+        }
+        for (cut, &refused) in reads.iter().enumerate() {
+            let mut reached = Vec::new();
+            let result = heading_offset_reflection_with(units.as_deref(), |read| {
+                reached.push(read);
+                if reached.len() == cut + 1 {
+                    Err((cut, read))
+                } else {
+                    Ok(())
+                }
+            });
+            assert_eq!(result, Err((cut, refused)));
+            assert_eq!(reached, reads[..=cut]);
+        }
+    }
+}
 
 type OffsetReport = HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>;
 fn raw(value: impl Into<DocumentString>) -> Attribute {

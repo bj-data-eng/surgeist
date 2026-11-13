@@ -2428,36 +2428,55 @@ pub(crate) fn parse_nonnegative_integer_capped_steps(
     cap: usize,
     step: &mut impl FnMut(),
 ) -> Result<usize, HtmlNumericParseError> {
-    let mut scanner = HtmlIntegerPrefixScanner::new(true);
-    for &unit in units {
+    match try_parse_nonnegative_integer_capped_steps(units, cap, &mut || {
         step();
-        if !scanner.feed(unit) {
+        Ok::<_, std::convert::Infallible>(())
+    }) {
+        Ok(result) => result,
+        Err(never) => match never {},
+    }
+}
+
+/// Caller refusal is distinct from an ordinary grammar rejection. Each unit
+/// remains unread until its corresponding input/check/projection step admits.
+pub(crate) fn try_parse_nonnegative_integer_capped_steps<E>(
+    units: &[u16],
+    cap: usize,
+    step: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Result<usize, HtmlNumericParseError>, E> {
+    let mut scanner = HtmlIntegerPrefixScanner::new(true);
+    for unit in units {
+        step()?;
+        if !scanner.feed(*unit) {
             break;
         }
     }
-    let prefix = scanner.finish()?;
+    let prefix = match scanner.finish() {
+        Ok(prefix) => prefix,
+        Err(error) => return Ok(Err(error)),
+    };
     let digits = &units[prefix.start..prefix.end];
     if prefix.negative {
-        for &unit in digits {
-            step();
-            if unit != b'0' as u16 {
-                return Err(HtmlNumericParseError::Negative);
+        for unit in digits {
+            step()?;
+            if *unit != b'0' as u16 {
+                return Ok(Err(HtmlNumericParseError::Negative));
             }
         }
     }
     let mut value = 0_usize;
-    for &unit in digits {
-        step();
-        let digit = usize::from(unit - b'0' as u16);
+    for unit in digits {
+        step()?;
+        let digit = usize::from(*unit - b'0' as u16);
         value = value
             .checked_mul(10)
             .and_then(|value| value.checked_add(digit))
             .map_or(cap, |value| value.min(cap));
         if value == cap {
-            return Ok(cap);
+            return Ok(Ok(cap));
         }
     }
-    Ok(value)
+    Ok(Ok(value))
 }
 
 /// Author grammar: one or more ASCII digits, without either sign.

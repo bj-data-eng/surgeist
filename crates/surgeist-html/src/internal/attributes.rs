@@ -2868,6 +2868,43 @@ impl HtmlValueInterpreter {
 pub(crate) mod bounded_rules {
     use super::*;
 
+    /// Admission before one step of a reflected integer getter.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum HtmlIntegerAttributeRead {
+        /// Presence/length and the missing-value result. Always reached first.
+        ValueHeader,
+        /// One input-unit feed, negative-digit check or digit projection.
+        IntegerUnit,
+        /// Select a present attribute's parsed/clamped or failed/default result.
+        ResultSelection,
+    }
+
+    /// Projects the local headingOffset getter, independently of ancestor
+    /// heading levels. Missing/failed content returns zero, valid content is
+    /// capped at eight. Caller refusal never becomes a default value.
+    pub fn heading_offset_reflection_with<E>(
+        raw: Option<&[u16]>,
+        mut admit: impl FnMut(HtmlIntegerAttributeRead) -> Result<(), E>,
+    ) -> Result<u8, E> {
+        admit(HtmlIntegerAttributeRead::ValueHeader)?;
+        let Some(raw) = raw else { return Ok(0) };
+        let parsed =
+            crate::internal::microsyntax::numeric::try_parse_nonnegative_integer_capped_steps(
+                raw,
+                8,
+                &mut || admit(HtmlIntegerAttributeRead::IntegerUnit),
+            )?;
+        admit(HtmlIntegerAttributeRead::ResultSelection)?;
+        Ok(parsed.map_or(0, |value| u8::try_from(value).unwrap_or(8)))
+    }
+
+    /// Applies the reflected unsigned-long setter rule after Web IDL
+    /// conversion. ReflectRange affects the getter alone. The setter retains
+    /// values through 2147483647 and otherwise selects the zero minimum.
+    pub const fn heading_offset_setter_value(value: u32) -> u32 {
+        if value <= 2_147_483_647 { value } else { 0 }
+    }
+
     /// Admission before one intrinsic enumeration observation. No name,
     /// attribute applicability or captured-tree evidence is examined.
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]

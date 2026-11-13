@@ -400,6 +400,10 @@ projection. Their string writes preserve exact UTF-16, and a null/undefined
 popover write removes the content attribute. `inert` and `headingReset` reflect
 presence. These setters use canonical Source operations and complete synchronous
 custom-element reactions before returning.
+`headingOffset` reads HTML's bounded 0–8 local reflection. Its unsigned-long
+setter writes values through 2,147,483,647 and writes zero above that threshold.
+Numeric conversion, HTML parsing and decimal preparation retain their own
+admission before canonical Source publication.
 
 Call `DomSession::enable_trusted_types_csp` to select the Session processor for
 the hosted initial `about:blank` profile. Runtime serves reached Meta policies

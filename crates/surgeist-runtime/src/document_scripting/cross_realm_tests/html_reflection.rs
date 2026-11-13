@@ -9,7 +9,7 @@ pub(super) fn heading_offset_reflects_the_distinct_getter_and_setter_ranges() {
     let (session, target) = hosted_session(&cancel, 0);
     let mut host = attach_public_nodes(session, target, cancel, 8_000, 200_000);
     let permit = host.permit().unwrap();
-    host.in_document(&permit, |scope| {
+    let element = host.in_document(&permit, |scope| {
         let result = evaluate(scope, r#"(() => {
             const d = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'headingOffset');
             if (!d || !d.get || !d.set || !d.enumerable || !d.configurable ||
@@ -72,9 +72,23 @@ pub(super) fn heading_offset_reflects_the_distinct_getter_and_setter_ranges() {
             const unknown = document.createElement('heading-offset-unknown');
             unknown.headingOffset = 6;
             if (unknown.headingOffset !== 6) return 'unknown HTML';
+            globalThis.headingElement = html;
             return 'ok';
         })()"#)?;
         assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
+        let element = evaluate(scope, "headingElement")?;
+        projected_node_id(scope, &element)
+    }).unwrap();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.set_attribute_ns(element, Namespace::none(), "headingoffset", " +99tail");
+        dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    })
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        let actual = evaluate(scope, "headingElement.headingOffset === 8 && headingElement.getAttributeNS(null,'headingoffset') === ' +99tail'")?;
+        let yes = scope.primitive(Primitive::Boolean(true))?;
+        assert!(scope.strict_equals(&actual, &yes)?);
         Ok(())
     }).unwrap();
     host.stop().into_session().unwrap();
@@ -364,6 +378,12 @@ fn html_reflection_setters_admit_the_native_change_before_publication() {
             "popover",
             "limitedReflection.popover = '\\ud800'",
             &[0xd800][..],
+        ),
+        (
+            "headingOffset",
+            "headingoffset",
+            "limitedReflection.headingOffset = 12",
+            &[0x31, 0x32][..],
         ),
         (
             "headingReset",

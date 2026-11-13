@@ -2392,6 +2392,10 @@ pub surgeist_html::bounded::attributes::HtmlIconSizeShape::Bitmap
 pub surgeist_html::bounded::attributes::HtmlIconSizeShape::Bitmap::height: core::ops::range::Range<usize>
 pub surgeist_html::bounded::attributes::HtmlIconSizeShape::Bitmap::width: core::ops::range::Range<usize>
 pub surgeist_html::bounded::attributes::HtmlIconSizeShape::Scalable
+pub enum surgeist_html::bounded::attributes::HtmlIntegerAttributeRead
+pub surgeist_html::bounded::attributes::HtmlIntegerAttributeRead::IntegerUnit
+pub surgeist_html::bounded::attributes::HtmlIntegerAttributeRead::ResultSelection
+pub surgeist_html::bounded::attributes::HtmlIntegerAttributeRead::ValueHeader
 pub enum surgeist_html::bounded::attributes::HtmlMetaRefreshAction
 pub surgeist_html::bounded::attributes::HtmlMetaRefreshAction::DelayDigits(core::ops::range::Range<usize>)
 pub surgeist_html::bounded::attributes::HtmlMetaRefreshAction::Step
@@ -2457,6 +2461,8 @@ pub fn surgeist_html::bounded::attributes::button_submitter_context_with<E>(stat
 pub fn surgeist_html::bounded::attributes::crossorigin_processing_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlCrossOriginState, E>
 pub fn surgeist_html::bounded::attributes::dir_keyword_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<&'static str, E>
 pub fn surgeist_html::bounded::attributes::embedded_dimension_applicability(element: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>, context: core::option::Option<surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicabilityContext>) -> surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicability
+pub fn surgeist_html::bounded::attributes::heading_offset_reflection_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlIntegerAttributeRead) -> core::result::Result<(), E>) -> core::result::Result<u8, E>
+pub const fn surgeist_html::bounded::attributes::heading_offset_setter_value(value: u32) -> u32
 pub fn surgeist_html::bounded::attributes::input_list_applies(state: surgeist_html::attributes::HtmlInputType) -> bool
 pub fn surgeist_html::bounded::attributes::input_readonly_applies(state: surgeist_html::attributes::HtmlInputType) -> bool
 pub fn surgeist_html::bounded::attributes::input_submitter_context(state: surgeist_html::attributes::HtmlInputType) -> surgeist_html::attributes::HtmlButtonSubmitterContext
