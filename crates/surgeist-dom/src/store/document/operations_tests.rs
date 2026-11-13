@@ -975,7 +975,35 @@ fn insertion_reaction_receipt_preserves_shadow_order_and_refused_output() {
         dom.discard_stopped_custom_element_reactions(&binding)
             .is_err()
     );
+    dom.release_document_script_registration(&binding);
+    assert!(dom.has_pending_custom_element_reactions(&binding));
     drop(loan);
+    dom.release_document_script_registration(&binding);
+    assert!(dom.has_pending_custom_element_reactions(&binding));
+    let replacement = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(
+        issuer.attach_document_script_host(
+            &mut dom,
+            owner.global(),
+            document,
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            replacement,
+            &cancel(),
+        ),
+        Err(DomHostedError::WrongPhase)
+    ));
     assert_eq!(
         dom.discard_stopped_custom_element_reactions(&binding)
             .unwrap(),
