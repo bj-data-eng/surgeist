@@ -720,361 +720,437 @@ impl<'input, Node: Copy, S: LayoutScalar> PreparedGridItem<'input, Node, S> {
     }
 }
 
-pub(super) fn layout_grid_children<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    context: GridLayoutContext<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
-) -> GridChildPlacementResult<'input, Tree::Node, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let GridLayoutContext {
-        scroll_box,
-        style,
-        constants,
-        container_content_size,
-        columns,
-        rows,
-        collapsed_columns,
-        collapsed_rows,
-        row_tracks,
-        minimum_functions,
-        track_basis,
-        gap,
-        column_gutters,
-        row_gutters,
-        lines,
-        named_columns,
-        named_rows,
-        area_facts,
-        template_area_expanded_axes,
-        inherited_column_offset,
-        inherited_row_offset,
-        subgrid_report,
-        parent_context,
-        placements,
-        containing_auto_scrollbar_pass,
-        sizing_stage,
-        execution_input,
-    } = context;
-    // Absolute children still require layout when either track axis is empty.
-    // The ordinary loop separates them from in-flow placement and track sizing.
-    let inherited_column_geometry = parent_context.columns.as_ref().map(|axis| &axis.geometry);
-    let inherited_row_geometry = parent_context.rows.as_ref().map(|axis| &axis.geometry);
-    let intrinsic_column_geometry = inherited_column_geometry.cloned().unwrap_or_else(|| {
-        UsedGridAxisGeometryOf::from_sizing_gutters(columns.to_vec(), column_gutters)
-    });
-    let intrinsic_row_geometry = inherited_row_geometry
-        .cloned()
-        .unwrap_or_else(|| UsedGridAxisGeometryOf::from_sizing_gutters(rows.to_vec(), row_gutters));
-    let logical_content_size = LogicalSizeOf::new(
-        intrinsic_column_geometry.total_extent(),
-        intrinsic_row_geometry.total_extent(),
-    );
-    let physical_content_size = grid_area_physical_size(constants.flow_axes, logical_content_size);
-    let legacy_content_box_size =
-        constants
-            .node_inner_size
-            .unwrap_or(if style.writing_mode.is_vertical() {
-                physical_content_size
-            } else {
-                container_content_size
-            });
-    let logical_content_box_size = constants
-        .flow_axes
-        .logical_size(constants.node_inner_size.unwrap_or(container_content_size));
-    let containing_size = constants
-        .node_outer_size
-        .unwrap_or(container_content_size + constants.content_box_inset.sum_axes());
-    let logical_content_box_inset = constants
-        .flow_axes
-        .logical_edges(constants.content_box_inset);
-    let alignment_free_space = logical_content_box_size - logical_content_size;
-    let ordinary_column_alignment = ordinary_grid_axis_alignment(
-        alignment_free_space.inline,
-        column_gutters,
-        style.justify_content.unwrap_or(AlignContent::Stretch),
-    );
-    let ordinary_row_alignment = ordinary_grid_axis_alignment(
-        alignment_free_space.block,
-        row_gutters,
-        style.align_content.unwrap_or(AlignContent::Stretch),
-    );
-    let column_alignment = GridAlignment {
-        start: ordinary_column_alignment.start,
-        gap: gap.inline,
-    };
-    let row_alignment = GridAlignment {
-        start: ordinary_row_alignment.start,
-        gap: gap.block,
-    };
-    let column_geometry = inherited_column_geometry.cloned().unwrap_or_else(|| {
-        UsedGridAxisGeometryOf::from_active_boundary_gutters(
-            columns.to_vec(),
-            collapsed_columns.to_vec(),
-            column_gutters.active_boundary_after().to_vec(),
-            ordinary_column_alignment.gutter_after,
-        )
-    });
-    let row_geometry = inherited_row_geometry.cloned().unwrap_or_else(|| {
-        UsedGridAxisGeometryOf::from_active_boundary_gutters(
-            rows.to_vec(),
-            collapsed_rows.to_vec(),
-            row_gutters.active_boundary_after().to_vec(),
-            ordinary_row_alignment.gutter_after,
-        )
-    });
-    let logical_column_geometry = column_geometry.clone().translated(
-        inherited_column_offset.unwrap_or(Tree::Scalar::ZERO)
-            + logical_content_box_inset.inline_start
-            + column_alignment.start,
-    );
-    let logical_row_geometry = row_geometry.clone().translated(
-        inherited_row_offset.unwrap_or(Tree::Scalar::ZERO)
-            + logical_content_box_inset.block_start
-            + row_alignment.start,
-    );
-    let logical_column_offsets = (0..columns.len())
-        .filter_map(|line| logical_column_geometry.line_offset(line))
-        .collect::<Vec<_>>();
-    let logical_row_offsets = (0..rows.len())
-        .filter_map(|line| logical_row_geometry.line_offset(line))
-        .collect::<Vec<_>>();
-    let content_box_left = effective_content_box_left(constants, container_content_size);
-    let row_offsets = grid_axis_offsets(GridAxisOffsetsInput {
-        style,
-        axis: GridAxisKind::Row,
-        tracks: rows,
-        geometry: &row_geometry,
-        inherited_offset: inherited_row_offset,
-        content_box_left,
-        content_box_size: legacy_content_box_size,
-        content_box_inset: constants.content_box_inset,
-        alignment: row_alignment,
-    });
-    let children = tree.children(node).collect::<Vec<_>>();
-    let placed_areas = resolve_grid_child_areas_with_geometry(
-        ResolveGridChildAreasInput {
-            children: &children,
-            placements,
-            style,
-            columns,
-            rows,
-            gap,
-            lines,
-        },
-        Some(&column_geometry),
-        Some(&row_geometry),
-    );
-    let mut child_contributions = Vec::new();
-    let PendingGridItems {
-        in_flow: mut pending_items,
-        absolute: pending_absolute,
-    } = layout_grid_child_items(
-        tree,
-        node,
-        GridChildItemsInput {
-            children: &children,
-            item_count: placed_areas.len().min(subgrid_report.items.len()),
+pub(super) struct OrdinaryGridPlacement<Node, S: LayoutScalar> {
+    children: Vec<Node>,
+    placed_areas: Vec<Option<GridArea<S>>>,
+    containing_size: Size<S>,
+    column_geometry: UsedGridAxisGeometryOf<S>,
+    row_geometry: UsedGridAxisGeometryOf<S>,
+    logical_column_geometry: UsedGridAxisGeometryOf<S>,
+    logical_row_geometry: UsedGridAxisGeometryOf<S>,
+    logical_column_offsets: Vec<S>,
+    logical_row_offsets: Vec<S>,
+    row_offsets: Vec<S>,
+}
+
+impl<Node: Copy + Eq, S: LayoutScalar> OrdinaryGridPlacement<Node, S> {
+    pub(super) fn prepare<'input, Tree, M>(
+        tree: &Tree,
+        node: Node,
+        input: &GridLayoutContext<'input, '_, Node, S>,
+    ) -> Self
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let GridLayoutContext {
             style,
             constants,
+            container_content_size,
             columns,
             rows,
-            row_tracks,
-            minimum_functions,
-            track_basis,
+            collapsed_columns,
+            collapsed_rows,
             gap,
-            named_columns: &named_columns,
-            named_rows: &named_rows,
-            area_facts: area_facts.as_ref(),
-            subgrid_report,
+            column_gutters,
+            row_gutters,
+            lines,
+            inherited_column_offset,
+            inherited_row_offset,
+            parent_context,
             placements,
-            containing_auto_scrollbar_pass,
-            sizing_stage,
-            geometry: FinalGridChildGeometry::Ordinary {
-                columns: &column_geometry,
-                rows: &row_geometry,
+            ..
+        } = *input;
+        // Absolute children still require layout when either track axis is empty.
+        // The ordinary loop separates them from in-flow placement and track sizing.
+        let inherited_column_geometry = parent_context.columns.as_ref().map(|axis| &axis.geometry);
+        let inherited_row_geometry = parent_context.rows.as_ref().map(|axis| &axis.geometry);
+        let intrinsic_column_geometry = inherited_column_geometry.cloned().unwrap_or_else(|| {
+            UsedGridAxisGeometryOf::from_sizing_gutters(columns.to_vec(), column_gutters)
+        });
+        let intrinsic_row_geometry = inherited_row_geometry.cloned().unwrap_or_else(|| {
+            UsedGridAxisGeometryOf::from_sizing_gutters(rows.to_vec(), row_gutters)
+        });
+        let logical_content_size = LogicalSizeOf::new(
+            intrinsic_column_geometry.total_extent(),
+            intrinsic_row_geometry.total_extent(),
+        );
+        let physical_content_size =
+            grid_area_physical_size(constants.flow_axes, logical_content_size);
+        let legacy_content_box_size =
+            constants
+                .node_inner_size
+                .unwrap_or(if style.writing_mode.is_vertical() {
+                    physical_content_size
+                } else {
+                    container_content_size
+                });
+        let logical_content_box_size = constants
+            .flow_axes
+            .logical_size(constants.node_inner_size.unwrap_or(container_content_size));
+        let containing_size = constants
+            .node_outer_size
+            .unwrap_or(container_content_size + constants.content_box_inset.sum_axes());
+        let logical_content_box_inset = constants
+            .flow_axes
+            .logical_edges(constants.content_box_inset);
+        let alignment_free_space = logical_content_box_size - logical_content_size;
+        let ordinary_column_alignment = ordinary_grid_axis_alignment(
+            alignment_free_space.inline,
+            column_gutters,
+            style.justify_content.unwrap_or(AlignContent::Stretch),
+        );
+        let ordinary_row_alignment = ordinary_grid_axis_alignment(
+            alignment_free_space.block,
+            row_gutters,
+            style.align_content.unwrap_or(AlignContent::Stretch),
+        );
+        let column_alignment = GridAlignment {
+            start: ordinary_column_alignment.start,
+            gap: gap.inline,
+        };
+        let row_alignment = GridAlignment {
+            start: ordinary_row_alignment.start,
+            gap: gap.block,
+        };
+        let column_geometry = inherited_column_geometry.cloned().unwrap_or_else(|| {
+            UsedGridAxisGeometryOf::from_active_boundary_gutters(
+                columns.to_vec(),
+                collapsed_columns.to_vec(),
+                column_gutters.active_boundary_after().to_vec(),
+                ordinary_column_alignment.gutter_after,
+            )
+        });
+        let row_geometry = inherited_row_geometry.cloned().unwrap_or_else(|| {
+            UsedGridAxisGeometryOf::from_active_boundary_gutters(
+                rows.to_vec(),
+                collapsed_rows.to_vec(),
+                row_gutters.active_boundary_after().to_vec(),
+                ordinary_row_alignment.gutter_after,
+            )
+        });
+        let logical_column_geometry = column_geometry.clone().translated(
+            inherited_column_offset.unwrap_or(S::ZERO)
+                + logical_content_box_inset.inline_start
+                + column_alignment.start,
+        );
+        let logical_row_geometry = row_geometry.clone().translated(
+            inherited_row_offset.unwrap_or(S::ZERO)
+                + logical_content_box_inset.block_start
+                + row_alignment.start,
+        );
+        let logical_column_offsets = (0..columns.len())
+            .filter_map(|line| logical_column_geometry.line_offset(line))
+            .collect::<Vec<_>>();
+        let logical_row_offsets = (0..rows.len())
+            .filter_map(|line| logical_row_geometry.line_offset(line))
+            .collect::<Vec<_>>();
+        let content_box_left = effective_content_box_left(constants, container_content_size);
+        let row_offsets = grid_axis_offsets(GridAxisOffsetsInput {
+            style,
+            axis: GridAxisKind::Row,
+            tracks: rows,
+            geometry: &row_geometry,
+            inherited_offset: inherited_row_offset,
+            content_box_left,
+            content_box_size: legacy_content_box_size,
+            content_box_inset: constants.content_box_inset,
+            alignment: row_alignment,
+        });
+        let children = tree.children(node).collect::<Vec<_>>();
+        let placed_areas = resolve_grid_child_areas_with_geometry(
+            ResolveGridChildAreasInput {
+                children: &children,
+                placements,
+                style,
+                columns,
+                rows,
+                gap,
+                lines,
             },
-        },
-        |source_index, _| {
-            let Some(area) = placed_areas[source_index] else {
-                return GridItemDisposition::Skip;
-            };
-            if area.row >= rows.len() || area.column >= columns.len() {
-                return GridItemDisposition::Hidden;
-            }
-            let size = grid_area_physical_size(constants.flow_axes, area.size);
-            GridItemDisposition::Placed {
-                area,
-                space: GridItemLayoutSpace {
-                    alignment_size: size,
-                    containing_size: size,
-                    natural_stacking_margin_box: None,
-                },
-            }
-        },
-    )?;
+            Some(&column_geometry),
+            Some(&row_geometry),
+        );
+        Self {
+            children,
+            placed_areas,
+            containing_size,
+            column_geometry,
+            row_geometry,
+            logical_column_geometry,
+            logical_row_geometry,
+            logical_column_offsets,
+            logical_row_offsets,
+            row_offsets,
+        }
+    }
 
-    let executed_frame = ExecutedBaselineFrame {
-        style,
-        size: containing_size,
-        execution_input,
-        stage: sizing_stage,
-        columns: sizing_stage
-            .has_resolved_axis(GridAxisKind::Column)
-            .then_some(ExecutedBaselineAxisFrame {
-                starts: logical_column_geometry.line_offsets(),
-                sizes: logical_column_geometry.sizes(),
-            }),
-        rows: sizing_stage.has_resolved_axis(GridAxisKind::Row).then_some(
-            ExecutedBaselineAxisFrame {
-                starts: logical_row_geometry.line_offsets(),
-                sizes: logical_row_geometry.sizes(),
+    pub(super) fn item_input<'input, 'a>(
+        &'a self,
+        input: &'a GridLayoutContext<'input, '_, Node, S>,
+    ) -> GridChildItemsInput<'input, 'a, Node, S> {
+        GridChildItemsInput {
+            children: &self.children,
+            item_count: self
+                .placed_areas
+                .len()
+                .min(input.subgrid_report.items.len()),
+            style: input.style,
+            constants: input.constants,
+            columns: input.columns,
+            rows: input.rows,
+            row_tracks: input.row_tracks,
+            minimum_functions: input.minimum_functions,
+            track_basis: input.track_basis,
+            gap: input.gap,
+            named_columns: input.named_columns,
+            named_rows: input.named_rows,
+            area_facts: input.area_facts,
+            subgrid_report: input.subgrid_report,
+            placements: input.placements,
+            containing_auto_scrollbar_pass: input.containing_auto_scrollbar_pass,
+            sizing_stage: input.sizing_stage,
+            geometry: FinalGridChildGeometry::Ordinary {
+                columns: &self.column_geometry,
+                rows: &self.row_geometry,
             },
-        ),
-        sizing: ExecutedBaselineSizing {
-            row_tracks,
-            track_basis,
-        },
-    };
-    let executed_inventory =
-        capture_executed_baselines(node, executed_frame, &mut pending_items, subgrid_report)?;
-    let ancestor_baseline_groups =
-        final_ancestor_baseline_groups(&executed_inventory).with_parent_context(parent_context);
-    let baseline_group_set = ancestor_baseline_groups.placement_groups();
-    refresh_subgrid_items_with_baselines(
-        tree,
-        SubgridBaselineRefreshInput {
-            node,
-            container_style: style,
-            columns,
-            rows,
-            minimum_functions,
-            column_geometry: &column_geometry,
-            row_geometry: &row_geometry,
-            row_tracks,
-            track_basis,
-            gap,
-            named_columns: named_columns.clone(),
-            named_rows: named_rows.clone(),
-            area_facts: area_facts.clone(),
-            template_area_expanded_axes,
-            subgrid_report,
-            ancestor_baseline_groups: &ancestor_baseline_groups,
-            executed_frame,
-            original_executed: &executed_inventory,
-            orthogonal_fallback: constants.child_orthogonal_fallback,
-            containing_auto_scrollbar_pass,
-            sizing_stage,
-        },
-        &mut pending_items,
-        |item| {
-            let size = constants.flow_axes.physical_size(item.area.size);
-            GridItemLayoutSpace {
+        }
+    }
+
+    pub(super) fn item_disposition(
+        &self,
+        input: &GridLayoutContext<'_, '_, Node, S>,
+        source_index: usize,
+    ) -> GridItemDisposition<S> {
+        let Some(area) = self.placed_areas[source_index] else {
+            return GridItemDisposition::Skip;
+        };
+        if area.row >= input.rows.len() || area.column >= input.columns.len() {
+            return GridItemDisposition::Hidden;
+        }
+        let size = grid_area_physical_size(input.constants.flow_axes, area.size);
+        GridItemDisposition::Placed {
+            area,
+            space: GridItemLayoutSpace {
                 alignment_size: size,
                 containing_size: size,
                 natural_stacking_margin_box: None,
-            }
-        },
-    )?;
-    let published_group_set = baseline_groups(
-        &pending_items,
-        rows.len(),
-        columns.len(),
-        constants.flow_axes,
-    );
+            },
+        }
+    }
 
-    stage_ordinary_grid_items(
-        tree,
-        OrdinaryGridItemPlacement {
-            node,
-            style,
-            flow_axes: constants.flow_axes,
+    pub(super) fn finish<'input, Tree, M>(
+        self,
+        tree: &mut Tree,
+        node: Node,
+        input: &GridLayoutContext<'input, '_, Node, S>,
+        pending: PendingGridItems<'input, Node, S>,
+    ) -> GridChildPlacementResult<'input, Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Self {
             containing_size,
-            logical_column_offsets: &logical_column_offsets,
-            logical_row_offsets: &logical_row_offsets,
-            column_geometry: &column_geometry,
-            row_geometry: &row_geometry,
-            row_tracks,
-            track_basis,
-            subgrid_report,
-            ancestor_baseline_groups: &ancestor_baseline_groups,
-        },
-        &mut pending_items,
-        &mut child_contributions,
-    )?;
-    let baselines = if parent_context.has_inherited_axis() {
-        grid_container_baselines(
-            &pending_items,
-            &baseline_group_set,
-            &row_offsets,
-            rows,
-            constants.flow_axes,
-        )
-    } else {
-        logical_grid_container_baselines(
-            &pending_items,
-            &baseline_group_set,
-            &logical_row_offsets,
-            rows,
-            constants.flow_axes,
-            containing_size,
-        )
-    };
-
-    let track_subject = grid_track_alignment_subject(GridTrackAlignmentGeometry {
-        sizes: LogicalSizeOf::new(columns, rows),
-        offsets: LogicalSizeOf::new(&logical_column_offsets, &logical_row_offsets),
-        fallback_origin: LogicalPointOf::new(
-            logical_content_box_inset.inline_start,
-            logical_content_box_inset.block_start,
-        ),
-        flow_axes: constants.flow_axes,
-        containing_size,
-        stacking_range: None,
-    })
-    .map_err(|error| layout_child_geometry_error(node, node, error))?;
-    // A bounded probe can carry an estimate for an unissued axis.
-    let resolved_axes = LogicalSizeOf::new(
-        sizing_stage.has_resolved_axis(GridAxisKind::Column),
-        sizing_stage.has_resolved_axis(GridAxisKind::Row),
-    );
-    let track_bounds = GridTrackScrollBounds {
-        rect: track_subject,
-        present: LogicalSizeOf::new(
-            resolved_axes.inline && !columns.is_empty(),
-            resolved_axes.block && !rows.is_empty(),
-        ),
-    };
-    GridChildPlacement::begin(
-        PositionedGridPlacement {
-            node,
+            column_geometry,
+            row_geometry,
+            logical_column_geometry,
+            logical_row_geometry,
+            logical_column_offsets,
+            logical_row_offsets,
+            row_offsets,
+            ..
+        } = self;
+        let GridLayoutContext {
+            scroll_box,
             style,
             constants,
-            containing_size,
-            scroll_box,
-            placements,
-            column_geometry: logical_column_geometry,
-            row_geometry: logical_row_geometry,
+            columns,
+            rows,
+            row_tracks,
+            minimum_functions,
+            track_basis,
+            gap,
             lines,
+            named_columns,
+            named_rows,
+            area_facts,
+            template_area_expanded_axes,
+            subgrid_report,
+            parent_context,
+            placements,
             containing_auto_scrollbar_pass,
-            bounds: PositionedGridBounds::Ordinary(track_bounds),
-        },
-        pending_absolute,
-        child_contributions,
-        TrackAlignmentSubject::Ordinary(track_bounds),
-        GridLayoutReporting {
-            active_alignment_axes: LogicalSizeOf::new(
-                resolved_axes.inline && style.justify_content.is_some(),
-                resolved_axes.block && style.align_content.is_some(),
+            sizing_stage,
+            execution_input,
+            ..
+        } = *input;
+        let PendingGridItems {
+            in_flow: mut pending_items,
+            absolute: pending_absolute,
+        } = pending;
+        let mut child_contributions = Vec::new();
+        let logical_content_box_inset = constants
+            .flow_axes
+            .logical_edges(constants.content_box_inset);
+        let executed_frame = ExecutedBaselineFrame {
+            style,
+            size: containing_size,
+            execution_input,
+            stage: sizing_stage,
+            columns: sizing_stage
+                .has_resolved_axis(GridAxisKind::Column)
+                .then_some(ExecutedBaselineAxisFrame {
+                    starts: logical_column_geometry.line_offsets(),
+                    sizes: logical_column_geometry.sizes(),
+                }),
+            rows: sizing_stage.has_resolved_axis(GridAxisKind::Row).then_some(
+                ExecutedBaselineAxisFrame {
+                    starts: logical_row_geometry.line_offsets(),
+                    sizes: logical_row_geometry.sizes(),
+                },
+            ),
+            sizing: ExecutedBaselineSizing {
+                row_tracks,
+                track_basis,
+            },
+        };
+        let executed_inventory =
+            capture_executed_baselines(node, executed_frame, &mut pending_items, subgrid_report)?;
+        let ancestor_baseline_groups =
+            final_ancestor_baseline_groups(&executed_inventory).with_parent_context(parent_context);
+        let baseline_group_set = ancestor_baseline_groups.placement_groups();
+        refresh_subgrid_items_with_baselines(
+            tree,
+            SubgridBaselineRefreshInput {
+                node,
+                container_style: style,
+                columns,
+                rows,
+                minimum_functions,
+                column_geometry: &column_geometry,
+                row_geometry: &row_geometry,
+                row_tracks,
+                track_basis,
+                gap,
+                named_columns: named_columns.clone(),
+                named_rows: named_rows.clone(),
+                area_facts: area_facts.cloned(),
+                template_area_expanded_axes,
+                subgrid_report,
+                ancestor_baseline_groups: &ancestor_baseline_groups,
+                executed_frame,
+                original_executed: &executed_inventory,
+                orthogonal_fallback: constants.child_orthogonal_fallback,
+                containing_auto_scrollbar_pass,
+                sizing_stage,
+            },
+            &mut pending_items,
+            |item| {
+                let size = constants.flow_axes.physical_size(item.area.size);
+                GridItemLayoutSpace {
+                    alignment_size: size,
+                    containing_size: size,
+                    natural_stacking_margin_box: None,
+                }
+            },
+        )?;
+        let published_group_set = baseline_groups(
+            &pending_items,
+            rows.len(),
+            columns.len(),
+            constants.flow_axes,
+        );
+
+        stage_ordinary_grid_items(
+            tree,
+            OrdinaryGridItemPlacement {
+                node,
+                style,
+                flow_axes: constants.flow_axes,
+                containing_size,
+                logical_column_offsets: &logical_column_offsets,
+                logical_row_offsets: &logical_row_offsets,
+                column_geometry: &column_geometry,
+                row_geometry: &row_geometry,
+                row_tracks,
+                track_basis,
+                subgrid_report,
+                ancestor_baseline_groups: &ancestor_baseline_groups,
+            },
+            &mut pending_items,
+            &mut child_contributions,
+        )?;
+        let baselines = if parent_context.has_inherited_axis() {
+            grid_container_baselines(
+                &pending_items,
+                &baseline_group_set,
+                &row_offsets,
+                rows,
+                constants.flow_axes,
+            )
+        } else {
+            logical_grid_container_baselines(
+                &pending_items,
+                &baseline_group_set,
+                &logical_row_offsets,
+                rows,
+                constants.flow_axes,
+                containing_size,
+            )
+        };
+
+        let track_subject = grid_track_alignment_subject(GridTrackAlignmentGeometry {
+            sizes: LogicalSizeOf::new(columns, rows),
+            offsets: LogicalSizeOf::new(&logical_column_offsets, &logical_row_offsets),
+            fallback_origin: LogicalPointOf::new(
+                logical_content_box_inset.inline_start,
+                logical_content_box_inset.block_start,
             ),
             flow_axes: constants.flow_axes,
-            baselines: baselines.baselines,
-            baseline_groups: published_group_set,
-            execution_input,
-            executed_inventory,
-        },
-    )
+            containing_size,
+            stacking_range: None,
+        })
+        .map_err(|error| layout_child_geometry_error(node, node, error))?;
+        // A bounded probe can carry an estimate for an unissued axis.
+        let resolved_axes = LogicalSizeOf::new(
+            sizing_stage.has_resolved_axis(GridAxisKind::Column),
+            sizing_stage.has_resolved_axis(GridAxisKind::Row),
+        );
+        let track_bounds = GridTrackScrollBounds {
+            rect: track_subject,
+            present: LogicalSizeOf::new(
+                resolved_axes.inline && !columns.is_empty(),
+                resolved_axes.block && !rows.is_empty(),
+            ),
+        };
+        GridChildPlacement::begin(
+            PositionedGridPlacement {
+                node,
+                style,
+                constants,
+                containing_size,
+                scroll_box,
+                placements,
+                column_geometry: logical_column_geometry,
+                row_geometry: logical_row_geometry,
+                lines,
+                containing_auto_scrollbar_pass,
+                bounds: PositionedGridBounds::Ordinary(track_bounds),
+            },
+            pending_absolute,
+            child_contributions,
+            TrackAlignmentSubject::Ordinary(track_bounds),
+            GridLayoutReporting {
+                active_alignment_axes: LogicalSizeOf::new(
+                    resolved_axes.inline && style.justify_content.is_some(),
+                    resolved_axes.block && style.align_content.is_some(),
+                ),
+                flow_axes: constants.flow_axes,
+                baselines: baselines.baselines,
+                baseline_groups: published_group_set,
+                execution_input,
+                executed_inventory,
+            },
+        )
+    }
 }
 
 pub(super) fn grid_area_inline_offset<S: LayoutScalar>(offsets: &[S], area: GridArea<S>) -> S {
