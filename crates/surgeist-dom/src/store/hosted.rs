@@ -2220,7 +2220,11 @@ impl DomHostedSource {
         check_cancel(cancel)?;
         dom.validate_hosted_source(self)?;
         dom.require_source_idle()?;
-        if dom.active_script_registration().is_some() {
+        if dom
+            .script_registration
+            .as_ref()
+            .is_some_and(|slot| slot.0.is_active() || slot.0.has_pending_reactions())
+        {
             return Err(DomHostedError::WrongPhase);
         }
         if dom.global_document(global)? != document {
@@ -2387,9 +2391,7 @@ impl Dom {
     pub fn has_pending_custom_element_reactions(&self, binding: &DomDocumentScriptBinding) -> bool {
         self.script_registration
             .as_ref()
-            .filter(|slot| slot.0.key == binding.key())
-            .and_then(|slot| slot.0.custom_element_reactions.get())
-            .is_some_and(super::source::reactions::Inbox::has_pending)
+            .is_some_and(|slot| slot.0.key == binding.key() && slot.0.has_pending_reactions())
     }
 
     /// Discard reaction facts after this exact script attachment has closed.
@@ -2422,12 +2424,11 @@ impl Dom {
 
     /// Release the exact closed registration after engine disposal. A parked
     /// Source retains its own funded reference and its original continuation.
+    /// Undelivered or loaned reactions must be settled before release.
     pub fn release_document_script_registration(&mut self, binding: &DomDocumentScriptBinding) {
-        if self
-            .script_registration
-            .as_ref()
-            .is_some_and(|slot| slot.0.key == binding.key() && !slot.0.is_active())
-        {
+        if self.script_registration.as_ref().is_some_and(|slot| {
+            slot.0.key == binding.key() && !slot.0.is_active() && !slot.0.has_pending_reactions()
+        }) {
             self.script_registration.take();
         }
     }

@@ -2113,6 +2113,9 @@ impl DomDocumentScriptRegistration {
         operation: crate::DomSourceOperationId,
         inspections: usize,
     ) -> Result<Option<crate::DomCustomElementReactions>, crate::DomError> {
+        if !self.is_active() {
+            return Err(crate::DomError::HostedSourceUnavailable);
+        }
         self.0
             .custom_element_reactions
             .get()
@@ -2174,6 +2177,12 @@ pub(crate) struct ScriptRegistration {
 impl ScriptRegistration {
     pub(crate) fn is_active(&self) -> bool {
         self.end.get().is_none()
+    }
+
+    pub(crate) fn has_pending_reactions(&self) -> bool {
+        self.custom_element_reactions
+            .get()
+            .is_some_and(crate::store::source::reactions::Inbox::has_pending)
     }
 }
 

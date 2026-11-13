@@ -971,6 +971,10 @@ fn insertion_reaction_receipt_preserves_shadow_order_and_refused_output() {
         }]
     );
     registration.revoke();
+    assert!(matches!(
+        registration.take_custom_element_reactions(id, 2),
+        Err(DomError::HostedSourceUnavailable)
+    ));
     assert!(
         dom.discard_stopped_custom_element_reactions(&binding)
             .is_err()
@@ -1010,6 +1014,32 @@ fn insertion_reaction_receipt_preserves_shadow_order_and_refused_output() {
         1
     );
     assert!(!dom.has_pending_custom_element_reactions(&binding));
+    dom.release_document_script_registration(&binding);
+    let backing = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    let (_, replacement) = issuer
+        .attach_document_script_host(
+            &mut dom,
+            owner.global(),
+            document,
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel(),
+        )
+        .unwrap();
+    assert!(replacement.is_active());
+    assert_eq!(replacement.custom_element_reaction_segments(), 0);
 }
 
 #[test]
