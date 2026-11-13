@@ -61,6 +61,8 @@ pub enum DomSourceUnavailable {
     AttributeVerification,
     /// The exact replaced Attr awaits the initiating guest's return custody.
     AttributeAttachmentOutput,
+    /// The exact constructor selected for synchronous element creation.
+    CustomElementConstruction,
     /// The original private Meta insertion awaits its CSP processor.
     MetaCsp,
     /// An exact beforetoggle request requires explicit event dispatch.
@@ -1002,6 +1004,14 @@ impl DomSourceRuntime {
                     return Ok(DomSourceDriveProgress::Pending {
                         reason: DomSourceUnavailable::AttributeVerification,
                         request: DomSourceRequest::AttributeVerification(request),
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(
+                    request,
+                )) => {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        reason: DomSourceUnavailable::CustomElementConstruction,
+                        request: DomSourceRequest::CustomElementConstruction(request),
                     });
                 }
                 DomSourceProgress::Request(DomSourceRequest::AttributeAttachmentOutput(

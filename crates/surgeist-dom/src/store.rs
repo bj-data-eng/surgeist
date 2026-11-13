@@ -2698,6 +2698,15 @@ impl Draft {
         if registry != Some(crate::DomRegistryBinding::Null) {
             self.select_element_registry_with(key, registry, cancel)?;
         }
+        self.initialize_native_element_features(key, limits, cancel)
+    }
+
+    fn initialize_native_element_features(
+        &mut self,
+        key: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         self.initialize_template_contents(key, limits, cancel)?;
         if self.node(key)?.hyperlink().is_some() {
             self.set_hyperlink_url(key, None, limits, cancel)?;
@@ -3358,6 +3367,16 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.apply_command(command, limits, cancelled, None)
+    }
+
+    fn apply_command(
+        &mut self,
+        command: &Command,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+        reached: Option<&mut Option<source::operation::custom_element::Creation>>,
+    ) -> Result<(), DomError> {
         match command {
             Command::Normalize(node) => {
                 let node = self.resolve(node.clone())?;
@@ -3600,13 +3619,62 @@ impl Draft {
                 };
                 let metadata_formation = source::formation::Formation::new(self, cancelled)?;
                 if let Creation::Element { name, options } = kind {
-                    let formed = self.native_element(
-                        name,
-                        options,
-                        self.document_metadata(document)?,
-                        metadata_formation.as_ref(),
-                        cancelled,
-                    )?;
+                    let metadata = self.document_metadata(document)?;
+                    let (formed, selected) = if let Some(reached) = reached {
+                        let name = self.native_element_name(
+                            name,
+                            options,
+                            metadata,
+                            metadata_formation.as_ref(),
+                            cancelled,
+                        )?;
+                        let binding = options
+                            .registry
+                            .unwrap_or_else(|| metadata.custom_element_registry());
+                        if let Some(definition) = self.lookup_creation_definition(
+                            binding,
+                            &name,
+                            options.is.as_ref(),
+                            cancelled,
+                        )? {
+                            let document = DocumentId(
+                                self.published_id(document)
+                                    .ok_or(DomError::InvalidSourceOperation)?,
+                            );
+                            let name = self.form_element_name(
+                                name,
+                                metadata_formation.as_ref(),
+                                cancelled,
+                            )?;
+                            *reached = Some(source::operation::custom_element::Creation {
+                                document,
+                                name,
+                                definition,
+                            });
+                            return Ok(());
+                        }
+                        (
+                            self.form_native_element(
+                                name,
+                                options.is.as_ref(),
+                                metadata.document_environment(),
+                                metadata_formation.as_ref(),
+                                cancelled,
+                            )?,
+                            Some(binding),
+                        )
+                    } else {
+                        (
+                            self.native_element(
+                                name,
+                                options,
+                                metadata,
+                                metadata_formation.as_ref(),
+                                cancelled,
+                            )?,
+                            None,
+                        )
+                    };
                     let key = self.allocate_element_formed(
                         formed,
                         document,
@@ -3614,7 +3682,12 @@ impl Draft {
                         cancelled,
                         metadata_formation,
                     )?;
-                    self.initialize_native_element(key, options.registry, limits, cancelled)?;
+                    if let Some(binding) = selected {
+                        self.establish_element_registry(key, binding, cancelled)?;
+                        self.initialize_native_element_features(key, limits, cancelled)?;
+                    } else {
+                        self.initialize_native_element(key, options.registry, limits, cancelled)?;
+                    }
                     self.register_ticket(key, cancelled)?;
                     return Ok(());
                 }

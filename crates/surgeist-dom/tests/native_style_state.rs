@@ -2254,6 +2254,9 @@ fn execute_slot_source_edit(
             surgeist_dom::DomSourceProgress::Request(
                 DomSourceRequest::AttributeAttachmentOutput(request),
             ) => panic!("manual Slot assignment has no attribute attachment output: {request:?}"),
+            surgeist_dom::DomSourceProgress::Request(
+                DomSourceRequest::CustomElementConstruction(request),
+            ) => panic!("manual Slot assignment has no constructor request: {request:?}"),
             surgeist_dom::DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(
                 request,
             )) => {

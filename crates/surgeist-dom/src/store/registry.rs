@@ -492,25 +492,56 @@ impl Draft {
         let crate::DomRegistryBinding::Registry(registry) = binding else {
             return Ok(None);
         };
-        let record = self
-            .registries
-            .as_ref()
-            .ok_or(DomError::HostedSourceUnavailable)?
-            .get_with(registry, &mut || self.source_step(cancel))?;
+        let record = self.creation_registry(registry, cancel)?;
         let element = self.node(key)?.element().ok_or(DomError::WrongNodeKind)?;
         if element.common_state().html().is_none() {
             return Ok(None);
         }
-        let ordinal = record.lookup_with(
-            element.name().local_name(),
-            element.saved_is(),
-            &mut |amount| {
-                for _ in 0..amount {
-                    self.source_step(cancel)?;
-                }
-                Ok(())
-            },
-        )?;
+        self.lookup_definition(registry, record, element.name(), element.saved_is(), cancel)
+    }
+
+    pub(super) fn lookup_creation_definition(
+        &self,
+        binding: crate::DomRegistryBinding,
+        name: &crate::DomQualifiedName,
+        saved_is: Option<&DocumentString>,
+        cancel: &AtomicBool,
+    ) -> Result<Option<DomRegistryDefinitionId>, DomError> {
+        let crate::DomRegistryBinding::Registry(registry) = binding else {
+            return Ok(None);
+        };
+        let record = self.creation_registry(registry, cancel)?;
+        if !crate::names::in_html_namespace_with(name, || self.source_step(cancel))? {
+            return Ok(None);
+        }
+        self.lookup_definition(registry, record, name, saved_is, cancel)
+    }
+
+    fn creation_registry(
+        &self,
+        registry: DomRegistryId,
+        cancel: &AtomicBool,
+    ) -> Result<&Record, DomError> {
+        self.registries
+            .as_ref()
+            .ok_or(DomError::HostedSourceUnavailable)?
+            .get_with(registry, &mut || self.source_step(cancel))
+    }
+
+    fn lookup_definition(
+        &self,
+        registry: DomRegistryId,
+        record: &Record,
+        name: &crate::DomQualifiedName,
+        saved_is: Option<&DocumentString>,
+        cancel: &AtomicBool,
+    ) -> Result<Option<DomRegistryDefinitionId>, DomError> {
+        let ordinal = record.lookup_with(name.local_name(), saved_is, &mut |amount| {
+            for _ in 0..amount {
+                self.source_step(cancel)?;
+            }
+            Ok(())
+        })?;
         Ok(ordinal.map(|ordinal| DomRegistryDefinitionId { registry, ordinal }))
     }
 

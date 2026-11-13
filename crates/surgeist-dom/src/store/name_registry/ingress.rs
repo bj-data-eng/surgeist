@@ -300,6 +300,24 @@ impl Draft {
         budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<crate::element::FormedElement, DomError> {
+        let name = self.native_element_name(name, options, document, budget, cancel)?;
+        self.form_native_element(
+            name,
+            options.is.as_ref(),
+            document.document_environment(),
+            budget,
+            cancel,
+        )
+    }
+
+    pub(in crate::store) fn native_element_name(
+        &self,
+        name: &crate::DomElementCreationName,
+        options: &crate::DomElementCreationOptions,
+        document: &DomDocumentMetadata,
+        budget: Option<&source::formation::Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<DomQualifiedName, DomError> {
         let name = match name {
             crate::DomElementCreationName::Local(name) => {
                 self.native_local_name(name, document, budget, cancel)?
@@ -334,13 +352,7 @@ impl Draft {
                 HtmlRegistryScope::Global | HtmlRegistryScope::Scoped => (),
             }
         }
-        self.form_native_element(
-            name,
-            options.is.as_ref(),
-            document.document_environment(),
-            budget,
-            cancel,
-        )
+        Ok(name)
     }
 
     fn native_local_name(
@@ -430,7 +442,7 @@ impl Draft {
         )
     }
 
-    fn form_native_element(
+    pub(in crate::store) fn form_native_element(
         &self,
         name: DomQualifiedName,
         saved_is: Option<&DocumentString>,

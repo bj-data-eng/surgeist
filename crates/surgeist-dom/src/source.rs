@@ -110,6 +110,8 @@ pub enum DomSourcePhase {
     AttributeVerification,
     /// A guest attachment awaits custody of its replaced Attr.
     AttributeAttachmentOutput,
+    /// A detached element factory awaits its registered constructor.
+    CustomElementConstruction,
     /// A reached synchronous firing awaits its original clock observation.
     EventFiring,
     /// Coherent current-state observation awaiting actual event dispatch.
@@ -178,6 +180,7 @@ impl DomSourceStatus {
 pub enum DomSourceRequest {
     AttributeVerification(DomSourceAttributeVerificationRequest),
     AttributeAttachmentOutput(DomSourceAttributeAttachmentOutput),
+    CustomElementConstruction(DomSourceCustomElementRequest),
     MetaCsp(DomSourceMetaCspRequest),
     FullscreenExitHandoff(crate::DomSourceFullscreenExitHandoffRequest),
     Style(DomStyleRequest),
@@ -190,6 +193,34 @@ pub enum DomSourceRequest {
     CloseWatcher(DomSourceCloseWatcherRequest),
     DesignMode(DomSourceDesignModeRequest),
     Script(DomSourceScriptRequest),
+}
+
+/// Exact synchronous constructor occurrence reached by a Document factory.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomSourceCustomElementRequest {
+    pub(crate) operation: DomSourceOperationId,
+    pub(crate) command: usize,
+    pub(crate) document: crate::DocumentId,
+    pub(crate) global: crate::DomHostedGlobalId,
+    pub(crate) definition: crate::DomRegistryDefinitionId,
+}
+
+impl DomSourceCustomElementRequest {
+    pub const fn operation(self) -> DomSourceOperationId {
+        self.operation
+    }
+
+    pub const fn document(self) -> crate::DocumentId {
+        self.document
+    }
+
+    pub const fn global(self) -> crate::DomHostedGlobalId {
+        self.global
+    }
+
+    pub const fn definition(self) -> crate::DomRegistryDefinitionId {
+        self.definition
+    }
 }
 
 /// Observation of one exact Meta CSP insertion in a private Source segment.

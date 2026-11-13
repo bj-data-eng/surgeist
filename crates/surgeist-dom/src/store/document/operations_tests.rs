@@ -536,6 +536,154 @@ fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
 }
 
 #[test]
+fn document_factory_reaches_the_selected_definition_before_allocating_an_element() {
+    use surgeist_html::values::Namespace;
+    use surgeist_html_semantics::HtmlCustomElementDefinition;
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let registry = {
+        let snapshot = dom.snapshot();
+        let DomNodeKind::Document(metadata) = snapshot.node(document.node()).unwrap().kind() else {
+            panic!("hosted document");
+        };
+        let DomRegistryBinding::Registry(registry) = metadata.custom_element_registry() else {
+            panic!("hosted document registry");
+        };
+        registry
+    };
+    let mut define = |name: &str, local: &str| {
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry,
+            &HtmlCustomElementDefinition::new(name.into(), local.into(), false, false),
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap()
+        .commit()
+        .1
+    };
+    let autonomous = define("x-widget", "x-widget");
+    let customized = define("x-button", "button");
+    let before = dom.snapshot().stamp();
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1000);
+    let inbox = dom.node_retirement_inbox(watch_limits, &cancel()).unwrap();
+    assert!(matches!(
+        dom.create_detached_element_with_node_retirement_watch(
+            document,
+            (
+                DomElementCreationName::Local("x-widget".into()),
+                DomElementCreationOptions::default(),
+            ),
+            (&inbox, 0),
+            (source_limits(4096), watch_limits),
+            &cancel(),
+            |_| -> Result<(), DomError> { panic!("private wrapper was never prepared") },
+        ),
+        Err(DomError::NotSupported)
+    ));
+    assert!(dom.pending_source_edit().is_none());
+    assert_eq!(dom.snapshot().stamp(), before);
+
+    for (name, options, definition, local, prefix) in [
+        (
+            DomElementCreationName::Qualified(Namespace::html(), "p:x-widget".into()),
+            DomElementCreationOptions::default(),
+            autonomous,
+            "x-widget",
+            Some("p"),
+        ),
+        (
+            DomElementCreationName::Local("BUTTON".into()),
+            DomElementCreationOptions {
+                is: Some("x-button".into()),
+                registry: None,
+            },
+            customized,
+            "button",
+            None,
+        ),
+    ] {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::create_element_with_options(document.node(), name, options),
+                source_limits(4096),
+                &cancel(),
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(request)) =
+            lease.advance(&cancel()).unwrap()
+        else {
+            panic!("the selected definition must be serviced synchronously");
+        };
+        assert_eq!(request.operation(), lease.operation());
+        assert_eq!(request.definition(), definition);
+        assert_eq!(request.document(), document);
+        assert_eq!(request.global(), owner.global());
+        let name = lease
+            .custom_element_creation_name(request, &cancel())
+            .unwrap();
+        assert_eq!(name.local_name(), &DocumentString::from(local));
+        assert_eq!(name.prefix(), prefix.map(DocumentString::from).as_ref());
+        assert!(!lease.status().has_published());
+        assert_eq!(lease.snapshot().stamp(), before);
+        drop(lease);
+        let mut lease = dom
+            .resume_source_edit(request.operation(), source_limits(4096), &cancel())
+            .unwrap();
+        let work = lease.status().spent_work();
+        assert!(matches!(
+            lease.advance(&cancel()).unwrap(),
+            DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(same))
+                if same == request
+        ));
+        assert_eq!(lease.status().spent_work(), work);
+        lease.request_cancel();
+        assert!(matches!(
+            lease.advance(&cancel()).unwrap(),
+            DomSourceProgress::Complete(done) if done.cancellation_requested()
+        ));
+        drop(lease);
+        assert_eq!(dom.snapshot().stamp(), before);
+    }
+
+    for (name, options) in [
+        (
+            DomElementCreationName::Local("x-widget".into()),
+            DomElementCreationOptions {
+                is: None,
+                registry: Some(DomRegistryBinding::Null),
+            },
+        ),
+        (
+            DomElementCreationName::Qualified(Namespace::svg(), "x-widget".into()),
+            DomElementCreationOptions::default(),
+        ),
+    ] {
+        let result = source(
+            &mut dom,
+            DomSourceEdit::create_element_with_options(document.node(), name, options),
+        );
+        let Some(DomSourceOutput::Node(node)) = result.output() else {
+            panic!("ordinary detached element");
+        };
+        assert_eq!(
+            dom.snapshot()
+                .node(node)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .custom_element_definition(),
+            DomElementDefinition::Null
+        );
+    }
+}
+
+#[test]
 fn adopted_custom_element_exports_the_definition_from_its_original_registry() {
     use surgeist_html::elements::native::HtmlCustomElementState;
     use surgeist_html_semantics::{
