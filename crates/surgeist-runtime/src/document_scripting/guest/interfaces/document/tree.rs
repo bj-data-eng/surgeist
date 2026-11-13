@@ -244,11 +244,7 @@ impl Capture {
                 Ok(completion)
             }
             Ok(DomSourceDriveProgress::Failed(failure)) => {
-                let error = failure.into_parts().1;
-                match tree_exception(&error) {
-                    Some(name) => Ok(Completion::Throw(scope.dom_exception(name, &[])?)),
-                    None => Err(error.into()),
-                }
+                self.finish_failed_tree_edit(scope, owner, events, failure)
             }
             Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(error)))
                 if pending.map(DomSourceStatus::operation) == parent
@@ -265,6 +261,22 @@ impl Capture {
                 }),
             ),
         }
+    }
+
+    fn finish_failed_tree_edit<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        failure: surgeist_dom::DomSourceFailure,
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let (operation, error, _) = failure.into_parts();
+        let Some(name) = tree_exception(&error) else {
+            return Err(error.into());
+        };
+        let original = scope.dom_exception(name, &[])?;
+        self.drain_native_reactions(scope, owner, events, operation)?;
+        Ok(Completion::Throw(original))
     }
 }
 
