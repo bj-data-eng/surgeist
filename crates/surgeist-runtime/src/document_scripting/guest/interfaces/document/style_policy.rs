@@ -434,16 +434,92 @@ impl DocumentScriptHost {
     }
 
     /// Resume a parked Style edit with the same Session processor and report
-    /// queue. A refusal leaves the original Source operation available.
+    /// queue. A completed edit delivers committed reactions when the original
+    /// heap can still execute. After a terminal engine refusal, native
+    /// settlement remains available and the stopped host owns those reactions.
     pub fn resume_pending_style_edit(
         &mut self,
         permit: &DocumentScriptPermit,
         operation: surgeist_dom::DomSourceOperationId,
         limits: DomSourceLimits,
-    ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentScriptNativeError>
-    {
+    ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentGuestEventError> {
         self.check_permit(permit)?;
-        self.native.resume_style(operation, limits, true)
+        let progress = self.native.resume_style(operation, limits, true)?;
+        if let Ok(result) = &progress
+            && guest_terminal_operation(result) == Some(operation)
+            && self.attachment()?.realm.check_owner_active().is_ok()
+            && self
+                .native
+                .session
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?
+                .read_dom()
+                .pending_source_edit()
+                .is_none()
+        {
+            self.deliver_resumed_style_reactions(permit, operation)?;
+        }
+        Ok(progress)
+    }
+
+    fn deliver_resumed_style_reactions(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        operation: surgeist_dom::DomSourceOperationId,
+    ) -> Result<(), DocumentGuestEventError> {
+        let owner = self.native.clone();
+        let Some(events) = self
+            .engine
+            .as_ref()
+            .and_then(|engine| engine.guest_events.clone())
+        else {
+            return Ok(());
+        };
+        let Some(public) = &events.public else {
+            return Ok(());
+        };
+        let registration = owner
+            .attachment
+            .get()
+            .and_then(|attachment| attachment.registration.upgrade())
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        if registration.custom_element_reaction_segments() == 0 {
+            return Ok(());
+        }
+        let capture = Capture {
+            callbacks: public.callbacks.clone(),
+            origin: None,
+            _backing: events.reserve(&owner, size_of::<Capture>())?,
+        };
+        self.in_document(permit, |scope| {
+            match capture.drain_native_reactions(scope, &owner, &events, operation) {
+                Ok(()) => Ok(()),
+                Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                    Err(error)
+                }
+                Err(error) => refuse(scope, &events.refusal, error),
+            }
+        })?;
+        Ok(())
+    }
+}
+
+fn guest_terminal_operation(
+    result: &DomSourceDriveProgress,
+) -> Option<surgeist_dom::DomSourceOperationId> {
+    use surgeist_dom::DomSourceProgress as Source;
+    let source = match result {
+        DomSourceDriveProgress::Complete(done) => return Some(done.operation()),
+        DomSourceDriveProgress::Failed(failure) => return Some(failure.operation()),
+        DomSourceDriveProgress::InlineSource { source, .. } => source,
+        DomSourceDriveProgress::MetaSource(outcome) => outcome.source(),
+        DomSourceDriveProgress::InlineFullscreenHandoff { .. }
+        | DomSourceDriveProgress::Pending { .. } => return None,
+    };
+    match source {
+        Source::Complete(done) => Some(done.operation()),
+        Source::Failed(failure) => Some(failure.operation()),
+        Source::Request(_) => None,
     }
 }
 

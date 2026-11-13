@@ -1052,7 +1052,9 @@ fn guest_style(
         drop(session);
         assert!(matches!(
             host.resume_pending_style_edit(&permit, original.operation(), SOURCE),
-            Err(DocumentScriptNativeError::SourceAccess)
+            Err(DocumentGuestEventError::Document(
+                DocumentScriptError::Native(DocumentScriptNativeError::SourceAccess)
+            ))
         ));
     } else if inserted.is_err() {
         let pending = host
