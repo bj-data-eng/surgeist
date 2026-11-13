@@ -1561,6 +1561,73 @@ pub(crate) fn kurbo_rounded_rect(rect: Rect, radii: Radii) -> kurbo::RoundedRect
     )
 }
 
+#[cfg(all(test, not(target_family = "wasm")))]
+mod deep_normalization_tests {
+    use super::*;
+
+    #[test]
+    fn deep_normalized_tree_releases_final_shared_backing() {
+        std::thread::Builder::new()
+            .name("release deep normalized scene".into())
+            .stack_size(512 * 1024)
+            .spawn(|| {
+                const DEPTH: usize = 8_192;
+                let rect = Rect::new(0.0, 0.0, 2.0, 2.0);
+                let mut scene = Scene::new();
+                scene.fill(rect, Color::BLACK);
+                for _ in 0..DEPTH {
+                    let child = scene;
+                    scene = Scene::new();
+                    scene.layer(Layer::new(), |target| *target = child);
+                    scene.fill(rect, Color::TRANSPARENT);
+                }
+                let mut context = RenderAccountingContext::default();
+                context
+                    .run(
+                        RenderAttemptKind::Frame,
+                        RenderPhase::Normalize,
+                        |account| {
+                            let normalized = scene.normalize(Capabilities::CURRENT, account)?;
+                            let retained = normalized.clone();
+                            drop(normalized);
+                            let mut current = retained.as_ref();
+                            for _ in 0..DEPTH {
+                                let [
+                                    RenderCommand::Layer { children, .. },
+                                    RenderCommand::Fill { .. },
+                                ] = current
+                                else {
+                                    panic!("expected the authored layer followed by its sibling");
+                                };
+                                current = children;
+                            }
+                            assert!(matches!(current, [RenderCommand::Fill { .. }]));
+                            drop(retained);
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+                let report = context.last_attempt().unwrap();
+                let usage = report.attempt().unwrap().usage();
+                assert_eq!(
+                    usage.work(RenderWork::CommandsEmitted),
+                    (2 * DEPTH + 1) as u64
+                );
+                for resource in [
+                    RenderResource::RetainedCpuBytes,
+                    RenderResource::ScratchCpuBytes,
+                ] {
+                    assert!(usage.peak(resource) > 0);
+                    assert_eq!(usage.live(resource), 0);
+                }
+                assert_eq!(report.cleanup_fault(), None);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+}
+
 #[cfg(test)]
 mod unsupported_input_tests {
     use super::*;
