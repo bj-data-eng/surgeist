@@ -2177,7 +2177,7 @@ fn use_reaction_work<T>(
     events: &GuestEvents,
     action: impl FnOnce(&mut u64) -> Result<T, surgeist_dom::DomError>,
 ) -> Result<T, DocumentGuestEventError> {
-    let available = events.limits.work.saturating_sub(events.budget.work.get());
+    let available = events.budget.work_remaining()?;
     let mut remaining = available;
     let result = action(&mut remaining);
     events.charge_work(available - remaining)?;

@@ -162,7 +162,7 @@ pub(in crate::document_scripting) fn parent_node_move_uses_the_live_native_ident
         .unwrap();
     let before = host.snapshot().unwrap();
     let events = host.guest_events().unwrap();
-    let bytes = events.budget.used.get();
+    let bytes = events.budget.used();
     let result = host.in_document(&permit, |scope| {
         scope
             .evaluate(&units("to.moveBefore(reference, moved)"))
@@ -185,7 +185,7 @@ pub(in crate::document_scripting) fn parent_node_move_uses_the_live_native_ident
         host.snapshot().unwrap().node(to).unwrap().children(),
         [moved, reference]
     );
-    assert_eq!(events.budget.used.get(), bytes);
+    assert_eq!(events.budget.used(), bytes);
     host.with_native(|dom, _, _| {
         assert!(dom.pending_source_edit().is_none());
         assert!(

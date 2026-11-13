@@ -406,7 +406,7 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         max_scopes: usize,
         mode: ProfileMode,
     ) -> Result<Self, Error<W, R>> {
-        Self::profiled(name, limits, max_scopes, mode, None)
+        Self::profiled(Self::new(name, limits, max_scopes)?, mode, None)
     }
 
     /// Uses a host-supplied monotonic clock for timed modes. The clock reports
@@ -419,24 +419,38 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         mode: ProfileMode,
         clock: fn() -> Duration,
     ) -> Result<Self, Error<W, R>> {
-        Self::profiled(name, limits, max_scopes, mode, Some(clock))
+        Self::profiled(Self::new(name, limits, max_scopes)?, mode, Some(clock))
     }
 
-    fn profiled(
+    /// Reserves all scope and observer backing during setup. A host can
+    /// admit its requested extent with [`SharedOperation::profiled_backing_bytes`].
+    pub fn with_reserved_profile(
         name: &'static str,
         limits: Limits<W, R>,
         max_scopes: usize,
         mode: ProfileMode,
+    ) -> Result<Self, Error<W, R>> {
+        Self::profiled(
+            Self::with_reserved_scopes(name, limits, max_scopes)?,
+            mode,
+            None,
+        )
+    }
+
+    fn profiled(
+        mut operation: Self,
+        mode: ProfileMode,
         clock: Option<fn() -> Duration>,
     ) -> Result<Self, Error<W, R>> {
-        let mut operation = Self::new(name, limits, max_scopes)?;
         let root = operation.root();
-        if let Some(mut profile) = Profile::new(mode, max_scopes, clock)? {
+        if let Some(mut profile) = Profile::new(mode, operation.max_scopes, clock)? {
             operation
                 .profile
                 .try_reserve_exact(1)
                 .map_err(|_| Error::Allocation)?;
-            profile.add_scope(root, None, name).map_err(Error::Defect)?;
+            profile
+                .add_scope(root, None, operation.scope_name(root)?)
+                .map_err(Error::Defect)?;
             operation.profile.push(profile);
         }
         Ok(operation)

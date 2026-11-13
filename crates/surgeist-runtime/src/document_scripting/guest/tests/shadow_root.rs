@@ -235,9 +235,9 @@ pub(in crate::document_scripting) fn closed_root_visibility_admits_the_canonical
     let rootless_work = {
         let (mut host, permit, _) = root_host(None);
         let events = host.guest_events().unwrap();
-        let before = events.budget.work.get();
+        let before = events.budget.work().unwrap();
         host.in_document(&permit, read).unwrap();
-        events.budget.work.get() - before
+        events.budget.work().unwrap() - before
     };
     let (mut host, permit, root) = root_host(Some(HtmlShadowRootMode::Closed));
     let snapshot = host.snapshot().unwrap();
@@ -250,11 +250,10 @@ pub(in crate::document_scripting) fn closed_root_visibility_admits_the_canonical
         .unwrap();
     assert!(root_lookup_work >= 2);
     let events = host.guest_events().unwrap();
-    let bytes = events.budget.used.get();
+    let bytes = events.budget.used();
     events
         .budget
-        .work
-        .set(events.limits.work - rootless_work - root_lookup_work + 1);
+        .set_work_remaining(rootless_work + root_lookup_work - 1);
     let result = host.in_document(&permit, read);
     let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
         panic!("closed-root lookup must refuse one unit short of the actual lookup: {result:?}");
@@ -263,7 +262,7 @@ pub(in crate::document_scripting) fn closed_root_visibility_admits_the_canonical
         failure.cause::<DocumentGuestEventError>(),
         Some(DocumentGuestEventError::WorkLimit)
     ));
-    assert_eq!(events.budget.used.get(), bytes);
+    assert_eq!(events.budget.used(), bytes);
     assert_eq!(host.snapshot().unwrap().stamp(), snapshot.stamp());
 }
 
@@ -406,7 +405,7 @@ pub(in crate::document_scripting) fn scripted_shadow_conversion_preserves_order_
         Some(closed.id())
     );
     let events = host.guest_events().unwrap();
-    let bytes = events.budget.used.get();
+    let bytes = events.budget.used();
     host.in_document(&permit, |scope| {
         assert_guest(
             scope,
@@ -423,7 +422,7 @@ pub(in crate::document_scripting) fn scripted_shadow_conversion_preserves_order_
         )
     })
     .unwrap();
-    assert_eq!(events.budget.used.get(), bytes);
+    assert_eq!(events.budget.used(), bytes);
     assert_eq!(host.snapshot().unwrap().stamp(), after.stamp());
 }
 
@@ -464,7 +463,7 @@ pub(in crate::document_scripting) fn scripted_shadow_source_refusal_keeps_the_or
     let (mut host, permit, _) = prepare_root_host(public_node_host(1_000, 1), None);
     let before = host.snapshot().unwrap();
     let events = host.guest_events().unwrap();
-    let bytes = events.budget.used.get();
+    let bytes = events.budget.used();
     let result = host.in_document(&permit, |scope| {
         scope
             .evaluate(&units("shadowHost.attachShadow({mode: 'open'})"))
@@ -484,7 +483,7 @@ pub(in crate::document_scripting) fn scripted_shadow_source_refusal_keeps_the_or
     assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
     host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
         .unwrap();
-    assert_eq!(events.budget.used.get(), bytes);
+    assert_eq!(events.budget.used(), bytes);
 }
 
 pub(in crate::document_scripting) fn scripted_shadow_selects_the_hosted_registry_and_clones_null() {

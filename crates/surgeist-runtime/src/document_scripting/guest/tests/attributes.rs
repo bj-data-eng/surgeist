@@ -38,7 +38,7 @@ pub(in crate::document_scripting) fn refused_verified_replacement_keeps_its_exac
         Ok(scope.native_object::<GuestNodeProjection>(&value)?.unwrap().payload().id().unwrap().node())
     }).unwrap();
     let events = host.guest_events().unwrap();
-    let initial_backing = events.budget.used.get();
+    let initial_backing = events.budget.used();
     refuse_next_source_node_validation(&host);
     let before = host.snapshot().unwrap().stamp();
     let result = host.in_document(&permit, |scope| {
@@ -62,7 +62,7 @@ pub(in crate::document_scripting) fn refused_verified_replacement_keeps_its_exac
     );
     assert_eq!(host.snapshot().unwrap().stamp(), before);
     assert_eq!(
-        events.budget.used.get(),
+        events.budget.used(),
         initial_backing + size_of::<super::super::PendingAttribute>()
     );
     let limits = events.limits.source_edits;
@@ -416,9 +416,9 @@ pub(in crate::document_scripting) fn element_methods_return_the_exact_attribute(
         })
         .unwrap();
     let events = host.guest_events().unwrap();
-    let spare = events.limits.storage_bytes - events.budget.used.get();
+    let spare = events.limits.storage_bytes - events.budget.used();
     let backing = events.reserve(&host.native, spare).unwrap();
-    let before = events.budget.used.get();
+    let before = events.budget.used();
     let result = host.in_document(&permit, |scope| {
         scope
             .evaluate(&units("other.setAttributeNode(replacement)"))
@@ -433,7 +433,7 @@ pub(in crate::document_scripting) fn element_methods_return_the_exact_attribute(
             DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
         ))
     ));
-    assert_eq!(events.budget.used.get(), before);
+    assert_eq!(events.budget.used(), before);
     drop(backing);
     assert!(matches!(
         host.in_document(&permit, |_| Ok(())),

@@ -97,7 +97,7 @@ pub(in crate::document_scripting) fn borrowed_element_factory_keeps_dom_on_wrapp
     }).unwrap();
     let before = host.snapshot().unwrap();
     let events = host.guest_events().unwrap();
-    let backing = events.budget.used.get();
+    let backing = events.budget.used();
     events
         .public
         .as_ref()
@@ -114,7 +114,7 @@ pub(in crate::document_scripting) fn borrowed_element_factory_keeps_dom_on_wrapp
         result,
         Err(DocumentScriptError::Script(Error::BackendUnavailable))
     ));
-    assert_eq!(events.budget.used.get(), backing);
+    assert_eq!(events.budget.used(), backing);
     let after = host.snapshot().unwrap();
     assert_eq!(after.stamp(), before.stamp());
     assert_eq!(after.nodes().count(), before.nodes().count());
@@ -137,20 +137,20 @@ pub(in crate::document_scripting) fn element_factory_admits_exact_projection_wor
     let required = {
         let (mut host, permit) = make_host();
         let events = host.guest_events().unwrap();
-        let before = events.budget.work.get();
+        let before = events.budget.work().unwrap();
         host.in_document(&permit, create).unwrap();
-        events.budget.work.get() - before
+        events.budget.work().unwrap() - before
     };
     assert!(required > 0);
     for available in [required - 1, required] {
         let (mut host, permit) = make_host();
         let events = host.guest_events().unwrap();
         let before = host.snapshot().unwrap();
-        let bytes = events.budget.used.get();
-        events.budget.work.set(events.limits.work - available);
+        let bytes = events.budget.used();
+        events.budget.set_work_remaining(available);
         let result = host.in_document(&permit, create);
         let after = host.snapshot().unwrap();
-        assert_eq!(events.budget.work.get(), events.limits.work);
+        assert_eq!(events.budget.work_remaining().unwrap(), 0);
         if available == required {
             result.unwrap();
             assert_ne!(after.stamp(), before.stamp());
@@ -165,7 +165,7 @@ pub(in crate::document_scripting) fn element_factory_admits_exact_projection_wor
             ));
             assert_eq!(after.stamp(), before.stamp());
             assert_eq!(after.nodes().count(), before.nodes().count());
-            assert_eq!(events.budget.used.get(), bytes);
+            assert_eq!(events.budget.used(), bytes);
         }
     }
 }
@@ -1188,7 +1188,7 @@ pub(in crate::document_scripting) fn character_data_observation_admits_native_lo
         .unwrap();
     assert!(lookup_work >= 2);
     let events = host.guest_events().unwrap();
-    events.budget.work.set(events.limits.work - lookup_work);
+    events.budget.set_work_remaining(lookup_work);
     let result = host.in_document(&permit, |scope| {
         assert_guest(scope, "textForWork.length === 17")
     });
@@ -1315,7 +1315,7 @@ pub(in crate::document_scripting) fn registered_character_factory_refuses_withou
     })
     .unwrap();
     let events = host.guest_events().unwrap();
-    let spare = events.limits.storage_bytes - events.budget.used.get();
+    let spare = events.limits.storage_bytes - events.budget.used();
     let backing = events.reserve(&host.native, spare).unwrap();
     let before = host.snapshot().unwrap();
     let result = host.in_document(&permit, |scope| {
@@ -1337,7 +1337,7 @@ pub(in crate::document_scripting) fn registered_character_factory_refuses_withou
     let after = host.snapshot().unwrap();
     assert_eq!(after.stamp(), before.stamp());
     assert_eq!(after.nodes().count(), before.nodes().count());
-    assert_eq!(events.budget.used.get(), events.limits.storage_bytes);
+    assert_eq!(events.budget.used(), events.limits.storage_bytes);
     drop(backing);
 }
 
@@ -1599,7 +1599,7 @@ pub(in crate::document_scripting) fn native_document_constructor_refusal_release
         .unwrap();
     let before = host.snapshot().unwrap();
     let events = host.guest_events().unwrap();
-    let backing = events.budget.used.get();
+    let backing = events.budget.used();
     let outcome = host.in_document(&permit, |scope| {
         scope.evaluate(&units("new Document()")).map(drop)
     });
@@ -1616,5 +1616,5 @@ pub(in crate::document_scripting) fn native_document_constructor_refusal_release
         ))) if *observed == limit
     ));
     assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
-    assert_eq!(events.budget.used.get(), backing);
+    assert_eq!(events.budget.used(), backing);
 }

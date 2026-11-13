@@ -454,7 +454,7 @@ impl DocumentBindings {
         target_prototype: &Value<'scope>,
         inbox: DomNodeRetirementInbox,
         capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
-        fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
+        (budget, owner): (&GuestBudget, &NativeOwner),
         origin: OriginInterfaceFunding<'_>,
     ) -> Result<Self, DocumentGuestEventError> {
         let (node_constructor, node) = install_node(scope, target_prototype, &origin.capture)?;
@@ -495,14 +495,16 @@ impl DocumentBindings {
             false,
             Callback::new(move |scope, arguments| getter.window_document(scope, arguments)),
         )?;
-        let attached = scope.project_retained_native_object(
-            ObjectPrototype::Object(&prototype),
-            GuestNodeProjection {
-                node: Cell::new(Some(GuestNode::Document(document))),
-                lifetime: None,
-            },
-            fund,
-        )?;
+        let attached = budget.phase(|| {
+            scope.project_retained_native_object(
+                ObjectPrototype::Object(&prototype),
+                GuestNodeProjection {
+                    node: Cell::new(Some(GuestNode::Document(document))),
+                    lifetime: None,
+                },
+                |bytes| budget.reserve(AccountScope::Projection, owner, bytes),
+            )
+        })?;
         Ok(Self {
             attached_id: document,
             attached,
@@ -522,7 +524,7 @@ impl DocumentBindings {
         if let Some(value) = self.open_document(scope, node, || admission.step())? {
             return Ok(Some(value));
         }
-        self.ordinary.open_with(scope, node, || admission.step())
+        self.ordinary.open_with(scope, node, admission)
     }
 
     fn open_document<'scope>(
@@ -557,43 +559,45 @@ impl DocumentBindings {
         prototype: ordinary::NodePrototype<'_, 'scope>,
         resolve: impl FnOnce() -> Result<DocumentId, DocumentGuestEventError>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
-        let mut pins = self
-            .documents
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let backing = admission.reserve(size_of::<DocumentPin>())?;
-        let payload = GuestNodeProjection {
-            node: Cell::new(None),
-            lifetime: None,
-        };
-        admission.step()?;
-        let allocation = Box::new_uninit();
-        let (value, holder, document) = scope.try_project_retained_native_object(
-            prototype.projection(),
-            payload,
-            |payload, holder| {
-                Ok::<_, DocumentGuestEventError>((
-                    admission.reserve(payload)?,
-                    admission.reserve(holder)?,
-                ))
-            },
-            |payload| {
-                let document = resolve()?;
-                payload.node.set(Some(GuestNode::Document(document)));
-                Ok(document)
-            },
-        )?;
-        let next = pins.take();
-        *pins = Some(Box::write(
-            allocation,
-            DocumentPin {
-                document,
-                holder,
-                next,
-                _backing: backing,
-            },
-        ));
-        Ok(value)
+        admission.phase(|| {
+            let mut pins = self
+                .documents
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let backing = admission.reserve(size_of::<DocumentPin>())?;
+            let payload = GuestNodeProjection {
+                node: Cell::new(None),
+                lifetime: None,
+            };
+            admission.step()?;
+            let allocation = Box::new_uninit();
+            let (value, holder, document) = scope.try_project_retained_native_object(
+                prototype.projection(),
+                payload,
+                |payload, holder| {
+                    Ok::<_, DocumentGuestEventError>((
+                        admission.reserve(payload)?,
+                        admission.reserve(holder)?,
+                    ))
+                },
+                |payload| {
+                    let document = resolve()?;
+                    payload.node.set(Some(GuestNode::Document(document)));
+                    Ok(document)
+                },
+            )?;
+            let next = pins.take();
+            *pins = Some(Box::write(
+                allocation,
+                DocumentPin {
+                    document,
+                    holder,
+                    next,
+                    _backing: backing,
+                },
+            ));
+            Ok(value)
+        })
     }
 
     pub(super) fn reap_nodes(&self, process: &mut Process, retired: &Cell<bool>) {
@@ -924,22 +928,28 @@ impl Capture {
             ));
         }
         let (owner, events) = self.active(scope)?;
-        let result = (|| {
+        let result = events.budget.phase(|| {
             let bindings = &events
                 .public
                 .as_ref()
                 .ok_or(Error::ExpiredIdentity)?
                 .document;
-            self.callbacks.with_read(&owner, &events, |read, _| {
-                read.node(bindings.attached_id.node())?
-                    .as_document()
-                    .ok_or(DomError::WrongNodeKind)?;
-                Ok(())
-            })?;
+            self.callbacks.with_accounted_read(
+                &owner,
+                &events,
+                AccountScope::Projection,
+                |read, _| {
+                    read.node(bindings.attached_id.node())?
+                        .as_document()
+                        .ok_or(DomError::WrongNodeKind)?;
+                    Ok(())
+                },
+            )?;
+            let admission = ordinary::Admission::ordinary(&owner, &events);
             bindings
-                .open_document(scope, bindings.attached_id.node(), || events.step())?
+                .open_document(scope, bindings.attached_id.node(), || admission.step())?
                 .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
-        })();
+        });
         complete(scope, &events, result)
     }
 

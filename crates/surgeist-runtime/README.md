@@ -346,6 +346,16 @@ and preserves the root's settings while removing its ordinary children.
 The synchronous binding requires one complete Source publication. `attachShadow`
 accepts null, the receiving Document's Global registry or a scoped registry.
 `DocumentGuestEventLimits` includes the native watch storage and work limits.
+Select an optional Ledger profile on `PreparedDocumentScriptHost` with
+`with_guest_accounting_profile`. The default keeps admission active and
+collects no profile. `DocumentScriptHost::guest_accounting` gives the caller
+read-only report custody that survives host refusal and teardown. The
+`node-projection` scope attributes adapter admission for native node pins
+to the attachment's root. Its phase timings are inclusive, including
+nested projection phases. Detailed mode uses Ledger's bounded event buffer.
+Native Source and retirement retain their own work limits. The report
+covers Rust adapter work and backing, with V8 internals and Web IDL
+conversion accounted for separately.
 The `Text` and `Comment` constructors and Document factories use the same
 creation and retirement boundary. The factories use the receiver Document's
 registered creation realm, including borrowed calls. Native Text and Comment

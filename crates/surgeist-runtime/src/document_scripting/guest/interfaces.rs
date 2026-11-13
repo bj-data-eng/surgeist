@@ -226,7 +226,11 @@ impl PublicEventBindings {
             DomHostedGlobalId,
         ),
     ) -> Result<Self, DocumentGuestEventError> {
-        let fund = |bytes| admission.budget.reserve(owner, admission.limits, bytes);
+        let fund = |bytes| {
+            admission
+                .budget
+                .reserve(AccountScope::Adapter, owner, bytes)
+        };
         let account_bytes = size_of::<Callbacks>()
             .checked_add(ConversionAccount::standalone_backing_bytes()?)
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
@@ -366,7 +370,7 @@ impl PublicEventBindings {
             &target,
             inbox,
             &capture,
-            &fund,
+            (&admission.budget, owner),
             OriginInterfaceFunding {
                 capture: &capture_origin,
                 retain: &fund_origin,
@@ -693,6 +697,7 @@ enum SourceReadRequest<'a> {
 struct NativeRead<'a> {
     snapshot: DomSnapshot,
     events: &'a GuestEvents,
+    account_scope: AccountScope,
     source: Option<SourceReadRequest<'a>>,
     dom: RefCell<crate::DomEventDom<'a>>,
     hosted: HostedRuntime,
@@ -752,14 +757,14 @@ impl NativeRead<'_> {
 
     fn step(&self) -> Result<(), DocumentGuestEventError> {
         self.source_step()?;
-        self.events.step()
+        self.events.budget.charge_work(self.account_scope, 1)
     }
 
     fn reserve(&self, bytes: usize) -> Result<GuestBacking, DocumentGuestEventError> {
         self.source_step()?;
         self.events
             .budget
-            .reserve_with(self.events.limits, bytes, || {
+            .reserve_with(self.account_scope, bytes, || {
                 let mut dom = self
                     .dom
                     .try_borrow_mut()
@@ -836,6 +841,16 @@ impl Callbacks {
         events: &GuestEvents,
         action: impl FnOnce(&NativeRead<'_>, DomHostedGlobalId) -> Result<T, DocumentGuestEventError>,
     ) -> Result<T, DocumentGuestEventError> {
+        self.with_accounted_read(owner, events, AccountScope::Adapter, action)
+    }
+
+    fn with_accounted_read<T>(
+        &self,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        account_scope: AccountScope,
+        action: impl FnOnce(&NativeRead<'_>, DomHostedGlobalId) -> Result<T, DocumentGuestEventError>,
+    ) -> Result<T, DocumentGuestEventError> {
         let request = owner.active_event_request();
         self.with_qualified_session(owner, request.as_ref(), |session, global| {
             let snapshot = session.snapshot();
@@ -859,6 +874,7 @@ impl Callbacks {
             let read = NativeRead {
                 snapshot,
                 events,
+                account_scope,
                 source: request,
                 dom: RefCell::new(dom),
                 hosted,

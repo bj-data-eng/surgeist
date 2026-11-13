@@ -381,6 +381,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::native_document_constructor_refusal_releases_private_wrapper();
     super::guest::tests::element_projection_admits_exact_work_and_backing();
     super::guest::missing_pins_refuse_without_native_publication();
+    super::guest::tests::projection_accounting::profiles_observe_actual_projection_without_changing_admission();
     super::guest::tests::refused_element_realm_installation_releases_guest_backing();
     super::guest::tests::native_element_ancestors_are_projected_and_metered();
     super::guest::tests::qualified_tag_presentation_admits_its_utf16_work();

@@ -1,6 +1,7 @@
 use crate::{
-    Change, Checkpoint, Dimension, Error, IntervalReport, Limits, Operation, PhaseObservation,
-    Report, Scope, ScopeEntry, Tariffs, Usage, profile::Profile,
+    Change, Checkpoint, Dimension, Error, Event, IntervalReport, Limits, Operation,
+    PhaseObservation, ProfileMode, Report, Scope, ScopeEntry, ScopeReport, Tariffs, Usage,
+    profile::Profile,
 };
 use std::{
     ops::AsyncFnOnce,
@@ -40,6 +41,21 @@ impl<W: Dimension, R: Dimension> SharedOperation<W, R> {
         size_of::<ScopeEntry<W, R>>()
             .checked_mul(max_scopes)?
             .checked_add(size_of::<Mutex<Operation<W, R>>>())
+    }
+
+    /// Requested backing when sharing an operation created with
+    /// [`Operation::with_reserved_profile`]. Includes optional observer
+    /// buffers and excludes allocator metadata and checkpoint storage.
+    pub fn profiled_backing_bytes(max_scopes: usize, mode: ProfileMode) -> Option<usize> {
+        let base = Self::reserved_backing_bytes(max_scopes)?;
+        let events = match mode {
+            ProfileMode::Off => return Some(base),
+            ProfileMode::Summary { .. } => 0,
+            ProfileMode::Detailed { event_limit, .. } => event_limit,
+        };
+        base.checked_add(size_of::<Profile<W, R>>())?
+            .checked_add(size_of::<ScopeReport<W, R>>().checked_mul(max_scopes)?)?
+            .checked_add(size_of::<Event<W, R>>().checked_mul(events)?)
     }
 
     fn lock(&self) -> MutexGuard<'_, Operation<W, R>> {

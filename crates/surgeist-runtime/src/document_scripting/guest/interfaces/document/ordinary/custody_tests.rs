@@ -54,7 +54,7 @@ pub(in crate::document_scripting) fn missing_pins_refuse_without_native_publicat
             .release_callback_object(holder)
             .unwrap();
         let before = host.snapshot().unwrap().stamp();
-        let bytes = events.budget.used.get();
+        let bytes = events.budget.used();
         for _ in 0..2 {
             let error = host
                 .in_document(&permit, |scope| evaluate(scope, reexpose))
@@ -75,7 +75,7 @@ pub(in crate::document_scripting) fn missing_pins_refuse_without_native_publicat
             let snapshot = host.snapshot().unwrap();
             assert_eq!(snapshot.stamp(), before);
             assert!(snapshot.node(node).is_ok());
-            assert_eq!(events.budget.used.get(), bytes);
+            assert_eq!(events.budget.used(), bytes);
         }
     }
 }
