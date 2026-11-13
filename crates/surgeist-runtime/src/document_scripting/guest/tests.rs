@@ -11,6 +11,48 @@ pub(in crate::document_scripting) fn exhaust_guest_reaction_work(host: &Document
     events.budget.work.set(events.limits.work);
 }
 
+pub(in crate::document_scripting) fn successful_constructor_needs_no_fallback_admission() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    let events = host.guest_events().unwrap();
+    let entered = Rc::new(Cell::new(false));
+    let observed = entered.clone();
+    host.in_document(&permit, |scope| {
+        let global = scope.global()?;
+        let events = Rc::downgrade(&events);
+        let callback = scope.function(&Callback::new(move |_, _| {
+            let events = events.upgrade().unwrap();
+            observed.set(true);
+            events.budget.work.set(events.limits.work);
+            Ok(Completion::Undefined)
+        }))?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("useRemainingWork")),
+            &callback,
+        )?;
+        assert_guest(
+            scope,
+            r#"(() => {
+            let constructed;
+            class Exact extends HTMLElement {
+                constructor() {
+                    super();
+                    constructed = this;
+                    useRemainingWork();
+                }
+            }
+            customElements.define('x-exact-autonomous', Exact);
+            return document.createElement('x-exact-autonomous') === constructed;
+        })()"#,
+        )
+    })
+    .unwrap();
+    assert!(entered.get());
+    drop(events);
+    assert!(host.stop().into_session().is_ok());
+}
+
 pub(in crate::document_scripting) fn custom_element_registry_identity_is_canonical() {
     let mut host = public_node_host(5_000, 60_000);
     let permit = host.permit().unwrap();
