@@ -169,6 +169,7 @@ fn structural_equality_admits_retained_sibling_frames_before_traversing() {
     let node = snapshot.node(left).unwrap();
     let live_bytes = std::cell::Cell::new(0);
     let peak_bytes = std::cell::Cell::new(0);
+    let overlapping = std::cell::Cell::new(false);
     struct Scratch<'a> {
         live_bytes: &'a std::cell::Cell<usize>,
         bytes: usize,
@@ -183,6 +184,7 @@ fn structural_equality_admits_retained_sibling_frames_before_traversing() {
             right,
             || Ok(()),
             |bytes| {
+                overlapping.set(overlapping.get() || live_bytes.get() > 0);
                 let live = live_bytes.get() + bytes;
                 if live > limit {
                     return Err(DomError::AllocationFailed);
@@ -198,12 +200,38 @@ fn structural_equality_admits_retained_sibling_frames_before_traversing() {
     };
     assert_eq!(compare(usize::MAX), Ok(true));
     assert_eq!(live_bytes.get(), 0);
+    assert!(overlapping.get());
     let peak = peak_bytes.get();
     assert!(peak > 0);
     assert_eq!(compare(peak - 1), Err(DomError::AllocationFailed));
     assert_eq!(live_bytes.get(), 0);
     assert_eq!(compare(peak), Ok(true));
     assert_eq!(live_bytes.get(), 0);
+    let right_lookup_steps = std::cell::Cell::new(0);
+    snapshot
+        .node_with(right, || {
+            right_lookup_steps.set(right_lookup_steps.get() + 1);
+            Ok::<_, DomError>(())
+        })
+        .unwrap();
+    let first_child_step = right_lookup_steps.get() + 1;
+    let mut visited = 0;
+    let refused = node.is_equal_node_with(
+        right,
+        || {
+            visited += 1;
+            if visited == first_child_step {
+                Err(DomError::Cancelled)
+            } else {
+                Ok(())
+            }
+        },
+        |_| Ok(()),
+    );
+    assert_eq!(
+        (refused, visited),
+        (Err(DomError::Cancelled), first_child_step)
+    );
     assert_eq!(dom.snapshot().stamp(), snapshot.stamp());
 }
 

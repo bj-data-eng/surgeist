@@ -1,5 +1,7 @@
 use super::*;
-use crate::document_scripting::guest::tests::attach_public_nodes;
+use crate::document_scripting::guest::tests::{
+    attach_public_nodes, exhaust_guest_reaction_work, expose_public_node_for_source_test,
+};
 
 pub(super) fn structural_node_equality_reads_the_live_ordinary_tree() {
     let cancel = Arc::new(AtomicBool::new(false));
@@ -68,4 +70,98 @@ pub(super) fn structural_node_equality_reads_the_live_ordinary_tree() {
         assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
         Ok(())
     }).unwrap();
+}
+
+pub(super) fn structural_node_equality_observes_template_boundaries_and_native_refusal() {
+    use surgeist_html::values::Namespace;
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session(&cancel, 0);
+    let document = target.document();
+    let mut batch = DomBatch::new();
+    let left = batch.create_element_ns(document, Namespace::html(), "template");
+    let right = batch.create_element_ns(document, Namespace::html(), "template");
+    let obsolete = batch.create_text(document, "obsolete");
+    let commit = session.dom().apply(batch, &cancel).unwrap();
+    let left = commit.created(&left).unwrap().unwrap();
+    let right = commit.created(&right).unwrap().unwrap();
+    let obsolete = commit.created(&obsolete).unwrap().unwrap();
+    let snapshot = session.snapshot();
+    let contents = [left, right].map(|id| {
+        snapshot
+            .node(id)
+            .unwrap()
+            .as_template()
+            .unwrap()
+            .contents()
+            .unwrap()
+    });
+    let inert = snapshot
+        .node(contents[0])
+        .unwrap()
+        .owner_document()
+        .unwrap();
+    let mut batch = DomBatch::new();
+    let text = batch.create_text(inert, "only left");
+    batch.insert_before(&text, contents[0], None);
+    session.dom().apply(batch, &cancel).unwrap();
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 8_000, 80_000);
+    let permit = host.permit().unwrap();
+    for (id, name) in [
+        (left, "equalityTemplateLeft"),
+        (right, "equalityTemplateRight"),
+        (obsolete, "equalityObsolete"),
+    ] {
+        expose_public_node_for_source_test(&mut host, &permit, id, name);
+    }
+    host.in_document(&permit, |scope| {
+        let result = evaluate(
+            scope,
+            "equalityTemplateLeft.isEqualNode(equalityTemplateRight)",
+        )?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    })
+    .unwrap();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.destroy(obsolete);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    let before = host.snapshot().unwrap().stamp();
+    let retired = host.in_document(&permit, |scope| {
+        evaluate(scope, "equalityTemplateLeft.isEqualNode(equalityObsolete)").map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = retired else {
+        panic!("retired equality operand must refuse: {retired:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
+        ))
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), before);
+    drop(host);
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = attach_public_nodes(session, target, cancel, 8_000, 80_000);
+    let permit = host.permit().unwrap();
+    let before = host.snapshot().unwrap().stamp();
+    exhaust_guest_reaction_work(&host);
+    let exhausted = host.in_document(&permit, |scope| {
+        evaluate(scope, "document.isEqualNode(document)").map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = exhausted else {
+        panic!("equality must respect the work limit: {exhausted:?}");
+    };
+    assert!(
+        matches!(
+            failure.cause::<DocumentGuestEventError>(),
+            Some(DocumentGuestEventError::WorkLimit)
+        ),
+        "{:?}",
+        failure.cause::<DocumentGuestEventError>()
+    );
+    assert_eq!(host.snapshot().unwrap().stamp(), before);
 }
