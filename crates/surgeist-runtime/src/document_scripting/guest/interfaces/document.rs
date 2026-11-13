@@ -33,6 +33,8 @@ mod title;
 pub(super) mod tree;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
 pub(in crate::document_scripting) use ordinary::PendingConstructor;
+#[cfg(test)]
+pub(in crate::document_scripting) use ordinary::missing_pins_refuse_without_native_publication;
 
 fn creation_realm_fallback(
     owner: &NativeOwner,

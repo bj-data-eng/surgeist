@@ -22,7 +22,9 @@ pub use csp_task::DocumentCspViolationProgress;
 use interfaces::PublicEventBindings;
 pub(super) use interfaces::creation_document_registry;
 #[cfg(test)]
-pub(super) use interfaces::document_registry_identity;
+pub(super) use interfaces::{
+    document_registry_identity, missing_pins_refuse_without_native_publication,
+};
 pub(crate) use reports::QueuedViolation;
 use reports::{DirectExceptions, ExceptionRoots};
 pub(super) use reports::{GuestExceptionReports, ViolationQueue};

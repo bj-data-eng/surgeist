@@ -1,5 +1,10 @@
 //! Retained custody indexed by exact native node retirement.
 
+#[cfg(test)]
+mod custody_tests;
+#[cfg(test)]
+pub(in crate::document_scripting) use custody_tests::missing_pins_refuse_without_native_publication;
+
 use super::super::PublicEventBindings;
 use super::super::custom_elements::{ActiveReactionQueue, SynchronousReactionScope};
 use super::*;
