@@ -5,6 +5,7 @@ mod document_type;
 mod dom_implementation;
 mod element_tasks;
 mod inline_style;
+mod meta_reflection;
 mod nested_dispatch;
 mod node_clone;
 mod node_equality;
@@ -356,6 +357,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     template_content::template_content_reaches_parsed_and_retired_native_contents();
     template_content::template_attributes_reflect_the_live_native_element();
     title_text::title_text_uses_direct_native_children_and_original_replacement();
+    meta_reflection::meta_reflections_read_and_mutate_the_live_native_element();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
