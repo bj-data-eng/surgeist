@@ -572,8 +572,8 @@ fn document_factory_reaches_the_selected_definition_before_allocating_an_element
     let before = dom.snapshot().stamp();
     let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1000);
     let inbox = dom.node_retirement_inbox(watch_limits, &cancel()).unwrap();
-    assert!(matches!(
-        dom.create_detached_element_with_node_retirement_watch(
+    let DomWatchedElementCreation::Constructor(watched_request) = dom
+        .create_detached_element_with_node_retirement_watch(
             document,
             (
                 DomElementCreationName::Local("x-widget".into()),
@@ -583,9 +583,20 @@ fn document_factory_reaches_the_selected_definition_before_allocating_an_element
             (source_limits(4096), watch_limits),
             &cancel(),
             |_| -> Result<(), DomError> { panic!("private wrapper was never prepared") },
-        ),
-        Err(DomError::NotSupported)
-    ));
+        )
+        .unwrap()
+    else {
+        panic!("watched constructor request");
+    };
+    assert_eq!(watched_request.definition(), autonomous);
+    assert_eq!(
+        dom.pending_source_edit().unwrap().operation(),
+        watched_request.operation()
+    );
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert!(dom.node_retirements.is_none());
+    dom.discard_unstarted_custom_element(watched_request)
+        .unwrap();
     assert!(dom.pending_source_edit().is_none());
     assert_eq!(dom.snapshot().stamp(), before);
 
@@ -742,6 +753,8 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
         )
         .unwrap();
     let bounds = source_limits(4096);
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1000);
+    let mut inbox = dom.node_retirement_inbox(watch_limits, &cancel()).unwrap();
     let mut lease = dom
         .begin_source_edit(
             DomSourceEdit::create_element_ns(document.node(), Namespace::html(), "p:x-broken"),
@@ -768,6 +781,44 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
     );
     drop(lease);
 
+    let before = dom.snapshot().stamp();
+    assert!(matches!(
+        dom.construct_autonomous_element_with_watch(
+            request,
+            &registration,
+            owner.global(),
+            (&inbox, 0),
+            DomNodeRetirementLimits::new(16_000_000, 0),
+            &cancel(),
+        ),
+        Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert!(dom.node_retirements.is_none());
+    let created = dom
+        .construct_autonomous_element_with_watch(
+            request,
+            &registration,
+            owner.global(),
+            (&inbox, 0),
+            watch_limits,
+            &cancel(),
+        )
+        .unwrap();
+    let constructed = created.node();
+    let snapshot = dom.snapshot();
+    let element = snapshot.node(constructed).unwrap().as_element().unwrap();
+    assert_eq!(element.name().prefix(), None);
+    assert_eq!(element.saved_is(), None);
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Definition(request.definition())
+    );
+    assert_eq!(
+        element.custom_element_state(),
+        surgeist_html::elements::native::HtmlCustomElementState::Custom
+    );
+
     let child = source(
         &mut dom,
         DomSourceEdit::create_element(document.node(), "span"),
@@ -781,6 +832,17 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
     );
     drop(scope);
 
+    assert!(matches!(
+        dom.construct_autonomous_element_with_watch(
+            request,
+            &registration,
+            owner.global(),
+            (&inbox, 1),
+            watch_limits,
+            &cancel(),
+        ),
+        Err(DomError::InvalidSourceOperation)
+    ));
     let mut lease = dom
         .resume_source_edit(request.operation(), bounds, &cancel())
         .unwrap();
@@ -828,8 +890,10 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
         panic!("failed factory returns its fallback");
     };
     assert_ne!(child, fallback);
+    assert_ne!(constructed, fallback);
     let snapshot = lease.snapshot();
     assert!(snapshot.node(child).is_ok());
+    assert!(snapshot.node(constructed).is_ok());
     let element = snapshot.node(fallback).unwrap().as_element().unwrap();
     assert!(element.has_failed_construction_interface());
     assert_eq!(element.name().prefix(), Some(&"p".into()));
@@ -847,6 +911,13 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
         DomRegistryBinding::Registry(registry)
     );
     drop(lease);
+    let mut retire = DomBatch::new();
+    retire.destroy(constructed);
+    dom.apply(retire, &cancel()).unwrap();
+    let notice = inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (constructed, 0));
+    assert!(inbox.take().is_none());
+    drop(created);
 
     // A constructor may return a different eligible native element. The
     // factory must preserve its identity and apply the requested prefix.

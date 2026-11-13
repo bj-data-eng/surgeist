@@ -39,6 +39,11 @@ pub(super) struct Admission<'a> {
     route: AdmissionRoute<'a>,
 }
 
+enum ElementFactoryResult<'scope> {
+    Created(Value<'scope>),
+    Constructor(surgeist_dom::DomSourceCustomElementRequest),
+}
+
 #[derive(Clone, Copy)]
 enum AdmissionRoute<'a> {
     Ordinary,
@@ -374,7 +379,7 @@ impl OrdinaryBindings {
                 (document, name, options),
             )
         };
-        if let Some(global) = public.other_document_origin(owner, events, document)? {
+        let result = if let Some(global) = public.other_document_origin(owner, events, document)? {
             public.with_origin_with(
                 global,
                 || admission.step(),
@@ -382,6 +387,20 @@ impl OrdinaryBindings {
             )
         } else {
             project(&public.document.element)
+        }?;
+        match result {
+            ElementFactoryResult::Created(value) => Ok(value),
+            ElementFactoryResult::Constructor(request) => {
+                let mut session = owner
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                session
+                    .dom()
+                    .raw_mut()
+                    .discard_unstarted_custom_element(request)?;
+                Err(DomError::NotSupported.into())
+            }
         }
     }
 
@@ -396,7 +415,7 @@ impl OrdinaryBindings {
             DomElementCreationName,
             DomElementCreationOptions,
         ),
-    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+    ) -> Result<ElementFactoryResult<'scope>, DocumentGuestEventError> {
         let Admission { owner, events, .. } = admission;
         let mut pins = self
             .pins
@@ -416,41 +435,47 @@ impl OrdinaryBindings {
             admission.reserve(holder_bytes)?,
         );
         admission.step()?;
-        let (watched, prepared) =
-            capture
-                .callbacks
-                .with_qualified_session(owner, event, |session, _| {
-                    session
-                        .dom()
-                        .raw_mut()
-                        .create_detached_element_with_node_retirement_watch(
-                            document,
-                            (name, options),
-                            (&inbox, key),
-                            (events.limits.source_edits, events.limits.node_retirement),
-                            &owner.cancellation,
-                            |name| {
-                                let step = || {
-                                    name.step()?;
-                                    events.step()
-                                };
-                                let prototype = elements.prototype_for_name(name.name(), step)?;
-                                let prepared = scope.prepare_retained_native_object(
-                                    NodePrototype::Creation(prototype).projection(),
-                                    payload,
-                                    |_, _| Ok::<_, DocumentGuestEventError>(backing),
-                                )?;
-                                #[cfg(test)]
-                                self.qualify_projection()?;
-                                Ok(prepared)
-                            },
-                        )
-                })?;
+        let result = capture
+            .callbacks
+            .with_qualified_session(owner, event, |session, _| {
+                let mut dom = session.dom();
+                let dom = dom.raw_mut();
+                dom.create_detached_element_with_node_retirement_watch(
+                    document,
+                    (name, options),
+                    (&inbox, key),
+                    (events.limits.source_edits, events.limits.node_retirement),
+                    &owner.cancellation,
+                    |name| {
+                        let step = || {
+                            name.step()?;
+                            events.step()
+                        };
+                        let prototype = elements.prototype_for_name(name.name(), step)?;
+                        let prepared = scope.prepare_retained_native_object(
+                            NodePrototype::Creation(prototype).projection(),
+                            payload,
+                            |_, _| Ok::<_, DocumentGuestEventError>(backing),
+                        )?;
+                        #[cfg(test)]
+                        self.qualify_projection()?;
+                        Ok::<_, DocumentGuestEventError>(prepared)
+                    },
+                )
+            })?;
+        let (watched, prepared) = match result {
+            surgeist_dom::DomWatchedElementCreation::Created(watched, prepared) => {
+                (watched, prepared)
+            }
+            surgeist_dom::DomWatchedElementCreation::Constructor(request) => {
+                return Ok(ElementFactoryResult::Constructor(request));
+            }
+        };
         let (_, node, watch) = watched.into_parts();
         let (value, holder, live) = prepared
             .publish(|payload| Self::bind_projection(payload, GuestNode::Element(node), watch));
         pin.publish(reserved, holder, live);
-        Ok(value)
+        Ok(ElementFactoryResult::Created(value))
     }
 
     pub(super) fn new(inbox: DomNodeRetirementInbox) -> Self {

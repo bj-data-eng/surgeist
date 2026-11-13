@@ -779,7 +779,7 @@ impl Draft {
         )
     }
 
-    fn replace_element_custom_context(
+    pub(in crate::store) fn replace_element_custom_context(
         &mut self,
         key: Key,
         state: surgeist_html::elements::native::HtmlCustomElementState,

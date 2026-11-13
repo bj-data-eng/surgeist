@@ -421,6 +421,112 @@ impl Operation {
 }
 
 impl Dom {
+    /// Publish the native result of an autonomous constructor's HTMLElement
+    /// super call, with its retirement watch. The supplied Global identifies
+    /// the actual HTML constructor interface's realm.
+    /// This is a callback mutation, charged to the active observation's work
+    /// and retained storage. The factory still owns its final publication.
+    pub fn construct_autonomous_element_with_watch(
+        &mut self,
+        request: DomSourceCustomElementRequest,
+        registration: &DomDocumentScriptRegistration,
+        callee_global: crate::DomHostedGlobalId,
+        (inbox, key): (&crate::DomNodeRetirementInbox, usize),
+        limits: crate::DomNodeRetirementLimits,
+        cancel: &AtomicBool,
+    ) -> Result<crate::DomWatchedNode, DomError> {
+        self.source_custom_element_callback_step(request, registration, cancel)?;
+        let operation = self
+            .source_operation
+            .as_deref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let work = operation
+            .callback_observation()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let document = self
+            .dispatch_global_document_current_with::<DomHostedError>(callee_global, &mut || {
+                work.work.step(cancel).map_err(Into::into)
+            })
+            .map_err(|error| match error {
+                DomHostedError::Dom(error) => error,
+                _ => DomError::HostedSourceUnavailable,
+            })?;
+        let name = &operation
+            .custom_element
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?
+            .name
+            .value
+            .value
+            .value;
+        let name = crate::DomQualifiedName::from_atoms(
+            name.namespace().cloned(),
+            None,
+            name.local_name_atom().clone(),
+        )?;
+        let mut draft =
+            self.source_observed_batch(formation::allocated_arc(BatchIdentity), &[], 0, cancel)?;
+        let document = draft.resolve(document.into())?;
+        let budget = formation::Formation::new(&draft, cancel)?;
+        let name = draft.bind_canonical_name(&name, budget.as_ref(), cancel)?;
+        let formed = draft.form_native_element(
+            name,
+            None,
+            draft.document_metadata(document)?.document_environment(),
+            budget.as_ref(),
+            cancel,
+        )?;
+        let node = draft.allocate_element_formed(formed, document, self.limits, cancel, budget)?;
+        draft.replace_element_custom_context(
+            node,
+            surgeist_html::elements::native::HtmlCustomElementState::Custom,
+            crate::element::CustomAssociation {
+                registry: crate::DomRegistryBinding::Registry(request.definition.registry()),
+                definition: crate::DomElementDefinition::Definition(request.definition),
+                saved_is: None,
+            },
+            cancel,
+        )?;
+        draft.register_ticket(node, cancel)?;
+        let mut prepared = draft.finish(self, cancel)?;
+        prepared.state.incomplete_source = self.state.incomplete_source;
+        let [Some(node)] = prepared.node_outputs.as_slice() else {
+            return Err(DomError::UnavailableCreation);
+        };
+        let node = *node;
+        let publication = self.prepare_publication(prepared, cancel)?;
+        let watch =
+            self.watch_prepared_source_node(&publication, node, inbox, key, limits, cancel)?;
+        let commit = self.publish_prepared(publication);
+        Ok(crate::DomWatchedNode::new(commit, node, watch))
+    }
+
+    /// Release a factory before opening its constructor scope. The exact
+    /// request must still be the current, unpublished Source.
+    pub fn discard_unstarted_custom_element(
+        &mut self,
+        request: DomSourceCustomElementRequest,
+    ) -> Result<(), DomError> {
+        let operation = self
+            .source_operation
+            .as_deref()
+            .filter(|operation| {
+                operation.waiting_custom_element() == Some(request) && !operation.published
+            })
+            .ok_or(DomError::InvalidSourceOperation)?;
+        if operation
+            .custom_element
+            .as_ref()
+            .is_some_and(Pending::callback_opened)
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        self.source_operation = self.source_parents.pop();
+        #[cfg(test)]
+        self.observe_source_lifecycle();
+        Ok(())
+    }
+
     /// Charge native work performed by the exact running constructor.
     pub fn source_custom_element_callback_step(
         &self,

@@ -33,7 +33,7 @@ mod scope_tests;
 mod script;
 mod show_modal;
 mod synchronous_node;
-pub use synchronous_node::DomPreparedElementName;
+pub use synchronous_node::{DomPreparedElementName, DomWatchedElementCreation};
 mod watcher;
 use super::Invocation;
 use super::*;
@@ -2443,7 +2443,12 @@ impl DomSourceLease<'_> {
             if result.is_ok()
                 && let Some(request) = op.waiting_custom_element()
             {
-                if execution.synchronous_node.is_some() {
+                if execution.synchronous_node.is_some()
+                    && !matches!(
+                        execution.synchronous_node,
+                        Some(synchronous_node::SynchronousNode::ElementFactory(_))
+                    )
+                {
                     op.custom_element = None;
                     checkpoint.restore(&mut op.draft);
                     return Err(DomError::NotSupported.into());

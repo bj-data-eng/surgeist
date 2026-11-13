@@ -6,6 +6,14 @@ use crate::{DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementWa
 pub(super) enum SynchronousNode<'a> {
     ReturnNode,
     Watch(NodeWatch<'a>),
+    ElementFactory(NodeWatch<'a>),
+}
+
+/// Result of advancing a detached Element factory with retirement custody.
+/// A reached constructor retains its original Source operation in the DOM.
+pub enum DomWatchedElementCreation<T> {
+    Created(crate::DomWatchedNode, T),
+    Constructor(DomSourceCustomElementRequest),
 }
 
 /// A loan of the exact canonical name prepared for a detached Element. Work
@@ -89,6 +97,8 @@ impl Dom {
     /// and Element publish together. Either refusal drops the private output.
     /// The preparation closure cannot run guest code that needs this DOM's
     /// exclusive mutation authority. Its output cannot borrow the private name.
+    /// A reached constructor returns before calling the preparation closure.
+    /// The caller can resume the request or discard it before opening its scope.
     pub fn create_detached_element_with_node_retirement_watch<T, E: From<DomError>>(
         &mut self,
         document: crate::DocumentId,
@@ -100,27 +110,44 @@ impl Dom {
         limits: (DomSourceLimits, DomNodeRetirementLimits),
         cancel: &AtomicBool,
         prepare: impl FnOnce(DomPreparedElementName<'_>) -> Result<T, E>,
-    ) -> Result<(crate::DomWatchedNode, T), E> {
+    ) -> Result<DomWatchedElementCreation<T>, E> {
         let edit = DomSourceEdit::create_element_with_options(document.node(), name, options);
         let mut prepare = Some(prepare);
         let mut output = None;
-        let watched = self.publish_watched_source_node(
-            edit,
-            (inbox, custody_key),
-            limits,
-            cancel,
-            Some(&mut |name| {
-                output = prepare.take().map(|prepare| prepare(name));
-                matches!(output, Some(Ok(_)))
-            }),
-        );
-        match output {
-            Some(Ok(output)) => Ok((watched?, output)),
-            Some(Err(error)) => Err(error),
-            None => Err(watched
-                .err()
-                .unwrap_or(DomError::UnavailableCreation)
-                .into()),
+        let mut prepare_element = |name: DomPreparedElementName<'_>| {
+            output = prepare.take().map(|prepare| prepare(name));
+            matches!(output, Some(Ok(_)))
+        };
+        let mut execution = Execution::disabled();
+        execution.synchronous_node = Some(SynchronousNode::ElementFactory(NodeWatch {
+            inbox,
+            custody_key,
+            limits: limits.1,
+            prepare_element: Some(&mut prepare_element),
+            output: None,
+        }));
+        let mut lease = self.begin_source_edit(edit, limits.0, cancel)?;
+        let progress = lease.advance_node(&mut execution, cancel);
+        let Some(SynchronousNode::ElementFactory(watch)) = execution.synchronous_node.take() else {
+            return Err(DomError::InvalidSourceOperation.into());
+        };
+        match (progress, watch.output, output) {
+            (Ok(DomSourceProgress::Complete(done)), Some((node, watch)), Some(Ok(output))) => {
+                Ok(DomWatchedElementCreation::Created(
+                    crate::DomWatchedNode::new(done.commit, node, watch),
+                    output,
+                ))
+            }
+            (
+                Ok(DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(
+                    request,
+                ))),
+                None,
+                None,
+            ) => Ok(DomWatchedElementCreation::Constructor(request)),
+            (_, _, Some(Err(error))) => Err(error),
+            (Err(error), _, _) => Err(error.into()),
+            _ => Err(DomError::IncompleteSourceOperation.into()),
         }
     }
 
@@ -164,7 +191,6 @@ impl Dom {
             (inbox, custody_key),
             (source_limits, watch_limits),
             cancel,
-            None,
         )
     }
 
@@ -184,24 +210,22 @@ impl Dom {
             (inbox, custody_key),
             limits,
             cancel,
-            None,
         )
     }
 
-    fn publish_watched_source_node<'a>(
+    fn publish_watched_source_node(
         &mut self,
         edit: DomSourceEdit,
-        (inbox, custody_key): (&'a DomNodeRetirementInbox, usize),
+        (inbox, custody_key): (&DomNodeRetirementInbox, usize),
         (source_limits, watch_limits): (DomSourceLimits, DomNodeRetirementLimits),
         cancel: &AtomicBool,
-        prepare_element: Option<&'a mut PrepareElement<'a>>,
     ) -> Result<crate::DomWatchedNode, DomError> {
         let mut execution = Execution::disabled();
         execution.synchronous_node = Some(SynchronousNode::Watch(NodeWatch {
             inbox,
             custody_key,
             limits: watch_limits,
-            prepare_element,
+            prepare_element: None,
             output: None,
         }));
         let completion =
@@ -224,16 +248,28 @@ impl Dom {
         execution: &mut Execution<'_>,
     ) -> Result<DomSourceCompletion, DomError> {
         let mut lease = self.begin_source_edit(edit, source_limits, cancel)?;
-        match lease.advance_execution(execution, None, cancel) {
-            Ok(DomSourceProgress::Complete(done)) if !done.cancellation_requested() => Ok(done),
-            Ok(DomSourceProgress::Complete(_)) => Err(DomError::Cancelled),
-            Ok(DomSourceProgress::Failed(failure)) => Err(failure.into_parts().1),
-            Ok(DomSourceProgress::Request(_)) => Err(DomError::IncompleteSourceOperation),
-            Err(AdvanceError::Dom(error)) => Err(error),
-            Err(AdvanceError::Unwind(payload)) => {
-                drop(lease);
-                std::panic::resume_unwind(payload);
+        match lease.advance_node(execution, cancel)? {
+            DomSourceProgress::Complete(done) => Ok(done),
+            DomSourceProgress::Request(_) => Err(DomError::IncompleteSourceOperation),
+            DomSourceProgress::Failed(failure) => Err(failure.into_parts().1),
+        }
+    }
+}
+
+impl DomSourceLease<'_> {
+    fn advance_node(
+        &mut self,
+        execution: &mut Execution<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceProgress, DomError> {
+        match self.advance_execution(execution, None, cancel) {
+            Ok(DomSourceProgress::Complete(done)) if done.cancellation_requested() => {
+                Err(DomError::Cancelled)
             }
+            Ok(DomSourceProgress::Failed(failure)) => Err(failure.into_parts().1),
+            Ok(progress) => Ok(progress),
+            Err(AdvanceError::Dom(error)) => Err(error),
+            Err(AdvanceError::Unwind(payload)) => std::panic::resume_unwind(payload),
             Err(_) => Err(DomError::InvalidSourceOperation),
         }
     }

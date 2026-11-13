@@ -266,7 +266,9 @@ impl Operation {
             if incomplete || has_inputs {
                 return Err(DomError::IncompleteSourceOperation.into());
             }
-            if let synchronous_node::SynchronousNode::Watch(watch) = node {
+            if let synchronous_node::SynchronousNode::Watch(watch)
+            | synchronous_node::SynchronousNode::ElementFactory(watch) = node
+            {
                 watch.arm(dom, &segment, cancel)?;
             }
         }
