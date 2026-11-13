@@ -585,6 +585,55 @@ pub(in crate::document_scripting) fn failed_tree_edit_keeps_its_error_when_react
     assert!(stopped.into_session().is_ok());
 }
 
+pub(in crate::document_scripting) fn failed_tree_edit_precedes_nested_host_refusal() {
+    let mut host = public_node_host_with_reports(4);
+    let (permit, edit) = prepare_failed_tree_edit(&mut host);
+    let entered = Rc::new(Cell::new(false));
+    let observed = entered.clone();
+    host.in_document(&permit, |scope| {
+        let slot = HostFailureSlot::new(&scope.realm_authority()?, ())?;
+        let callback = scope.function(&Callback::new(move |scope, _| {
+            observed.set(true);
+            let failure = slot
+                .record(std::io::Error::other("nested host refusal"))
+                .unwrap();
+            Err(scope.refuse_host(&failure))
+        }))?;
+        let global = scope.global()?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("onPrefixDisconnect")),
+            &callback,
+        )
+    })
+    .unwrap();
+    let result = host.run_guest_tree_edit_fixture(&permit, edit);
+    assert!(entered.get());
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("expected a terminal nested refusal: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::HierarchyRequest))
+        ))
+    ));
+    let mut stopped = host.stop();
+    assert_eq!(
+        stopped
+            .discard_pending_queued_custom_element_reactions()
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        stopped
+            .discard_pending_native_custom_element_reactions()
+            .unwrap(),
+        0
+    );
+    assert!(stopped.into_session().is_ok());
+}
+
 fn prepare_failed_tree_edit(
     host: &mut DocumentScriptHost,
 ) -> (DocumentScriptPermit, surgeist_dom::DomSourceEdit) {
@@ -595,7 +644,10 @@ fn prepare_failed_tree_edit(
                 r#"
             globalThis.disconnectCalls = [];
             customElements.define('x-prefix-reaction', class extends HTMLElement {
-                disconnectedCallback() { disconnectCalls.push(this); }
+                disconnectedCallback() {
+                    disconnectCalls.push(this);
+                    globalThis.onPrefixDisconnect?.();
+                }
             });
             globalThis.prefixReceiver = document.createElement('x-prefix-reaction');
             document.documentElement.appendChild(prefixReceiver);

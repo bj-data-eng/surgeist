@@ -255,6 +255,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::custom_element_reacts_to_the_committed_prefix_of_a_failed_edit();
     super::guest::tests::custom_element_reacts_to_an_inline_joined_failure();
     super::guest::tests::failed_tree_edit_keeps_its_error_when_reaction_admission_refuses();
+    super::guest::tests::failed_tree_edit_precedes_nested_host_refusal();
     super::guest::tests::registry_upgrade_preserves_nested_definition_and_shadow_refusal();
     super::guest::tests::registry_upgrade_retains_unfinished_candidates_on_refusal();
     super::guest::tests::insertion_upgrade_keeps_only_unentered_callbacks_on_refusal();
