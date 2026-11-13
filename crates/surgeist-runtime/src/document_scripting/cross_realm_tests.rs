@@ -247,6 +247,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registry_when_defined_retains_original_promise_and_constructor();
     super::guest::tests::registry_define_upgrades_existing_candidates_in_tree_order();
     super::guest::tests::reinserted_candidate_drains_its_queued_upgrade_once();
+    super::guest::tests::reinserted_upgrade_receiver_drains_initial_reactions();
     super::guest::tests::reentrant_attribute_write_drains_the_receivers_fifo();
     super::guest::tests::custom_element_subtree_reacts_to_connection_changes();
     super::guest::tests::custom_element_move_uses_the_registered_move_reaction();

@@ -356,6 +356,44 @@ pub(in crate::document_scripting) fn reentrant_attribute_write_drains_the_receiv
     .unwrap();
 }
 
+pub(in crate::document_scripting) fn reinserted_upgrade_receiver_drains_initial_reactions() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const root = document.documentElement;
+            const receiver = document.createElement('x-reinserted-receiver');
+            receiver.setAttribute('data-key', 'original');
+            root.appendChild(receiver);
+            const calls = [];
+            class Reinserted extends HTMLElement {
+                static observedAttributes = ['data-key'];
+                constructor() {
+                    super();
+                    calls.push('constructor enters');
+                    root.removeChild(this);
+                    root.appendChild(this);
+                    calls.push('constructor resumes');
+                }
+                attributeChangedCallback(name, oldValue, newValue, namespace) {
+                    if (this === receiver && name === 'data-key' && oldValue === null &&
+                        newValue === 'original' && namespace === null) calls.push('attribute');
+                }
+                connectedCallback() {
+                    if (this === receiver) calls.push('connected');
+                }
+            }
+            customElements.define('x-reinserted-receiver', Reinserted);
+            return receiver instanceof Reinserted && calls.join(',') ===
+                'constructor enters,attribute,connected,constructor resumes';
+        })()"#,
+        )
+    })
+    .unwrap();
+}
+
 pub(in crate::document_scripting) fn custom_element_subtree_reacts_to_connection_changes() {
     let mut host = public_node_host(20_000, 200_000);
     let permit = host.permit().unwrap();
