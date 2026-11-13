@@ -14,6 +14,7 @@ mod attr;
 mod attr_factory;
 mod character_data;
 mod document_type;
+mod dom_implementation;
 pub(super) use character_data::copy_native_data;
 pub(super) mod element;
 mod element_factory;
@@ -259,6 +260,7 @@ pub(super) struct DocumentBindings {
 pub(super) struct DocumentPrototypes {
     document: RetainedCallbackObject,
     document_type: RetainedCallbackObject,
+    implementation: RetainedCallbackObject,
     fragment: RetainedCallbackObject,
     shadow: RetainedCallbackObject,
     attr: RetainedCallbackObject,
@@ -346,6 +348,7 @@ impl DocumentPrototypes {
         )?;
         let attr = attr::install(scope, node, constructor, funding)?;
         let document_type = document_type::install(scope, node, constructor, &document, funding)?;
+        let implementation = dom_implementation::install(scope, &document, funding)?;
         let observed = scope.callback_object(&document)?;
         let retained_document = scope.retain_callback_object(observed, funding.retain)?;
         let observed = scope.callback_object(&fragment)?;
@@ -356,6 +359,7 @@ impl DocumentPrototypes {
             Self {
                 document: retained_document,
                 document_type,
+                implementation,
                 fragment: retained_fragment,
                 shadow: retained_shadow,
                 attr,
