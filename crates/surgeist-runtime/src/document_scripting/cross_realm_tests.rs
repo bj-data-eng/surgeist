@@ -311,6 +311,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::trusted_policy::guest_attribute_writes_reach_the_native_element();
     declarative_shadow::verify_declarative_shadow_reuse();
     document_type::document_type_tracks_native_tree();
+    super::guest::tests::registered_origin::native_doctype_uses_its_registered_creation_realm();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
     );

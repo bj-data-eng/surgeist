@@ -53,8 +53,8 @@ pub(super) fn document_type_tracks_native_tree() {
         let value = evaluate(scope, r#"
             (() => {
                 const doctype = globalThis.savedDoctype = document.doctype;
-                const getName = Object.getOwnPropertyDescriptor(DocumentType.prototype, 'name').get;
-                const getDoctype = Object.getOwnPropertyDescriptor(Document.prototype, 'doctype').get;
+                const name = Object.getOwnPropertyDescriptor(DocumentType.prototype, 'name');
+                const descriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'doctype');
                 const throwsTypeError = action => {
                     try { action(); } catch (error) { return error instanceof TypeError; }
                     return false;
@@ -67,8 +67,10 @@ pub(super) fn document_type_tracks_native_tree() {
                     doctype.publicId === '\ud800\0' && doctype.systemId === '\udc00x' &&
                     doctype.parentNode === document && doctype.ownerDocument === document &&
                     throwsTypeError(() => new DocumentType()) &&
-                    throwsTypeError(() => getName.call(Object.create(doctype))) &&
-                    throwsTypeError(() => getDoctype.call(doctype));
+                    name.enumerable && name.configurable && name.set === undefined &&
+                    descriptor.enumerable && descriptor.configurable && descriptor.set === undefined &&
+                    throwsTypeError(() => name.get.call(Object.create(doctype))) &&
+                    throwsTypeError(() => descriptor.get.call(doctype));
             })()
         "#)?;
         assert!(scope.boolean(&value)?, "the native doctype has its standard interface");
@@ -100,4 +102,25 @@ pub(super) fn document_type_tracks_native_tree() {
         host.snapshot().unwrap().node(node).unwrap().parent(),
         Some(document.node())
     );
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.detach(node);
+        batch.destroy(node);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    let retired = host.in_document(&permit, |scope| {
+        evaluate(scope, "savedDoctype.name").map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = retired else {
+        panic!("a retired doctype must refuse readback: {retired:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(
+                surgeist_dom::DomError::StaleNode
+            ))
+        ))
+    ));
 }

@@ -302,6 +302,8 @@ The Window's readonly own `document` getter returns its canonical Document
 wrapper. The Document exposes the base Node reads for identity, connectivity,
 parent, owner and root. The standard Document constructor uses the original
 native Global and retains each created Document in its creation realm.
+`Document.doctype` follows the live tree and projects the native DocumentType
+in its creation realm. Its name and identifiers preserve exact UTF-16.
 Document and Window listeners share the native registry. Borrowed
 `EventTarget.prototype` methods authenticate the exact Window, and dispatch
 through a Document uses the canonical Window capture and bubble path.
