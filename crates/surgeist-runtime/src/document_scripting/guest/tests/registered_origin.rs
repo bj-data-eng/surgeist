@@ -120,6 +120,56 @@ pub(in crate::document_scripting) fn borrowed_element_factory_keeps_dom_on_wrapp
     assert_eq!(after.nodes().count(), before.nodes().count());
 }
 
+pub(in crate::document_scripting) fn element_factory_admits_exact_projection_work() {
+    let make_host = || {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (session, target) =
+            crate::document_scripting::cross_realm_tests::hosted_session(&cancel, 0);
+        let host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+        let permit = host.permit().unwrap();
+        (host, permit)
+    };
+    let create = |scope: &mut Scope<'_>| {
+        scope
+            .evaluate(&units("document.createElement('div')"))
+            .map(drop)
+    };
+    let required = {
+        let (mut host, permit) = make_host();
+        let events = host.guest_events().unwrap();
+        let before = events.budget.work.get();
+        host.in_document(&permit, create).unwrap();
+        events.budget.work.get() - before
+    };
+    assert!(required > 0);
+    for available in [required - 1, required] {
+        let (mut host, permit) = make_host();
+        let events = host.guest_events().unwrap();
+        let before = host.snapshot().unwrap();
+        let bytes = events.budget.used.get();
+        events.budget.work.set(events.limits.work - available);
+        let result = host.in_document(&permit, create);
+        let after = host.snapshot().unwrap();
+        assert_eq!(events.budget.work.get(), events.limits.work);
+        if available == required {
+            result.unwrap();
+            assert_ne!(after.stamp(), before.stamp());
+            assert_eq!(after.nodes().count(), before.nodes().count() + 1);
+        } else {
+            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+                panic!("one-short factory must refuse: {result:?}");
+            };
+            assert!(matches!(
+                failure.cause::<DocumentGuestEventError>(),
+                Some(DocumentGuestEventError::WorkLimit)
+            ));
+            assert_eq!(after.stamp(), before.stamp());
+            assert_eq!(after.nodes().count(), before.nodes().count());
+            assert_eq!(events.budget.used.get(), bytes);
+        }
+    }
+}
+
 struct RegisteredOrigin {
     host: DocumentScriptHost,
     permit: DocumentScriptPermit,
