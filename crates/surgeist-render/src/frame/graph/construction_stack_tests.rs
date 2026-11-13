@@ -81,6 +81,7 @@ fn assert_released(context: &RenderAccountingContext) {
 fn assert_isolated_rectangle(
     graph: &GpuRenderGraph,
     expected_opacities: &[f32],
+    expected_outer_clips: usize,
     account: &Account,
 ) -> Result<()> {
     let root = graph
@@ -138,7 +139,13 @@ fn assert_isolated_rectangle(
         assert_eq!(*transform, Transform::identity());
         assert_eq!(opacity, expected_opacity);
         assert!(composition.is_source_over_normal());
-        assert!(clip.is_none() && outer_clips.is_empty() && alpha_mask.is_none());
+        assert!(clip.is_none() && alpha_mask.is_none());
+        assert_eq!(outer_clips.len(), expected_outer_clips);
+        assert!(
+            outer_clips
+                .iter()
+                .all(|clip| clip.transform == Transform::identity())
+        );
     }
 
     let encoded = crate::encode::encode_vello_scene_with_initial_transform(
@@ -181,7 +188,7 @@ fn construct(commands: RenderCommands, expected_opacities: &[f32]) {
                 ForcedVelloCaptureMappingForTest::identity(),
                 account,
             )?;
-            assert_isolated_rectangle(&graph, expected_opacities, account)
+            assert_isolated_rectangle(&graph, expected_opacities, 0, account)
         })
         .unwrap();
     assert_released(&context);
@@ -267,4 +274,272 @@ fn deep_group_first_command_refusal_releases_graph_setup() {
     on_construction_stack("refuse nested isolated groups", 512 * 1024, || {
         refuse_first_command(normalized_groups(128));
     });
+}
+
+#[test]
+fn wrapper_and_clip_returns_restore_sibling_coordinates_clips_and_parent_locality() {
+    let wrapper_transform = Transform::translation(0.25, 0.0).unwrap();
+    let clip_transform = Transform::translation(0.0, 0.5).unwrap();
+    let combined = Transform::translation(0.25, 0.5).unwrap();
+    let rect = Rect::new(0.0, 0.0, 1.0, 1.0);
+    let mut scene = Scene::new();
+    scene.layer(
+        Layer::new().isolated().try_opacity(0.25).unwrap(),
+        |scene| {
+            scene.layer(Layer::new().with_transform(wrapper_transform), |scene| {
+                scene.layer(
+                    Layer::new()
+                        .with_transform(clip_transform)
+                        .try_clip(rect.into())
+                        .unwrap(),
+                    |scene| {
+                        scene.fill(rect, Color::BLACK);
+                        scene.layer(Layer::new().isolated().try_opacity(0.5).unwrap(), |scene| {
+                            scene.fill(rect, Color::BLACK);
+                        });
+                        scene.fill(rect, Color::BLACK);
+                    },
+                );
+                scene.layer(Layer::new().blend(crate::BlendMode::Multiply), |scene| {
+                    scene.fill(rect, Color::BLACK);
+                });
+            });
+            scene.layer(Layer::new().blend(crate::BlendMode::Multiply), |scene| {
+                scene.fill(rect, Color::BLACK);
+            });
+        },
+    );
+    let commands = scene
+        .normalize(Capabilities::CURRENT, &Account::for_test())
+        .unwrap();
+    let mut context = RenderAccountingContext::default();
+    context
+        .run(RenderAttemptKind::Frame, RenderPhase::Plan, |account| {
+            let graph = forced_base_graph_with_capture_mapping_for_test(
+                commands,
+                frame_context(),
+                ForcedVelloCaptureMappingForTest::identity(),
+                account,
+            )?;
+            // The two ordinary spans around the inner isolated group remain under
+            // the clip. Each separately captured source starts in its own coordinates.
+            let expected_captures = [
+                combined,
+                Transform::identity(),
+                combined,
+                Transform::identity(),
+                Transform::identity(),
+            ];
+            let expected_parents = [
+                Transform::identity(),
+                combined,
+                Transform::identity(),
+                wrapper_transform,
+                Transform::identity(),
+            ];
+            assert_eq!(graph.vello_spans.len(), expected_captures.len());
+            for ((span, capture), parent) in graph
+                .vello_spans
+                .iter()
+                .zip(expected_captures)
+                .zip(expected_parents)
+            {
+                assert_eq!(span.scope, SemanticVelloSpanScope::LayerSource);
+                assert_eq!(span.capture_transform, capture);
+                assert_eq!(span.parent_to_surface, parent);
+            }
+            // Returning from either wrapper leaves the actual parent external:
+            // both subsequent multiply operations require separate group capture.
+            let expected = [
+                (1.0, Transform::identity(), true, false),
+                (1.0, Transform::identity(), false, false),
+                (0.5, combined, true, false),
+                (1.0, Transform::identity(), true, false),
+                (1.0, Transform::identity(), false, false),
+                (1.0, wrapper_transform, false, true),
+                (1.0, Transform::identity(), false, false),
+                (1.0, Transform::identity(), false, true),
+                (0.25, Transform::identity(), false, false),
+            ];
+            assert_eq!(graph.composites.len(), expected.len());
+            for (composite, (expected_opacity, expected_transform, clipped, multiply)) in
+                graph.composites.iter().zip(expected)
+            {
+                assert!(composite.source_captured_before_outer_semantics);
+                assert_eq!(
+                    matches!(composite.kind, SemanticCompositeKind::SpanSourceOver),
+                    expected_opacity == 1.0 && !clipped && !multiply,
+                );
+                match &composite.kind {
+                    SemanticCompositeKind::SpanSourceOver => {
+                        assert_eq!(
+                            (expected_opacity, expected_transform, clipped, multiply),
+                            (1.0, Transform::identity(), false, false)
+                        );
+                    }
+                    SemanticCompositeKind::Layer {
+                        transform,
+                        opacity,
+                        composition,
+                        clip,
+                        outer_clips,
+                        alpha_mask,
+                        ..
+                    } => {
+                        assert_eq!(*transform, expected_transform);
+                        assert_eq!(*opacity, expected_opacity);
+                        assert_eq!(
+                            *composition,
+                            crate::layer::LayerComposition::from_blend(if multiply {
+                                crate::BlendMode::Multiply
+                            } else {
+                                crate::BlendMode::Normal
+                            })
+                        );
+                        assert!(clip.is_none() && alpha_mask.is_none());
+                        assert_eq!(outer_clips.len(), usize::from(clipped));
+                        if clipped {
+                            assert_eq!(outer_clips[0].transform, combined);
+                            assert_eq!(
+                                outer_clips[0].clip.geometry(),
+                                &crate::command::RenderClipGeometry::Rect(rect)
+                            );
+                        }
+                    }
+                    SemanticCompositeKind::DropShadow => panic!("no shadow was authored"),
+                }
+            }
+            Ok(())
+        })
+        .unwrap();
+    assert_released(&context);
+}
+
+fn run_for_retry(context: &mut RenderAccountingContext, commands: &RenderCommands) -> Result<()> {
+    context.run(RenderAttemptKind::Frame, RenderPhase::Plan, |account| {
+        forced_base_graph_with_capture_mapping_for_test(
+            commands.clone(),
+            frame_context(),
+            ForcedVelloCaptureMappingForTest::identity(),
+            account,
+        )
+        .map(drop)
+    })
+}
+
+#[test]
+fn pending_wrapper_and_group_work_refusal_releases_storage_and_retries() {
+    for commands in [normalized_scene(32), normalized_groups(12)] {
+        let mut context = RenderAccountingContext::default();
+        run_for_retry(&mut context, &commands).unwrap();
+        assert_released(&context);
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+        let command_visits = usage.work(RenderWork::CommandVisits);
+        let coordinate_visits = usage.work(RenderWork::CoordinateVisits);
+        let scratch_peak = usage.peak(RenderResource::ScratchCpuBytes);
+        assert!(scratch_peak > 0);
+        for (work, total) in [
+            (RenderWork::CommandVisits, command_visits),
+            (RenderWork::CoordinateVisits, coordinate_visits),
+        ] {
+            let limit = total - 1;
+            context.set_options(
+                RenderAccountingOptions::new()
+                    .with_limits(RenderLimits::new().with_work_limit(work, limit).unwrap()),
+            );
+            let error = run_for_retry(&mut context, &commands).unwrap_err();
+            let report = context.last_attempt().unwrap();
+            assert_eq!(report.status(), RenderAttemptStatus::Refused);
+            let attempt = report.attempt().unwrap();
+            let refusal = attempt.refusal().unwrap();
+            assert_eq!(
+                error.accounting_diagnostic(),
+                Some(RenderAccountingError::Refused(refusal))
+            );
+            assert_eq!(refusal.quantity(), RenderQuantity::Work(work));
+            if work == RenderWork::CommandVisits {
+                assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
+            } else {
+                assert!(refusal.current() <= limit);
+                assert!(refusal.current() + refusal.amount() > limit);
+            }
+            // These last command/coordinate visits occur while inner source planning
+            // still has its ancestor wrapper/group returns pending.
+            assert_eq!(
+                attempt.usage().peak(RenderResource::ScratchCpuBytes),
+                scratch_peak
+            );
+            assert_released(&context);
+        }
+        context.set_options(
+            RenderAccountingOptions::new()
+                .with_limits(RenderLimits::new().with_scratch_bytes(scratch_peak - 1)),
+        );
+        let error = run_for_retry(&mut context, &commands).unwrap_err();
+        let report = context.last_attempt().unwrap();
+        assert_eq!(report.status(), RenderAttemptStatus::Refused);
+        let refusal = report.attempt().unwrap().refusal().unwrap();
+        assert_eq!(
+            error.accounting_diagnostic(),
+            Some(RenderAccountingError::Refused(refusal))
+        );
+        assert_eq!(
+            refusal.quantity(),
+            RenderQuantity::Resource(RenderResource::ScratchCpuBytes)
+        );
+        assert!(refusal.current() > 0 && refusal.amount() > 0);
+        assert_released(&context);
+
+        let limits = RenderLimits::new()
+            .with_scratch_bytes(scratch_peak)
+            .with_work_limit(RenderWork::CommandVisits, command_visits)
+            .unwrap()
+            .with_work_limit(RenderWork::CoordinateVisits, coordinate_visits)
+            .unwrap();
+        context.set_options(RenderAccountingOptions::new().with_limits(limits));
+        run_for_retry(&mut context, &commands).unwrap();
+        assert_released(&context);
+        assert_eq!(
+            context.last_attempt().unwrap().status(),
+            RenderAttemptStatus::Succeeded
+        );
+    }
+}
+
+#[test]
+fn deep_clip_wrappers_preserve_all_outer_clips_on_the_isolated_group() {
+    on_construction_stack(
+        "construct deeply clipped isolated graph",
+        512 * 1024,
+        || {
+            let mut scene = Scene::new();
+            let rect = Rect::new(0.0, 0.0, 2.0, 2.0);
+            scene.layer(Layer::new().isolated(), |scene| {
+                scene.fill(rect, Color::BLACK);
+            });
+            for _ in 0..512 {
+                let child = scene;
+                scene = Scene::new();
+                scene.layer(Layer::new().try_clip(rect.into()).unwrap(), |scene| {
+                    *scene = child
+                });
+            }
+            let commands = scene
+                .normalize(Capabilities::CURRENT, &Account::for_test())
+                .unwrap();
+            let mut context = RenderAccountingContext::default();
+            context
+                .run(RenderAttemptKind::Frame, RenderPhase::Plan, |account| {
+                    let graph = forced_base_graph_with_capture_mapping_for_test(
+                        commands,
+                        frame_context(),
+                        ForcedVelloCaptureMappingForTest::identity(),
+                        account,
+                    )?;
+                    assert_isolated_rectangle(&graph, &[1.0], 512, account)
+                })
+                .unwrap();
+            assert_released(&context);
+        },
+    );
 }
