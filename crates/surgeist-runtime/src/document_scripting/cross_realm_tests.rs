@@ -25,6 +25,7 @@ mod split_text;
 mod template_content;
 mod title_text;
 mod toggle_attribute;
+mod tree_mutations;
 mod trusted_attribute;
 mod whole_text;
 
@@ -370,6 +371,9 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     adjacent_text::adjacent_text_uses_the_original_compound_source_edit();
     adjacent_element::adjacent_element_uses_the_current_native_branch_and_original_operand();
     html_reflection::html_reflections_use_exact_live_attributes_and_html_brands();
+    tree_mutations::native_mutation_mixins_preserve_original_operands_and_conversion_order();
+    super::guest::tests::tree_mutation_admission::normalized_operands_admit_exact_backing_and_work(
+    );
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();

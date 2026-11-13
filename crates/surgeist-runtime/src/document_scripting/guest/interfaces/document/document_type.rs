@@ -49,6 +49,14 @@ pub(super) fn install<'scope>(
             Callback::new(move |scope, arguments| capture.doctype_field(scope, arguments, field)),
         )?;
     }
+    let names = tree_mutations::unscopables(scope, &prototype)?;
+    tree_mutations::install_child(
+        scope,
+        &prototype,
+        tree_mutations::Receiver::DocumentType,
+        &names,
+        funding.capture,
+    )?;
     let capture = (funding.capture)(size_of::<Capture>())?;
     install_getter(
         scope,

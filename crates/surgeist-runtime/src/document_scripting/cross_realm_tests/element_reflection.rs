@@ -19,7 +19,9 @@ pub(super) fn element_reflections_use_the_exact_native_attributes() {
                 const descriptor = Object.getOwnPropertyDescriptor(prototype, Symbol.unscopables);
                 if (!descriptor || descriptor.writable || descriptor.enumerable || !descriptor.configurable ||
                     Object.getPrototypeOf(descriptor.value) !== null ||
-                    Object.keys(descriptor.value).join() !== 'slot' || descriptor.value.slot !== true)
+                    Object.keys(descriptor.value).join() !==
+                        'slot,prepend,append,replaceChildren,before,after,replaceWith,remove' ||
+                    descriptor.value.slot !== true)
                     return 'unscopables';
                 const name = Object.getOwnPropertyDescriptor(prototype, 'id');
                 const element = document.createElement('div');

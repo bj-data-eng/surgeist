@@ -117,6 +117,14 @@ impl CharacterBindings {
             )?;
         }
         mutations::install_methods(scope, &prototype, &funding.capture)?;
+        let names = tree_mutations::unscopables(scope, &prototype)?;
+        tree_mutations::install_child(
+            scope,
+            &prototype,
+            tree_mutations::Receiver::CharacterData,
+            &names,
+            funding.capture,
+        )?;
         let text = Self::install_kind(
             scope,
             &interface,

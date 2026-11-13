@@ -9,33 +9,16 @@ use surgeist_dom::DomSourceEdit;
 
 const MOVE_BEFORE: &[u16] = &ascii(b"moveBefore");
 
-#[derive(Clone, Copy)]
-pub(super) enum Receiver {
-    Document,
-    Fragment,
-    Element,
-}
-
-impl Receiver {
-    fn accepts(self, node: GuestNode) -> bool {
-        matches!(
-            (self, node),
-            (Self::Document, GuestNode::Document(_))
-                | (
-                    Self::Fragment,
-                    GuestNode::Fragment(_) | GuestNode::ShadowRoot(_)
-                )
-                | (Self::Element, GuestNode::Element(_))
-        )
-    }
-}
+use super::tree_mutations::Receiver;
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
     receiver: Receiver,
+    names: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
+    super::tree_mutations::install_parent(scope, prototype, receiver, names, capture)?;
     let handler = capture(size_of::<(Capture, Receiver)>())?;
     let function = scope.fixed_arity_function(
         &Callback::new(move |scope, arguments| handler.move_before(scope, arguments, receiver)),

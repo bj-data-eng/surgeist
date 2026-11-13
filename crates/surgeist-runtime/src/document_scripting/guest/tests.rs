@@ -18,11 +18,16 @@ pub(in crate::document_scripting) mod move_before;
 pub(in crate::document_scripting) mod projection_accounting;
 pub(in crate::document_scripting) mod registered_origin;
 pub(in crate::document_scripting) mod shadow_root;
+pub(in crate::document_scripting) mod tree_mutation_admission;
 pub(in crate::document_scripting) mod trusted_policy;
 
 pub(in crate::document_scripting) fn exhaust_guest_reaction_work(host: &DocumentScriptHost) {
     let events = host.guest_events().unwrap();
     events.budget.set_work_remaining(0);
+}
+
+pub(in crate::document_scripting) fn guest_backing_used(host: &DocumentScriptHost) -> usize {
+    host.guest_events().unwrap().budget.used()
 }
 
 pub(in crate::document_scripting) fn expose_reaction_work_exhaustion(

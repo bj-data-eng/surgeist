@@ -369,6 +369,10 @@ validates the interface receiver and two required arguments, then drives the
 canonical state-preserving Source move. Existing wrappers keep their identity
 and native hierarchy and reference failures become the corresponding guest
 DOMExceptions.
+They also expose `prepend`, `append` and `replaceChildren`. Element,
+CharacterData and DocumentType expose `before`, `after`, `replaceWith` and
+`remove`. Variadic operands convert in order as native Nodes or exact DOMStrings
+before the original compound Source operation begins.
 AbortSignal and wider descendant navigation are separate capabilities.
 
 The native node interfaces expose live Attr values and ownership, Element
