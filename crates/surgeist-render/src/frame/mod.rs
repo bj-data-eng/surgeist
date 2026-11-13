@@ -217,7 +217,17 @@ fn collect_graph_selection_requirements(
     requirements: &mut AccountedVec<GraphSelectionRequirement>,
     account: &Account,
 ) -> Result<()> {
-    for command in commands {
+    let mut commands = commands;
+    let mut pending = account.temporary(0)?;
+    loop {
+        let Some((command, siblings)) = commands.split_first() else {
+            let Some(siblings) = pending.pop() else {
+                return Ok(());
+            };
+            commands = siblings;
+            continue;
+        };
+        commands = siblings;
         account.work(RenderWork::CommandVisits, 1)?;
         let RenderCommand::Layer { layer, children } = command else {
             continue;
@@ -248,9 +258,16 @@ fn collect_graph_selection_requirements(
         {
             requirements.push(GraphSelectionRequirement::ForegroundFilters)?;
         }
-        collect_graph_selection_requirements(children, requirements, account)?;
+        if !children.is_empty() {
+            if !siblings.is_empty() {
+                if pending.len() == pending.capacity() {
+                    pending.grow(pending.capacity().max(1))?;
+                }
+                pending.push(siblings)?;
+            }
+            commands = children;
+        }
     }
-    Ok(())
 }
 
 fn require_graph_text_bounds(
@@ -258,8 +275,21 @@ fn require_graph_text_bounds(
     path: &mut AccountedVec<usize>,
     account: &Account,
 ) -> Result<()> {
-    for (index, command) in commands.iter().enumerate() {
+    let prefix_depth = path.len();
+    let mut commands = commands.iter().enumerate();
+    let mut pending = account.temporary(0)?;
+    loop {
+        let Some((index, command)) = commands.next() else {
+            let Some((siblings, parent_depth)) = pending.pop() else {
+                path.truncate(prefix_depth);
+                return Ok(());
+            };
+            path.truncate(parent_depth);
+            commands = siblings;
+            continue;
+        };
         account.work(RenderWork::CommandVisits, 1)?;
+        let parent_depth = path.len();
         path.push(index)?;
         match command {
             RenderCommand::TextRun { bounds, .. }
@@ -277,7 +307,16 @@ fn require_graph_text_bounds(
                 )));
             }
             RenderCommand::Layer { children, .. } => {
-                require_graph_text_bounds(children, path, account)?;
+                if !children.is_empty() {
+                    if commands.len() > 0 {
+                        if pending.len() == pending.capacity() {
+                            pending.grow(pending.capacity().max(1))?;
+                        }
+                        pending.push((commands, parent_depth))?;
+                    }
+                    commands = children.iter().enumerate();
+                    continue;
+                }
             }
             RenderCommand::Fill { .. }
             | RenderCommand::Stroke { .. }
@@ -289,5 +328,4 @@ fn require_graph_text_bounds(
         }
         path.pop();
     }
-    Ok(())
 }
