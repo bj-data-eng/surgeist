@@ -288,14 +288,19 @@ impl Capture {
             return Err(error.into());
         };
         let original = scope.dom_exception(name, &[])?;
-        if self
-            .drain_native_reactions(scope, owner, events, operation)
-            .is_err()
-        {
-            // This edit failed before reaction delivery began. If delivery
-            // also refuses, expose the original native cause at the boundary.
-            return Err(error.into());
-        }
+        type PriorFailure = HostFailureSlot<DocumentGuestEventError, GuestBacking>;
+        let prior = PriorFailure::new(
+            &scope.realm_authority()?,
+            events
+                .reserve(
+                    owner,
+                    PriorFailure::storage_bytes() + 2 * size_of::<usize>(),
+                )
+                .map_err(|_| DocumentGuestEventError::from(error.clone()))?,
+        )?;
+        scope.complete_after_host_failure(&prior, error.into(), |scope| {
+            self.drain_native_reactions(scope, owner, events, operation)
+        })?;
         Ok(Completion::Throw(original))
     }
 }

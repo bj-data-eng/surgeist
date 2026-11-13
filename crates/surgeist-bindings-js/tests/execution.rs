@@ -2542,6 +2542,7 @@ fn main() -> Result<(), Error> {
     guest_construction_preserves_constructor_authority(&mut process)?;
     scalar_and_classification_operations_work_in_native_callbacks(&mut process)?;
     host::observed_realm_is_the_callback_creation_realm(&mut process)?;
+    host::completing_with_an_occupied_failure_slot_refuses_before_entry(&mut process)?;
 
     let (old_realm, old_value) = {
         let mut execution = process.execution();

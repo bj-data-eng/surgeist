@@ -97,6 +97,14 @@ impl OwnerState {
         }
     }
 
+    /// An enclosing host operation supplied a cause before running its
+    /// completion steps. A failure reached during those steps still stops
+    /// execution, but the enclosing operation's cause precedes it.
+    pub(crate) fn select_prior_host_failure(&self, failure: crate::HostFailure) {
+        self.failure
+            .set(Some(Failure::Host(Error::HostFailure(failure))));
+    }
+
     pub(crate) fn record_cleanup(&self, cleanup: CleanupFault) {
         self.cleanup.set(self.cleanup.get().record(cleanup));
         if self.failure().is_none() {

@@ -793,6 +793,40 @@ impl<'scope> Scope<'scope> {
         self.operations.refuse(Error::HostFailure(failure.clone()))
     }
 
+    /// Run completion steps after a native operation has already failed.
+    /// Successful steps leave the operation's ordinary error for the caller
+    /// to return. If the steps refuse or terminate execution, the earlier
+    /// native cause becomes the terminal error. Use an empty, funded
+    /// failure slot for this invocation.
+    pub fn complete_after_host_failure<T, E, Cause, Storage>(
+        &mut self,
+        slot: &HostFailureSlot<Cause, Storage>,
+        cause: Cause,
+        complete: impl FnOnce(&mut Self) -> Result<T, E>,
+    ) -> Result<T, Error>
+    where
+        Cause: std::error::Error + 'static,
+        Storage: 'static,
+    {
+        self.check_active()?;
+        let owner = self.operations.owner_state();
+        if slot.owner_id() != owner.id() {
+            return Err(Error::ForeignOwner);
+        }
+        let prior = slot.record(cause).map_err(|failure| match failure {
+            RecordFailure::Inactive { error, .. } => error,
+            RecordFailure::Occupied { .. } => Error::RegistryConflict,
+        })?;
+        let result = complete(self);
+        match result {
+            Ok(value) if self.check_active().is_ok() => Ok(value),
+            _ => {
+                owner.select_prior_host_failure(prior.clone());
+                Err(self.operations.refuse(Error::HostFailure(prior)))
+            }
+        }
+    }
+
     /// Refuses native continuation after a terminal host failure or execution
     /// termination. Native adapters must call this after guest reentry and
     /// before making their own externally observable mutations.
