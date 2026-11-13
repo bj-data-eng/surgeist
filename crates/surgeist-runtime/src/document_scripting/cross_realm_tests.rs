@@ -15,6 +15,7 @@ mod node_relations;
 mod normalize;
 mod processing_instruction;
 mod split_text;
+mod template_content;
 mod trusted_attribute;
 mod whole_text;
 
@@ -347,6 +348,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     node_equality::structural_node_equality_reads_the_live_ordinary_tree();
     node_equality::structural_node_equality_observes_template_boundaries_and_native_refusal();
     node_position::document_position_uses_live_order_and_native_node_identity();
+    template_content::template_content_is_the_live_owned_inert_fragment();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
