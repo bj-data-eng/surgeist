@@ -283,6 +283,21 @@ class DescriptionTests(unittest.TestCase):
 
 
 class ValueLoweringTests(unittest.TestCase):
+    def test_element_factories_share_the_declared_string_or_dictionary(self):
+        data = g.load()
+        model = g.lower_values(data)
+        dictionary = next((d for d in model["dictionaries"]
+                           if d["name"] == "ElementCreationOptions"), None)
+        self.assertIsNotNone(dictionary)
+        self.assertEqual([m["name"] for m in dictionary["members"]],
+                         ["customElementRegistry", "is"])
+        arguments = {a["id"]: a for a in g.lower_arguments(data, model)}
+        for name, index in [("createElement", 1), ("createElementNS", 2)]:
+            argument = arguments[f"Document.{name}:0/options"]
+            self.assertEqual(argument["index"], index)
+            self.assertEqual(argument["argument"]["default"], {"kind": "empty_dictionary"})
+            self.assertEqual(argument["info"][0], "ElementCreationArgument")
+
     def test_shadow_attachment_argument_includes_the_nullable_registry(self):
         data = g.load()
         model = g.lower_values(data)
@@ -304,12 +319,12 @@ class ValueLoweringTests(unittest.TestCase):
     def test_current_dictionary_outputs_cover_their_admitted_profiles(self):
         model = g.lower_values(g.load())
         self.assertEqual([d["name"] for d in model["dictionaries"]],
-                         ["GetRootNodeOptions", "ShadowRootInit", "EventInit", "EventListenerOptions"])
+                         ["GetRootNodeOptions", "ElementCreationOptions", "ShadowRootInit", "EventInit", "EventListenerOptions"])
         self.assertEqual([d["name"] for d in model["enumerations"]],
                          ["ShadowRootMode", "SlotAssignmentMode", "DocumentReadyState", "DocumentVisibilityState"])
         # No member may be discarded. Signal, native registry and source
         # combinations outside the selected conversion profiles stay unavailable.
-        for name in ("AddEventListenerOptions", "ElementCreationOptions",
+        for name in ("AddEventListenerOptions",
                      "ImportNodeOptions", "ShowPopoverOptions", "TogglePopoverOptions"):
             self.assertNotIn(name, [d["name"] for d in model["dictionaries"]])
 

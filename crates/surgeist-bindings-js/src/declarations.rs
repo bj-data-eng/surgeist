@@ -4,6 +4,8 @@
 //!
 //! These values do not install interfaces or convert guest inputs.
 
+use crate::DomString;
+
 /// Values of the declared `ShadowRootMode` enumeration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShadowRootMode {
@@ -127,6 +129,15 @@ pub struct GetRootNodeOptions {
     pub composed: bool,
 }
 
+/// Complete `ElementCreationOptions` dictionary value for the admitted registry profile.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ElementCreationOptions {
+    /// Whether `customElementRegistry` was explicitly supplied as null.
+    pub custom_element_registry_is_null: bool,
+    /// The declared `is` member.
+    pub is: Option<DomString>,
+}
+
 /// Complete `ShadowRootInit` dictionary value for the admitted registry profile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ShadowRootInit {
@@ -160,4 +171,13 @@ pub struct EventInit {
 pub struct EventListenerOptions {
     /// The declared `capture` member.
     pub capture: bool,
+}
+
+/// The declared string or dictionary input to the Document element factories.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ElementCreationArgument {
+    /// The legacy string alternative.
+    String(DomString),
+    /// The dictionary alternative in the admitted registry profile.
+    Options(ElementCreationOptions),
 }

@@ -5,7 +5,7 @@ use surgeist_bindings_js::conversion::{
     ArgumentValue, Converted, FailureKind, IntegerType, Resource, ResourceTable, Rule, Work,
     WorkTable, declarations, types,
 };
-use surgeist_bindings_js::declarations::EventInit;
+use surgeist_bindings_js::declarations::{ElementCreationArgument, EventInit};
 use surgeist_bindings_js::{
     Callback, Completion, DomString, Error, IntegerKind, IntegerMode, IntegerValue, Primitive,
     Process, PropertyKey,
@@ -400,9 +400,66 @@ fn nullable_admission(short_storage: bool) -> TestResult {
     Ok(())
 }
 
+fn element_creation_options(process: &mut Process) -> TestResult {
+    let realm = process.execution().create_realm()?;
+    let ledger = new_ledger(ProfileMode::Off)?;
+    let account = account(process, &realm, &ledger, Limits::unlimited())?;
+    let retained = process.execution().in_realm(&realm, |scope| {
+        let plain = declarations::document_create_element_0_options();
+        let namespaced = declarations::document_create_element_ns_0_options();
+        let undefined = scope.primitive(Primitive::Undefined)?;
+        let null = scope.primitive(Primitive::Null)?;
+        for input in [None, Some(&undefined), Some(&null)] {
+            let converted = account.run(scope, |cx| cx.argument(&plain, input))?;
+            let ArgumentValue::Present(ElementCreationArgument::Options(options)) =
+                converted.get()
+            else {
+                panic!("expected empty options dictionary");
+            };
+            assert!(!options.custom_element_registry_is_null);
+            assert!(options.is.is_none());
+        }
+        let number = scope.primitive(Primitive::Number(42.0))?;
+        let converted = account.run(scope, |cx| cx.argument(&namespaced, Some(&number)))?;
+        let ArgumentValue::Present(ElementCreationArgument::String(text)) = converted.get() else {
+            panic!("expected the string alternative");
+        };
+        assert_eq!(text.as_code_units(), [52, 50]);
+        drop(converted);
+
+        let input = scope.evaluate(&units(
+            "globalThis.order = ''; ({get is() {order += 'i'; return {toString() {order += 's'; return '\\uD800'}}}, get customElementRegistry() {order += 'r'; return null}, toString() {throw 1}})",
+        ))?;
+        let converted = account.run(scope, |cx| cx.argument(&namespaced, Some(&input)))?;
+        let ArgumentValue::Present(ElementCreationArgument::Options(options)) = converted.get()
+        else {
+            panic!("expected the dictionary alternative");
+        };
+        assert!(options.custom_element_registry_is_null);
+        assert_eq!(options.is.as_ref().expect("is").as_code_units(), [0xd800]);
+        let order = scope.evaluate(&units("order"))?;
+        assert_eq!(scope.to_utf16(&order)?, units("ris"));
+
+        let invalid = scope.evaluate(&units(
+            "({customElementRegistry: {}, get is() { throw 'late getter' }})",
+        ))?;
+        let error = account
+            .run(scope, |cx| cx.argument(&plain, Some(&invalid)))
+            .err()
+            .expect("unbranded registry must fail");
+        assert_eq!(error.kind(), FailureKind::TypeError(Rule::Interface("CustomElementRegistry")));
+        Ok(converted)
+    })?;
+    assert_eq!(ledger.usage(ledger.root())?.live(Resource::BufferBytes), 2);
+    drop(retained);
+    assert_eq!(ledger.usage(ledger.root())?.live(Resource::BufferBytes), 0);
+    Ok(())
+}
+
 pub(super) fn run(process: &mut Process) -> TestResult {
     dictionary_reads_and_reentry(process)?;
     nullable_and_declared_arguments(process)?;
+    element_creation_options(process)?;
     profiling_preserves_composed_values(process)?;
     Ok(())
 }
