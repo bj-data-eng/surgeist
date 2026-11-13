@@ -103,6 +103,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         Nested,
         MissingCallback,
         ReceiverPosition,
+        FactoryScope,
         Stop,
         Refuse,
     }
@@ -112,6 +113,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         (HtmlShadowRootMode::Open, Delivery::Nested),
         (HtmlShadowRootMode::Open, Delivery::MissingCallback),
         (HtmlShadowRootMode::Open, Delivery::ReceiverPosition),
+        (HtmlShadowRootMode::Open, Delivery::FactoryScope),
         (HtmlShadowRootMode::Closed, Delivery::Checkpoint),
         (HtmlShadowRootMode::Closed, Delivery::Stop),
         (HtmlShadowRootMode::Closed, Delivery::Refuse),
@@ -120,6 +122,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         let nested = matches!(delivery, Delivery::Nested);
         let missing_callback = matches!(delivery, Delivery::MissingCallback);
         let receiver_position = matches!(delivery, Delivery::ReceiverPosition);
+        let factory_scope = matches!(delivery, Delivery::FactoryScope);
         let (markup, assertion) = match mode {
             HtmlShadowRootMode::Open => (
                 "<template shadowrootmode=open shadowrootdelegatesfocus><p>child</p></template>",
@@ -276,9 +279,24 @@ pub(super) fn verify_declarative_shadow_reuse() {
                     }}
                     shadowReuseCalls.length = 0;
                     Promise.resolve().then(() => shadowReuseCalls.push('before'));
-                    const observed = shadowHost.attachShadow({{mode: "{matching}"}});
-                    if (shadowReuseReceiver.parentNode !== null || shadowReuseCalls.length !== 0)
-                        return false;
+                    let observed;
+                    if ({factory_scope}) {{
+                        customElements.define('x-shadow-trigger', class extends HTMLElement {{
+                            constructor() {{
+                                super();
+                                observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                                shadowReuseCalls.push('constructor');
+                            }}
+                        }});
+                        document.createElement('x-shadow-trigger');
+                        if (shadowReuseCalls.length !== 2 ||
+                            shadowReuseCalls[0] !== 'constructor' ||
+                            shadowReuseCalls[1] !== shadowReuseReceiver) return false;
+                    }} else {{
+                        observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                        if (shadowReuseReceiver.parentNode !== null || shadowReuseCalls.length !== 0)
+                            return false;
+                    }}
                     if ({reenter}) {{
                         shadowHost.appendChild(shadowReuseReceiver);
                         if (shadowReuseCalls.length !== 2 ||
@@ -374,6 +392,9 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 let correct = evaluate(scope, if reenter {
                     "shadowReuseCalls.length === 4 && shadowReuseCalls[0] === shadowReuseReceiver && \
                      shadowReuseCalls.slice(1).join(',') === 'connected,before,after'"
+                } else if factory_scope {
+                    "shadowReuseCalls.length === 4 && shadowReuseCalls[0] === 'constructor' && \
+                     shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls.slice(2).join(',') === 'before,after'"
                 } else if receiver_position {
                     "shadowReuseCalls.length === 6 && shadowReuseCalls[0] === shadowReuseReceiver && \
                      shadowReuseCalls[1] === 'connected' && shadowReuseCalls[2] === 'before' && \
