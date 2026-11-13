@@ -5,6 +5,7 @@ mod dom_implementation;
 mod element_tasks;
 mod inline_style;
 mod nested_dispatch;
+mod processing_instruction;
 mod trusted_attribute;
 
 use super::*;
@@ -315,6 +316,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     dom_implementation::document_implementation_is_the_same_object();
     dom_implementation::implementation_creates_native_doctypes();
     dom_implementation::implementation_creates_native_documents();
+    processing_instruction::native_processing_instruction_uses_its_canonical_wrapper();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
