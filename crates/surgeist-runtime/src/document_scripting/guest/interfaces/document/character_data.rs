@@ -255,7 +255,7 @@ impl GuestEvents {
         let result = (|| {
             let public = self.public.as_ref().ok_or(Error::ExpiredIdentity)?;
             let ordinary = &public.document.ordinary;
-            if let Some(value) = ordinary.open_with(scope, node, || admission.step())? {
+            if let Some(value) = ordinary.open_with(scope, node, admission)? {
                 return Ok(value);
             }
             let mut watch = |prototypes: &DocumentPrototypes| {

@@ -1,5 +1,12 @@
 //! Registered guest callbacks for ordinary authored standalone dispatch.
 
+mod accounting;
+pub(crate) use accounting::GuestBacking;
+use accounting::{AccountScope, AccountingError, GuestBudget};
+pub use accounting::{
+    DocumentGuestAccounting, DocumentGuestAccountingReport, DocumentGuestResource,
+    DocumentGuestWork,
+};
 mod csp_task;
 mod element_task;
 mod interfaces;
@@ -71,6 +78,8 @@ pub enum DocumentGuestEventError {
     RegistryUnbound,
     /// Finite cumulative guest adapter work refused.
     WorkLimit,
+    /// Ledger setup or accounting integrity failed.
+    Accounting(AccountingError),
     /// The next listener requires a different host route.
     HostRouteUnavailable,
     /// The original Source operation blocked synchronous completion.
@@ -85,7 +94,20 @@ impl fmt::Display for DocumentGuestEventError {
     }
 }
 
-impl std::error::Error for DocumentGuestEventError {}
+impl std::error::Error for DocumentGuestEventError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Accounting(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<AccountingError> for DocumentGuestEventError {
+    fn from(error: AccountingError) -> Self {
+        Self::Accounting(error)
+    }
+}
 
 impl From<DocumentScriptError> for DocumentGuestEventError {
     fn from(error: DocumentScriptError) -> Self {
@@ -145,7 +167,7 @@ struct GuestTargetLifetime {
 
 struct GuestFixedBacking {
     retired_targets: Cell<bool>,
-    _retention: DomHostedRuntimeRetention,
+    _retention: GuestBacking,
 }
 
 /// An explicitly host-owned guest projection of a native standalone target.
@@ -410,12 +432,6 @@ impl From<DocumentGuestEventError> for DocumentGuestEventDispatchFailure {
     }
 }
 
-pub(crate) struct GuestBacking {
-    used: Rc<Cell<usize>>,
-    bytes: usize,
-    _canonical: DomHostedRuntimeRetention,
-}
-
 /// A retained verification decision for the original native attribute write.
 pub(super) struct PendingAttribute {
     realm: RealmId,
@@ -502,28 +518,6 @@ impl NativeOwner {
     }
 }
 
-impl GuestBacking {
-    fn split_off(&mut self, bytes: usize) -> Result<Self, DocumentScriptNativeError> {
-        let remaining = self
-            .bytes
-            .checked_sub(bytes)
-            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-        let canonical = self._canonical.split_off(bytes)?;
-        self.bytes = remaining;
-        Ok(Self {
-            used: self.used.clone(),
-            bytes,
-            _canonical: canonical,
-        })
-    }
-}
-
-impl Drop for GuestBacking {
-    fn drop(&mut self) {
-        self.used.set(self.used.get() - self.bytes);
-    }
-}
-
 struct TracedListener {
     realm: RealmAuthority,
     target: NativeObjectToken<GuestTargetProjection>,
@@ -571,11 +565,6 @@ pub(super) struct GuestEvents {
     backing: Rc<GuestFixedBacking>,
 }
 
-struct GuestBudget {
-    used: Rc<Cell<usize>>,
-    work: Cell<u64>,
-}
-
 pub(super) struct OriginAdmission {
     backing: RefCell<GuestBacking>,
     requests: Cell<u64>,
@@ -610,63 +599,6 @@ impl OriginAdmission {
     }
 }
 
-impl GuestBudget {
-    fn charge_work(&self, limit: u64, units: u64) -> Result<(), DocumentGuestEventError> {
-        let work = self
-            .work
-            .get()
-            .checked_add(units)
-            .ok_or(DocumentGuestEventError::WorkLimit)?;
-        if work > limit {
-            return Err(DocumentGuestEventError::WorkLimit);
-        }
-        self.work.set(work);
-        Ok(())
-    }
-
-    fn reserve(
-        &self,
-        owner: &NativeOwner,
-        limits: DocumentGuestEventLimits,
-        bytes: usize,
-    ) -> Result<GuestBacking, DocumentGuestEventError> {
-        self.reserve_with(limits, bytes, || {
-            let mut session = owner
-                .session
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            session
-                .hosted_execution()
-                .retain_script_payload(&mut session.dom(), bytes, &owner.cancellation)
-                .map_err(DocumentScriptNativeError::from)
-        })
-    }
-
-    fn reserve_with(
-        &self,
-        limits: DocumentGuestEventLimits,
-        bytes: usize,
-        retain: impl FnOnce() -> Result<DomHostedRuntimeRetention, DocumentScriptNativeError>,
-    ) -> Result<GuestBacking, DocumentGuestEventError> {
-        self.charge_work(limits.work, 1)?;
-        let total = self
-            .used
-            .get()
-            .checked_add(bytes)
-            .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        if total > limits.storage_bytes {
-            return Err(DocumentScriptNativeError::StorageLimit.into());
-        }
-        let canonical = retain()?;
-        self.used.set(total);
-        Ok(GuestBacking {
-            used: self.used.clone(),
-            bytes,
-            _canonical: canonical,
-        })
-    }
-}
-
 impl GuestEvents {
     pub(super) fn installs_public_bindings(&self) -> bool {
         self.public.is_some()
@@ -683,16 +615,10 @@ impl GuestEvents {
         // Reserve canonical backing before V8 can retain a callback capture.
         // The private install has no guest entry and spends its charged work
         // as each extent is transferred to its final owner.
-        if self
-            .budget
-            .work
-            .get()
-            .checked_add(requests)
-            .and_then(|work| work.checked_add(1))
-            .is_none_or(|work| work > self.limits.work)
-        {
-            return Err(DocumentScriptNativeError::CreationRealmWorkLimit.into());
-        }
+        let work = requests
+            .checked_add(1)
+            .ok_or(DocumentScriptNativeError::CreationRealmWorkLimit)?;
+        self.budget.check_work(work).map_err(creation_realm_error)?;
         let backing = self.reserve(owner, bytes).map_err(creation_realm_error)?;
         Ok(Some(OriginAdmission {
             backing: RefCell::new(backing),
@@ -722,7 +648,7 @@ impl GuestEvents {
     }
 
     fn charge_work(&self, units: u64) -> Result<(), DocumentGuestEventError> {
-        self.budget.charge_work(self.limits.work, units)
+        self.budget.charge_work(AccountScope::Adapter, units)
     }
 
     fn reserve(
@@ -730,7 +656,7 @@ impl GuestEvents {
         owner: &NativeOwner,
         bytes: usize,
     ) -> Result<GuestBacking, DocumentGuestEventError> {
-        self.budget.reserve(owner, self.limits, bytes)
+        self.budget.reserve(AccountScope::Adapter, owner, bytes)
     }
 
     fn project<'scope, T: 'static>(
@@ -784,8 +710,11 @@ impl PreparedDocumentScriptHost {
         };
         match self.enable_guest_engine(target, policy, hooks, &input, limits) {
             Ok((mut engine, admission)) => {
+                let accounting = admission.budget.observation();
                 let reports = admission.install(&mut engine, input);
-                Ok(self.into_host(engine, Some(reports)))
+                let mut host = self.into_host(engine, Some(reports));
+                host.guest_accounting = Some(accounting);
+                Ok(host)
             }
             Err(error) => {
                 *registry = Some(input);
@@ -834,10 +763,11 @@ impl PreparedDocumentScriptHost {
 
 struct GuestEventAdmission {
     limits: DocumentGuestEventLimits,
+    retained: usize,
     budget: GuestBudget,
     reports: Rc<GuestExceptionReports>,
     refusal: reports::DispatchFailure,
-    backing: DomHostedRuntimeRetention,
+    backing: GuestBacking,
     public: Option<PublicEventBindings>,
 }
 
@@ -849,8 +779,13 @@ impl GuestEventAdmission {
         total: Option<usize>,
         authority: &RealmAuthority,
     ) -> Result<Self, DocumentGuestEventError> {
-        let fixed =
-            size_of::<GuestEvents>() + size_of::<Cell<usize>>() + size_of::<GuestFixedBacking>();
+        let fixed = size_of::<GuestEvents>() + size_of::<GuestFixedBacking>();
+        let mode = owner.guest_profile.get();
+        let setup = GuestBudget::setup_bytes(mode)?;
+        let retained = limits
+            .storage_bytes
+            .checked_add(setup)
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
         let report_bytes = GuestExceptionReports::storage_bytes(limits.pending_exception_reports)
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
         let refusal_bytes = reports::DispatchFailure::storage_bytes();
@@ -858,11 +793,14 @@ impl GuestEventAdmission {
             .checked_add(report_bytes)
             .and_then(|bytes| bytes.checked_add(refusal_bytes))
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        if limits.storage_bytes < required || total.is_none_or(|total| total > owner.storage_limit)
+        if limits.storage_bytes < required
+            || total
+                .and_then(|total| total.checked_add(setup))
+                .is_none_or(|total| total > owner.storage_limit)
         {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
-        let (backing, report_backing, refusal_backing) = {
+        let (accounting, backing, report_backing, refusal_backing) = {
             let mut session = owner
                 .session
                 .try_borrow_mut()
@@ -875,12 +813,22 @@ impl GuestEventAdmission {
                     .retain_script_payload(&mut dom, bytes, &owner.cancellation)
                     .map_err(DocumentScriptNativeError::from)
             };
+            let combined = fixed
+                .checked_add(setup)
+                .ok_or(DocumentScriptNativeError::StorageLimit)?;
+            let mut backing = retain(combined)?;
+            let accounting = backing.split_off(setup)?;
             (
-                retain(fixed)?,
+                accounting,
+                backing,
                 retain(report_bytes)?,
                 retain(refusal_bytes)?,
             )
         };
+        let budget = GuestBudget::new(limits, mode, accounting)?;
+        let backing = budget.adopt_fixed(fixed, backing)?;
+        let report_backing = budget.adopt_fixed(report_bytes, report_backing)?;
+        let refusal_backing = budget.adopt_fixed(refusal_bytes, refusal_backing)?;
         let reports = Rc::new(GuestExceptionReports::new(
             limits.pending_exception_reports,
             report_backing,
@@ -888,10 +836,8 @@ impl GuestEventAdmission {
         let refusal = reports::DispatchFailure::new(authority, refusal_backing)?;
         Ok(Self {
             limits,
-            budget: GuestBudget {
-                used: Rc::new(Cell::new(required)),
-                work: Cell::new(0),
-            },
+            retained,
+            budget,
             reports,
             refusal,
             backing,
@@ -906,6 +852,7 @@ impl GuestEventAdmission {
     ) -> Rc<GuestExceptionReports> {
         let Self {
             limits,
+            retained,
             budget,
             reports,
             refusal,
@@ -933,12 +880,18 @@ impl GuestEventAdmission {
             public.activate(&events);
         }
         engine.guest_events = Some(events);
-        engine.retained_bytes += limits.storage_bytes;
+        engine.retained_bytes += retained;
         reports
     }
 }
 
 impl DocumentScriptHost {
+    /// Keep read-only admission and profile custody for this guest attachment.
+    /// The handle remains usable after a guest refusal or host cleanup.
+    pub fn guest_accounting(&self) -> Option<DocumentGuestAccounting> {
+        self.guest_accounting.clone()
+    }
+
     /// Transfer the original native listener registry to this attached host.
     /// A refusal leaves the input registry in its original slot.
     pub fn attach_guest_event_registry(
@@ -975,6 +928,7 @@ impl DocumentScriptHost {
         let registry = registry
             .take()
             .ok_or(DocumentGuestEventError::RegistryState)?;
+        self.guest_accounting = Some(admission.budget.observation());
         self.guest_exception_reports = Some(admission.install(engine, registry));
         Ok(())
     }

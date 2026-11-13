@@ -29,11 +29,13 @@ use crate::{
 pub(crate) mod guest;
 mod projection;
 pub use guest::{
-    DocumentCspViolationProgress, DocumentGuestConstructorException,
-    DocumentGuestCustomElementCallback, DocumentGuestCustomElementCallbackException,
-    DocumentGuestEvent, DocumentGuestEventDispatchFailure, DocumentGuestEventError,
-    DocumentGuestEventLimits, DocumentGuestEventReport, DocumentGuestEventTarget,
-    DocumentGuestEventView, DocumentGuestListenerException, EnableDocumentGuestEventsFailure,
+    DocumentCspViolationProgress, DocumentGuestAccounting, DocumentGuestAccountingReport,
+    DocumentGuestConstructorException, DocumentGuestCustomElementCallback,
+    DocumentGuestCustomElementCallbackException, DocumentGuestEvent,
+    DocumentGuestEventDispatchFailure, DocumentGuestEventError, DocumentGuestEventLimits,
+    DocumentGuestEventReport, DocumentGuestEventTarget, DocumentGuestEventView,
+    DocumentGuestListenerException, DocumentGuestResource, DocumentGuestWork,
+    EnableDocumentGuestEventsFailure,
 };
 mod source;
 mod window_event;
@@ -192,6 +194,7 @@ struct NativeOwner {
     css_limits: Cell<CssNamespaceLimits>,
     dom_exception_limits: Cell<DomExceptionLimits>,
     timer_limits: Cell<Option<WindowTimerLimits>>,
+    guest_profile: Cell<surgeist_ledger::ProfileMode>,
     _backing: DomHostedRuntimeRetention,
 }
 
@@ -571,6 +574,7 @@ impl PreparedDocumentScriptHost {
                 css_limits: Cell::new(CssNamespaceLimits::default()),
                 dom_exception_limits: Cell::new(DomExceptionLimits::default()),
                 timer_limits: Cell::new(None),
+                guest_profile: Cell::new(surgeist_ledger::ProfileMode::Off),
                 _backing: backing,
             }),
         })
@@ -597,6 +601,14 @@ impl PreparedDocumentScriptHost {
     #[must_use]
     pub fn with_window_timer_limits(self, limits: WindowTimerLimits) -> Self {
         self.native.timer_limits.set(Some(limits));
+        self
+    }
+
+    /// Select bounded Runtime guest admission observations before attachment.
+    /// Optional timing observes the native wrapper projection phase.
+    #[must_use]
+    pub fn with_guest_accounting_profile(self, mode: surgeist_ledger::ProfileMode) -> Self {
+        self.native.guest_profile.set(mode);
         self
     }
 
@@ -632,6 +644,7 @@ impl PreparedDocumentScriptHost {
             native: self.native,
             retirement: None,
             guest_exception_reports,
+            guest_accounting: None,
         }
     }
 
@@ -1043,6 +1056,7 @@ pub struct DocumentScriptHost {
     native: Rc<NativeOwner>,
     retirement: Option<ScriptRetirement>,
     guest_exception_reports: Option<Rc<guest::GuestExceptionReports>>,
+    guest_accounting: Option<DocumentGuestAccounting>,
 }
 
 struct NativeLoanExit<'a> {
@@ -1586,9 +1600,9 @@ fn read_child_count<'scope>(
     }
 }
 
-fn refuse<T, E: std::error::Error + 'static>(
+fn refuse<T, E: std::error::Error + 'static, Storage: 'static>(
     scope: &mut Scope<'_>,
-    slot: &HostFailureSlot<E, DomHostedRuntimeRetention>,
+    slot: &HostFailureSlot<E, Storage>,
     error: E,
 ) -> Result<T, Error> {
     match slot.record(error) {

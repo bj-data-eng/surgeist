@@ -228,14 +228,13 @@ impl ViolationQueue {
     }
 }
 
-pub(super) type DispatchFailure =
-    HostFailureSlot<DocumentGuestEventError, DomHostedRuntimeRetention>;
+pub(super) type DispatchFailure = HostFailureSlot<DocumentGuestEventError, GuestBacking>;
 
 pub(in crate::document_scripting) struct GuestExceptionReports {
     queue: RefCell<VecDeque<GuestExceptionReport>>,
     capacity: usize,
     reserved: Cell<usize>,
-    _backing: DomHostedRuntimeRetention,
+    _backing: GuestBacking,
 }
 
 enum GuestExceptionReport {
@@ -251,7 +250,7 @@ impl GuestExceptionReports {
             .checked_add(size_of::<Self>())
     }
 
-    pub(super) fn new(capacity: usize, backing: DomHostedRuntimeRetention) -> Result<Self, Error> {
+    pub(super) fn new(capacity: usize, backing: GuestBacking) -> Result<Self, Error> {
         let mut queue = VecDeque::new();
         queue
             .try_reserve_exact(capacity)

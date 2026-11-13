@@ -307,14 +307,23 @@ impl<'a> Admission<'a> {
         Ok(())
     }
 
+    pub(super) fn phase<T>(
+        self,
+        run: impl FnOnce() -> Result<T, DocumentGuestEventError>,
+    ) -> Result<T, DocumentGuestEventError> {
+        self.events.budget.phase(run)
+    }
+
     pub(super) fn step(self) -> Result<(), DocumentGuestEventError> {
         self.source_step()?;
-        self.events.step()
+        self.events.budget.charge_work(AccountScope::Projection, 1)
     }
 
     pub(super) fn reserve(self, bytes: usize) -> Result<GuestBacking, DocumentGuestEventError> {
         self.source_step()?;
-        self.events.reserve(self.owner, bytes)
+        self.events
+            .budget
+            .reserve(AccountScope::Projection, self.owner, bytes)
     }
 
     fn accept_output(self, watch: &DomNodeRetirementWatch) -> Result<(), DocumentGuestEventError> {
@@ -863,64 +872,68 @@ impl OrdinaryBindings {
         ),
         DocumentGuestEventError,
     > {
-        let admission = Admission::ordinary(owner, events);
-        let mut pins = self
-            .pins
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let (key, reserved) = pins.reserve(admission)?;
-        let inbox = self
-            .inbox
-            .try_borrow()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let pin = PreparedPin::new(admission)?;
-        let (payload, holder) =
-            scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
-        let backing = (admission.reserve(payload)?, admission.reserve(holder)?);
-        let open = |elements: &element::ElementBindings| {
-            let mut session = owner
-                .session
+        events.budget.phase(|| {
+            let admission = Admission::ordinary(owner, events);
+            let mut pins = self
+                .pins
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
-            let mut dom = session.dom();
-            let mut lease = dom.raw_mut().resume_source_edit(
-                request.operation(),
-                events.limits.source_edits,
-                &owner.cancellation,
-            )?;
-            lease.open_customized_element_callback_with_watch(
-                request,
-                registration,
-                (&inbox, key),
-                events.limits.node_retirement,
-                &owner.cancellation,
-                |name| {
-                    let prototype = elements.prototype_for_name(name, || events.step())?;
-                    let mut projection = scope.prepare_retained_native_object(
-                        NodePrototype::Creation(prototype).projection(),
-                        pin.projection(),
-                        |_, _| Ok::<_, DocumentGuestEventError>(backing),
-                    )?;
-                    projection.retain_root_backing(
-                        root_backing
-                            .take()
-                            .ok_or(DocumentScriptNativeError::ProjectionCustody)?,
-                    )?;
-                    Ok(projection)
-                },
-            )
-        };
-        let (callback, watched, projection) = if public.custom_elements.is_global(request.global())
-        {
-            open(&public.document.element)
-        } else {
-            public.with_origin(events, request.global(), |origin| open(&origin.elements))
-        }?;
-        let (_, node, watch) = watched.into_parts();
-        let (value, holder, live) = projection
-            .publish(|payload| Self::bind_projection(payload, GuestNode::Element(node), watch));
-        pin.publish(reserved, holder, live);
-        Ok((callback, (node, value)))
+            let (key, reserved) = pins.reserve(admission)?;
+            let inbox = self
+                .inbox
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let pin = PreparedPin::new(admission)?;
+            let (payload, holder) =
+                scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
+            let backing = (admission.reserve(payload)?, admission.reserve(holder)?);
+            let open = |elements: &element::ElementBindings| {
+                let mut session = owner
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                let mut dom = session.dom();
+                let mut lease = dom.raw_mut().resume_source_edit(
+                    request.operation(),
+                    events.limits.source_edits,
+                    &owner.cancellation,
+                )?;
+                lease.open_customized_element_callback_with_watch(
+                    request,
+                    registration,
+                    (&inbox, key),
+                    events.limits.node_retirement,
+                    &owner.cancellation,
+                    |name| {
+                        let prototype = elements.prototype_for_name(name, || {
+                            events.budget.charge_work(AccountScope::Projection, 1)
+                        })?;
+                        let mut projection = scope.prepare_retained_native_object(
+                            NodePrototype::Creation(prototype).projection(),
+                            pin.projection(),
+                            |_, _| Ok::<_, DocumentGuestEventError>(backing),
+                        )?;
+                        projection.retain_root_backing(
+                            root_backing
+                                .take()
+                                .ok_or(DocumentScriptNativeError::ProjectionCustody)?,
+                        )?;
+                        Ok(projection)
+                    },
+                )
+            };
+            let (callback, watched, projection) =
+                if public.custom_elements.is_global(request.global()) {
+                    open(&public.document.element)
+                } else {
+                    public.with_origin(events, request.global(), |origin| open(&origin.elements))
+                }?;
+            let (_, node, watch) = watched.into_parts();
+            let (value, holder, live) = projection
+                .publish(|payload| Self::bind_projection(payload, GuestNode::Element(node), watch));
+            pin.publish(reserved, holder, live);
+            Ok((callback, (node, value)))
+        })
     }
 
     fn finish_customized_constructor<'scope>(
@@ -1267,66 +1280,68 @@ impl OrdinaryBindings {
             DomElementCreationOptions,
         ),
     ) -> Result<ElementFactoryResult<'scope>, DocumentGuestEventError> {
-        let Admission { owner, events, .. } = admission;
-        let mut pins = self
-            .pins
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let (key, reserved) = pins.reserve(admission)?;
-        let inbox = self
-            .inbox
-            .try_borrow()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let pin = PreparedPin::new(admission)?;
-        let payload = pin.projection();
-        let (payload_bytes, holder_bytes) =
-            scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
-        let backing = (
-            admission.reserve(payload_bytes)?,
-            admission.reserve(holder_bytes)?,
-        );
-        admission.step()?;
-        let result = capture
-            .callbacks
-            .with_qualified_session(owner, event, |session, _| {
-                let mut dom = session.dom();
-                let dom = dom.raw_mut();
-                dom.create_detached_element_with_node_retirement_watch(
-                    document,
-                    (name, options, Some(creation_realm_fallback(owner)?)),
-                    (&inbox, key),
-                    (events.limits.source_edits, events.limits.node_retirement),
-                    &owner.cancellation,
-                    |name| {
-                        let step = || {
-                            name.step()?;
-                            events.step()
-                        };
-                        let prototype = elements.prototype_for_name(name.name(), step)?;
-                        let prepared = scope.prepare_retained_native_object(
-                            NodePrototype::Creation(prototype).projection(),
-                            payload,
-                            |_, _| Ok::<_, DocumentGuestEventError>(backing),
-                        )?;
-                        #[cfg(test)]
-                        self.qualify_projection()?;
-                        Ok::<_, DocumentGuestEventError>(prepared)
-                    },
-                )
-            })?;
-        let (watched, prepared) = match result {
-            surgeist_dom::DomWatchedElementCreation::Created(watched, prepared) => {
-                (watched, prepared)
-            }
-            surgeist_dom::DomWatchedElementCreation::Constructor(request) => {
-                return Ok(ElementFactoryResult::Constructor(request));
-            }
-        };
-        let (_, node, watch) = watched.into_parts();
-        let (value, holder, live) = prepared
-            .publish(|payload| Self::bind_projection(payload, GuestNode::Element(node), watch));
-        pin.publish(reserved, holder, live);
-        Ok(ElementFactoryResult::Created(value))
+        admission.phase(|| {
+            let Admission { owner, events, .. } = admission;
+            let mut pins = self
+                .pins
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let (key, reserved) = pins.reserve(admission)?;
+            let inbox = self
+                .inbox
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let pin = PreparedPin::new(admission)?;
+            let payload = pin.projection();
+            let (payload_bytes, holder_bytes) =
+                scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
+            let backing = (
+                admission.reserve(payload_bytes)?,
+                admission.reserve(holder_bytes)?,
+            );
+            admission.step()?;
+            let result = capture
+                .callbacks
+                .with_qualified_session(owner, event, |session, _| {
+                    let mut dom = session.dom();
+                    let dom = dom.raw_mut();
+                    dom.create_detached_element_with_node_retirement_watch(
+                        document,
+                        (name, options, Some(creation_realm_fallback(owner)?)),
+                        (&inbox, key),
+                        (events.limits.source_edits, events.limits.node_retirement),
+                        &owner.cancellation,
+                        |name| {
+                            let step = || {
+                                name.step()?;
+                                events.budget.charge_work(AccountScope::Projection, 1)
+                            };
+                            let prototype = elements.prototype_for_name(name.name(), step)?;
+                            let prepared = scope.prepare_retained_native_object(
+                                NodePrototype::Creation(prototype).projection(),
+                                payload,
+                                |_, _| Ok::<_, DocumentGuestEventError>(backing),
+                            )?;
+                            #[cfg(test)]
+                            self.qualify_projection()?;
+                            Ok::<_, DocumentGuestEventError>(prepared)
+                        },
+                    )
+                })?;
+            let (watched, prepared) = match result {
+                surgeist_dom::DomWatchedElementCreation::Created(watched, prepared) => {
+                    (watched, prepared)
+                }
+                surgeist_dom::DomWatchedElementCreation::Constructor(request) => {
+                    return Ok(ElementFactoryResult::Constructor(request));
+                }
+            };
+            let (_, node, watch) = watched.into_parts();
+            let (value, holder, live) = prepared
+                .publish(|payload| Self::bind_projection(payload, GuestNode::Element(node), watch));
+            pin.publish(reserved, holder, live);
+            Ok(ElementFactoryResult::Created(value))
+        })
     }
 
     pub(super) fn new(inbox: DomNodeRetirementInbox) -> Self {
@@ -1628,36 +1643,38 @@ impl OrdinaryBindings {
         )
             -> Result<(GuestNode, DomNodeRetirementWatch), DocumentGuestEventError>,
     {
-        let mut pins = self
-            .pins
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let (key, reserved) = pins.reserve(admission)?;
-        let inbox = self
-            .inbox
-            .try_borrow()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let pin = PreparedPin::new(admission)?;
-        admission.step()?;
-        let (value, holder, live) = scope.try_project_retained_native_object(
-            prototype.projection(),
-            pin.projection(),
-            |payload, holder| {
-                Ok::<_, DocumentGuestEventError>((
-                    admission.reserve(payload)?,
-                    admission.reserve(holder)?,
-                ))
-            },
-            |payload| {
-                #[cfg(test)]
-                self.qualify_projection()?;
-                let (node, watch) = create(&inbox, key)?;
-                admission.accept_output(&watch)?;
-                Ok(Self::bind_projection(payload, node, watch))
-            },
-        )?;
-        pin.publish(reserved, holder, live);
-        Ok(value)
+        admission.phase(|| {
+            let mut pins = self
+                .pins
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let (key, reserved) = pins.reserve(admission)?;
+            let inbox = self
+                .inbox
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let pin = PreparedPin::new(admission)?;
+            admission.step()?;
+            let (value, holder, live) = scope.try_project_retained_native_object(
+                prototype.projection(),
+                pin.projection(),
+                |payload, holder| {
+                    Ok::<_, DocumentGuestEventError>((
+                        admission.reserve(payload)?,
+                        admission.reserve(holder)?,
+                    ))
+                },
+                |payload| {
+                    #[cfg(test)]
+                    self.qualify_projection()?;
+                    let (node, watch) = create(&inbox, key)?;
+                    admission.accept_output(&watch)?;
+                    Ok(Self::bind_projection(payload, node, watch))
+                },
+            )?;
+            pin.publish(reserved, holder, live);
+            Ok(value)
+        })
     }
 
     #[cfg(test)]
@@ -1684,9 +1701,9 @@ impl OrdinaryBindings {
         &self,
         scope: &mut Scope<'scope>,
         node: NodeId,
-        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+        admission: Admission<'_>,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
-        self.open_qualified(scope, node, &mut step, |_| Ok(()))
+        admission.phase(|| self.open_qualified(scope, node, || admission.step(), |_| Ok(())))
     }
 
     pub(super) fn open_attachment_output<'scope>(
@@ -1695,12 +1712,14 @@ impl OrdinaryBindings {
         node: NodeId,
         admission: Admission<'_>,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
-        self.open_qualified(
-            scope,
-            node,
-            || admission.step(),
-            |watch| admission.accept_output(watch),
-        )
+        admission.phase(|| {
+            self.open_qualified(
+                scope,
+                node,
+                || admission.step(),
+                |watch| admission.accept_output(watch),
+            )
+        })
     }
 
     fn open_qualified<'scope>(

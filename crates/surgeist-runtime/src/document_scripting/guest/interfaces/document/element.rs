@@ -661,158 +661,164 @@ impl PublicEventBindings {
         events: &GuestEvents,
         node: NodeId,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
-        let bindings = &self.document;
-        let request = owner.attached_event_request();
-        let attribute = owner.active_attribute_registration()?;
-        let active = owner.current_constructor_registration()?;
-        let admission = match (&active, &attribute, &request) {
-            (Some(active), _, _) => ordinary::Admission::constructor(owner, events, active),
-            (None, Some((request, registration)), _) => {
-                ordinary::Admission::attribute(owner, events, *request, registration)
-            }
-            (None, None, Some(request)) => ordinary::Admission::source(owner, events, request),
-            (None, None, None) => ordinary::Admission::ordinary(owner, events),
-        };
-        if let Some(value) = bindings.find(scope, admission, node)? {
-            return Ok(value);
-        }
-        let (origin, attached, projection) =
-            self.callbacks.with_read(owner, events, |read, attached| {
-                let node = read.node(node)?;
-                if !matches!(
-                    node.kind(),
-                    DomNodeKind::Document(_)
-                        | DomNodeKind::DocumentType(_)
-                        | DomNodeKind::DocumentFragment
-                        | DomNodeKind::ShadowRoot(_)
-                        | DomNodeKind::Text(_)
-                        | DomNodeKind::Comment(_)
-                        | DomNodeKind::ProcessingInstruction(_)
-                        | DomNodeKind::Element(_)
-                        | DomNodeKind::Attr(_)
-                ) {
-                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
+        events.budget.phase(|| {
+            let bindings = &self.document;
+            let request = owner.attached_event_request();
+            let attribute = owner.active_attribute_registration()?;
+            let active = owner.current_constructor_registration()?;
+            let admission = match (&active, &attribute, &request) {
+                (Some(active), _, _) => ordinary::Admission::constructor(owner, events, active),
+                (None, Some((request, registration)), _) => {
+                    ordinary::Admission::attribute(owner, events, *request, registration)
                 }
-                read.step()?;
-                let origin = node
-                    .relevant_global()
-                    .map_err(DomHostedRuntimeError::Dom)
-                    .map_err(DocumentScriptNativeError::from)?;
-                if let DomNodeKind::Document(metadata) = node.kind() {
-                    let document = node.as_document().ok_or(DomError::WrongNodeKind)?;
-                    // Rust-created Documents with no Global acquire their
-                    // attachment's Document interface on first exposure.
-                    return Ok((
-                        origin.unwrap_or(attached),
+                (None, None, Some(request)) => ordinary::Admission::source(owner, events, request),
+                (None, None, None) => ordinary::Admission::ordinary(owner, events),
+            };
+            if let Some(value) = bindings.find(scope, admission, node)? {
+                return Ok(value);
+            }
+            let (origin, attached, projection) = self.callbacks.with_accounted_read(
+                owner,
+                events,
+                AccountScope::Projection,
+                |read, attached| {
+                    let node = read.node(node)?;
+                    if !matches!(
+                        node.kind(),
+                        DomNodeKind::Document(_)
+                            | DomNodeKind::DocumentType(_)
+                            | DomNodeKind::DocumentFragment
+                            | DomNodeKind::ShadowRoot(_)
+                            | DomNodeKind::Text(_)
+                            | DomNodeKind::Comment(_)
+                            | DomNodeKind::ProcessingInstruction(_)
+                            | DomNodeKind::Element(_)
+                            | DomNodeKind::Attr(_)
+                    ) {
+                        return Err(DocumentScriptNativeError::ProjectionCustody.into());
+                    }
+                    read.step()?;
+                    let origin = node
+                        .relevant_global()
+                        .map_err(DomHostedRuntimeError::Dom)
+                        .map_err(DocumentScriptNativeError::from)?;
+                    if let DomNodeKind::Document(metadata) = node.kind() {
+                        let document = node.as_document().ok_or(DomError::WrongNodeKind)?;
+                        // Rust-created Documents with no Global acquire their
+                        // attachment's Document interface on first exposure.
+                        return Ok((
+                            origin.unwrap_or(attached),
+                            attached,
+                            NativeProjection::Document(document.id(), metadata.interface()),
+                        ));
+                    }
+                    let origin = origin.ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
+                    if matches!(node.kind(), DomNodeKind::DocumentType(_)) {
+                        return Ok((origin, attached, NativeProjection::DocumentType));
+                    }
+                    if matches!(node.kind(), DomNodeKind::ProcessingInstruction(_)) {
+                        return Ok((origin, attached, NativeProjection::ProcessingInstruction));
+                    }
+                    if matches!(node.kind(), DomNodeKind::DocumentFragment) {
+                        return Ok((origin, attached, NativeProjection::Fragment));
+                    }
+                    if matches!(node.kind(), DomNodeKind::ShadowRoot(_)) {
+                        return Ok((origin, attached, NativeProjection::ShadowRoot));
+                    }
+                    if let Some(kind) = match node.kind() {
+                        DomNodeKind::Text(_) => Some(CharacterKind::Text),
+                        DomNodeKind::Comment(_) => Some(CharacterKind::Comment),
+                        _ => None,
+                    } {
+                        return Ok((origin, attached, NativeProjection::Character(kind)));
+                    }
+                    if let Some(attribute) = node.as_attr() {
+                        return Ok((origin, attached, NativeProjection::Attr(attribute.id())));
+                    }
+                    let element = node
+                        .as_element()
+                        .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+                    Ok((
+                        origin,
                         attached,
-                        NativeProjection::Document(document.id(), metadata.interface()),
-                    ));
-                }
-                let origin = origin.ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
-                if matches!(node.kind(), DomNodeKind::DocumentType(_)) {
-                    return Ok((origin, attached, NativeProjection::DocumentType));
-                }
-                if matches!(node.kind(), DomNodeKind::ProcessingInstruction(_)) {
-                    return Ok((origin, attached, NativeProjection::ProcessingInstruction));
-                }
-                if matches!(node.kind(), DomNodeKind::DocumentFragment) {
-                    return Ok((origin, attached, NativeProjection::Fragment));
-                }
-                if matches!(node.kind(), DomNodeKind::ShadowRoot(_)) {
-                    return Ok((origin, attached, NativeProjection::ShadowRoot));
-                }
-                if let Some(kind) = match node.kind() {
-                    DomNodeKind::Text(_) => Some(CharacterKind::Text),
-                    DomNodeKind::Comment(_) => Some(CharacterKind::Comment),
-                    _ => None,
-                } {
-                    return Ok((origin, attached, NativeProjection::Character(kind)));
-                }
-                if let Some(attribute) = node.as_attr() {
-                    return Ok((origin, attached, NativeProjection::Attr(attribute.id())));
-                }
-                let element = node
-                    .as_element()
-                    .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                Ok((
-                    origin,
-                    attached,
-                    NativeProjection::Element(if element.has_failed_construction_interface() {
-                        ElementInterface::Html("HTMLUnknownElement")
-                    } else {
-                        element_interface(element.name(), || read.step())?
-                    }),
-                ))
-            })?;
-        let watch = |scope: &mut Scope<'scope>, node, prototype: &RetainedCallbackObject| match (
-            &active, &attribute, &request,
-        ) {
-            (Some(_), _, _) | (None, Some(_), _) => bindings
-                .ordinary
-                .watch_registered_callback(scope, admission, node, prototype),
-            (None, None, Some(request)) => bindings.ordinary.watch_source(
-                scope,
-                (owner, events),
-                request,
-                node,
-                prototype,
-                Ok(()),
-            ),
-            (None, None, None) => {
-                bindings
+                        NativeProjection::Element(if element.has_failed_construction_interface() {
+                            ElementInterface::Html("HTMLUnknownElement")
+                        } else {
+                            element_interface(element.name(), || read.step())?
+                        }),
+                    ))
+                },
+            )?;
+            let watch = |scope: &mut Scope<'scope>, node, prototype: &RetainedCallbackObject| match (
+                &active, &attribute, &request,
+            ) {
+                (Some(_), _, _) | (None, Some(_), _) => bindings
                     .ordinary
-                    .watch(scope, owner, events, &self.callbacks, node, prototype)
-            }
-        };
-        let project = |documents: &DocumentPrototypes, elements: &ElementBindings| match projection
-        {
-            NativeProjection::Document(document, interface) => {
-                // Published Documents survive for the native owner's lifetime.
-                bindings.publish_document(
+                    .watch_registered_callback(scope, admission, node, prototype),
+                (None, None, Some(request)) => bindings.ordinary.watch_source(
                     scope,
-                    admission,
-                    ordinary::NodePrototype::Creation(documents.for_document(interface)),
-                    || Ok(document),
+                    (owner, events),
+                    request,
+                    node,
+                    prototype,
+                    Ok(()),
+                ),
+                (None, None, None) => {
+                    bindings
+                        .ordinary
+                        .watch(scope, owner, events, &self.callbacks, node, prototype)
+                }
+            };
+            let project = |documents: &DocumentPrototypes, elements: &ElementBindings| match projection
+            {
+                NativeProjection::Document(document, interface) => {
+                    // Published Documents survive for the native owner's lifetime.
+                    bindings.publish_document(
+                        scope,
+                        admission,
+                        ordinary::NodePrototype::Creation(documents.for_document(interface)),
+                        || Ok(document),
+                    )
+                }
+                NativeProjection::DocumentType => watch(
+                    scope,
+                    GuestNode::DocumentType(node),
+                    &documents.document_type,
+                ),
+                NativeProjection::Fragment => {
+                    watch(scope, GuestNode::Fragment(node), &documents.fragment)
+                }
+                NativeProjection::ShadowRoot => {
+                    watch(scope, GuestNode::ShadowRoot(node), &documents.shadow)
+                }
+                NativeProjection::Character(kind) => watch(
+                    scope,
+                    kind.project(node),
+                    documents.character_data.prototype(kind),
+                ),
+                NativeProjection::ProcessingInstruction => watch(
+                    scope,
+                    GuestNode::ProcessingInstruction(node),
+                    &documents.character_data.processing_instruction,
+                ),
+                NativeProjection::Element(interface) => {
+                    let prototype = elements.prototype(interface, || admission.step())?;
+                    watch(scope, GuestNode::Element(node), prototype)
+                }
+                NativeProjection::Attr(attribute) => {
+                    watch(scope, GuestNode::Attr(attribute.node()), &documents.attr)
+                }
+            };
+            if origin == attached {
+                project(&bindings.prototypes, &bindings.element)
+            } else {
+                self.with_origin_with(
+                    origin,
+                    || admission.step(),
+                    |origin| project(&origin.documents, &origin.elements),
                 )
             }
-            NativeProjection::DocumentType => watch(
-                scope,
-                GuestNode::DocumentType(node),
-                &documents.document_type,
-            ),
-            NativeProjection::Fragment => {
-                watch(scope, GuestNode::Fragment(node), &documents.fragment)
-            }
-            NativeProjection::ShadowRoot => {
-                watch(scope, GuestNode::ShadowRoot(node), &documents.shadow)
-            }
-            NativeProjection::Character(kind) => watch(
-                scope,
-                kind.project(node),
-                documents.character_data.prototype(kind),
-            ),
-            NativeProjection::ProcessingInstruction => watch(
-                scope,
-                GuestNode::ProcessingInstruction(node),
-                &documents.character_data.processing_instruction,
-            ),
-            NativeProjection::Element(interface) => {
-                let prototype = elements.prototype(interface, || admission.step())?;
-                watch(scope, GuestNode::Element(node), prototype)
-            }
-            NativeProjection::Attr(attribute) => {
-                watch(scope, GuestNode::Attr(attribute.node()), &documents.attr)
-            }
-        };
-        if origin == attached {
-            project(&bindings.prototypes, &bindings.element)
-        } else {
-            self.with_origin_with(
-                origin,
-                || admission.step(),
-                |origin| project(&origin.documents, &origin.elements),
-            )
-        }
+        })
     }
 }
 

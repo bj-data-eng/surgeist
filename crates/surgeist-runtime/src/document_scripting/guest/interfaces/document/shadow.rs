@@ -201,10 +201,11 @@ impl Capture {
                 }
             };
             if let Some(root) = existing
-                && let Some(projected) = public
-                    .document
-                    .ordinary
-                    .open_with(scope, root, || events.step())?
+                && let Some(projected) = public.document.ordinary.open_with(
+                    scope,
+                    root,
+                    ordinary::Admission::ordinary(&owner, &events),
+                )?
             {
                 let reactions = self.with_native(&owner, |session, _| {
                     let (_, attached, reactions) =

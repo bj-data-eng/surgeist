@@ -40,6 +40,71 @@ fn reserved_shared_backing_covers_exact_scope_capacity() {
     );
 }
 
+#[test]
+fn reserved_profile_backing_covers_the_scope_and_observer_extents() {
+    use crate::{Event, EventFilter, ScopeReport, SharedOperation, profile::Profile};
+    use std::sync::Mutex;
+
+    for mode in [
+        ProfileMode::Off,
+        ProfileMode::Summary { timing: false },
+        ProfileMode::Detailed {
+            timing: false,
+            event_limit: 3,
+            filter: EventFilter::All,
+        },
+    ] {
+        let mut operation = Operation::<Work, Resource>::with_reserved_profile(
+            "root",
+            Limits::unlimited(),
+            2,
+            mode,
+        )
+        .unwrap();
+        let root = operation.root();
+        operation
+            .child(root, "child", Limits::unlimited(), Tariffs::identity())
+            .unwrap();
+        assert_eq!(operation.scopes.capacity(), 2);
+        let observer = match mode {
+            ProfileMode::Off => {
+                assert_eq!(operation.profile.capacity(), 0);
+                assert!(operation.snapshot().unwrap().is_none());
+                0
+            }
+            mode => {
+                assert_eq!(operation.profile.capacity(), 1);
+                let report = operation.snapshot().unwrap().unwrap();
+                assert_eq!(report.scopes.len(), 2);
+                let events = match mode {
+                    ProfileMode::Detailed { event_limit, .. } => event_limit,
+                    _ => 0,
+                };
+                size_of::<Profile<Work, Resource>>()
+                    + 2 * size_of::<ScopeReport<Work, Resource>>()
+                    + events * size_of::<Event<Work, Resource>>()
+            }
+        };
+        let base = size_of::<Mutex<Operation<Work, Resource>>>()
+            + 2 * size_of::<ScopeEntry<Work, Resource>>();
+        assert_eq!(
+            SharedOperation::<Work, Resource>::profiled_backing_bytes(2, mode),
+            Some(base + observer)
+        );
+    }
+    assert_eq!(
+        SharedOperation::<Work, Resource>::profiled_backing_bytes(
+            1,
+            ProfileMode::Detailed {
+                timing: false,
+                event_limit: usize::MAX,
+                filter: EventFilter::All,
+            }
+        ),
+        None
+    );
+}
+
 fn plain(max_scopes: usize) -> Operation<Work, Resource> {
     Operation::new("root", Limits::unlimited(), max_scopes).unwrap()
 }
