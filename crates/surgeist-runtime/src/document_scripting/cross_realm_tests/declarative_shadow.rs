@@ -100,17 +100,20 @@ pub(super) fn verify_declarative_shadow_reuse() {
     enum Delivery {
         Checkpoint,
         Reconnect,
+        Nested,
         Stop,
         Refuse,
     }
     for (mode, delivery) in [
         (HtmlShadowRootMode::Open, Delivery::Checkpoint),
         (HtmlShadowRootMode::Open, Delivery::Reconnect),
+        (HtmlShadowRootMode::Open, Delivery::Nested),
         (HtmlShadowRootMode::Closed, Delivery::Checkpoint),
         (HtmlShadowRootMode::Closed, Delivery::Stop),
         (HtmlShadowRootMode::Closed, Delivery::Refuse),
     ] {
         let reenter = matches!(delivery, Delivery::Reconnect);
+        let nested = matches!(delivery, Delivery::Nested);
         let (markup, assertion) = match mode {
             HtmlShadowRootMode::Open => (
                 "<template shadowrootmode=open shadowrootdelegatesfocus><p>child</p></template>",
@@ -152,6 +155,26 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 &cancel,
             )
             .unwrap();
+        let second = if nested {
+            let mut batch = DomBatch::new();
+            let second = batch.create_element_ns(document, Namespace::html(), "div");
+            batch.insert_before(&second, element, None);
+            let commit = session.dom().apply(batch, &cancel).unwrap();
+            let second = commit.created(&second).unwrap().unwrap();
+            let (capture, report) =
+                fragment(&session.snapshot(), document, second, markup, &cancel);
+            session
+                .install_parsed_html_fragment(
+                    report,
+                    &capture,
+                    DomParsedHtmlInstallLimits::new(1024, 10_000_000, 16_000_000, 100_000_000),
+                    &cancel,
+                )
+                .unwrap();
+            Some(second)
+        } else {
+            None
+        };
         let snapshot = installed.snapshot();
         let root = snapshot
             .node(element)
@@ -166,6 +189,14 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 &mut host, &permit, node, name,
             );
         }
+        if let Some(second) = second {
+            super::super::guest::tests::expose_public_node_for_source_test(
+                &mut host,
+                &permit,
+                second,
+                "secondShadowHost",
+            );
+        }
         let before_custom = host.snapshot().unwrap();
         host.in_document(&permit, |scope| {
             evaluate(
@@ -174,7 +205,17 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 const calls = globalThis.shadowReuseCalls = [];
                 const marker = globalThis.shadowReuseException = {};
                 customElements.define('x-shadow-reuse-reaction', class extends HTMLElement {
-                    disconnectedCallback() { calls.push(this); throw marker; }
+                    disconnectedCallback() {
+                        calls.push(this);
+                        if (this === globalThis.shadowReuseReceiver &&
+                            globalThis.secondShadowHost && !globalThis.reusedSecondShadow) {
+                            globalThis.reusedSecondShadow = true;
+                            secondShadowHost.shadowRoot.appendChild(this);
+                            secondShadowHost.attachShadow({mode: 'open'});
+                            Promise.resolve().then(() => calls.push('nested'));
+                        }
+                        throw marker;
+                    }
                     connectedCallback() { calls.push('connected'); }
                 });
                 globalThis.shadowReuseReceiver = document.createElement('x-shadow-reuse-reaction');
@@ -216,6 +257,10 @@ pub(super) fn verify_declarative_shadow_reuse() {
                             return false;
                     }}
                     if (original !== null) original.appendChild(shadowReuseReceiver);
+                    if ({nested}) {{
+                        globalThis.secondShadowReceiver = document.createElement('x-shadow-reuse-reaction');
+                        original.appendChild(secondShadowReceiver);
+                    }}
                     shadowReuseCalls.length = 0;
                     Promise.resolve().then(() => shadowReuseCalls.push('before'));
                     const observed = shadowHost.attachShadow({{mode: "{matching}"}});
@@ -309,11 +354,16 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 let correct = evaluate(scope, if reenter {
                     "shadowReuseCalls.length === 4 && shadowReuseCalls[0] === shadowReuseReceiver && \
                      shadowReuseCalls.slice(1).join(',') === 'connected,before,after'"
+                } else if nested {
+                    "shadowReuseCalls.length === 7 && shadowReuseCalls[0] === 'before' && \
+                     shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls[2] === 'connected' && \
+                     shadowReuseCalls[3] === shadowReuseReceiver && shadowReuseCalls[4] === secondShadowReceiver && \
+                     shadowReuseCalls.slice(5).join(',') === 'after,nested'"
                 } else {
                     "shadowReuseCalls.length === 3 && shadowReuseCalls[0] === 'before' && \
                      shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls[2] === 'after'"
                 })?;
-                assert!(scope.boolean(&correct)?);
+                assert!(scope.boolean(&correct)?, "incorrect shadow reaction order");
                 let marker = evaluate(scope, "shadowReuseException")?;
                 let thrown = scope.import(report.exception.value())?;
                 assert!(scope.strict_equals(&marker, &thrown)?);
