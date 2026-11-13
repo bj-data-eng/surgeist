@@ -160,7 +160,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                     }
                 }
                 Step::Complete => break,
-                Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
+                Step::Document(_) | Step::Occurrence(_) => (),
             }
         }
         drop(view);

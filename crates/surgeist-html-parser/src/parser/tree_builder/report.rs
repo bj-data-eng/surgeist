@@ -641,6 +641,205 @@ mod tests {
         owner.seal(&mut parts).unwrap()
     }
 
+    /// The context the semantic session selects for `document` of `capture`, with its URL base
+    /// `url` and a fresh encoding.
+    fn selected_context(
+        capture: &crate::HtmlCapture,
+        document: &crate::HtmlCaptureDocumentId,
+        url: &str,
+    ) -> crate::HtmlDocumentEncodingUrlContext {
+        use crate::*;
+        let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
+        let base = HtmlBaseUrlRecord::observed(
+            revision.clone(),
+            url.into(),
+            HtmlBaseUrlScheme::Other,
+            false,
+            None,
+        )
+        .unwrap();
+        let facts = HtmlParseBaseFacts::new(
+            HtmlBaseDocumentFacts::new(
+                revision.clone(),
+                Some(base),
+                HtmlAboutBaseUrl::KnownNull,
+                false,
+                Some(HtmlBaseEncoding::fresh()),
+            )
+            .unwrap(),
+            vec![],
+            HtmlBaseFactsLimits::new(100, 10000, 100000),
+        )
+        .unwrap();
+        let bank = HtmlCapturedBaseFacts::new(
+            capture,
+            capture.host_facts_revision().clone(),
+            revision.clone(),
+            vec![HtmlCapturedBaseDocument::new(document.clone(), facts)],
+            vec![],
+            HtmlBaseFactsLimits::new(100, 10000, 100000),
+        )
+        .unwrap();
+        let semantic = HtmlSemanticContext::new(
+            capture,
+            capture.host_facts_revision().clone(),
+            HtmlSemanticContextInput::new(vec![]).with_base_facts(revision, Some(bank)),
+            0,
+        )
+        .unwrap();
+        let report = HtmlSemanticSession::new(
+            capture,
+            &semantic,
+            surgeist_html::values::HtmlValueInterpreter::new(10000),
+            HtmlSemanticLimits::new(100000, 10, 100, 0, 100000, 0),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap()
+        .query(&[HtmlSemanticRequest::new(
+            document.subject().clone(),
+            HtmlSemanticQuery::DocumentEncodingUrlContext,
+        )])
+        .unwrap();
+        let HtmlSemanticFact::DocumentEncodingUrlContext(HtmlSemanticValue::Known(value)) =
+            report.results()[0].fact()
+        else {
+            panic!("the selected context of the Document")
+        };
+        value.clone()
+    }
+    /// A fragment seal in a context of a captured target Document, which the request gives the
+    /// context of, and of a second captured Document that it also gives the context of.
+    fn fragment_with_contexts(literal: &str) -> SealedFragmentConstruction {
+        use super::super::context::{
+            ContextFragmentDriver, ownership::FragmentInitializationOwner,
+        };
+        use crate::*;
+        use surgeist_html::{
+            construction::HtmlDocumentMode,
+            parsing::HtmlParserScriptingMode,
+            values::{Namespace, OrderedAttributes, QualifiedName},
+        };
+        let mut capture = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let mut documents = Vec::new();
+        for role in [
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlTemplateDocumentRole::InertTemplate,
+        ] {
+            let document = capture
+                .add_document(
+                    HtmlDocumentMode::NoQuirks,
+                    crate::HtmlScriptingStatus::Disabled,
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap();
+            capture
+                .establish_document_template_facts(
+                    &document,
+                    HtmlDocumentClass::Html,
+                    role,
+                    HtmlCaptureTemplateCacheInput::Absent,
+                )
+                .unwrap();
+            documents.push(document);
+        }
+        let element = capture
+            .add_element(
+                &documents[0],
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        capture.establish_no_shadow_root(&element).unwrap();
+        capture
+            .establish_children(&documents[0], std::slice::from_ref(&element))
+            .unwrap();
+        capture.establish_children(&element, &[]).unwrap();
+        capture.establish_children(&documents[1], &[]).unwrap();
+        let capture = capture.finish().unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&element).unwrap()).unwrap();
+        let ids: Vec<_> = documents
+            .iter()
+            .map(|document| {
+                capture
+                    .document_id(&capture.subject_id(document).unwrap())
+                    .unwrap()
+            })
+            .collect();
+        let contexts = vec![
+            selected_context(&capture, &ids[0], "https://example.test/target/"),
+            selected_context(&capture, &ids[1], "https://example.test/inert/"),
+        ];
+        let request = HtmlFragmentParseRequest::with_options(
+            HtmlSource::utf8(literal),
+            context,
+            super::super::tests::limits(100),
+            HtmlParserScriptingMode::Inert,
+            false,
+        )
+        .unwrap()
+        .with_encoding_url_contexts(contexts);
+        let mut owner = FragmentInitializationOwner::new(request);
+        let mut parts = {
+            let mut attempt = owner.begin().unwrap();
+            let mut driver = Some(attempt.take_driver().unwrap());
+            loop {
+                match driver.as_mut().unwrap().step().unwrap() {
+                    HeadStep::Consumed => {}
+                    HeadStep::Complete => break,
+                    HeadStep::Boundary(b) => panic!("unexpected fragment boundary {b:?}"),
+                }
+            }
+            let mut completed = ContextFragmentDriver::take_completed(&mut driver).unwrap();
+            completed.prepare_native_associations().unwrap();
+            Some(completed.freeze_parts().unwrap())
+        };
+        owner.seal(&mut parts).unwrap()
+    }
+
+    /// A capture holds the context of its own Document, and a published capture lends it without
+    /// a controller, so qualification refuses a capture whose context is the context of another
+    /// Document. The refusal latches the registry-row stop and the seal still releases its
+    /// storage. The same seal uncorrupted publishes.
+    #[test]
+    fn a_capture_holding_the_context_of_another_document_is_not_published() {
+        let registry_row = crate::parser::control::HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
+        let mut input = Some(fragment_with_contexts(
+            "<style>a{}</style><div><style>b{}</style></div>",
+        ));
+        assert!(HtmlParseReport::take_fragment(&mut input).is_ok());
+        let mut input = Some(fragment_with_contexts(
+            "<style>a{}</style><div><style>b{}</style></div>",
+        ));
+        assert!(
+            input
+                .as_mut()
+                .unwrap()
+                .parts
+                .arena
+                .as_mut()
+                .unwrap()
+                .corrupt_capture_context_for_test(),
+            "the seal holds a capture with a context, and the inputs hold the context of another \
+             Document"
+        );
+        assert_eq!(
+            HtmlParseReport::take_fragment(&mut input).err(),
+            Some(SessionError::Stop(registry_row))
+        );
+        let kept = input.as_mut().expect("the seal is kept");
+        assert_eq!(kept.parts.control.stop(), Some(registry_row));
+        kept.release().unwrap();
+        super::super::tests::assert_released(&kept.parts.control);
+    }
+
     #[test]
     fn complete_fragment_report_keeps_capture_effects_source_and_options_after_cancel() {
         use crate::construction::context::{HtmlParseEffect, HtmlParseEffectHost};

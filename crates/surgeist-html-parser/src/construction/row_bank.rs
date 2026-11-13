@@ -19,6 +19,24 @@ pub(super) struct RowBank<T> {
     admitted: usize,
 }
 
+/// The admitted room for one row that [`RowBank::room`] found, which writing a row into cannot
+/// refuse.
+pub(super) struct Room<'a, T> {
+    bank: &'a mut RowBank<T>,
+}
+
+impl<T> Room<'_, T> {
+    /// Writes `row` into the room and returns its position.
+    pub(super) fn write(self, row: T) -> usize {
+        let bank = self.bank;
+        // The room was found with a row admitted, so this takes it.
+        bank.admitted = bank.admitted.saturating_sub(1);
+        let position = bank.rows.len();
+        bank.rows.push(row);
+        position
+    }
+}
+
 impl<T> RowBank<T> {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
         let (rows, allocation) = control.new_vector()?;
@@ -68,19 +86,18 @@ impl<T> RowBank<T> {
         control.note_prepared_slot(std::panic::Location::caller());
         Ok(())
     }
+    /// The room for the next row when one was admitted and not yet written, and the bank has room
+    /// for it. A caller that must keep a row that is refused asks for the room first, and writes
+    /// the row only into room it holds.
+    pub(super) fn room(&mut self) -> Option<Room<'_, T>> {
+        (self.admitted != 0 && self.rows.len() < self.rows.capacity())
+            .then_some(Room { bank: self })
+    }
     /// Writes the next row into admitted room and returns its position. A row that was not
-    /// admitted is the registry-row defect; the bank is unchanged.
+    /// admitted is the registry-row defect; the bank is unchanged and the row is dropped.
     pub(super) fn push(&mut self, row: T) -> Result<usize, SessionError> {
-        if self.admitted == 0 || self.rows.len() >= self.rows.capacity() {
-            return Err(SessionError::registry_row());
-        }
-        self.admitted = self
-            .admitted
-            .checked_sub(1)
-            .ok_or_else(SessionError::registry_row)?;
-        let position = self.rows.len();
-        self.rows.push(row);
-        Ok(position)
+        let room = self.room().ok_or_else(SessionError::registry_row)?;
+        Ok(room.write(row))
     }
     pub(super) fn rows(&self) -> &[T] {
         &self.rows

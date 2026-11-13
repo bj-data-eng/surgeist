@@ -356,7 +356,6 @@ pub surgeist_html_parser::HtmlParsePendingAssociationStep::Complete
 pub surgeist_html_parser::HtmlParsePendingAssociationStep::Document(surgeist_html_parser::HtmlParseAssociationDocument<'a>)
 pub surgeist_html_parser::HtmlParsePendingAssociationStep::Fault(surgeist_html_parser::HtmlParseUnresolvedReference)
 pub surgeist_html_parser::HtmlParsePendingAssociationStep::Occurrence(surgeist_html_parser::HtmlParseAssociationOccurrence<'a>)
-pub surgeist_html_parser::HtmlParsePendingAssociationStep::Skipped
 pub enum surgeist_html_parser::HtmlParseRangeBranch
 pub surgeist_html_parser::HtmlParseRangeBranch::InvalidDefaultMidpoint
 pub surgeist_html_parser::HtmlParseRangeBranch::InvalidDefaultMinimum

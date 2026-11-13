@@ -207,7 +207,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                     }
                 }
                 Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest.into()),
-                Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
+                Step::Document(_) | Step::Occurrence(_) => (),
             }
         }
         // Disconnected attribute setup is legitimate no-effect history, but an

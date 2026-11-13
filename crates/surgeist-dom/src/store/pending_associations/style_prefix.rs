@@ -712,7 +712,7 @@ fn select(
             Step::Fault(fault) => {
                 return Err(crate::DomParsedHtmlAssociationAdmissionError::from(fault).into());
             }
-            Step::Occurrence(_) | Step::Skipped => (),
+            Step::Occurrence(_) => (),
         }
     }
     let mut cursor = report.pending_associations();
@@ -789,7 +789,7 @@ fn select(
                     cursor: html,
                 });
             }
-            Step::Occurrence(_) | Step::Skipped => (),
+            Step::Occurrence(_) => (),
             Step::Complete => return Err(unsupported()),
             Step::Fault(fault) => {
                 return Err(crate::DomParsedHtmlAssociationAdmissionError::from(fault).into());
@@ -863,7 +863,7 @@ fn form_original_policy(
                 return Ok((policy.clone(), usage, layout.disposal().atomic_bytes()));
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
+            Step::Document(_) | Step::Occurrence(_) => (),
         }
     }
 }
@@ -959,7 +959,7 @@ fn form_text_nonce(
                 return Ok((text, nonce));
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
+            Step::Document(_) | Step::Occurrence(_) => (),
         }
     }
 }

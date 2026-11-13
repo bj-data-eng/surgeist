@@ -35,7 +35,6 @@ fn assert_ignored_style_has_known_null_sheet(source: &'static str) {
                 );
             }
             Step::Complete => break,
-            _ => {}
         }
     }
     assert!(documents > 0 && occurrences > 0 && popped);

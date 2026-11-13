@@ -346,7 +346,6 @@ fn controlled_original_focus_candidate() -> (Dom, DocumentId, NodeId, NodeId) {
             HtmlParsePendingAssociationStep::Occurrence(row) => {
                 assert!(!row.requires_processing());
             }
-            HtmlParsePendingAssociationStep::Skipped => {}
             HtmlParsePendingAssociationStep::Complete => break,
         }
     }

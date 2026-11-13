@@ -9,7 +9,7 @@
 //! [`admit`]: RowLog::admit
 //! [`push`]: RowLog::push
 
-use super::row_bank::RowBank;
+use super::row_bank::{Room, RowBank};
 use super::session_error::latch_registry_row;
 use super::*;
 
@@ -38,6 +38,12 @@ impl<T> RowLog<T> {
     /// admitted is the registry-row defect; the log is unchanged.
     pub(super) fn push(&mut self, row: T) -> Result<usize, SessionError> {
         self.bank.push(row)
+    }
+    /// The room to write the next row into, when one was admitted and not yet written. A row
+    /// that is written into it is not refused, so a caller whose row owns a ticket keeps the row
+    /// when there is no room.
+    pub(super) fn room(&mut self) -> Option<Room<'_, T>> {
+        self.bank.room()
     }
     /// The row at `position`, a position [`Self::push`] returned.
     pub(super) fn row(&self, position: usize) -> Option<&T> {

@@ -179,14 +179,12 @@ impl FrozenArena {
 pub(crate) struct ReportStorage {
     history: FrozenHistory,
     closed_common: bool,
-    associated_slot: Option<usize>,
     /// The start positions by node, built at the first read.
     pub(super) starts: std::sync::OnceLock<positions::StartIndex>,
 }
 pub(crate) struct PreparedReportStorage<'a> {
     history: PreparedHistory<'a>,
     closed_common: bool,
-    associated_slot: Option<usize>,
 }
 impl<'a> PreparedReportStorage<'a> {
     pub(crate) fn prepare(
@@ -200,9 +198,8 @@ impl<'a> PreparedReportStorage<'a> {
         let storage = frozen.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
         let arena = arena(storage);
-        let mut associated_slot = None;
         let mut associated_usage = associated::AssociatedStorageUsage::default();
-        for (payload_index, payload) in storage.payloads.values.iter().enumerate() {
+        for payload in &storage.payloads.values {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
                 HtmlParseWorkCategory::InspectByte,
@@ -213,35 +210,6 @@ impl<'a> PreparedReportStorage<'a> {
                 checked_node(arena, node, c)?;
             }
             match payload {
-                RetainedPayload::AssociatedInputs { inputs, usage } => {
-                    if associated_slot.replace(payload_index).is_some() {
-                        return Err(SessionError::AssociatedFacts);
-                    }
-                    // Prepay final row/request Arc drops and every actual bank
-                    // handle destruction before the publication checkpoint.
-                    // Unused Vec capacity needs no per-element destruction.
-                    payload_write::<RetainedPayload>(c, 1)?;
-                    c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
-                    for _ in &inputs.encoding_urls {
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                    }
-                    if inputs.template.is_some() {
-                        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                    }
-                    if inputs.parser_document.is_some() {
-                        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                    }
-                    for _ in &inputs.captured {
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                    }
-                    for (resource, amount) in usage.resources() {
-                        if c.usage().resource(resource).current < amount {
-                            return Err(SessionError::AssociatedFacts);
-                        }
-                    }
-                }
                 RetainedPayload::Hyperlink { node, state } => {
                     checked_document(storage, &state.document, c)?;
                     if !matches!(
@@ -345,25 +313,25 @@ impl<'a> PreparedReportStorage<'a> {
                     c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     let mut inert = false;
                     let mut auxiliary = false;
-                    for p in &storage.payloads.values {
+                    // The inputs of the parse are one value: one visit reads them, and one more
+                    // compares them with the facts of this Document.
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                    if let Some(installed) = storage.payloads.facts.associations.installed() {
                         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        if let RetainedPayload::AssociatedInputs { inputs, .. } = p {
-                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                            if *node == 0
-                                && storage.fragment.is_some()
-                                && inputs
-                                    .parser_document
-                                    .as_ref()
-                                    .is_some_and(|original| facts.same_owner(original))
-                            {
-                                auxiliary = true;
-                            }
-                        }
-                        if let RetainedPayload::AssociatedInputs { inputs, .. } = p
+                        let inputs = &installed.inputs;
+                        if *node == 0
+                            && storage.fragment.is_some()
                             && inputs
-                                .template
+                                .parser_document
                                 .as_ref()
                                 .is_some_and(|original| facts.same_owner(original))
+                        {
+                            auxiliary = true;
+                        }
+                        if inputs
+                            .template
+                            .as_ref()
+                            .is_some_and(|original| facts.same_owner(original))
                         {
                             inert = matches!(
                                 storage
@@ -374,7 +342,6 @@ impl<'a> PreparedReportStorage<'a> {
                                     .map(|document| document.state),
                                 Some(template::DocumentState::InertTemplate)
                             );
-                            break;
                         }
                     }
                     if (*node != 0 || base_facts.is_none_or(|original| !facts.same_owner(original)))
@@ -680,6 +647,33 @@ impl<'a> PreparedReportStorage<'a> {
                 }
             }
         }
+        if let Some(installed) = storage.payloads.facts.associations.installed() {
+            let (inputs, usage) = (&installed.inputs, installed.usage);
+            // Prepay final row/request Arc drops and every actual bank
+            // handle destruction before the publication checkpoint.
+            // Unused Vec capacity needs no per-element destruction.
+            payload_write::<Option<association_log::InstalledInputs>>(c, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
+            for _ in &inputs.encoding_urls {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+            }
+            if inputs.template.is_some() {
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+            }
+            if inputs.parser_document.is_some() {
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+            }
+            for _ in &inputs.captured {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+            }
+            for (resource, amount) in usage.resources() {
+                if c.usage().resource(resource).current < amount {
+                    return Err(SessionError::AssociatedFacts);
+                }
+            }
+        }
         for (document, facts) in storage.payloads.facts.documents.iter() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
@@ -762,14 +756,12 @@ impl<'a> PreparedReportStorage<'a> {
         Ok(Self {
             history: PreparedHistory::prepare(input, c)?,
             closed_common,
-            associated_slot,
         })
     }
     pub(crate) fn commit(self) -> Result<ReportStorage, Unpublishable> {
         Ok(ReportStorage {
             history: self.history.commit()?,
             closed_common: self.closed_common,
-            associated_slot: self.associated_slot,
             starts: std::sync::OnceLock::new(),
         })
     }
@@ -923,27 +915,20 @@ impl ReportStorage {
         &mut self,
         c: &mut ParseControl,
     ) -> Result<(), HtmlParseStop> {
-        let Some(slot) = self.associated_slot else {
+        let Some(association_log::InstalledInputs { inputs, usage }) = self
+            .history
+            .storage_mut()
+            .payloads
+            .facts
+            .associations
+            .take_installed()
+        else {
             return Ok(());
         };
-        let row = self.history.storage_mut().payloads.values.get_mut(slot);
-        let Some(row) = row else {
-            return Err(c.fail_invariant(crate::parser::control::HtmlParseInvariant::RegistryRow));
-        };
-        match mem::replace(row, RetainedPayload::Retired) {
-            RetainedPayload::AssociatedInputs { inputs, usage } => {
-                self.associated_slot = None;
-                let resources = usage.resources();
-                drop((inputs, usage));
-                c.commit_prepared_release(&resources)?;
-                Ok(())
-            }
-            // Another kind of row is put back where it was.
-            other => {
-                *row = other;
-                Err(c.fail_invariant(crate::parser::control::HtmlParseInvariant::RegistryRow))
-            }
-        }
+        let resources = usage.resources();
+        drop((inputs, usage));
+        c.commit_prepared_release(&resources)?;
+        Ok(())
     }
     pub(crate) fn fragment_parser_document<'a>(
         &'a self,
@@ -2085,9 +2070,6 @@ mod tests {
         (c, frozen, index)
     }
 
-    fn registry_row() -> HtmlParseStop {
-        HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow)
-    }
     fn published() -> crate::HtmlParseReport {
         crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8("<!doctype html><p>a"),
@@ -2097,77 +2079,23 @@ mod tests {
         .unwrap()
     }
 
-    /// The base facts of a parse and the associated inputs that hold them are not registry rows,
-    /// and publication qualifies them by reading them: it makes no visit for the plain elements of
-    /// the parse. A parse with base facts and one without differ in the work they do for their
-    /// facts, which is the same at every size, so the work that `elements` plain elements add is
-    /// the same with and without them. Publication that walks the registry for the inputs of each
-    /// base facts row visits every row the elements added, and the work differs by that count.
+    /// A report that holds no associated inputs has nothing to release, and releasing again after
+    /// the inputs were released is the same.
     #[test]
-    fn publication_makes_no_visit_for_the_plain_elements_of_a_parse_with_base_facts() {
-        let visits = |with_facts: bool, elements: usize| {
-            let text = format!("<!doctype html><body>{}", "<span>".repeat(elements));
-            let request = if with_facts {
-                super::super::base::tests::request(&text)
-            } else {
-                crate::HtmlDocumentParseRequest::offline(
-                    crate::HtmlSource::utf8(text.as_str()),
-                    super::super::tests::limits(),
-                )
-            };
-            request
-                .parse()
-                .unwrap()
-                .usage()
-                .work(crate::HtmlParseWorkCategory::RecordVisit)
-        };
-        let added = |with_facts: bool| visits(with_facts, 16) - visits(with_facts, 0);
-        assert_eq!(added(true), added(false));
-    }
-
-    #[test]
-    fn releasing_the_execution_bank_past_the_registry_reports_the_registry_row() {
+    fn releasing_the_execution_inputs_of_a_report_that_holds_none_releases_nothing() {
         let mut report = published();
         let mut c = ParseControl::new(super::super::tests::limits(), HtmlParseCancellation::new());
-        report.storage_mut().associated_slot = Some(usize::MAX / 2);
+        let usage = c.usage().clone();
         assert_eq!(
             report.storage_mut().release_execution_inputs(&mut c),
-            Err(registry_row())
+            Ok(())
         );
-        assert_eq!(c.stop(), Some(registry_row()));
-    }
-
-    #[test]
-    fn releasing_the_execution_bank_from_another_row_kind_keeps_that_row() {
-        let mut report = published();
-        let mut c = ParseControl::new(super::super::tests::limits(), HtmlParseCancellation::new());
-        let row = report
-            .storage_mut()
-            .history_mut()
-            .storage_mut()
-            .payloads
-            .values
-            .iter()
-            .position(|row| !matches!(row, RetainedPayload::Retired))
-            .unwrap();
-        let before = |report: &mut crate::HtmlParseReport| {
-            mem::discriminant(
-                &report
-                    .storage_mut()
-                    .history_mut()
-                    .storage_mut()
-                    .payloads
-                    .values[row],
-            )
-        };
-        let kept = before(&mut report);
-        report.storage_mut().associated_slot = Some(row);
         assert_eq!(
             report.storage_mut().release_execution_inputs(&mut c),
-            Err(registry_row())
+            Ok(())
         );
-        assert_eq!(c.stop(), Some(registry_row()));
-        assert_eq!(before(&mut report), kept);
+        assert_eq!(c.stop(), None);
+        assert_eq!(c.usage(), usage);
     }
 
     #[test]

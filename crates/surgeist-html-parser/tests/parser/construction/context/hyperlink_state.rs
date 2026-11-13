@@ -786,3 +786,91 @@ fn historical_first_base_uses_current_independent_revision_after_detached_meta()
     };
     assert_eq!(actual.id(), *document.subject());
 }
+
+/// Every occurrence the report lends, with whether its Document is captured and whether the
+/// context of that Document is lent with it.
+fn occurrence_contexts(report: &HtmlParseReport) -> Vec<(bool, bool)> {
+    use surgeist_html_parser::HtmlParseMetadataDocument as Doc;
+    let mut cursor = report.pending_associations();
+    let mut rows = Vec::new();
+    loop {
+        match cursor.advance() {
+            HtmlParsePendingAssociationStep::Occurrence(row) => rows.push((
+                matches!(row.document(), Doc::Captured(_)),
+                row.context().captured_context().is_some(),
+            )),
+            HtmlParsePendingAssociationStep::Document(_) => {}
+            HtmlParsePendingAssociationStep::Complete => return rows,
+            HtmlParsePendingAssociationStep::Fault(fault) => panic!("{fault}"),
+        }
+    }
+}
+
+/// A fragment parse installs the contexts it was given before it records any association, so the
+/// capture of the target Document made for its first occurrence holds the context, and every
+/// occurrence in that Document lends it. An installation after the first capture is refused, so a
+/// parse that reordered the two would fail here as an invalid-facts stop.
+#[test]
+fn a_fragment_parse_installs_its_contexts_before_it_captures_the_target_document() {
+    let (context, target, _) = fixture(false);
+    let base = record(&revision(), "https://example.test/target/", false, None);
+    let encoding = HtmlBaseEncoding::fresh();
+    let prepared = selected(&context, &target, environment(&base, &encoding));
+    let report = crate::parser::support::fragment_all(
+        HtmlSource::utf8("<style>b{}</style><div><style>c{}</style></div><a href=x>"),
+        context,
+        limits(),
+    )
+    .unwrap()
+    .with_encoding_url_contexts(vec![prepared])
+    .parse()
+    .unwrap();
+    let rows = occurrence_contexts(&report);
+    assert!(rows.iter().any(|&(captured, _)| captured), "{rows:?}");
+    for (captured, lent) in rows {
+        assert_eq!(lent, captured, "only a captured Document has a context");
+    }
+}
+
+/// A standalone parse installs its inputs on entry, before the first association is recorded, so
+/// a document that records associations parses with inputs supplied: its link resolves against
+/// the supplied parse of the reference, which is available only when the inputs are installed.
+#[test]
+fn a_standalone_parse_installs_its_inputs_before_it_records_an_association() {
+    let revision = revision();
+    let base = record(&revision, "https://example.test/dir/", false, None);
+    let parsed = record(&revision, "https://example.test/dir/x", false, None);
+    let encoding = HtmlBaseEncoding::fresh();
+    let facts = HtmlEncodingUrlParseFacts::new(
+        base.clone(),
+        encoding.clone(),
+        revision,
+        vec![HtmlEncodingUrlParseObservation::new(
+            "x".into(),
+            HtmlEncodingUrlParseOutcome::Parsed(parsed.clone()),
+        )],
+        HtmlBaseFactsLimits::new(100, 10000, 100000),
+    )
+    .unwrap();
+    let report = crate::parser::support::offline_all(
+        HtmlSource::utf8("<style>b{}</style><a href=x><link rel=stylesheet href=y>"),
+        limits(),
+    )
+    .with_base_facts(environment(&base, &encoding))
+    .unwrap()
+    .with_encoding_url_facts(vec![facts])
+    .parse()
+    .unwrap();
+    let rows = occurrence_contexts(&report);
+    assert!(rows.len() >= 3, "{rows:?}");
+    assert!(rows.iter().all(|&(captured, lent)| !captured && !lent));
+    let links = links(&report);
+    let anchor = links
+        .iter()
+        .find(|link| link.raw() == Some(&DocumentString::from("x")))
+        .expect("the anchor");
+    let HtmlParseHyperlinkState::Observed(value) = anchor.state() else {
+        panic!("the link does not carry the supplied parse of its reference")
+    };
+    assert_eq!(value.url(), Some(&parsed));
+}

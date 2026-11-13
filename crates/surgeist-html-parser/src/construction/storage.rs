@@ -103,20 +103,9 @@ impl SessionStorage {
                 return Err(stop.into());
             }
         };
-        let (documents, documents_allocation) = match control.new_vector() {
-            Ok(value) => value,
-            Err(stop) => {
-                release_vector(control, bases, bases_allocation)?;
-                release_vector(control, forms, forms_allocation)?;
-                release_vector(control, node_joins, node_joins_allocation)?;
-                release_vector(control, values, allocation)?;
-                return Err(stop.into());
-            }
-        };
         let facts = match ParseFacts::new(control) {
             Ok(facts) => facts,
             Err(error) => {
-                release_vector(control, documents, documents_allocation)?;
                 release_vector(control, bases, bases_allocation)?;
                 release_vector(control, forms, forms_allocation)?;
                 release_vector(control, node_joins, node_joins_allocation)?;
@@ -133,10 +122,6 @@ impl SessionStorage {
             KindSlots {
                 slots: bases,
                 allocation: bases_allocation,
-            },
-            KindSlots {
-                slots: documents,
-                allocation: documents_allocation,
             },
         ];
         let mut session = Self {

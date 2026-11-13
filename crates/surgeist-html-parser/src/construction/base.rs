@@ -1302,13 +1302,7 @@ pub(super) mod tests {
                     stop.map(SessionError::Stop)
                 );
                 assert_eq!(c.stop(), stop);
-                assert!(
-                    !storage
-                        .payloads
-                        .values
-                        .iter()
-                        .any(|row| matches!(row, RetainedPayload::AssociationOccurrence(_)))
-                );
+                assert_eq!(storage.payloads.facts.associations.occurrence_count(), 0);
             } else {
                 result.unwrap();
                 assert_eq!(
@@ -1317,15 +1311,7 @@ pub(super) mod tests {
                         .current,
                     prior + pressure_rows + needed
                 );
-                assert_eq!(
-                    storage
-                        .payloads
-                        .values
-                        .iter()
-                        .filter(|row| matches!(row, RetainedPayload::AssociationOccurrence(_)))
-                        .count(),
-                    1
-                );
+                assert_eq!(storage.payloads.facts.associations.occurrence_count(), 1);
             }
             assert_value(&session, &base, "https://base.test/A");
             pressure.release(&mut c).unwrap();

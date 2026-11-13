@@ -51,6 +51,7 @@ mod dialog;
 use detail_origins::DetailOrigins;
 
 pub(crate) mod associated;
+mod association_log;
 mod base;
 mod clone;
 mod csp;

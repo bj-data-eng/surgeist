@@ -13,6 +13,8 @@ pub(super) struct StyleMetadata {
     pub(super) cause: Option<provenance::ConstructionCauseRef>,
     /// The offset at which the start tag of a parser-created style ended.
     pub(super) start: Option<usize>,
+    /// The latest occurrence recorded for the style, which the next one names as its prior one.
+    pub(super) latest_occurrence: Option<association_log::AssociationPosition>,
 }
 impl SessionStorage {
     pub(super) fn initialize_style(
@@ -36,6 +38,7 @@ impl SessionStorage {
                         parser_document: None,
                         cause,
                         start: self.token_end,
+                        latest_occurrence: None,
                     },
                 },
             )

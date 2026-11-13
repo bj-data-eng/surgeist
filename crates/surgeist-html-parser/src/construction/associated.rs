@@ -1,4 +1,5 @@
 //! Reached A/Area URL and wholly inactive Img updates in the original owner.
+use super::association_log::InstalledInputs;
 use super::*;
 use surgeist_html::construction::ConstructionNodeKind;
 use surgeist_html::{
@@ -241,20 +242,26 @@ impl ParserArenaSession {
             }
         }
         let usage = inputs.usage(c)?;
-        let prepared = storage.prepare_payload_slot_owned(c)?;
+        // A parse holds one value, so a second one is refused before anything is acquired. The
+        // inputs are installed before any association is recorded, because a capture copies its
+        // Document's context from them when it is made, so a log that holds a row refuses them
+        // too.
+        let associations = &storage.payloads.facts.associations;
+        if associations.installed().is_some() || associations.len() != 0 {
+            return Err(c.stop_invalid_associated_facts().into());
+        }
         payload_write::<Arc<Inputs>>(c, 1)?;
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         usage.acquire(c)?;
-        storage
-            .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::AssociatedInputs {
-                    inputs: inputs.clone(),
-                    usage,
-                },
-            )
-            .map_err(|_| latch_registry_row(c))?;
+        let installed = InstalledInputs {
+            inputs: inputs.clone(),
+            usage,
+        };
+        if let Err(refused) = storage.payloads.facts.associations.install(installed) {
+            drop(refused.inputs);
+            refused.usage.release(c, &storage.control)?;
+            return Err(latch_registry_row(c));
+        }
         Ok(())
     }
 }
@@ -265,17 +272,18 @@ pub(super) struct EncodingUrlContext<'a> {
     pub(super) expected: &'a crate::HtmlBaseFactsRevision,
 }
 impl SessionStorage {
+    /// The inputs the parse was given, one read of the parse's own facts.
     fn associated_inputs(
         &self,
         c: &mut ParseControl,
     ) -> Result<Option<&Arc<Inputs>>, SessionError> {
-        for payload in &self.payloads.values {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::AssociatedInputs { inputs, .. } = payload {
-                return Ok(Some(inputs));
-            }
-        }
-        Ok(None)
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        Ok(self
+            .payloads
+            .facts
+            .associations
+            .installed()
+            .map(|installed| &installed.inputs))
     }
     pub(super) fn bind_template_base(
         &mut self,
@@ -974,6 +982,39 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A parse holds one value of associated inputs. A second installation is refused as the
+    /// invalid-facts stop, leaves the first held, and returns what it held when the parse is
+    /// released.
+    #[test]
+    fn a_second_installation_of_associated_inputs_is_refused_and_leaves_the_first() {
+        let request = crate::construction::base::tests::request("<span>");
+        let (mut c, mut session, _proof) = crate::construction::tests::fresh_script_owner(&request);
+        let first = Arc::new(Inputs::default());
+        session.install_associated_inputs(&mut c, &first).unwrap();
+        let second = Arc::new(Inputs::default());
+        let refused = session.install_associated_inputs(&mut c, &second);
+        assert_eq!(
+            refused,
+            Err(SessionError::Stop(HtmlParseStop::InvalidAssociatedFacts))
+        );
+        assert_eq!(c.stop(), Some(HtmlParseStop::InvalidAssociatedFacts));
+        let held = session
+            .active()
+            .unwrap()
+            .payloads
+            .facts
+            .associations
+            .installed()
+            .map(|installed| Arc::clone(&installed.inputs))
+            .unwrap();
+        assert!(Arc::ptr_eq(&held, &first));
+        // Only the first installation holds a reference of its own.
+        assert_eq!(Arc::strong_count(&second), 1);
+        drop(held);
+        session.release(&mut c).unwrap();
+        crate::construction::tests::storage_zero(&c);
     }
 
     #[test]
