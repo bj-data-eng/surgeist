@@ -2894,21 +2894,66 @@ impl DomSourceLease<'_> {
             }
         }
     }
+    /// Evaluate the original pending inline Style input under its Source
+    /// budget. The evaluator borrows the input and the admission functions
+    /// for this call. It cannot advance or acknowledge the operation.
+    pub fn evaluate_inline_csp<T, E: From<DomError>>(
+        &self,
+        request: &DomStyleRequest,
+        cancel: &AtomicBool,
+        evaluate: impl FnOnce(
+            &DomStyleSource,
+            &dyn Fn() -> Result<(), DomError>,
+            &dyn Fn(usize) -> Result<(), DomError>,
+        ) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let draft = self.inline_csp_draft(request)?;
+        draft.source_step(cancel)?;
+        evaluate(request.source(), &|| draft.source_step(cancel), &|bytes| {
+            draft.source_admit(bytes, cancel)
+        })
+    }
+
+    fn inline_csp_draft(&self, request: &DomStyleRequest) -> Result<&Draft, DomError> {
+        let op = self
+            .dom
+            .source_operation
+            .as_ref()
+            .filter(|op| !self.complete && op.id == self.id)
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let dialog::OperationDraft::Segment(draft) = &op.draft else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        let expected = op.request.as_ref().ok_or(DomError::StyleProtocol)?;
+        if request.action != DomStyleAction::Update(Action::CheckInlineCsp)
+            || expected.action != request.action
+            || !Arc::ptr_eq(&expected.source, &request.source)
+            || op.receipt.is_some()
+        {
+            return Err(DomError::StyleFactsMismatch);
+        }
+        if op.cancelled && !op.published && !op.event_exposed && draft.compound_failure().is_none()
+        {
+            return Err(DomError::Cancelled);
+        }
+        Ok(draft)
+    }
+
     pub fn accept_inline_csp(
         &mut self,
         request: &DomStyleRequest,
         observation: &DomStyleInlineCspObservation,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let op = self.dom.source_operation.as_mut().expect("live lease");
-        let expected = op.request.as_ref().ok_or(DomError::StyleProtocol)?;
-        if expected.action != DomStyleAction::Update(Action::CheckInlineCsp)
-            || !Arc::ptr_eq(&expected.source, &request.source)
-            || !matches_inline_csp_source(request, observation)
-            || op.receipt.is_some()
-        {
+        self.inline_csp_draft(request)?;
+        if !matches_inline_csp_source(request, observation) {
             return Err(DomError::StyleFactsMismatch);
         }
+        let op = self
+            .dom
+            .source_operation
+            .as_mut()
+            .ok_or(DomError::InvalidSourceOperation)?;
         op.refresh_admission(cancel)?;
         op.draft.source_step(cancel)?;
         // Observation owns its source clone as well as its policy bank. Its

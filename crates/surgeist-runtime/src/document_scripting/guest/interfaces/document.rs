@@ -17,6 +17,7 @@ mod fragment;
 mod ordinary;
 mod parent_node;
 mod shadow;
+mod style_policy;
 mod text;
 mod tree;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;

@@ -166,8 +166,9 @@ impl Capture {
                     let mut source = session.source_execution();
                     let mut dom = session.dom();
                     let parent = dom.pending_source_edit().map(DomSourceStatus::operation);
-                    let result = source.apply(&mut dom, edit, limits, &mut services, cancel);
-                    Ok((result, dom.pending_source_edit(), parent))
+                    let mut result = source.apply(&mut dom, edit, limits, &mut services, cancel);
+                    session.finish_guest_style(&mut result, limits, cancel);
+                    Ok((result, session.dom().pending_source_edit(), parent))
                 })?;
         let mut abrupt = None;
         let mut output = None;
@@ -711,14 +712,15 @@ fn resume_attribute_source(
         .map_err(|_| DocumentScriptNativeError::Busy)?;
     let mut source = session.source_execution();
     let mut dom = session.dom();
-    let result = source.resume(
+    let mut result = source.resume(
         &mut dom,
         operation,
         limits,
         &mut guest_source_services(&mut initial_inline_style_policy),
         &owner.cancellation,
     );
-    Ok((result, dom.pending_source_edit()))
+    session.finish_guest_style(&mut result, limits, &owner.cancellation);
+    Ok((result, session.dom().pending_source_edit()))
 }
 
 fn accept_mismatch(

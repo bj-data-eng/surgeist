@@ -59,6 +59,39 @@ pub struct Policy {
 }
 
 impl Policy {
+    /// Evaluate an inline Style source list when no nonce or hash match is
+    /// needed. A credential expression leaves the decision to its evaluator.
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn inline_style_without_credentials<E>(
+        &self,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<bool>, E> {
+        let serialized =
+            HtmlCspSerializedPolicy::new(self.serialized.code_units(), self.delivery.source());
+        for name in [b"style-src-elem".as_slice(), b"style-src", b"default-src"] {
+            let Some(directive) = serialized.directive_with(name, step)? else {
+                continue;
+            };
+            let mut values = directive.values();
+            let mut allows_inline = false;
+            while let Some(token) = values.next_with(step)? {
+                if [b"'nonce-".as_slice(), b"'sha256-", b"'sha384-", b"'sha512-"]
+                    .iter()
+                    .any(|prefix| {
+                        token
+                            .get(..prefix.len())
+                            .is_some_and(|head| keyword(head, prefix))
+                    })
+                {
+                    return Ok(None);
+                }
+                allows_inline |= keyword(token, b"'unsafe-inline'");
+            }
+            return Ok(Some(allows_inline));
+        }
+        Ok(Some(true))
+    }
+
     /// Select the first occurrence of each directive in an individual CSP.
     /// The meter runs before inspecting source code units.
     pub fn parse<E>(

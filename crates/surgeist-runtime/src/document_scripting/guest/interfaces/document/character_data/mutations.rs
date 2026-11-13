@@ -260,14 +260,19 @@ impl Capture {
         let (result, pending) = self.with_native(owner, |session, _| {
             let mut source = session.source_execution();
             let mut dom = session.dom();
-            let result = source.apply(
+            let mut result = source.apply(
                 &mut dom,
                 DomSourceEdit::replace_data(node.node(), offset, count, data),
                 events.limits.source_edits,
                 &mut guest_source_services(&mut initial_inline_style_policy),
                 &owner.cancellation,
             );
-            Ok((result, dom.pending_source_edit()))
+            session.finish_guest_style(
+                &mut result,
+                events.limits.source_edits,
+                &owner.cancellation,
+            );
+            Ok((result, session.dom().pending_source_edit()))
         })?;
         match result {
             Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
