@@ -6,6 +6,7 @@ use super::*;
 enum Comparison {
     Containment,
     Identity,
+    Equality,
 }
 
 pub(super) fn install<'scope>(
@@ -16,6 +17,7 @@ pub(super) fn install<'scope>(
     for (name, comparison) in [
         (&ascii(b"contains")[..], Comparison::Containment),
         (&ascii(b"isSameNode")[..], Comparison::Identity),
+        (&ascii(b"isEqualNode")[..], Comparison::Equality),
     ] {
         let handler = capture(size_of::<(Capture, Comparison)>())?;
         let method = scope.fixed_arity_function(
@@ -75,6 +77,11 @@ impl Capture {
                         let other = read.node(other.node())?;
                         Ok(receiver.id() == other.id())
                     }
+                    Comparison::Equality => receiver.is_equal_node_with(
+                        other.node(),
+                        || read.step(),
+                        |bytes| read.reserve(bytes),
+                    ),
                 }
             })?;
             Ok(scope.primitive(Primitive::Boolean(matches))?)

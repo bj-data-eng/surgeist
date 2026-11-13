@@ -58,6 +58,8 @@ pub(super) fn structural_node_equality_reads_the_live_ordinary_tree() {
                 another.appendChild(another.importNode(right, true));
                 const other = another.documentElement;
                 if (!left.isEqualNode(other)) return 'other owner document';
+                const xml = document.implementation.createDocument(null, '', null);
+                if (xml.isEqualNode(new Document())) return 'different document interfaces';
                 right.setAttribute('b', '\udc00');
                 if (left.isEqualNode(right)) return 'live attributes';
                 return 'ok';

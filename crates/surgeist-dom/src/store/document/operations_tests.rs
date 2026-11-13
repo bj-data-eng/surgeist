@@ -146,6 +146,107 @@ fn namespace_lookup_stops_at_inert_template_contents_and_preserves_refusal() {
     }
 }
 
+#[test]
+fn structural_equality_admits_retained_sibling_frames_before_traversing() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let roots = ["root", "root"].map(|name| {
+        let root = batch.create_element_ns(&document, Namespace::none(), name);
+        let mut parent = root.clone();
+        for _ in 0..3 {
+            let child = batch.create_element_ns(&document, Namespace::none(), "child");
+            let sibling = batch.create_text(&document, "sibling");
+            batch.insert_before(&child, &parent, None);
+            batch.insert_before(&sibling, &parent, None);
+            parent = child;
+        }
+        root
+    });
+    let commit = apply(&mut dom, batch);
+    let [left, right] = roots.map(|root| commit.created(&root).unwrap().unwrap());
+    let snapshot = dom.snapshot();
+    let node = snapshot.node(left).unwrap();
+    let live_bytes = std::cell::Cell::new(0);
+    let peak_bytes = std::cell::Cell::new(0);
+    struct Scratch<'a> {
+        live_bytes: &'a std::cell::Cell<usize>,
+        bytes: usize,
+    }
+    impl Drop for Scratch<'_> {
+        fn drop(&mut self) {
+            self.live_bytes.set(self.live_bytes.get() - self.bytes);
+        }
+    }
+    let compare = |limit| {
+        node.is_equal_node_with(
+            right,
+            || Ok(()),
+            |bytes| {
+                let live = live_bytes.get() + bytes;
+                if live > limit {
+                    return Err(DomError::AllocationFailed);
+                }
+                live_bytes.set(live);
+                peak_bytes.set(peak_bytes.get().max(live));
+                Ok(Scratch {
+                    live_bytes: &live_bytes,
+                    bytes,
+                })
+            },
+        )
+    };
+    assert_eq!(compare(usize::MAX), Ok(true));
+    assert_eq!(live_bytes.get(), 0);
+    let peak = peak_bytes.get();
+    assert!(peak > 0);
+    assert_eq!(compare(peak - 1), Err(DomError::AllocationFailed));
+    assert_eq!(live_bytes.get(), 0);
+    assert_eq!(compare(peak), Ok(true));
+    assert_eq!(live_bytes.get(), 0);
+    assert_eq!(dom.snapshot().stamp(), snapshot.stamp());
+}
+
+#[test]
+fn structural_equality_ignores_template_contents_and_refuses_foreign_nodes() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let left = batch.create_element_ns(&document, Namespace::html(), "template");
+    let right = batch.create_element_ns(&document, Namespace::html(), "template");
+    let commit = apply(&mut dom, batch);
+    let left = commit.created(&left).unwrap().unwrap();
+    let right = commit.created(&right).unwrap().unwrap();
+    let snapshot = dom.snapshot();
+    let contents = snapshot
+        .node(left)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
+    let inert = snapshot.node(contents).unwrap().owner_document().unwrap();
+    let mut batch = DomBatch::new();
+    let text = batch.create_text(inert, "inert");
+    batch.insert_before(&text, contents, None);
+    apply(&mut dom, batch);
+    let snapshot = dom.snapshot();
+    let node = snapshot.node(left).unwrap();
+    let reserve = |_| Err::<(), _>(DomError::AllocationFailed);
+    assert_eq!(node.is_equal_node_with(right, || Ok(()), reserve), Ok(true));
+    let mut foreign = self::dom();
+    let mut batch = DomBatch::new();
+    let foreign_document = batch.create_document();
+    let foreign = apply(&mut foreign, batch)
+        .document(&foreign_document)
+        .unwrap()
+        .node();
+    assert_eq!(
+        node.is_equal_node_with(foreign, || Ok(()), reserve),
+        Err(DomError::ForeignOwner)
+    );
+}
+
 fn source_limits(outputs: usize) -> DomSourceLimits {
     DomSourceLimits::new(64_000_000, 2_000_000, 20_000_000, 128, outputs, 4096, 8)
 }
