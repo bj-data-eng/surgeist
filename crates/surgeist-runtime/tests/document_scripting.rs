@@ -496,7 +496,9 @@ fn attach_event_window(
             hooks(&hook()),
             &mut registry,
             DocumentGuestEventLimits {
-                storage_bytes: 64_000,
+                // These interface scenarios include the full native prototype
+                // graph and exercise behavior with guest storage headroom.
+                storage_bytes: 128_000,
                 work: 10_000,
                 pending_exception_reports: 16,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
