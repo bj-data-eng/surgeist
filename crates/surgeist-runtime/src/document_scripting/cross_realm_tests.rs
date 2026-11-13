@@ -8,6 +8,7 @@ mod dom_implementation;
 mod element_attributes;
 mod element_reflection;
 mod element_tasks;
+mod html_reflection;
 mod inline_style;
 mod meta_reflection;
 mod nested_dispatch;
@@ -368,6 +369,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     toggle_attribute::element_toggle_attribute_uses_one_canonical_edit();
     adjacent_text::adjacent_text_uses_the_original_compound_source_edit();
     adjacent_element::adjacent_element_uses_the_current_native_branch_and_original_operand();
+    html_reflection::html_reflections_use_exact_live_attributes_and_html_brands();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
