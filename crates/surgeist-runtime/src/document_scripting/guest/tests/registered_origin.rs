@@ -314,6 +314,98 @@ pub(in crate::document_scripting) fn registered_origin_registry_keeps_exact_wrap
     }).unwrap();
 }
 
+pub(in crate::document_scripting) fn definition_queues_candidates_before_resolving_waiter() {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) =
+        crate::document_scripting::cross_realm_tests::hosted_session(&cancellation, 0);
+    let origin = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted
+            .create_headless_host(&mut dom, &cancellation)
+            .unwrap();
+        hosted
+            .create_top_level(&mut dom, owner, &cancellation)
+            .unwrap()
+    };
+    let mut host = attach_public_nodes(session, target, cancellation, 20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.register_node_creation_realm(&permit, origin).unwrap();
+    expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        origin.document().node(),
+        "otherDocument",
+    );
+    let foreign = {
+        let engine = host.engine.as_mut().unwrap();
+        let realm = engine
+            .creations
+            .find(origin.global(), || Ok::<_, Error>(()))
+            .unwrap()
+            .unwrap();
+        engine
+            .process
+            .execution()
+            .in_realm(realm, |scope| {
+                let value = scope.evaluate(&units(
+                    r#"
+                class Foreign extends HTMLElement {}
+                customElements.define('x-waiter-adoption', Foreign);
+                Foreign
+            "#,
+                ))?;
+                Ok(scope.retain(&value))
+            })
+            .unwrap()
+    };
+    host.in_document(&permit, |scope| {
+        let foreign = scope.import(&foreign)?;
+        let global = scope.global()?;
+        scope.set(&global, PropertyKey::String(&units("Foreign")), &foreign)?;
+        assert_guest(
+            scope,
+            r#"(() => {
+            const name = 'x-waiter-adoption';
+            const candidate = document.createElement(name);
+            document.documentElement.appendChild(candidate);
+            customElements.whenDefined(name);
+            const calls = [];
+            class Original extends HTMLElement {
+                constructor() {
+                    calls.push('original constructor');
+                    super();
+                }
+                static get then() {
+                    calls.push('then getter');
+                    otherDocument.documentElement.appendChild(candidate);
+                    calls.push('then resumes');
+                }
+            }
+            customElements.define(name, Original);
+            return candidate.ownerDocument === otherDocument && !(candidate instanceof Foreign) &&
+                calls.join(',') === 'then getter,original constructor,then resumes';
+        })()"#,
+        )
+    })
+    .unwrap();
+    let report = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        let original = scope.import(report.exception.value())?;
+        let global = scope.global()?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("originalUpgradeFailure")),
+            &original,
+        )?;
+        assert_guest(scope, "originalUpgradeFailure instanceof TypeError")
+    })
+    .unwrap();
+}
+
 fn retired_origin_with_moved_element() -> RegisteredOrigin {
     let cancellation = Arc::new(AtomicBool::new(false));
     let (mut session, target) =
