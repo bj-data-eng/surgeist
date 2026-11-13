@@ -269,7 +269,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                     let Some(GridTrackPassPhase::Repeat(repeat)) = self.tracks.take() else {
                         unreachable!("completed repeat owns track preparation")
                     };
-                    let source = repeat.source.finish(tree, self.node, Some(expansion))?;
+                    let GridRepeatPass { source, probe } = *repeat;
+                    drop(probe);
+                    let source = source.finish(tree, self.node, Some(expansion))?;
                     self.tracks = Some(GridTrackPassPhase::sizing(source));
                     continue;
                 }
@@ -1179,8 +1181,10 @@ where
                 &repeat.source.style,
                 &repeat.source.parent_context,
             )?;
+            let GridRepeatPass { source, probe } = *repeat;
+            drop(probe);
             GridTrackPass {
-                source: repeat.source.finish(tree, node, Some(expansion))?,
+                source: source.finish(tree, node, Some(expansion))?,
                 sizing: GridTrackSizing::intrinsic(),
             }
         }
@@ -2334,7 +2338,9 @@ where
         contained_inline,
     )? {
         ControlFlow::Break(repeat) => repeat,
-        ControlFlow::Continue(mut probe) => Some(probe.compute(tree, node, style, parent_context)?),
+        ControlFlow::Continue(mut probe) => {
+            Some(probe.compute(tree, node, style, parent_context)?)
+        }
     };
     initialize_qualified_grid_tracks(
         tree,
