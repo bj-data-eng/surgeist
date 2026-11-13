@@ -13,7 +13,7 @@ mod svg;
 
 const ELEMENT: &[u16] = &ascii(b"Element");
 const MATHML_ELEMENT: &[u16] = &ascii(b"MathMLElement");
-const HTML_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/1999/xhtml");
+pub(super) const HTML_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/1999/xhtml");
 const MATHML_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/1998/Math/MathML");
 const SVG_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/2000/svg");
 
@@ -167,8 +167,10 @@ impl ElementBindings {
                 parent,
                 capture,
             )?;
-            if interface == "HTMLTemplateElement" {
-                super::template::install(scope, &prototype, capture)?;
+            match interface {
+                "HTMLTemplateElement" => super::template::install(scope, &prototype, capture)?,
+                "HTMLTitleElement" => super::title::install(scope, &prototype, capture)?,
+                _ => (),
             }
             let prototype = scope.callback_object(&prototype)?;
             let constructor = scope.callback_object(&constructor)?;

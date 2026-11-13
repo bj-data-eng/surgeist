@@ -224,14 +224,18 @@ enum TextValue {
 }
 
 #[derive(Default)]
-struct TextBuffer {
+pub(super) struct TextBuffer {
     units: Vec<u16>,
     _backing: Option<GuestBacking>,
     _source_units: Option<NativeTextUnits>,
 }
 
 impl TextBuffer {
-    fn append(
+    pub(super) fn code_units(&self) -> &[u16] {
+        &self.units
+    }
+
+    pub(super) fn append(
         &mut self,
         read: &NativeRead<'_>,
         data: &DocumentString,

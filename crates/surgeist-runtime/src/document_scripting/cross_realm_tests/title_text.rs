@@ -1,12 +1,15 @@
 use super::*;
-use crate::document_scripting::guest::tests::{attach_public_nodes, projected_node_id};
+use crate::document_scripting::guest::tests::{
+    attach_public_nodes, exhaust_guest_reaction_work, projected_node_id,
+};
 
 pub(super) fn title_text_uses_direct_native_children_and_original_replacement() {
     let cancel = Arc::new(AtomicBool::new(false));
-    let (session, target) = hosted_session(&cancel, 0);
+    let (session, target) =
+        hosted_session_with_dom_limits(&cancel, 0, 0, |limits| limits.with_ranges(4).unwrap());
     let mut host = attach_public_nodes(session, target, cancel.clone(), 8_000, 80_000);
     let permit = host.permit().unwrap();
-    let text = host.in_document(&permit, |scope| {
+    let (title, text) = host.in_document(&permit, |scope| {
         let result = evaluate(scope, r#"
             (() => {
                 const descriptor = Object.getOwnPropertyDescriptor(HTMLTitleElement.prototype, 'text');
@@ -46,14 +49,23 @@ pub(super) fn title_text_uses_direct_native_children_and_original_replacement() 
         "#)?;
         assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
         let text = evaluate(scope, "liveTitle.firstChild")?;
-        projected_node_id(scope, &text)
+        let title = evaluate(scope, "liveTitle")?;
+        Ok((projected_node_id(scope, &title)?, projected_node_id(scope, &text)?))
     }).unwrap();
-    host.with_native(|dom, _, _| {
-        let mut batch = DomBatch::new();
-        batch.replace_data(text, 0, usize::MAX, "native");
-        dom.apply(batch, &cancel).unwrap();
-    })
-    .unwrap();
+    let range = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            batch.replace_data(text, 0, usize::MAX, "native");
+            let range = batch.create_range(target.document());
+            batch.set_range_start(&range, text, 2);
+            batch.set_range_end(&range, text, 5);
+            dom.apply(batch, &cancel)
+                .unwrap()
+                .created_range(&range)
+                .unwrap()
+                .unwrap()
+        })
+        .unwrap();
     let before = host.snapshot().unwrap().stamp();
     host.in_document(&permit, |scope| {
         let result = evaluate(scope, "liveTitle.text === 'native'")?;
@@ -61,5 +73,32 @@ pub(super) fn title_text_uses_direct_native_children_and_original_replacement() 
         Ok(())
     })
     .unwrap();
+    assert_eq!(host.snapshot().unwrap().stamp(), before);
+    host.in_document(&permit, |scope| {
+        let result = evaluate(scope, "(liveTitle.text = 'replacement', liveTitle.text)")?;
+        assert_eq!(
+            scope.to_utf16(&result)?,
+            "replacement".encode_utf16().collect::<Vec<_>>()
+        );
+        Ok(())
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let range = snapshot.range(range).unwrap();
+    assert_eq!(
+        (range.start().container(), range.start().offset()),
+        (title, 0)
+    );
+    assert_eq!((range.end().container(), range.end().offset()), (title, 0));
+    let before = snapshot.stamp();
+    exhaust_guest_reaction_work(&host);
+    let result = host.in_document(&permit, |scope| evaluate(scope, "liveTitle.text").map(drop));
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("the title getter must respect the native work budget: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::WorkLimit)
+    ));
     assert_eq!(host.snapshot().unwrap().stamp(), before);
 }
