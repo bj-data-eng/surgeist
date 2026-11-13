@@ -1,4 +1,8 @@
 use super::*;
+use crate::document_scripting::guest::reports::{
+    ViolationBacking, ViolationOrigin, ViolationQueue,
+};
+use crate::trusted_types_csp::{ReportError, ViolationReport, prepare_style_violation};
 use crate::{
     DomSourceDriveError, DomSourceDriveProgress, DomSourceUnavailable, DomStyleRuntimeError,
     DomStyleUnavailable,
@@ -10,6 +14,7 @@ impl DomSession {
     pub(super) fn finish_guest_style(
         &mut self,
         result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
+        owner: &NativeOwner,
         limits: DomSourceLimits,
         cancel: &AtomicBool,
     ) {
@@ -26,6 +31,13 @@ impl DomSession {
             let mut dom = self.dom();
             let accepted = (|| {
                 let mut lease = dom.resume_source_edit(operation, limits, cancel)?;
+                let mut queue = owner
+                    .trusted_types_reports
+                    .try_borrow_mut()
+                    .map_err(|_| DomStyleRuntimeError::Binding)?;
+                let mut staged_backing = None;
+                let mut reports = Vec::new();
+                let mut origin = None;
                 let observation = {
                     let processor = processor
                         .processor
@@ -67,9 +79,9 @@ impl DomSession {
                         }
                         let mut allowed = true;
                         let mut hashes = crate::trusted_types_csp::StyleHashes::new(input.text());
-                        for policy in policies {
+                        for (index, policy) in policies.iter().enumerate() {
                             step()?;
-                            let Some(matches) = policy.inline_style(
+                            let Some((matches, report_sample)) = policy.inline_style(
                                 input.nonce_content(),
                                 &mut hashes,
                                 &mut || step(),
@@ -77,13 +89,72 @@ impl DomSession {
                             else {
                                 return Ok(None);
                             };
-                            if !matches
-                                && policy.delivery()
-                                    == crate::trusted_types_csp::PolicyDelivery::ReportOnlyHeader
-                            {
-                                return Ok(None);
+                            if matches {
+                                continue;
                             }
-                            allowed &= matches;
+                            if reports.is_empty() {
+                                let snapshot = lease.snapshot();
+                                let document =
+                                    snapshot.node_with(input.document().node(), &mut || step())?;
+                                let Some(global) = document.relevant_global()?.filter(|global| {
+                                    owner.attachment.get().is_some_and(|attached| {
+                                        attached.target.global() == *global
+                                            && attached.target.document() == input.document()
+                                    })
+                                }) else {
+                                    return Ok(None);
+                                };
+                                origin = Some(ViolationOrigin {
+                                    global,
+                                    document: input.document(),
+                                });
+                                let bytes = policies
+                                    .len()
+                                    .checked_mul(size_of::<ViolationReport<ViolationBacking>>())
+                                    .ok_or(DomError::RepresentationExhausted)?;
+                                staged_backing = Some(
+                                    lease.retain_inline_csp_payload(request, bytes, 0, cancel)?,
+                                );
+                                reports
+                                    .try_reserve_exact(policies.len())
+                                    .map_err(|_| DomStyleRuntimeError::Admission)?;
+                                if reports.capacity() != policies.len() {
+                                    return Err(DomStyleRuntimeError::Admission);
+                                }
+                            }
+                            let sample = if report_sample {
+                                input.text().as_slice()
+                            } else {
+                                &[]
+                            };
+                            reports.push(
+                                prepare_style_violation(
+                                    index,
+                                    policy,
+                                    sample,
+                                    &mut || step(),
+                                    |bytes| {
+                                        let retained = ViolationQueue::record_bytes(bytes)
+                                            .map_err(|_| DomError::RepresentationExhausted)?;
+                                        Ok(ViolationBacking::Style {
+                                            _backing: lease.retain_inline_csp_payload(
+                                                request,
+                                                retained,
+                                                bytes / size_of::<u16>(),
+                                                cancel,
+                                            )?,
+                                        })
+                                    },
+                                )
+                                .map_err(|error| match error {
+                                    ReportError::Stopped(error) => DomStyleRuntimeError::Dom(error),
+                                    ReportError::RepresentationExhausted => {
+                                        DomError::RepresentationExhausted.into()
+                                    }
+                                    ReportError::Allocation => DomStyleRuntimeError::Admission,
+                                })?,
+                            );
+                            allowed &= !policy.delivery().enforces();
                         }
                         let bytes = policies.iter().try_fold(
                             size_of::<Vec<DocumentString>>() + 2 * size_of::<usize>(),
@@ -122,7 +193,54 @@ impl DomSession {
                     })?
                 };
                 if let Some(observation) = observation {
-                    lease.accept_inline_csp(request, &observation, cancel)?;
+                    let was_empty = queue.is_none();
+                    let admit = if let Some(origin) = origin {
+                        ViolationQueue::admit_batch(
+                            &mut queue,
+                            origin,
+                            reports.len(),
+                            &mut |bytes, units| {
+                                Ok(ViolationBacking::Style {
+                                    _backing: lease
+                                        .retain_inline_csp_payload(request, bytes, units, cancel)?,
+                                })
+                            },
+                            |units| {
+                                lease.evaluate_inline_csp(request, cancel, |_, step, _| {
+                                    for _ in 0..units {
+                                        step()?;
+                                    }
+                                    Ok::<_, DomError>(())
+                                })?;
+                                Ok(())
+                            },
+                        )
+                        .map_err(|error| match error {
+                            DocumentGuestEventError::Document(DocumentScriptError::Native(
+                                DocumentScriptNativeError::Dom(error),
+                            )) => DomStyleRuntimeError::Dom(error),
+                            DocumentGuestEventError::Document(DocumentScriptError::Native(
+                                DocumentScriptNativeError::ForeignPermit,
+                            )) => DomStyleRuntimeError::Protocol,
+                            _ => DomStyleRuntimeError::Admission,
+                        })
+                    } else {
+                        Ok(())
+                    };
+                    if let Err(error) = admit.and_then(|()| {
+                        lease
+                            .accept_inline_csp(request, &observation, cancel)
+                            .map_err(Into::into)
+                    }) {
+                        if was_empty {
+                            queue.take();
+                        }
+                        return Err(error);
+                    }
+                    if let Some(queue) = queue.as_mut() {
+                        queue.push_style(request.source().element(), reports);
+                    }
+                    drop(staged_backing);
                     Ok::<_, DomStyleRuntimeError>(true)
                 } else {
                     Ok(false)

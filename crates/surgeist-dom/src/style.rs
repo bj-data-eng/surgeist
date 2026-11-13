@@ -176,6 +176,13 @@ pub enum DomStyleNonceContent {
     /// The imported Style's tokenizer nonceability has not been established.
     TokenizerHistoryUnavailable,
 }
+
+/// Admitted storage from a live Style CSP request. It can outlive the request
+/// and grants no authority to acknowledge an operation.
+#[derive(Debug)]
+pub struct DomStyleCspRetention {
+    pub(crate) _debit: Option<crate::store::custody::Debit>,
+}
 impl DomStyleSource {
     fn retained_strings(&self) -> impl Iterator<Item = &surgeist_html::values::DocumentString> {
         [

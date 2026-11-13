@@ -269,6 +269,7 @@ impl Capture {
             );
             session.finish_guest_style(
                 &mut result,
+                owner,
                 events.limits.source_edits,
                 &owner.cancellation,
             );

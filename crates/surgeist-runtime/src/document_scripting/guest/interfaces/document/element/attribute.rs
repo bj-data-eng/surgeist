@@ -167,7 +167,7 @@ impl Capture {
                     let mut dom = session.dom();
                     let parent = dom.pending_source_edit().map(DomSourceStatus::operation);
                     let mut result = source.apply(&mut dom, edit, limits, &mut services, cancel);
-                    session.finish_guest_style(&mut result, limits, cancel);
+                    session.finish_guest_style(&mut result, owner, limits, cancel);
                     Ok((result, session.dom().pending_source_edit(), parent))
                 })?;
         let mut abrupt = None;
@@ -719,7 +719,7 @@ fn resume_attribute_source(
         &mut guest_source_services(&mut initial_inline_style_policy),
         &owner.cancellation,
     );
-    session.finish_guest_style(&mut result, limits, &owner.cancellation);
+    session.finish_guest_style(&mut result, owner, limits, &owner.cancellation);
     Ok((result, session.dom().pending_source_edit()))
 }
 

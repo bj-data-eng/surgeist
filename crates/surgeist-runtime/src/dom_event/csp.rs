@@ -5,8 +5,10 @@ use crate::trusted_types_csp::{Directive, PolicyDelivery};
 
 const POLICY_RESOURCE: &[u16] = &ascii(b"trusted-types-policy");
 const SINK_RESOURCE: &[u16] = &ascii(b"trusted-types-sink");
+const INLINE_RESOURCE: &[u16] = &ascii(b"inline");
 const POLICY_DIRECTIVE: &[u16] = &ascii(b"trusted-types");
 const SINK_DIRECTIVE: &[u16] = &ascii(b"require-trusted-types-for");
+const STYLE_DIRECTIVE: &[u16] = &ascii(b"style-src-elem");
 
 #[derive(Clone, Copy)]
 pub(crate) enum CspEventText {
@@ -58,12 +60,14 @@ impl CspEventData {
                     return match report.directive() {
                         Directive::TrustedTypes => POLICY_RESOURCE,
                         Directive::RequireTrustedTypesFor => SINK_RESOURCE,
+                        Directive::StyleSrcElem => INLINE_RESOURCE,
                     };
                 }
                 CspEventText::EffectiveDirective | CspEventText::ViolatedDirective => {
                     return match report.directive() {
                         Directive::TrustedTypes => POLICY_DIRECTIVE,
                         Directive::RequireTrustedTypesFor => SINK_DIRECTIVE,
+                        Directive::StyleSrcElem => STYLE_DIRECTIVE,
                     };
                 }
                 CspEventText::OriginalPolicy => return report.original_policy(),

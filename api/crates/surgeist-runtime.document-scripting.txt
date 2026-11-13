@@ -265,6 +265,7 @@ impl core::fmt::Display for surgeist_runtime::trusted_types_csp::AttributePolicy
 pub fn surgeist_runtime::trusted_types_csp::AttributePolicyError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_runtime::trusted_types_csp::Directive
 pub surgeist_runtime::trusted_types_csp::Directive::RequireTrustedTypesFor
+pub surgeist_runtime::trusted_types_csp::Directive::StyleSrcElem
 pub surgeist_runtime::trusted_types_csp::Directive::TrustedTypes
 pub enum surgeist_runtime::trusted_types_csp::PolicyCreationError<E>
 pub surgeist_runtime::trusted_types_csp::PolicyCreationError::Admission(E)

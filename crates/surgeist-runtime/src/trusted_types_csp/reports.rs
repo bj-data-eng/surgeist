@@ -1,4 +1,4 @@
-//! Admitted Trusted Types violation records for deferred delivery.
+//! Admitted CSP violation records for deferred delivery.
 
 use super::{Decision, Directive, Policy, PolicyDelivery, Violation};
 use std::{error::Error, fmt, mem::size_of};
@@ -32,9 +32,9 @@ pub enum ReportError<E> {
 impl<E> fmt::Display for ReportError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::Stopped(_) => "Trusted Types report admission was refused",
-            Self::RepresentationExhausted => "Trusted Types report extent is not representable",
-            Self::Allocation => "Trusted Types report backing could not be reserved",
+            Self::Stopped(_) => "CSP report admission was refused",
+            Self::RepresentationExhausted => "CSP report extent is not representable",
+            Self::Allocation => "CSP report backing could not be reserved",
         })
     }
 }
@@ -81,6 +81,7 @@ impl<Backing> ViolationReport<Backing> {
         match self.directive {
             Directive::RequireTrustedTypesFor => "trusted-types-sink",
             Directive::TrustedTypes => "trusted-types-policy",
+            Directive::StyleSrcElem => "inline",
         }
     }
 
@@ -93,6 +94,26 @@ impl<Backing> ViolationReport<Backing> {
     pub fn sample(&self) -> &[u16] {
         &self.sample
     }
+}
+
+#[cfg(feature = "document-scripting")]
+pub(crate) fn prepare_style_violation<E, Backing>(
+    index: usize,
+    policy: &Policy,
+    sample: &[u16],
+    step: &mut impl FnMut() -> Result<(), E>,
+    admit: impl FnOnce(usize) -> Result<Backing, E>,
+) -> Result<ViolationReport<Backing>, ReportError<E>> {
+    prepare(
+        Violation {
+            index,
+            policy,
+            directive: Directive::StyleSrcElem,
+        },
+        Sample::Name(sample),
+        step,
+        admit,
+    )
 }
 
 impl Decision<'_, '_> {

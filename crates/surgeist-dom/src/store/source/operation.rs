@@ -2954,6 +2954,30 @@ impl DomSourceLease<'_> {
         Ok(draft)
     }
 
+    /// Retain an external result from this exact pending Style request.
+    pub fn retain_inline_csp_payload(
+        &self,
+        request: &DomStyleRequest,
+        bytes: usize,
+        units: usize,
+        cancel: &AtomicBool,
+    ) -> Result<DomStyleCspRetention, DomError> {
+        if units
+            .checked_mul(size_of::<u16>())
+            .is_none_or(|extent| extent > bytes)
+        {
+            return Err(DomError::RepresentationExhausted);
+        }
+        let draft = self.inline_csp_draft(request)?;
+        draft.source_step(cancel)?;
+        let budget =
+            formation::Formation::new(draft, cancel)?.ok_or(DomError::InvalidSourceOperation)?;
+        budget.retain_payload(storage::Payload { bytes, units }, cancel)?;
+        Ok(DomStyleCspRetention {
+            _debit: budget.into_debit(),
+        })
+    }
+
     pub fn accept_inline_csp(
         &mut self,
         request: &DomStyleRequest,

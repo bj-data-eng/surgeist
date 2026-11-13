@@ -362,9 +362,14 @@ registry before delivery. `run_attached_csp_violation_task` services one queued
 violation for its original Document and Window. Retry resumes the same event
 and listener position. The host controls microtask checkpoints.
 
-Full NamedNodeMap collection behavior, HTTP response CSP and the inline Style
-policy service have separate integration work. A reached service with
-unavailable authority refuses or retains its original native request.
+Connected Style edits use the exact native text and the Session's live Meta
+CSP. A blocked sheet stays out of CSSOM and queues a violation. At dispatch,
+the event targets the original Style element if it is still connected to the
+reporting Document, or that Document otherwise. An unavailable policy or
+required tokenizer fact leaves the original native request pending.
+
+Full NamedNodeMap collection behavior and live HTTP response CSP have separate
+integration work.
 
 An attachment can enable callable Window timers with `WindowTimerLimits`.
 `setTimeout` keeps the callable and arguments in the attached Window's realm.

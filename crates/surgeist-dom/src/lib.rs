@@ -357,10 +357,10 @@ pub use store::source::operation::meta::{
 };
 pub use store::source::operation::{DomSourceEventFiringLoan, DomSourceLease};
 pub use style::{
-    DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCssomOwnerBinding,
-    DomStyleCssomPublicationRejection, DomStyleCssomRoot, DomStyleCssomRootError,
-    DomStyleInlineCspObservation, DomStyleNonceContent, DomStyleNotificationCompletion,
-    DomStyleNotificationDelivery, DomStyleNotificationOrigin, DomStyleNotificationToken,
-    DomStyleRequest, DomStyleRootKind, DomStyleSheet, DomStyleSheetAvailability,
-    DomStyleSheetPlacement, DomStyleSource, DomStyleState,
+    DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCspRetention,
+    DomStyleCssomOwnerBinding, DomStyleCssomPublicationRejection, DomStyleCssomRoot,
+    DomStyleCssomRootError, DomStyleInlineCspObservation, DomStyleNonceContent,
+    DomStyleNotificationCompletion, DomStyleNotificationDelivery, DomStyleNotificationOrigin,
+    DomStyleNotificationToken, DomStyleRequest, DomStyleRootKind, DomStyleSheet,
+    DomStyleSheetAvailability, DomStyleSheetPlacement, DomStyleSource, DomStyleState,
 };

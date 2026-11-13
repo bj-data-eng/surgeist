@@ -218,7 +218,7 @@ impl Capture {
                     let mut dom = session.dom();
                     let parent = dom.pending_source_edit().map(DomSourceStatus::operation);
                     let mut result = source.apply(&mut dom, edit, limits, &mut services, cancel);
-                    session.finish_guest_style(&mut result, limits, cancel);
+                    session.finish_guest_style(&mut result, owner, limits, cancel);
                     while let Ok(DomSourceDriveProgress::Pending {
                         request: DomSourceRequest::MetaCsp(request),
                         ..
@@ -238,7 +238,7 @@ impl Capture {
                             &mut services,
                             cancel,
                         );
-                        session.finish_guest_style(&mut result, limits, cancel);
+                        session.finish_guest_style(&mut result, owner, limits, cancel);
                     }
                     Ok((result, session.dom().pending_source_edit(), parent))
                 })?;

@@ -25,6 +25,8 @@ pub use factory::{AdmittedPolicyCreation, PolicyCreation, PolicyCreationError, P
 pub use provider::{PolicyListCapacity, PolicyListError, PolicyProcessor};
 #[cfg(feature = "document-scripting")]
 pub(crate) use reports::attribute_sink_name;
+#[cfg(feature = "document-scripting")]
+pub(crate) use reports::prepare_style_violation;
 pub use reports::{ReportError, ViolationReport};
 
 /// The source and disposition of one delivered CSP policy.
@@ -39,7 +41,7 @@ pub enum PolicyDelivery {
 }
 
 impl PolicyDelivery {
-    fn enforces(self) -> bool {
+    pub(crate) fn enforces(self) -> bool {
         self != Self::ReportOnlyHeader
     }
 
@@ -68,7 +70,7 @@ impl Policy {
         nonce: &surgeist_dom::DomStyleNonceContent,
         hashes: &mut style_hash::StyleHashes<'_>,
         step: &mut impl FnMut() -> Result<(), E>,
-    ) -> Result<Option<bool>, E> {
+    ) -> Result<Option<(bool, bool)>, E> {
         let serialized =
             HtmlCspSerializedPolicy::new(self.serialized.code_units(), self.delivery.source());
         for name in [b"style-src-elem".as_slice(), b"style-src", b"default-src"] {
@@ -79,6 +81,7 @@ impl Policy {
             let mut allows_inline = false;
             let mut has_credential = false;
             let mut unavailable = false;
+            let mut report_sample = false;
             while let Some(token) = values.next_with(step)? {
                 if let Some(value) = inline_credential(token, b"'nonce-", step)? {
                     has_credential = true;
@@ -86,7 +89,7 @@ impl Policy {
                         surgeist_dom::DomStyleNonceContent::Present(nonce)
                             if matching_nonce(value, nonce.code_units(), step)? =>
                         {
-                            return Ok(Some(true));
+                            return Ok(Some((true, false)));
                         }
                         surgeist_dom::DomStyleNonceContent::TokenizerHistoryUnavailable => {
                             unavailable = true;
@@ -98,17 +101,18 @@ impl Policy {
                         if let Some(value) = inline_credential(token, algorithm.prefix(), step)? {
                             has_credential = true;
                             if hashes.matches(algorithm, value, step)? {
-                                return Ok(Some(true));
+                                return Ok(Some((true, false)));
                             }
                             break;
                         }
                     }
                 }
                 allows_inline |= keyword(token, b"'unsafe-inline'");
+                report_sample |= keyword(token, b"'report-sample'");
             }
-            return Ok((!unavailable).then_some(allows_inline && !has_credential));
+            return Ok((!unavailable).then_some((allows_inline && !has_credential, report_sample)));
         }
-        Ok(Some(true))
+        Ok(Some((true, false)))
     }
 
     /// Select the first occurrence of each directive in an individual CSP.
@@ -294,6 +298,8 @@ pub enum Directive {
     RequireTrustedTypesFor,
     /// `trusted-types` on a policy factory invocation.
     TrustedTypes,
+    /// `style-src-elem` is the effective directive for an inline Style element.
+    StyleSrcElem,
 }
 
 /// One ordered CSP violation candidate. The Global's report owner provides

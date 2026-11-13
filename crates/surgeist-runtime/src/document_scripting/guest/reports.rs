@@ -23,6 +23,9 @@ pub(crate) enum ViolationBacking {
     Attribute {
         _backing: surgeist_dom::DomSourceAttributePayloadRetention,
     },
+    Style {
+        _backing: surgeist_dom::DomStyleCspRetention,
+    },
 }
 
 /// The native Window and its associated Document at violation formation.
@@ -35,11 +38,16 @@ pub(super) struct ViolationOrigin {
 /// The immutable report and its original admission, shared by its task and Event.
 pub(crate) struct QueuedViolation {
     report: ViolationReport<ViolationBacking>,
+    element: Option<surgeist_dom::NodeId>,
 }
 
 impl QueuedViolation {
     pub(crate) fn report(&self) -> &ViolationReport<ViolationBacking> {
         &self.report
+    }
+
+    pub(crate) fn element(&self) -> Option<surgeist_dom::NodeId> {
+        self.element
     }
 }
 
@@ -60,6 +68,23 @@ impl ViolationQueue {
         mut reserve: impl FnMut(usize, usize) -> Result<ViolationBacking, DocumentGuestEventError>,
         charge_copy: impl FnOnce(u64) -> Result<(), DocumentGuestEventError>,
     ) -> Result<ViolationBacking, DocumentGuestEventError> {
+        Self::admit_batch(queue, origin, 1, &mut reserve, charge_copy)?;
+        reserve(Self::record_bytes(bytes)?, bytes / size_of::<u16>())
+    }
+
+    pub(super) fn record_bytes(bytes: usize) -> Result<usize, DocumentScriptNativeError> {
+        bytes
+            .checked_add(size_of::<QueuedViolation>() + 2 * size_of::<usize>())
+            .ok_or(DocumentScriptNativeError::StorageLimit)
+    }
+
+    pub(super) fn admit_batch(
+        queue: &mut Option<Box<Self>>,
+        origin: ViolationOrigin,
+        count: usize,
+        reserve: &mut impl FnMut(usize, usize) -> Result<ViolationBacking, DocumentGuestEventError>,
+        charge_copy: impl FnOnce(u64) -> Result<(), DocumentGuestEventError>,
+    ) -> Result<(), DocumentGuestEventError> {
         if queue.is_none() {
             let header = reserve(size_of::<Self>(), 0)?;
             *queue = Some(Box::new(Self {
@@ -75,22 +100,21 @@ impl ViolationQueue {
         if queue.origin != origin {
             return Err(DocumentScriptNativeError::ForeignPermit.into());
         }
-        queue.reserve(&mut reserve, charge_copy)?;
-        let allocation = size_of::<QueuedViolation>() + 2 * size_of::<usize>();
-        reserve(
-            bytes
-                .checked_add(allocation)
-                .ok_or(DocumentScriptNativeError::StorageLimit)?,
-            bytes / size_of::<u16>(),
-        )
+        queue.reserve(count, reserve, charge_copy)
     }
 
     fn reserve(
         &mut self,
+        count: usize,
         reserve: &mut impl FnMut(usize, usize) -> Result<ViolationBacking, DocumentGuestEventError>,
         charge_copy: impl FnOnce(u64) -> Result<(), DocumentGuestEventError>,
     ) -> Result<(), DocumentGuestEventError> {
-        if self.reports.len() < self.reports.capacity() {
+        let needed = self
+            .reports
+            .len()
+            .checked_add(count)
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        if needed <= self.reports.capacity() {
             return Ok(());
         }
         let capacity = self
@@ -98,7 +122,7 @@ impl ViolationQueue {
             .capacity()
             .checked_mul(2)
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?
-            .max(1);
+            .max(needed);
         let bytes = capacity
             .checked_mul(size_of::<Rc<QueuedViolation>>())
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
@@ -121,7 +145,23 @@ impl ViolationQueue {
     }
 
     pub(super) fn push(&mut self, report: ViolationReport<ViolationBacking>) {
-        self.reports.push_back(Rc::new(QueuedViolation { report }));
+        self.reports.push_back(Rc::new(QueuedViolation {
+            report,
+            element: None,
+        }));
+    }
+
+    pub(super) fn push_style(
+        &mut self,
+        element: surgeist_dom::NodeId,
+        reports: Vec<ViolationReport<ViolationBacking>>,
+    ) {
+        self.reports.extend(reports.into_iter().map(|report| {
+            Rc::new(QueuedViolation {
+                report,
+                element: Some(element),
+            })
+        }));
     }
 
     pub(super) fn head(&self) -> Option<Rc<QueuedViolation>> {
