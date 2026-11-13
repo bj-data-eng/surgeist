@@ -258,6 +258,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     inline_style::guest_style_update_matches_the_exact_nonce();
     inline_style::guest_style_hashes_exact_utf16_source();
     inline_style::guest_style_violations_retarget_at_dispatch();
+    inline_style::character_data_edit_in_a_native_listener_settles_style_before_return();
     trusted_attribute::guest_meta_without_processor_preserves_original_source();
     trusted_attribute::guest_meta_retry_preserves_accepted_first_policy();
     trusted_attribute::guest_attribute_policy_keeps_original_authority_after_adoption();

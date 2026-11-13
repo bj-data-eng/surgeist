@@ -11,8 +11,7 @@ pub(super) fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
     guest_insertion(None, None, true);
 }
 
-#[test]
-fn character_data_edit_in_a_native_listener_settles_style_before_return() {
+pub(super) fn character_data_edit_in_a_native_listener_settles_style_before_return() {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target, dialog) = hosted_element(&cancel, "dialog");
     let document = target.document();
