@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use super::{
     AlignContent, AlignItems, AspectRatioOf, AxisSizingRequestOf, BaselinesOf, BoxSizing, Compute,
     ComputeInputOf, ComputeOutputOf, ContainingLayoutContext, Direction, Edges, FlexDirection,
@@ -34,7 +36,8 @@ mod items;
 mod lines;
 mod scroll;
 
-use absolute::{layout_absolute_children, layout_hidden_children};
+pub(crate) use absolute::AbsoluteChild;
+use absolute::{AbsoluteChildren, layout_hidden_children};
 use alignment::{
     align_items_on_cross_axis, align_lines_on_cross_axis, alignment_fallback_from_sign,
     first_final_vertical_baseline, last_final_vertical_baseline, line_cross_size, line_free_space,
@@ -48,16 +51,16 @@ use intrinsic::{
     intrinsic_content_main_size, resolved_cross_layout_constants, resolved_layout_constants,
 };
 use items::{
-    CollectedFlexItem, ResolvedFlexItem, collect_items, compute_sized_item, final_layout,
-    has_eligible_items, recollect_items,
+    CollectedFlexItem, FinalFlexItem, ResolvedFlexItem, collect_items, compute_sized_item,
+    final_layout, has_eligible_items, recollect_items,
 };
 use lines::{
     CollapsedFlexStruts, FlexLine, FlexLineCollectionRound, collect_flex_lines,
     flex_line_collection_size,
 };
 use scroll::{
-    flex_container_scroll_box, flex_container_scroll_geometry, flex_scroll_contribution_error,
-    flex_scroll_contributions, retain_flex_scroll_geometry,
+    FlexChildContribution, flex_container_scroll_box, flex_container_scroll_geometry,
+    flex_scroll_contribution_error, flex_scroll_contributions, retain_flex_scroll_geometry,
 };
 
 /// When a row owns its preferred inline size, retain any intrinsic cross
@@ -128,17 +131,58 @@ pub(crate) fn compute_flex<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
+    let mut computation = match begin_flex_computation(tree, node, input)? {
+        ControlFlow::Break(output) => return Ok(output),
+        ControlFlow::Continue(computation) => computation,
+    };
+    loop {
+        match computation.advance(tree)? {
+            ControlFlow::Break(output) => return Ok(output),
+            ControlFlow::Continue(child) => {
+                let output = tree.compute_child(child.node, child.input)?;
+                computation.accept_child(tree, child, output)?;
+            }
+        }
+    }
+}
+
+pub(crate) struct FlexComputation<Node, S: LayoutScalar> {
+    node: Node,
+    input: ComputeInputOf<S>,
+    pass_input: ComputeInputOf<S>,
+    contained_size: Size<Option<S>>,
+    pass: Option<FlexPass<Node, S>>,
+}
+
+type FlexStart<Node, S, M> =
+    LayoutResultOf<Node, ControlFlow<ComputeOutputOf<S>, FlexComputation<Node, S>>, S, M>;
+type FlexStep<Node, S, M> =
+    LayoutResultOf<Node, ControlFlow<ComputeOutputOf<S>, AbsoluteChild<Node, S>>, S, M>;
+type FlexPassStart<Node, S, M> =
+    LayoutResultOf<Node, ControlFlow<ComputeOutputOf<S>, FlexPass<Node, S>>, S, M>;
+
+pub(crate) fn begin_flex_computation<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: ComputeInputOf<Tree::Scalar>,
+) -> FlexStart<Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
     let style = tree.node_input(node);
     let containment = size_containment(style);
     let contained_size = if containment != crate::SizeContainment::None {
         let empty = compute_empty_box(node, style, |probe| {
-            compute_flex_inner(probe, node, empty_sizing_input(input), Size::NONE)
+            match begin_flex_pass(probe, node, empty_sizing_input(input), Size::NONE)? {
+                ControlFlow::Break(output) => Ok(output),
+                ControlFlow::Continue(_) => unreachable!("empty sizing does not perform placement"),
+            }
         })?;
         if containment == crate::SizeContainment::BothAxes
             && !input.run_mode().is_perform_layout()
             && !input.requires_content_baseline()
         {
-            return Ok(empty);
+            return Ok(ControlFlow::Break(empty));
         }
         contained_outer_size(
             containment,
@@ -148,35 +192,97 @@ where
     } else {
         Size::NONE
     };
-    let mut pass_input = input;
-    loop {
-        let output =
-            compute_flex_inner::<Tree, Tree::Scalar, M>(tree, node, pass_input, contained_size)?;
-        if !input.run_mode().is_perform_layout() {
-            return Ok(output);
+    Ok(ControlFlow::Continue(FlexComputation {
+        node,
+        input,
+        pass_input: input,
+        contained_size,
+        pass: None,
+    }))
+}
+
+impl<Node: Copy, S: LayoutScalar> FlexComputation<Node, S> {
+    pub(crate) fn request(&self) -> (Node, ComputeInputOf<S>) {
+        (self.node, self.input)
+    }
+
+    pub(crate) fn advance<'input, Tree, M>(&mut self, tree: &mut Tree) -> FlexStep<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            let output = if let Some(pass) = self.pass.as_mut() {
+                if let Some(child) = pass.absolute.next_child(tree)? {
+                    return Ok(ControlFlow::Continue(child));
+                }
+                self.pass.take().expect("active Flex pass").finish(
+                    tree,
+                    self.node,
+                    self.pass_input,
+                )?
+            } else {
+                match begin_flex_pass(tree, self.node, self.pass_input, self.contained_size)? {
+                    ControlFlow::Break(output) => output,
+                    ControlFlow::Continue(pass) => {
+                        self.pass = Some(pass);
+                        continue;
+                    }
+                }
+            };
+            if !self.input.run_mode().is_perform_layout() {
+                return Ok(ControlFlow::Break(output));
+            }
+            let Some(geometry) = output.scroll_geometry else {
+                return Ok(ControlFlow::Break(output));
+            };
+            let current = self.pass_input.settled_auto_scrollbars();
+            let next = current.transition(geometry);
+            if current == next
+                || !crate::scroll::settled_auto_scrollbars_change_available_geometry(geometry, next)
+                    .map_err(|error| {
+                        layout_own_geometry_error(self.node, self.input.run_mode(), error)
+                    })?
+            {
+                return Ok(ControlFlow::Break(output));
+            }
+            self.pass_input = self.pass_input.with_settled_auto_scrollbars(next);
         }
-        let Some(geometry) = output.scroll_geometry else {
-            return Ok(output);
-        };
-        let next_state = pass_input.settled_auto_scrollbars().transition(geometry);
-        if next_state == pass_input.settled_auto_scrollbars()
-            || !crate::scroll::settled_auto_scrollbars_change_available_geometry(
-                geometry, next_state,
-            )
-            .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?
-        {
-            return Ok(output);
-        }
-        pass_input = input.with_settled_auto_scrollbars(next_state);
+    }
+
+    pub(crate) fn accept_child<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        child: AbsoluteChild<Node, S>,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let pass = self.pass.as_mut().expect("active Flex pass");
+        let contribution = pass.absolute.accept_child(tree, self.node, child, output)?;
+        pass.absolute_contributions.push(contribution);
+        Ok(())
     }
 }
 
-fn compute_flex_inner<'input, Tree, S, M>(
+struct FlexPass<Node, S: LayoutScalar> {
+    absolute: AbsoluteChildren<Node, S>,
+    absolute_contributions: Vec<FlexChildContribution<S>>,
+    layout_constants: Constants<S>,
+    final_scroll_box: CanonicalScrollBoxOf<S>,
+    final_items: Vec<FinalFlexItem<Node, S>>,
+    lines: Vec<FlexLine<S>>,
+    sizes: FlexContainerSizes<S>,
+    used_overflow: crate::scroll::UsedOverflow,
+    no_eligible_items: bool,
+}
+
+fn begin_flex_pass<'input, Tree, S, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<S>,
     contained_size: Size<Option<S>>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<S>, S, M>
+) -> FlexPassStart<Tree::Node, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
@@ -206,7 +312,7 @@ where
         let output = ComputeOutputOf::<S>::from_outer_size(Size::new(width, height));
         // A requested named fact needs the actual eligible item set even when
         // known dimensions make child layout unnecessary.
-        return Ok(
+        return Ok(ControlFlow::Break(
             if input.named_baseline_demand() != crate::output::NamedBaselineDemand::None
                 && !has_eligible_items::<Tree, M>(tree, node)
             {
@@ -214,7 +320,7 @@ where
             } else {
                 output
             },
-        );
+        ));
     }
 
     let requested_inline_operation = constants
@@ -310,7 +416,8 @@ where
         sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
         final_scroll_box = scroll_box_for(tree, &layout_constants, sizes.output)?;
     }
-    let (absolute_contributions, final_items) = if input.run_mode().is_perform_layout() {
+    let no_eligible_items = collected_items.is_empty();
+    if input.run_mode().is_perform_layout() {
         let inset_basis = crate::output::MeasuredInsetBasisOf::from_used_content_size(
             final_scroll_box.content_box().size(),
         );
@@ -322,24 +429,76 @@ where
             &layout_constants,
             inset_basis,
         )?;
-        let absolute_contributions =
-            layout_absolute_children(tree, node, &layout_constants, final_scroll_box)?;
+        let absolute = AbsoluteChildren::begin(tree, node, &layout_constants, final_scroll_box)?;
+        return Ok(ControlFlow::Continue(FlexPass {
+            absolute,
+            absolute_contributions: Vec::new(),
+            layout_constants,
+            final_scroll_box,
+            final_items,
+            lines,
+            sizes,
+            used_overflow,
+            no_eligible_items,
+        }));
+    }
+    let baselines =
+        resolved_vertical_baselines(&resolved_items, &lines, &layout_constants, |item| {
+            if input.physical_baseline_demand() {
+                with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
+                    compute_sized_item(tree, item, &style, &layout_constants, RunMode::ComputeSize)
+                        .map(Some)
+                })
+            } else {
+                Ok(None)
+            }
+        })?;
+    DistributionNumber::finite(layout_constants.axes.main_size(sizes.intrinsic_content)).map_err(
+        |value| {
+            crate::error::sizing_resolution_error(
+                node,
+                LengthResolutionStatus::InvalidNumeric { value }.into(),
+            )
+        },
+    )?;
+    flex_output(
+        node,
+        sizes.output,
+        sizes.intrinsic_content,
+        baselines,
+        used_overflow.is_scroll_container(),
+        no_eligible_items,
+    )
+    .map(ControlFlow::Break)
+}
+
+impl<Node: Copy, S: LayoutScalar> FlexPass<Node, S> {
+    fn finish<'input, Tree, M>(
+        self,
+        tree: &mut Tree,
+        node: Node,
+        input: ComputeInputOf<S>,
+    ) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Self {
+            absolute: _,
+            absolute_contributions,
+            layout_constants,
+            final_scroll_box,
+            final_items,
+            lines,
+            sizes,
+            used_overflow,
+            no_eligible_items,
+        } = self;
         layout_hidden_children(
             tree,
             node,
             layout_constants.axes.flow_axes(),
             layout_constants.settled_auto_scrollbars,
         )?;
-        (absolute_contributions, Some(final_items))
-    } else {
-        (Vec::new(), None)
-    };
-
-    let mut final_geometry_and_content_size = None;
-    if input.run_mode().is_perform_layout() {
-        let final_items = final_items
-            .as_deref()
-            .expect("performed flex layout retains its final in-flow items");
         let scroll_box = final_scroll_box;
         let range_error = |error| {
             flex_scroll_contribution_error(
@@ -350,7 +509,7 @@ where
             )
         };
         let mut contributions = flex_scroll_contributions(
-            final_items,
+            &final_items,
             &absolute_contributions,
             &lines,
             &layout_constants,
@@ -376,44 +535,34 @@ where
         let content_size = contributions
             .content_size_from_anchor(scroll_geometry.content_box().origin())
             .map_err(range_error)?;
-        final_geometry_and_content_size = Some((scroll_geometry, content_size));
+        let baselines = BaselinesOf {
+            first: first_final_vertical_baseline(&final_items, &lines, &layout_constants)
+                .unwrap_or(Point::NONE),
+            last: last_final_vertical_baseline(&final_items, &lines, &layout_constants)
+                .unwrap_or(Point::NONE),
+        };
+        let output = flex_output(
+            node,
+            sizes.output,
+            content_size,
+            baselines,
+            used_overflow.is_scroll_container(),
+            no_eligible_items,
+        )?;
+        Ok(retain_flex_scroll_geometry(output, scroll_geometry))
     }
-    let baselines = if let Some(items) = final_items.as_deref() {
-        BaselinesOf {
-            first: first_final_vertical_baseline(items, &lines, &layout_constants)
-                .unwrap_or(Point::NONE),
-            last: last_final_vertical_baseline(items, &lines, &layout_constants)
-                .unwrap_or(Point::NONE),
-        }
-    } else {
-        resolved_vertical_baselines(&resolved_items, &lines, &layout_constants, |item| {
-            if input.physical_baseline_demand() {
-                with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
-                    compute_sized_item(tree, item, &style, &layout_constants, RunMode::ComputeSize)
-                        .map(Some)
-                })
-            } else {
-                Ok(None)
-            }
-        })?
-    };
-    let content_size = if input.run_mode().is_perform_layout() {
-        final_geometry_and_content_size
-            .as_ref()
-            .expect("perform-layout flex output requires accumulated content extent")
-            .1
-    } else {
-        DistributionNumber::finite(layout_constants.axes.main_size(sizes.intrinsic_content))
-            .map_err(|value| {
-                crate::error::sizing_resolution_error(
-                    node,
-                    LengthResolutionStatus::InvalidNumeric { value }.into(),
-                )
-            })?;
-        sizes.intrinsic_content
-    };
-    let baselines = if used_overflow.is_scroll_container() {
-        baselines.clamped_to_border(sizes.output).map_err(
+}
+
+fn flex_output<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    size: Size<S>,
+    content_size: Size<S>,
+    baselines: BaselinesOf<S>,
+    is_scroll_container: bool,
+    no_eligible_items: bool,
+) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M> {
+    let baselines = if is_scroll_container {
+        baselines.clamped_to_border(size).map_err(
             |crate::FiniteScalarErrorOf::NonFinite { value }| {
                 crate::error::value_resolution_error(
                     node,
@@ -424,19 +573,15 @@ where
     } else {
         baselines
     };
-    let output = ComputeOutputOf::from_sizes_and_baselines(sizes.output, content_size, baselines);
+    let output = ComputeOutputOf::from_sizes_and_baselines(size, content_size, baselines);
     // Inspect the original eligible collection, not the resolved lines: a
     // nonempty collection of collapsed items is not proof of named absence.
-    let output = if collected_items.is_empty() {
+    let output = if no_eligible_items {
         output.with_named_baselines(crate::NamedBaselinesOf::absent())
     } else {
         output
     };
-    Ok(
-        final_geometry_and_content_size.map_or(output, |(scroll_geometry, _)| {
-            retain_flex_scroll_geometry(output, scroll_geometry)
-        }),
-    )
+    Ok(output)
 }
 
 fn settle_own_ratio_cross<'input, Tree, S, M>(

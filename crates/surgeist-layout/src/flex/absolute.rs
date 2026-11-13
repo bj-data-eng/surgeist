@@ -1,8 +1,7 @@
 use super::alignment::{alignment_fallback, alignment_offset};
 use super::input::{with_flex_item_projection, with_flex_item_scroll_projections};
 use super::scroll::{
-    FlexChildContribution, FlexChildContributionsResult, retain_flex_scroll_geometry,
-    retained_flex_child_scroll_geometry,
+    FlexChildContribution, retain_flex_scroll_geometry, retained_flex_child_scroll_geometry,
 };
 use super::{Constants, resolve_auto_optional, resolve_length_or_zero};
 use crate::error::{SizingAlgorithm, layout_child_geometry_error};
@@ -23,170 +22,215 @@ use crate::{
     Position, RequestedAxis, RunMode, Size, SizingMode, Traverse,
 };
 
-pub(super) fn layout_absolute_children<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    constants: &Constants<Tree::Scalar>,
-    final_scroll_box: CanonicalScrollBoxOf<Tree::Scalar>,
-) -> FlexChildContributionsResult<Tree, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let settled_constants = constants.with_final_scroll_box(final_scroll_box);
-    let constants = &settled_constants;
-    let children = tree.children(node).collect::<Vec<_>>();
-    let mut contributions = Vec::new();
-    let scroll_progressions = constants
-        .axes
-        .scroll_origin_axes()
-        .scrollable_progressions(constants.flow_axes, final_scroll_box.used_overflow());
-    let absolute_containing_size = final_scroll_box.scrollport().size();
-    let inset_relative_size = absolute_containing_size.map(Some);
-    let available = crate::layout_math::transpose_axis_requests_at_node(
-        node,
-        absolute_containing_size.map(|value| {
-            crate::layout_math::checked_available_space(value)
-                .map(|space| AxisSizingRequestOf::new(space, crate::SizingOperation::Normal))
-        }),
-    )?;
+pub(super) struct AbsoluteChildren<Node, S: LayoutScalar> {
+    children: std::iter::Enumerate<std::vec::IntoIter<Node>>,
+    constants: Constants<S>,
+    containing_size: Size<S>,
+    available: Size<AxisSizingRequestOf<S>>,
+    scroll_progressions: LogicalSizeOf<Option<crate::scroll::ScrollOriginProgression>>,
+}
 
-    for (source_index, child) in children.into_iter().enumerate() {
-        let contribution = with_flex_item_projection::<Tree, M, _>(tree, child, |tree, style| {
-            if style.common.position != Position::Absolute || style.display == crate::Display::None
-            {
-                return Ok(None);
-            }
-            let padding = constants
-                .flow_axes
-                .zip_physical_edges_with_inline_extent(
-                    *style.common.padding,
-                    inset_relative_size,
-                    resolve_length_or_zero,
-                )
-                .transpose_with_node(tree, child)?;
-            let border = constants
-                .flow_axes
-                .zip_physical_edges_with_inline_extent(
-                    *style.common.border,
-                    inset_relative_size,
-                    resolve_length_or_zero,
-                )
-                .transpose_with_node(tree, child)?;
-            let margin = constants
-                .flow_axes
-                .zip_physical_edges_with_inline_extent(
-                    *style.common.margin,
-                    inset_relative_size,
-                    resolve_auto_optional,
-                )
-                .transpose_with_node(tree, child)?;
-            let padding_border_size = (padding + border).sum_axes();
-            let child_owned_preferred_axes =
-                crate::flex::child_preferred_axes::<Tree, M>(tree, child);
-            let used_size = PositionedUsedSize::resolve(PositionedSizeDeclarations {
-                preferred: resolve_child_preferred_size(
-                    style.common.size,
-                    inset_relative_size,
-                    SizingAlgorithm::Positioned,
+pub(crate) struct AbsoluteChild<Node, S: LayoutScalar> {
+    pub(crate) node: Node,
+    pub(crate) input: ComputeInputOf<S>,
+    source_index: usize,
+    padding: Edges<S>,
+    border: Edges<S>,
+    margin: Edges<Option<S>>,
+    used_size: PositionedUsedSize<S>,
+    known_size: Size<Option<S>>,
+    resolved_inset: Edges<Option<S>>,
+    inset: Edges<Option<S>>,
+    alignment: LogicalSizeOf<Option<AlignItems>>,
+    align_self: AlignItems,
+}
+
+type NextAbsoluteChild<Node, S, M> = LayoutResultOf<Node, Option<AbsoluteChild<Node, S>>, S, M>;
+
+impl<Node: Copy, S: LayoutScalar> AbsoluteChildren<Node, S> {
+    pub(super) fn begin<'input, Tree, M>(
+        tree: &Tree,
+        node: Node,
+        constants: &Constants<S>,
+        final_scroll_box: CanonicalScrollBoxOf<S>,
+    ) -> LayoutResultOf<Node, Self, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let constants = constants.with_final_scroll_box(final_scroll_box);
+        let children = tree
+            .children(node)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .enumerate();
+        let scroll_progressions = constants
+            .axes
+            .scroll_origin_axes()
+            .scrollable_progressions(constants.flow_axes, final_scroll_box.used_overflow());
+        let containing_size = final_scroll_box.scrollport().size();
+        let available = crate::layout_math::transpose_axis_requests_at_node(
+            node,
+            containing_size.map(|value| {
+                crate::layout_math::checked_available_space(value)
+                    .map(|space| AxisSizingRequestOf::new(space, crate::SizingOperation::Normal))
+            }),
+        )?;
+        Ok(Self {
+            children,
+            constants,
+            containing_size,
+            available,
+            scroll_progressions,
+        })
+    }
+
+    pub(super) fn next_child<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+    ) -> NextAbsoluteChild<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let constants = &self.constants;
+        let absolute_containing_size = self.containing_size;
+        let inset_relative_size = absolute_containing_size.map(Some);
+        let available = self.available;
+        for (source_index, child) in self.children.by_ref() {
+            let prepared = with_flex_item_projection::<Tree, M, _>(tree, child, |tree, style| {
+                if style.common.position != Position::Absolute
+                    || style.display == crate::Display::None
+                {
+                    return Ok(None);
+                }
+                let padding = constants
+                    .flow_axes
+                    .zip_physical_edges_with_inline_extent(
+                        *style.common.padding,
+                        inset_relative_size,
+                        resolve_length_or_zero,
+                    )
+                    .transpose_with_node(tree, child)?;
+                let border = constants
+                    .flow_axes
+                    .zip_physical_edges_with_inline_extent(
+                        *style.common.border,
+                        inset_relative_size,
+                        resolve_length_or_zero,
+                    )
+                    .transpose_with_node(tree, child)?;
+                let margin = constants
+                    .flow_axes
+                    .zip_physical_edges_with_inline_extent(
+                        *style.common.margin,
+                        inset_relative_size,
+                        resolve_auto_optional,
+                    )
+                    .transpose_with_node(tree, child)?;
+                let padding_border_size = (padding + border).sum_axes();
+                let child_owned_preferred_axes =
+                    crate::flex::child_preferred_axes::<Tree, M>(tree, child);
+                let used_size = PositionedUsedSize::resolve(PositionedSizeDeclarations {
+                    preferred: resolve_child_preferred_size(
+                        style.common.size,
+                        inset_relative_size,
+                        SizingAlgorithm::Positioned,
+                        child_owned_preferred_axes,
+                    )
+                    .transpose_with_node(tree, child)?,
                     child_owned_preferred_axes,
-                )
-                .transpose_with_node(tree, child)?,
-                child_owned_preferred_axes,
-                min: Size::new(
-                    resolve_minimum_optional(
-                        &style.common.min_size.width,
-                        SizingAlgorithm::Positioned,
-                        PhysicalAxis::Horizontal,
-                        inset_relative_size.width,
-                        true,
-                    ),
-                    resolve_minimum_optional(
-                        &style.common.min_size.height,
-                        SizingAlgorithm::Positioned,
-                        PhysicalAxis::Vertical,
-                        inset_relative_size.height,
-                        true,
-                    ),
-                )
-                .transpose_with_node(tree, child)?,
-                max: Size::new(
-                    resolve_maximum_optional(
-                        &style.common.max_size.width,
-                        SizingAlgorithm::Positioned,
-                        PhysicalAxis::Horizontal,
-                        inset_relative_size.width,
-                        true,
-                    ),
-                    resolve_maximum_optional(
-                        &style.common.max_size.height,
-                        SizingAlgorithm::Positioned,
-                        PhysicalAxis::Vertical,
-                        inset_relative_size.height,
-                        true,
-                    ),
-                )
-                .transpose_with_node(tree, child)?,
-                aspect_ratio: *style.common.aspect_ratio,
-                box_sizing: style.common.box_sizing,
-                padding_border: padding_border_size,
-            });
-            let mut known_size = used_size.preferred;
+                    min: Size::new(
+                        resolve_minimum_optional(
+                            &style.common.min_size.width,
+                            SizingAlgorithm::Positioned,
+                            PhysicalAxis::Horizontal,
+                            inset_relative_size.width,
+                            true,
+                        ),
+                        resolve_minimum_optional(
+                            &style.common.min_size.height,
+                            SizingAlgorithm::Positioned,
+                            PhysicalAxis::Vertical,
+                            inset_relative_size.height,
+                            true,
+                        ),
+                    )
+                    .transpose_with_node(tree, child)?,
+                    max: Size::new(
+                        resolve_maximum_optional(
+                            &style.common.max_size.width,
+                            SizingAlgorithm::Positioned,
+                            PhysicalAxis::Horizontal,
+                            inset_relative_size.width,
+                            true,
+                        ),
+                        resolve_maximum_optional(
+                            &style.common.max_size.height,
+                            SizingAlgorithm::Positioned,
+                            PhysicalAxis::Vertical,
+                            inset_relative_size.height,
+                            true,
+                        ),
+                    )
+                    .transpose_with_node(tree, child)?,
+                    aspect_ratio: *style.common.aspect_ratio,
+                    box_sizing: style.common.box_sizing,
+                    padding_border: padding_border_size,
+                });
+                let mut known_size = used_size.preferred;
 
-            let resolved_inset = style
-                .common
-                .inset
-                .zip_size(inset_relative_size, |length, basis| {
-                    resolve_auto_optional(length, basis)
-                })
-                .transpose_with_node(tree, child)?;
+                let resolved_inset = style
+                    .common
+                    .inset
+                    .zip_size(inset_relative_size, |length, basis| {
+                        resolve_auto_optional(length, basis)
+                    })
+                    .transpose_with_node(tree, child)?;
 
-            let inset = floor_absolute_definite_insets(
-                resolved_inset,
-                absolute_containing_size,
-                constants.flow_axes,
-            );
+                let inset = floor_absolute_definite_insets(
+                    resolved_inset,
+                    absolute_containing_size,
+                    constants.flow_axes,
+                );
 
-            let child_input = tree.node_input(child);
-            let alignment = LogicalSizeOf::new(child_input.justify_self, child_input.align_self);
-            let inset_extents =
-                absolute_inset_extents(inset, absolute_containing_size, constants.flow_axes);
-            let (stretch, remaining_ratio) = absolute_stretch_fit_sizes(
-                inset,
-                margin,
-                inset_extents,
-                constants.flow_axes.physical_size(alignment),
-                child_input,
-                padding_border_size,
-            );
-            let stretch = used_size.automatic_stretch(stretch);
-            if known_size.width.is_none()
-                && let Some(stretch_width) = stretch.width
-            {
-                known_size.width = Some(stretch_width);
-                known_size =
-                    used_size.clamp_optional(used_size.transfer_ratio(known_size, remaining_ratio));
-            }
-            if known_size.height.is_none()
-                && let Some(stretch_height) = stretch.height
-            {
-                known_size.height = Some(stretch_height);
-                known_size =
-                    used_size.clamp_optional(used_size.transfer_ratio(known_size, remaining_ratio));
-            }
-            known_size = used_size.clamp_optional(known_size);
-            let available = crate::layout_math::transpose_axis_requests_at_node(
-                child,
-                absolute_inset_child_axes(
-                    available,
-                    inset_extents,
+                let child_input = tree.node_input(child);
+                let alignment =
+                    LogicalSizeOf::new(child_input.justify_self, child_input.align_self);
+                let inset_extents =
+                    absolute_inset_extents(inset, absolute_containing_size, constants.flow_axes);
+                let (stretch, remaining_ratio) = absolute_stretch_fit_sizes(
+                    inset,
                     margin,
-                    tree.has_leaf_measurement(child),
-                ),
-            )?;
-
-            let output = tree.compute_child(
-                child,
-                ComputeInputOf::for_child(
+                    inset_extents,
+                    constants.flow_axes.physical_size(alignment),
+                    child_input,
+                    padding_border_size,
+                );
+                let stretch = used_size.automatic_stretch(stretch);
+                if known_size.width.is_none()
+                    && let Some(stretch_width) = stretch.width
+                {
+                    known_size.width = Some(stretch_width);
+                    known_size = used_size
+                        .clamp_optional(used_size.transfer_ratio(known_size, remaining_ratio));
+                }
+                if known_size.height.is_none()
+                    && let Some(stretch_height) = stretch.height
+                {
+                    known_size.height = Some(stretch_height);
+                    known_size = used_size
+                        .clamp_optional(used_size.transfer_ratio(known_size, remaining_ratio));
+                }
+                known_size = used_size.clamp_optional(known_size);
+                let available = crate::layout_math::transpose_axis_requests_at_node(
+                    child,
+                    absolute_inset_child_axes(
+                        available,
+                        inset_extents,
+                        margin,
+                        tree.has_leaf_measurement(child),
+                    ),
+                )?;
+                let input = ComputeInputOf::for_child(
                     RunMode::PerformLayout,
                     SizingMode::InherentSize,
                     RequestedAxis::Both,
@@ -206,84 +250,127 @@ where
                             ),
                         ),
                 )
-                .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
-            )?;
-            let final_size = used_size.clamp(known_size.unwrap_or(output.size));
-            let inset_alignment = absolute_inset_alignment_offsets(
-                resolved_inset,
-                margin,
-                final_size,
-                absolute_containing_size,
-                constants.flow_axes,
-                alignment,
-                scroll_progressions,
-            );
-            let margin = resolve_absolute_margins(
-                margin,
-                inset,
-                final_size,
-                absolute_containing_size,
-                constants.flow_axes,
-            );
-            let location = absolute_location(
-                final_size,
-                margin,
-                inset,
-                inset_alignment,
-                style.align_self.unwrap_or(constants.align_items),
-                constants,
-            );
-            let scroll_geometry = with_flex_item_scroll_projections::<Tree, M, _>(
-                tree,
-                child,
-                |scroll_box, scroll_target| {
-                    retained_flex_child_scroll_geometry(
-                        scroll_box,
-                        scroll_target,
-                        final_size,
-                        output.content_size,
-                        padding,
-                        border,
-                        output.scroll_geometry,
-                    )
-                },
-            )
-            .map_err(|error| layout_child_geometry_error(node, child, error))?;
-            let output = retain_flex_scroll_geometry(output, scroll_geometry);
-
-            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-                child,
-                crate::output::NormalGeometryOf::box_geometry(
-                    location,
-                    final_size,
-                    scroll_geometry.content_box(),
-                ),
-                NodeOutputOf::<Tree::Scalar> {
-                    source_index: crate::SourceIndex::new(source_index),
-                    location,
-                    size: final_size,
-                    named_baselines: output.named_baselines,
-                    content_size: output.content_size,
-                    border,
+                .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars);
+                Ok(Some(AbsoluteChild {
+                    node: child,
+                    input,
+                    source_index,
                     padding,
+                    border,
                     margin,
-                    ..NodeOutputOf::new()
-                }
-                .with_scroll_geometry(Some(scroll_geometry)),
-            ));
-            Ok(Some(FlexChildContribution {
+                    used_size,
+                    known_size,
+                    resolved_inset,
+                    inset,
+                    alignment,
+                    align_self: style.align_self.unwrap_or(constants.align_items),
+                }))
+            })?;
+            if prepared.is_some() {
+                return Ok(prepared);
+            }
+        }
+        Ok(None)
+    }
+
+    pub(super) fn accept_child<'input, Tree, M>(
+        &self,
+        tree: &mut Tree,
+        node: Node,
+        request: AbsoluteChild<Node, S>,
+        output: crate::ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, FlexChildContribution<S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let AbsoluteChild {
+            node: child,
+            input: _,
+            source_index,
+            padding,
+            border,
+            margin,
+            used_size,
+            known_size,
+            resolved_inset,
+            inset,
+            alignment,
+            align_self,
+        } = request;
+        let constants = &self.constants;
+        let absolute_containing_size = self.containing_size;
+        let scroll_progressions = self.scroll_progressions;
+        let final_size = used_size.clamp(known_size.unwrap_or(output.size));
+        let inset_alignment = absolute_inset_alignment_offsets(
+            resolved_inset,
+            margin,
+            final_size,
+            absolute_containing_size,
+            constants.flow_axes,
+            alignment,
+            scroll_progressions,
+        );
+        let margin = resolve_absolute_margins(
+            margin,
+            inset,
+            final_size,
+            absolute_containing_size,
+            constants.flow_axes,
+        );
+        let location = absolute_location(
+            final_size,
+            margin,
+            inset,
+            inset_alignment,
+            align_self,
+            constants,
+        );
+        let scroll_geometry = with_flex_item_scroll_projections::<Tree, M, _>(
+            tree,
+            child,
+            |scroll_box, scroll_target| {
+                retained_flex_child_scroll_geometry(
+                    scroll_box,
+                    scroll_target,
+                    final_size,
+                    output.content_size,
+                    padding,
+                    border,
+                    output.scroll_geometry,
+                )
+            },
+        )
+        .map_err(|error| layout_child_geometry_error(node, child, error))?;
+        let output = retain_flex_scroll_geometry(output, scroll_geometry);
+
+        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+            child,
+            crate::output::NormalGeometryOf::box_geometry(
+                location,
+                final_size,
+                scroll_geometry.content_box(),
+            ),
+            NodeOutputOf::<Tree::Scalar> {
                 source_index: crate::SourceIndex::new(source_index),
                 location,
+                size: final_size,
+                named_baselines: output.named_baselines,
+                content_size: output.content_size,
+                border,
+                padding,
                 margin,
-                geometry: scroll_geometry,
-                in_flow: false,
-            }))
-        })?;
-        if let Some(contribution) = contribution {
-            contributions.push(contribution);
-        }
+                ..NodeOutputOf::new()
+            }
+            .with_scroll_geometry(Some(scroll_geometry)),
+        ));
+        Ok(FlexChildContribution {
+            source_index: crate::SourceIndex::new(source_index),
+            location,
+            margin,
+            geometry: scroll_geometry,
+            in_flow: false,
+        })
     }
-    Ok(contributions)
 }
 
 pub(super) fn layout_hidden_children<'input, Tree, M>(

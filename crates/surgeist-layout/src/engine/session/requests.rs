@@ -8,6 +8,7 @@ use crate::block::{
 };
 use crate::engine::block_scope::ordinary;
 use crate::engine::hidden::{HiddenChildren, HiddenRequest};
+use crate::flex::{AbsoluteChild, FlexComputation, begin_flex_computation};
 use crate::{
     Compute, ComputeInputOf, ComputeOutputOf, Display, FlowAxes, LayoutErrorKindOf, LayoutErrorOf,
     LayoutErrorSiteOf, LayoutOperation, LayoutScalar, LayoutTree, PhysicalAxis, Traverse,
@@ -27,6 +28,7 @@ enum Request<Node, S: LayoutScalar> {
         axis: PhysicalAxis,
     },
     AdvanceBlock,
+    AdvanceFlex,
     FloatTrial(FloatTrialRequest<Node, S>),
     Complete(CompletedRequest<S>),
 }
@@ -84,6 +86,7 @@ enum PendingRequest {
     HiddenSiblings,
     BlockAxis,
     Block,
+    Flex,
 }
 
 struct BlockRequest<'input, Node, S: LayoutScalar> {
@@ -93,11 +96,19 @@ struct BlockRequest<'input, Node, S: LayoutScalar> {
     child: Option<PendingBlockChild<'input, Node, S>>,
 }
 
+struct FlexRequest<Node, S: LayoutScalar> {
+    computation: FlexComputation<Node, S>,
+    completion: ChildCompletion<Node, S>,
+    projection: OutputProjection,
+    child: Option<AbsoluteChild<Node, S>>,
+}
+
 struct PendingRequests<'input, Node, S: LayoutScalar> {
     order: Vec<PendingRequest>,
     hidden: Vec<(HiddenChildren<Node>, OutputProjection)>,
     block_axes: Vec<(BlockAxisDemand<Node, S>, InlineContentChild<Node, S>)>,
     blocks: Vec<BlockRequest<'input, Node, S>>,
+    flexes: Vec<FlexRequest<Node, S>>,
 }
 
 impl<Node, S: LayoutScalar> PendingRequests<'_, Node, S> {
@@ -107,6 +118,7 @@ impl<Node, S: LayoutScalar> PendingRequests<'_, Node, S> {
             hidden: Vec::new(),
             block_axes: Vec::new(),
             blocks: Vec::new(),
+            flexes: Vec::new(),
         }
     }
 
@@ -299,25 +311,22 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     ChildAdmission::Uncached { input, cache, memo } => {
                         let capture = self.begin_memo(node, memo)?;
                         let initial = self.begin_uncached_layout(node, input);
-                        if self.block_scopes().is_none()
-                            && !initial.leaf
-                            && initial.style.display.inner_display() == Display::Block
-                        {
-                            self.begin_block(
-                                node,
-                                input,
-                                ChildCompletion { cache, capture },
-                                projection,
-                                pending,
-                            )?
-                        } else {
-                            let output =
-                                ordinary(self.compute_uncached_layout_body(node, input, initial))?;
-                            if let Some(cache) = cache {
-                                cache.store(self, output)?;
+                        let completion = ChildCompletion { cache, capture };
+                        let ordinary_display = (self.block_scopes().is_none() && !initial.leaf)
+                            .then(|| initial.style.display.inner_display());
+                        match ordinary_display {
+                            Some(Display::Block) => {
+                                self.begin_block(node, input, completion, projection, pending)?
                             }
-                            self.complete_memo(node, capture, output)?;
-                            projection.complete(output)
+                            Some(Display::Flex) => {
+                                self.begin_flex(node, input, completion, projection, pending)?
+                            }
+                            _ => {
+                                let output = ordinary(
+                                    self.compute_uncached_layout_body(node, input, initial),
+                                )?;
+                                self.complete_child_request(node, completion, projection, output)?
+                            }
                         }
                     }
                 },
@@ -332,6 +341,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     self.begin_axis(node, input, axis, pending)?
                 }
                 Request::AdvanceBlock => self.advance_block(pending)?,
+                Request::AdvanceFlex => self.advance_flex(pending)?,
                 Request::FloatTrial(trial) => return Ok(RequestProgress::FloatTrial(trial)),
                 Request::Complete(output) => match pending.order.pop() {
                     None => return Ok(RequestProgress::Complete(output)),
@@ -353,6 +363,14 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     Some(PendingRequest::Block) => {
                         self.resume_block(BlockChildReceipt::Layout(output.layout()), pending)?
                     }
+                    Some(PendingRequest::Flex) => {
+                        let parent = pending.flexes.last_mut().expect("active Flex request");
+                        let child = parent.child.take().expect("pending Flex child request");
+                        parent
+                            .computation
+                            .accept_child(self, child, output.layout())?;
+                        Request::AdvanceFlex
+                    }
                 },
             };
         }
@@ -368,7 +386,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
     ) -> SessionResult<Tree, SessionRequest<Tree>> {
         match ordinary(begin_block_computation(self, node, input))? {
             ControlFlow::Break(output) => {
-                self.finish_request_block(node, input, completion, projection, output)
+                self.finish_container_request(node, input, completion, projection, output)
             }
             ControlFlow::Continue(computation) => {
                 if pending.blocks.try_reserve(1).is_err() {
@@ -441,10 +459,84 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         let parent = pending.blocks.pop().expect("completed Block request");
         let (node, input) = parent.computation.request();
         let output = ordinary(parent.computation.finish(self, Ok(result)))?;
-        self.finish_request_block(node, input, parent.completion, parent.projection, output)
+        self.finish_container_request(node, input, parent.completion, parent.projection, output)
     }
 
-    fn finish_request_block(
+    fn begin_flex(
+        &mut self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+        completion: ChildCompletion<Tree::Node, Tree::Scalar>,
+        projection: OutputProjection,
+        pending: &mut SessionPending<'input, Tree>,
+    ) -> SessionResult<Tree, SessionRequest<Tree>> {
+        match begin_flex_computation(self, node, input)? {
+            ControlFlow::Break(output) => {
+                self.finish_container_request(node, input, completion, projection, output)
+            }
+            ControlFlow::Continue(mut computation) => match computation.advance(self)? {
+                ControlFlow::Break(output) => {
+                    self.finish_container_request(node, input, completion, projection, output)
+                }
+                ControlFlow::Continue(child) => {
+                    pending
+                        .flexes
+                        .try_reserve(1)
+                        .map_err(|_| reserve_error(node))?;
+                    let request = Self::schedule_flex_child(&child, &mut pending.order)?;
+                    pending.flexes.push(FlexRequest {
+                        computation,
+                        completion,
+                        projection,
+                        child: Some(child),
+                    });
+                    Ok(request)
+                }
+            },
+        }
+    }
+
+    fn advance_flex(
+        &mut self,
+        pending: &mut SessionPending<'input, Tree>,
+    ) -> SessionResult<Tree, SessionRequest<Tree>> {
+        let parent = pending.flexes.last_mut().expect("active Flex request");
+        match parent.computation.advance(self)? {
+            ControlFlow::Break(output) => {
+                let parent = pending.flexes.pop().expect("completed Flex request");
+                let (node, input) = parent.computation.request();
+                self.finish_container_request(
+                    node,
+                    input,
+                    parent.completion,
+                    parent.projection,
+                    output,
+                )
+            }
+            ControlFlow::Continue(child) => {
+                let request = Self::schedule_flex_child(&child, &mut pending.order)?;
+                parent.child = Some(child);
+                Ok(request)
+            }
+        }
+    }
+
+    fn schedule_flex_child(
+        child: &AbsoluteChild<Tree::Node, Tree::Scalar>,
+        order: &mut Vec<PendingRequest>,
+    ) -> SessionResult<Tree, SessionRequest<Tree>> {
+        order
+            .try_reserve(1)
+            .map_err(|_| reserve_error(child.node))?;
+        order.push(PendingRequest::Flex);
+        Ok(Request::Child {
+            node: child.node,
+            input: child.input,
+            projection: OutputProjection::Layout,
+        })
+    }
+
+    fn finish_container_request(
         &mut self,
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
@@ -453,6 +545,16 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         output: ComputeOutputOf<Tree::Scalar>,
     ) -> SessionResult<Tree, SessionRequest<Tree>> {
         self.finish_uncached_layout(node, input, output)?;
+        self.complete_child_request(node, completion, projection, output)
+    }
+
+    fn complete_child_request(
+        &mut self,
+        node: Tree::Node,
+        completion: ChildCompletion<Tree::Node, Tree::Scalar>,
+        projection: OutputProjection,
+        output: ComputeOutputOf<Tree::Scalar>,
+    ) -> SessionResult<Tree, SessionRequest<Tree>> {
         let ChildCompletion { cache, capture } = completion;
         if let Some(cache) = cache {
             cache.store(self, output)?;
