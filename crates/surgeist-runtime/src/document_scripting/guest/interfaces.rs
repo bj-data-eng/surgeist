@@ -2,6 +2,8 @@
 
 mod custom_elements;
 mod document;
+#[cfg(test)]
+pub(in crate::document_scripting) use document::missing_pins_refuse_without_native_publication;
 mod listener_methods;
 mod operations;
 mod security_policy_violation;

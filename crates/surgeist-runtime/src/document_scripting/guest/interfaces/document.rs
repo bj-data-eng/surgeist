@@ -33,6 +33,8 @@ mod title;
 pub(super) mod tree;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
 pub(in crate::document_scripting) use ordinary::PendingConstructor;
+#[cfg(test)]
+pub(in crate::document_scripting) use ordinary::missing_pins_refuse_without_native_publication;
 
 fn creation_realm_fallback(
     owner: &NativeOwner,
@@ -531,7 +533,7 @@ impl DocumentBindings {
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
         step()?;
         if node == self.attached_id.node() {
-            return Ok(Some(scope.open_callback_object(&self.attached)?));
+            return open_node_pin(scope, &self.attached).map(Some);
         }
         let pins = self
             .documents
@@ -541,7 +543,7 @@ impl DocumentBindings {
         while let Some(pin) = next {
             step()?;
             if pin.document.node() == node {
-                return Ok(Some(scope.open_callback_object(&pin.holder)?));
+                return open_node_pin(scope, &pin.holder).map(Some);
             }
             next = pin.next.as_deref();
         }
@@ -597,6 +599,18 @@ impl DocumentBindings {
     pub(super) fn reap_nodes(&self, process: &mut Process, retired: &Cell<bool>) {
         self.ordinary.reap(process, retired);
     }
+}
+
+fn open_node_pin<'scope>(
+    scope: &mut Scope<'scope>,
+    holder: &RetainedCallbackObject,
+) -> Result<Value<'scope>, DocumentGuestEventError> {
+    scope
+        .open_callback_object(holder)
+        .map_err(|error| match error {
+            Error::ExpiredIdentity => DocumentScriptNativeError::ProjectionCustody.into(),
+            error => error.into(),
+        })
 }
 
 pub(super) fn install_node<'scope>(
