@@ -19,6 +19,8 @@ mod gradient_field;
 mod hint_program;
 mod ordinary_gradient;
 mod repeating_gradient;
+#[cfg(test)]
+mod stack_tests;
 
 pub(crate) fn encode_vello_scene(
     commands: &RenderCommands,
