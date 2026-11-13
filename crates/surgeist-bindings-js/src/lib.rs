@@ -904,6 +904,24 @@ impl<'scope> Scope<'scope> {
         self.operations.is_callable(&value.root)
     }
 
+    /// Tests ECMAScript IsConstructor without reading properties or invoking
+    /// guest hooks. A revoked constructible proxy still has `[[Construct]]`.
+    pub fn is_constructor(&mut self, value: &Value<'scope>) -> Result<bool, Error> {
+        self.operations.is_constructor(&value.root)
+    }
+
+    /// Construct an exact guest object with no arguments, using the supplied
+    /// constructor as NewTarget and preserving the original thrown value.
+    pub fn construct_without_arguments(
+        &mut self,
+        constructor: &Value<'scope>,
+    ) -> Result<Value<'scope>, Error> {
+        let root = self
+            .operations
+            .construct_without_arguments(&constructor.root)?;
+        Ok(self.value(root))
+    }
+
     /// Gets this realm's global object.
     pub fn global(&mut self) -> Result<Value<'scope>, Error> {
         let root = self.operations.global()?;

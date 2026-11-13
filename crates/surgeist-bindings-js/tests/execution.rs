@@ -1173,6 +1173,59 @@ fn callable_classification_includes_classes_and_revoked_callable_proxies(
     Ok(())
 }
 
+fn guest_construction_preserves_constructor_authority(process: &mut Process) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let origin = execution.create_realm()?;
+    let receiver = execution.create_realm()?;
+    let (constructor, marker) = execution.in_realm(&origin, |scope| {
+        let constructor = scope.evaluate(&units(
+            "globalThis.constructorMarker = {}; globalThis.originalConstructor = class { constructor() { this.target = new.target; this.marker = constructorMarker; } }; originalConstructor",
+        ))?;
+        let marker = scope.evaluate(&units("constructorMarker"))?;
+        Ok((scope.retain(&constructor), scope.retain(&marker)))
+    })?;
+    execution.in_realm(&receiver, |scope| {
+        let constructor = scope.import(&constructor)?;
+        let marker = scope.import(&marker)?;
+        assert!(scope.is_constructor(&constructor)?);
+        let result = scope.construct_without_arguments(&constructor)?;
+        let target = scope.get(&result, PropertyKey::String(&units("target")))?;
+        let observed = scope.get(&result, PropertyKey::String(&units("marker")))?;
+        assert!(scope.strict_equals(&target, &constructor)?);
+        assert!(scope.strict_equals(&observed, &marker)?);
+
+        let arrow = scope.evaluate(&units("(() => { throw 1; })"))?;
+        assert!(!scope.is_constructor(&arrow)?);
+        assert!(matches!(scope.construct_without_arguments(&arrow), Err(Error::ExpectedConstructor)));
+
+        let proxy = scope.evaluate(&units(
+            "globalThis.originalThrown = {}; globalThis.probeGets = 0; new Proxy(class {}, { get() { probeGets++; throw 2; }, construct() { throw originalThrown; } })",
+        ))?;
+        assert!(scope.is_constructor(&proxy)?);
+        let gets = scope.evaluate(&units("probeGets"))?;
+        assert_eq!(scope.double(&gets)?, 0.0);
+        let Err(Error::Exception(exception)) = scope.construct_without_arguments(&proxy) else {
+            panic!("construct trap must preserve its original throw");
+        };
+        let original = scope.evaluate(&units("originalThrown"))?;
+        let thrown = scope.import(exception.value())?;
+        assert!(scope.strict_equals(&original, &thrown)?);
+
+        let revoked = scope.evaluate(&units(
+            "(() => { const pair = Proxy.revocable(class {}, {}); pair.revoke(); return pair.proxy; })()",
+        ))?;
+        assert!(scope.is_constructor(&revoked)?);
+        let Err(Error::Exception(exception)) = scope.construct_without_arguments(&revoked) else {
+            panic!("revoked constructible proxy must throw");
+        };
+        assert_eq!(exception.phase(), ExceptionPhase::Invoke);
+        let thrown = scope.import(exception.value())?;
+        let name = scope.get(&thrown, PropertyKey::String(&units("name")))?;
+        assert_eq!(scope.to_utf16(&name)?, units("TypeError"));
+        Ok(())
+    })
+}
+
 fn scalar_and_classification_operations_work_in_native_callbacks(
     process: &mut Process,
 ) -> Result<(), Error> {
@@ -2457,6 +2510,7 @@ fn main() -> Result<(), Error> {
     scalar_construction_preserves_javascript_values(&mut process)?;
     value_classification_uses_language_types_without_guest_hooks(&mut process)?;
     callable_classification_includes_classes_and_revoked_callable_proxies(&mut process)?;
+    guest_construction_preserves_constructor_authority(&mut process)?;
     scalar_and_classification_operations_work_in_native_callbacks(&mut process)?;
     host::observed_realm_is_the_callback_creation_realm(&mut process)?;
 

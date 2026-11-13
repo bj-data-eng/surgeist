@@ -113,6 +113,7 @@ pub(crate) trait Operations {
     fn primitive(&mut self, primitive: Primitive) -> Result<Root, Error>;
     fn kind(&mut self, value: &Root) -> Result<ValueKind, Error>;
     fn is_callable(&mut self, value: &Root) -> Result<bool, Error>;
+    fn is_constructor(&mut self, value: &Root) -> Result<bool, Error>;
     fn callback_object_realm(&mut self, value: &Root) -> Result<RealmKey, Error>;
     fn callback_object_storage_bytes(&self) -> usize;
     fn retain_callback_object(
@@ -225,6 +226,7 @@ pub(crate) trait Operations {
     fn intrinsic(&mut self, intrinsic: Intrinsic) -> Result<Root, Error>;
     fn call(&mut self, function: &Root, receiver: &Root, arguments: &[Root])
     -> Result<Root, Error>;
+    fn construct_without_arguments(&mut self, constructor: &Root) -> Result<Root, Error>;
     fn coerce_string(&mut self, value: &Root) -> Result<CoercedString, Error>;
     /// Copies the entire string into an exactly sized, caller-owned buffer.
     fn copy_string(&mut self, string: &CoercedString, units: &mut [u16]) -> Result<(), Error>;

@@ -916,6 +916,17 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
+    fn is_constructor(&mut self, value: &Root) -> Result<bool, Error> {
+        self.validate_root(value)?;
+        self.attempt(ExceptionPhase::Coerce, |scope, roots, _, _| {
+            let value = roots.local(scope, value)?;
+            Ok(
+                v8::Local::<v8::Object>::try_from(value)
+                    .is_ok_and(|object| object.is_constructor()),
+            )
+        })
+    }
+
     fn callback_object_realm(&mut self, value: &Root) -> Result<RealmKey, Error> {
         self.observe_callback_object(value)
     }
@@ -1470,6 +1481,22 @@ impl Operations for Entered<'_, '_, '_> {
                 roots.retain(scope, realm, value)
             },
         )
+    }
+
+    fn construct_without_arguments(&mut self, constructor: &Root) -> Result<Root, Error> {
+        self.validate_root(constructor)?;
+        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, _| {
+            let value = roots.local(scope, constructor)?;
+            let constructor =
+                v8::Local::<v8::Object>::try_from(value).map_err(|_| Error::ExpectedConstructor)?;
+            if !constructor.is_constructor() {
+                return Err(Error::ExpectedConstructor);
+            }
+            let result = constructor
+                .call_as_constructor(scope, &[])
+                .ok_or(Error::BackendUnavailable)?;
+            roots.retain(scope, realm, result)
+        })
     }
 
     fn coerce_string(&mut self, value: &Root) -> Result<CoercedString, Error> {
