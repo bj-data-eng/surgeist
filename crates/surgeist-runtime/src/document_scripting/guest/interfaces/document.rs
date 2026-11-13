@@ -4,7 +4,8 @@ use super::*;
 use crate::DomSourceDriveProgress;
 use surgeist_bindings_js::conversion::declarations::node_get_root_node_0_options;
 use surgeist_dom::{
-    DomBatch, DomNodeKind, DomNodeRetirementInbox, DomQualifiedName, DomTagName, NodeId,
+    DomBatch, DomDocumentInterface, DomNodeKind, DomNodeRetirementInbox, DomQualifiedName,
+    DomTagName, NodeId,
 };
 use surgeist_html::values::DocumentString;
 
@@ -259,6 +260,7 @@ pub(super) struct DocumentBindings {
 
 pub(super) struct DocumentPrototypes {
     document: RetainedCallbackObject,
+    xml_document: RetainedCallbackObject,
     document_type: RetainedCallbackObject,
     implementation: RetainedCallbackObject,
     fragment: RetainedCallbackObject,
@@ -268,6 +270,13 @@ pub(super) struct DocumentPrototypes {
 }
 
 impl DocumentPrototypes {
+    fn for_document(&self, interface: DomDocumentInterface) -> &RetainedCallbackObject {
+        match interface {
+            DomDocumentInterface::Document => &self.document,
+            DomDocumentInterface::XmlDocument => &self.xml_document,
+        }
+    }
+
     pub(super) fn install_origin<'scope>(
         scope: &mut Scope<'scope>,
         node: &Value<'scope>,
@@ -294,7 +303,7 @@ impl DocumentPrototypes {
         funding: &OriginInterfaceFunding<'_>,
         constructors: Option<CaptureFunding<'_>>,
     ) -> Result<(Self, Value<'scope>), DocumentGuestEventError> {
-        let (_, document) = install_derived_interface(
+        let (document_constructor, document) = install_derived_interface(
             scope,
             node,
             constructor,
@@ -303,6 +312,16 @@ impl DocumentPrototypes {
                 length: 0,
             },
             document_callback,
+        )?;
+        let (_, xml_document) = install_derived_interface(
+            scope,
+            &document,
+            &document_constructor,
+            FunctionMetadata {
+                name: &ascii(b"XMLDocument"),
+                length: 0,
+            },
+            &illegal_constructor(),
         )?;
         let (fragment_constructor, fragment) = install_derived_interface(
             scope,
@@ -351,6 +370,8 @@ impl DocumentPrototypes {
         let implementation = dom_implementation::install(scope, &document, funding)?;
         let observed = scope.callback_object(&document)?;
         let retained_document = scope.retain_callback_object(observed, funding.retain)?;
+        let observed = scope.callback_object(&xml_document)?;
+        let retained_xml_document = scope.retain_callback_object(observed, funding.retain)?;
         let observed = scope.callback_object(&fragment)?;
         let retained_fragment = scope.retain_callback_object(observed, funding.retain)?;
         let observed = scope.callback_object(&shadow)?;
@@ -358,6 +379,7 @@ impl DocumentPrototypes {
         Ok((
             Self {
                 document: retained_document,
+                xml_document: retained_xml_document,
                 document_type,
                 implementation,
                 fragment: retained_fragment,

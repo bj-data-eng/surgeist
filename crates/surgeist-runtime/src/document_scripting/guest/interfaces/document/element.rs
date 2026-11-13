@@ -84,7 +84,7 @@ enum ElementObservation {
 }
 
 enum NativeProjection {
-    Document(DocumentId),
+    Document(DocumentId, DomDocumentInterface),
     DocumentType,
     Fragment,
     ShadowRoot,
@@ -690,13 +690,14 @@ impl PublicEventBindings {
                     .relevant_global()
                     .map_err(DomHostedRuntimeError::Dom)
                     .map_err(DocumentScriptNativeError::from)?;
-                if let Some(document) = node.as_document() {
+                if let DomNodeKind::Document(metadata) = node.kind() {
+                    let document = node.as_document().ok_or(DomError::WrongNodeKind)?;
                     // Rust-created Documents with no Global acquire their
                     // attachment's Document interface on first exposure.
                     return Ok((
                         origin.unwrap_or(attached),
                         attached,
-                        NativeProjection::Document(document.id()),
+                        NativeProjection::Document(document.id(), metadata.interface()),
                     ));
                 }
                 let origin = origin.ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
@@ -754,12 +755,12 @@ impl PublicEventBindings {
         };
         let project = |documents: &DocumentPrototypes, elements: &ElementBindings| match projection
         {
-            NativeProjection::Document(document) => {
+            NativeProjection::Document(document, interface) => {
                 // Published Documents survive for the native owner's lifetime.
                 bindings.publish_document(
                     scope,
                     admission,
-                    ordinary::NodePrototype::Creation(&documents.document),
+                    ordinary::NodePrototype::Creation(documents.for_document(interface)),
                     || Ok(document),
                 )
             }

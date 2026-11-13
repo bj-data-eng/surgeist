@@ -108,6 +108,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
+        let global = self.node(associated)?.relevant_global();
         let input = self
             .document_metadata(associated)?
             .document_environment()
@@ -139,6 +140,11 @@ impl Draft {
             cancel,
             formation,
         )?;
+        if global.is_some() {
+            let mut common = self.common_fields_mut(document, cancel)?;
+            common.relevant_global = global;
+            common.commit(cancel)?;
+        }
         self.source_step(cancel)?;
         let root = if qualified_name.is_empty() {
             None
@@ -295,8 +301,9 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<Key, DomError> {
         check_cancel(cancelled)?;
-        let transaction::KindRead::Document(source) = &self.node(associated_document)?.kind()
-        else {
+        let associated = self.node(associated_document)?;
+        let global = associated.relevant_global();
+        let transaction::KindRead::Document(source) = &associated.kind() else {
             return Err(DomError::WrongNodeKind);
         };
         // Origin follows the source operation; the selected immutable native
@@ -316,6 +323,11 @@ impl Draft {
             cancelled,
             formation,
         )?;
+        if global.is_some() {
+            let mut common = self.common_fields_mut(document, cancelled)?;
+            common.relevant_global = global;
+            common.commit(cancelled)?;
+        }
         let operands = source::formation::Formation::new(self, cancelled)?;
         let name = source::formation::string("html", operands.as_ref(), cancelled)?;
         let public = source::formation::string("", operands.as_ref(), cancelled)?;

@@ -13,6 +13,12 @@ enum Method {
     Remove,
 }
 
+pub(super) struct GuestTreeDrive {
+    pub(super) progress: Result<DomSourceDriveProgress, DomSourceDriveError>,
+    pub(super) parent: Option<surgeist_dom::DomSourceOperationId>,
+    pub(super) pending: Option<DomSourceStatus>,
+}
+
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
@@ -202,6 +208,25 @@ impl Capture {
         edit: DomSourceEdit,
         completion: Completion<'scope>,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let drive =
+            self.drive_guest_tree_edit(owner, events, scope.realm_authority()?.identity(), edit)?;
+        self.finish_guest_tree_edit(
+            scope,
+            owner,
+            events,
+            drive.progress,
+            (drive.parent, drive.pending),
+            completion,
+        )
+    }
+
+    pub(super) fn drive_guest_tree_edit(
+        &self,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        realm: RealmId,
+        edit: DomSourceEdit,
+    ) -> Result<GuestTreeDrive, DocumentGuestEventError> {
         let limits = events.limits.source_edits;
         let cancel = &owner.cancellation;
         let event = owner.active_event_request();
@@ -220,18 +245,18 @@ impl Capture {
                     );
                     Ok((result, parent))
                 })?;
-        owner.finish_guest_tree_policies(
-            &mut result,
-            limits,
-            scope.realm_authority()?.identity(),
-        )?;
+        owner.finish_guest_tree_policies(&mut result, limits, realm)?;
         let pending = owner
             .session
             .try_borrow()
             .map_err(|_| DocumentScriptNativeError::Busy)?
             .read_dom()
             .pending_source_edit();
-        self.finish_guest_tree_edit(scope, owner, events, result, (parent, pending), completion)
+        Ok(GuestTreeDrive {
+            progress: result,
+            parent,
+            pending,
+        })
     }
 
     fn finish_guest_tree_edit<'scope>(

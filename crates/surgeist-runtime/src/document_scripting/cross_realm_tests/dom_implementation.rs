@@ -1,6 +1,7 @@
 //! DOMImplementation identity in the native Window.
 
 use super::*;
+use crate::DomSourceDriveError;
 
 pub(super) fn document_implementation_is_the_same_object() {
     let cancel = Arc::new(AtomicBool::new(false));
@@ -99,30 +100,31 @@ pub(super) fn implementation_creates_native_documents() {
                 if (typeof impl.createDocument !== 'function' ||
                     typeof impl.createHTMLDocument !== 'function') return 'missing factories';
                 const throws = (action, name) => {
-                    try { action(); } catch (error) { return error.name === name; }
-                    return false;
+                    try { action(); } catch (error) { return error.name === name ? null : name + ' got ' + error.name; }
+                    return 'missing ' + name;
                 };
                 let coerced = false;
                 const operand = {toString() { coerced = true; return 'p:root'; }};
                 const doctype = impl.createDocumentType('root', 'pub', 'sys');
                 const before = impl.createDocument(null, null, doctype);
-                const valid = before.doctype === doctype &&
-                    throws(() => impl.createDocument(null, operand, Object.create(doctype)), 'TypeError') &&
-                    coerced &&
-                    throws(() => impl.createDocument.call({}, operand, ''), 'TypeError') &&
-                    throws(() => impl.createDocument(null, 'p:root', doctype), 'NamespaceError') &&
-                    throws(() => impl.createDocument(null, 'bad name', doctype), 'InvalidCharacterError') &&
-                    before.doctype === doctype;
-                if (!valid) return 'argument validation or adoption ordering';
+                if (before.doctype !== doctype) return 'initial doctype identity';
+                const invalid = throws(() => impl.createDocument(null, operand, Object.create(doctype)), 'TypeError');
+                if (invalid || !coerced) return 'doctype conversion: ' + invalid;
+                coerced = false;
+                const error = throws(() => impl.createDocument.call({}, operand, ''), 'TypeError') ||
+                    throws(() => impl.createDocument(null, 'p:root', doctype), 'NamespaceError') ||
+                    throws(() => impl.createDocument(null, 'bad name', doctype), 'InvalidCharacterError');
+                if (error) return 'XML argument: ' + error;
+                if (coerced || before.doctype !== doctype) return 'validation or adoption ordering';
                 const xml = impl.createDocument('http://www.w3.org/2000/svg', 's:svg', doctype);
                 if (before.doctype !== null || xml.doctype !== doctype ||
                     doctype.ownerDocument !== xml || doctype.parentNode !== xml ||
                     Object.getPrototypeOf(xml) !== XMLDocument.prototype || !(xml instanceof Document) ||
                     Object.getPrototypeOf(XMLDocument.prototype) !== Document.prototype ||
-                    !throws(() => new XMLDocument(), 'TypeError') ||
+                    throws(() => new XMLDocument(), 'TypeError') ||
                     xml.documentElement.ownerDocument !== xml || xml.documentElement.prefix !== 's' ||
                     xml.documentElement.localName !== 'svg' || xml.implementation === impl ||
-                    !throws(() => impl.createHTMLDocument.call({}, operand), 'TypeError') ||
+                    throws(() => impl.createHTMLDocument.call({}, operand), 'TypeError') ||
                     impl.createDocument.length !== 2 || impl.createHTMLDocument.length !== 0) {
                     return 'XML identity, interface, or signature';
                 }
@@ -149,7 +151,13 @@ pub(super) fn implementation_creates_native_documents() {
         };
         Ok((document("xml")?, document("omitted")?,
             document("undef")?, document("empty")?, document("titled")?))
-    }).unwrap();
+    }).unwrap_or_else(|error| {
+        if let DocumentScriptError::Script(Error::HostFailure(failure)) = &error {
+            panic!("factory host refusal: {:?} {:?}", failure.cause::<DocumentGuestEventError>(),
+                failure.cause::<DomSourceDriveError>());
+        }
+        panic!("{error:?}");
+    });
     let snapshot = host.snapshot().unwrap();
     let xml = snapshot.node(xml).unwrap().as_document().unwrap();
     assert_eq!(
@@ -189,4 +197,117 @@ pub(super) fn implementation_creates_native_documents() {
             assert!(head.children().is_empty());
         }
     }
+}
+
+pub(super) fn factory_refusal_preserves_native_dom() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host =
+        super::super::guest::tests::attach_public_nodes(session, target, cancel, 5_000, 0);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        evaluate(scope, "globalThis.impl = document.implementation").map(drop)
+    })
+    .unwrap();
+    let before = host.snapshot().unwrap();
+    let failure = host.in_document(&permit, |scope| {
+        evaluate(scope, "impl.createHTMLDocument('refused')").map(drop)
+    });
+    assert!(
+        matches!(
+            failure,
+            Err(DocumentScriptError::Script(Error::HostFailure(_)))
+        ),
+        "{failure:?}"
+    );
+    let after = host.snapshot().unwrap();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.nodes().count(), before.nodes().count());
+}
+
+pub(super) fn xml_factory_retains_the_original_style_operation() {
+    use surgeist_cssom::CssomStore;
+    use surgeist_dom::{DomSourceOutput, DomStyleCssomRoot};
+
+    const LIMITS: DomSourceLimits =
+        DomSourceLimits::new(16_000_000, 200_000, 60_000, 64, 64, 64, 3);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut styles = session.style_execution();
+    let mut host = super::super::guest::tests::attach_public_nodes(
+        session,
+        target,
+        cancel.clone(),
+        5_000,
+        60_000,
+    );
+    let permit = host.permit().unwrap();
+    let supplied = host
+        .in_document(&permit, |scope| {
+            let supplied = evaluate(
+                scope,
+                "globalThis.supplied = document.implementation.createDocumentType('style', '', '')",
+            )?;
+            super::super::guest::tests::projected_node_id(scope, &supplied)
+        })
+        .unwrap();
+    let result = host.in_document(&permit, |scope| {
+        evaluate(scope,
+            "document.implementation.createDocument('http://www.w3.org/1999/xhtml', 'style', supplied)"
+        ).map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("unbound Style root: {result:?}");
+    };
+    let (operation, document) = host
+        .with_native(|dom, _, _| {
+            let pending = dom.pending_source_edit().unwrap();
+            assert!(pending.has_published());
+            let document = dom
+                .snapshot()
+                .node(supplied)
+                .unwrap()
+                .owner_document()
+                .unwrap();
+            assert_ne!(document, target.document());
+            styles
+                .bind_root(
+                    dom,
+                    "xml-factory-style".into(),
+                    &mut Some(DomStyleCssomRoot::new(
+                        document.node(),
+                        CssomStore::new(Default::default(), Default::default()).unwrap(),
+                    )),
+                    &cancel,
+                )
+                .unwrap();
+            (pending.operation(), document)
+        })
+        .unwrap();
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::SourcePending(id)) if *id == operation
+    ));
+    assert!(matches!(
+        host.resume_pending_style_edit(&permit, operation, LIMITS).unwrap().unwrap(),
+        DomSourceDriveProgress::Complete(done)
+            if done.operation() == operation && done.output() == Some(DomSourceOutput::Document(document))
+    ));
+    let snapshot = host.snapshot().unwrap();
+    let node = snapshot.node(supplied).unwrap();
+    assert_eq!(node.owner_document(), Some(document));
+    assert_eq!(node.parent(), Some(document.node()));
+    let xml = snapshot.document(document).unwrap();
+    assert_eq!(
+        xml.metadata().interface(),
+        surgeist_dom::DomDocumentInterface::XmlDocument
+    );
+    assert_eq!(
+        snapshot
+            .node(xml.document_element().unwrap())
+            .unwrap()
+            .node_name()
+            .code_units(),
+        &[115, 116, 121, 108, 101]
+    );
 }
