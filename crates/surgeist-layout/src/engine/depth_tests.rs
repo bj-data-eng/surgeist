@@ -862,7 +862,17 @@ fn assert_layout_chain_with_style<S: LayoutScalar>(
     depth: u32,
     set_style: impl Fn(u32, u32, &mut NodeInputOf<S>),
 ) {
-    assert_layout_chain_with_request(display, position, depth, set_style, standalone());
+    assert_layout_chain_with_request(
+        display,
+        position,
+        depth,
+        set_style,
+        standalone(),
+        NodeInputOf {
+            display: Display::None,
+            ..NodeInputOf::default()
+        },
+    );
 }
 
 fn assert_layout_chain_with_request<S: LayoutScalar>(
@@ -871,6 +881,7 @@ fn assert_layout_chain_with_request<S: LayoutScalar>(
     depth: u32,
     set_style: impl Fn(u32, u32, &mut NodeInputOf<S>),
     request: LayoutRootRequestOf<S>,
+    sibling_style: NodeInputOf<S>,
 ) {
     let px = |value| crate::PreferredSizeOf::px(S::from_f64(value));
     let inset = |value| {
@@ -892,13 +903,9 @@ fn assert_layout_chain_with_request<S: LayoutScalar>(
         tree = tree.style(node, style);
         if node < depth {
             let sibling = depth + 1 + node;
-            tree = tree.children(node, [node + 1, sibling]).style(
-                sibling,
-                NodeInputOf {
-                    display: Display::None,
-                    ..NodeInputOf::default()
-                },
-            );
+            tree = tree
+                .children(node, [node + 1, sibling])
+                .style(sibling, sibling_style.clone());
         }
     }
     let batch = compute_layout(&tree, 0, request).expect("layout chain returns");
@@ -1326,7 +1333,20 @@ fn deep_accepted_grid_sizing_preserves_percentage_gaps() {
 }
 
 fn assert_shrinking_flex_chain<S: LayoutScalar>(depth: u32) {
-    assert_layout_chain_with_style::<S>(
+    assert_shrinking_flex_chain_with_sibling::<S>(
+        depth,
+        NodeInputOf {
+            display: Display::None,
+            ..NodeInputOf::default()
+        },
+    );
+}
+
+fn assert_shrinking_flex_chain_with_sibling<S: LayoutScalar>(
+    depth: u32,
+    sibling_style: NodeInputOf<S>,
+) {
+    assert_layout_chain_with_request::<S>(
         Display::Flex,
         crate::Position::Relative,
         depth,
@@ -1340,6 +1360,8 @@ fn assert_shrinking_flex_chain<S: LayoutScalar>(depth: u32) {
                 style.size.height = crate::PreferredSizeOf::AUTO;
             }
         },
+        standalone(),
+        sibling_style,
     );
 }
 
@@ -1397,6 +1419,10 @@ fn assert_recollected_flex_chain<S: LayoutScalar>(depth: u32) {
             }
         },
         request,
+        NodeInputOf {
+            display: Display::None,
+            ..NodeInputOf::default()
+        },
     );
 }
 
@@ -1418,6 +1444,43 @@ fn deep_recollected_flex_chain_uses_leaf_width() {
         || {
             assert_recollected_flex_chain::<f32>(24);
             assert_recollected_flex_chain::<f64>(24);
+        },
+    );
+}
+
+fn assert_collapsed_flex_chain<S: LayoutScalar>(depth: u32) {
+    assert_shrinking_flex_chain_with_sibling::<S>(
+        depth,
+        NodeInputOf {
+            display: Display::Block,
+            flex_item_collapse: crate::FlexItemCollapse::Collapsed,
+            size: Size::new(
+                crate::PreferredSizeOf::px(S::ZERO),
+                crate::PreferredSizeOf::px(S::from_f64(20.0)),
+            ),
+            ..NodeInputOf::default()
+        },
+    );
+}
+
+#[test]
+fn shallow_collapsed_flex_chain_preserves_leaf_height() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_collapsed_flex_chain_preserves_leaf_height",
+        || {
+            assert_collapsed_flex_chain::<f32>(2);
+            assert_collapsed_flex_chain::<f64>(2);
+        },
+    );
+}
+
+#[test]
+fn deep_collapsed_flex_chain_preserves_leaf_height() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_collapsed_flex_chain_preserves_leaf_height",
+        || {
+            assert_collapsed_flex_chain::<f32>(6);
+            assert_collapsed_flex_chain::<f64>(6);
         },
     );
 }
