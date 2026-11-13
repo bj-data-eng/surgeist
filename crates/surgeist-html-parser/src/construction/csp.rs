@@ -640,6 +640,60 @@ mod tests {
         storage_zero(&c);
     }
 
+    /// The plain elements of a parse own registry rows, and the policies and transitions of the
+    /// Meta CSP owner are not among them: after `elements` plain elements are created, the
+    /// reconciliation of the owner's storage that ends every use of it has nothing of its own to
+    /// read. The oracle is zero record visits at every count, because the owner's own rows are
+    /// the only ones it reads and none was added. A reconciliation that walks the registry reads
+    /// every row the elements added; the fixture creates seven per element.
+    #[test]
+    fn csp_reconciliation_visits_no_row_for_the_plain_elements_of_the_parse() {
+        use crate::parser::tokenizer::{
+            states::HtmlTokenizerState, tests::LexerFixture, token::Event,
+        };
+        let visits = |elements: usize| {
+            let request =
+                crate::construction::base::tests::request(&"<span>".repeat(elements.max(1)));
+            let (mut c, mut session, _proof) =
+                crate::construction::tests::fresh_script_owner(&request);
+            session.enable_meta_csp(&mut c, false).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
+            for _ in 0..elements {
+                let mut incoming = loop {
+                    match lexer.next(&mut c, false).unwrap().unwrap() {
+                        Event::Token(event) => {
+                            let token = event.into_token(&mut c).unwrap();
+                            if let crate::parser::tokenizer::token::TokenKind::Tag(tag) = token.kind
+                            {
+                                break Some(tag);
+                            }
+                            crate::construction::release_token_kind(&mut Some(token.kind), &mut c)
+                                .unwrap();
+                        }
+                        event => event.release(&mut c).unwrap(),
+                    }
+                };
+                session.allocate_html_tag(&mut c, &mut incoming).unwrap();
+            }
+            let before = c.usage().work(HtmlParseWorkCategory::RecordVisit);
+            session
+                .active_mut()
+                .unwrap()
+                .with_csp(&mut c, |_, _, _| Ok(()))
+                .unwrap();
+            let visits = c.usage().work(HtmlParseWorkCategory::RecordVisit) - before;
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            visits
+        };
+        for elements in [0, 16, 64] {
+            assert_eq!(visits(elements), 0, "{elements} plain elements");
+        }
+    }
+
     #[test]
     fn a_pending_query_with_a_state_slot_past_the_registry_reports_the_registry_row() {
         let request = request("<body><div id=a>");
