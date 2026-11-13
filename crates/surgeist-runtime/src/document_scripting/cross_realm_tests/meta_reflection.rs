@@ -5,7 +5,9 @@ use crate::document_scripting::guest::tests::{
 
 pub(super) fn meta_reflections_read_and_mutate_the_live_native_element() {
     let cancel = Arc::new(AtomicBool::new(false));
-    let (session, target) = hosted_session(&cancel, 0);
+    let (session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
+        limits.with_meta_processing_work(1_000_000)
+    });
     let mut host = attach_public_nodes(session, target, cancel.clone(), 8_000, 80_000);
     let permit = host.permit().unwrap();
     let node = host.in_document(&permit, |scope| {
@@ -26,10 +28,13 @@ pub(super) fn meta_reflections_read_and_mutate_the_live_native_element() {
                 let coerced = false;
                 for (const receiver of [document.createElement('div'), new Proxy(meta, {}),
                     document.createElementNS('urn:foreign', 'meta')]) {
+                    try { Object.getOwnPropertyDescriptor(HTMLMetaElement.prototype, 'name').get.call(receiver); return 'getter brand'; }
+                    catch (error) { if (!(error instanceof TypeError)) return 'getter error'; }
                     try { setName.call(receiver, {toString() { coerced = true; }}); return 'brand'; }
                     catch (error) { if (!(error instanceof TypeError) || coerced) return 'coercion order'; }
                 }
                 meta.setAttributeNS('urn:foreign', 'name', 'foreign');
+                if (meta.name !== '') return 'foreign attribute ignored';
                 meta.name = {toString() {
                     meta.setAttributeNS(null, 'name', 'nested');
                     return 'viewport\ud800';
@@ -38,6 +43,9 @@ pub(super) fn meta_reflections_read_and_mutate_the_live_native_element() {
                 meta.httpEquiv = 'refresh';
                 meta.media = 'screen';
                 meta.scheme = 'tag';
+                if (meta.name !== 'viewport\ud800' || meta.content !== 'width=device-width\0' ||
+                    meta.httpEquiv !== 'refresh' || meta.media !== 'screen' || meta.scheme !== 'tag')
+                    return 'live getters';
                 if (meta.getAttributeNS(null, 'name') !== 'viewport\ud800' ||
                     meta.getAttributeNS('urn:foreign', 'name') !== 'foreign' ||
                     meta.getAttribute('content') !== 'width=device-width\0' ||
@@ -50,7 +58,12 @@ pub(super) fn meta_reflections_read_and_mutate_the_live_native_element() {
         assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
         let meta = evaluate(scope, "nativeMeta")?;
         projected_node_id(scope, &meta)
-    }).unwrap();
+    }).unwrap_or_else(|error| match &error {
+        DocumentScriptError::Script(Error::HostFailure(failure)) => {
+            panic!("reflected meta setup: {:?}, {:?}", failure.cause::<DocumentGuestEventError>(), failure.cause::<crate::DomSourceDriveError>())
+        }
+        _ => panic!("reflected meta setup: {error:?}"),
+    });
     host.with_native(|dom, _, _| {
         let mut batch = DomBatch::new();
         batch.set_attribute_ns(node, Namespace::none(), "name", "timeout");

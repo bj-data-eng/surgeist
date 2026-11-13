@@ -122,26 +122,19 @@ impl<'a> DomNamedNodeMap<'a> {
         })
     }
 
-    /// Read an attribute in the null namespace by its exact HTML vocabulary
-    /// name. Admit each lookup and each reached local-name comparison.
-    pub fn get_html_attribute_with<E: From<DomError>>(
+    /// Read the first exact local name in the null namespace without allocating
+    /// a query string. Admit each visited lookup and compared code unit.
+    pub fn get_null_namespace_attribute_with<E: From<DomError>>(
         self,
-        name: surgeist_html::vocabulary::KnownHtmlAttribute,
+        local_name: &[u16],
         step: impl FnMut() -> Result<(), E>,
     ) -> Result<Option<DomAttr<'a>>, E> {
-        let name = name.local_name().as_bytes();
         self.find_with(step, |attribute, step| {
             let stored = attribute.name();
-            if stored.namespace().is_some() || stored.local_name().len() != name.len() {
+            if stored.namespace().is_some() {
                 return Ok(false);
             }
-            for (&unit, &byte) in stored.local_name().code_units().iter().zip(name) {
-                step()?;
-                if unit != u16::from(byte) {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
+            crate::names::same_code_units(stored.local_name().code_units(), local_name, step)
         })
     }
 

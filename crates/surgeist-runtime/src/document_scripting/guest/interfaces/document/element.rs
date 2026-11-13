@@ -168,6 +168,7 @@ impl ElementBindings {
                 capture,
             )?;
             match interface {
+                "HTMLMetaElement" => super::meta::install(scope, &prototype, capture)?,
                 "HTMLTemplateElement" => super::template::install(scope, &prototype, capture)?,
                 "HTMLTitleElement" => super::title::install(scope, &prototype, capture)?,
                 _ => (),
