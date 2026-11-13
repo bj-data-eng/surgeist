@@ -30,6 +30,28 @@ fn only_an_exact_nonce_match_needs_imported_tokenizer_history() {
     assert_eq!(decision("AbC"), None);
 }
 
+#[cfg(feature = "document-scripting")]
+#[test]
+fn inline_style_samples_only_for_the_exact_reporting_expression() {
+    for (serialized, expected_sample) in [
+        ("style-src 'none' 'report-sample'", true),
+        ("style-src 'none' 'REPORT-SAMPLE'", false),
+    ] {
+        let policy = parse(serialized, PolicyDelivery::Meta);
+        assert_eq!(
+            policy
+                .inline_style(
+                    &surgeist_dom::DomStyleNonceContent::Absent,
+                    &mut style_hash::StyleHashes::new(&[]),
+                    &mut || Ok::<(), surgeist_dom::DomError>(()),
+                )
+                .unwrap(),
+            Some((false, expected_sample)),
+            "{serialized}"
+        );
+    }
+}
+
 #[test]
 fn script_requirements_use_first_valid_ascii_directive_and_keep_disposition() {
     use PolicyDelivery::{EnforcingHeader, Meta, ReportOnlyHeader};

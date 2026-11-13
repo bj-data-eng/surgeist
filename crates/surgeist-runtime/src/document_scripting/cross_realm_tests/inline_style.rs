@@ -11,6 +11,119 @@ pub(super) fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
     guest_insertion(None, None, true);
 }
 
+#[test]
+fn character_data_edit_in_a_native_listener_settles_style_before_return() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target, dialog) = hosted_element(&cancel, "dialog");
+    let document = target.document();
+    let body = session.snapshot().node(dialog).unwrap().parent().unwrap();
+    let mut styles = session.style_execution();
+    styles
+        .bind_root(
+            &session.dom(),
+            "reentrant-inline-style".into(),
+            &mut Some(DomStyleCssomRoot::new(
+                document.node(),
+                CssomStore::new(Default::default(), Default::default()).unwrap(),
+            )),
+            &cancel,
+        )
+        .unwrap();
+    let mut batch = DomBatch::new();
+    let style = batch.create_element_ns(document, Namespace::html(), "style");
+    let text = batch.create_text(document, "p { color: red }");
+    batch.insert_before(&text, &style, None);
+    let commit = session.dom().apply(batch, &cancel).unwrap();
+    let style = commit.created(&style).unwrap().unwrap();
+    let text = commit.created(&text).unwrap().unwrap();
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    for (node, name) in [
+        (dialog, "dialog"),
+        (body, "styleParent"),
+        (style, "inlineStyle"),
+        (text, "styleText"),
+    ] {
+        expose_public_node_for_source_test(&mut host, &permit, node, name);
+    }
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"
+        styleParent.appendChild(inlineStyle);
+        globalThis.changedDuringListener = false;
+        dialog.addEventListener('cancel', event => {
+            styleText.replaceData(11, 3, 'blue');
+            changedDuringListener = styleText.data === 'p { color: blue }';
+            event.preventDefault();
+        });
+    "#,
+        )
+        .map(drop)
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let before = snapshot
+        .node(style)
+        .unwrap()
+        .as_style()
+        .unwrap()
+        .sheet()
+        .unwrap()
+        .unwrap()
+        .id()
+        .clone();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let request = start_attached_cancel(&mut host, dialog, &mut services, &cancel);
+    let result = host.service_attached_source_event(&permit, &request, EVENT);
+    if let Err(DocumentScriptEventError::Access(DocumentScriptError::Script(Error::HostFailure(
+        failure,
+    )))) = &result
+    {
+        panic!(
+            "the nested CharacterData edit refused: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        );
+    }
+    let DomSourceEventServiceProgress::Serviced { receipt } = result.unwrap() else {
+        panic!("the original cancel listener must settle");
+    };
+    assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
+    assert!(receipt.default_prevented());
+    let snapshot = host.snapshot().unwrap();
+    let after = snapshot
+        .node(style)
+        .unwrap()
+        .as_style()
+        .unwrap()
+        .sheet()
+        .unwrap()
+        .unwrap();
+    assert_ne!(after.id(), &before);
+    assert_eq!(
+        styles.snapshot(document.node()).unwrap().unwrap().sheets(),
+        &[after.id().clone()]
+    );
+    host.with_native(|dom, _, mut source| {
+        assert!(matches!(
+            source.resume(dom, request.operation(), SOURCE, &mut services, &cancel).unwrap(),
+            DomSourceDriveProgress::Complete(done) if done.operation() == request.operation()
+        ));
+    })
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        let result = evaluate(scope, "changedDuringListener")?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    })
+    .unwrap();
+}
+
 pub(super) fn guest_insertion_uses_the_effective_meta_style_directive() {
     guest_insertion(
         Some("default-src 'none'; style-src-elem 'unsafe-inline'"),
