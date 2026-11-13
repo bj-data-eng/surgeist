@@ -2432,8 +2432,8 @@ where
                 padding: Edges::ZERO,
                 border: Edges::ZERO,
             };
-            measure_lane_axis_margin_box_with_grid_axis(
-                &mut tree.borrow_compute(),
+            let measurement = prepare_lane_axis_margin_box_measurement(
+                &tree.borrow_compute(),
                 1,
                 LaneAxisMarginBoxMeasureInput {
                     child_style: &child_projection,
@@ -2452,9 +2452,11 @@ where
                         LogicalSizeOf::new(None, None),
                     ),
                 },
-                |tree, input| tree.compute_child(1, input),
             )
-            .expect("grid-lanes pre-placement measurement succeeds");
+            .expect("grid-lanes pre-placement request is valid");
+            tree.borrow_compute()
+                .compute_child(1, measurement.input())
+                .expect("grid-lanes pre-placement measurement succeeds");
 
             let input = tree
                 .inputs(1)
@@ -7126,8 +7128,8 @@ fn lane_axis_margin_box_measurement_resolves_affine_margins_against_grid_axis() 
     let child_projection = grid_item_projection!(&child_style);
     let container_projection = grid_container_projection!(&container_style);
 
-    let measured = measure_lane_axis_margin_box_with_grid_axis(
-        &mut tree.borrow_compute(),
+    let measurement = prepare_lane_axis_margin_box_measurement(
+        &tree.borrow_compute(),
         LaneMarginMeasureTree::CHILD,
         LaneAxisMarginBoxMeasureInput {
             child_style: &child_projection,
@@ -7143,10 +7145,14 @@ fn lane_axis_margin_box_measurement_resolves_affine_margins_against_grid_axis() 
                 LogicalSizeOf::new(Some(200.0), Some(80.0)),
             ),
         },
-        |tree, input| tree.compute_child(LaneMarginMeasureTree::CHILD, input),
-    );
+    )
+    .expect("lane margin measurement request is valid");
+    let output = tree
+        .borrow_compute()
+        .compute_child(LaneMarginMeasureTree::CHILD, measurement.input())
+        .expect("lane margin measurement succeeds");
 
-    assert_eq!(measured.expect("lane margin measurement succeeds"), 80.0);
+    assert_eq!(measurement.extent(output), 80.0);
     let input = tree
         .last_input
         .expect("measurement should compute the child");

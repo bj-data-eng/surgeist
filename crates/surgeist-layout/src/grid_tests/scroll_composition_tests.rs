@@ -5329,28 +5329,28 @@ fn grid_lanes_layout_rejects_overflowed_affine_tolerance_resolution() {
     };
     let placements = GridPlacementContext::empty();
     let mut tree = OracleTree::new().children(1, []).style(1, style.clone());
-
-    let err = resolve_grid_lanes_placement_with_resolved_tracks(
-        &mut tree.borrow_compute(),
-        1,
-        &grid_container_projection!(&style),
-        &constants,
-        context,
-        &[10.0],
-        &[10.0],
-        &placements,
-        0.0,
-        LogicalSizeOf::new(Some(10.0), Some(10.0)),
-        SizingOperation::Normal,
-        GridMinimumParentFunctions {
+    let style = grid_container_projection!(&style);
+    let subgrid_report = collect_subgrid_report(&style, &placements);
+    let source = LanePackingSource {
+        style: &style,
+        constants: &constants,
+        context: &context,
+        columns: &[10.0],
+        rows: &[10.0],
+        placements: &placements,
+        grid_axis_gap: 0.0,
+        container_content_box_size: LogicalSizeOf::new(Some(10.0), Some(10.0)),
+        stacking_operation: SizingOperation::Normal,
+        minimum_functions: GridMinimumParentFunctions {
             columns: None,
             rows: None,
         },
-        &collect_subgrid_report(&grid_container_projection!(&style), &placements),
-        GridSizingStage::COMPLETE,
-    )
-    .expect("layout resolution should not fail")
-    .expect_err("invalid layout tolerance should not produce a placement report");
+        subgrid_report: &subgrid_report,
+        sizing_stage: GridSizingStage::COMPLETE,
+    };
+    let Err(err) = LanePacking::begin(&tree.borrow_compute(), 1, &source) else {
+        panic!("invalid layout tolerance should prevent lane packing");
+    };
 
     assert_eq!(err, LanePlacementError::InvalidGridFlowToleranceResolution);
 }
