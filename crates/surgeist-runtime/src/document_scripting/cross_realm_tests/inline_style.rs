@@ -12,6 +12,74 @@ pub(super) fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
     guest_insertion(None, None, true);
 }
 
+pub(super) fn guest_meta_completion_delivers_its_connection_reaction() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
+        limits.with_meta_processing_work(1_000_000)
+    });
+    let document = target.document();
+    session
+        .style_execution()
+        .bind_root(
+            &session.dom(),
+            "guest-meta-reactions".into(),
+            &mut Some(DomStyleCssomRoot::new(
+                document.node(),
+                CssomStore::new(Default::default(), Default::default()).unwrap(),
+            )),
+            &cancel,
+        )
+        .unwrap();
+    let mut batch = DomBatch::new();
+    let fragment = batch.create_fragment(document);
+    let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+    batch.set_attribute(&meta, "http-equiv", "default-style");
+    batch.set_attribute(&meta, "content", "Prefix");
+    batch.insert_before(&meta, &fragment, None);
+    let committed = session.dom().apply(batch, &cancel).unwrap();
+    let fragment = committed.created(&fragment).unwrap().unwrap();
+    let snapshot = session.snapshot();
+    let root = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let head = snapshot.node(root).unwrap().children()[0];
+    let mut host = attach_public_nodes(session, target, cancel, 20_000, 200_000);
+    let permit = host.permit().unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, fragment, "metaFragment");
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"
+            globalThis.metaConnections = [];
+            customElements.define('x-meta-reaction', class extends HTMLElement {
+                connectedCallback() { metaConnections.push(this); }
+            });
+            globalThis.metaCustom = document.createElement('x-meta-reaction');
+            metaFragment.appendChild(metaCustom);
+        "#,
+        )
+        .map(drop)
+    })
+    .unwrap();
+    host.run_guest_meta_tree_edit_fixture(
+        &permit,
+        DomSourceEdit::insert_before(fragment, head, None),
+    )
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        let result = evaluate(
+            scope,
+            "metaConnections.length === 1 && metaConnections[0] === metaCustom",
+        )?;
+        let yes = scope.primitive(Primitive::Boolean(true))?;
+        assert!(scope.strict_equals(&result, &yes)?);
+        Ok(())
+    })
+    .unwrap();
+}
+
 pub(super) fn stopped_upgrade_can_settle_its_published_style_child() {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session(&cancel, 0);

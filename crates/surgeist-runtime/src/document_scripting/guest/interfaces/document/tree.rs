@@ -386,6 +386,65 @@ impl DocumentScriptHost {
             Ok(())
         })
     }
+
+    pub(in crate::document_scripting) fn run_guest_meta_tree_edit_fixture(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        edit: DomSourceEdit,
+    ) -> Result<(), DocumentScriptError> {
+        let owner = self.native.clone();
+        let events = self.guest_events().unwrap();
+        let public = events.public.as_ref().unwrap();
+        let capture = Capture {
+            callbacks: public.callbacks.clone(),
+            origin: None,
+            _backing: events.reserve(&owner, size_of::<Capture>()).unwrap(),
+        };
+        self.in_document(permit, |scope| {
+            let mut session = owner.session.borrow_mut();
+            let result = session.source_execution().apply(
+                &mut session.dom(),
+                edit,
+                events.limits.source_edits,
+                &mut crate::DomSourceServices {
+                    meta: Some(
+                        surgeist_dom::DomMetaAtomicLimits::new(
+                            16_000_000, 1_000_000, 1_000_000, 128,
+                        )
+                        .unwrap(),
+                    ),
+                    ..guest_source_services(&mut |_| None)
+                },
+                &owner.cancellation,
+            );
+            drop(session);
+            let Ok(DomSourceDriveProgress::MetaSource(outcome)) = &result else {
+                panic!("expected the actual joined Meta result: {result:?}");
+            };
+            assert!(matches!(
+                outcome.source(),
+                surgeist_dom::DomSourceProgress::Complete(_)
+            ));
+            assert_eq!(outcome.preferences().len(), 1);
+            assert_eq!(
+                outcome.preferences()[0].observation().preferred_name(),
+                &surgeist_dom::DocumentString::from("Prefix")
+            );
+            let result = capture.finish_guest_tree_edit(
+                scope,
+                &owner,
+                &events,
+                result,
+                (None, None),
+                Completion::Undefined,
+            );
+            assert!(matches!(
+                tree_completion(scope, &events, result)?,
+                Completion::Undefined
+            ));
+            Ok(())
+        })
+    }
 }
 
 pub(super) fn tree_completion<'scope>(
