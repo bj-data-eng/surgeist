@@ -5789,15 +5789,8 @@
     "Element.insertAdjacentText:0/call": {
       "kind": "native",
       "adapter": "element.insertadjacenttext.call",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "The named insertAdjacentText compound operation, original operands, publication and mandatory Source tails.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
-          "issue": 2276
-        }
-      ]
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "insert_adjacent_text"}],
+      "requirements": []
     },
     "NamedNodeMap.length/get": {
       "kind": "native",
