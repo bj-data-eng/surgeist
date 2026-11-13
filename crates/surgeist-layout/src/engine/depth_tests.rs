@@ -852,7 +852,7 @@ fn deep_captured_detached_float_chain_returns_on_bounded_stack() {
     );
 }
 
-fn assert_positioned_chain<S: LayoutScalar>(display: Display, depth: u32) {
+fn assert_layout_chain<S: LayoutScalar>(display: Display, position: crate::Position, depth: u32) {
     let px = |value| crate::PreferredSizeOf::px(S::from_f64(value));
     let inset = |value| {
         crate::LengthAutoOf::value(crate::LengthPercentageOf::px(S::from_f64(value)).unwrap())
@@ -864,8 +864,8 @@ fn assert_positioned_chain<S: LayoutScalar>(display: Display, depth: u32) {
             size: Size::new(px(60.0), px(40.0)),
             ..NodeInputOf::default()
         };
-        if node != 0 {
-            style.position = crate::Position::Absolute;
+        if node != 0 && position == crate::Position::Absolute {
+            style.position = position;
             style.inset.left = inset(2.0);
             style.inset.top = inset(3.0);
         }
@@ -881,7 +881,7 @@ fn assert_positioned_chain<S: LayoutScalar>(display: Display, depth: u32) {
             );
         }
     }
-    let batch = compute_layout(&tree, 0, standalone()).expect("positioned layout returns");
+    let batch = compute_layout(&tree, 0, standalone()).expect("layout chain returns");
     assert_eq!(batch.node_layouts().len(), (2 * depth + 1) as usize);
     for (node, view) in batch.node_layouts() {
         if node > depth {
@@ -892,11 +892,11 @@ fn assert_positioned_chain<S: LayoutScalar>(display: Display, depth: u32) {
         }
         let output = view
             .single_box()
-            .expect("positioned box")
+            .expect("visible box")
             .final_entry()
             .output();
         assert_eq!(output.size, Size::new(S::from_f64(60.0), S::from_f64(40.0)));
-        let location = if node == 0 {
+        let location = if node == 0 || position != crate::Position::Absolute {
             crate::Point::ZERO
         } else {
             crate::Point::new(S::from_f64(2.0), S::from_f64(3.0))
@@ -911,8 +911,8 @@ fn shallow_positioned_flex_chain_publishes_boxes_and_hidden_siblings() {
     on_bounded_stack(
         "engine::depth_tests::shallow_positioned_flex_chain_publishes_boxes_and_hidden_siblings",
         || {
-            assert_positioned_chain::<f32>(Display::Flex, 2);
-            assert_positioned_chain::<f64>(Display::Flex, 2);
+            assert_layout_chain::<f32>(Display::Flex, crate::Position::Absolute, 2);
+            assert_layout_chain::<f64>(Display::Flex, crate::Position::Absolute, 2);
         },
     );
 }
@@ -922,8 +922,8 @@ fn deep_positioned_flex_chain_returns_on_bounded_stack() {
     on_bounded_stack(
         "engine::depth_tests::deep_positioned_flex_chain_returns_on_bounded_stack",
         || {
-            assert_positioned_chain::<f32>(Display::Flex, 24);
-            assert_positioned_chain::<f64>(Display::Flex, 24);
+            assert_layout_chain::<f32>(Display::Flex, crate::Position::Absolute, 24);
+            assert_layout_chain::<f64>(Display::Flex, crate::Position::Absolute, 24);
         },
     );
 }
@@ -934,8 +934,8 @@ fn shallow_positioned_grid_chain_publishes_boxes_and_hidden_siblings() {
         "engine::depth_tests::shallow_positioned_grid_chain_publishes_boxes_and_hidden_siblings",
         || {
             for display in [Display::Grid, Display::GridLanes] {
-                assert_positioned_chain::<f32>(display, 2);
-                assert_positioned_chain::<f64>(display, 2);
+                assert_layout_chain::<f32>(display, crate::Position::Absolute, 2);
+                assert_layout_chain::<f64>(display, crate::Position::Absolute, 2);
             }
         },
     );
@@ -947,9 +947,31 @@ fn deep_positioned_grid_chain_returns_on_bounded_stack() {
         "engine::depth_tests::deep_positioned_grid_chain_returns_on_bounded_stack",
         || {
             for display in [Display::Grid, Display::GridLanes] {
-                assert_positioned_chain::<f32>(display, 24);
-                assert_positioned_chain::<f64>(display, 24);
+                assert_layout_chain::<f32>(display, crate::Position::Absolute, 24);
+                assert_layout_chain::<f64>(display, crate::Position::Absolute, 24);
             }
+        },
+    );
+}
+
+#[test]
+fn shallow_in_flow_flex_chain_publishes_boxes_and_hidden_siblings() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_in_flow_flex_chain_publishes_boxes_and_hidden_siblings",
+        || {
+            assert_layout_chain::<f32>(Display::Flex, crate::Position::Relative, 2);
+            assert_layout_chain::<f64>(Display::Flex, crate::Position::Relative, 2);
+        },
+    );
+}
+
+#[test]
+fn deep_in_flow_flex_chain_returns_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_in_flow_flex_chain_returns_on_bounded_stack",
+        || {
+            assert_layout_chain::<f32>(Display::Flex, crate::Position::Relative, 24);
+            assert_layout_chain::<f64>(Display::Flex, crate::Position::Relative, 24);
         },
     );
 }
