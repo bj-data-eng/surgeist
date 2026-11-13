@@ -1034,6 +1034,11 @@ enum ContributionRole<Node, S: LayoutScalar> {
     Lanes(LaneIntrinsicRole<Node, S>),
 }
 
+struct ActiveContributionRole<Node, S: LayoutScalar> {
+    role: ContributionRole<Node, S>,
+    available: Size<AxisSizingRequestOf<S>>,
+}
+
 #[derive(Clone, Copy)]
 enum TrackContributionKind {
     Grid,
@@ -1058,7 +1063,7 @@ struct ContributionCollection<Node, S: LayoutScalar> {
     grid: [Option<IntrinsicAxisContributions<Node, S>>; 3],
     lanes: [Option<LanePurposeContributions<Node, S>>; 3],
     combined: Option<CombinedGridContributions<Node, S>>,
-    role: Option<ContributionRole<Node, S>>,
+    role: Option<ActiveContributionRole<Node, S>>,
     pending: Option<TrackContributionRequest<Node, S>>,
     saved_observation: Option<MinContentObservation<Node, S>>,
 }
@@ -1092,19 +1097,12 @@ impl<'input, 'a, Node: Copy, S: LayoutScalar> ContributionSource<'input, 'a, Nod
             .map_err(|error| grid_track_sizing_error(node, error))
     }
 
-    fn lanes_for<M>(
+    fn project_grid(
         self,
-        node: Node,
         purpose: GridContributionPurpose,
-    ) -> LayoutResultOf<Node, Option<LaneIntrinsicTrackSizeInput<'input, 'a, Node, S>>, S, M> {
-        lane_intrinsic_input(self.input, self.grid, self.frame)
-            .map(|input| {
-                Ok(LaneIntrinsicTrackSizeInput {
-                    grid: self.grid_for(node, purpose)?,
-                    ..input
-                })
-            })
-            .transpose()
+        available: Size<AxisSizingRequestOf<S>>,
+    ) -> IntrinsicGrid<'input, 'a, Node, S> {
+        project_intrinsic_role_grid(self.grid, self.frame, purpose, available)
     }
 }
 
@@ -1172,16 +1170,21 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
             }
             match kind {
                 TrackContributionKind::Grid if self.grid[slot].is_none() => {
-                    let grid = source.grid_for(node, purpose)?;
                     if self.role.is_none() {
-                        self.role = Some(ContributionRole::Grid(IntrinsicTrackRole::begin(
-                            tree,
-                            node,
-                            grid,
-                            IntrinsicGridLowerBounds::default(),
-                        )?));
+                        let grid = source.grid_for(node, purpose)?;
+                        self.role = Some(ActiveContributionRole {
+                            available: grid.query.available,
+                            role: ContributionRole::Grid(IntrinsicTrackRole::begin(
+                                tree,
+                                node,
+                                grid,
+                                IntrinsicGridLowerBounds::default(),
+                            )?),
+                        });
                     }
-                    let Some(ContributionRole::Grid(role)) = self.role.as_mut() else {
+                    let active = self.role.as_mut().expect("active ordinary role");
+                    let grid = source.project_grid(purpose, active.available);
+                    let ContributionRole::Grid(role) = &mut active.role else {
                         unreachable!("ordinary role owns its child cursor");
                     };
                     if self.pending.is_none() {
@@ -1192,22 +1195,34 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
                     if let Some(TrackContributionRequest::Grid(child)) = &self.pending {
                         return Ok(ControlFlow::Continue((child.node, child.input(grid)?)));
                     }
-                    let Some(ContributionRole::Grid(role)) = self.role.take() else {
+                    let Some(ActiveContributionRole {
+                        role: ContributionRole::Grid(role),
+                        ..
+                    }) = self.role.take()
+                    else {
                         unreachable!()
                     };
                     self.grid[slot] = Some(role.finish(node, grid)?.into_axis(source.frame.axis));
                 }
                 TrackContributionKind::Lanes if self.lanes[slot].is_none() => {
-                    let Some(input) = source.lanes_for(node, purpose)? else {
+                    let Some(mut input) =
+                        lane_intrinsic_input(source.input, source.grid, source.frame)
+                    else {
                         self.index += 1;
                         continue;
                     };
                     if self.role.is_none() {
-                        self.role = Some(ContributionRole::Lanes(LaneIntrinsicRole::begin(
-                            tree, node, input,
-                        )));
+                        input.grid = source.grid_for(node, purpose)?;
+                        self.role = Some(ActiveContributionRole {
+                            available: input.grid.query.available,
+                            role: ContributionRole::Lanes(LaneIntrinsicRole::begin(
+                                tree, node, input,
+                            )),
+                        });
                     }
-                    let Some(ContributionRole::Lanes(role)) = self.role.as_mut() else {
+                    let active = self.role.as_mut().expect("active lane role");
+                    input.grid = source.project_grid(purpose, active.available);
+                    let ContributionRole::Lanes(role) = &mut active.role else {
                         unreachable!("lane role owns its candidate cursor");
                     };
                     if self.pending.is_none() {
@@ -1224,7 +1239,11 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
                     if let Some(TrackContributionRequest::Lanes(child)) = &self.pending {
                         return Ok(ControlFlow::Continue((child.node, child.input())));
                     }
-                    let Some(ContributionRole::Lanes(role)) = self.role.take() else {
+                    let Some(ActiveContributionRole {
+                        role: ContributionRole::Lanes(role),
+                        ..
+                    }) = self.role.take()
+                    else {
                         unreachable!()
                     };
                     self.lanes[slot] = Some(role.finish(input));
@@ -1272,13 +1291,14 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
     ) -> LayoutResultOf<Node, (), S, M> {
         let (_, slot) = self.step().expect("active contribution purpose");
         let purpose = CONTRIBUTION_PURPOSES[slot];
-        let complete = match (&mut self.role, &mut self.pending) {
-            (Some(ContributionRole::Grid(role)), Some(TrackContributionRequest::Grid(child))) => {
-                role.accept_child(node, source.grid_for(node, purpose)?, child, output)?
+        let active = self.role.as_mut().expect("active contribution role");
+        let grid = source.project_grid(purpose, active.available);
+        let complete = match (&mut active.role, &mut self.pending) {
+            (ContributionRole::Grid(role), Some(TrackContributionRequest::Grid(child))) => {
+                role.accept_child(node, grid, child, output)?
             }
-            (Some(ContributionRole::Lanes(role)), Some(TrackContributionRequest::Lanes(child))) => {
-                let input = source
-                    .lanes_for(node, purpose)?
+            (ContributionRole::Lanes(role), Some(TrackContributionRequest::Lanes(child))) => {
+                let input = lane_intrinsic_input(source.input, grid, source.frame)
                     .expect("lane request retains its input");
                 role.accept_child(input, child, output)?
             }
@@ -1421,7 +1441,7 @@ pub(super) fn intrinsic_role_grid<'input, 'a, Node: Copy, S: LayoutScalar>(
         stage,
         columns,
         rows,
-        observed_axis,
+        ..
     } = frame;
     let role = match purpose {
         GridContributionPurpose::Minimum | GridContributionPurpose::MinContent => {
@@ -1513,7 +1533,23 @@ pub(super) fn intrinsic_role_grid<'input, 'a, Node: Copy, S: LayoutScalar>(
         GridAxisKind::Column | GridAxisKind::Row => {}
     }
     let available = grid.sizing_flow_axes.physical_size(available);
-    Ok(IntrinsicGrid {
+    Ok(project_intrinsic_role_grid(grid, frame, purpose, available))
+}
+
+fn project_intrinsic_role_grid<'input, 'a, Node: Copy, S: LayoutScalar>(
+    grid: IntrinsicGrid<'input, 'a, Node, S>,
+    frame: IntrinsicStageFrame<'a, S>,
+    purpose: GridContributionPurpose,
+    available: Size<AxisSizingRequestOf<S>>,
+) -> IntrinsicGrid<'input, 'a, Node, S> {
+    let IntrinsicStageFrame {
+        axis,
+        stage,
+        columns,
+        rows,
+        observed_axis,
+    } = frame;
+    IntrinsicGrid {
         query: IntrinsicGridQuery {
             purpose,
             axis: Some(axis),
@@ -1533,7 +1569,7 @@ pub(super) fn intrinsic_role_grid<'input, 'a, Node: Copy, S: LayoutScalar>(
             include_flexible_tracks: grid.query.include_flexible_tracks,
         },
         ..grid
-    })
+    }
 }
 
 pub(super) enum GridIntrinsicProbeKind {
