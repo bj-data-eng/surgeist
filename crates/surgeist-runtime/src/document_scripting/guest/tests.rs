@@ -136,6 +136,57 @@ pub(in crate::document_scripting) fn registry_definition_preserves_guest_identit
     );
 }
 
+pub(in crate::document_scripting) fn document_factories_execute_the_reached_custom_constructor() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const observations = [];
+            class Autonomous extends HTMLElement {
+                constructor() {
+                    super();
+                    observations.push(this, document.createElement('span'));
+                }
+            }
+            customElements.define('x-autonomous', Autonomous);
+            let autonomous;
+            try { autonomous = document.createElement('X-AUTONOMOUS'); }
+            catch { return false; }
+            if (!(autonomous instanceof Autonomous) || autonomous !== observations[0]
+                || autonomous.ownerDocument !== document || autonomous.localName !== 'x-autonomous'
+                || autonomous.parentNode !== null || observations[1]?.localName !== 'span'
+                || observations.length !== 2) return false;
+
+            let builtinReceiver;
+            class Customized extends HTMLButtonElement {
+                constructor() {
+                    super();
+                    builtinReceiver = this;
+                }
+            }
+            customElements.define('x-customized', Customized, { extends: 'button' });
+            const button = document.createElement('button', { is: 'x-customized' });
+            if (button !== builtinReceiver || !(button instanceof Customized)
+                || !(button instanceof HTMLButtonElement) || button.localName !== 'button') return false;
+
+            let failedReceiver;
+            class Failing extends HTMLElement {
+                constructor() {
+                    super();
+                    failedReceiver = this;
+                    throw new Error('original constructor exception');
+                }
+            }
+            customElements.define('x-failing', Failing);
+            const fallback = document.createElementNS('http://www.w3.org/1999/xhtml', 'p:x-failing');
+            return failedReceiver instanceof Failing && fallback !== failedReceiver
+                && fallback instanceof HTMLUnknownElement && fallback.localName === 'x-failing'
+                && fallback.prefix === 'p' && fallback.ownerDocument === document
+                && fallback.customElementRegistry === customElements;
+        })()"#)
+    }).unwrap();
+}
+
 pub(in crate::document_scripting) fn assert_queued_trusted_types_violations(
     host: &DocumentScriptHost,
     expected: &[(usize, &str, &str)],

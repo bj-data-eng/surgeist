@@ -242,6 +242,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::custom_element_registry_identity_is_canonical();
     super::guest::tests::element_factory_qualifies_the_explicit_registry();
     super::guest::tests::registry_definition_preserves_guest_identity_and_failure();
+    super::guest::tests::document_factories_execute_the_reached_custom_constructor();
     super::guest::tests::registered_origin::registered_origin_registry_keeps_exact_wrapper();
     super::guest::tests::registered_origin::registered_character_factory_refuses_without_publication(
     );
