@@ -788,7 +788,10 @@ impl Account {
         AccountedVec::new(self, count, RenderResource::ScratchCpuBytes)
     }
     pub(crate) fn allocation_error(&self, resource: RenderResource) -> Error {
-        if self.kind == RenderAttemptKind::ColorFilterProjection {
+        if matches!(
+            self.kind,
+            RenderAttemptKind::ColorFilterProjection | RenderAttemptKind::LeaderPattern
+        ) {
             return RenderAccountingError::StandaloneAllocation { resource }.into();
         }
         #[cfg(feature = "render-paint")]
@@ -816,7 +819,10 @@ impl Account {
         .into()
     }
     pub(crate) fn capacity_error(&self, resource: RenderResource) -> Error {
-        if self.kind == RenderAttemptKind::ColorFilterProjection {
+        if matches!(
+            self.kind,
+            RenderAttemptKind::ColorFilterProjection | RenderAttemptKind::LeaderPattern
+        ) {
             return RenderAccountingError::StandaloneCapacityOverflow { resource }.into();
         }
         #[cfg(feature = "render-paint")]
@@ -884,6 +890,7 @@ impl Account {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get_or_insert(refusal);
         if !self.is_paint_gradient()
+            && self.kind != RenderAttemptKind::LeaderPattern
             && refusal.phase != RenderPhase::Attempt
             && let RenderRefusalReason::Limit { limit } = refusal.reason
             && let Some(required) = refusal

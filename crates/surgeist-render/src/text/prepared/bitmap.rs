@@ -115,6 +115,10 @@ pub(super) fn prepare(
         brush_transform,
     })?;
     let bounds = kurbo::Rect::new(x0, y0, x1, y1);
-    pen.bounds = Some(pen.bounds.map_or(bounds, |previous| previous.union(bounds)));
+    pen.include_bounds(
+        bounds,
+        #[cfg(feature = "render-text")]
+        RenderPhase::Bitmap,
+    )?;
     Ok(())
 }
