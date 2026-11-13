@@ -4,6 +4,7 @@ use crate::document_scripting::guest::tests::{
 };
 use surgeist_cssom::CssomStore;
 use surgeist_dom::DomStyleCssomRoot;
+use surgeist_html::values::DocumentString;
 
 pub(super) fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
     guest_insertion(None, None, true);
@@ -31,6 +32,50 @@ pub(super) fn guest_style_update_matches_the_exact_nonce() {
 }
 
 fn guest_insertion(policy: Option<&str>, nonce: Option<(&str, bool)>, expected_sheet: bool) {
+    guest_style(
+        policy,
+        nonce,
+        "p { color: red }".into(),
+        expected_sheet,
+        false,
+    );
+}
+
+pub(super) fn guest_style_hashes_exact_utf16_source() {
+    let text: DocumentString = "p { color: red }".into();
+    for policy in [
+        "style-src 'sha256-ngewhhP73WDIbgwseeu52VAAJgKdGUsu1IUQQsAm8m4='",
+        "style-src 'sha384-ZpslxsY6hfdNIsLGwaQZKfU02y2K0sdrZNXJHB4s9COv3KEMfNvwaUs_zHVcjxej'",
+        "style-src 'sha512-/N6GXxQAO2l9ump/adcHcT/yWxws7as1i5T93IlKmYXjD6shH1GqcykwLwi1Ob0uUTyxFBrXFgwg/Zk5WuqePg=='",
+    ] {
+        guest_style(Some(policy), None, text.clone(), true, true);
+    }
+    let mut units: Vec<u16> = "p::before { content: \"é😀".encode_utf16().collect();
+    units.push(0xd800);
+    units.extend("\" }".encode_utf16());
+    guest_style(
+        Some("style-src 'sha256-5H3f8oP6R3NLYXB-VcyFFpkTiKnnt2oYSNZyH_2SfT0='"),
+        None,
+        DocumentString::from_utf16(units),
+        true,
+        false,
+    );
+    guest_style(
+        Some("style-src 'unsafe-inline' 'sha256-ngewhhP73WDIbgwseeu52VAAJgKdGUsu1IUQQsAm8m4'"),
+        None,
+        text,
+        false,
+        false,
+    );
+}
+
+fn guest_style(
+    policy: Option<&str>,
+    nonce: Option<(&str, bool)>,
+    text: DocumentString,
+    expected_sheet: bool,
+    edit_after_match: bool,
+) {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
         limits.with_meta_processing_work(1_000_000)
@@ -58,7 +103,7 @@ fn guest_insertion(policy: Option<&str>, nonce: Option<(&str, bool)>, expected_s
     let head = snapshot.node(html).unwrap().children()[0];
     let mut batch = DomBatch::new();
     let style = batch.create_element_ns(document, Namespace::html(), "style");
-    let text = batch.create_text(document, "p { color: red }");
+    let text = batch.create_text(document, text);
     batch.insert_before(&text, &style, None);
     let meta = policy.map(|policy| {
         let meta = batch.create_element_ns(document, Namespace::html(), "meta");
@@ -68,6 +113,7 @@ fn guest_insertion(policy: Option<&str>, nonce: Option<(&str, bool)>, expected_s
     });
     let committed = session.dom().apply(batch, &cancel).unwrap();
     let style = committed.created(&style).unwrap().unwrap();
+    let text = committed.created(&text).unwrap().unwrap();
     let meta = meta.map(|meta| committed.created(&meta).unwrap().unwrap());
     if meta.is_some() {
         session.enable_trusted_types_csp(&cancel).unwrap();
@@ -147,5 +193,31 @@ fn guest_insertion(policy: Option<&str>, nonce: Option<(&str, bool)>, expected_s
         assert_eq!(cssom.sheet_rules(sheet.id()).unwrap().len(), 1);
     } else {
         assert!(cssom.sheets().is_empty());
+    }
+    if edit_after_match {
+        expose_public_node_for_source_test(&mut host, &permit, text, "inlineStyleText");
+        host.in_document(&permit, |scope| {
+            evaluate(scope, "inlineStyleText.replaceData(11, 3, 'blue')").map(drop)
+        })
+        .unwrap();
+        let snapshot = host.snapshot().unwrap();
+        assert!(
+            snapshot
+                .node(style)
+                .unwrap()
+                .as_style()
+                .unwrap()
+                .sheet()
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            styles
+                .snapshot(document.node())
+                .unwrap()
+                .unwrap()
+                .sheets()
+                .is_empty()
+        );
     }
 }
