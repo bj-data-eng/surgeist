@@ -173,6 +173,15 @@ impl Capture {
                     node.reusable_shadow_root_with(native.properties().mode(), || events.step())?;
                 Ok((document, root))
             })?;
+            let mut callback_failure = None;
+            let mut has_callback = |definition| {
+                public
+                    .has_disconnected_callback(&events, definition)
+                    .map_err(|error| {
+                        callback_failure = Some(error);
+                        DomError::InvalidSourceOperation
+                    })
+            };
             if let Some(root) = existing
                 && let Some(projected) = public
                     .document
@@ -185,14 +194,18 @@ impl Capture {
                             host,
                             native,
                             events.limits.source_edits,
-                            Some(&registration),
+                            Some(surgeist_dom::DomShadowReactionRoute::new(
+                                &registration,
+                                &mut has_callback,
+                            )),
                             &owner.cancellation,
                         )?;
                     if root != attached {
                         return Err(DocumentScriptNativeError::ProjectionCustody.into());
                     }
                     Ok(reactions)
-                })?;
+                });
+                let reactions = callback_failure.map_or(reactions, Err)?;
                 if reactions {
                     public.schedule_backup_reactions(scope)?;
                 }
@@ -230,7 +243,10 @@ impl Capture {
                                     native,
                                     (inbox, key),
                                     (events.limits.source_edits, events.limits.node_retirement),
-                                    Some(&registration),
+                                    Some(surgeist_dom::DomShadowReactionRoute::new(
+                                        &registration,
+                                        &mut has_callback,
+                                    )),
                                     &owner.cancellation,
                                 )?;
                             reactions = published_reactions;
@@ -244,7 +260,8 @@ impl Capture {
                 public.with_origin(&events, origin, |origin| publish(&origin.documents))
             } else {
                 publish(&public.document.prototypes)
-            }?;
+            };
+            let value = callback_failure.map_or(value, Err)?;
             if reactions {
                 public.schedule_backup_reactions(scope)?;
             }

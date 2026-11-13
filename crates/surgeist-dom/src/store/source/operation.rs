@@ -34,7 +34,8 @@ mod script;
 mod show_modal;
 mod synchronous_node;
 pub use synchronous_node::{
-    DomPreparedElementName, DomWatchedCustomElementResult, DomWatchedElementCreation,
+    DomPreparedElementName, DomShadowReactionRoute, DomWatchedCustomElementResult,
+    DomWatchedElementCreation,
 };
 mod watcher;
 use super::Invocation;

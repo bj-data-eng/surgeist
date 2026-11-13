@@ -15,6 +15,30 @@ use surgeist_html_semantics::HtmlCustomElementDefinition;
 const INTERFACE: &[u16] = &ascii(b"CustomElementRegistry");
 
 impl PublicEventBindings {
+    pub(super) fn has_disconnected_callback(
+        &self,
+        events: &GuestEvents,
+        definition: DomRegistryDefinitionId,
+    ) -> Result<bool, DocumentGuestEventError> {
+        self.with_registry_step(
+            || events.step(),
+            |registry| registry.id == definition.registry(),
+            |registry| {
+                events.step()?;
+                let definitions = registry
+                    .definitions
+                    .try_borrow()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                let row = definitions
+                    .rows
+                    .get(definition.ordinal())
+                    .filter(|row| row.id == definition)
+                    .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+                Ok(row.callbacks[1].is_some())
+            },
+        )
+    }
+
     pub(super) fn schedule_backup_reactions(&self, scope: &mut Scope<'_>) -> Result<(), Error> {
         if !self.backup_reactions_scheduled.get() {
             let job = scope.open_callback_object(&self.backup_reaction_job)?;
@@ -2360,10 +2384,19 @@ impl PublicEventBindings {
     fn with_registry<T>(
         &self,
         read: &NativeRead<'_>,
+        matches: impl FnMut(&GlobalRegistry) -> bool,
+        use_registry: impl FnOnce(&Rc<GlobalRegistry>) -> Result<T, DocumentGuestEventError>,
+    ) -> Result<T, DocumentGuestEventError> {
+        self.with_registry_step(|| read.step(), matches, use_registry)
+    }
+
+    fn with_registry_step<T>(
+        &self,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
         mut matches: impl FnMut(&GlobalRegistry) -> bool,
         use_registry: impl FnOnce(&Rc<GlobalRegistry>) -> Result<T, DocumentGuestEventError>,
     ) -> Result<T, DocumentGuestEventError> {
-        read.step()?;
+        step()?;
         if matches(&self.custom_elements) {
             return use_registry(&self.custom_elements);
         }
@@ -2373,7 +2406,7 @@ impl PublicEventBindings {
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let mut next = origins.as_deref();
         while let Some(origin) = next {
-            read.step()?;
+            step()?;
             if matches(&origin.custom_elements) {
                 return use_registry(&origin.custom_elements);
             }

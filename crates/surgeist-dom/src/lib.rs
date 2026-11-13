@@ -357,10 +357,10 @@ pub use store::source::operation::meta::{
     DomSourceMetaCspError, DomSourceMetaCspProcessorFailure,
 };
 pub use store::source::operation::{
-    DomPreparedElementName, DomSourceCustomElementCallbackScope, DomSourceCustomElementDisposition,
-    DomSourceCustomElementOutcome, DomSourceCustomElementRetention, DomSourceCustomElementUpgrade,
-    DomSourceEventFiringLoan, DomSourceLease, DomStyleCspBudget, DomWatchedCustomElementResult,
-    DomWatchedElementCreation,
+    DomPreparedElementName, DomShadowReactionRoute, DomSourceCustomElementCallbackScope,
+    DomSourceCustomElementDisposition, DomSourceCustomElementOutcome,
+    DomSourceCustomElementRetention, DomSourceCustomElementUpgrade, DomSourceEventFiringLoan,
+    DomSourceLease, DomStyleCspBudget, DomWatchedCustomElementResult, DomWatchedElementCreation,
 };
 pub use store::source::reactions::{
     DomCustomElementReaction, DomCustomElementReactionKind, DomCustomElementReactions,

@@ -276,8 +276,14 @@ impl Operation {
                     .shadow_reactions
                     .as_mut()
                     .ok_or(DomError::NotSupported)?;
-                reactions.route_to_backup(route.registration)?;
-                *route.published = true;
+                let formation = segment
+                    .prepared
+                    ._formation
+                    .as_ref()
+                    .ok_or(DomError::InvalidSourceOperation)?;
+                if !route.prepare(reactions, formation, cancel)? {
+                    segment.prepared.custom_element_reactions = None;
+                }
             }
             if let synchronous_node::SynchronousNode::Watch(watch)
             | synchronous_node::SynchronousNode::ElementFactory(watch) = node

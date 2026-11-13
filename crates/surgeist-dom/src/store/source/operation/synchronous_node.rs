@@ -11,9 +11,52 @@ pub(super) enum SynchronousNode<'a> {
     CustomElementResult(NodeWatch<'a>),
 }
 
+/// The exact registration and its retained disconnection callback lookup.
+/// The lookup must use the original definition identity and cannot enter guest code.
+pub struct DomShadowReactionRoute<'a> {
+    registration: &'a crate::DomDocumentScriptRegistration,
+    has_callback: &'a mut dyn FnMut(crate::DomRegistryDefinitionId) -> Result<bool, DomError>,
+}
+
+impl<'a> DomShadowReactionRoute<'a> {
+    pub fn new(
+        registration: &'a crate::DomDocumentScriptRegistration,
+        has_callback: &'a mut dyn FnMut(crate::DomRegistryDefinitionId) -> Result<bool, DomError>,
+    ) -> Self {
+        Self {
+            registration,
+            has_callback,
+        }
+    }
+    fn reborrow(&mut self) -> DomShadowReactionRoute<'_> {
+        DomShadowReactionRoute {
+            registration: self.registration,
+            has_callback: &mut *self.has_callback,
+        }
+    }
+}
+
 pub(super) struct ShadowReactionRoute<'a> {
-    pub(super) registration: &'a crate::DomDocumentScriptRegistration,
+    pub(super) route: DomShadowReactionRoute<'a>,
     pub(super) published: &'a mut bool,
+}
+
+impl ShadowReactionRoute<'_> {
+    pub(super) fn prepare(
+        &mut self,
+        reactions: &mut super::super::reactions::Publication,
+        formation: &formation::Formation,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        let present = reactions.route_to_backup(
+            self.route.registration,
+            &mut self.route.has_callback,
+            formation,
+            cancel,
+        )?;
+        *self.published = present;
+        Ok(present)
+    }
 }
 
 /// Result of advancing a detached Element factory with retirement custody.
@@ -188,14 +231,14 @@ impl Dom {
         host: NodeId,
         init: crate::DomShadowRootInit,
         source_limits: DomSourceLimits,
-        registration: Option<&crate::DomDocumentScriptRegistration>,
+        mut route: Option<DomShadowReactionRoute<'_>>,
         cancel: &AtomicBool,
     ) -> Result<(DomCommit, NodeId, bool), DomError> {
         let mut reactions = false;
         let mut execution = Execution::disabled();
         execution.synchronous_node = Some(SynchronousNode::ReturnNode);
-        execution.shadow_reactions = registration.map(|registration| ShadowReactionRoute {
-            registration,
+        execution.shadow_reactions = route.as_mut().map(|route| ShadowReactionRoute {
+            route: route.reborrow(),
             published: &mut reactions,
         });
         let completed = self.finish_synchronous_node(
@@ -220,14 +263,14 @@ impl Dom {
         init: crate::DomShadowRootInit,
         watch: (&DomNodeRetirementInbox, usize),
         (source_limits, watch_limits): (DomSourceLimits, DomNodeRetirementLimits),
-        registration: Option<&crate::DomDocumentScriptRegistration>,
+        route: Option<DomShadowReactionRoute<'_>>,
         cancel: &AtomicBool,
     ) -> Result<(crate::DomWatchedNode, bool), DomError> {
         self.publish_watched_source_node(
             DomSourceEdit::attach_shadow(host, init),
             watch,
             (source_limits, watch_limits),
-            registration,
+            route,
             cancel,
         )
     }
@@ -258,13 +301,13 @@ impl Dom {
         edit: DomSourceEdit,
         (inbox, custody_key): (&DomNodeRetirementInbox, usize),
         (source_limits, watch_limits): (DomSourceLimits, DomNodeRetirementLimits),
-        registration: Option<&crate::DomDocumentScriptRegistration>,
+        mut route: Option<DomShadowReactionRoute<'_>>,
         cancel: &AtomicBool,
     ) -> Result<(crate::DomWatchedNode, bool), DomError> {
         let mut reactions = false;
         let mut execution = Execution::disabled();
-        execution.shadow_reactions = registration.map(|registration| ShadowReactionRoute {
-            registration,
+        execution.shadow_reactions = route.as_mut().map(|route| ShadowReactionRoute {
+            route: route.reborrow(),
             published: &mut reactions,
         });
         execution.synchronous_node = Some(SynchronousNode::Watch(NodeWatch {

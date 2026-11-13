@@ -387,16 +387,48 @@ impl Publication {
     pub(in crate::store) fn route_to_backup(
         &mut self,
         registration: &crate::DomDocumentScriptRegistration,
-    ) -> Result<(), DomError> {
+        mut has_callback: impl FnMut(crate::DomRegistryDefinitionId) -> Result<bool, DomError>,
+        formation: &formation::Formation,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
         if !Arc::ptr_eq(&self.registration, &registration.0) || !registration.is_active() {
             return Err(DomError::HostedSourceUnavailable);
         }
-        for slot in &mut self.batches {
-            Arc::get_mut(slot)
-                .ok_or(DomError::InvalidSourceOperation)?
-                .backup = true;
+        let Some(slot) = self.batches.front_mut().and_then(Arc::get_mut) else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        let SlotState::Ready(batch) = slot
+            .state
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        let mut failure = None;
+        batch.facts.retain(|fact| {
+            if failure.is_some() {
+                return true;
+            }
+            let keep = (|| {
+                formation.step(cancel)?;
+                if !matches!(fact.kind, ReactionKind::Disconnected) {
+                    return Err(DomError::InvalidSourceOperation);
+                }
+                has_callback(fact.definition)
+            })();
+            match keep {
+                Ok(keep) => keep,
+                Err(error) => {
+                    failure = Some(error);
+                    true
+                }
+            }
+        });
+        if let Some(error) = failure {
+            return Err(error);
         }
-        Ok(())
+        slot.backup = true;
+        Ok(!batch.facts.is_empty())
     }
 
     pub(in crate::store) fn publish(mut self) {
