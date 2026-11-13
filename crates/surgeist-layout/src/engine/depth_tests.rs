@@ -852,7 +852,7 @@ fn deep_captured_detached_float_chain_returns_on_bounded_stack() {
     );
 }
 
-fn assert_positioned_flex_chain<S: LayoutScalar>(depth: u32) {
+fn assert_positioned_chain<S: LayoutScalar>(display: Display, depth: u32) {
     let px = |value| crate::PreferredSizeOf::px(S::from_f64(value));
     let inset = |value| {
         crate::LengthAutoOf::value(crate::LengthPercentageOf::px(S::from_f64(value)).unwrap())
@@ -860,7 +860,7 @@ fn assert_positioned_flex_chain<S: LayoutScalar>(depth: u32) {
     let mut tree = PublicLayoutTreeOf::<S>::new();
     for node in 0..=depth {
         let mut style = NodeInputOf {
-            display: Display::Flex,
+            display,
             size: Size::new(px(60.0), px(40.0)),
             ..NodeInputOf::default()
         };
@@ -881,7 +881,7 @@ fn assert_positioned_flex_chain<S: LayoutScalar>(depth: u32) {
             );
         }
     }
-    let batch = compute_layout(&tree, 0, standalone()).expect("positioned Flex layout returns");
+    let batch = compute_layout(&tree, 0, standalone()).expect("positioned layout returns");
     assert_eq!(batch.node_layouts().len(), (2 * depth + 1) as usize);
     for (node, view) in batch.node_layouts() {
         if node > depth {
@@ -892,7 +892,7 @@ fn assert_positioned_flex_chain<S: LayoutScalar>(depth: u32) {
         }
         let output = view
             .single_box()
-            .expect("positioned Flex box")
+            .expect("positioned box")
             .final_entry()
             .output();
         assert_eq!(output.size, Size::new(S::from_f64(60.0), S::from_f64(40.0)));
@@ -911,8 +911,8 @@ fn shallow_positioned_flex_chain_publishes_boxes_and_hidden_siblings() {
     on_bounded_stack(
         "engine::depth_tests::shallow_positioned_flex_chain_publishes_boxes_and_hidden_siblings",
         || {
-            assert_positioned_flex_chain::<f32>(2);
-            assert_positioned_flex_chain::<f64>(2);
+            assert_positioned_chain::<f32>(Display::Flex, 2);
+            assert_positioned_chain::<f64>(Display::Flex, 2);
         },
     );
 }
@@ -922,8 +922,34 @@ fn deep_positioned_flex_chain_returns_on_bounded_stack() {
     on_bounded_stack(
         "engine::depth_tests::deep_positioned_flex_chain_returns_on_bounded_stack",
         || {
-            assert_positioned_flex_chain::<f32>(24);
-            assert_positioned_flex_chain::<f64>(24);
+            assert_positioned_chain::<f32>(Display::Flex, 24);
+            assert_positioned_chain::<f64>(Display::Flex, 24);
+        },
+    );
+}
+
+#[test]
+fn shallow_positioned_grid_chain_publishes_boxes_and_hidden_siblings() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_positioned_grid_chain_publishes_boxes_and_hidden_siblings",
+        || {
+            for display in [Display::Grid, Display::GridLanes] {
+                assert_positioned_chain::<f32>(display, 2);
+                assert_positioned_chain::<f64>(display, 2);
+            }
+        },
+    );
+}
+
+#[test]
+fn deep_positioned_grid_chain_returns_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_positioned_grid_chain_returns_on_bounded_stack",
+        || {
+            for display in [Display::Grid, Display::GridLanes] {
+                assert_positioned_chain::<f32>(display, 24);
+                assert_positioned_chain::<f64>(display, 24);
+            }
         },
     );
 }
