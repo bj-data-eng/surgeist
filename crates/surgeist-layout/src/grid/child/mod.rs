@@ -54,7 +54,7 @@ pub(super) type GridChildPlacementStart<'input, Node, S, M> = LayoutResultOf<
 
 pub(super) struct GridChildPlacement<'input, Node, S: LayoutScalar> {
     node: Node,
-    positioned: Option<PositionedGridItems<'input, Node, S>>,
+    positioned: Option<Box<PositionedGridItems<'input, Node, S>>>,
     contributions: Vec<GridChildContribution<S>>,
     alignment: TrackAlignmentSubject<S>,
     padding: Edges<S>,
@@ -77,7 +77,8 @@ impl<'input, Node: Copy, S: LayoutScalar> GridChildPlacement<'input, Node, S> {
     ) -> GridChildPlacementResult<'input, Node, S, M> {
         let node = placement.node;
         let padding = placement.constants.padding;
-        let positioned = PositionedGridItems::begin(placement, pending, &contributions)?;
+        let positioned =
+            PositionedGridItems::begin(placement, pending, &contributions)?.map(Box::new);
         Ok(Self {
             node,
             positioned,

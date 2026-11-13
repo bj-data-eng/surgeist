@@ -176,7 +176,7 @@ pub(crate) struct GridContinuation<'input, Node, S: LayoutScalar> {
     pass_input: ComputeInputOf<S>,
     invocation: GridInvocation<'input, S>,
     contained_size: Size<Option<S>>,
-    pass: Option<GridPass<'input, Node, S>>,
+    pass: Option<Box<GridPass<'input, Node, S>>>,
 }
 
 type GridStart<'input, Node, S, M> =
@@ -845,8 +845,12 @@ struct GridPass<'input, Node, S: LayoutScalar> {
     scroll_box: CanonicalScrollBoxOf<S>,
 }
 
-type GridPassStart<'input, Node, S, M> =
-    LayoutResultOf<Node, ControlFlow<GridComputeResult<Node, S>, GridPass<'input, Node, S>>, S, M>;
+type GridPassStart<'input, Node, S, M> = LayoutResultOf<
+    Node,
+    ControlFlow<GridComputeResult<Node, S>, Box<GridPass<'input, Node, S>>>,
+    S,
+    M,
+>;
 
 impl<'input, Node: Copy, S: LayoutScalar> GridPass<'input, Node, S> {
     fn compute<Tree, M>(self, tree: &mut Tree) -> GridComputeOutcome<Node, S, M>
@@ -1280,11 +1284,11 @@ where
         ControlFlow::Break(layout) => output
             .finish(Some((scroll_box, layout)))
             .map(ControlFlow::Break),
-        ControlFlow::Continue(children) => Ok(ControlFlow::Continue(GridPass {
+        ControlFlow::Continue(children) => Ok(ControlFlow::Continue(Box::new(GridPass {
             children,
             output,
             scroll_box,
-        })),
+        }))),
     }
 }
 
