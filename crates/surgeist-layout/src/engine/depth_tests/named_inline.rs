@@ -261,11 +261,11 @@ fn shallow_named_receiver_publishes_actual_named_lines() {
 fn assert_named_receiver_work<S: LayoutScalar>() {
     // Depths 2, 3 and 5 have 1, 2 and 4 identical nonterminal levels.
     // Their fixed geometry and sizing/named-demand frame set are the same,
-    // while root and terminal work remain fixed. Reusing completed requests
-    // therefore permits at most twice the host queries when levels double.
+    // while root and terminal work remain fixed. The two additional levels
+    // from depth 3 to 5 must add at most twice the work of depth 2 to 3.
     let counts = [2, 3, 5].map(|depth| (depth, assert_named_receiver_geometry::<S>(depth)));
     assert!(
-        counts.windows(2).all(|pair| pair[1].1 <= 2 * pair[0].1),
+        counts[2].1 + 2 * counts[0].1 <= 3 * counts[1].1,
         "named receiver work must remain bounded per source node: {counts:?}"
     );
 }
