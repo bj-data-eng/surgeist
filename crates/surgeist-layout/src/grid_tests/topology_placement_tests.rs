@@ -6714,18 +6714,14 @@ fn shared_grid_contexts_accept_non_default_scalar() {
         .unwrap();
     // Raw scalar payload construction remains independently qualified. A
     // completed execution frame is produced only by the bounded stage owner.
-    let _column_preparation = intrinsic_stage::GridAxisPreparationOwner::Owned(
-        intrinsic_stage::GridAxisTrackPreparation {
-            available: column_reduction.available,
-            finishing_available: column_reduction.finishing_available,
-        },
-    );
-    let _row_preparation = intrinsic_stage::GridAxisPreparationOwner::Owned(
-        intrinsic_stage::GridAxisTrackPreparation {
-            available: row_reduction.available,
-            finishing_available: row_reduction.finishing_available,
-        },
-    );
+    let _column_preparation = intrinsic_stage::GridAxisTrackPreparation {
+        available: column_reduction.available,
+        finishing_available: column_reduction.finishing_available,
+    };
+    let _row_preparation = intrinsic_stage::GridAxisTrackPreparation {
+        available: row_reduction.available,
+        finishing_available: row_reduction.finishing_available,
+    };
     let execution_input = ComputeInputOf::for_child(
         RunMode::PerformLayout,
         SizingMode::InherentSize,

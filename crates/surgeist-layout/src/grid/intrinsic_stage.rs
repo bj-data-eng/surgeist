@@ -60,6 +60,7 @@ pub(super) struct GridAxisTrackInputs<S: LayoutScalar> {
     pub(super) base_floors: Vec<S>,
 }
 
+#[derive(Clone, Copy)]
 pub(super) struct GridAxisTrackPreparation<S: LayoutScalar> {
     // This effective request produced the reduction. Original caller operation and
     // initial fixed authority separately govern normal recomputation.
@@ -72,20 +73,6 @@ pub(super) struct GridAxisTrackReduction<S: LayoutScalar> {
     pub(super) sizes: Vec<S>,
     pub(super) available: AxisSizingRequestOf<S>,
     pub(super) finishing_available: GridTrackSizingConstraint<S>,
-}
-
-pub(super) enum GridAxisPreparationOwner<'a, S: LayoutScalar> {
-    Borrowed(&'a GridAxisTrackPreparation<S>),
-    Owned(GridAxisTrackPreparation<S>),
-}
-impl<S: LayoutScalar> core::ops::Deref for GridAxisPreparationOwner<'_, S> {
-    type Target = GridAxisTrackPreparation<S>;
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Borrowed(value) => value,
-            Self::Owned(value) => value,
-        }
-    }
 }
 
 // One returned bounded sizing execution owns this key. Unissued prefix axes remain
@@ -138,8 +125,8 @@ pub(super) enum GridTrackRun<'input, 'source, 'a, Node, S: LayoutScalar> {
         source: &'a GridTrackExecutionFrame<'input, 'source, Node, S>,
         columns: Vec<S>,
         rows: Vec<S>,
-        column_preparation: &'a GridAxisTrackPreparation<S>,
-        row_preparation: &'a GridAxisTrackPreparation<S>,
+        column_preparation: GridAxisTrackPreparation<S>,
+        row_preparation: GridAxisTrackPreparation<S>,
         spaces: LogicalSizeOf<GridAxisTrackSpace<S>>,
     },
 }
@@ -330,12 +317,12 @@ impl<S: LayoutScalar> RepeatSizingFrame<S> {
 }
 
 // A single source-ordered preparation serves full layout and bounded probes.
-pub(super) fn resolve_tracks<'input, 'source, 'prepared, Tree, M>(
+pub(super) fn resolve_tracks<'input, 'source, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
     input: GridTrackResolutionInput<'input, 'source, Tree::Node, Tree::Scalar>,
-    run: GridTrackRun<'input, 'source, 'prepared, Tree::Node, Tree::Scalar>,
-) -> GridTrackResolutionResult<'prepared, Tree::Node, Tree::Scalar, M>
+    run: GridTrackRun<'input, 'source, '_, Tree::Node, Tree::Scalar>,
+) -> GridTrackResolutionResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -351,14 +338,14 @@ where
     }
 }
 
-type TrackSizingStep<Node, S, M> =
+pub(super) type TrackSizingStep<Node, S, M> =
     LayoutResultOf<Node, ControlFlow<(), (Node, ComputeInputOf<S>)>, S, M>;
 
-pub(super) struct GridTrackSizing<'prepared, Node, S: LayoutScalar> {
+pub(super) struct GridTrackSizing<Node, S: LayoutScalar> {
     columns: Option<Vec<S>>,
     rows: Option<Vec<S>>,
-    column_preparation: Option<GridAxisPreparationOwner<'prepared, S>>,
-    row_preparation: Option<GridAxisPreparationOwner<'prepared, S>>,
+    column_preparation: Option<GridAxisTrackPreparation<S>>,
+    row_preparation: Option<GridAxisTrackPreparation<S>>,
     column_min_content: Option<AcceptedMinContent<Node, S>>,
     row_min_content: Option<AcceptedMinContent<Node, S>>,
     spaces: LogicalSizeOf<GridAxisTrackSpace<S>>,
@@ -390,7 +377,7 @@ const TRACK_PHASES: [GridSizingPhase; 4] = [
     GridSizingPhase::RevisitSecond,
 ];
 
-impl<'prepared, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'prepared, Node, S> {
+impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
     pub(super) fn intrinsic() -> Self {
         Self {
             columns: None,
@@ -412,7 +399,7 @@ impl<'prepared, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'prepared, Nod
     pub(super) fn begin<'input, 'source, M>(
         node: Node,
         input: &GridTrackResolutionInput<'input, 'source, Node, S>,
-        run: GridTrackRun<'input, 'source, 'prepared, Node, S>,
+        run: GridTrackRun<'input, 'source, '_, Node, S>,
     ) -> LayoutResultOf<Node, Self, S, M> {
         let (columns, rows, column_preparation, row_preparation, spaces, receiver, unchanged) =
             match run {
@@ -478,8 +465,8 @@ impl<'prepared, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'prepared, Nod
                     (
                         Some(columns),
                         Some(rows),
-                        Some(GridAxisPreparationOwner::Borrowed(column_preparation)),
-                        Some(GridAxisPreparationOwner::Borrowed(row_preparation)),
+                        Some(column_preparation),
+                        Some(row_preparation),
                         spaces,
                         true,
                         unchanged,
@@ -604,14 +591,12 @@ impl<'prepared, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'prepared, Nod
                     match axis {
                         GridAxisKind::Column => {
                             self.columns = Some(sizes);
-                            self.column_preparation =
-                                Some(GridAxisPreparationOwner::Owned(preparation));
+                            self.column_preparation = Some(preparation);
                             self.column_min_content = min_content;
                         }
                         GridAxisKind::Row => {
                             self.rows = Some(sizes);
-                            self.row_preparation =
-                                Some(GridAxisPreparationOwner::Owned(preparation));
+                            self.row_preparation = Some(preparation);
                             self.row_min_content = min_content;
                         }
                     }
@@ -773,7 +758,7 @@ impl<'prepared, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'prepared, Nod
         self,
         node: Node,
         input: GridTrackResolutionInput<'input, 'source, Node, S>,
-    ) -> GridTrackResolutionResult<'prepared, Node, S, M> {
+    ) -> GridTrackResolutionResult<Node, S, M> {
         let Self {
             columns,
             rows,
