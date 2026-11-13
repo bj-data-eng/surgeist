@@ -980,6 +980,13 @@ impl Operation {
             cancel,
         )?;
         let nonce = element.nonce();
+        let nonce_attribute = self.draft.control_attribute(
+            frame.key,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Nonce,
+            cancel,
+        )?;
+        let nonce_history_unavailable = element.style_state().is_some_and(|style| style.imported);
+        let nonce_content = nonce_attribute.filter(|_| !nonce_history_unavailable);
         let mut bytes = size_of::<DomStyleSource>()
             .checked_add(size_of::<Vec<u16>>())
             .ok_or(DomError::RepresentationExhausted)?;
@@ -987,7 +994,7 @@ impl Operation {
             .retained_payload_units()?
             .checked_add(length)
             .ok_or(DomError::RepresentationExhausted)?;
-        for (index, string) in [Some(base_url), media, title, blocking, nonce]
+        for (index, string) in [Some(base_url), media, title, blocking, nonce, nonce_content]
             .into_iter()
             .enumerate()
         {
@@ -1058,6 +1065,13 @@ impl Operation {
         let nonce = nonce
             .map(|value| self.own_attribute_value(value, budget, cancel))
             .transpose()?;
+        let nonce_content = match nonce_content {
+            Some(value) => {
+                DomStyleNonceContent::Present(self.own_attribute_value(value, budget, cancel)?)
+            }
+            None if nonce_attribute.is_some() => DomStyleNonceContent::TokenizerHistoryUnavailable,
+            None => DomStyleNonceContent::Absent,
+        };
         let source = formation::allocated_arc(DomStyleSource {
             operation: self.id,
             ordinal: match frame.invocation {
@@ -1076,6 +1090,7 @@ impl Operation {
             title,
             blocking,
             nonce: nonce.unwrap_or_default(),
+            nonce_content,
         });
         Ok(source)
     }

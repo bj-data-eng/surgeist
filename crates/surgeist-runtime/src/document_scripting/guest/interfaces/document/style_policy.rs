@@ -69,7 +69,7 @@ impl DomSession {
                         for policy in policies {
                             step()?;
                             let Some(matches) =
-                                policy.inline_style_without_credentials(&mut || step())?
+                                policy.inline_style(input.nonce_content(), &mut || step())?
                             else {
                                 return Ok(None);
                             };

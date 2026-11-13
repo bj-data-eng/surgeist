@@ -59,11 +59,12 @@ pub struct Policy {
 }
 
 impl Policy {
-    /// Evaluate an inline Style source list when no nonce or hash match is
-    /// needed. A credential expression leaves the decision to its evaluator.
+    /// Evaluate inline Style keywords and nonce sources. A potentially
+    /// matching hash or unknown tokenizer history can require more facts.
     #[cfg(feature = "document-scripting")]
-    pub(crate) fn inline_style_without_credentials<E>(
+    pub(crate) fn inline_style<E>(
         &self,
+        nonce: &surgeist_dom::DomStyleNonceContent,
         step: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<Option<bool>, E> {
         let serialized =
@@ -74,20 +75,34 @@ impl Policy {
             };
             let mut values = directive.values();
             let mut allows_inline = false;
+            let mut has_credential = false;
+            let mut unavailable = false;
             while let Some(token) = values.next_with(step)? {
-                if [b"'nonce-".as_slice(), b"'sha256-", b"'sha384-", b"'sha512-"]
-                    .iter()
-                    .any(|prefix| {
-                        token
-                            .get(..prefix.len())
-                            .is_some_and(|head| keyword(head, prefix))
-                    })
-                {
-                    return Ok(None);
+                if let Some(value) = inline_credential(token, b"'nonce-", step)? {
+                    has_credential = true;
+                    match nonce {
+                        surgeist_dom::DomStyleNonceContent::Present(nonce)
+                            if matching_nonce(value, nonce.code_units(), step)? =>
+                        {
+                            return Ok(Some(true));
+                        }
+                        surgeist_dom::DomStyleNonceContent::TokenizerHistoryUnavailable => {
+                            unavailable = true;
+                        }
+                        _ => {}
+                    }
+                } else {
+                    for prefix in [b"'sha256-", b"'sha384-", b"'sha512-"] {
+                        if inline_credential(token, prefix, step)?.is_some() {
+                            has_credential = true;
+                            unavailable = true;
+                            break;
+                        }
+                    }
                 }
                 allows_inline |= keyword(token, b"'unsafe-inline'");
             }
-            return Ok(Some(allows_inline));
+            return Ok((!unavailable).then_some(allows_inline && !has_credential));
         }
         Ok(Some(true))
     }
@@ -160,6 +175,55 @@ impl Policy {
         }
         Ok(!(permitted && allows_duplicate))
     }
+}
+
+#[cfg(feature = "document-scripting")]
+fn inline_credential<'a, E>(
+    token: &'a [u16],
+    prefix: &[u8],
+    step: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<&'a [u16]>, E> {
+    let Some((head, tail)) = token.split_at_checked(prefix.len()) else {
+        return Ok(None);
+    };
+    if !keyword(head, prefix) {
+        return Ok(None);
+    }
+    let Some((&0x27, value)) = tail.split_last() else {
+        return Ok(None);
+    };
+    let unpadded = value
+        .strip_suffix(&[0x3d, 0x3d])
+        .or_else(|| value.strip_suffix(&[0x3d]))
+        .unwrap_or(value);
+    if unpadded.is_empty() {
+        return Ok(None);
+    }
+    for &unit in unpadded {
+        step()?;
+        if !matches!(unit, 0x41..=0x5a | 0x61..=0x7a | 0x30..=0x39 | 0x2b | 0x2f | 0x2d | 0x5f) {
+            return Ok(None);
+        }
+    }
+    Ok(Some(value))
+}
+
+#[cfg(feature = "document-scripting")]
+fn matching_nonce<E>(
+    expected: &[u16],
+    actual: &[u16],
+    step: &mut impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    if expected.len() != actual.len() {
+        return Ok(false);
+    }
+    for (expected, actual) in expected.iter().zip(actual) {
+        step()?;
+        if expected != actual {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn keyword(units: &[u16], literal: &[u8]) -> bool {

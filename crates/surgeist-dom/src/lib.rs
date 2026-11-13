@@ -359,8 +359,8 @@ pub use store::source::operation::{DomSourceEventFiringLoan, DomSourceLease};
 pub use style::{
     DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCssomOwnerBinding,
     DomStyleCssomPublicationRejection, DomStyleCssomRoot, DomStyleCssomRootError,
-    DomStyleInlineCspObservation, DomStyleNotificationCompletion, DomStyleNotificationDelivery,
-    DomStyleNotificationOrigin, DomStyleNotificationToken, DomStyleRequest, DomStyleRootKind,
-    DomStyleSheet, DomStyleSheetAvailability, DomStyleSheetPlacement, DomStyleSource,
-    DomStyleState,
+    DomStyleInlineCspObservation, DomStyleNonceContent, DomStyleNotificationCompletion,
+    DomStyleNotificationDelivery, DomStyleNotificationOrigin, DomStyleNotificationToken,
+    DomStyleRequest, DomStyleRootKind, DomStyleSheet, DomStyleSheetAvailability,
+    DomStyleSheetPlacement, DomStyleSource, DomStyleState,
 };
