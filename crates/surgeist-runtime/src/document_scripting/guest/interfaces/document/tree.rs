@@ -9,6 +9,7 @@ mod clone;
 mod comparison;
 mod namespace;
 pub(super) use clone::install_import;
+pub(super) use comparison::install_position_constants;
 
 #[derive(Clone, Copy)]
 enum Method {

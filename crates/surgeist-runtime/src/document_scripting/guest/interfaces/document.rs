@@ -713,6 +713,7 @@ pub(super) fn install_node<'scope>(
     )?;
     text::install(scope, &node, capture)?;
     tree::install(scope, &node, capture)?;
+    tree::install_position_constants(scope, &node_constructor, &node)?;
     let root = capture(size_of::<Capture>())?;
     let root_name = &ascii(b"getRootNode");
     let method = scope.bounded_function(

@@ -100,6 +100,13 @@ impl SlotIndex {
     pub fn position(&self, key: Key) -> Option<ChildPosition> {
         self.positions.get(key).copied()
     }
+    pub fn position_with<E>(
+        &self,
+        key: Key,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<ChildPosition>, E> {
+        Ok(self.positions.get_with(key, step)?.copied())
+    }
     fn root(
         &self,
         key: Key,

@@ -84,6 +84,69 @@ fn ordinary_containment_resolves_template_contents_without_crossing_the_host() {
 }
 
 #[test]
+fn document_position_uses_snapshot_order_and_preserves_first_refusal() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element_ns(&document, Namespace::html(), "main");
+    let left = batch.create_element_ns(&document, Namespace::html(), "span");
+    let right = batch.create_element_ns(&document, Namespace::html(), "span");
+    let detached = batch.create_comment(&document, "detached");
+    let leaf = batch.create_text(&document, "leaf");
+    batch.insert_before(&root, &document, None);
+    batch.insert_before(&left, &root, None);
+    batch.insert_before(&right, &root, None);
+    batch.insert_before(&leaf, &right, None);
+    let commit = apply(&mut dom, batch);
+    let [root, left, right, leaf, detached] =
+        [root, left, right, leaf, detached].map(|ticket| commit.created(&ticket).unwrap().unwrap());
+    let captured = dom.snapshot();
+    let bits = |snapshot: &DomSnapshot, receiver, other| {
+        snapshot
+            .node(receiver)
+            .unwrap()
+            .compare_document_position_with(other, || Ok::<_, DomError>(()))
+            .unwrap()
+            .bits()
+    };
+    assert_eq!(bits(&captured, root, leaf), 20);
+    assert_eq!(bits(&captured, leaf, root), 10);
+    assert_eq!(bits(&captured, left, leaf), 4);
+    let disconnected = bits(&captured, detached, leaf);
+    assert!(matches!(disconnected, 35 | 37));
+    assert_eq!(bits(&captured, leaf, detached), disconnected ^ 6);
+    let mut batch = DomBatch::new();
+    batch.insert_before(right, root, Some(left.into()));
+    apply(&mut dom, batch);
+    let current = dom.snapshot();
+    assert_eq!(bits(&current, left, leaf), 2);
+    assert_eq!(bits(&captured, left, leaf), 4);
+    assert_eq!(bits(&current, detached, leaf), disconnected);
+    let mut count = 0;
+    let receiver = current.node(left).unwrap();
+    let other = receiver
+        .compare_document_position_with(leaf, || {
+            count += 1;
+            Ok::<_, DomError>(())
+        })
+        .unwrap();
+    assert_eq!(other.bits(), 2);
+    for limit in 1..=count {
+        let mut reached = 0;
+        let failed = receiver.compare_document_position_with(leaf, || {
+            reached += 1;
+            if reached == limit {
+                Err(DomError::Cancelled)
+            } else {
+                Ok(())
+            }
+        });
+        assert_eq!(failed, Err(DomError::Cancelled));
+        assert_eq!(reached, limit);
+    }
+}
+
+#[test]
 fn namespace_lookup_stops_at_inert_template_contents_and_preserves_refusal() {
     let mut dom = dom();
     let xmlns = Namespace::from_uri("http://www.w3.org/2000/xmlns/");

@@ -4773,20 +4773,8 @@
     "Node.compareDocumentPosition:0/call": {
       "kind": "native",
       "adapter": "node.comparedocumentposition.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"}],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Source document-position bit combinations over ordinary tree order, Attr ownerElement/attribute order and a consistent implementation-specific direction for disconnected nodes; do not order private NodeId slots by guesswork.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-node-comparedocumentposition"
-        },
-        {
-          "owner": "surgeist-dom",
-          "contract": "Actual stable Attr ownerElement/identity operands for attribute branches.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-attr",
-          "issue": 2274
-        }
-      ]
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot/position.rs", "symbol": "compare_document_position_with"}],
+      "requirements": []
     },
     "Node.contains:0/call": {
       "kind": "derived",

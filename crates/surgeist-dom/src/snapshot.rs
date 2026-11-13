@@ -7,7 +7,9 @@ use surgeist_html::values::DocumentString;
 
 mod equality;
 mod namespace;
+mod position;
 pub use namespace::DomNamespaceUri;
+pub use position::DomDocumentPosition;
 
 /// A borrowed view of a node's immutable payload in one captured snapshot.
 /// Copying this view preserves its snapshot lifetime and creates no node.

@@ -321,6 +321,17 @@ impl<T: Qualified> Map<T> {
         }?;
         (value.key() == key).then_some(value)
     }
+    pub fn get_with<E>(
+        &self,
+        key: Key,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<&T>, E> {
+        let value = match key {
+            Key::Existing(id) => self.existing.get_with(id.slot, step)?,
+            Key::Created(index) => self.created.get_with(index, step)?,
+        };
+        Ok(value.filter(|value| value.key() == key))
+    }
     pub fn values(&self) -> impl Iterator<Item = &T> {
         self.existing.values().chain(self.created.values())
     }
