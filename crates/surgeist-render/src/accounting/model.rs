@@ -134,7 +134,7 @@ dimensions! {
         ImageFirstObservedBytes,
         /// PNG chunk type/payload bytes CRC-processed, plus scanline bytes unfiltered.
         PngByteVisits,
-        /// Decoded RGBA pixels inspected for the transparent-image early exit.
+        /// Decoded RGBA pixels color-converted or separately inspected for transparency.
         ImageTexelVisits,
         /// Authored command records inspected, including nested records.
         AuthoredCommands,
@@ -423,6 +423,10 @@ pub enum RenderPhase {
     Bitmap,
     /// PNG validation, decompression and scanline reconstruction.
     Png,
+    /// Selected PNG source-description validation and calibration compilation.
+    PngColorPrepare,
+    /// Actual PNG texel color conversion and unpublished RGB publication.
+    PngColorConvert,
     /// Normalized-coordinate conversion into the consumed representation.
     Coordinates,
     /// Final immutable result assembly after successful preparation.
@@ -498,7 +502,7 @@ pub enum RenderPhase {
     NativeGlyphBitmap,
 }
 impl RenderPhase {
-    pub(crate) const ALL: [Self; 45] = [
+    pub(crate) const ALL: [Self; 47] = [
         Self::Attempt,
         Self::Preparation,
         Self::TextPreflight,
@@ -508,6 +512,8 @@ impl RenderPhase {
         Self::Color,
         Self::Bitmap,
         Self::Png,
+        Self::PngColorPrepare,
+        Self::PngColorConvert,
         Self::Coordinates,
         Self::Output,
         Self::Cleanup,
@@ -559,6 +565,7 @@ impl RenderPhase {
             Self::Color => Some(Self::GlyphPrepare),
             Self::Bitmap => Some(Self::GlyphPrepare),
             Self::Png => Some(Self::Bitmap),
+            Self::PngColorPrepare | Self::PngColorConvert => Some(Self::Png),
             Self::Coordinates => Some(Self::Preparation),
             Self::Output => Some(Self::Preparation),
             Self::Cleanup => Some(Self::Preparation),
@@ -609,6 +616,8 @@ impl RenderPhase {
             Self::Color => "color",
             Self::Bitmap => "bitmap",
             Self::Png => "png",
+            Self::PngColorPrepare => "png_color_prepare",
+            Self::PngColorConvert => "png_color_convert",
             Self::Coordinates => "coordinates",
             Self::Output => "output",
             Self::Cleanup => "cleanup",

@@ -774,8 +774,9 @@ those spans even when its output is Empty. Intrinsic paints retain layer order,
 clip and currentColor behavior. Caller paint applies to foreground operations.
 
 The supported intrinsic profile is COLRv0, a COLRv1 solid/glyph/translation/static
-clip subset, and sbix noninterlaced RGBA8 PNG containing only IHDR, contiguous IDAT
-and IEND chunks. Other paint operations, formats and PNG chunks refuse explicitly.
+clip subset, and sbix noninterlaced RGBA8 PNG with IHDR, contiguous IDAT,
+IEND and the supported `sRGB`/`gAMA`/`cHRM` source-color family. Other paint
+operations, formats and unexecuted PNG semantics refuse explicitly.
 Color and bitmap admission requires a default effective instance without
 synthesis; supported outline variation and synthesis follow the policy below.
 Malformed selected COLRv1 data cannot fall back to a COLRv0 representation.
@@ -786,6 +787,45 @@ Drawing fills the retained canonical endpoint rectangle with its retained image
 sampling mapping. PNG admission validates chunk order and CRC, exact zlib input
 and output extent, Adler checksum and all five scanline filters before retaining
 pixels. The inflater uses fixed-state miniz_oxide with caller-owned buffers.
+
+PNG color admission follows [PNG Third Edition (24 June 2025)](https://www.w3.org/TR/2025/REC-png-3-20250624/),
+sections 4.3, 11.3.2 and 13.13–13.14. Supported color chunks are unique, have exact
+lengths and valid 31-bit integer fields, and precede IDAT. Framing, CRC, order
+and cardinality errors remain malformed input. ICC (`iCCP`), `cICP`, HDR,
+animation and all other unexecuted ancillary semantics remain explicit
+`UnsupportedPng` refusals, including alongside supported lower-priority tags.
+
+An explicit `sRGB` source preserves bytes in this numeric sRGB receiver for
+all four defined intents. It overrides lower-priority gamma/chromaticities
+without evaluating their semantic calibration; their framing still must be
+valid. A selected invalid sRGB intent or physically invalid selected cHRM uses
+complete untagged sRGB fallback, rather than partially applying a lower profile.
+This invalid-identification fallback and still-image default follow the retained
+[CSS Color 4 tagged-image](../../../references/css-color-4--CRD-css-color-4-20260908--bada647312a7.md#tagged-images)
+and [untagged-image](../../../references/css-color-4--CRD-css-color-4-20260908--bada647312a7.md#untagged)
+rules; PNG alone does not prescribe this host fallback.
+Zero gamma is ignored. Missing source components use the native still-image
+policy: sRGB primaries/D65 when cHRM is absent, and the actual piecewise sRGB
+transfer when gamma is absent or zero. A positive gAMA instead uses its encoded
+power exponent, including values near the legal integer endpoints.
+
+Chromaticities calibrate homogeneous integer XYZ columns without dividing by
+primary y; zero-y primaries and boundary whites remain admissible. Exact integer
+determinants and weight signs decide validity. Non-D65 whites use linear
+Bradford relative-colorimetric adaptation to D65; the standard D50 route
+reuses Color's existing adaptation. The general-white implementation is original
+standard math from [ICC.1:2022 Annex E.3](https://www.color.org/specifications/ICC.1-2022-05.pdf),
+not imported implementation source. Exact zero source cone responses are an
+unsupported adaptation domain. Nonfinite private arithmetic has the typed
+`GlyphNumericPhase::BitmapColor` boundary. Color owns predefined transfer/XYZ
+conversion and final `QuantizeSrgb` byte rounding. Destination-channel clipping
+is this native PNG image policy; individual-CSS-color Local MINDE is not selected.
+
+All RGB, including hidden RGB at alpha zero, is calibrated in place before pixel
+publication. Alpha remains its original straight linear byte. The retained font
+and glyph already preserve the original sbix/PNG source; no second provenance
+bag or profile identity is retained. Later bitmap placement and compositing
+consume the same converted immutable image.
 
 `GlyphRunLimits` bounds glyphs, retained outline path elements, scratch storage
 and retained logical custody. Charges include the retained Font resource,
@@ -1211,7 +1251,7 @@ readback accounting are outside this preparation contract.
 | `PathElementVisits`, `OutlinePointVisits`, `VariationTupleVisits`, `GlyphComponentVisits` | One raw contour endpoint/provider path element, point-flag record/point/delta, variation tuple or composite child edge inspected. Dependency internals are not reported as Render visits. |
 | `PaintVisits`, `ResourceProbes` | One raw COLRv1 paint node, consumed recorded layer/retained paint (including repeated placement qualification), or shared-font identity comparison. |
 | `PathElementsEmitted` | One retained glyph path element appended, including actual synthesis and clip expansion. This is the existing path-element limit unit. |
-| `SerializedBytes`, `PngByteVisits`, `ImageTexelVisits` | IDAT payload bytes copied; chunk type/payload bytes processed by CRC plus scanline bytes unfiltered; decoded RGBA pixels inspected for transparency. |
+| `SerializedBytes`, `PngByteVisits`, `ImageTexelVisits` | IDAT payload bytes copied; chunk type/payload bytes processed by CRC plus scanline bytes unfiltered; decoded RGBA pixels actually color-converted plus the separate reached transparency scan. |
 | `PreparedTransferredBytes` | Explicit retained backing units transferred only when the complete prepared result returns successfully. This dimension cannot be caller capped. |
 
 `RetainedCpuBytes` covers actual Vec capacities multiplied by element size,
@@ -1222,7 +1262,11 @@ a Text scene's is `size_of::<PreparedTextScene>()`. Opaque Arc/header estimates
 are excluded from both result units.
 `ScratchCpuBytes` covers actual live qualifier/provider/coordinate/mapping/PNG
 buffer capacities and the fixed inline miniz decoder state and its declared
-Huffman arrays. Arc allocator headers, hash-table bucket overhead, dependency
+Huffman arrays. Selected PNG color compilation and conversion also admit their
+actual fixed numeric workspaces before construction, retaining the compiled
+workspace charge through pixel conversion and its real overlap with inflate and
+pixel buffers. No color LUT or per-image color heap buffer is allocated.
+Arc allocator headers, hash-table bucket overhead, dependency
 internal allocations and process/RSS usage are outside these units.
 The fixed accounting participant, bounded reserved report/profile storage and
 typed error/control-plane storage are also outside admitted preparation backing.
@@ -1241,7 +1285,11 @@ not create a Ledger admission event or update admission observations.
 
 The fixed tree has `Attempt -> Preparation`, with `TextPreflight`, `GlyphPrepare`,
 `Coordinates`, `Output` and `Cleanup` below Preparation. GlyphPrepare has
-`Qualify`, `Outline`, `Color` and `Bitmap`; `Png` is below Bitmap. The general
+`Qualify`, `Outline`, `Color` and `Bitmap`; `Png` is below Bitmap. Its
+`PngColorPrepare` child times selected source validation/calibration and
+`PngColorConvert` times actual texel conversion/publication. Identity selection
+enters preparation without a fabricated conversion phase. Child timing remains
+inclusive in Png; scratch custody still originates at Preparation. The general
 limits apply at Attempt, and existing finite glyph/Text limits at Preparation.
 They therefore cover all Text runs, preflight and glyph phases together, without
 remaining-limit arithmetic. CPU resource custody originates at Preparation;

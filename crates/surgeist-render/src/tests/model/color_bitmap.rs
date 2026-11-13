@@ -9,6 +9,9 @@ use skrifa::{GlyphId, MetadataProvider, raw::TableProvider};
 #[path = "color_bitmap/gpu.rs"]
 mod gpu;
 
+#[path = "color_bitmap/png_color.rs"]
+mod png_color;
+
 fn limits() -> crate::GlyphRunLimits {
     crate::GlyphRunLimits::new(4, 1024, 8 << 20, 8 << 20)
 }

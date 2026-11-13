@@ -178,6 +178,7 @@ pub surgeist_render::GlyphCapability::PostScriptVariation
 pub surgeist_render::GlyphCapability::SparseVariation
 pub surgeist_render::GlyphCapability::VariableComposite
 pub enum surgeist_render::GlyphNumericPhase
+pub surgeist_render::GlyphNumericPhase::BitmapColor
 pub surgeist_render::GlyphNumericPhase::InkExtent
 pub surgeist_render::GlyphNumericPhase::PathPoint
 pub surgeist_render::GlyphNumericPhase::Placement
@@ -640,6 +641,8 @@ pub surgeist_render::RenderPhase::Outline
 pub surgeist_render::RenderPhase::Output
 pub surgeist_render::RenderPhase::Plan
 pub surgeist_render::RenderPhase::Png
+pub surgeist_render::RenderPhase::PngColorConvert
+pub surgeist_render::RenderPhase::PngColorPrepare
 pub surgeist_render::RenderPhase::Preparation
 pub surgeist_render::RenderPhase::Present
 pub surgeist_render::RenderPhase::Publish
