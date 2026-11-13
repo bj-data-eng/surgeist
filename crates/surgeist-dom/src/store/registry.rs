@@ -11,8 +11,8 @@ use crate::registry::{DomRegistry, DomRegistryId};
 use surgeist_html::accounting::HtmlAccountingFault;
 
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureError, HtmlCaptureRegistryId, HtmlEmptyGlobalRegistryError,
-    HtmlHostFactsRevision,
+    HtmlCapture, HtmlCaptureError, HtmlCaptureRegistryId, HtmlHostFactsRevision,
+    HtmlRegistryFormationError,
 };
 
 #[derive(Debug)]
@@ -120,8 +120,8 @@ impl Bank {
             },
         )
         .map_err(|error| match error {
-            HtmlEmptyGlobalRegistryError::Interrupted(error) => error,
-            HtmlEmptyGlobalRegistryError::FormationBytes { limit, .. } => {
+            HtmlRegistryFormationError::Interrupted(error) => error,
+            HtmlRegistryFormationError::FormationBytes { limit, .. } => {
                 if parent_allowance.is_some_and(|bytes| bytes <= hosted_allowance) {
                     DomError::ResourceLimit {
                         resource: DomResource::SourceRetainedBytes,
@@ -137,12 +137,12 @@ impl Bank {
                     }
                 }
             }
-            HtmlEmptyGlobalRegistryError::RepresentationExhausted => {
+            HtmlRegistryFormationError::RepresentationExhausted => {
                 DomHostedError::RepresentationExhausted
             }
-            HtmlEmptyGlobalRegistryError::AllocationFailed => DomHostedError::AllocationFailed,
-            HtmlEmptyGlobalRegistryError::Accounting(fault) => hosted_accounting_error(fault),
-            HtmlEmptyGlobalRegistryError::Capture(error) => hosted_capture_error(&error),
+            HtmlRegistryFormationError::AllocationFailed => DomHostedError::AllocationFailed,
+            HtmlRegistryFormationError::Accounting(fault) => hosted_accounting_error(fault),
+            HtmlRegistryFormationError::Capture(error) => hosted_capture_error(&error),
         })?;
         let payload_bytes = formed.retained_storage_usage().retained_bytes();
         let payload = source.retain(payload_bytes, cancel)?;

@@ -100,6 +100,10 @@ impl HtmlCaptureDefinitionId {
     pub fn registry(&self) -> &HtmlCaptureRegistryId {
         &self.registry
     }
+    /// Zero-based position within this capture's ordered registry.
+    pub fn ordinal(&self) -> usize {
+        self.record_index
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCapturedCustomElementState {

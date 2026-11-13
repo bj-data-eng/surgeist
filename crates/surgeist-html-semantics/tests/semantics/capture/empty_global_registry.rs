@@ -1,8 +1,7 @@
 use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureError, HtmlCapturedDefinitions, HtmlCapturedRegistry,
-    HtmlDefinitionLookupStep, HtmlEmptyGlobalRegistryError, HtmlHostFactsRevision,
-    HtmlRegistryScope,
+    HtmlDefinitionLookupStep, HtmlHostFactsRevision, HtmlRegistryFormationError, HtmlRegistryScope,
 };
 
 #[test]
@@ -93,14 +92,14 @@ fn formation_peak_is_an_admitted_boundary_not_a_post_creation_estimate() {
         HtmlCapture::complete_empty_global_registry_with(
             HtmlHostFactsRevision::fresh(), peak - 1, |_| Ok::<_, ()>(()),
         ),
-        Err(HtmlEmptyGlobalRegistryError::FormationBytes { limit, required })
+        Err(HtmlRegistryFormationError::FormationBytes { limit, required })
             if limit == peak - 1 && required == peak
     ));
     assert!(matches!(
         HtmlCapture::complete_empty_global_registry_with(
             HtmlHostFactsRevision::fresh(), 0, |_| Ok::<_, ()>(()),
         ),
-        Err(HtmlEmptyGlobalRegistryError::FormationBytes { limit: 0, required }) if required > 0
+        Err(HtmlRegistryFormationError::FormationBytes { limit: 0, required }) if required > 0
     ));
 }
 
@@ -131,7 +130,7 @@ fn every_work_or_cancellation_refusal_preserves_the_original_first_error() {
             },
         );
         assert!(
-            matches!(result, Err(HtmlEmptyGlobalRegistryError::Interrupted((before, cost)))
+            matches!(result, Err(HtmlRegistryFormationError::Interrupted((before, cost)))
             if before == used && before + cost > limit)
         );
     }
@@ -140,6 +139,6 @@ fn every_work_or_cancellation_refusal_preserves_the_original_first_error() {
         HtmlCapture::complete_empty_global_registry_with(HtmlHostFactsRevision::fresh(), 0, |_| {
             Err("cancelled")
         },),
-        Err(HtmlEmptyGlobalRegistryError::Interrupted("cancelled"))
+        Err(HtmlRegistryFormationError::Interrupted("cancelled"))
     ));
 }

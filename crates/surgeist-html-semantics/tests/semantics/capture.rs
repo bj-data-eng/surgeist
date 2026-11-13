@@ -6,4 +6,5 @@ mod local_tree_rules;
 mod nearest_form;
 mod nonce;
 mod operations;
+mod registry_definitions;
 mod subject_ordinal;
