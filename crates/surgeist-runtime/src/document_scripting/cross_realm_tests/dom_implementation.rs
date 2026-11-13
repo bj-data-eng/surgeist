@@ -213,13 +213,13 @@ pub(super) fn factory_refusal_preserves_native_dom() {
     let failure = host.in_document(&permit, |scope| {
         evaluate(scope, "impl.createHTMLDocument('refused')").map(drop)
     });
-    assert!(
-        matches!(
-            failure,
-            Err(DocumentScriptError::Script(Error::HostFailure(_)))
-        ),
-        "{failure:?}"
-    );
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = failure else {
+        panic!("expected a native Source refusal: {failure:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DomSourceDriveError>(),
+        Some(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(_)))
+    ));
     let after = host.snapshot().unwrap();
     assert_eq!(after.stamp(), before.stamp());
     assert_eq!(after.nodes().count(), before.nodes().count());

@@ -6,7 +6,10 @@ use character_data::copy_native_data;
 use surgeist_bindings_js::{
     NativeProjectionPrototype, ValueKind, conversion::declarations, dom_exception::DomExceptionName,
 };
-use surgeist_dom::{DomDetachedNodeCreation, DomSourceEdit, DomSourceOutput, DomSourceStatus};
+use surgeist_dom::{
+    DomDetachedNodeCreation, DomImplementationFallback, DomSourceEdit, DomSourceOutput,
+    DomSourceStatus,
+};
 use surgeist_html::values::Namespace;
 
 const INTERFACE: &[u16] = &ascii(b"DOMImplementation");
@@ -259,6 +262,7 @@ impl Capture {
                         name,
                         public_id,
                         system_id,
+                        fallback: implementation_fallback(owner)?,
                     },
                 ),
             )
@@ -320,7 +324,13 @@ impl Capture {
             scope,
             (owner, events),
             (document, DomDocumentInterface::XmlDocument),
-            DomSourceEdit::create_xml_document(document.node(), uri, name, doctype),
+            DomSourceEdit::create_xml_document_in_attachment(
+                document,
+                uri,
+                name,
+                doctype,
+                implementation_fallback(owner)?,
+            ),
         )
     }
 
@@ -351,7 +361,11 @@ impl Capture {
             scope,
             (owner, events),
             (document, DomDocumentInterface::Document),
-            DomSourceEdit::create_html_document(document.node(), title),
+            DomSourceEdit::create_html_document_in_attachment(
+                document,
+                title,
+                implementation_fallback(owner)?,
+            ),
         )
     }
 
@@ -405,11 +419,9 @@ impl Capture {
                             completed = Some((operation, false));
                             Err(error.into())
                         }
-                        Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(error)))
-                            if pending == drive.parent =>
-                        {
-                            Err(error.into())
-                        }
+                        Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+                            error @ (DomError::InvalidCharacter | DomError::Namespace),
+                        ))) if pending == drive.parent => Err(error.into()),
                         Err(error) => {
                             source_failure = Some(error);
                             Err(DocumentGuestEventError::HostRouteUnavailable)
@@ -441,4 +453,15 @@ impl Capture {
         }
         result
     }
+}
+
+fn implementation_fallback(
+    owner: &NativeOwner,
+) -> Result<DomImplementationFallback, DocumentScriptNativeError> {
+    owner
+        .attachment
+        .get()
+        .and_then(|attachment| attachment.registration.upgrade())
+        .map(|registration| registration.implementation_fallback())
+        .ok_or(DocumentScriptNativeError::Revoked)
 }

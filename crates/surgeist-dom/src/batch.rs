@@ -91,6 +91,7 @@ pub(crate) enum Creation {
         name: DocumentString,
         public_id: DocumentString,
         system_id: DocumentString,
+        fallback: Option<crate::DomImplementationFallback>,
     },
 }
 
@@ -204,10 +205,12 @@ pub(crate) enum Command {
         namespace: Namespace,
         qualified_name: DocumentString,
         doctype: Option<NodeOperand>,
+        fallback: Option<crate::DomImplementationFallback>,
     },
     CreateHtmlDocument {
         associated_document: NodeOperand,
         title: Option<DocumentString>,
+        fallback: Option<crate::DomImplementationFallback>,
     },
     AttachShadow {
         host: NodeOperand,
@@ -680,6 +683,16 @@ impl DomBatch {
     pub fn create_document(&mut self) -> CreatedNode {
         self.create(Creation::Document, None)
     }
+    /// Create a detached native node with the same inputs as Source creation.
+    pub fn create_detached(
+        &mut self,
+        document: DocumentId,
+        creation: crate::DomDetachedNodeCreation,
+    ) -> CreatedNode {
+        let ticket = self.ticket();
+        self.commands.push(creation.into_edit(document).command);
+        ticket
+    }
     /// Creates an XML Document with an optional namespaced root and actual
     /// DocumentType. Origin follows the associated Document; XML metadata and
     /// the closed environment are established independently.
@@ -696,6 +709,7 @@ impl DomBatch {
             namespace,
             qualified_name: qualified_name.into(),
             doctype,
+            fallback: None,
         });
         ticket
     }
@@ -713,6 +727,7 @@ impl DomBatch {
         self.commands.push(Command::CreateHtmlDocument {
             associated_document: associated_document.into(),
             title,
+            fallback: None,
         });
         ticket
     }
@@ -1023,6 +1038,7 @@ impl DomBatch {
                 name: name.into(),
                 public_id: public_id.into(),
                 system_id: system_id.into(),
+                fallback: None,
             },
             Some(document.into()),
         )

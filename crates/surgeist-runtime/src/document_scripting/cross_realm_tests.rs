@@ -1020,6 +1020,17 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
                     && dialog.removeAttributeNode(cancelAttr) === cancelAttr;
                 dialog.textContent = 'native event\ud800';
                 cancelChecks &&= dialog.textContent === 'native event\ud800';
+                const impl = attachedDocument.implementation;
+                const type = impl.createDocumentType('root', '', '');
+                const xml = impl.createDocument(null, 'root', type);
+                cancelChecks &&= xml instanceof XMLDocument && xml.doctype === type &&
+                    type.ownerDocument === xml && xml.documentElement.ownerDocument === xml;
+                try {
+                    impl.createDocument(null, 'p:root', type);
+                    cancelChecks = false;
+                } catch (error) {
+                    cancelChecks &&= error.name === 'NamespaceError' && xml.doctype === type;
+                }
                 event.currentTarget.removeEventListener("cancel", removed);
                 event.preventDefault();
             }, {once: true});

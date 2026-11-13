@@ -3525,10 +3525,11 @@ impl Draft {
                 namespace,
                 qualified_name,
                 doctype,
+                fallback,
             } => {
                 let associated_document = self.resolve(associated_document.clone())?;
                 self.create_xml_document(
-                    associated_document,
+                    (associated_document, *fallback),
                     namespace,
                     qualified_name,
                     doctype.as_ref(),
@@ -3539,11 +3540,13 @@ impl Draft {
             Command::CreateHtmlDocument {
                 associated_document,
                 title,
+                fallback,
             } => {
                 let associated_document = self.resolve(associated_document.clone())?;
                 let key = self.create_html_document(
                     associated_document,
                     title.as_ref(),
+                    *fallback,
                     limits,
                     cancelled,
                 )?;
@@ -3605,6 +3608,7 @@ impl Draft {
                         name,
                         public_id,
                         system_id,
+                        ..
                     } => name
                         .len()
                         .checked_add(public_id.len())
@@ -3702,6 +3706,13 @@ impl Draft {
                     self.register_ticket(key, cancelled)?;
                     return Ok(());
                 }
+                let global = match kind {
+                    Creation::DocumentType {
+                        fallback: Some(fallback),
+                        ..
+                    } => self.implementation_global(document, Some(*fallback), cancelled)?,
+                    _ => None,
+                };
                 let kind = match kind {
                     Creation::Document => NewNode::Document(DomDocumentMetadata::native(
                         self.document_environment.clone(),
@@ -3759,6 +3770,7 @@ impl Draft {
                         name,
                         public_id,
                         system_id,
+                        ..
                     } => NewNode::DocumentType(DomDocumentType::new(
                         name,
                         public_id,
@@ -3774,6 +3786,7 @@ impl Draft {
                 }
                 let key =
                     self.allocate_formed(kind, document, limits, cancelled, metadata_formation)?;
+                self.establish_creation_global(key, global, cancelled)?;
                 self.initialize_native_element(key, None, limits, cancelled)?;
                 self.register_ticket(key, cancelled)?;
             }

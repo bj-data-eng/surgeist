@@ -487,6 +487,7 @@ pub(in crate::store) fn commands(
                     name,
                     public_id,
                     system_id,
+                    ..
                 } => {
                     payload.string(name)?;
                     payload.string(public_id)?;

@@ -28,6 +28,45 @@ impl XmlDocumentFrame {
 }
 
 impl Draft {
+    pub(super) fn implementation_global(
+        &self,
+        document: Key,
+        fallback: Option<crate::DomImplementationFallback>,
+        cancel: &AtomicBool,
+    ) -> Result<Option<crate::DomHostedGlobalId>, DomError> {
+        let global = self.node(document)?.relevant_global();
+        let Some(fallback) = fallback else {
+            return Ok(global);
+        };
+        self.source_step(cancel)?;
+        if fallback.key.document.node().owner() != self.store {
+            return Err(DomError::ForeignOwner);
+        }
+        self.script_registration
+            .as_ref()
+            .filter(|registration| {
+                registration.key == fallback.key
+                    && registration.global == fallback.global
+                    && registration.is_active()
+            })
+            .map(|registration| global.or(Some(registration.global)))
+            .ok_or(DomError::HostedSourceUnavailable)
+    }
+
+    pub(super) fn establish_creation_global(
+        &mut self,
+        node: Key,
+        global: Option<crate::DomHostedGlobalId>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if let Some(global) = global {
+            let mut common = self.common_fields_mut(node, cancel)?;
+            common.relevant_global = Some(global);
+            common.commit(cancel)?;
+        }
+        Ok(())
+    }
+
     /// Current staged canonical facts, independent of hosted execution authority.
     pub(super) fn document_metadata(
         &self,
@@ -93,14 +132,12 @@ impl Draft {
             cancel,
             formation,
         )?;
-        let mut common = self.common_fields_mut(document, cancel)?;
-        common.relevant_global = Some(context.global);
-        common.commit(cancel)?;
+        self.establish_creation_global(document, Some(context.global), cancel)?;
         Ok(document)
     }
     pub(super) fn create_xml_document(
         &mut self,
-        associated: Key,
+        (associated, fallback): (Key, Option<crate::DomImplementationFallback>),
         namespace: &surgeist_html::values::Namespace,
         qualified_name: &DocumentString,
         doctype: Option<&NodeOperand>,
@@ -108,11 +145,11 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        let global = self.node(associated)?.relevant_global();
         let input = self
             .document_metadata(associated)?
             .document_environment()
             .input_platform();
+        let global = self.implementation_global(associated, fallback, cancel)?;
         admit(
             self.nodes
                 .checked_add(1)
@@ -140,11 +177,7 @@ impl Draft {
             cancel,
             formation,
         )?;
-        if global.is_some() {
-            let mut common = self.common_fields_mut(document, cancel)?;
-            common.relevant_global = global;
-            common.commit(cancel)?;
-        }
+        self.establish_creation_global(document, global, cancel)?;
         self.source_step(cancel)?;
         let root = if qualified_name.is_empty() {
             None
@@ -297,15 +330,16 @@ impl Draft {
         &mut self,
         associated_document: Key,
         title: Option<&DocumentString>,
+        fallback: Option<crate::DomImplementationFallback>,
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<Key, DomError> {
         check_cancel(cancelled)?;
         let associated = self.node(associated_document)?;
-        let global = associated.relevant_global();
         let transaction::KindRead::Document(source) = &associated.kind() else {
             return Err(DomError::WrongNodeKind);
         };
+        let global = self.implementation_global(associated_document, fallback, cancelled)?;
         // Origin follows the source operation; the selected immutable native
         // environment also remains established. Other metadata uses defaults;
         // no browsing context or host/resource capability is implicitly copied.
@@ -323,11 +357,7 @@ impl Draft {
             cancelled,
             formation,
         )?;
-        if global.is_some() {
-            let mut common = self.common_fields_mut(document, cancelled)?;
-            common.relevant_global = global;
-            common.commit(cancelled)?;
-        }
+        self.establish_creation_global(document, global, cancelled)?;
         let operands = source::formation::Formation::new(self, cancelled)?;
         let name = source::formation::string("html", operands.as_ref(), cancelled)?;
         let public = source::formation::string("", operands.as_ref(), cancelled)?;
