@@ -10,7 +10,7 @@ mod prepare;
 use fit::{CapturedRunContext, NumericRunContext, fit_captured_run, fit_numeric_run};
 use placement::{InlineSourcePlacement, place_inline_sources};
 use prepare::PreparedInlineRun;
-pub(super) use prepare::{InlineRunPreparation, PendingInlineAtomic};
+pub(super) use prepare::{InlineRunPreparation, PendingInlinePreparation};
 
 #[cfg(test)]
 mod baseline_offset_tests;

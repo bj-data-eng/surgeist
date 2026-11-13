@@ -747,3 +747,107 @@ fn deep_block_float_trial_layout_returns_on_bounded_stack() {
         },
     );
 }
+
+fn assert_captured_detached_float_chain<S: LayoutScalar>(depth: u32) {
+    use crate::test_support::text::{PreparedParagraph, ahem_style};
+
+    let px = S::from_f64;
+    let mut tree = PublicLayoutTreeOf::<S>::new();
+    let mut paragraphs = Vec::new();
+    for node in 0..=depth {
+        let text = depth + 1 + node;
+        let paragraph =
+            PreparedParagraph::plain(text, surgeist_text::Source::new("X"), ahem_style(5.0, 5.0));
+        let mut binding = paragraph.binding(node);
+        let children = if node < depth {
+            binding.nodes = vec![text, node + 1];
+            vec![text, node + 1]
+        } else {
+            vec![text]
+        };
+        tree = tree
+            .children(node, children)
+            .style(
+                node,
+                NodeInputOf {
+                    display: Display::Block,
+                    float: if node == 0 {
+                        crate::Float::None
+                    } else {
+                        crate::Float::Left
+                    },
+                    size: Size::new(
+                        crate::PreferredSizeOf::px(px(100.0)),
+                        crate::PreferredSizeOf::AUTO,
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .input(text, paragraph.text_input(text));
+        paragraphs.push(binding);
+    }
+    let flow = crate::LayoutFlowInput::try_new(
+        &tree,
+        0,
+        paragraphs,
+        crate::WrappingInput::default(),
+        Vec::new(),
+    )
+    .expect("captured Float chain");
+    let batch =
+        crate::compute_layout_with_flow(&flow, 0, standalone()).expect("captured Float layout");
+    assert_eq!(batch.placed_text().len(), (depth + 1) as usize);
+    assert_eq!(batch.node_layouts().len(), (2 * (depth + 1)) as usize);
+    for node in 0..=depth {
+        let output = batch
+            .node_layout(node)
+            .unwrap()
+            .single_box()
+            .unwrap()
+            .final_output();
+        assert_eq!(
+            output.size,
+            Size::new(px(100.0), px(5.0 * f64::from(depth - node + 1))),
+            "node {node}"
+        );
+        assert_eq!(
+            output.location,
+            crate::Point::new(S::ZERO, px(if node == 0 { 0.0 } else { 5.0 })),
+            "node {node}"
+        );
+        assert_eq!(
+            output.source_index,
+            crate::SourceIndex::new(usize::from(node != 0)),
+            "node {node}"
+        );
+        let placed = batch
+            .placed_text()
+            .iter()
+            .find(|placed| placed.container() == node)
+            .unwrap();
+        assert_eq!(placed.layout().source().text().code_units(), [88]);
+        assert_eq!(placed.layout().lines().len(), 1);
+    }
+}
+
+#[test]
+fn shallow_captured_detached_float_chain_publishes_each_paragraph() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_captured_detached_float_chain_publishes_each_paragraph",
+        || {
+            assert_captured_detached_float_chain::<f32>(2);
+            assert_captured_detached_float_chain::<f64>(2);
+        },
+    );
+}
+
+#[test]
+fn deep_captured_detached_float_chain_returns_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_captured_detached_float_chain_returns_on_bounded_stack",
+        || {
+            assert_captured_detached_float_chain::<f32>(24);
+            assert_captured_detached_float_chain::<f64>(24);
+        },
+    );
+}
