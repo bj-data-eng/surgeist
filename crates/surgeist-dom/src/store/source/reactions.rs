@@ -93,6 +93,12 @@ impl Reaction {
 pub struct DomCustomElementReactions {
     slot: Arc<Slot>,
     batch: Batch,
+    selected: Option<SelectedReaction>,
+}
+
+struct SelectedReaction {
+    cursor: usize,
+    offset: usize,
 }
 
 #[derive(Default)]
@@ -139,12 +145,17 @@ impl DomCustomElementReactions {
     }
 
     fn remaining(&self) -> &[Reaction] {
-        &self.batch.facts[self.batch.cursor..]
+        let remaining = &self.batch.facts[self.batch.cursor..];
+        match &self.selected {
+            Some(selected) if self.batch.cursor == selected.cursor => &remaining[..1],
+            Some(_) => &[],
+            None => remaining,
+        }
     }
 
     /// Mark the front occurrence settled after its exact native/guest path.
     pub fn acknowledge_front(&mut self) {
-        if self.batch.cursor < self.batch.facts.len() {
+        if !self.remaining().is_empty() {
             self.batch.cursor += 1;
         }
     }
@@ -161,8 +172,13 @@ impl std::fmt::Debug for DomCustomElementReactions {
 
 impl Drop for DomCustomElementReactions {
     fn drop(&mut self) {
+        if let Some(selected) = &self.selected
+            && self.batch.cursor == selected.cursor
+        {
+            self.batch.facts[selected.cursor..=selected.cursor + selected.offset].rotate_left(1);
+        }
         let mut slot = self.slot.lock();
-        *slot = if self.remaining().is_empty() {
+        *slot = if self.batch.cursor == self.batch.facts.len() {
             SlotState::Settled
         } else {
             SlotState::Ready(std::mem::take(&mut self.batch))
@@ -228,11 +244,64 @@ impl Inbox {
         Ok(Some(DomCustomElementReactions {
             slot: slot.clone(),
             batch,
+            selected: None,
         }))
     }
 
     pub(crate) fn segments(&self) -> usize {
         self.lock().len()
+    }
+
+    pub(crate) fn take_backup_for_receiver(
+        &self,
+        receiver: NodeId,
+        work_remaining: &mut u64,
+    ) -> Result<Option<DomCustomElementReactions>, DomError> {
+        let mut charge = |units| -> Result<(), DomError> {
+            *work_remaining = work_remaining
+                .checked_sub(units)
+                .ok_or(DomError::SourceOutputLimit)?;
+            Ok(())
+        };
+        let queue = self.lock();
+        for slot in queue.iter() {
+            charge(1)?;
+            if !slot.backup {
+                continue;
+            }
+            let mut state = slot.lock();
+            let batch = match &mut *state {
+                SlotState::Ready(batch) => batch,
+                SlotState::Settled => continue,
+                SlotState::Loaned => return Err(DomError::InvalidSourceOperation),
+            };
+            let remaining = &mut batch.facts[batch.cursor..];
+            for (index, fact) in remaining.iter().enumerate() {
+                charge(1)?;
+                if fact.element != receiver {
+                    continue;
+                }
+                let moves = u64::try_from(index)
+                    .ok()
+                    .and_then(|index| index.checked_mul(2))
+                    .ok_or(DomError::SourceOutputLimit)?;
+                charge(moves)?;
+                remaining[..=index].rotate_right(1);
+                let SlotState::Ready(batch) = std::mem::replace(&mut *state, SlotState::Loaned)
+                else {
+                    return Err(DomError::InvalidSourceOperation);
+                };
+                return Ok(Some(DomCustomElementReactions {
+                    slot: slot.clone(),
+                    selected: Some(SelectedReaction {
+                        cursor: batch.cursor,
+                        offset: index,
+                    }),
+                    batch,
+                }));
+            }
+        }
+        Ok(None)
     }
 
     pub(crate) fn has_pending(&self) -> bool {

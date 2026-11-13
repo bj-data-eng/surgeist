@@ -96,26 +96,31 @@ fn attach_window(
 }
 
 pub(super) fn verify_declarative_shadow_reuse() {
-    for (mode, markup, assertion, reenter) in [
-        (
-            HtmlShadowRootMode::Open,
-            "<template shadowrootmode=open shadowrootdelegatesfocus><p>child</p></template>",
-            "observed === original && observed === shadowHost.shadowRoot",
-            false,
-        ),
-        (
-            HtmlShadowRootMode::Open,
-            "<template shadowrootmode=open shadowrootdelegatesfocus><p>child</p></template>",
-            "observed === original && observed === shadowHost.shadowRoot",
-            true,
-        ),
-        (
-            HtmlShadowRootMode::Closed,
-            "<template shadowrootmode=closed shadowrootdelegatesfocus><p>child</p></template>",
-            "original === null && shadowHost.shadowRoot === null && observed.mode === 'closed'",
-            false,
-        ),
+    #[derive(Clone, Copy)]
+    enum Delivery {
+        Checkpoint,
+        Reconnect,
+        Stop,
+        Refuse,
+    }
+    for (mode, delivery) in [
+        (HtmlShadowRootMode::Open, Delivery::Checkpoint),
+        (HtmlShadowRootMode::Open, Delivery::Reconnect),
+        (HtmlShadowRootMode::Closed, Delivery::Checkpoint),
+        (HtmlShadowRootMode::Closed, Delivery::Stop),
+        (HtmlShadowRootMode::Closed, Delivery::Refuse),
     ] {
+        let reenter = matches!(delivery, Delivery::Reconnect);
+        let (markup, assertion) = match mode {
+            HtmlShadowRootMode::Open => (
+                "<template shadowrootmode=open shadowrootdelegatesfocus><p>child</p></template>",
+                "observed === original && observed === shadowHost.shadowRoot",
+            ),
+            HtmlShadowRootMode::Closed => (
+                "<template shadowrootmode=closed shadowrootdelegatesfocus><p>child</p></template>",
+                "original === null && shadowHost.shadowRoot === null && observed.mode === 'closed'",
+            ),
+        };
         let cancel = Arc::new(AtomicBool::new(false));
         let (mut session, target) = hosted_session(&cancel, 0);
         let (document, element) = {
@@ -161,6 +166,39 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 &mut host, &permit, node, name,
             );
         }
+        let before_custom = host.snapshot().unwrap();
+        host.in_document(&permit, |scope| {
+            evaluate(
+                scope,
+                r#"
+                const calls = globalThis.shadowReuseCalls = [];
+                const marker = globalThis.shadowReuseException = {};
+                customElements.define('x-shadow-reuse-reaction', class extends HTMLElement {
+                    disconnectedCallback() { calls.push(this); throw marker; }
+                    connectedCallback() { calls.push('connected'); }
+                });
+                globalThis.shadowReuseReceiver = document.createElement('x-shadow-reuse-reaction');
+            "#,
+            )
+            .map(drop)
+        })
+        .unwrap();
+        let with_custom = host.snapshot().unwrap();
+        let mut new_nodes = with_custom
+            .nodes()
+            .filter(|node| before_custom.node(*node).is_err());
+        let custom = new_nodes.next().unwrap();
+        assert!(new_nodes.next().is_none());
+        if mode == HtmlShadowRootMode::Closed {
+            // Leave the closed root unprojected until the watched attachment route
+            // returns its first wrapper. Insert the defined element from Rust.
+            host.with_native(|dom, _, _| {
+                let mut batch = DomBatch::new();
+                batch.insert_before(custom, root, None);
+                dom.apply(batch, &cancel).unwrap();
+            })
+            .unwrap();
+        }
         let (matching, mismatch) = match mode {
             HtmlShadowRootMode::Open => ("open", "closed"),
             HtmlShadowRootMode::Closed => ("closed", "open"),
@@ -177,31 +215,19 @@ pub(super) fn verify_declarative_shadow_reuse() {
                         if (error.name !== "NotSupportedError" || shadowChild.parentNode === null)
                             return false;
                     }}
-                    if (original !== null) {{
-                        const calls = globalThis.shadowReuseCalls = [];
-                        const marker = globalThis.shadowReuseException = {{}};
-                        customElements.define('x-shadow-reuse-reaction', class extends HTMLElement {{
-                            disconnectedCallback() {{ calls.push(this); throw marker; }}
-                            connectedCallback() {{ calls.push('connected'); }}
-                        }});
-                        const custom = globalThis.shadowReuseReceiver =
-                            document.createElement('x-shadow-reuse-reaction');
-                        original.appendChild(custom);
-                        calls.length = 0;
-                        Promise.resolve().then(() => calls.push('before'));
-                    }}
+                    if (original !== null) original.appendChild(shadowReuseReceiver);
+                    shadowReuseCalls.length = 0;
+                    Promise.resolve().then(() => shadowReuseCalls.push('before'));
                     const observed = shadowHost.attachShadow({{mode: "{matching}"}});
-                    if (original !== null) {{
-                        if (shadowReuseReceiver.parentNode !== null || shadowReuseCalls.length !== 0)
-                            return false;
-                        if ({reenter}) {{
-                            shadowHost.appendChild(shadowReuseReceiver);
-                            if (shadowReuseCalls.length !== 2 ||
-                                shadowReuseCalls[0] !== shadowReuseReceiver ||
-                                shadowReuseCalls[1] !== 'connected') return false;
-                        }}
-                        Promise.resolve().then(() => shadowReuseCalls.push('after'));
+                    if (shadowReuseReceiver.parentNode !== null || shadowReuseCalls.length !== 0)
+                        return false;
+                    if ({reenter}) {{
+                        shadowHost.appendChild(shadowReuseReceiver);
+                        if (shadowReuseCalls.length !== 2 ||
+                            shadowReuseCalls[0] !== shadowReuseReceiver ||
+                            shadowReuseCalls[1] !== 'connected') return false;
                     }}
+                    Promise.resolve().then(() => shadowReuseCalls.push('after'));
                     try {{ shadowHost.attachShadow({{mode: "{matching}"}}); return false; }}
                     catch (error) {{
                         if (error.name !== "NotSupportedError") return false;
@@ -227,7 +253,49 @@ pub(super) fn verify_declarative_shadow_reuse() {
             ),
             Err(error) => panic!("{matching} attachment failed: {error:?}"),
         }
-        if mode == HtmlShadowRootMode::Open {
+        if matches!(delivery, Delivery::Stop | Delivery::Refuse) {
+            if matches!(delivery, Delivery::Refuse) {
+                super::super::guest::tests::exhaust_guest_reaction_work(&host);
+                let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+                    host.checkpoint()
+                else {
+                    panic!("checkpoint must refuse the pending reaction");
+                };
+                assert!(matches!(
+                    failure.cause::<DocumentGuestEventError>(),
+                    Some(DocumentGuestEventError::WorkLimit)
+                ));
+                assert!(matches!(
+                    host.in_document(&permit, |_| Ok(())),
+                    Err(DocumentScriptError::Script(Error::HostFailure(_)))
+                ));
+            }
+            let mut stopped = host.stop();
+            assert_eq!(
+                stopped
+                    .discard_pending_native_custom_element_reactions()
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                stopped
+                    .discard_pending_native_custom_element_reactions()
+                    .unwrap(),
+                0
+            );
+            assert_eq!(
+                stopped
+                    .discard_pending_queued_custom_element_reactions()
+                    .unwrap(),
+                0
+            );
+            let session = stopped.into_session().unwrap();
+            let snapshot = session.snapshot();
+            assert!(snapshot.node(root).unwrap().children().is_empty());
+            assert_eq!(snapshot.node(custom).unwrap().parent(), None);
+            continue;
+        }
+        {
             host.checkpoint().unwrap();
             let report = host
                 .take_guest_custom_element_callback_exception(&permit)

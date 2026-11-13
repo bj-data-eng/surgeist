@@ -952,6 +952,20 @@ impl Capture {
                     };
                     if let Some(reaction) = reaction {
                         let queue = invocation.queue(events, fact.element)?;
+                        if operation.is_some()
+                            && events
+                                .public
+                                .as_ref()
+                                .is_some_and(|public| public.backup_reactions_scheduled.get())
+                        {
+                            self.take_older_backup_reactions(
+                                scope,
+                                owner,
+                                events,
+                                &registration,
+                                &queue,
+                            )?;
+                        }
                         queue
                             .reactions
                             .try_borrow_mut()
@@ -966,6 +980,41 @@ impl Capture {
         })();
         drop(invocation);
         result
+    }
+
+    fn take_older_backup_reactions<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        registration: &DomDocumentScriptRegistration,
+        queue: &ActiveReactionQueue,
+    ) -> Result<(), DocumentGuestEventError> {
+        loop {
+            let available = events.limits.work.saturating_sub(events.budget.work.get());
+            let mut remaining = available;
+            let backup = registration
+                .take_backup_custom_element_reaction_for(queue.receiver, &mut remaining);
+            events.charge_work(available - remaining)?;
+            let Some(mut backup) = backup.map_err(|error| match error {
+                surgeist_dom::DomError::SourceOutputLimit => DocumentGuestEventError::WorkLimit,
+                other => DocumentGuestEventError::from(other),
+            })?
+            else {
+                return Ok(());
+            };
+            let fact = backup
+                .front()
+                .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+            if let Some(callback) = self.prepare_native_callback(scope, owner, events, fact)? {
+                queue
+                    .reactions
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?
+                    .push_back(QueuedReaction::Callback(callback));
+            }
+            backup.acknowledge_front();
+        }
     }
 
     fn invoke_native_upgrade<'scope>(

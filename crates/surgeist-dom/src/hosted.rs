@@ -2137,6 +2137,27 @@ impl DomDocumentScriptRegistration {
             .map_or(Ok(None), |inbox| inbox.take(None, inspections))
     }
 
+    /// Move the oldest pending backup reaction for this receiver to the front
+    /// of its segment. Acknowledge just that occurrence before dropping the
+    /// loan. This lets a synchronous reaction drain the receiver's older FIFO.
+    /// The supplied work allowance is reduced for inspected entries and for
+    /// moving and potentially restoring the selected occurrence.
+    pub fn take_backup_custom_element_reaction_for(
+        &self,
+        receiver: crate::NodeId,
+        work_remaining: &mut u64,
+    ) -> Result<Option<crate::DomCustomElementReactions>, crate::DomError> {
+        if !self.is_active() {
+            return Err(crate::DomError::HostedSourceUnavailable);
+        }
+        self.0
+            .custom_element_reactions
+            .get()
+            .map_or(Ok(None), |inbox| {
+                inbox.take_backup_for_receiver(receiver, work_remaining)
+            })
+    }
+
     /// Number of queue entries to admit before scanning this attachment's inbox.
     pub fn custom_element_reaction_segments(&self) -> usize {
         self.0
