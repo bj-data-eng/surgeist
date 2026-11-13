@@ -2883,6 +2883,46 @@ pub(crate) mod bounded_rules {
         KeywordPair,
     }
 
+    /// Returns the canonical reflected keyword for a Template's exact
+    /// shadowrootmode value. Missing and invalid values reflect as empty.
+    pub fn template_shadow_root_mode_keyword_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<&'static str, E> {
+        template_keyword_with(&SHADOWROOTMODE, raw, admit)
+    }
+
+    /// Returns the canonical reflected keyword for a Template's exact
+    /// shadowrootslotassignment value, including its Named default.
+    pub fn template_shadow_root_slot_assignment_keyword_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<&'static str, E> {
+        template_keyword_with(&SHADOWROOTSLOTASSIGNMENT, raw, admit)
+    }
+
+    fn template_keyword_with<T: Copy + PartialEq, E>(
+        rule: &EnumRule<T>,
+        raw: Option<&[u16]>,
+        mut admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<&'static str, E> {
+        let default = match enum_recognition_with(rule, raw, &mut admit)? {
+            EnumRecognition::Keyword(keyword) => return Ok(keyword.canonical),
+            EnumRecognition::Missing => rule.missing,
+            EnumRecognition::Empty => rule.empty.or(rule.invalid),
+            EnumRecognition::Unrecognized => rule.invalid,
+        };
+        if let Some(default) = default {
+            for keyword in rule.keywords {
+                admit(HtmlAttributeKeywordRead::KeywordHeader)?;
+                if keyword.state == default {
+                    return Ok(keyword.canonical);
+                }
+            }
+        }
+        Ok("")
+    }
+
     /// CORS settings content-state processing for an already qualified caller.
     /// Missing, empty and invalid defaults use the same rule as the ordinary
     /// interpreter. This grants no element applicability or resource authority. `raw` is the

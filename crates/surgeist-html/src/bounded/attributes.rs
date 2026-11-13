@@ -12,7 +12,8 @@ pub use crate::internal::attributes::bounded_rules::{
     HtmlAttributeKeywordRead, HtmlButtonSubmitterFact, HtmlWritingSuggestionsProcessing,
     button_submitter_context_with, crossorigin_processing_with, input_list_applies,
     input_readonly_applies, input_submitter_context, referrerpolicy_processing_with,
-    stylesheet_link_context_work_bound,
+    stylesheet_link_context_work_bound, template_shadow_root_mode_keyword_with,
+    template_shadow_root_slot_assignment_keyword_with,
 };
 pub use crate::internal::attributes::hash_name::{HtmlHashNameScan, HtmlHashNameScanStep};
 pub use crate::internal::attributes::image_values::{

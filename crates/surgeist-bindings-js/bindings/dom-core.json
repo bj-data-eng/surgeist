@@ -7719,170 +7719,119 @@
     "HTMLTemplateElement.htmlFor/get": {
       "kind": "native",
       "adapter": "htmltemplateelement.htmlfor.get",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_html_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.htmlFor/set": {
       "kind": "native",
       "adapter": "htmltemplateelement.htmlfor.set",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.shadowRootMode/get": {
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootmode.get",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_html_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "template_shadow_root_mode_keyword_with"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.shadowRootMode/set": {
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootmode.set",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.shadowRootDelegatesFocus/get": {
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootdelegatesfocus.get",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_html_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.shadowRootDelegatesFocus/set": {
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootdelegatesfocus.set",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.shadowRootSerializable/get": {
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootserializable.get",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_html_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.shadowRootSerializable/set": {
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootserializable.set",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.shadowRootSlotAssignment/get": {
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootslotassignment.get",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_html_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "template_shadow_root_slot_assignment_keyword_with"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.shadowRootSlotAssignment/set": {
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootslotassignment.set",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.shadowRootClonable/get": {
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootclonable.get",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_html_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.shadowRootClonable/set": {
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootclonable.set",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.shadowRootCustomElementRegistry/get": {
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootcustomelementregistry.get",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_html_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLTemplateElement.shadowRootCustomElementRegistry/set": {
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootcustomelementregistry.set",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLBodyElement.constructor:0/construct": {
       "kind": "native",
