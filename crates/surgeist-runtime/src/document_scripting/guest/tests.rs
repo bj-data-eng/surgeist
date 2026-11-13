@@ -6,6 +6,11 @@ pub(in crate::document_scripting) mod registered_origin;
 pub(in crate::document_scripting) mod shadow_root;
 pub(in crate::document_scripting) mod trusted_policy;
 
+pub(in crate::document_scripting) fn exhaust_guest_reaction_work(host: &DocumentScriptHost) {
+    let events = host.guest_events().unwrap();
+    events.budget.work.set(events.limits.work);
+}
+
 pub(in crate::document_scripting) fn custom_element_registry_identity_is_canonical() {
     let mut host = public_node_host(5_000, 60_000);
     let permit = host.permit().unwrap();

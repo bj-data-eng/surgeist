@@ -302,6 +302,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     trusted_attribute::guest_attribute_policy_verifies_html_and_svg_sinks();
     trusted_attribute::guest_verification_without_callback_retains_the_native_continuation();
     trusted_attribute::live_attribute_resume_delivers_original_reaction();
+    trusted_attribute::live_attribute_delivery_refusal_stops_the_original_heap();
     trusted_attribute::default_factory_retains_the_real_guest_callback();
     super::guest::tests::trusted_policy::window_factory_creates_the_exact_default_policy();
     super::guest::tests::trusted_policy::guest_attribute_writes_reach_the_native_element();

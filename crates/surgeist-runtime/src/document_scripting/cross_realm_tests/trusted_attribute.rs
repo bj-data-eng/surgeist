@@ -1,6 +1,56 @@
 use super::*;
 
 pub(super) fn live_attribute_resume_delivers_original_reaction() {
+    let (mut host, permit, operation) = parked_live_attribute_write();
+    let completed = complete_guest_attribute(host.resume_pending_attribute_write(&permit, SOURCE));
+    assert_eq!(completed.operation(), operation);
+    host.in_document(&permit, |scope| {
+        let correct = evaluate(
+            scope,
+            r#"
+            attributeCalls.length === 1 && attributeCalls[0].every(
+                (value, i) => value === [attributeReceiver, 'onclick', null, 'original', null][i])
+        "#,
+        )?;
+        assert!(scope.boolean(&correct)?);
+        Ok(())
+    })
+    .unwrap();
+    assert!(host.stop().into_session().is_ok());
+}
+
+pub(super) fn live_attribute_delivery_refusal_stops_the_original_heap() {
+    let (mut host, permit, operation) = parked_live_attribute_write();
+    super::super::guest::tests::exhaust_guest_reaction_work(&host);
+    let Err(DocumentGuestEventError::Document(DocumentScriptError::Script(Error::HostFailure(
+        failure,
+    )))) = host.resume_pending_attribute_write(&permit, SOURCE)
+    else {
+        panic!("expected terminal work refusal from reaction delivery for {operation:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::WorkLimit)
+    ));
+    assert!(matches!(
+        host.in_document(&permit, |_| Ok(())),
+        Err(DocumentScriptError::Script(Error::HostFailure(_)))
+    ));
+    let mut stopped = host.stop();
+    assert_eq!(
+        stopped
+            .discard_pending_native_custom_element_reactions()
+            .unwrap(),
+        1
+    );
+    assert!(stopped.into_session().is_ok());
+}
+
+fn parked_live_attribute_write() -> (
+    DocumentScriptHost,
+    DocumentScriptPermit,
+    surgeist_dom::DomSourceOperationId,
+) {
     use super::super::guest::tests::attach_public_nodes;
     let cancel = Arc::new(AtomicBool::new(false));
     let (session, target) = hosted_session(&cancel, 0);
@@ -36,21 +86,7 @@ pub(super) fn live_attribute_resume_delivers_original_reaction() {
         &permit,
         DomSourceEdit::set_attribute(receiver, "onclick", "original"),
     );
-    let completed = complete_guest_attribute(host.resume_pending_attribute_write(&permit, SOURCE));
-    assert_eq!(completed.operation(), operation);
-    host.in_document(&permit, |scope| {
-        let correct = evaluate(
-            scope,
-            r#"
-            attributeCalls.length === 1 && attributeCalls[0].every(
-                (value, i) => value === [attributeReceiver, 'onclick', null, 'original', null][i])
-        "#,
-        )?;
-        assert!(scope.boolean(&correct)?);
-        Ok(())
-    })
-    .unwrap();
-    assert!(host.stop().into_session().is_ok());
+    (host, permit, operation)
 }
 
 pub(super) fn guest_verification_without_callback_retains_the_native_continuation() {
