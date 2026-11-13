@@ -14,7 +14,7 @@ use crate::scroll::{
 use crate::{
     ComputeOutputOf, Edges, LayoutErrorOf, LayoutResultOf, LayoutScalar, LengthResolutionStatus,
     Point, RunMode, ScrollCoordinateErrorOf, ScrollGeometryOf, ScrollRectErrorOf, ScrollRectOf,
-    Size, Traverse,
+    Size,
 };
 
 pub(super) fn retain_flex_scroll_geometry<S: LayoutScalar>(
@@ -35,13 +35,6 @@ pub(super) struct FlexChildContribution<S: LayoutScalar> {
     pub(super) geometry: ScrollGeometryOf<S>,
     pub(super) in_flow: bool,
 }
-
-pub(super) type FlexChildContributionsResult<Tree, M> = LayoutResultOf<
-    <Tree as Traverse>::Node,
-    Vec<FlexChildContribution<<Tree as Traverse>::Scalar>>,
-    <Tree as Traverse>::Scalar,
-    M,
->;
 
 pub(super) fn flex_container_scroll_box<Node, S, M>(
     node: Node,
