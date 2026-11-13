@@ -1020,3 +1020,25 @@ fn flex_containment_resolves_an_empty_intrinsic_ratio_pass() {
     check::<f32>();
     check::<f64>();
 }
+
+#[test]
+fn shallow_in_flow_grid_lanes_chain_publishes_boxes_and_hidden_siblings() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_in_flow_grid_lanes_chain_publishes_boxes_and_hidden_siblings",
+        || {
+            assert_layout_chain::<f32>(Display::GridLanes, crate::Position::Relative, 2);
+            assert_layout_chain::<f64>(Display::GridLanes, crate::Position::Relative, 2);
+        },
+    );
+}
+
+#[test]
+fn deep_in_flow_grid_lanes_chain_returns_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_in_flow_grid_lanes_chain_returns_on_bounded_stack",
+        || {
+            assert_layout_chain::<f32>(Display::GridLanes, crate::Position::Relative, 24);
+            assert_layout_chain::<f64>(Display::GridLanes, crate::Position::Relative, 24);
+        },
+    );
+}
