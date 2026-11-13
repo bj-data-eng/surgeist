@@ -15,6 +15,23 @@ impl DomRegistryId {
     }
 }
 
+/// One definition in a canonical registry. Its identity is stable across
+/// appends and is qualified by the registry's owner, slot and generation.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct DomRegistryDefinitionId {
+    pub(crate) registry: DomRegistryId,
+    pub(crate) ordinal: usize,
+}
+impl DomRegistryDefinitionId {
+    pub const fn registry(self) -> DomRegistryId {
+        self.registry
+    }
+
+    pub const fn ordinal(self) -> usize {
+        self.ordinal
+    }
+}
+
 /// A registry at one exact immutable canonical snapshot.
 #[derive(Clone, Copy, Debug)]
 pub struct DomRegistry<'a> {
@@ -45,6 +62,21 @@ impl<'a> DomRegistry<'a> {
                 unreachable!("controlled complete registry")
             }
         }
+    }
+    /// Reads this identity's facts as of the registry's exact snapshot.
+    pub fn definition(
+        self,
+        id: DomRegistryDefinitionId,
+    ) -> Result<&'a surgeist_html_semantics::HtmlCustomElementDefinition, crate::DomError> {
+        if id.registry.owner != self.id.owner {
+            return Err(crate::DomError::ForeignOwner);
+        }
+        if id.registry != self.id {
+            return Err(crate::DomError::StaleNode);
+        }
+        self.record()
+            .definition(id.ordinal)
+            .map_err(crate::DomError::SelectCapture)
     }
     pub const fn is_scoped(self) -> bool {
         false

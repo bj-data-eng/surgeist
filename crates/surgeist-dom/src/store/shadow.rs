@@ -138,17 +138,32 @@ impl Draft {
         {
             return Err(DomError::NotSupported);
         }
-        // The controlled complete-empty Global and Null domains both retain a
-        // no-definition result; binding identity remains independent.
-        debug_assert_eq!(
-            element.custom_element_definition(),
-            crate::DomElementDefinition::Null
-        );
-        debug_assert!(matches!(
-            element.custom_element_state(),
-            surgeist_html::elements::native::HtmlCustomElementState::Uncustomized
-                | surgeist_html::elements::native::HtmlCustomElementState::Undefined
-        ));
+        let element = element.language();
+        if (!builtin_host || element.saved_is().is_some())
+            && let crate::DomRegistryBinding::Registry(id) = element.custom_element_registry()
+        {
+            let record = self
+                .registries
+                .as_ref()
+                .ok_or(DomError::HostedSourceUnavailable)?
+                .get_with(id, &mut || self.source_step(cancelled))?;
+            let found = record.lookup_with(name, element.saved_is(), &mut |amount| {
+                for _ in 0..amount {
+                    self.source_step(cancelled)?;
+                }
+                Ok(())
+            })?;
+            if let Some(ordinal) = found {
+                self.source_step(cancelled)?;
+                if record
+                    .definition(ordinal)
+                    .map_err(DomError::SelectCapture)?
+                    .disable_shadow()
+                {
+                    return Err(DomError::NotSupported);
+                }
+            }
+        }
         Ok((node.document(), node.shadow_root()))
     }
 

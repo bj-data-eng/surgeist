@@ -1068,6 +1068,7 @@ impl DomUsage {
 /// their entire state. Children includes derived Element-sibling/index changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomChange {
+    RegistryDefinitionAdded(crate::DomRegistryDefinitionId),
     RangeCreated(crate::DomRangeId),
     NodeIteratorCreated(crate::DomNodeIteratorId),
     NodeIteratorReference(crate::DomNodeIteratorId),

@@ -13,6 +13,22 @@ use surgeist_html::bounded::lexical::{
 use surgeist_html::values::DocumentString;
 use surgeist_ledger::{Change, Operation, Scope};
 
+/// Finite formation allowances for the replacement graph.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlRegistryFormationLimits {
+    bytes: usize,
+    units: usize,
+}
+
+impl HtmlRegistryFormationLimits {
+    pub const fn new(bytes: usize, retained_utf16_units: usize) -> Self {
+        Self {
+            bytes,
+            units: retained_utf16_units,
+        }
+    }
+}
+
 /// One complete registry and its owning immutable evidence.
 /// The local registry identity is distinct from a consumer's canonical identity.
 #[derive(Debug)]
@@ -52,6 +68,10 @@ pub enum HtmlRegistryFormationError<E> {
         limit: usize,
         required: usize,
     },
+    FormationUnits {
+        limit: usize,
+        required: usize,
+    },
     RepresentationExhausted,
     /// A fallible backing reservation reported an allocation failure. Infallible
     /// standard-library Arc allocation retains its ordinary allocation contract.
@@ -71,6 +91,7 @@ impl<E> HtmlRegistryFormationError<E> {
             Self::Accounting(fault) => Some(*fault),
             Self::Capture(error) => error.accounting_fault(),
             Self::FormationBytes { .. }
+            | Self::FormationUnits { .. }
             | Self::RepresentationExhausted
             | Self::AllocationFailed
             | Self::Interrupted(_) => None,
@@ -84,6 +105,10 @@ impl<E: fmt::Display> fmt::Display for HtmlRegistryFormationError<E> {
             Self::FormationBytes { limit, required } => write!(
                 f,
                 "registry requires {required} formation bytes, limit {limit}"
+            ),
+            Self::FormationUnits { limit, required } => write!(
+                f,
+                "registry requires {required} retained UTF-16 units, limit {limit}"
             ),
             Self::RepresentationExhausted => f.write_str("registry representation exhausted"),
             Self::AllocationFailed => f.write_str("registry backing allocation failed"),
@@ -132,6 +157,8 @@ struct Control {
     operation: Ledger,
     scope: Scope,
     fixed: usize,
+    units: usize,
+    unit_limit: usize,
 }
 impl Control {
     #[cfg(test)]
@@ -176,6 +203,8 @@ impl Control {
             operation,
             scope,
             fixed,
+            units: 0,
+            unit_limit: usize::MAX,
         })
     }
     /// The typed refusal of a ledger error: a refused allowance keeps its limit and the total the
@@ -243,6 +272,17 @@ impl Control {
     fn plus<E>(a: usize, b: usize) -> Result<usize, HtmlRegistryFormationError<E>> {
         a.checked_add(b)
             .ok_or(HtmlRegistryFormationError::RepresentationExhausted)
+    }
+    fn retain_units<E>(&mut self, additional: usize) -> Result<(), HtmlRegistryFormationError<E>> {
+        let required = Self::plus(self.units, additional)?;
+        if required > self.unit_limit {
+            return Err(HtmlRegistryFormationError::FormationUnits {
+                limit: self.unit_limit,
+                required,
+            });
+        }
+        self.units = required;
+        Ok(())
     }
     fn step<E>(
         step: &mut impl FnMut(usize) -> Result<(), E>,
@@ -387,8 +427,9 @@ impl<E> Formation<'_, E> {
         self.on_work(1)?;
         let header = size_of::<Vec<u16>>();
         if value.is_whole_block() {
-            let backing = value
-                .retained_units()
+            let units = value.retained_units();
+            self.control.retain_units(units)?;
+            let backing = units
                 .checked_mul(size_of::<u16>())
                 .ok_or(HtmlRegistryFormationError::RepresentationExhausted)?;
             let bytes = Control::plus(header, backing)?;
@@ -398,11 +439,20 @@ impl<E> Formation<'_, E> {
         }
         // A range can borrow a much larger source block. Keep only its exact units
         // so the new capture does not need to retain or index the source block.
+        let requested = value.len();
+        self.control.retain_units(requested)?;
         self.on_storage_before(header)?;
         self.on_storage_after(0, header, true)?;
         let mut units = Vec::new();
-        self.reserve(&mut units, value.len())?;
-        for index in 0..value.len() {
+        preflight::reserve_storage(&mut units, requested, true, true, &mut |action| {
+            if let preflight::Action::StorageAfter { actual, .. } = action {
+                let exposed = actual / size_of::<u16>();
+                self.control.retain_units(exposed - requested)?;
+            }
+            self.action(action)
+        })
+        .map_err(preflight_error)?;
+        for index in 0..requested {
             self.on_work(1)?;
             units.push(value.code_units()[index]);
         }
@@ -462,6 +512,7 @@ impl HtmlCapture {
             formation_bytes,
             step,
             None,
+            0,
         )
     }
 
@@ -483,6 +534,7 @@ impl HtmlCapture {
             formation_bytes,
             step,
             Some(accounting),
+            0,
         )
     }
 
@@ -494,13 +546,14 @@ impl HtmlCapture {
     /// The finite byte allowance follows
     /// [the registry formation contract](Self::complete_empty_global_registry_with).
     /// Whole UTF-16 blocks are shared and their retained extent is charged to the
-    /// new capture. Borrowed ranges are copied within the allowance.
+    /// new capture. Borrowed ranges admit their requested units before copying
+    /// and check the exposed capacity before writing any units.
     pub fn append_registry_definition_with<E>(
         &self,
         registry: &HtmlCaptureRegistryId,
         definition: &HtmlCustomElementDefinition,
         host_revision: HtmlHostFactsRevision,
-        formation_bytes: usize,
+        limits: HtmlRegistryFormationLimits,
         step: impl FnMut(usize) -> Result<(), E>,
     ) -> Result<HtmlRegistryCapture, HtmlRegistryFormationError<E>> {
         Self::form_registry(
@@ -510,9 +563,10 @@ impl HtmlCapture {
                 registry,
                 definition,
             },
-            formation_bytes,
+            limits.bytes,
             step,
             None,
+            limits.units,
         )
     }
 
@@ -522,6 +576,7 @@ impl HtmlCapture {
         formation_bytes: usize,
         mut step: impl FnMut(usize) -> Result<(), E>,
         hosted: Option<&HtmlHostScope>,
+        retained_units: usize,
     ) -> Result<HtmlRegistryCapture, HtmlRegistryFormationError<E>> {
         Control::step(&mut step, 1)?;
         let mut fixed = Control::plus(size_of::<Workspace>(), size_of::<HtmlRegistryCapture>())?;
@@ -536,6 +591,7 @@ impl HtmlCapture {
             }
         };
         let mut control = Control::charging(formation_bytes, fixed, hosted)?;
+        control.unit_limit = retained_units;
         control.admit(fixed)?;
         let capture_limits = HtmlCaptureLimits::new(0, 0, 0, unit_limit, 0, 1, definition_limit, 0);
         let mut builder = match hosted {

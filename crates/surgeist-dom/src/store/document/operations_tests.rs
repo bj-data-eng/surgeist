@@ -200,6 +200,314 @@ fn hosted(dom: &mut Dom, source: &mut DomHostedSource) -> DomHostedCreation {
     }
     lease.finish(dom, source, &cancel()).unwrap()
 }
+
+#[test]
+fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
+    use surgeist_html_semantics::{HtmlCaptureError, HtmlCustomElementDefinition};
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let other = hosted(&mut dom, &mut issuer);
+    let mut batch = DomBatch::new();
+    let existing = batch.create_element(other.document(), "x-item");
+    let unregistered = batch.create_element(owner.document(), "x-open");
+    let null_host = batch.create_element(other.document(), "div");
+    let null_child = batch.create_element(other.document(), "x-item");
+    let created = apply(&mut dom, batch);
+    let existing = created.created(&existing).unwrap().unwrap();
+    let unregistered = created.created(&unregistered).unwrap().unwrap();
+    let null_host = created.created(&null_host).unwrap().unwrap();
+    let null_child = created.created(&null_child).unwrap().unwrap();
+    let mut draft = Draft::new(&dom, DomBatch::new().owner, &cancel()).unwrap();
+    let root = draft
+        .allocate(
+            crate::store::NewNode::ShadowRoot(DomShadowRootState::from_parsed(
+                surgeist_html::construction::HtmlShadowRootProperties::new(
+                    HtmlShadowRootMode::Open,
+                    surgeist_html::construction::HtmlSlotAssignment::Named,
+                    false,
+                    false,
+                    false,
+                ),
+                true,
+                true,
+                false,
+            )),
+            Key::Existing(other.document().node()),
+            dom.limits(),
+            &cancel(),
+        )
+        .unwrap();
+    draft
+        .attach_parsed_shadow(Key::Existing(null_host), root, dom.limits(), &cancel())
+        .unwrap();
+    draft
+        .establish_element_registry(
+            Key::Existing(null_child),
+            DomRegistryBinding::Null,
+            &cancel(),
+        )
+        .unwrap();
+    let prepared = draft
+        .finish_with_mapping(&dom, &cancel(), std::iter::once(root))
+        .unwrap();
+    let root = prepared.1[0];
+    dom.publish(prepared.0, &cancel()).unwrap();
+    let mut batch = DomBatch::new();
+    batch.insert_before(null_child, root, None);
+    apply(&mut dom, batch);
+    let initial = dom.snapshot();
+    let registry = |document| {
+        let DomRegistryBinding::Registry(id) = initial
+            .document(document)
+            .unwrap()
+            .metadata()
+            .custom_element_registry()
+        else {
+            panic!("hosted Global has a registry");
+        };
+        id
+    };
+    let registry_id = registry(owner.document());
+    let other_registry = registry(other.document());
+    let original_limits = issuer.limits();
+    issuer
+        .set_limits(
+            DomHostedLimits::new(
+                DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 2),
+                original_limits.retained_bytes(),
+                original_limits.scratch_bytes(),
+                original_limits.work(),
+            ),
+            &cancel(),
+        )
+        .unwrap();
+
+    let autonomous = HtmlCustomElementDefinition::new(
+        DocumentString::from("x-item"),
+        DocumentString::from("x-item"),
+        false,
+        true,
+    );
+    let custom = HtmlCustomElementDefinition::new(
+        DocumentString::from("x-button"),
+        DocumentString::from("button"),
+        true,
+        true,
+    );
+    let retained = issuer.retained_storage_bytes();
+    let registry_limits = issuer.limits();
+    issuer
+        .set_limits(
+            DomHostedLimits::new(
+                registry_limits.records(),
+                registry_limits.retained_bytes(),
+                1,
+                registry_limits.work(),
+            ),
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            source_limits(1),
+            &cancel(),
+        ),
+        Err(DomHostedError::Limit {
+            resource: DomHostedResource::ScratchBytes,
+            limit: 1
+        })
+    ));
+    assert_eq!(issuer.retained_storage_bytes(), retained);
+    issuer.set_limits(registry_limits, &cancel()).unwrap();
+    let input_units = autonomous.name().retained_units() + autonomous.local_name().retained_units();
+    let canonical_units = dom.custody_registry.ledger().total().units();
+    assert!(matches!(
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            DomSourceLimits::new(
+                64_000_000,
+                canonical_units + input_units,
+                20_000_000,
+                1,
+                1,
+                1,
+                1,
+            ),
+            &cancel(),
+        ),
+        Err(DomHostedError::Dom(DomError::ResourceLimit {
+            resource: DomResource::SourceRetainedUnits,
+            ..
+        }))
+    ));
+    assert_eq!(issuer.retained_storage_bytes(), retained);
+    assert!(matches!(
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            other_registry,
+            &autonomous,
+            source_limits(1),
+            &cancel(),
+        ),
+        Err(DomHostedError::StaleIdentity)
+    ));
+    assert!(matches!(
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            source_limits(0),
+            &cancel(),
+        ),
+        Err(DomHostedError::Dom(DomError::SourceOutputLimit))
+    ));
+    assert!(matches!(
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            DomSourceLimits::new(64_000_000, 2_000_000, 20_000_000, 1, 1, 1, 0),
+            &cancel(),
+        ),
+        Err(DomHostedError::Dom(DomError::SourceNestedOperationLimit {
+            limit: 0
+        }))
+    ));
+    let staged = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap();
+    drop(staged);
+    assert_eq!(dom.snapshot().stamp(), initial.stamp());
+    assert_eq!(issuer.retained_storage_bytes(), retained);
+
+    let first = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap();
+    let (changes, first_id) = first.commit();
+    assert_eq!(first_id.registry(), registry_id);
+    assert_eq!(first_id.ordinal(), 0);
+    assert_eq!(
+        changes.changes().changes(),
+        &[DomChange::RegistryDefinitionAdded(first_id)]
+    );
+    let intermediate = dom.snapshot();
+    assert!(matches!(
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            source_limits(1),
+            &cancel(),
+        ),
+        Err(DomHostedError::Dom(DomError::SelectCapture(
+            HtmlCaptureError::DuplicateDefinitionName
+        )))
+    ));
+    assert_eq!(dom.snapshot().stamp(), intermediate.stamp());
+    let second = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &custom,
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap();
+    let (changes, second_id) = second.commit();
+    assert_eq!(second_id.registry(), registry_id);
+    assert_eq!(second_id.ordinal(), 1);
+    assert_eq!(
+        changes.changes().changes(),
+        &[DomChange::RegistryDefinitionAdded(second_id)]
+    );
+    let current = dom.snapshot();
+    let before = initial.registry(registry_id).unwrap();
+    let after_first = intermediate.registry(registry_id).unwrap();
+    let after_second = current.registry(registry_id).unwrap();
+    assert_eq!(before.definition_count(), 0);
+    assert_eq!(after_first.definition_count(), 1);
+    assert_eq!(after_second.definition_count(), 2);
+    assert_eq!(after_first.definition(first_id).unwrap(), &autonomous);
+    assert_eq!(after_second.definition(first_id).unwrap(), &autonomous);
+    assert_eq!(after_second.definition(second_id).unwrap(), &custom);
+    assert!(after_first.definition(second_id).is_err());
+    assert!(before.definition(first_id).is_err());
+    assert!(
+        current
+            .registry(other_registry)
+            .unwrap()
+            .definition(first_id)
+            .is_err()
+    );
+
+    let mut adoption = DomBatch::new();
+    adoption.adopt(existing, owner.document());
+    adoption.adopt(null_host, owner.document());
+    apply(&mut dom, adoption);
+    let adopted = dom.snapshot();
+    let DomNodeKind::Element(element) = adopted.node(existing).unwrap().kind() else {
+        panic!("adopted element");
+    };
+    assert_eq!(
+        element.custom_element_registry(),
+        DomRegistryBinding::Registry(registry_id)
+    );
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Null
+    );
+    assert_eq!(
+        adopted
+            .shadow_root(root)
+            .unwrap()
+            .state()
+            .custom_element_registry(),
+        DomRegistryBinding::Null
+    );
+    let DomNodeKind::Element(element) = adopted.node(null_child).unwrap().kind() else {
+        panic!("adopted element under declarative root");
+    };
+    assert_eq!(element.custom_element_registry(), DomRegistryBinding::Null);
+    let init = DomShadowRootInit::new(HtmlShadowRootMode::Open);
+    let mut refused = DomBatch::new();
+    refused.attach_shadow(existing, init);
+    assert!(matches!(
+        dom.apply(refused, &cancel()),
+        Err(DomError::NotSupported)
+    ));
+    let mut allowed = DomBatch::new();
+    allowed.attach_shadow(unregistered, init);
+    assert!(dom.apply(allowed, &cancel()).is_ok());
+}
+
 fn detached_document(
     snapshot: &DomSnapshot,
     document: DocumentId,

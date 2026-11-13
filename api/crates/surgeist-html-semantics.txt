@@ -1044,6 +1044,9 @@ pub surgeist_html_semantics::HtmlRegistryFormationError::Capture(surgeist_html_s
 pub surgeist_html_semantics::HtmlRegistryFormationError::FormationBytes
 pub surgeist_html_semantics::HtmlRegistryFormationError::FormationBytes::limit: usize
 pub surgeist_html_semantics::HtmlRegistryFormationError::FormationBytes::required: usize
+pub surgeist_html_semantics::HtmlRegistryFormationError::FormationUnits
+pub surgeist_html_semantics::HtmlRegistryFormationError::FormationUnits::limit: usize
+pub surgeist_html_semantics::HtmlRegistryFormationError::FormationUnits::required: usize
 pub surgeist_html_semantics::HtmlRegistryFormationError::Interrupted(E)
 pub surgeist_html_semantics::HtmlRegistryFormationError::RepresentationExhausted
 impl<E> surgeist_html_semantics::HtmlRegistryFormationError<E>
@@ -1703,7 +1706,7 @@ pub fn surgeist_html_semantics::HtmlBooleanAuthorContextReadback::attribute_repo
 pub fn surgeist_html_semantics::HtmlBooleanAuthorContextReadback::evidence(&self) -> &surgeist_html_semantics::HtmlBooleanAuthorContextEvidence
 pub struct surgeist_html_semantics::HtmlCapture(_)
 impl surgeist_html_semantics::HtmlCapture
-pub fn surgeist_html_semantics::HtmlCapture::append_registry_definition_with<E>(&self, registry: &surgeist_html_semantics::HtmlCaptureRegistryId, definition: &surgeist_html_semantics::HtmlCustomElementDefinition, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, formation_bytes: usize, step: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlRegistryCapture, surgeist_html_semantics::HtmlRegistryFormationError<E>>
+pub fn surgeist_html_semantics::HtmlCapture::append_registry_definition_with<E>(&self, registry: &surgeist_html_semantics::HtmlCaptureRegistryId, definition: &surgeist_html_semantics::HtmlCustomElementDefinition, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, limits: surgeist_html_semantics::HtmlRegistryFormationLimits, step: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlRegistryCapture, surgeist_html_semantics::HtmlRegistryFormationError<E>>
 pub fn surgeist_html_semantics::HtmlCapture::complete_empty_global_registry_with<E>(host_revision: surgeist_html_semantics::HtmlHostFactsRevision, formation_bytes: usize, step: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlRegistryCapture, surgeist_html_semantics::HtmlRegistryFormationError<E>>
 pub fn surgeist_html_semantics::HtmlCapture::complete_empty_global_registry_with_accounting<E>(host_revision: surgeist_html_semantics::HtmlHostFactsRevision, formation_bytes: usize, step: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<surgeist_html_semantics::HtmlRegistryCapture, surgeist_html_semantics::HtmlRegistryFormationError<E>>
 impl surgeist_html_semantics::HtmlCapture
@@ -2885,6 +2888,9 @@ pub fn surgeist_html_semantics::HtmlRegistryCapture::formation_peak_bytes(&self)
 pub fn surgeist_html_semantics::HtmlRegistryCapture::into_parts(self) -> (surgeist_html_semantics::HtmlCapture, surgeist_html_semantics::HtmlCaptureRegistryId)
 pub fn surgeist_html_semantics::HtmlRegistryCapture::registry(&self) -> &surgeist_html_semantics::HtmlCaptureRegistryId
 pub fn surgeist_html_semantics::HtmlRegistryCapture::retained_storage_usage(&self) -> surgeist_html_semantics::HtmlCaptureRetainedStorageUsage
+pub struct surgeist_html_semantics::HtmlRegistryFormationLimits
+impl surgeist_html_semantics::HtmlRegistryFormationLimits
+pub const fn surgeist_html_semantics::HtmlRegistryFormationLimits::new(bytes: usize, retained_utf16_units: usize) -> Self
 pub struct surgeist_html_semantics::HtmlRelBookmarkSection
 impl surgeist_html_semantics::HtmlRelBookmarkSection
 pub fn surgeist_html_semantics::HtmlRelBookmarkSection::new(subject: surgeist_html_semantics::HtmlCaptureSubjectId, section: surgeist_html_semantics::HtmlRelSectionId) -> Self

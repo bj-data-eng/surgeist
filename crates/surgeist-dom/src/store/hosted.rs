@@ -1242,6 +1242,14 @@ impl DomSnapshot {
     /// The checked association retained by this exact immutable snapshot.
     /// Current execution uses the exclusive Dom owner's qualified method.
     pub fn global_document(&self, global: DomHostedGlobalId) -> Result<DocumentId, DomHostedError> {
+        self.global_document_with(global, &mut || Ok(()))
+    }
+    pub(in crate::store) fn global_document_with(
+        &self,
+        global: DomHostedGlobalId,
+        step: &mut impl FnMut() -> Result<(), DomHostedError>,
+    ) -> Result<DocumentId, DomHostedError> {
+        step()?;
         if global.source.owner != self.owner {
             return Err(DomHostedError::ForeignSource);
         }
@@ -1250,8 +1258,11 @@ impl DomSnapshot {
             .hosted_globals
             .as_ref()
             .ok_or(DomHostedError::StaleIdentity)?
-            .document(global)?;
-        let metadata = self.document(document)?.metadata();
+            .document_with(global, step)?;
+        let node = self.node_with(document.node(), &mut *step)?;
+        let crate::DomNodeKind::Document(metadata) = node.kind() else {
+            return Err(DomError::WrongNodeKind.into());
+        };
         if metadata
             .document_environment()
             .hosted
@@ -1267,13 +1278,21 @@ impl Dom {
     /// Current association qualified by the original issuer, role generations
     /// and this canonical owner's completed source basis.
     pub fn global_document(&self, global: DomHostedGlobalId) -> Result<DocumentId, DomHostedError> {
+        self.global_document_with(global, &mut || Ok(()))
+    }
+    pub(in crate::store) fn global_document_with(
+        &self,
+        global: DomHostedGlobalId,
+        step: &mut impl FnMut() -> Result<(), DomHostedError>,
+    ) -> Result<DocumentId, DomHostedError> {
         let snapshot = self.snapshot();
         snapshot.require_complete_source()?;
-        let document = snapshot.global_document(global)?;
-        let environment = snapshot
-            .document(document)?
-            .metadata()
-            .document_environment();
+        let document = snapshot.global_document_with(global, step)?;
+        let node = snapshot.node_with(document.node(), &mut *step)?;
+        let crate::DomNodeKind::Document(metadata) = node.kind() else {
+            return Err(DomError::WrongNodeKind.into());
+        };
+        let environment = metadata.document_environment();
         environment
             .hosted
             .as_ref()

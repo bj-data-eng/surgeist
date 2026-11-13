@@ -274,7 +274,7 @@ pub use parsed_installation::{
 pub use range::{
     CreatedRange, DomActiveRangeState, DomRange, DomRangeBoundary, DomRangeId, DomRangeOperand,
 };
-pub use registry::{DomRegistry, DomRegistryId};
+pub use registry::{DomRegistry, DomRegistryDefinitionId, DomRegistryId};
 pub use script::DomHtmlScript;
 pub use select::{
     DomNativeCheckpoint, DomNativeCheckpointLimits, DomNativeTaskId, DomOption, DomOptionState,
@@ -298,6 +298,7 @@ pub use snapshot::{
 pub use store::DomChildListNotification;
 pub use store::DomNodeIteratorFilterRequest;
 pub use store::meta_atomic::{DomMetaOrdinaryPreparation, DomMetaOrdinaryPublished};
+pub use store::registry::DomRegistryDefinitionPreparation;
 mod parsed_association;
 pub use parsed_association::*;
 mod parsed_style;

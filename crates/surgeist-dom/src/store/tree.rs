@@ -387,11 +387,30 @@ impl Draft {
             let mut common = self.common_fields_mut(node, cancelled)?;
             common.document = document;
             common.commit(cancelled)?;
-            self.select_element_registry(node, cancelled)?;
             let binding = match self.node(document)?.kind() {
                 KindRead::Document(metadata) => metadata.custom_element_registry(),
                 _ => return Err(DomError::WrongDocument),
             };
+            let adopted = self.node(node)?;
+            if let KindRead::Element(element) = adopted.kind() {
+                let binding = match (
+                    element.language().custom_element_registry(),
+                    adopted.parent(),
+                ) {
+                    (crate::DomRegistryBinding::Null, Some(parent)) => {
+                        self.source_step(cancelled)?;
+                        match self.node(parent)?.kind() {
+                            KindRead::Element(parent) => {
+                                parent.language().custom_element_registry()
+                            }
+                            KindRead::ShadowRoot(parent) => parent.custom_element_registry(),
+                            _ => binding,
+                        }
+                    }
+                    _ => binding,
+                };
+                self.establish_element_registry(node, binding, cancelled)?;
+            }
             if matches!(self.node(node)?.kind(), KindRead::ShadowRoot(_)) {
                 let mut state = self.shadow_state_mut(node, cancelled)?;
                 state.select_global_registry(binding);

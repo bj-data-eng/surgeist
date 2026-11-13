@@ -3,7 +3,8 @@ use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureError, HtmlCaptureFact, HtmlCaptureLimits,
     HtmlCaptureRegistryId, HtmlCapturedDefinitions, HtmlCapturedRegistry,
     HtmlCustomElementDefinition, HtmlDefinitionLookupStep, HtmlHostFactsRevision,
-    HtmlRegistryCapture, HtmlRegistryFormationError, HtmlRegistryScope,
+    HtmlRegistryCapture, HtmlRegistryFormationError, HtmlRegistryFormationLimits,
+    HtmlRegistryScope,
 };
 
 fn global() -> HtmlRegistryCapture {
@@ -34,7 +35,7 @@ fn append(
             original.registry(),
             definition,
             HtmlHostFactsRevision::fresh(),
-            usize::MAX,
+            HtmlRegistryFormationLimits::new(usize::MAX, usize::MAX),
             |_| Ok::<_, ()>(()),
         )
         .unwrap()
@@ -113,7 +114,7 @@ fn borrowed_ranges_keep_exact_units_and_obey_the_formation_frontier() {
             original.registry(),
             &definition,
             HtmlHostFactsRevision::fresh(),
-            bytes,
+            HtmlRegistryFormationLimits::new(bytes, usize::MAX),
             step,
         )
     };
@@ -132,6 +133,19 @@ fn borrowed_ranges_keep_exact_units_and_obey_the_formation_frontier() {
     assert!(records[0].name().is_whole_block());
     assert!(records[0].local_name().is_whole_block());
     assert_eq!(formed.retained_storage_usage().utf16_extent(), 8);
+    assert!(matches!(
+        original.capture().append_registry_definition_with(
+            original.registry(),
+            &definition,
+            HtmlHostFactsRevision::fresh(),
+            HtmlRegistryFormationLimits::new(usize::MAX, 7),
+            |_| Ok::<_, ()>(()),
+        ),
+        Err(HtmlRegistryFormationError::FormationUnits {
+            limit: 7,
+            required: 8
+        })
+    ));
     assert_eq!(
         formed.retained_storage_usage(),
         formed
@@ -228,7 +242,7 @@ fn append_refuses_unqualified_definitions_and_preserves_registry_scope() {
             registry,
             definition,
             HtmlHostFactsRevision::fresh(),
-            usize::MAX,
+            HtmlRegistryFormationLimits::new(usize::MAX, usize::MAX),
             |_| Ok::<_, ()>(()),
         )
     };
