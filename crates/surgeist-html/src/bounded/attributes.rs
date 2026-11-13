@@ -9,8 +9,9 @@ pub use crate::internal::attributes::autocomplete::{
     HtmlAutocompleteMaterialized, autocomplete_materialization_work_bound,
 };
 pub use crate::internal::attributes::bounded_rules::{
-    HtmlAttributeKeywordRead, HtmlButtonSubmitterFact, HtmlWritingSuggestionsProcessing,
-    button_submitter_context_with, crossorigin_processing_with, dir_keyword_with,
+    HtmlAttributeKeywordRead, HtmlButtonSubmitterFact, HtmlIntegerAttributeRead,
+    HtmlWritingSuggestionsProcessing, button_submitter_context_with, crossorigin_processing_with,
+    dir_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     input_list_applies, input_readonly_applies, input_submitter_context, popover_keyword_with,
     referrerpolicy_processing_with, stylesheet_link_context_work_bound,
     template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,

@@ -104,6 +104,13 @@ const HTML_REFLECTIONS: &[super::reflection::Member] = &[
         super::reflection::Reflection::Popover,
     ),
     (
+        &ascii(b"headingOffset"),
+        &ascii(b"get headingOffset"),
+        &ascii(b"set headingOffset"),
+        &ascii(b"headingoffset"),
+        super::reflection::Reflection::HeadingOffset,
+    ),
+    (
         &ascii(b"headingReset"),
         &ascii(b"get headingReset"),
         &ascii(b"set headingReset"),

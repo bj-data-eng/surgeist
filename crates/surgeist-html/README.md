@@ -124,6 +124,13 @@ Direction reflects missing/invalid content as empty. Popover preserves missing
 content as `None`, empty as `auto` and invalid as `manual`. These allocation-free
 local projections supply language values for a consuming live binding.
 
+`heading_offset_reflection_with` admits the value header, reached integer
+inspection/projection steps and result selection. Missing or malformed content
+selects zero, and valid getter values clamp to 0–8. Caller refusal propagates
+without selecting a default. `heading_offset_setter_value` accepts an already
+converted Web IDL unsigned long and applies the separate setter range through
+2,147,483,647, selecting zero above it.
+
 `HtmlOpenerPolicyValue` supplies the five pinned language values, and
 `HtmlOpenerPolicy::initial` creates the actual four-field default record. Both
 policy values start as unsafe-none and both reporting endpoints are null.
