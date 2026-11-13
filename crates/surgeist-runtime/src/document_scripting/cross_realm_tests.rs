@@ -1,6 +1,7 @@
 mod authored_toggle;
 mod declarative_shadow;
 mod element_tasks;
+mod inline_style;
 mod nested_dispatch;
 mod trusted_attribute;
 
