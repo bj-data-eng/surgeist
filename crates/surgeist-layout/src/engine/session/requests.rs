@@ -9,7 +9,7 @@ use crate::block::{
 use crate::engine::block_scope::ordinary;
 use crate::engine::hidden::{HiddenChildren, HiddenRequest};
 use crate::flex::{FlexChild, FlexComputation, begin_flex_computation};
-use crate::grid::{GridContinuation, PositionedGridChild, begin_grid_computation};
+use crate::grid::{GridChild, GridContinuation, begin_grid_computation};
 use crate::{
     Compute, ComputeInputOf, ComputeOutputOf, Display, FlowAxes, LayoutErrorKindOf, LayoutErrorOf,
     LayoutErrorSiteOf, LayoutOperation, LayoutScalar, LayoutTree, PhysicalAxis, Traverse,
@@ -110,7 +110,7 @@ struct GridRequest<'input, Node, S: LayoutScalar> {
     computation: GridContinuation<'input, Node, S>,
     completion: ChildCompletion<Node, S>,
     projection: OutputProjection,
-    child: Option<PositionedGridChild<'input, Node, S>>,
+    child: Option<GridChild<'input, Node, S>>,
 }
 
 struct PendingRequests<'input, Node, S: LayoutScalar> {
@@ -619,16 +619,15 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
     }
 
     fn schedule_grid_child(
-        child: &PositionedGridChild<'input, Tree::Node, Tree::Scalar>,
+        child: &GridChild<'input, Tree::Node, Tree::Scalar>,
         order: &mut Vec<PendingRequest>,
     ) -> SessionResult<Tree, SessionRequest<Tree>> {
-        order
-            .try_reserve(1)
-            .map_err(|_| reserve_error(child.node))?;
+        let (node, input) = child.request();
+        order.try_reserve(1).map_err(|_| reserve_error(node))?;
         order.push(PendingRequest::Grid);
         Ok(Request::Child {
-            node: child.node,
-            input: child.input,
+            node,
+            input,
             projection: OutputProjection::Layout,
         })
     }
