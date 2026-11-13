@@ -643,10 +643,12 @@ fn run_session<Tree: LayoutTree>(
     root: Tree::Node,
     request: LayoutRootRequestOf<Tree::Scalar>,
 ) -> ComputeLayoutResult<Tree> {
+    session.enable_request_memo();
     let replay = session.has_text() || session.groups_active();
     let mut rejected_bases: Vec<(_, Option<TextPassBasis<Tree>>, _)> = Vec::new();
     loop {
         compute_root(&mut session, root, request)?;
+        session.release_request_memo();
         match request.rounding_mode() {
             crate::LayoutRoundingMode::NearestCssPixel => {
                 rounding::round_layout(&mut session, root)?

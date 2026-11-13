@@ -1,3 +1,4 @@
+mod memo;
 mod requests;
 
 #[cfg(test)]
@@ -33,6 +34,7 @@ enum ChildAdmission<Node, S: LayoutScalar> {
     Uncached {
         input: ComputeInputOf<S>,
         cache: Option<ChildCacheRequest<Node, S>>,
+        memo: Option<memo::RequestKey<S>>,
     },
 }
 
@@ -93,6 +95,7 @@ where
     text: Option<crate::text_layout::state::TextComputation<'a, Tree::Node, Tree::Scalar>>,
     outputs: OutputStaging<Tree::Node, Tree::Scalar>,
     cache: CacheStaging<Tree::Node, Tree::Scalar>,
+    memo: Option<memo::Memo<Tree::Node, Tree::Scalar>>,
     entry_storage: Option<EntryStorage>,
 }
 
@@ -453,6 +456,7 @@ where
                 clears: cache_clear_entries,
                 invalidated: invalidated_nodes,
             },
+            memo: None,
             entry_storage: None,
         }
     }
@@ -529,6 +533,9 @@ where
         let (clears, clears_storage) = clears.into_parts();
         let mut probe = Self::with_invalidations(self.tree, dirty, clears);
         probe.entry_sources = self.entry_sources.clone();
+        if incoming.is_none() && self.entry_sources.is_none() {
+            probe.memo = self.memo.as_ref().map(memo::Memo::fork);
+        }
         probe.block_floats = self
             .block_floats
             .fork_entry(incoming, funding_ref)
@@ -1451,33 +1458,51 @@ where
                     )
                 })?;
             if measured {
-                return Ok(ChildAdmission::Uncached { input, cache: None });
+                return Ok(ChildAdmission::Uncached {
+                    input,
+                    cache: None,
+                    memo: None,
+                });
             }
         }
 
         let restore_subtree = input.run_mode().is_perform_layout() && self.child_count(node) != 0;
         let uncached_input = input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL);
-        if restore_subtree && !self.subtree_uses_shape_provider(node) {
-            return Ok(ChildAdmission::Uncached {
-                input: uncached_input,
-                cache: None,
+        let host_cache = !restore_subtree || self.subtree_uses_shape_provider(node);
+        let (cache, memo) = if host_cache || self.memo.is_some() {
+            let context = if host_cache {
+                self.cache_context()
+            } else {
+                crate::CacheKeyContext::new()
+            };
+            let cache = host_cache.then(|| {
+                let cache_input = if restore_subtree {
+                    uncached_input
+                } else {
+                    input
+                };
+                ChildCacheRequest::new(node, cache_input, context)
             });
-        }
-
-        let cache_input = if restore_subtree {
-            uncached_input
+            if let Some(cache) = &cache
+                && let Some(output) = cache.restore_hit(self)?
+                && (!restore_subtree || self.restore_committed_subtree(node))
+            {
+                return Ok(ChildAdmission::Ready(output));
+            }
+            let memo = self.request_key(node, input, context);
+            if let Some(key) = memo
+                && let Some(output) = self.memo_hit(node, key)?
+            {
+                return Ok(ChildAdmission::Ready(output));
+            }
+            (cache, memo)
         } else {
-            input
+            (None, None)
         };
-        let cache = ChildCacheRequest::new(node, cache_input, self.cache_context());
-        if let Some(output) = cache.restore_hit(self)?
-            && (!restore_subtree || self.restore_committed_subtree(node))
-        {
-            return Ok(ChildAdmission::Ready(output));
-        }
         Ok(ChildAdmission::Uncached {
             input: uncached_input,
-            cache: Some(cache),
+            cache,
+            memo,
         })
     }
 
@@ -1625,29 +1650,15 @@ where
                         return Ok(result);
                     }
                     memo.reserve(funding.as_ref()).map_err(error)?;
-                    let result = self
-                        .tree
-                        .measure_leaf(node, request)
-                        .ok_or_else(|| {
-                            LayoutErrorOf::new(
-                                LayoutErrorSiteOf::Node(node),
-                                LayoutOperation::LeafMeasurement,
-                                LayoutErrorKindOf::InternalInvariant(
-                                    LayoutInternalInvariant::MissingLeafMeasurementProvider,
-                                ),
-                            )
-                        })?
-                        .map_err(|error| {
-                            LayoutErrorOf::new(
-                                LayoutErrorSiteOf::Node(node),
-                                LayoutOperation::LeafMeasurement,
-                                LayoutErrorKindOf::Measurement(error),
-                            )
-                        })?;
+                    let result = crate::measurement::sample_tree_leaf(self.tree, node, request)?;
                     let result = crate::measurement::validate_native_sample(node, result)?;
                     memo.record(node, request, result, funding.as_ref())
                         .map_err(error)?;
                     Ok(result)
+                })
+            } else if self.memo.is_some() {
+                crate::measurement::compute_leaf_with_sampler(node, input, style, icb, |request| {
+                    self.memo_sample(node, request)
                 })
             } else if let Some(icb) = icb {
                 crate::measurement::compute_tree_leaf_with_intrinsic_icb(
@@ -1774,6 +1785,9 @@ where
         if query.purpose == EntryPurpose::StartOnly {
             return crate::block::entry::observe(self, query);
         }
+        if let Some(memo) = &self.memo {
+            memo.barrier();
+        }
         if !query
             .incoming
             .as_ref()
@@ -1865,6 +1879,9 @@ where
         Self::Scalar,
         Tree::MeasureError,
     > {
+        if let Some(memo) = &self.memo {
+            memo.observe_geometry(node);
+        }
         self.outputs
             .unrounded
             .iter()
@@ -1898,6 +1915,11 @@ where
                 text.discard_placement(node);
             }
             self.cache.stores.retain(|entry| entry.node() != node);
+            if let Some(memo) = &self.memo {
+                memo.barrier();
+            }
+        } else if let Some(memo) = &mut self.memo {
+            memo.record(node, memo::Effect::Geometry(entry));
         }
         if let Some(index) = self
             .outputs
@@ -1982,6 +2004,9 @@ where
         node: Self::Node,
         fragments: Option<Vec<InlineFragmentOutputOf<Self::Scalar>>>,
     ) {
+        if let Some(memo) = &self.memo {
+            memo.barrier();
+        }
         set_inline_fragment_group(&mut self.outputs.unrounded_fragments, node, fragments);
     }
 
@@ -2122,6 +2147,9 @@ where
         let mut observation = Self::new(self.tree, self.cache.invalidated.clone());
         observation.block_floats = self.block_floats.fork();
         observation.entry_sources = self.entry_sources.clone();
+        if self.entry_sources.is_none() {
+            observation.memo = self.memo.as_ref().map(memo::Memo::fork);
+        }
         observation.wrapping.context = self.wrapping.context.clone();
         observation.flow_graph = self.flow_graph;
         observation.bound = self.bound.clone();
@@ -2672,13 +2700,18 @@ where
                 .reserve_push(&mut self.cache.stores, funding.as_ref())
                 .map_err(error)?;
         }
-        self.cache
-            .stores
-            .push(LayoutCacheStoreEntryOf::new(node, *input, context, output));
+        let entry = LayoutCacheStoreEntryOf::new(node, *input, context, output);
+        self.cache.stores.push(entry);
+        if let Some(memo) = &mut self.memo {
+            memo.record(node, memo::Effect::Store(entry));
+        }
         Ok(())
     }
 
     fn cache_clear(&mut self, node: Self::Node) -> SessionResult<Tree, ()> {
+        if let Some(memo) = &self.memo {
+            memo.barrier();
+        }
         let funding = if self.entry_storage.is_some() {
             self.entry_funding(node)?
         } else {

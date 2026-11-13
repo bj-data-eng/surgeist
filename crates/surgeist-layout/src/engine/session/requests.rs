@@ -1,5 +1,6 @@
 use std::{collections::TryReserveError, ops::ControlFlow};
 
+use super::memo::Capture;
 use super::{ChildAdmission, ChildCacheRequest, ComputeSession, SessionResult};
 use crate::block::intrinsic::{BlockAxisDemand, InlineContentChild};
 use crate::block::{BlockComputation, BlockResult, PendingBlockChild, begin_block_computation};
@@ -73,7 +74,7 @@ enum PendingRequest {
 
 struct BlockRequest<'input, Node, S: LayoutScalar> {
     computation: BlockComputation<'input, Node, S>,
-    cache: Option<ChildCacheRequest<Node, S>>,
+    completion: ChildCompletion<Node, S>,
     projection: OutputProjection,
     child: Option<PendingBlockChild<'input, Node, S>>,
 }
@@ -123,6 +124,10 @@ impl<Node, S: LayoutScalar> PendingRequests<'_, Node, S> {
 type SessionRequest<Tree> = Request<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>;
 type SessionPending<'input, Tree> =
     PendingRequests<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>;
+struct ChildCompletion<Node, S: LayoutScalar> {
+    cache: Option<ChildCacheRequest<Node, S>>,
+    capture: Option<Capture<S>>,
+}
 type SessionBlock<'input, Tree> =
     BlockRequest<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>;
 
@@ -208,19 +213,27 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 } => match self.admit_child(node, input)? {
                     ChildAdmission::Ready(output) => projection.complete(output),
                     ChildAdmission::Hidden(request) => Request::Hidden(request, projection),
-                    ChildAdmission::Uncached { input, cache } => {
+                    ChildAdmission::Uncached { input, cache, memo } => {
+                        let capture = self.begin_memo(node, memo)?;
                         let initial = self.begin_uncached_layout(node, input);
                         if self.block_scopes().is_none()
                             && !initial.leaf
                             && initial.style.display.inner_display() == Display::Block
                         {
-                            self.begin_block(node, input, cache, projection, pending)?
+                            self.begin_block(
+                                node,
+                                input,
+                                ChildCompletion { cache, capture },
+                                projection,
+                                pending,
+                            )?
                         } else {
                             let output =
                                 ordinary(self.compute_uncached_layout_body(node, input, initial))?;
                             if let Some(cache) = cache {
                                 cache.store(self, output)?;
                             }
+                            self.complete_memo(node, capture, output)?;
                             projection.complete(output)
                         }
                     }
@@ -263,13 +276,13 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
-        cache: Option<ChildCacheRequest<Tree::Node, Tree::Scalar>>,
+        completion: ChildCompletion<Tree::Node, Tree::Scalar>,
         projection: OutputProjection,
         pending: &mut SessionPending<'input, Tree>,
     ) -> SessionResult<Tree, SessionRequest<Tree>> {
         match ordinary(begin_block_computation(self, node, input))? {
             ControlFlow::Break(output) => {
-                self.finish_request_block(node, input, cache, projection, output)
+                self.finish_request_block(node, input, completion, projection, output)
             }
             ControlFlow::Continue(computation) => {
                 if pending.blocks.try_reserve(1).is_err() {
@@ -278,7 +291,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 }
                 pending.blocks.push(BlockRequest {
                     computation,
-                    cache,
+                    completion,
                     projection,
                     child: None,
                 });
@@ -334,21 +347,23 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         let parent = pending.blocks.pop().expect("completed Block request");
         let (node, input) = parent.computation.request();
         let output = ordinary(parent.computation.finish(self, Ok(result)))?;
-        self.finish_request_block(node, input, parent.cache, parent.projection, output)
+        self.finish_request_block(node, input, parent.completion, parent.projection, output)
     }
 
     fn finish_request_block(
         &mut self,
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
-        cache: Option<ChildCacheRequest<Tree::Node, Tree::Scalar>>,
+        completion: ChildCompletion<Tree::Node, Tree::Scalar>,
         projection: OutputProjection,
         output: ComputeOutputOf<Tree::Scalar>,
     ) -> SessionResult<Tree, SessionRequest<Tree>> {
         self.finish_uncached_layout(node, input, output)?;
+        let ChildCompletion { cache, capture } = completion;
         if let Some(cache) = cache {
             cache.store(self, output)?;
         }
+        self.complete_memo(node, capture, output)?;
         Ok(projection.complete(output))
     }
 
@@ -369,8 +384,10 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     return Ok(Request::Hidden(request, projection));
                 }
                 ChildAdmission::Ready(_) => {}
-                ChildAdmission::Uncached { input, cache } => {
-                    self.complete_admitted_child(node, input, cache)?;
+                ChildAdmission::Uncached { input, cache, memo } => {
+                    let capture = self.begin_memo(node, memo)?;
+                    let output = self.complete_admitted_child(node, input, cache)?;
+                    self.complete_memo(node, capture, output)?;
                 }
             }
         }
@@ -388,6 +405,8 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         let own = FlowAxes::new(style.writing_mode, style.direction);
         if !self.tree.has_leaf_measurement(node) {
             if own.inline_axis() == axis && style.display.inner_display() == Display::Block {
+                // This scalar demand has a separate completion from a full
+                // child request and no host cache key.
                 let demand = BlockAxisDemand::begin(self, node, input, axis)?;
                 return self.advance_block_axis(demand, pending);
             }
