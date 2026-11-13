@@ -742,6 +742,9 @@ impl Capture {
                 return Ok(registry_type_error(scope)?);
             };
             drop(running);
+            if read.form {
+                return Ok(registry_not_supported(scope)?);
+            }
             let observed_attributes = read
                 .observed
                 .map(|source| ObservedAttributes::copy(&owner, &events, source).map(Rc::new))

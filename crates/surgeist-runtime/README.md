@@ -325,8 +325,9 @@ Element and ShadowRoot registry getters share that canonical identity. The
 Global registry supports `define`, `get` and `whenDefined`. Explicit factories
 can synchronously construct autonomous and customized built-in elements, and
 native edits deliver their supported lifecycle reactions. Promise handlers
-run at an explicit guest checkpoint. Scoped registry construction and
-parser-triggered custom-element execution are pending.
+run at an explicit guest checkpoint. Form-associated definitions refuse
+before publication while their canonical form lifecycle is pending. Scoped
+registry construction and parser-triggered execution are also pending.
 Native ShadowRoots inherit DocumentFragment and expose their canonical host,
 mode, focus delegation, slot assignment, clonability and serializability.
 Element.shadowRoot exposes open roots. Node root reads and event paths use
