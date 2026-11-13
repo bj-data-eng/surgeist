@@ -565,7 +565,7 @@ impl DomSourceRuntime {
                 &mut lease,
                 services.meta,
                 services.url.as_ref().map(|s| s.revision),
-                &mut drive.resolver,
+                (&mut drive.resolver, None),
                 cancel,
             )?
         };
@@ -622,7 +622,7 @@ impl DomSourceRuntime {
                 &mut lease,
                 services.meta,
                 services.url.as_ref().map(|s| s.revision),
-                &mut drive.resolver,
+                (&mut drive.resolver, None),
                 cancel,
             )?
         };
@@ -801,6 +801,52 @@ impl DomSourceRuntime {
 }
 
 impl DomSourceRuntime {
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn drive_split_text(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        command: Result<DomSourceEdit, DomSourceOperationId>,
+        limits: DomSourceLimits,
+        output: &mut surgeist_dom::DomSplitTextOutputWatch<'_>,
+        cancel: &AtomicBool,
+    ) -> (
+        Result<DomSourceDriveProgress, DomSourceDriveError>,
+        Option<DomSourceOperationId>,
+    ) {
+        let prior_operation = dom
+            .pending_source_edit()
+            .map(surgeist_dom::DomSourceStatus::operation);
+        let guard = match self.prepare(dom, cancel) {
+            Ok(guard) => guard,
+            Err(error) => return (Err(error.into()), prior_operation),
+        };
+        let result = {
+            let lease = match command {
+                Ok(edit) => dom.begin_source_edit(edit, limits, cancel),
+                Err(operation) => dom.resume_source_edit(operation, limits, cancel),
+            };
+            let mut lease = match lease {
+                Ok(lease) => lease,
+                Err(error) => return (Err(error.into()), prior_operation),
+            };
+            self.drive_lease_execution(
+                &guard,
+                &mut lease,
+                None,
+                None,
+                (&mut None, Some(output)),
+                cancel,
+            )
+        };
+        if matches!(
+            result,
+            Ok(DomSourceDriveProgress::Complete(_) | DomSourceDriveProgress::Failed(_))
+        ) {
+            guard.finish(&dom.snapshot());
+        }
+        (result, prior_operation)
+    }
+
     #[expect(
         clippy::result_large_err,
         reason = "the driving boundary retains the actual root and original producer failure without allocating"
@@ -813,7 +859,7 @@ impl DomSourceRuntime {
         url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
-        self.drive_lease_execution(guard, lease, meta, url_revision, &mut None, cancel)
+        self.drive_lease_execution(guard, lease, meta, url_revision, (&mut None, None), cancel)
     }
 
     #[expect(
@@ -826,7 +872,10 @@ impl DomSourceRuntime {
         lease: &mut DomSourceLease<'_>,
         meta: Option<surgeist_dom::DomMetaAtomicLimits>,
         url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
-        resolver: &mut Option<&mut InlineResolver<'_>>,
+        (resolver, mut split_text_output): (
+            &mut Option<&mut InlineResolver<'_>>,
+            Option<&mut surgeist_dom::DomSplitTextOutputWatch<'_>>,
+        ),
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         loop {
@@ -863,8 +912,11 @@ impl DomSourceRuntime {
                     })
                     .map_err(|error| DomSourceRuntimeError::Inline(error).into())
             } else {
-                lease
-                    .advance_for_runtime(cancel)
+                let advanced = match split_text_output.as_deref_mut() {
+                    Some(output) => lease.advance_split_text_for_runtime(output, cancel),
+                    None => lease.advance_for_runtime(cancel),
+                };
+                advanced
                     .map(|advanced| match advanced {
                         DomSourceAdvance::Progress(progress) => Advanced::Source((progress, None)),
                         DomSourceAdvance::EventFiring(firing) => Advanced::EventFiring(firing),
@@ -1202,7 +1254,7 @@ impl DomSourceRuntime {
                         &mut lease,
                         services.meta,
                         services.url.as_ref().map(|service| service.revision),
-                        &mut drive.resolver,
+                        (&mut drive.resolver, None),
                         cancel,
                     )?;
                 }
@@ -1258,7 +1310,7 @@ impl DomSourceRuntime {
                         &mut lease,
                         services.meta,
                         services.url.as_ref().map(|service| service.revision),
-                        &mut drive.resolver,
+                        (&mut drive.resolver, None),
                         cancel,
                     )?;
                 }

@@ -34,8 +34,8 @@ mod script;
 mod show_modal;
 mod synchronous_node;
 pub use synchronous_node::{
-    DomPreparedElementName, DomShadowReactionRoute, DomWatchedCustomElementResult,
-    DomWatchedElementCreation,
+    DomPreparedElementName, DomShadowReactionRoute, DomSplitTextOutputWatch,
+    DomWatchedCustomElementResult, DomWatchedElementCreation,
 };
 mod watcher;
 use super::Invocation;
@@ -2035,8 +2035,37 @@ impl DomSourceLease<'_> {
         &mut self,
         cancel: &AtomicBool,
     ) -> Result<DomSourceAdvance<DomSourceProgress>, DomError> {
+        self.advance_with_split_text_output(None, cancel)
+    }
+
+    /// Advance an original split while admitting retirement custody for its
+    /// exact returned Text at final publication. A yielded request leaves the
+    /// output empty and the original continuation available for resumption.
+    pub fn advance_split_text_for_runtime(
+        &mut self,
+        output: &mut DomSplitTextOutputWatch<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceAdvance<DomSourceProgress>, DomError> {
+        let operation = self
+            .dom
+            .source_operation
+            .as_ref()
+            .filter(|operation| operation.id == self.id)
+            .ok_or(DomError::InvalidSourceOperation)?;
+        if !matches!(operation.commands.first(), Some(Command::SplitText { .. })) {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        self.advance_with_split_text_output(Some(output), cancel)
+    }
+
+    fn advance_with_split_text_output(
+        &mut self,
+        output: Option<&mut DomSplitTextOutputWatch<'_>>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceAdvance<DomSourceProgress>, DomError> {
         let mut execution = Execution::disabled();
         execution.hosted_events = true;
+        execution.split_text_output = output.map(|output| output.admission(self.id)).transpose()?;
         match self.advance_execution(&mut execution, None, cancel) {
             Ok(progress) => Ok(DomSourceAdvance::Progress(progress)),
             Err(AdvanceError::EventFiring) => self

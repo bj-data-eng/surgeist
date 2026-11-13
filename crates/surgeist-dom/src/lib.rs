@@ -360,7 +360,8 @@ pub use store::source::operation::{
     DomPreparedElementName, DomShadowReactionRoute, DomSourceCustomElementCallbackScope,
     DomSourceCustomElementDisposition, DomSourceCustomElementOutcome,
     DomSourceCustomElementRetention, DomSourceCustomElementUpgrade, DomSourceEventFiringLoan,
-    DomSourceLease, DomStyleCspBudget, DomWatchedCustomElementResult, DomWatchedElementCreation,
+    DomSourceLease, DomSplitTextOutputWatch, DomStyleCspBudget, DomWatchedCustomElementResult,
+    DomWatchedElementCreation,
 };
 pub use store::source::reactions::{
     DomCustomElementReaction, DomCustomElementReactionKind, DomCustomElementReactions,

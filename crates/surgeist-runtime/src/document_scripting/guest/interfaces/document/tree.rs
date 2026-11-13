@@ -378,6 +378,7 @@ fn tree_exception(error: &DomError) -> Option<DomExceptionName> {
         DomError::NotFound => Some(DomExceptionName::NotFoundError),
         DomError::NotSupported => Some(DomExceptionName::NotSupportedError),
         DomError::InvalidCharacter => Some(DomExceptionName::InvalidCharacterError),
+        DomError::IndexSize => Some(DomExceptionName::IndexSizeError),
         _ => None,
     }
 }

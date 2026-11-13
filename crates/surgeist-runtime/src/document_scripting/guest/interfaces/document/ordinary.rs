@@ -1418,6 +1418,48 @@ impl OrdinaryBindings {
         self.project(scope, admission, (prototype, publish))
     }
 
+    pub(super) fn project_split_text<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        prototype: &RetainedCallbackObject,
+        run: impl FnOnce(
+            &mut surgeist_dom::DomSplitTextOutputWatch<'_>,
+        ) -> Result<NodeId, DocumentGuestEventError>,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let event = owner.active_event_request();
+        let attribute = owner.active_attribute_registration()?;
+        let active = owner.current_constructor_registration()?;
+        let admission = match (&active, &attribute, &event) {
+            (Some(active), _, _) => Admission::constructor(owner, events, active),
+            (None, Some((request, registration)), _) => {
+                Admission::attribute(owner, events, *request, registration)
+            }
+            (None, None, Some(request)) => Admission::source(owner, events, request),
+            (None, None, None) => Admission::ordinary(owner, events),
+        };
+        self.project(
+            scope,
+            admission,
+            (
+                NodePrototype::Creation(prototype),
+                |inbox: &DomNodeRetirementInbox, key| {
+                    let mut output = surgeist_dom::DomSplitTextOutputWatch::new(
+                        inbox,
+                        key,
+                        events.limits.node_retirement,
+                    );
+                    let node = run(&mut output)?;
+                    let (_, watch) = output
+                        .into_watch()
+                        .filter(|(watched, _)| *watched == node)
+                        .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+                    Ok((GuestNode::Text(node), watch))
+                },
+            ),
+        )
+    }
+
     pub(super) fn watch<'scope>(
         &self,
         scope: &mut Scope<'scope>,

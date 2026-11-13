@@ -1,5 +1,7 @@
 use super::*;
-use crate::document_scripting::guest::tests::{attach_public_nodes, projected_node_id};
+use crate::document_scripting::guest::tests::{
+    attach_public_nodes, projected_node_id, refuse_next_source_node_validation,
+};
 
 pub(super) fn split_text_keeps_native_identity_and_range_boundaries() {
     let cancel = Arc::new(AtomicBool::new(false));
@@ -101,4 +103,20 @@ pub(super) fn split_text_keeps_native_identity_and_range_boundaries() {
         (boundary.end().container(), boundary.end().offset()),
         (parent, 2)
     );
+
+    let before = host.snapshot().unwrap();
+    refuse_next_source_node_validation(&host);
+    let result = host.in_document(&permit, |scope| {
+        evaluate(scope, "original.splitText(1)").map(drop)
+    });
+    assert!(
+        matches!(
+            result,
+            Err(DocumentScriptError::Script(Error::BackendUnavailable))
+        ),
+        "{result:?}"
+    );
+    let after = host.snapshot().unwrap();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.nodes().count(), before.nodes().count());
 }

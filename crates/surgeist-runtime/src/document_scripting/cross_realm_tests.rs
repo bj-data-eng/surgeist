@@ -242,6 +242,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::registered_origin_refusals_preserve_state();
     super::guest::tests::registered_origin::character_data_observation_admits_native_lookup();
     super::guest::tests::registered_origin::registered_origin_character_factories_use_receiver_realm();
+    super::guest::tests::registered_origin::split_text_uses_the_current_document_realm();
     super::guest::tests::registered_origin::document_element_factories_use_native_names_and_identity();
     super::guest::tests::registered_origin::borrowed_element_factory_keeps_dom_on_wrapper_refusal();
     super::guest::tests::registered_origin::element_factory_admits_exact_projection_work();

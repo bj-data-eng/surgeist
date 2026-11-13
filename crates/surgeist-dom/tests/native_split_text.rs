@@ -69,6 +69,60 @@ fn points(snapshot: &DomSnapshot, range: DomRangeId) -> ((NodeId, usize), (NodeI
 }
 
 #[test]
+fn split_text_retirement_watch_refusal_leaves_the_split_private() {
+    let (mut dom, _, parent, text) = fixture("abcd".into(), true);
+    let cancel = cancel();
+    let retirement_limits = DomNodeRetirementLimits::new(2_000_000, 20_000);
+    let mut inbox = dom
+        .node_retirement_inbox(retirement_limits, &cancel)
+        .unwrap();
+    let before = dom.snapshot();
+    let mut refused =
+        DomSplitTextOutputWatch::new(&inbox, 42, DomNodeRetirementLimits::new(2_000_000, 0));
+    {
+        let mut lease = dom
+            .begin_source_edit(DomSourceEdit::split_text(text, 2), policy(4096), &cancel)
+            .unwrap();
+        assert!(matches!(
+            lease.advance_split_text_for_runtime(&mut refused, &cancel),
+            Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+        ));
+    }
+    assert!(refused.into_watch().is_none());
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert!(dom.pending_source_edit().is_none());
+    let mut output = DomSplitTextOutputWatch::new(&inbox, 42, retirement_limits);
+    let tail = {
+        let mut lease = dom
+            .begin_source_edit(DomSourceEdit::split_text(text, 2), policy(4096), &cancel)
+            .unwrap();
+        let DomSourceAdvance::Progress(DomSourceProgress::Complete(done)) = lease
+            .advance_split_text_for_runtime(&mut output, &cancel)
+            .unwrap()
+        else {
+            panic!("expected the exact split completion");
+        };
+        let Some(DomSourceOutput::Node(node)) = done.output() else {
+            panic!("expected a Text identity");
+        };
+        node
+    };
+    let (watched, _watch) = output.into_watch().unwrap();
+    assert_eq!(watched, tail);
+    let snapshot = dom.snapshot();
+    assert_eq!(snapshot.node(parent).unwrap().children()[2], tail);
+    assert_eq!(snapshot.node(text).unwrap().data(), Some(&"ab".into()));
+    assert_eq!(snapshot.node(tail).unwrap().data(), Some(&"cd".into()));
+    let mut batch = DomBatch::new();
+    batch.detach(tail);
+    batch.destroy(tail);
+    apply(&mut dom, batch);
+    let notice = inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (tail, 42));
+    assert!(inbox.take().is_none());
+}
+
+#[test]
 fn split_transfers_strictly_later_endpoints_and_equal_parent_boundaries_at_every_utf16_offset() {
     let units = [0x41, 0xd800, 0, 0xdc00, 0x5a];
     for offset in 0..=units.len() {

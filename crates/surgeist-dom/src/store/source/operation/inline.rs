@@ -36,6 +36,7 @@ pub(super) struct Execution<'a> {
     pub(super) native: Option<meta::Execution>,
     pub(super) hosted_events: bool,
     pub(super) synchronous_node: Option<synchronous_node::SynchronousNode<'a>>,
+    pub(super) split_text_output: Option<synchronous_node::SplitTextWatchAdmission<'a>>,
     pub(super) shadow_reactions: Option<synchronous_node::ShadowReactionRoute<'a>>,
 }
 impl Execution<'_> {
@@ -46,6 +47,7 @@ impl Execution<'_> {
             native: None,
             hosted_events: false,
             synchronous_node: None,
+            split_text_output: None,
             shadow_reactions: None,
         }
     }
@@ -156,6 +158,7 @@ impl DomSourceLease<'_> {
             native: None,
             hosted_events,
             synchronous_node: None,
+            split_text_output: None,
             shadow_reactions: None,
         };
         match self.advance_execution(&mut execution, None, cancel) {
@@ -345,6 +348,13 @@ impl Operation {
         } else {
             None
         };
+        if let Some(output) = execution.split_text_output.as_mut()
+            && !incomplete
+            && !self.cancelled
+            && self.draft.compound_failure().is_none()
+        {
+            output.arm(dom, &segment, cancel)?;
+        }
         // CSSOM commit was the last fallible operation. Everything below is an
         // infallible transfer of preadmitted original publication evidence.
         let published = segment.publish(self, dom);

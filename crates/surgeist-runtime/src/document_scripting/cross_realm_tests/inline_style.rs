@@ -682,7 +682,12 @@ pub(super) fn character_data_edit_in_a_native_listener_settles_style_before_retu
         globalThis.changedDuringListener = false;
         dialog.addEventListener('cancel', event => {
             styleText.replaceData(11, 3, 'blue');
-            changedDuringListener = styleText.data === 'p { color: blue }';
+            const tail = styleText.splitText(4);
+            changedDuringListener = styleText.data === 'p { ' &&
+                tail.data === 'color: blue }' &&
+                tail instanceof Text && tail.ownerDocument === document &&
+                inlineStyle.firstChild === styleText && inlineStyle.lastChild === tail &&
+                styleText.nextSibling === tail;
             event.preventDefault();
         });
     "#,
@@ -714,7 +719,7 @@ pub(super) fn character_data_edit_in_a_native_listener_settles_style_before_retu
     )))) = &result
     {
         panic!(
-            "the nested CharacterData edit refused: {:?}",
+            "the nested CharacterData edit or split refused: {:?}",
             failure.cause::<DocumentGuestEventError>()
         );
     }

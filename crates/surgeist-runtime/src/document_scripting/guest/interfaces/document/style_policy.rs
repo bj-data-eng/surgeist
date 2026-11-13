@@ -34,6 +34,35 @@ impl NativeOwner {
         self.finish_tree_policies(result, limits, StyleReportDelivery::Live(realm))
     }
 
+    pub(super) fn finish_split_text_style(
+        &self,
+        result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
+        limits: DomSourceLimits,
+        realm: RealmId,
+        output: &mut surgeist_dom::DomSplitTextOutputWatch<'_>,
+    ) {
+        self.finish_style_with(
+            result,
+            limits,
+            StyleReportDelivery::Live(realm),
+            |operation| {
+                let mut session = self
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DomStyleRuntimeError::Binding)?;
+                let (progress, _) = session.source_execution().drive_split_text(
+                    &mut session.dom(),
+                    Err(operation),
+                    limits,
+                    output,
+                    &self.cancellation,
+                );
+                Ok(progress)
+            },
+        );
+        self.reconcile_pending_style();
+    }
+
     fn finish_tree_policies(
         &self,
         result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
@@ -84,6 +113,23 @@ impl NativeOwner {
         result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
         limits: DomSourceLimits,
         delivery: StyleReportDelivery,
+    ) {
+        self.finish_style_with(result, limits, delivery, |operation| {
+            self.drive_pending_style(operation, limits)
+        });
+    }
+
+    fn finish_style_with(
+        &self,
+        result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
+        limits: DomSourceLimits,
+        delivery: StyleReportDelivery,
+        mut resume: impl FnMut(
+            surgeist_dom::DomSourceOperationId,
+        ) -> Result<
+            Result<DomSourceDriveProgress, DomSourceDriveError>,
+            DomStyleRuntimeError,
+        >,
     ) {
         if let StyleReportDelivery::Live(realm) = delivery {
             self.record_reached_style(realm);
@@ -163,7 +209,7 @@ impl NativeOwner {
                 }
                 Ok(Ok(())) => {}
             };
-            *result = match self.drive_pending_style(operation, limits) {
+            *result = match resume(operation) {
                 Ok(progress) => progress,
                 Err(error) => Err(error.into()),
             };
