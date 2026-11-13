@@ -3,6 +3,8 @@ mod bounds;
 mod filter;
 mod graph;
 mod lower;
+#[cfg(all(test, not(target_family = "wasm")))]
+mod selection_stack_tests;
 #[cfg(test)]
 mod test_support;
 mod validate;
