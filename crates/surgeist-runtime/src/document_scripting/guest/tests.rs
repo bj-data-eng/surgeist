@@ -530,7 +530,64 @@ pub(in crate::document_scripting) fn custom_element_reparenting_queues_each_rece
 
 pub(in crate::document_scripting) fn custom_element_reacts_to_the_committed_prefix_of_a_failed_edit()
  {
-    let mut host = public_node_host(20_000, 200_000);
+    let mut host = public_node_host_with_reports(4);
+    let (permit, edit) = prepare_failed_tree_edit(&mut host);
+    host.run_guest_tree_edit_fixture(&permit, edit).unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "disconnectCalls.length === 1 && disconnectCalls[0] === prefixReceiver",
+        )
+    })
+    .unwrap();
+}
+
+pub(in crate::document_scripting) fn failed_tree_edit_keeps_its_error_when_reaction_admission_refuses()
+ {
+    let mut host = public_node_host_with_reports(1);
+    let (permit, edit) = prepare_failed_tree_edit(&mut host);
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                r#"
+            customElements.define('x-used-report', class extends HTMLElement {
+                connectedCallback() { throw {}; }
+            });
+            document.documentElement.appendChild(document.createElement('x-used-report'));
+        "#,
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let result = host.run_guest_tree_edit_fixture(&permit, edit);
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("expected a terminal reaction admission refusal: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::HierarchyRequest))
+        ))
+    ));
+    let mut stopped = host.stop();
+    assert_eq!(
+        stopped
+            .discard_pending_queued_custom_element_reactions()
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        stopped
+            .discard_pending_native_custom_element_reactions()
+            .unwrap(),
+        0
+    );
+    assert!(stopped.into_session().is_ok());
+}
+
+fn prepare_failed_tree_edit(
+    host: &mut DocumentScriptHost,
+) -> (DocumentScriptPermit, surgeist_dom::DomSourceEdit) {
     let permit = host.permit().unwrap();
     host.in_document(&permit, |scope| {
         scope
@@ -562,14 +619,7 @@ pub(in crate::document_scripting) fn custom_element_reacts_to_the_committed_pref
             surgeist_dom::DocumentString::from("text").into(),
         ],
     );
-    host.run_guest_tree_edit_fixture(&permit, edit).unwrap();
-    host.in_document(&permit, |scope| {
-        assert_guest(
-            scope,
-            "disconnectCalls.length === 1 && disconnectCalls[0] === prefixReceiver",
-        )
-    })
-    .unwrap();
+    (permit, edit)
 }
 
 pub(in crate::document_scripting) fn registry_upgrade_preserves_nested_definition_and_shadow_refusal()
@@ -1254,12 +1304,36 @@ fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
     attach_public_nodes(session, target, cancellation, node_work, source_work)
 }
 
+fn public_node_host_with_reports(pending_exception_reports: usize) -> DocumentScriptHost {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    attach_public_nodes_with_reports(
+        session,
+        target,
+        cancellation,
+        20_000,
+        200_000,
+        pending_exception_reports,
+    )
+}
+
 pub(in crate::document_scripting) fn attach_public_nodes(
+    session: DomSession,
+    target: DomHostedTopLevel,
+    cancellation: Arc<AtomicBool>,
+    node_work: u64,
+    source_work: u64,
+) -> DocumentScriptHost {
+    attach_public_nodes_with_reports(session, target, cancellation, node_work, source_work, 4)
+}
+
+fn attach_public_nodes_with_reports(
     mut session: DomSession,
     target: DomHostedTopLevel,
     cancellation: Arc<AtomicBool>,
     node_work: u64,
     source_work: u64,
+    pending_exception_reports: usize,
 ) -> DocumentScriptHost {
     let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
         registrations: 8,
@@ -1271,13 +1345,14 @@ pub(in crate::document_scripting) fn attach_public_nodes(
     .unwrap();
     registry.bind(&mut session.dom(), &cancellation).unwrap();
     let mut registry = Some(registry);
-    attach_public_nodes_with_registry(
+    attach_public_nodes_with_registry_and_reports(
         session,
         target,
         cancellation,
         node_work,
         source_work,
         &mut registry,
+        pending_exception_reports,
     )
 }
 
