@@ -51,6 +51,43 @@ pub(in crate::document_scripting) fn element_factory_qualifies_the_explicit_regi
     }).unwrap();
 }
 
+pub(in crate::document_scripting) fn registry_definition_preserves_guest_identity_and_failure() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const registry = window.customElements;
+            const throws = (action, name) => {
+                try { action(); } catch (error) { return error.name === name; }
+                return false;
+            };
+            if (typeof registry.define !== 'function' || typeof registry.get !== 'function') return false;
+            const marker = new Error('original getter failure');
+            const order = [];
+            class Reentrant {}
+            const Constructor = new Proxy(function Example() {}, {
+                get(target, key, receiver) {
+                    if (key === 'prototype') {
+                        order.push(throws(() => registry.define('x-reentrant', Reentrant), 'NotSupportedError'));
+                        if (order.length === 1) throw marker;
+                    }
+                    return Reflect.get(target, key, receiver);
+                },
+            });
+            let originalFailure = false;
+            try { registry.define('x-entry', Constructor); }
+            catch (error) { originalFailure = error === marker; }
+            if (!originalFailure || registry.get('x-entry') !== undefined) return false;
+            registry.define('x-entry', Constructor);
+            return registry.get('x-entry') === Constructor
+                && registry.get('x-reentrant') === undefined
+                && order.length === 2 && order.every(Boolean)
+                && throws(() => registry.define('x-duplicate', Constructor), 'NotSupportedError')
+                && throws(() => registry.define.call(Object.create(registry), 'x-forged', class {}), 'TypeError');
+        })()"#)
+    }).unwrap();
+}
+
 pub(in crate::document_scripting) fn assert_queued_trusted_types_violations(
     host: &DocumentScriptHost,
     expected: &[(usize, &str, &str)],
