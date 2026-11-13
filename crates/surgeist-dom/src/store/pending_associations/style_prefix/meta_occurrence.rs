@@ -92,7 +92,7 @@ fn select<'a>(
                     });
                 }
                 Step::Complete => return Err(Error::WrongOccurrence),
-                Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
+                Step::Document(_) | Step::Occurrence(_) => (),
             }
         }
     }

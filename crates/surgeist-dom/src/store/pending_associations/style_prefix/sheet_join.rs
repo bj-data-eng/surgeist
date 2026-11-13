@@ -245,7 +245,7 @@ fn membership(
             Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if row.id() == *original.qualification.occurrence() => break row,
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
+            Step::Document(_) | Step::Occurrence(_) => (),
         }
     };
     let inputs = row.style().ok_or(DomParsedHtmlStyleError::WrongRequest)?;
@@ -301,7 +301,7 @@ fn membership(
                         }
                     }
                     Step::Complete => break,
-                    Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
+                    Step::Document(_) | Step::Occurrence(_) => (),
                 }
             }
             if !original_inputs {
@@ -438,7 +438,7 @@ fn form_request(
                 });
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
+            Step::Document(_) | Step::Occurrence(_) => (),
         }
     }
 }

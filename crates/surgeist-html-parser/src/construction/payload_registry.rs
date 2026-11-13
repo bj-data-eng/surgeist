@@ -68,6 +68,8 @@ pub(super) struct ParseFacts {
     /// The missing dependencies of the Meta histories of the Documents, in the order they were
     /// reached, named by [`meta::MissingId`].
     pub(super) missing: RowLog<meta::MetaMissingFact>,
+    /// The Document captures and occurrences the parse recorded, and the inputs it was given.
+    pub(super) associations: association_log::AssociationLog,
 }
 impl ParseFacts {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
@@ -79,23 +81,26 @@ impl ParseFacts {
                 return Err(error);
             }
         };
+        let associations = match association_log::AssociationLog::new(control) {
+            Ok(associations) => associations,
+            Err(error) => {
+                let owner = control.identity();
+                missing.release(control, &owner, |_, _| Ok(()))?;
+                documents.release(control, &owner, |_, _| Ok(()))?;
+                return Err(error);
+            }
+        };
         Ok(Self {
             completion: None,
             documents,
             csp: None,
             missing,
+            associations,
         })
     }
 }
 
 pub(super) enum RetainedPayload {
-    AssociationDocument(pending_association::DocumentCapture),
-    AssociationOccurrence(OwnedVec<pending_association::Occurrence>),
-    AssociationCapturedContext(pending_association::CapturedContext),
-    AssociatedInputs {
-        inputs: Arc<associated::Inputs>,
-        usage: associated::AssociatedStorageUsage,
-    },
     Dialog {
         node: usize,
         state: dialog::DialogMetadata,
@@ -225,10 +230,9 @@ pub(super) enum RetainedPayload {
 pub(super) enum KindList {
     FormAssociation,
     Base,
-    AssociationDocument,
 }
 
-const KIND_LISTS: usize = KindList::AssociationDocument as usize + 1;
+const KIND_LISTS: usize = KindList::Base as usize + 1;
 
 /// The admission of one registry row: its auxiliary entry, and the entries of
 /// the lists it joins, charged before the row exists. Only
@@ -386,7 +390,6 @@ pub(super) fn row_list(row: &RetainedPayload) -> Option<KindList> {
     match row {
         RetainedPayload::FormAssociation { .. } => Some(KindList::FormAssociation),
         RetainedPayload::Base { .. } => Some(KindList::Base),
-        RetainedPayload::AssociationDocument(_) => Some(KindList::AssociationDocument),
         _ => None,
     }
 }
@@ -557,6 +560,7 @@ impl PayloadStorage {
         Ok(())
     }
     /// The registry slots of one registry-wide kind, in registry order.
+    #[cfg(test)]
     pub(super) fn kind_list(&self, list: KindList) -> &[usize] {
         self.kind_slots
             .get(list as usize)
@@ -683,11 +687,6 @@ impl PayloadStorage {
             if let Some(list) = row_list(row) {
                 lists[list as usize].push(slot);
             }
-            if let Some(subject) = pending_association::style_occurrence_subject(row) {
-                expected[subject]
-                    .set_latest(Join::StyleOccurrence, slot)
-                    .unwrap();
-            }
         }
         for (node, (cell, joined)) in expected.iter().zip(&self.node_joins).enumerate() {
             // A style order join names a row the registry cannot derive: the
@@ -710,6 +709,28 @@ impl PayloadStorage {
         for (list, kind) in lists.iter().zip(&self.kind_slots) {
             assert!(list == &kind.slots, "a kind list differs from the registry");
         }
+        // A style's latest occurrence is the last occurrence of the log that carries style inputs
+        // and names the style as its subject.
+        let mut latest = std::collections::HashMap::new();
+        for (position, row) in self.facts.associations.iter() {
+            if let association_log::AssociationRow::Occurrence(occurrence) = row
+                && occurrence.has_style_inputs()
+            {
+                latest.insert(occurrence.subject(), position);
+            }
+        }
+        for row in &self.values {
+            if let RetainedPayload::Style { node, state } = row {
+                assert!(
+                    state.latest_occurrence == latest.remove(node),
+                    "the latest occurrence of style {node} differs from the log"
+                );
+            }
+        }
+        assert!(
+            latest.is_empty(),
+            "an occurrence with style inputs names a node with no Style row"
+        );
     }
     pub(super) fn release(
         self,
@@ -734,6 +755,7 @@ impl PayloadStorage {
             documents,
             csp,
             missing,
+            associations,
             ..
         } = facts;
         let join_entries = node_joins.len() as u64;
@@ -753,6 +775,7 @@ impl PayloadStorage {
             }),
         );
         keep_first(&mut refused, missing.release(control, owner, |_, _| Ok(())));
+        keep_first(&mut refused, associations.release(control, owner));
         // The storage the owner's state holds is returned with the registry's own, below.
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
         if let Some(log) = csp {
@@ -822,24 +845,13 @@ impl PayloadStorage {
         }
         while let Some(payload) = values.pop() {
             let associated_usage = match &payload {
-                RetainedPayload::AssociatedInputs { usage, .. } => Some(*usage),
                 RetainedPayload::Hyperlink { state, .. } => Some(state.usage),
                 RetainedPayload::Image { state, .. } => Some(state.usage),
-                RetainedPayload::AssociationCapturedContext(value) => {
-                    Some(pending_association::captured_usage(value))
-                }
                 _ => None,
             };
             if let Some(usage) = associated_usage {
                 drop(payload);
                 keep_first(&mut refused, usage.release(control, owner));
-                continue;
-            }
-            if let RetainedPayload::AssociationOccurrence(value) = payload {
-                keep_first(
-                    &mut refused,
-                    pending_association::release_occurrence(value, control),
-                );
                 continue;
             }
             if let RetainedPayload::PiAttributes { values, .. } = payload {

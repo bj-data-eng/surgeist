@@ -1,4 +1,5 @@
 //! Reached A/Area URL and wholly inactive Img updates in the original owner.
+use super::association_log::InstalledInputs;
 use super::*;
 use surgeist_html::construction::ConstructionNodeKind;
 use surgeist_html::{
@@ -241,20 +242,26 @@ impl ParserArenaSession {
             }
         }
         let usage = inputs.usage(c)?;
-        let prepared = storage.prepare_payload_slot_owned(c)?;
+        // A parse holds one value, so a second one is refused before anything is acquired. The
+        // inputs are installed before any association is recorded, because a capture copies its
+        // Document's context from them when it is made, so a log that holds a row refuses them
+        // too.
+        let associations = &storage.payloads.facts.associations;
+        if associations.installed().is_some() || associations.len() != 0 {
+            return Err(c.stop_invalid_associated_facts().into());
+        }
         payload_write::<Arc<Inputs>>(c, 1)?;
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         usage.acquire(c)?;
-        storage
-            .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::AssociatedInputs {
-                    inputs: inputs.clone(),
-                    usage,
-                },
-            )
-            .map_err(|_| latch_registry_row(c))?;
+        let installed = InstalledInputs {
+            inputs: inputs.clone(),
+            usage,
+        };
+        if let Err(refused) = storage.payloads.facts.associations.install(installed) {
+            drop(refused.inputs);
+            refused.usage.release(c, &storage.control)?;
+            return Err(latch_registry_row(c));
+        }
         Ok(())
     }
 }
@@ -265,17 +272,18 @@ pub(super) struct EncodingUrlContext<'a> {
     pub(super) expected: &'a crate::HtmlBaseFactsRevision,
 }
 impl SessionStorage {
+    /// The inputs the parse was given, one read of the parse's own facts.
     fn associated_inputs(
         &self,
         c: &mut ParseControl,
     ) -> Result<Option<&Arc<Inputs>>, SessionError> {
-        for payload in &self.payloads.values {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::AssociatedInputs { inputs, .. } = payload {
-                return Ok(Some(inputs));
-            }
-        }
-        Ok(None)
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        Ok(self
+            .payloads
+            .facts
+            .associations
+            .installed()
+            .map(|installed| &installed.inputs))
     }
     pub(super) fn bind_template_base(
         &mut self,
@@ -909,6 +917,106 @@ std::thread_local! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The associated inputs of a parse are one value of the parse's own facts, and the plain
+    /// elements of the parse own none of it: reading them after `elements` plain elements are
+    /// created is one read whatever the count, with and without inputs installed after the
+    /// elements. The oracle is one record visit, the read of the one field that holds them, as a
+    /// read of a join cell is one. A read that walks the registry for the row visits every row the
+    /// elements added, and the inputs installed after them are found at the end of that walk.
+    #[test]
+    fn reading_the_associated_inputs_visits_no_row_for_the_plain_elements_of_the_parse() {
+        use crate::parser::tokenizer::{
+            states::HtmlTokenizerState, tests::LexerFixture, token::Event,
+        };
+        let read = |elements: usize, installed: bool| {
+            let request =
+                crate::construction::base::tests::request(&"<span>".repeat(elements.max(1)));
+            let (mut c, mut session, _proof) =
+                crate::construction::tests::fresh_script_owner(&request);
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
+            for _ in 0..elements {
+                let mut incoming = loop {
+                    match lexer.next(&mut c, false).unwrap().unwrap() {
+                        Event::Token(event) => {
+                            let token = event.into_token(&mut c).unwrap();
+                            if let crate::parser::tokenizer::token::TokenKind::Tag(tag) = token.kind
+                            {
+                                break Some(tag);
+                            }
+                            crate::construction::release_token_kind(&mut Some(token.kind), &mut c)
+                                .unwrap();
+                        }
+                        event => event.release(&mut c).unwrap(),
+                    }
+                };
+                session.allocate_html_tag(&mut c, &mut incoming).unwrap();
+            }
+            if installed {
+                session
+                    .install_associated_inputs(&mut c, &Arc::new(Inputs::default()))
+                    .unwrap();
+            }
+            let before = c.usage().work(HtmlParseWorkCategory::RecordVisit);
+            let found = session
+                .active()
+                .unwrap()
+                .associated_inputs(&mut c)
+                .unwrap()
+                .is_some();
+            let visits = c.usage().work(HtmlParseWorkCategory::RecordVisit) - before;
+            assert_eq!(found, installed);
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            crate::construction::tests::storage_zero(&c);
+            visits
+        };
+        for installed in [false, true] {
+            for elements in [0, 16, 64] {
+                assert_eq!(
+                    read(elements, installed),
+                    1,
+                    "{elements} plain elements, inputs installed: {installed}"
+                );
+            }
+        }
+    }
+
+    /// A parse holds one value of associated inputs. A second installation is refused as the
+    /// invalid-facts stop, leaves the first held, and returns what it held when the parse is
+    /// released.
+    #[test]
+    fn a_second_installation_of_associated_inputs_is_refused_and_leaves_the_first() {
+        let request = crate::construction::base::tests::request("<span>");
+        let (mut c, mut session, _proof) = crate::construction::tests::fresh_script_owner(&request);
+        let first = Arc::new(Inputs::default());
+        session.install_associated_inputs(&mut c, &first).unwrap();
+        let second = Arc::new(Inputs::default());
+        let refused = session.install_associated_inputs(&mut c, &second);
+        assert_eq!(
+            refused,
+            Err(SessionError::Stop(HtmlParseStop::InvalidAssociatedFacts))
+        );
+        assert_eq!(c.stop(), Some(HtmlParseStop::InvalidAssociatedFacts));
+        let held = session
+            .active()
+            .unwrap()
+            .payloads
+            .facts
+            .associations
+            .installed()
+            .map(|installed| Arc::clone(&installed.inputs))
+            .unwrap();
+        assert!(Arc::ptr_eq(&held, &first));
+        // Only the first installation holds a reference of its own.
+        assert_eq!(Arc::strong_count(&second), 1);
+        drop(held);
+        session.release(&mut c).unwrap();
+        crate::construction::tests::storage_zero(&c);
+    }
+
     #[test]
     fn cancellation_after_selected_backing_admission_reclaims_original_owning_prefix() {
         use surgeist_html_semantics::*;

@@ -836,7 +836,6 @@ fn collect_rows<'a>(
                     source.add_document(creating, c)?;
                 }
             }
-            HtmlParsePendingAssociationStep::Skipped => {}
             HtmlParsePendingAssociationStep::Complete => break,
             HtmlParsePendingAssociationStep::Fault(fault) => return Err(fault.into()),
         }
@@ -1452,8 +1451,7 @@ impl Dom {
                 HtmlParsePendingAssociationStep::Complete => break,
                 HtmlParsePendingAssociationStep::Fault(fault) => return Err(fault.into()),
                 HtmlParsePendingAssociationStep::Document(_)
-                | HtmlParsePendingAssociationStep::Occurrence(_)
-                | HtmlParsePendingAssociationStep::Skipped => {}
+                | HtmlParsePendingAssociationStep::Occurrence(_) => {}
             }
         }
         for (row, node) in source.rows.iter().zip(mapped) {

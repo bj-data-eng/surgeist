@@ -920,7 +920,6 @@ fn shape(report: &crate::HtmlParseReport) -> String {
                 )
                 .unwrap();
             }
-            crate::HtmlParsePendingAssociationStep::Skipped => {}
             crate::HtmlParsePendingAssociationStep::Complete => break,
             crate::HtmlParsePendingAssociationStep::Fault(fault) => panic!("{fault}"),
         }

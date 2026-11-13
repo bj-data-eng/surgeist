@@ -473,6 +473,84 @@ fn document_facts_rows_leave_nothing_retained_when_the_parse_stops_after_their_s
     );
 }
 
+/// How many captures and occurrences a published report lends.
+fn associations_of(report: &crate::HtmlParseReport) -> (usize, usize) {
+    use crate::HtmlParsePendingAssociationStep as Step;
+    let mut cursor = report.pending_associations();
+    let (mut documents, mut occurrences) = (0, 0);
+    loop {
+        match cursor.advance() {
+            Step::Document(_) => documents += 1,
+            Step::Occurrence(_) => occurrences += 1,
+            Step::Complete => return (documents, occurrences),
+            Step::Fault(fault) => panic!("{fault}"),
+        }
+    }
+}
+
+/// The captures and occurrences of a parse are rows of the association log. Each capture is
+/// admitted as two prepared slots asked for by `association_document`, its row and its place in the
+/// list of captures, and each occurrence as one asked for by `record_association`. The counts the
+/// sweep reaches are those of the published report, which lends one row per capture and one per
+/// occurrence, and every stop after one of those slots leaves nothing retained.
+#[test]
+fn association_log_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    let source =
+        "<!doctype html><style title=a>a{}</style><link rel=stylesheet href=s><style>b{}</style>";
+    let (retained, sites) = retained_after_each_prepared_slot(&document(source));
+    assert!(
+        retained.is_empty(),
+        "{:?}",
+        &retained[..retained.len().min(8)]
+    );
+    let report = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100))
+        .parse()
+        .unwrap();
+    let (documents, occurrences) = associations_of(&report);
+    assert!(occurrences > 3, "the document records several occurrences");
+    let file = "src/construction/pending_association.rs";
+    assert_eq!(
+        sites_at(&sites, file, "association_document"),
+        2 * documents,
+        "{sites:?}"
+    );
+    assert_eq!(
+        sites_at(&sites, file, "record_association"),
+        occurrences,
+        "{sites:?}"
+    );
+    // A contextual parse captures the Document of its context, which the occurrences name.
+    let source = "<style>a{}</style><a href=x>l</a>";
+    let (retained, sites) = retained_after_each_prepared_slot(&fragment(source));
+    assert!(
+        retained.is_empty(),
+        "{:?}",
+        &retained[..retained.len().min(8)]
+    );
+    let report = crate::HtmlFragmentParseRequest::with_options(
+        HtmlSource::utf8(source),
+        fragment_context(),
+        limits(100),
+        HtmlParserScriptingMode::Inert,
+        true,
+    )
+    .unwrap()
+    .parse()
+    .unwrap();
+    let (documents, occurrences) = associations_of(&report);
+    assert!(documents >= 1 && occurrences >= 1);
+    assert_eq!(
+        sites_at(&sites, file, "association_document"),
+        2 * documents,
+        "{sites:?}"
+    );
+    assert_eq!(
+        sites_at(&sites, file, "record_association"),
+        occurrences,
+        "{sites:?}"
+    );
+}
+
 #[test]
 fn script_link_and_details_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
     assert_nothing_retained(
@@ -624,8 +702,10 @@ fn record(revision: &HtmlBaseFactsRevision, url: &str) -> HtmlBaseUrlRecord {
     .unwrap()
 }
 
+/// The inputs of a parse are one value of its facts, held with no admission of a row of their own,
+/// so a stop at any slot of a parse that installs them leaves them to the release of the parse.
 #[test]
-fn associated_input_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+fn associated_inputs_leave_nothing_retained_when_the_parse_stops_after_any_slot() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
     let base = record(&revision, "https://example.test/");
     let encoding = HtmlBaseEncoding::fresh();
@@ -676,13 +756,7 @@ fn associated_input_rows_leave_nothing_retained_when_the_parse_stops_after_their
         .map(drop)
         .map_err(|failure| stopped(&failure))
         },
-        &[
-            (
-                "src/construction/associated.rs",
-                "install_associated_inputs",
-            ),
-            ("src/construction/base.rs", "install_document_base_facts"),
-        ],
+        &[("src/construction/base.rs", "install_document_base_facts")],
     );
 }
 

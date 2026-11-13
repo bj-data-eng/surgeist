@@ -363,7 +363,7 @@ fn dependency(
                 return Ok(!row.requires_processing() || prior == executed);
             }
             Step::Complete => return Ok(false),
-            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
+            Step::Document(_) | Step::Occurrence(_) => (),
         }
     }
 }
@@ -432,7 +432,7 @@ pub(super) fn qualify_creation(
                 return Ok(());
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
+            Step::Document(_) | Step::Occurrence(_) => (),
         }
     }
 }

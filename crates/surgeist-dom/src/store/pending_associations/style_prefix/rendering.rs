@@ -252,7 +252,7 @@ fn facts(
                 });
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
+            Step::Document(_) | Step::Occurrence(_) => (),
         }
     }
 }

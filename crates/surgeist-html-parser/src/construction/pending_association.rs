@@ -1,4 +1,5 @@
 //! Bounded original occurrences and immutable inputs; no CSSOM execution.
+use super::association_log::{AssociationPosition, AssociationRow};
 use super::*;
 use history::FrozenHistory;
 use surgeist_html::construction::{ConstructionNodeKind, HtmlDocumentMode, HtmlNode, HtmlNodeId};
@@ -7,13 +8,13 @@ use surgeist_html::construction::{ConstructionNodeKind, HtmlDocumentMode, HtmlNo
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlParseAssociationOccurrenceId {
     result: HtmlNodeId,
-    slot: usize,
+    position: AssociationPosition,
 }
 /// An original context frontier. This is not resource-completion order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlParseAssociationContextEpochId {
     result: HtmlNodeId,
-    slot: usize,
+    position: AssociationPosition,
 }
 /// A deliberately unbound input at one exact original context frontier.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -84,9 +85,13 @@ pub(super) struct DocumentCapture {
     document: DocumentRef,
     count: usize,
     obligations: usize,
-    last: Option<usize>,
+    last: Option<AssociationPosition>,
     missing: Option<HtmlParseAssociationMissingKind>,
-    missing_at: Option<usize>,
+    missing_at: Option<AssociationPosition>,
+    /// The context a captured Document was given by the request, copied when the first
+    /// occurrence in the Document was recorded; `None` for an owned Document and for a captured
+    /// Document that the request gave none.
+    pub(super) captured: Option<CapturedContext>,
 }
 pub(super) struct CapturedContext {
     value: surgeist_html_semantics::HtmlDocumentEncodingUrlContext,
@@ -133,7 +138,8 @@ pub(super) struct StyleSubtree {
     from: usize,
 }
 pub(super) struct Context {
-    input_document: usize,
+    /// The capture of the occurrence's Document.
+    input_document: AssociationPosition,
     mode: HtmlDocumentMode,
     class: crate::HtmlDocumentClass,
     body: bool,
@@ -141,7 +147,6 @@ pub(super) struct Context {
     first_base: Option<usize>,
     base_input: Option<ValueRow>,
     base_observation: Option<usize>,
-    captured: Option<usize>,
     policy_missing: bool,
     csp: Option<csp::PolicyId>,
     missing: bool,
@@ -151,8 +156,8 @@ pub(super) struct Occurrence {
     document: DocumentRef,
     root: usize,
     previous_document: Option<DocumentRef>,
-    prior_document: Option<usize>,
-    prior_style: Option<usize>,
+    prior_document: Option<AssociationPosition>,
+    prior_style: Option<AssociationPosition>,
     cause: Option<provenance::ConstructionCauseRef>,
     kind: HtmlParseAssociationOccurrenceKind,
     inputs: Option<Inputs>,
@@ -163,6 +168,46 @@ pub(super) struct Occurrence {
     may_have_sheet: bool,
 }
 
+impl DocumentCapture {
+    /// Returns to the parse the storage held for the captured context, if the capture holds one.
+    pub(super) fn release_captured(
+        &mut self,
+        control: &mut ParseControl,
+        owner: &ControlIdentity,
+    ) -> Result<(), SessionError> {
+        match self.captured.take() {
+            Some(captured) => {
+                let usage = captured.usage;
+                drop(captured);
+                usage.release(control, owner).map_err(SessionError::from)
+            }
+            None => Ok(()),
+        }
+    }
+}
+impl Occurrence {
+    /// Whether the occurrence carries the inputs of a style element.
+    #[cfg(test)]
+    pub(super) fn has_style_inputs(&self) -> bool {
+        self.inputs.is_some()
+    }
+    /// The node the occurrence is recorded for.
+    #[cfg(test)]
+    pub(super) fn subject(&self) -> usize {
+        self.subject
+    }
+    /// Releases the text of the style inputs the occurrence holds, if it holds any.
+    pub(super) fn release_inputs(
+        &mut self,
+        control: &mut ParseControl,
+    ) -> Result<(), SessionError> {
+        match self.inputs.take() {
+            Some(inputs) => inputs.text.release(control).map_err(SessionError::from),
+            None => Ok(()),
+        }
+    }
+}
+
 #[cfg(test)]
 impl FrozenArena {
     /// Names, as the first Base of one occurrence, a node the arena does not
@@ -171,61 +216,91 @@ impl FrozenArena {
         let Some(storage) = self.storage.as_mut() else {
             return false;
         };
-        for row in &mut storage.payloads.values {
-            if let RetainedPayload::AssociationOccurrence(values) = row
-                && let Some(first) = values.as_mut_slice_for_test().first_mut()
-            {
-                first.context.first_base = Some(usize::MAX);
-                return true;
-            }
-        }
-        false
+        let log = &mut storage.payloads.facts.associations;
+        let Some(position) = log.iter().find_map(|(position, row)| {
+            matches!(row, AssociationRow::Occurrence(_)).then_some(position)
+        }) else {
+            return false;
+        };
+        log.occurrence_mut_for_test(position)
+            .map(|first| first.context.first_base = Some(usize::MAX))
+            .is_some()
     }
 }
 
-/// The subject of a style occurrence row: one that carries style inputs.
 #[cfg(test)]
-pub(super) fn style_occurrence_subject(row: &RetainedPayload) -> Option<usize> {
-    match row {
-        RetainedPayload::AssociationOccurrence(values) => {
-            let first = &values.as_slice()[0];
-            first.inputs.is_some().then_some(first.subject)
-        }
-        _ => None,
+impl FrozenArena {
+    /// Replaces the context held by the first capture that has one with a context of another
+    /// Document taken from the inputs of the parse, so that the capture holds a context that
+    /// does not belong to its own Document. Whether such a capture and such a context were found.
+    pub(crate) fn corrupt_capture_context_for_test(&mut self) -> bool {
+        let Some(storage) = self.storage.as_mut() else {
+            return false;
+        };
+        let log = &mut storage.payloads.facts.associations;
+        let Some(inputs) = log
+            .installed()
+            .map(|installed| Arc::clone(&installed.inputs))
+        else {
+            return false;
+        };
+        let Some(position) = log.iter().find_map(|(position, row)| {
+            matches!(row, AssociationRow::Document(capture) if capture.captured.is_some())
+                .then_some(position)
+        }) else {
+            return false;
+        };
+        let Some(held) = log
+            .document_mut(position)
+            .and_then(|capture| capture.captured.as_mut())
+        else {
+            return false;
+        };
+        let Some(other) = inputs
+            .captured
+            .iter()
+            .find(|value| value.document() != held.value.document())
+        else {
+            return false;
+        };
+        held.value = other.clone();
+        true
     }
 }
 
 impl SessionStorage {
+    /// The capture of `document`, made when the first occurrence in it is recorded: a visit for
+    /// each capture the parse holds, which is the Documents of the parse and no row of its
+    /// plain elements.
     fn association_document(
         &mut self,
         c: &mut ParseControl,
         document: &DocumentRef,
-    ) -> Result<usize, SessionError> {
-        for &slot in self.payloads.kind_list(KindList::AssociationDocument) {
+    ) -> Result<AssociationPosition, SessionError> {
+        let log = &self.payloads.facts.associations;
+        for position in log.documents() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::AssociationDocument(value)) if &value.document == document)
+            if log
+                .document(position)
+                .is_some_and(|capture| &capture.document == document)
             {
-                return Ok(slot);
+                return Ok(position);
             }
         }
         let document = document.try_clone(c)?;
         payload_write::<DocumentCapture>(c, 1)?;
-        let prepared = self.prepare_payload_slot_for(c, Some(KindList::AssociationDocument))?;
-        let slot = self
-            .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::AssociationDocument(DocumentCapture {
-                    document,
-                    count: 0,
-                    obligations: 0,
-                    last: None,
-                    missing: None,
-                    missing_at: None,
-                }),
-            )
-            .map_err(|_| latch_registry_row(c))?;
-        Ok(slot)
+        let log = &mut self.payloads.facts.associations;
+        log.admit_document(c)?;
+        log.push_document(DocumentCapture {
+            document,
+            count: 0,
+            obligations: 0,
+            last: None,
+            missing: None,
+            missing_at: None,
+            captured: None,
+        })
+        .map_err(|_| latch_registry_row(c))
     }
     /// A copy of the string at `slot` in a row of its own, so the occurrence
     /// adds no alias to mutable or reclaimable backing and keeps the value it
@@ -677,34 +752,35 @@ impl SessionStorage {
             self.main_tree_styleless = false;
         }
     }
+    /// Copies into the capture at `capture` the context the request gave the captured Document
+    /// `document`, unless the capture holds it already or the request gave none. One visit reads
+    /// the capture, one reads the inputs of the parse, and one for each captured context among the
+    /// inputs that is compared: no row of the plain elements of the parse is read.
     fn association_captured_context(
         &mut self,
         c: &mut ParseControl,
         document: &crate::HtmlCaptureDocumentId,
-    ) -> Result<Option<usize>, SessionError> {
-        for (index, row) in self.payloads.values.iter().enumerate() {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::AssociationCapturedContext(value) = row
-                && value.value.document() == document
-            {
-                return Ok(Some(index));
-            }
+        capture: AssociationPosition,
+    ) -> Result<(), SessionError> {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let log = &self.payloads.facts.associations;
+        let held = log.document(capture).ok_or_else(|| latch_registry_row(c))?;
+        if held.captured.is_some() {
+            return Ok(());
         }
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let mut selected = None;
-        for row in &self.payloads.values {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::AssociatedInputs { inputs, .. } = row {
-                for value in &inputs.captured {
-                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    if value.document() == document {
-                        selected = Some(value);
-                        break;
-                    }
+        if let Some(installed) = log.installed() {
+            for value in &installed.inputs.captured {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                if value.document() == document {
+                    selected = Some(value);
+                    break;
                 }
             }
         }
         let Some(value) = selected else {
-            return Ok(None);
+            return Ok(());
         };
         let retained = value.retained_storage_usage();
         let mut usage = associated::AssociatedStorageUsage::default();
@@ -717,29 +793,25 @@ impl SessionStorage {
         usage.add(bytes, retained.utf16_extent(), 0, c)?;
         usage.acquire(c)?;
         let value = value.clone();
-        let prepared = match self.prepare_payload_slot_owned(c) {
-            Ok(prepared) => prepared,
-            Err(error) => {
-                drop(value);
-                usage.release(c, &self.control)?;
-                return Err(error);
-            }
+        if let Err(error) = payload_write::<CapturedContext>(c, 1) {
+            drop(value);
+            usage.release(c, &self.control)?;
+            return Err(error);
+        }
+        let Some(held) = self.payloads.facts.associations.document_mut(capture) else {
+            drop(value);
+            usage.release(c, &self.control)?;
+            return Err(latch_registry_row(c));
         };
-        let index = self
-            .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::AssociationCapturedContext(CapturedContext { value, usage }),
-            )
-            .map_err(|_| latch_registry_row(c))?;
-        Ok(Some(index))
+        held.captured = Some(CapturedContext { value, usage });
+        Ok(())
     }
     fn association_context(
         &mut self,
         c: &mut ParseControl,
         document: &DocumentRef,
         detached: Option<usize>,
-        input_document: usize,
+        input_document: AssociationPosition,
     ) -> Result<Context, SessionError> {
         let mut context = Context {
             input_document,
@@ -750,7 +822,6 @@ impl SessionStorage {
             first_base: None,
             base_input: None,
             base_observation: None,
-            captured: None,
             policy_missing: false,
             csp: None,
             missing: false,
@@ -771,7 +842,7 @@ impl SessionStorage {
                 };
                 context.mode = facts.mode();
                 context.class = facts.document_class();
-                context.captured = self.association_captured_context(c, document)?;
+                self.association_captured_context(c, document, input_document)?;
             }
             DocumentRef::Owned(document) => {
                 let ConstructionNodeKind::Document(mode) = self
@@ -914,8 +985,8 @@ impl SessionStorage {
             return Ok(());
         }
         let document = self.node_document_ref(c, node)?;
-        let document_slot = self.association_document(c, &document)?;
-        let context = self.association_context(c, &document, detached, document_slot)?;
+        let capture = self.association_document(c, &document)?;
+        let context = self.association_context(c, &document, detached, capture)?;
         let preferred = if preferred {
             self.association_attribute(c, node, "content")?
         } else {
@@ -929,14 +1000,28 @@ impl SessionStorage {
         let inputs = self.association_style_inputs(c, node, detached)?;
         let result = (|| {
             let root = self.ordinary_root(c, node, detached)?;
-            let prior_style = self.payloads.joined(c, node, Join::StyleOccurrence)?;
-            let cause = self.associated_cause(c)?;
-            let prior_sheet = prior_style.is_some_and(|slot| matches!(self.payloads.values.get(slot), Some(RetainedPayload::AssociationOccurrence(values)) if values.as_slice().first().is_some_and(|first| first.may_have_sheet)));
-            let Some(RetainedPayload::AssociationDocument(summary)) =
-                self.payloads.values.get(document_slot)
-            else {
-                return Err(latch_registry_row(c));
+            // The latest style occurrence of the node is held by the node's Style row: one join
+            // cell, as the latest occurrence was when a cell of its own held it, and the row it
+            // names. A node with no Style row has no style occurrence.
+            let style_slot = self.payloads.joined(c, node, Join::Style)?;
+            let prior_style = match style_slot {
+                Some(slot) => match self.payloads.values.get(slot) {
+                    Some(RetainedPayload::Style { state, .. }) => state.latest_occurrence,
+                    _ => return Err(latch_registry_row(c)),
+                },
+                None => None,
             };
+            let cause = self.associated_cause(c)?;
+            let log = &self.payloads.facts.associations;
+            let prior_sheet = match prior_style {
+                Some(position) => {
+                    log.occurrence(position)
+                        .ok_or_else(|| latch_registry_row(c))?
+                        .may_have_sheet
+                }
+                None => false,
+            };
+            let summary = log.document(capture).ok_or_else(|| latch_registry_row(c))?;
             let count = summary
                 .count
                 .checked_add(1)
@@ -981,6 +1066,7 @@ impl SessionStorage {
             Ok::<_, SessionError>((
                 root,
                 cause,
+                style_slot,
                 prior_style,
                 prior_document,
                 count,
@@ -994,6 +1080,7 @@ impl SessionStorage {
             Ok((
                 root,
                 cause,
+                style_slot,
                 prior_style,
                 prior_document,
                 count,
@@ -1003,7 +1090,7 @@ impl SessionStorage {
                 may_have_sheet,
             )) => {
                 let styled = inputs.is_some();
-                let value = Occurrence {
+                let occurrence = Occurrence {
                     subject: node,
                     document,
                     root,
@@ -1019,43 +1106,37 @@ impl SessionStorage {
                     requires_processing,
                     may_have_sheet,
                 };
-                let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-                if let Err((stop, value)) = values.try_push_recover(c, value) {
-                    // The stop returned is the first; a refusal of the release
-                    // is latched behind it.
-                    let _ = release_inputs(value, c);
-                    values.release(c)?;
-                    return Err(SessionError::Stop(stop));
-                }
-                let prepared = match self.prepare_payload_slot_owned(c) {
-                    Ok(prepared) => prepared,
-                    Err(error) => {
-                        // The error returned is the first; a refusal of the
-                        // release is latched behind it.
-                        let _ = release_occurrence(values, c);
+                let log = &mut self.payloads.facts.associations;
+                let pushed = match log.admit_occurrence(c) {
+                    Ok(()) => log.push_occurrence(c, occurrence),
+                    Err(error) => Err((error, occurrence)),
+                };
+                let position = match pushed {
+                    Ok(position) => position,
+                    Err((error, mut refused)) => {
+                        // The error returned is the first; a refusal of the release is latched
+                        // behind it.
+                        let _ = refused.release_inputs(c);
                         return Err(error);
                     }
                 };
-                let slot = self
-                    .payloads
-                    .push_row(prepared, RetainedPayload::AssociationOccurrence(values))
-                    .map_err(|_| latch_registry_row(c))?;
                 if styled {
-                    self.payloads
-                        .join_latest(node, Join::StyleOccurrence, slot)
-                        .map_err(|_| latch_registry_row(c))?;
+                    let Some(RetainedPayload::Style { state, .. }) =
+                        style_slot.and_then(|slot| self.payloads.values.get_mut(slot))
+                    else {
+                        return Err(latch_registry_row(c));
+                    };
+                    state.latest_occurrence = Some(position);
                 }
-                let Some(RetainedPayload::AssociationDocument(summary)) =
-                    self.payloads.values.get_mut(document_slot)
-                else {
+                let Some(summary) = self.payloads.facts.associations.document_mut(capture) else {
                     return Err(latch_registry_row(c));
                 };
                 summary.count = count;
                 summary.obligations = obligations;
-                summary.last = Some(slot);
+                summary.last = Some(position);
                 if summary.missing.is_none() {
                     summary.missing = missing;
-                    summary.missing_at = missing.map(|_| slot);
+                    summary.missing_at = missing.map(|_| position);
                 }
                 Ok(())
             }
@@ -1230,10 +1311,6 @@ impl SessionStorage {
         if self.evidence.is_none() {
             return Ok(());
         }
-        // The registry rows present now; the rows the Document loop appends are not walked.
-        let extent = self.payloads.values.len();
-        #[cfg(test)]
-        let extent = extent.saturating_add(c.take_registry_walk_overshoot());
         for index in 0..self.payloads.facts.documents.len() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let node = self
@@ -1244,7 +1321,7 @@ impl SessionStorage {
                 .ok_or_else(|| latch_registry_row(c))?;
             self.association_document(c, &DocumentRef::Owned(node))?;
         }
-        for index in 0..extent {
+        for index in 0..self.payloads.values.len() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let document = match self.payloads.row(c, index)? {
                 RetainedPayload::NodeDocument {
@@ -1391,15 +1468,15 @@ impl<'a> Resolved<'a> {
         }
     }
 }
-/// One actual payload slot per step; no hidden next-match traversal.
+/// One row of the association log per step; no hidden next-match traversal.
 ///
 /// Publication qualifies every row and what it names (`qualify`), and a
 /// report is immutable afterwards, so every row it holds can be lent. A row
 /// whose references the report cannot resolve is a defect in that
 /// qualification: the cursor reports it as a fault, and keeps reporting it,
 /// instead of skipping the row, because a consumer that skipped it would act
-/// on a report that lacks an association. `HtmlParsePendingAssociationStep::Skipped` means only a row
-/// that is not an association.
+/// on a report that lacks an association. Every row of the log is an
+/// association, so a walk presents each of them.
 pub struct HtmlParsePendingAssociationCursor<'a> {
     anchor: Result<Anchor<'a>, Fault>,
     next: usize,
@@ -1412,8 +1489,6 @@ pub struct HtmlParsePendingAssociationCursor<'a> {
 pub enum HtmlParsePendingAssociationStep<'a> {
     Document(HtmlParseAssociationDocument<'a>),
     Occurrence(HtmlParseAssociationOccurrence<'a>),
-    /// A row that is not an association.
-    Skipped,
     Complete,
     /// The row is an association that names a reference the report cannot
     /// resolve. The cursor stays faulted, so a caller that continues is told
@@ -1446,24 +1521,18 @@ impl<'a> HtmlParsePendingAssociationCursor<'a> {
             Ok(anchor) => anchor,
             Err(fault) => return self.fail(fault),
         };
-        let slot = self.next;
-        let Some(row) = anchor.storage.payloads.values.get(slot) else {
+        let Some((position, row)) = anchor.storage.payloads.facts.associations.at(self.next) else {
             return HtmlParsePendingAssociationStep::Complete;
         };
-        // `slot` indexes a vector, so it is below the address space.
-        self.next = slot.saturating_add(1);
+        // `next` indexes a vector, so it is below the address space.
+        self.next = self.next.saturating_add(1);
         let view = match row {
-            RetainedPayload::AssociationDocument(value) => {
-                HtmlParseAssociationDocument::new(anchor, value)
-                    .map(HtmlParsePendingAssociationStep::Document)
+            AssociationRow::Document(value) => HtmlParseAssociationDocument::new(anchor, value)
+                .map(HtmlParsePendingAssociationStep::Document),
+            AssociationRow::Occurrence(value) => {
+                HtmlParseAssociationOccurrence::new(anchor, position, value)
+                    .map(HtmlParsePendingAssociationStep::Occurrence)
             }
-            RetainedPayload::AssociationOccurrence(values) => values
-                .as_slice()
-                .first()
-                .ok_or(unresolved(read::HtmlParseUnresolvedKind::Fact))
-                .and_then(|value| HtmlParseAssociationOccurrence::new(anchor, slot, value))
-                .map(HtmlParsePendingAssociationStep::Occurrence),
-            _ => return HtmlParsePendingAssociationStep::Skipped,
         };
         view.unwrap_or_else(|fault| self.fail(fault))
     }
@@ -1475,16 +1544,19 @@ fn native(storage: &FrozenStorage, index: usize) -> Result<HtmlNode<'_>, Fault> 
         .and_then(|node| node.as_node().ok())
         .ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))
 }
-fn identity(anchor: Anchor<'_>, slot: usize) -> HtmlParseAssociationOccurrenceId {
+fn identity(anchor: Anchor<'_>, position: AssociationPosition) -> HtmlParseAssociationOccurrenceId {
     HtmlParseAssociationOccurrenceId {
         result: anchor.first.id(),
-        slot,
+        position,
     }
 }
-fn context_epoch(anchor: Anchor<'_>, slot: usize) -> HtmlParseAssociationContextEpochId {
+fn context_epoch(
+    anchor: Anchor<'_>,
+    position: AssociationPosition,
+) -> HtmlParseAssociationContextEpochId {
     HtmlParseAssociationContextEpochId {
         result: anchor.first.id(),
-        slot,
+        position,
     }
 }
 /// The value a stored row holds, or the fault.
@@ -1529,12 +1601,14 @@ impl<'a> HtmlParseAssociationDocument<'a> {
         self.value.obligations != 0
     }
     pub fn last_occurrence(&self) -> Option<HtmlParseAssociationOccurrenceId> {
-        self.value.last.map(|slot| identity(self.anchor, slot))
+        self.value
+            .last
+            .map(|position| identity(self.anchor, position))
     }
     pub fn first_missing(&self) -> Option<HtmlParseAssociationOccurrenceId> {
         self.value
             .missing_at
-            .map(|slot| identity(self.anchor, slot))
+            .map(|position| identity(self.anchor, position))
     }
 }
 /// An occurrence with everything it names resolved when it is lent, so the
@@ -1542,7 +1616,7 @@ impl<'a> HtmlParseAssociationDocument<'a> {
 #[derive(Clone, Copy)]
 pub struct HtmlParseAssociationOccurrence<'a> {
     anchor: Anchor<'a>,
-    slot: usize,
+    position: AssociationPosition,
     value: &'a Occurrence,
     subject: HtmlNode<'a>,
     root: HtmlNode<'a>,
@@ -1557,7 +1631,11 @@ pub struct HtmlParseAssociationOccurrence<'a> {
 impl<'a> HtmlParseAssociationOccurrence<'a> {
     /// The fault if the report no longer holds a node, Document, cause, group
     /// or row the occurrence names.
-    fn new(anchor: Anchor<'a>, slot: usize, value: &'a Occurrence) -> Result<Self, Fault> {
+    fn new(
+        anchor: Anchor<'a>,
+        position: AssociationPosition,
+        value: &'a Occurrence,
+    ) -> Result<Self, Fault> {
         let storage = anchor.storage;
         let history = anchor.history;
         let parser_document = Resolved::optional(
@@ -1585,7 +1663,7 @@ impl<'a> HtmlParseAssociationOccurrence<'a> {
             .transpose()?;
         Ok(Self {
             anchor,
-            slot,
+            position,
             value,
             subject: native(storage, value.subject)?,
             root: native(storage, value.root)?,
@@ -1597,14 +1675,14 @@ impl<'a> HtmlParseAssociationOccurrence<'a> {
             style,
             context: HtmlParseAssociationContext::new(
                 anchor,
-                slot,
+                position,
                 &value.document,
                 &value.context,
             )?,
         })
     }
     pub fn id(&self) -> HtmlParseAssociationOccurrenceId {
-        identity(self.anchor, self.slot)
+        identity(self.anchor, self.position)
     }
     pub fn kind(&self) -> HtmlParseAssociationOccurrenceKind {
         self.value.kind
@@ -1637,7 +1715,7 @@ impl<'a> HtmlParseAssociationOccurrence<'a> {
     pub fn prior_document(&self) -> Option<HtmlParseAssociationOccurrenceId> {
         self.value
             .prior_document
-            .map(|slot| identity(self.anchor, slot))
+            .map(|position| identity(self.anchor, position))
     }
     /// Prior lifecycle invocation for this Style. Consumers preserve the HTML
     /// synchronous prefix and resource dependencies; this edge does not
@@ -1645,7 +1723,7 @@ impl<'a> HtmlParseAssociationOccurrence<'a> {
     pub fn prior_style(&self) -> Option<HtmlParseAssociationOccurrenceId> {
         self.value
             .prior_style
-            .map(|slot| identity(self.anchor, slot))
+            .map(|position| identity(self.anchor, position))
     }
     pub(crate) fn recorded_cause(&self) -> Option<read::HtmlParseCause<'a>> {
         self.cause
@@ -1757,7 +1835,7 @@ impl<'a> HtmlParseAssociationStyleInputs<'a> {
 #[derive(Clone, Copy)]
 pub struct HtmlParseAssociationContext<'a> {
     anchor: Anchor<'a>,
-    slot: usize,
+    position: AssociationPosition,
     document: &'a DocumentRef,
     value: &'a Context,
     csp: Option<&'a surgeist_html::security::csp::HtmlCspAssociation>,
@@ -1775,7 +1853,7 @@ pub struct HtmlParseAssociationContext<'a> {
 impl<'a> HtmlParseAssociationContext<'a> {
     fn new(
         anchor: Anchor<'a>,
-        slot: usize,
+        position: AssociationPosition,
         document: &'a DocumentRef,
         value: &'a Context,
     ) -> Result<Self, Fault> {
@@ -1807,13 +1885,16 @@ impl<'a> HtmlParseAssociationContext<'a> {
             },
             None => None,
         };
-        let captured_context = match value.captured {
-            Some(slot) => match row(slot)? {
-                RetainedPayload::AssociationCapturedContext(captured) => Some(&captured.value),
-                _ => return Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
-            },
-            None => None,
-        };
+        // The context of a captured Document is held by its capture.
+        let captured_context = storage
+            .payloads
+            .facts
+            .associations
+            .document(value.input_document)
+            .ok_or(unresolved(read::HtmlParseUnresolvedKind::Fact))?
+            .captured
+            .as_ref()
+            .map(|captured| &captured.value);
         let first_base = value
             .first_base
             .map(|index| native(storage, index))
@@ -1831,7 +1912,7 @@ impl<'a> HtmlParseAssociationContext<'a> {
         };
         Ok(Self {
             anchor,
-            slot,
+            position,
             document,
             value,
             csp,
@@ -1859,7 +1940,7 @@ impl<'a> HtmlParseAssociationContext<'a> {
         self.csp
     }
     pub fn epoch(&self) -> HtmlParseAssociationContextEpochId {
-        context_epoch(self.anchor, self.slot)
+        context_epoch(self.anchor, self.position)
     }
     /// Immutable initial Document input lineage for URL, fallback, encoding and
     /// initial policy; other roles retain their original occurrence frontier.
@@ -1908,7 +1989,7 @@ impl<'a> HtmlParseAssociationContext<'a> {
             return HtmlParseAssociationContextRequirement::Known;
         }
         if matches!(self.document, DocumentRef::Captured(_)) {
-            if (self.value.captured.is_some()
+            if (self.captured_context.is_some()
                 && matches!(
                     role,
                     HtmlParseAssociationContextRole::FallbackBase
@@ -2041,28 +2122,31 @@ impl HtmlParseAssociationCapturedObservation<'_> {
 }
 
 pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(), SessionError> {
-    for (slot, row) in storage.payloads.values.iter().enumerate() {
+    let log = &storage.payloads.facts.associations;
+    for (position, row) in log.iter() {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match row {
-            RetainedPayload::AssociationDocument(value) => {
+            AssociationRow::Document(value) => {
                 storage.validate_association_document(c, &value.document)?;
                 if value
                     .last
-                    .is_some_and(|index| index <= slot || index >= storage.payloads.values.len())
+                    .is_some_and(|index| index.get() <= position.get() || index.get() >= log.len())
+                {
+                    return Err(latch_registry_row(c));
+                }
+                // `HtmlParseAssociationContext::captured_context` reads this context without a
+                // controller, so its Document is established here, at publication.
+                if let Some(captured) = &value.captured
+                    && !matches!(&value.document, DocumentRef::Captured(document) if captured.value.document() == document)
                 {
                     return Err(latch_registry_row(c));
                 }
             }
-            RetainedPayload::AssociationOccurrence(values) => {
-                values.require_disposal_owner(c)?;
-                let [value] = values.as_slice() else {
-                    return Err(latch_registry_row(c));
-                };
-                if value.context.input_document >= slot
-                    || !matches!(
-                        storage.payloads.values.get(value.context.input_document),
-                        Some(RetainedPayload::AssociationDocument(summary)) if summary.document == value.document
-                    )
+            AssociationRow::Occurrence(value) => {
+                if value.context.input_document.get() >= position.get()
+                    || !log
+                        .document(value.context.input_document)
+                        .is_some_and(|summary| summary.document == value.document)
                 {
                     return Err(latch_registry_row(c));
                 }
@@ -2079,12 +2163,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                     .into_iter()
                     .flatten()
                 {
-                    if prior >= slot
-                        || !matches!(
-                            storage.payloads.values.get(prior),
-                            Some(RetainedPayload::AssociationOccurrence(_))
-                        )
-                    {
+                    if prior.get() >= position.get() || log.occurrence(prior).is_none() {
                         return Err(latch_registry_row(c));
                     }
                 }
@@ -2105,19 +2184,17 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                 .into_iter()
                 .flatten()
                 {
-                    require_value_row(storage, reference, slot, c)?;
+                    require_value_row(storage, reference, c)?;
                 }
                 if let Some(inputs) = &value.inputs {
                     inputs.text.require_disposal_owner(c)?;
                     if let Some(order) = inputs.order {
                         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         // Entries are qualified once, with their row.
-                        if order.slot >= slot
-                            || !matches!(
-                                storage.payloads.values.get(order.slot),
-                                Some(RetainedPayload::StyleOrder(list)) if order.len != 0 && order.len <= list.len()
-                            )
-                        {
+                        if !matches!(
+                            storage.payloads.values.get(order.slot),
+                            Some(RetainedPayload::StyleOrder(list)) if order.len != 0 && order.len <= list.len()
+                        ) {
                             return Err(latch_registry_row(c));
                         }
                     }
@@ -2127,7 +2204,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                         .flatten()
                         .chain(inputs.text.as_slice())
                     {
-                        require_value_row(storage, reference, slot, c)?;
+                        require_value_row(storage, reference, c)?;
                     }
                     if let Some(document) = &inputs.parser_document {
                         storage.validate_association_document(c, document)?;
@@ -2159,22 +2236,20 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                 {
                     return Err(latch_registry_row(c));
                 }
-                if let Some(provider) = value.context.captured
-                    && !matches!((&value.document, storage.payloads.values.get(provider)), (DocumentRef::Captured(document), Some(RetainedPayload::AssociationCapturedContext(context))) if context.value.document() == document)
-                {
+            }
+        }
+    }
+    // The style orders are registry rows until the style family has its own table.
+    for row in &storage.payloads.values {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if let RetainedPayload::StyleOrder(list) = row {
+            list.require_disposal_owner(c)?;
+            for node in list.as_slice() {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                if storage.view.node_at(*node).is_none() {
                     return Err(latch_registry_row(c));
                 }
             }
-            RetainedPayload::StyleOrder(list) => {
-                list.require_disposal_owner(c)?;
-                for node in list.as_slice() {
-                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    if storage.view.node_at(*node).is_none() {
-                        return Err(latch_registry_row(c));
-                    }
-                }
-            }
-            _ => {}
         }
     }
     Ok(())
@@ -2208,76 +2283,25 @@ impl FrozenStorage {
         }
     }
 }
-/// Releases the receiver and what each occurrence holds. A refusal is
-/// remembered and the release goes on, so everything else is still credited;
-/// the first refusal is returned.
-pub(super) fn release_occurrence(
-    mut values: OwnedVec<Occurrence>,
-    c: &mut ParseControl,
-) -> Result<(), HtmlParseStop> {
-    let mut refused = None;
-    loop {
-        let popped = if c.stop().is_some() {
-            values.cleanup_pop(c)
-        } else {
-            match values.try_pop(c) {
-                Ok(popped) => Ok(popped),
-                // The refusal latched a stop, which opens the cleanup pop.
-                Err(stop) => {
-                    refused.get_or_insert(stop);
-                    values.cleanup_pop(c)
-                }
-            }
-        };
-        match popped {
-            Ok(Some(value)) => {
-                if let Err(stop) = release_inputs(value, c) {
-                    refused.get_or_insert(stop);
-                }
-            }
-            Ok(None) => break,
-            Err(stop) => {
-                refused.get_or_insert(stop);
-                break;
-            }
-        }
-    }
-    if let Err(stop) = values.release(c) {
-        refused.get_or_insert(stop);
-    }
-    refused.map_or(Ok(()), Err)
-}
-fn release_inputs(value: Occurrence, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
-    match value.inputs {
-        Some(inputs) => inputs.text.release(c),
-        None => Ok(()),
-    }
-}
-/// A value row an occurrence names must be a string row registered before the
-/// occurrence's own row.
+/// A value row an occurrence names must be a string row of the registry.
 fn require_value_row(
     storage: &FrozenStorage,
     row: &ValueRow,
-    occurrence: usize,
     c: &mut ParseControl,
 ) -> Result<(), SessionError> {
     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    if row.0 >= occurrence
-        || !matches!(
-            storage.payloads.values.get(row.0),
-            Some(RetainedPayload::String { .. })
-        )
-    {
+    if !matches!(
+        storage.payloads.values.get(row.0),
+        Some(RetainedPayload::String { .. })
+    ) {
         return Err(latch_registry_row(c));
     }
     Ok(())
 }
-pub(super) fn captured_usage(value: &CapturedContext) -> associated::AssociatedStorageUsage {
-    value.usage
-}
 
 #[cfg(test)]
 mod tests {
+    use super::super::association_log::AssociationLog;
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     use surgeist_html::{
@@ -2366,13 +2390,12 @@ mod tests {
         let storage = session.active().unwrap();
         let rows: Vec<_> = storage
             .payloads
-            .values
+            .facts
+            .associations
             .iter()
-            .filter_map(|row| match row {
-                RetainedPayload::AssociationOccurrence(values)
-                    if values.as_slice()[0].subject == style.index =>
-                {
-                    Some(&values.as_slice()[0])
+            .filter_map(|(_, row)| match row {
+                AssociationRow::Occurrence(occurrence) if occurrence.subject == style.index => {
+                    Some(occurrence)
                 }
                 _ => None,
             })
@@ -2465,13 +2488,7 @@ mod tests {
             storage.initialize_style(&mut c, style.index),
             Err(SessionError::NodeDocumentUnavailable)
         ));
-        assert!(
-            !storage
-                .payloads
-                .values
-                .iter()
-                .any(|row| matches!(row, RetainedPayload::AssociationOccurrence(_)))
-        );
+        assert_eq!(storage.payloads.facts.associations.occurrence_count(), 0);
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
     }
@@ -2516,26 +2533,63 @@ mod tests {
     fn registry_row() -> HtmlParseStop {
         HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow)
     }
+    /// The latest occurrence a style names is a row of the log that is an occurrence: a style that
+    /// names a capture, or a position the log does not hold, is the registry-row defect when its
+    /// next occurrence reads it, and the occurrence's inputs are still released.
     #[test]
-    fn a_registry_walk_past_the_end_reports_the_registry_row() {
-        let request = crate::HtmlDocumentParseRequest::offline(
-            crate::HtmlSource::utf8(""),
-            super::super::tests::limits(),
-        );
-        let (mut c, mut session, _) = super::super::tests::fresh_script_owner(&request);
-        // The walk may add rows as it goes, so it must overshoot them all.
-        c.overshoot_next_registry_walk(1_000);
-        let result = session
-            .active_mut()
-            .unwrap()
-            .prepare_association_documents(&mut c);
-        assert_eq!(result, Err(SessionError::Stop(registry_row())));
-        assert_eq!(c.stop(), Some(registry_row()));
-        session.release(&mut c).unwrap();
-        super::super::tests::storage_zero(&c);
+    fn a_style_whose_latest_occurrence_is_not_an_occurrence_reports_the_registry_row() {
+        for latest in [0, usize::MAX] {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8("<style>"),
+                super::super::tests::limits(),
+            );
+            let (mut c, mut session, capability) =
+                super::super::tests::fresh_script_owner(&request);
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
+            let root = session.root(&mut c).unwrap();
+            let style = lexical_node(&mut session, &mut c, &mut lexer);
+            session
+                .insert(&mut c, &root, &style, None, Some(&capability))
+                .unwrap();
+            let storage = session.active_mut().unwrap();
+            let mut kept = None;
+            for row in &mut storage.payloads.values {
+                if let RetainedPayload::Style { node, state } = row
+                    && *node == style.index
+                {
+                    // Position 0 of the log is the capture of the root Document.
+                    kept = Some(
+                        state
+                            .latest_occurrence
+                            .replace(AssociationPosition::at_for_test(latest)),
+                    );
+                }
+            }
+            let kept = kept.expect("the style has a row");
+            let mut input = Some(generated(&mut c, &[0x41]));
+            let result = session.insert_text(&mut c, &style, None, &mut input, Some(&capability));
+            assert_eq!(result.err(), Some(SessionError::Stop(registry_row())));
+            assert_eq!(c.stop(), Some(registry_row()));
+            if let Some(text) = input.take() {
+                text.origins.release(&mut c).unwrap();
+            }
+            // The registry's release compares each style with the log, so the row is put back.
+            for row in &mut session.active_mut().unwrap().payloads.values {
+                if let RetainedPayload::Style { node, state } = row
+                    && *node == style.index
+                {
+                    state.latest_occurrence = kept;
+                }
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+        }
     }
     #[test]
-    fn the_association_document_walk_visits_the_rows_present_when_it_starts() {
+    fn the_association_document_walk_visits_each_document_and_each_registry_row() {
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8(""),
             super::super::tests::limits(),
@@ -2553,8 +2607,9 @@ mod tests {
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
         // The walk makes one visit for each Document the parse owns, which captures it, and then
-        // one for each registry row present when the walk began: the row the capture adds is not
-        // walked. The root's own document is owned, so no captured document is walked.
+        // one for each registry row. The capture is a row of the association log, so the registry
+        // is the same length before and after it. The root's own document is owned, so no captured
+        // document is walked.
         let (mut c, mut session, _) = super::super::tests::fresh_script_owner(&request);
         let storage = session.active().unwrap();
         let documents = storage.payloads.facts.documents.len() as u64;
@@ -2566,6 +2621,67 @@ mod tests {
             .prepare_association_documents(&mut c)
             .unwrap();
         assert_eq!(visits(&c) - before, documents * (1 + capture) + rows);
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+    /// The registry reads the walk makes are bounded by the length of the registry, and a slot
+    /// past it is the registry-row defect, latched as the first stop.
+    #[test]
+    fn a_registry_slot_past_the_registry_reports_the_registry_row() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(""),
+            super::super::tests::limits(),
+        );
+        let (mut c, mut session, _) = super::super::tests::fresh_script_owner(&request);
+        let storage = session.active().unwrap();
+        let length = storage.payloads.values.len();
+        assert_eq!(c.stop(), None);
+        assert_eq!(
+            storage.payloads.row(&mut c, length).err(),
+            Some(SessionError::Stop(registry_row()))
+        );
+        assert_eq!(c.stop(), Some(registry_row()));
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+    /// A capture copies the context of its Document from the inputs of the parse when it is made,
+    /// and a published capture lends it without a controller. The inputs are therefore installed
+    /// before any association is recorded, and an installation after a capture exists is refused
+    /// as the invalid-facts stop, leaving the parse without inputs and its storage released.
+    #[test]
+    fn an_installation_of_inputs_after_a_capture_exists_is_refused() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(""),
+            super::super::tests::limits(),
+        );
+        let (mut c, mut session, _) = super::super::tests::fresh_script_owner(&request);
+        session
+            .active_mut()
+            .unwrap()
+            .association_document(&mut c, &DocumentRef::Owned(0))
+            .unwrap();
+        assert_eq!(
+            session.active().unwrap().payloads.facts.associations.len(),
+            1
+        );
+        let inputs = Arc::new(super::associated::Inputs::default());
+        assert_eq!(
+            session.install_associated_inputs(&mut c, &inputs),
+            Err(SessionError::Stop(HtmlParseStop::InvalidAssociatedFacts))
+        );
+        assert_eq!(c.stop(), Some(HtmlParseStop::InvalidAssociatedFacts));
+        assert!(
+            session
+                .active()
+                .unwrap()
+                .payloads
+                .facts
+                .associations
+                .installed()
+                .is_none()
+        );
+        // The refused installation holds no reference of its own.
+        assert_eq!(Arc::strong_count(&inputs), 1);
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
     }
@@ -2608,7 +2724,7 @@ mod tests {
             preferred: None,
             base_changed_input: None,
             context: Context {
-                input_document: 0,
+                input_document: AssociationPosition::at_for_test(0),
                 mode: HtmlDocumentMode::NoQuirks,
                 class: crate::HtmlDocumentClass::Html,
                 body: false,
@@ -2616,7 +2732,6 @@ mod tests {
                 first_base: None,
                 base_input: None,
                 base_observation: None,
-                captured: None,
                 policy_missing: false,
                 csp: None,
                 missing: false,
@@ -2625,20 +2740,58 @@ mod tests {
             may_have_sheet: false,
         }
     }
+    /// Writes `occurrence` into the log, which holds room for it.
+    fn push_forged(log: &mut AssociationLog, control: &mut ParseControl, occurrence: Occurrence) {
+        log.push_occurrence(control, occurrence)
+            .unwrap_or_else(|(error, _)| panic!("{error:?}"));
+    }
+    /// An occurrence that was not admitted is refused with the registry-row defect and returned
+    /// with the text of its inputs, which the caller releases: nothing is dropped unreleased and
+    /// the log is unchanged.
+    #[test]
+    fn an_occurrence_that_was_not_admitted_is_returned_with_its_inputs_to_release() {
+        let mut owner = super::super::tests::control();
+        let identity = owner.identity();
+        // An empty vector bound to the controller by an empty pop.
+        let mut text = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        assert!(text.try_pop(&mut owner).unwrap().is_none());
+        let inputs = Inputs {
+            state: surgeist_html::elements::style::HtmlStyleState::default(),
+            parser_document: None,
+            connected: false,
+            type_eligible: false,
+            document_tree: false,
+            attributes: [None, None, None, None, None],
+            text,
+            order: None,
+        };
+        let mut occurrence = forged_occurrence(Some(inputs));
+        occurrence.subject = 7;
+        let mut log = AssociationLog::new(&mut owner).unwrap();
+        let (error, mut returned) = log.push_occurrence(&mut owner, occurrence).unwrap_err();
+        assert_eq!(error, SessionError::Stop(registry_row()));
+        assert_eq!(owner.stop(), Some(registry_row()));
+        assert_eq!(log.len(), 0);
+        assert_eq!(returned.subject, 7);
+        assert!(returned.inputs.is_some());
+        returned.release_inputs(&mut owner).unwrap();
+        log.release(&mut owner, &identity).unwrap();
+        super::super::tests::storage_zero(&owner);
+    }
     fn foreign_stop() -> HtmlParseStop {
         HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::ForeignControl)
     }
     #[test]
-    fn releasing_occurrences_to_a_foreign_controller_stops_instead_of_panicking() {
+    fn releasing_the_log_to_a_foreign_controller_stops_instead_of_panicking() {
         let mut owner = super::super::tests::control();
         let mut foreign = super::super::tests::control();
-        let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
-        values
-            .try_push_geometric(&mut owner, forged_occurrence(None))
-            .unwrap();
+        let identity = owner.identity();
+        let mut log = AssociationLog::new(&mut owner).unwrap();
+        log.admit_occurrence(&mut owner).unwrap();
+        push_forged(&mut log, &mut owner, forged_occurrence(None));
         assert_eq!(
-            release_occurrence(values, &mut foreign),
-            Err(foreign_stop())
+            log.release(&mut foreign, &identity),
+            Err(SessionError::Stop(foreign_stop()))
         );
         assert_eq!(foreign.stop(), Some(foreign_stop()));
     }
@@ -2646,6 +2799,7 @@ mod tests {
     fn releasing_an_occurrence_whose_text_inputs_are_foreign_stops_and_still_releases_the_rest() {
         let mut owner = super::super::tests::control();
         let mut foreign = super::super::tests::control();
+        let identity = owner.identity();
         // An empty vector bound to the other controller by an empty pop.
         let mut text = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
         assert!(text.try_pop(&mut foreign).unwrap().is_none());
@@ -2659,28 +2813,23 @@ mod tests {
             text,
             order: None,
         };
-        let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
-        values
-            .try_push_geometric(&mut owner, forged_occurrence(Some(inputs)))
-            .unwrap();
-        assert_eq!(release_occurrence(values, &mut owner), Err(foreign_stop()));
-        assert_eq!(owner.stop(), Some(foreign_stop()));
-        // The receiver itself was released although its inputs were refused.
+        let mut log = AssociationLog::new(&mut owner).unwrap();
+        log.admit_occurrence(&mut owner).unwrap();
+        push_forged(&mut log, &mut owner, forged_occurrence(Some(inputs)));
         assert_eq!(
-            owner
-                .usage()
-                .resource(HtmlParseResource::AuxiliaryEntries)
-                .current,
-            0
+            log.release(&mut owner, &identity),
+            Err(SessionError::Stop(foreign_stop()))
         );
+        assert_eq!(owner.stop(), Some(foreign_stop()));
+        // The log itself was released although the inputs of its row were refused.
+        super::super::tests::storage_zero(&owner);
     }
 
     // A published report was qualified once, so a reference one of its rows
     // holds that its tables cannot resolve is a defect in that qualification.
     // Each test corrupts one such reference and requires the cursor to report
     // the fault at that row, and to stay faulted, rather than skip the row or
-    // read the reference as absent. A skipped row is only one that is not an
-    // association.
+    // read the reference as absent.
     fn styled_report() -> crate::HtmlParseReport {
         crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8("<!doctype html><style title=a type=text/css>b{}</style><p>c"),
@@ -2701,40 +2850,36 @@ mod tests {
         select: impl Fn(&Occurrence) -> bool,
         edit: impl FnOnce(&mut Occurrence),
     ) {
-        let row = frozen(report)
-            .payloads
-            .values
-            .iter_mut()
-            .find_map(|row| match row {
-                RetainedPayload::AssociationOccurrence(values)
-                    if values.as_slice()[0].inputs.is_some() && select(&values.as_slice()[0]) =>
+        let log = &mut frozen(report).payloads.facts.associations;
+        let position = log
+            .iter()
+            .find_map(|(position, row)| match row {
+                AssociationRow::Occurrence(occurrence)
+                    if occurrence.inputs.is_some() && select(occurrence) =>
                 {
-                    Some(&mut values.as_mut_slice_for_test()[0])
+                    Some(position)
                 }
                 _ => None,
             })
             .unwrap();
-        edit(row);
+        edit(log.occurrence_mut_for_test(position).unwrap());
     }
-    /// What a walk of the cursor lends: the associations presented, the rows
-    /// skipped, and the first fault, which the cursor must keep reporting.
+    /// What a walk of the cursor lends: the associations presented and the
+    /// first fault, which the cursor must keep reporting.
     struct Walk {
         presented: usize,
-        skipped: usize,
         fault: Option<read::HtmlParseUnresolvedReference>,
     }
     fn walk(report: &crate::HtmlParseReport) -> Walk {
         let mut cursor = report.pending_associations();
         let mut walk = Walk {
             presented: 0,
-            skipped: 0,
             fault: None,
         };
         loop {
             match cursor.advance() {
                 HtmlParsePendingAssociationStep::Occurrence(_)
                 | HtmlParsePendingAssociationStep::Document(_) => walk.presented += 1,
-                HtmlParsePendingAssociationStep::Skipped => walk.skipped += 1,
                 HtmlParsePendingAssociationStep::Complete => return walk,
                 HtmlParsePendingAssociationStep::Fault(first) => {
                     assert!(
@@ -2747,10 +2892,12 @@ mod tests {
         }
     }
     #[test]
-    fn an_uncorrupted_report_lends_every_association_and_skips_only_other_rows() {
-        let report = styled_report();
+    fn an_uncorrupted_report_lends_every_row_of_the_log() {
+        let mut report = styled_report();
+        let rows = frozen(&mut report).payloads.facts.associations.len();
         let walk = walk(&report);
-        assert!(walk.presented > 0 && walk.skipped > 0);
+        assert!(rows > 0);
+        assert_eq!(walk.presented, rows);
         assert_eq!(walk.fault, None);
     }
     fn assert_row_fault(report: &crate::HtmlParseReport, kind: read::HtmlParseUnresolvedKind) {
@@ -2833,6 +2980,25 @@ mod tests {
             |row| row.context.csp = Some(csp::PolicyId::at_for_test(usize::MAX)),
         );
         assert_row_fault(&report, read::HtmlParseUnresolvedKind::Fact);
+    }
+    #[test]
+    fn an_occurrence_whose_capture_is_not_a_capture_is_a_fault() {
+        let mut report = styled_report();
+        // Position 0 of the log is the capture of the Document; the last position is an
+        // occurrence, and a position past the log names no row.
+        for position in [usize::MAX, 1] {
+            corrupt_style_occurrence(
+                &mut report,
+                |row| row.context.input_document.get() == 0,
+                |row| row.context.input_document = AssociationPosition::at_for_test(position),
+            );
+            assert_row_fault(&report, read::HtmlParseUnresolvedKind::Fact);
+            corrupt_style_occurrence(
+                &mut report,
+                |row| row.context.input_document.get() == position,
+                |row| row.context.input_document = AssociationPosition::at_for_test(0),
+            );
+        }
     }
     #[test]
     fn an_occurrence_whose_base_facts_row_is_not_base_facts_is_a_fault() {

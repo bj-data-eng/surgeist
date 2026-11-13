@@ -36,8 +36,6 @@ pub(super) enum Join {
     Base,
     BaseDocument,
     LookupRegistry,
-    /// The latest style occurrence naming the record as its subject.
-    StyleOccurrence,
     /// The `StyleOrder` row listing the style elements of the tree the record
     /// roots, while it is current; see `SessionStorage::style_order_floor`.
     StyleOrder,
@@ -79,11 +77,10 @@ slots!(Join, JOIN_COUNT, {
     Base => 11,
     BaseDocument => 12,
     LookupRegistry => 13,
-    StyleOccurrence => 14,
-    StyleOrder => 15,
-    ProcessingInstructionAttributes => 16,
-    SvgScript => 17,
-    Details => 18,
+    StyleOrder => 14,
+    ProcessingInstructionAttributes => 15,
+    SvgScript => 16,
+    Details => 17,
 });
 
 /// Cells hold a registry slot plus one in 32 bits; a slot beyond that is

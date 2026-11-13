@@ -162,7 +162,6 @@ fn validate(
                     });
                 }
             }
-            Step::Skipped => (),
             Step::Complete => return Ok(()),
             Step::Fault(fault) => return Err(fault.into()),
         }
@@ -351,7 +350,7 @@ fn occurrences(
                 meter.reserve(&mut result, 1, cancel)?;
                 result.push(decode_occurrence(meter, &row, cancel)?);
             }
-            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
+            Step::Document(_) | Step::Occurrence(_) => (),
         }
     }
 }
