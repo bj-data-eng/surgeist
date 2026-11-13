@@ -1,6 +1,6 @@
 use super::super::relative::{self, InsetReference};
 use super::super::sizing::{resolve_auto_optional, resolve_length_or_zero};
-use super::super::{float_text, in_flow};
+use super::super::{BlockChildReceipt, float_text, in_flow};
 use super::*;
 
 pub(super) type InlineRunControl<Node, S> = (Node, usize, Option<crate::VerticalAlignOf<S>>);
@@ -28,7 +28,7 @@ pub(in crate::block) struct InlineRunPreparation<'input, Node, S: LayoutScalar> 
 pub(in crate::block) struct InlinePreparationChild<'input, Node, S: LayoutScalar> {
     pub(in crate::block) node: Node,
     pub(in crate::block) input: ComputeInputOf<S>,
-    pub(in crate::block) pending: Option<PendingInlineAtomic<'input, Node, S>>,
+    pub(in crate::block) pending: PendingInlinePreparation<'input, Node, S>,
 }
 
 pub(crate) struct PendingInlineAtomic<'input, Node, S: LayoutScalar> {
@@ -42,9 +42,16 @@ pub(crate) struct PendingInlineAtomic<'input, Node, S: LayoutScalar> {
     border: Edges<S>,
 }
 
-enum AtomicPreparationOutput<Node, S: LayoutScalar> {
-    Child(ComputeOutputOf<S>),
-    Trial(std::sync::Arc<crate::engine::FloatChildPacket<Node, S>>),
+pub(crate) enum PendingInlinePreparation<'input, Node, S: LayoutScalar> {
+    Hidden,
+    Atomic(PendingInlineAtomic<'input, Node, S>),
+    DetachedFloat(PendingInlineAtomic<'input, Node, S>),
+}
+
+impl<Node, S: LayoutScalar> PendingInlinePreparation<'_, Node, S> {
+    pub(in crate::block) fn float_trial(&self) -> Option<crate::engine::FloatChildTrial> {
+        matches!(self, Self::DetachedFloat(_)).then_some(crate::engine::FloatChildTrial::Detached)
+    }
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node, S> {
@@ -278,7 +285,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
                             ),
                             input.settled_auto_scrollbars(),
                         ),
-                        pending: None,
+                        pending: PendingInlinePreparation::Hidden,
                     }));
                 }
                 continue;
@@ -332,7 +339,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
             )
             .with_named_baseline_demand(named_demand)
             .with_physical_baseline_demand(physical_demand);
-            let packet = if !child_style.float.is_none() && text_binding.is_some() {
+            let detached_float = !child_style.float.is_none() && text_binding.is_some();
+            if detached_float {
                 // Use the ordinary block owner's complete float child request. The
                 // paragraph capture changes encounter scheduling, not child sizing.
                 let axes = child_style.common.flow_axes;
@@ -402,14 +410,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
                     first_formatted: indent_state.first_formatted() && constants.first_formatted,
                 })
                 .with_named_baseline_demand(named_demand);
-                Some(tree.probe_float_child(
-                    child,
-                    child_request,
-                    crate::engine::FloatChildTrial::Detached,
-                )?)
-            } else {
-                None
-            };
+            }
             let pending = PendingInlineAtomic {
                 node: child,
                 source_index,
@@ -420,22 +421,15 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
                 padding: child_padding,
                 border: child_border,
             };
-            if let Some(packet) = packet {
-                self.finish_atomic(
-                    tree,
-                    container,
-                    constants,
-                    context.node_inner_size,
-                    pending,
-                    AtomicPreparationOutput::Trial(packet),
-                )?;
-            } else {
-                return Ok(Some(InlinePreparationChild {
-                    node: child,
-                    input: child_request,
-                    pending: Some(pending),
-                }));
-            }
+            return Ok(Some(InlinePreparationChild {
+                node: child,
+                input: child_request,
+                pending: if detached_float {
+                    PendingInlinePreparation::DetachedFloat(pending)
+                } else {
+                    PendingInlinePreparation::Atomic(pending)
+                },
+            }));
         }
         Ok(None)
     }
@@ -446,26 +440,30 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
         container: Node,
         constants: &Constants<S>,
         context: &InlineRunContext<S>,
-        pending: Option<PendingInlineAtomic<'input, Node, S>>,
-        output: ComputeOutputOf<S>,
+        pending: PendingInlinePreparation<'input, Node, S>,
+        result: BlockChildReceipt<Node, S>,
     ) -> LayoutResultOf<Node, (), S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        if let Some(pending) = pending {
-            if let Some(groups) = tree.group_computation() {
-                groups.child(pending.node);
+        let pending = match pending {
+            PendingInlinePreparation::Hidden => return Ok(()),
+            PendingInlinePreparation::Atomic(pending) => {
+                if let Some(groups) = tree.group_computation() {
+                    groups.child(pending.node);
+                }
+                pending
             }
-            self.finish_atomic(
-                tree,
-                container,
-                constants,
-                context.node_inner_size,
-                pending,
-                AtomicPreparationOutput::Child(output),
-            )?;
-        }
-        Ok(())
+            PendingInlinePreparation::DetachedFloat(pending) => pending,
+        };
+        self.finish_atomic(
+            tree,
+            container,
+            constants,
+            context.node_inner_size,
+            pending,
+            result,
+        )
     }
 
     fn finish_atomic<Tree, M>(
@@ -475,7 +473,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
         constants: &Constants<S>,
         node_inner_size: Size<Option<S>>,
         pending: PendingInlineAtomic<'input, Node, S>,
-        result: AtomicPreparationOutput<Node, S>,
+        result: BlockChildReceipt<Node, S>,
     ) -> LayoutResultOf<Node, (), S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
@@ -503,8 +501,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
             .transpose_with_node(tree, child)?;
         let child_margin = resolve_atomic_inline_margin(unresolved_margin);
         let output = match result {
-            AtomicPreparationOutput::Child(output) => output,
-            AtomicPreparationOutput::Trial(packet) => {
+            BlockChildReceipt::Layout(output) => output,
+            BlockChildReceipt::FloatTrial(packet) => {
                 let output = packet.output;
                 let pending = PendingFloat {
                     placement: super::floats::PendingPlacement::Unresolved,

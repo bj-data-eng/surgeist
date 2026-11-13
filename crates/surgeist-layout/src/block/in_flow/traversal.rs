@@ -14,7 +14,7 @@ pub(crate) struct InFlowChild<'input, Node, S: LayoutScalar> {
 pub(crate) enum PendingInFlowChild<'input, Node, S: LayoutScalar> {
     Hidden,
     Box(PendingBox<'input, Node, S>),
-    Inline(Option<crate::block::inline_run::PendingInlineAtomic<'input, Node, S>>),
+    Inline(crate::block::inline_run::PendingInlinePreparation<'input, Node, S>),
     FloatBand(FloatBandRequest<S>),
 }
 
@@ -34,6 +34,7 @@ impl<Node: Copy, S: LayoutScalar> PendingInFlowChild<'_, Node, S> {
     pub(crate) fn float_trial(&self) -> Option<crate::engine::FloatChildTrial> {
         match self {
             Self::FloatBand(band) => band.trial,
+            Self::Inline(child) => child.float_trial(),
             _ => None,
         }
     }
@@ -662,7 +663,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
                         constants,
                         &active.context,
                         pending,
-                        receipt.layout(),
+                        receipt,
                     )
                     .map_err(Into::into);
             }
