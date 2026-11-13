@@ -392,8 +392,16 @@ pub struct DomSourceCompletion {
     pub(crate) installation: Option<crate::DomNativeHtmlInstallation>,
     pub(crate) dialog_toggle_disposition: Option<DomDialogToggleTaskDisposition>,
     pub(crate) design_mode_range_disposition: Option<DomDesignModeRangeDisposition>,
+    pub(crate) custom_element_disposition: Option<crate::DomSourceCustomElementDisposition>,
 }
 impl DomSourceCompletion {
+    /// The original constructor result qualification, if this factory ran one.
+    pub const fn custom_element_disposition(
+        &self,
+    ) -> Option<crate::DomSourceCustomElementDisposition> {
+        self.custom_element_disposition
+    }
+
     pub const fn fullscreen_exit_return(&self) -> Option<crate::DomFullscreenExitReturn> {
         self.fullscreen_exit_return
     }

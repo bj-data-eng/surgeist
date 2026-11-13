@@ -517,7 +517,7 @@ impl Draft {
         self.lookup_definition(registry, record, name, saved_is, cancel)
     }
 
-    fn creation_registry(
+    pub(super) fn creation_registry(
         &self,
         registry: DomRegistryId,
         cancel: &AtomicBool,

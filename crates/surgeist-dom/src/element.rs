@@ -47,6 +47,7 @@ fn empty_string_payload(count: usize) -> Result<crate::store::source::storage::P
 const CAPTURED: u8 = 1;
 const FULLSCREEN: u8 = 2;
 const KEYBOARD_LOCK: u8 = 4;
+const FAILED_CONSTRUCTION_INTERFACE: u8 = 8;
 
 macro_rules! native_payload {
     ($get:ident, $set:ident, $variant:ident, $state:ty) => {
@@ -250,6 +251,32 @@ impl DomElement {
             .map(|value| formation::share_listed(value, formation.budget, formation.cancel))
             .transpose()?;
         Self::initialize(name, saved_is, environment, formation)
+    }
+
+    pub(crate) fn failed_autonomous_construction(
+        name: Arc<Payload<ElementName>>,
+        registry: DomRegistryBinding,
+        mut formation: ElementFormation<'_>,
+    ) -> Result<FormedElement, DomError> {
+        let association = formation.custom(
+            CustomAssociation {
+                registry,
+                definition: DomElementDefinition::Null,
+                saved_is: None,
+            },
+            crate::store::source::storage::Payload::default(),
+        )?;
+        Ok(formation.finish(Self {
+            name,
+            custom_state: HtmlCustomElementState::Failed,
+            common_scope: surgeist_html::elements::native::HtmlCommonScope::Html,
+            custom: Some(association),
+            nonce: None,
+            focus: None,
+            family: NativeFamily::Common,
+            hosted: None,
+            flags: FAILED_CONSTRUCTION_INTERFACE,
+        }))
     }
 
     /// Clone initialization creates fresh native state; it never interns native
@@ -816,6 +843,7 @@ impl DomElement {
             && self.family == other.family
             && self.fullscreen_flag() == other.fullscreen_flag()
             && self.keyboard_lock_flag() == other.keyboard_lock_flag()
+            && self.has_failed_construction_interface() == other.has_failed_construction_interface()
     }
     pub fn name(&self) -> &DomQualifiedName {
         &self.name.value.value
@@ -833,6 +861,10 @@ impl DomElement {
         self.custom_state = state;
         self.custom = value;
     }
+
+    pub(crate) fn set_name_payload(&mut self, name: Arc<Payload<ElementName>>) {
+        self.name = name;
+    }
     pub fn custom_element_definition(&self) -> DomElementDefinition {
         self.custom
             .as_ref()
@@ -840,6 +872,11 @@ impl DomElement {
     }
     pub fn custom_element_state(&self) -> HtmlCustomElementState {
         self.custom_state
+    }
+
+    /// Whether the factory created its distinct HTMLUnknownElement fallback.
+    pub fn has_failed_construction_interface(&self) -> bool {
+        self.flags & FAILED_CONSTRUCTION_INTERFACE != 0
     }
     /// Saved creation is independent of the current content attribute.
     pub fn saved_is(&self) -> Option<&DocumentString> {

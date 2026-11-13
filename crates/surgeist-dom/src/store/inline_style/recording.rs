@@ -1075,7 +1075,7 @@ impl Dom {
         ) -> Result<CssomAdmission, surgeist_cssom::CssomError>,
         cancel: &AtomicBool,
     ) -> Result<DomInlineStyleCommit, DomInlineStyleError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         if !Arc::ptr_eq(&batch.owner, &context.batch) {
             return Err(DomError::ForeignBatch.into());

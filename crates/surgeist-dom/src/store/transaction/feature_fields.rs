@@ -807,6 +807,51 @@ impl Draft {
         let formed = formation.finish(element);
         self.replace_element_formed(key, formed, None, cancel)
     }
+
+    pub(in crate::store) fn finalize_autonomous_element(
+        &mut self,
+        key: Key,
+        name: Arc<payload::Payload<crate::element::ElementName>>,
+        registry: crate::DomRegistryBinding,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        let mut element = self
+            .node(key)?
+            .element()
+            .ok_or(DomError::WrongNodeKind)?
+            .language()
+            .clone();
+        let before = element.units().ok_or(DomError::RepresentationExhausted)?;
+        let custody_registry = self.custody_registry().clone();
+        let mut admit_custody = |usage| self.admit_custody_usage(usage, cancel);
+        let mut formation = crate::element::ElementFormation::new(
+            &custody_registry,
+            &self.blocks,
+            None,
+            cancel,
+            &mut admit_custody,
+        );
+        let association = crate::element::CustomAssociation {
+            registry,
+            definition: element.custom_element_definition(),
+            saved_is: None,
+        };
+        let custom = formation.custom(association, source::storage::Payload::default())?;
+        element.set_custom_context(element.custom_element_state(), Some(custom));
+        element.set_name_payload(name);
+        let after = element.units().ok_or(DomError::RepresentationExhausted)?;
+        let units = self
+            .units
+            .checked_sub(before)
+            .and_then(|units| units.checked_add(after))
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(units, self.dom_limits.units, DomResource::StringCodeUnits)?;
+        let formed = formation.finish(element);
+        self.replace_element_formed(key, formed, None, cancel)?;
+        self.units = units;
+        Ok(())
+    }
 }
 
 impl Draft {

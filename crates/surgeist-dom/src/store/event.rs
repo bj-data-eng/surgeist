@@ -699,7 +699,7 @@ impl Dom {
             check_cancel(cancel)?;
             return Ok(None);
         };
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         let processing = Processing::new(self.limits.event_recipients(), None, cancel);
         match target {
@@ -747,7 +747,7 @@ impl Dom {
         units: usize,
         cancel: &AtomicBool,
     ) -> Result<DomEventPayloadRetention, DomError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         let formation = self.source_observation_formation(cancel)?;
         source::formation::step(formation.as_ref(), cancel)?;

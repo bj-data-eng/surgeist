@@ -1333,6 +1333,10 @@ impl Pending {
                             Some(crate::store::method::Frame::FullscreenExit(value)) => *value,
                             _ => None,
                         },
+                        custom_element_disposition: operation
+                            .custom_element
+                            .as_ref()
+                            .and_then(custom_element::Pending::disposition),
                         design_mode_range_disposition: match operation.draft.method.as_ref() {
                             Some(crate::store::method::Frame::DesignMode(frame)) => frame.range,
                             _ => None,

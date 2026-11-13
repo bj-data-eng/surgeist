@@ -62,7 +62,7 @@ impl Dom {
         request_limits: DomInlineStyleRequestLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceLease<'_>, DomInlineStyleError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         if context.basis.owner() != self.owner {
             return Err(DomError::ForeignOwner.into());

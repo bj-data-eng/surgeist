@@ -1853,7 +1853,7 @@ impl Dom {
         cancel: &AtomicBool,
         edit: impl FnOnce(&mut Draft) -> Result<T, DomError>,
     ) -> Result<T, DomError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         let batch = DomBatch::new();
         let mut draft = if self.source_operation.is_some() {
@@ -1913,7 +1913,7 @@ impl Dom {
         mut meta: Option<meta_atomic::Recording>,
         cancelled: &AtomicBool,
     ) -> Result<(Prepared, Option<meta_atomic::Recording>), DomError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancelled)?;
         check_cancel(cancelled)?;
         self.admit_batch_inputs(&batch.commands, || check_cancel(cancelled))?;
         let mut draft = if self

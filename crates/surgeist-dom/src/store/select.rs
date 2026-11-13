@@ -402,7 +402,7 @@ impl Dom {
         limits: crate::DomNativeCheckpointLimits,
         cancel: &AtomicBool,
     ) -> Result<CompletionAdmission, DomError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         let auth = &task.authorization;
         if auth.id.owner != self.owner {

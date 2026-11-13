@@ -684,6 +684,234 @@ fn document_factory_reaches_the_selected_definition_before_allocating_an_element
 }
 
 #[test]
+fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refusal() {
+    use surgeist_html::{
+        scripting::{HtmlScriptingEngine, HtmlScriptingPolicy},
+        values::Namespace,
+    };
+    use surgeist_html_semantics::HtmlCustomElementDefinition;
+
+    let mut dom = Dom::new(
+        bounds(1024, 1_000_000).with_dispatch_custody(DomDispatchCustodyLimits::default()),
+    )
+    .unwrap();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let registry = {
+        let snapshot = dom.snapshot();
+        let DomNodeKind::Document(metadata) = snapshot.node(document.node()).unwrap().kind() else {
+            panic!("hosted document");
+        };
+        let DomRegistryBinding::Registry(registry) = metadata.custom_element_registry() else {
+            panic!("hosted document registry");
+        };
+        registry
+    };
+    dom.prepare_global_registry_definition(
+        &issuer,
+        owner.global(),
+        registry,
+        &HtmlCustomElementDefinition::new("x-broken".into(), "x-broken".into(), false, false),
+        source_limits(1),
+        &cancel(),
+    )
+    .unwrap()
+    .commit();
+    let backing = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    let (_, registration) = issuer
+        .attach_document_script_host(
+            &mut dom,
+            owner.global(),
+            document,
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel(),
+        )
+        .unwrap();
+    let bounds = source_limits(4096);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::create_element_ns(document.node(), Namespace::html(), "p:x-broken"),
+            bounds,
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(request)) =
+        lease.advance(&cancel()).unwrap()
+    else {
+        panic!("selected constructor");
+    };
+    let scope = lease
+        .open_custom_element_callback(request, &registration, &cancel())
+        .unwrap();
+    assert!(matches!(
+        lease.open_custom_element_callback(request, &registration, &cancel()),
+        Err(DomError::InvalidSourceOperation)
+    ));
+    let mut result = Some(DomSourceCustomElementOutcome::Failed);
+    assert_eq!(
+        lease.accept_custom_element_callback(request, &registration, &mut result, &cancel()),
+        Err(DomError::InvalidSourceOperation)
+    );
+    drop(lease);
+
+    let child = source(
+        &mut dom,
+        DomSourceEdit::create_element(document.node(), "span"),
+    );
+    let Some(DomSourceOutput::Node(child)) = child.output() else {
+        panic!("nested detached element");
+    };
+    assert_eq!(
+        dom.pending_source_edit().unwrap().operation(),
+        request.operation()
+    );
+    drop(scope);
+
+    let mut lease = dom
+        .resume_source_edit(request.operation(), bounds, &cancel())
+        .unwrap();
+    assert_eq!(
+        lease.accept_custom_element_callback(
+            request,
+            &registration,
+            &mut result,
+            &AtomicBool::new(true),
+        ),
+        Err(DomError::Cancelled)
+    );
+    assert_eq!(result, Some(DomSourceCustomElementOutcome::Failed));
+    lease
+        .accept_custom_element_callback(request, &registration, &mut result, &cancel())
+        .unwrap();
+    assert_eq!(result, None);
+    lease.request_cancel();
+    drop(lease);
+    let short = DomSourceLimits {
+        outputs: 0,
+        ..bounds
+    };
+    let mut lease = dom
+        .resume_source_edit(request.operation(), short, &cancel())
+        .unwrap();
+    let before_close = lease.snapshot().stamp();
+    assert!(matches!(
+        lease.advance(&cancel()),
+        Err(DomError::SourceOutputLimit)
+    ));
+    assert_eq!(lease.snapshot().stamp(), before_close);
+    drop(lease);
+    let mut lease = dom
+        .resume_source_edit(request.operation(), bounds, &cancel())
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel()).unwrap() else {
+        panic!("close the original factory");
+    };
+    assert_eq!(
+        done.custom_element_disposition(),
+        Some(DomSourceCustomElementDisposition::Abrupt)
+    );
+    let Some(DomSourceOutput::Node(fallback)) = done.output() else {
+        panic!("failed factory returns its fallback");
+    };
+    assert_ne!(child, fallback);
+    let snapshot = lease.snapshot();
+    assert!(snapshot.node(child).is_ok());
+    let element = snapshot.node(fallback).unwrap().as_element().unwrap();
+    assert!(element.has_failed_construction_interface());
+    assert_eq!(element.name().prefix(), Some(&"p".into()));
+    assert_eq!(element.name().local_name(), &"x-broken".into());
+    assert_eq!(
+        element.custom_element_state(),
+        surgeist_html::elements::native::HtmlCustomElementState::Failed
+    );
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Null
+    );
+    assert_eq!(
+        element.custom_element_registry(),
+        DomRegistryBinding::Registry(registry)
+    );
+    drop(lease);
+
+    // A constructor may return a different eligible native element. The
+    // factory must preserve its identity and apply the requested prefix.
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::create_element_ns(document.node(), Namespace::html(), "q:x-broken"),
+            bounds,
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(request)) =
+        lease.advance(&cancel()).unwrap()
+    else {
+        panic!("selected constructor");
+    };
+    let scope = lease
+        .open_custom_element_callback(request, &registration, &cancel())
+        .unwrap();
+    drop(lease);
+    dom.source_custom_element_callback_step(request, &registration, &cancel())
+        .unwrap();
+    let returned = source(
+        &mut dom,
+        DomSourceEdit::create_element_with_options(
+            document.node(),
+            DomElementCreationName::Local("x-broken".into()),
+            DomElementCreationOptions {
+                is: None,
+                registry: Some(DomRegistryBinding::Null),
+            },
+        ),
+    );
+    let Some(DomSourceOutput::Node(returned)) = returned.output() else {
+        panic!("nested eligible element");
+    };
+    drop(scope);
+    let units = dom.usage().string_code_units();
+    let mut lease = dom
+        .resume_source_edit(request.operation(), bounds, &cancel())
+        .unwrap();
+    let mut outcome = Some(DomSourceCustomElementOutcome::Returned(returned));
+    lease
+        .accept_custom_element_callback(request, &registration, &mut outcome, &cancel())
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel()).unwrap() else {
+        panic!("close the original factory");
+    };
+    assert_eq!(done.output(), Some(DomSourceOutput::Node(returned)));
+    assert_eq!(
+        done.custom_element_disposition(),
+        Some(DomSourceCustomElementDisposition::Constructed)
+    );
+    let snapshot = lease.snapshot();
+    let element = snapshot.node(returned).unwrap().as_element().unwrap();
+    assert!(!element.has_failed_construction_interface());
+    assert_eq!(element.name().prefix(), Some(&"q".into()));
+    assert_eq!(
+        element.custom_element_registry(),
+        DomRegistryBinding::Registry(registry)
+    );
+    drop(lease);
+    assert_eq!(dom.usage().string_code_units(), units + 1);
+}
+
+#[test]
 fn adopted_custom_element_exports_the_definition_from_its_original_registry() {
     use surgeist_html::elements::native::HtmlCustomElementState;
     use surgeist_html_semantics::{

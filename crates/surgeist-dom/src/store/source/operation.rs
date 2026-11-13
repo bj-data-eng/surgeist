@@ -2,6 +2,10 @@
 //! all mandatory continuation and acknowledged external publication stays in Dom.
 pub(in crate::store) mod attribute;
 pub(in crate::store) mod custom_element;
+pub use custom_element::{
+    DomSourceCustomElementCallbackScope, DomSourceCustomElementDisposition,
+    DomSourceCustomElementOutcome,
+};
 #[cfg(test)]
 mod design_mode_tests;
 mod dialog;
@@ -331,11 +335,20 @@ impl Dom {
     /// Reentry belongs only to original roots whose complete formation and
     /// publication join the retained Source envelopes. Legacy controllers keep
     /// the strict idle gate until their actual output lifetime is integrated.
-    pub(in crate::store) fn require_source_entry(&self) -> Result<(), DomError> {
+    pub(in crate::store) fn require_source_entry(
+        &self,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         match self.source_operation.as_ref() {
             Some(operation)
                 if operation.permits_reentry() && self.state.incomplete_hosted.is_none() =>
             {
+                if matches!(
+                    operation.draft,
+                    dialog::OperationDraft::CustomElementObserved(_)
+                ) {
+                    operation.qualify_active_custom_element_callback(self, cancel)?;
+                }
                 Ok(())
             }
             Some(_) => Err(DomError::SourceOperationPending),
@@ -384,7 +397,7 @@ impl Dom {
         limits: DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceLease<'_>, DomError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         self.next_source_operation
             .checked_add(1)
@@ -770,7 +783,9 @@ impl Operation {
         if let Some(observation) = self.observation() {
             return observation.status(self);
         }
-        if let dialog::OperationDraft::AttributeObserved(observation) = &self.draft {
+        if let dialog::OperationDraft::AttributeObserved(observation)
+        | dialog::OperationDraft::CustomElementObserved(observation) = &self.draft
+        {
             return DomSourceStatus {
                 operation: self.id,
                 published: self.published,
@@ -779,7 +794,11 @@ impl Operation {
                 work: observation.work.work.load(Ordering::Relaxed),
                 phases: self.phases,
                 parent: None,
-                phase: DomSourcePhase::AttributeVerification,
+                phase: if self.custom_element.is_some() {
+                    DomSourcePhase::CustomElementConstruction
+                } else {
+                    DomSourcePhase::AttributeVerification
+                },
             };
         }
         DomSourceStatus {
@@ -1955,7 +1974,11 @@ impl DomSourceLease<'_> {
     }
     pub fn request_cancel(&mut self) {
         let op = self.dom.source_operation.as_mut().expect("live lease");
-        if matches!(&op.draft, dialog::OperationDraft::AttributeObserved(observation) if !observation.work.scope_closed())
+        if op
+            .custom_element
+            .as_ref()
+            .is_some_and(custom_element::Pending::callback_opened)
+            || matches!(&op.draft, dialog::OperationDraft::AttributeObserved(observation) if !observation.work.scope_closed())
             || op
                 .attribute_verification
                 .as_ref()
@@ -2042,6 +2065,7 @@ impl DomSourceLease<'_> {
             .as_deref()
             .and_then(Operation::waiting_custom_element)
         {
+            self.check_custom_element_scope_closed()?;
             return Ok(DomSourceProgress::Request(
                 DomSourceRequest::CustomElementConstruction(request),
             ));
@@ -2090,7 +2114,15 @@ impl DomSourceLease<'_> {
                     DomSourceRequest::AttributeVerification(request),
                 ));
             }
-            self.rebase_attribute_observation(cancel)?;
+            self.rebase_registered_callback(cancel)?;
+        }
+        if self.dom.source_operation.as_ref().is_some_and(|operation| {
+            matches!(
+                operation.draft,
+                dialog::OperationDraft::CustomElementObserved(_)
+            )
+        }) {
+            self.rebase_registered_callback(cancel)?;
         }
         let root = self
             .dom
@@ -2235,6 +2267,7 @@ impl DomSourceLease<'_> {
                 installation: None,
                 dialog_toggle_disposition: None,
                 design_mode_range_disposition: None,
+                custom_element_disposition: None,
                 fullscreen_exit_return: None,
             }));
         }
@@ -3011,6 +3044,10 @@ impl DomSourceLease<'_> {
                                 published: std::mem::take(&mut op.historical),
                                 commit,
                                 installation,
+                                custom_element_disposition: op
+                                    .custom_element
+                                    .as_ref()
+                                    .and_then(custom_element::Pending::disposition),
                                 fullscreen_exit_return: match op.draft.method.as_ref() {
                                     Some(crate::store::method::Frame::FullscreenExit(result)) => {
                                         *result
@@ -3776,7 +3813,7 @@ impl Dom {
             native: installation_limits,
             source: limits,
         } = budgets;
-        self.require_source_entry().map_err(Error::Target)?;
+        self.require_source_entry(cancel).map_err(Error::Target)?;
         self.next_source_operation
             .checked_add(1)
             .ok_or(Error::Target(DomError::RepresentationExhausted))?;

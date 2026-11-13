@@ -1,6 +1,12 @@
 //! Retained operands for a constructor reached by detached element creation.
+use super::dialog::OperationDraft;
 use super::*;
-use crate::element::ElementName;
+use crate::{
+    DomDocumentScriptRegistration, DomHostedError,
+    element::ElementName,
+    hosted::ScriptRegistration,
+    source::callback::{CallbackWork, DispatchScope},
+};
 
 pub(in crate::store) struct Creation {
     pub(in crate::store) document: DocumentId,
@@ -11,6 +17,9 @@ pub(in crate::store) struct Creation {
 pub(super) struct Pending {
     request: DomSourceCustomElementRequest,
     name: payload::Sealed<ElementName>,
+    registration: Option<Arc<ScriptRegistration>>,
+    outcome: Option<DomSourceCustomElementOutcome>,
+    disposition: Option<DomSourceCustomElementDisposition>,
 }
 
 impl Pending {
@@ -40,11 +49,275 @@ impl Pending {
                 definition,
             },
             name,
+            registration: None,
+            outcome: None,
+            disposition: None,
         })
+    }
+
+    pub(super) fn registration_is_active(&self) -> bool {
+        self.registration
+            .as_ref()
+            .is_some_and(|registration| registration.is_active())
+    }
+
+    pub(super) fn callback_opened(&self) -> bool {
+        self.registration.is_some()
+    }
+
+    pub(super) fn finish(
+        &mut self,
+        draft: &mut Draft,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let outcome = self.outcome.ok_or(DomError::InvalidSourceOperation)?;
+        let document = draft.resolve(self.request.document.into())?;
+        let registry = crate::DomRegistryBinding::Registry(self.request.definition.registry());
+        let returned = match outcome {
+            DomSourceCustomElementOutcome::Returned(node) => {
+                self.qualify_returned(draft, node, cancel)?
+            }
+            DomSourceCustomElementOutcome::Failed => Err(DomSourceCustomElementDisposition::Abrupt),
+        };
+        let (key, disposition) = match returned {
+            Ok(key) => {
+                draft.finalize_autonomous_element(
+                    key,
+                    self.name.value.clone(),
+                    registry,
+                    cancel,
+                )?;
+                (key, DomSourceCustomElementDisposition::Constructed)
+            }
+            Err(disposition) => {
+                let budget = formation::Formation::new(draft, cancel)?;
+                let mut admit = |next| draft.admit_custody_usage(next, cancel);
+                let element_formation = crate::element::ElementFormation::new(
+                    draft.custody_registry(),
+                    &draft.blocks,
+                    budget.as_ref(),
+                    cancel,
+                    &mut admit,
+                );
+                let formed = DomElement::failed_autonomous_construction(
+                    self.name.value.clone(),
+                    registry,
+                    element_formation,
+                )?;
+                (
+                    draft.allocate_element_formed(formed, document, limits, cancel, budget)?,
+                    disposition,
+                )
+            }
+        };
+        draft.register_ticket(key, cancel)?;
+        self.disposition = Some(disposition);
+        Ok(())
+    }
+
+    pub(super) fn disposition(&self) -> Option<DomSourceCustomElementDisposition> {
+        self.disposition
+    }
+
+    fn qualify_returned(
+        &self,
+        draft: &Draft,
+        node: NodeId,
+        cancel: &AtomicBool,
+    ) -> Result<Result<Key, DomSourceCustomElementDisposition>, DomError> {
+        draft.source_step(cancel)?;
+        let key = match draft.resolve(node.into()) {
+            Ok(key) => key,
+            Err(DomError::StaleNode | DomError::ForeignOwner) => {
+                return Ok(Err(DomSourceCustomElementDisposition::InvalidInterface));
+            }
+            Err(error) => return Err(error),
+        };
+        let node = draft.node(key)?;
+        let Some(element) = node.element() else {
+            return Ok(Err(DomSourceCustomElementDisposition::InvalidInterface));
+        };
+        if element.common_state().html().is_none() {
+            return Ok(Err(DomSourceCustomElementDisposition::InvalidInterface));
+        }
+        if !node.attribute_ids().is_empty()
+            || !node.children().is_empty()
+            || node.parent().is_some()
+            || node.document() != Key::Existing(self.request.document.node())
+        {
+            return Ok(Err(DomSourceCustomElementDisposition::InvalidElement));
+        }
+        let requested = &self.name.value.value.value;
+        draft.source_step(cancel)?;
+        if !crate::names::expanded_equals_with(
+            element.name(),
+            requested.namespace_uri(),
+            requested.local_name(),
+            || draft.source_step(cancel),
+        )? {
+            return Ok(Err(DomSourceCustomElementDisposition::InvalidElement));
+        }
+        Ok(Ok(key))
     }
 }
 
+/// The registered constructor's completed return or abrupt completion.
+/// The script host retains the original thrown value for reporting.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSourceCustomElementOutcome {
+    Returned(NodeId),
+    Failed,
+}
+
+/// Disposition of an autonomous factory's completed native publication.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSourceCustomElementDisposition {
+    Constructed,
+    /// The original guest exception remains in Runtime custody.
+    Abrupt,
+    /// The returned value requires a TypeError and a distinct fallback.
+    InvalidInterface,
+    /// The returned HTMLElement requires a NotSupportedError and a distinct fallback.
+    InvalidElement,
+}
+
+/// The exact native reentry authority of a running autonomous constructor.
+#[must_use = "keep the scope live during the constructor invocation"]
+pub struct DomSourceCustomElementCallbackScope<'registration> {
+    _scope: Arc<DispatchScope>,
+    _registration: &'registration DomDocumentScriptRegistration,
+}
+
 impl DomSourceLease<'_> {
+    pub(super) fn check_custom_element_scope_closed(&self) -> Result<(), DomError> {
+        if self
+            .dom
+            .source_operation
+            .as_ref()
+            .and_then(|operation| operation.callback_observation())
+            .is_some_and(|observation| !observation.work.scope_closed())
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        Ok(())
+    }
+
+    /// Accept the original completion after its scope has closed. A refusal
+    /// leaves the completion with the caller for retry.
+    pub fn accept_custom_element_callback(
+        &mut self,
+        request: DomSourceCustomElementRequest,
+        registration: &DomDocumentScriptRegistration,
+        outcome: &mut Option<DomSourceCustomElementOutcome>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.check_custom_element_scope_closed()?;
+        let operation = self
+            .dom
+            .source_operation
+            .as_deref_mut()
+            .filter(|operation| operation.id == self.id)
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let OperationDraft::CustomElementObserved(observation) = &operation.draft else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        let pending = operation
+            .custom_element
+            .as_mut()
+            .filter(|pending| {
+                pending.request == request
+                    && pending.outcome.is_none()
+                    && pending
+                        .registration
+                        .as_ref()
+                        .is_some_and(|original| Arc::ptr_eq(original, &registration.0))
+            })
+            .ok_or(DomError::InvalidSourceOperation)?;
+        if observation.work.stage.load(Ordering::Relaxed) != 1 {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        observation.work.step(cancel)?;
+        let accepted = outcome.take().ok_or(DomError::InvalidSourceOperation)?;
+        pending.outcome = Some(accepted);
+        Ok(())
+    }
+
+    /// Open the registered executor's single autonomous constructor scope.
+    /// Release the lease before executing guest code.
+    /// Customized built-ins require a receiver publication before execution.
+    pub fn open_custom_element_callback<'registration>(
+        &mut self,
+        request: DomSourceCustomElementRequest,
+        registration: &'registration DomDocumentScriptRegistration,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceCustomElementCallbackScope<'registration>, DomError> {
+        let operation = self
+            .dom
+            .source_operation
+            .as_deref()
+            .filter(|operation| operation.id == self.id)
+            .ok_or(DomError::InvalidSourceOperation)?;
+        if !matches!(operation.draft, OperationDraft::Segment(_))
+            || operation.waiting_custom_element() != Some(request)
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        operation.qualify_custom_element_registration(self.dom, &registration.0, cancel)?;
+        let definition = request.definition;
+        let facts = operation
+            .draft
+            .creation_registry(definition.registry(), cancel)?
+            .definition(definition.ordinal())
+            .map_err(DomError::SelectCapture)?;
+        if !crate::names::same_code_units(
+            facts.name().code_units(),
+            facts.local_name().code_units(),
+            || operation.draft.source_step(cancel),
+        )? {
+            return Err(DomError::NotSupported);
+        }
+        let remaining = headroom::FINAL_PUBLICATION;
+        if operation.limits.phases < remaining {
+            return Err(DomError::SourcePublicationLimit);
+        }
+        if operation.limits.identities == 0 {
+            return Err(DomError::SourceIdentityLimit);
+        }
+        if operation.limits.outputs == 0 {
+            return Err(DomError::SourceOutputLimit);
+        }
+        let protected = self.dom.source_reserved_closing(cancel)?;
+        self.dom
+            .revision
+            .0
+            .checked_add(self.dom.hosted_revisions)
+            .and_then(|revision| revision.checked_add(protected))
+            .and_then(|revision| revision.checked_add(remaining))
+            .ok_or(DomError::RevisionExhausted)?;
+        let prepared = operation.prepare_callback_observation(cancel)?;
+        let scope = prepared.open_scope()?;
+        let operation = self
+            .dom
+            .source_operation
+            .as_deref_mut()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let pending = operation
+            .custom_element
+            .as_mut()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        pending.registration = Some(registration.0.clone());
+        operation.headroom = Some(headroom::Reservation {
+            remaining_phases: remaining,
+        });
+        operation.draft =
+            OperationDraft::CustomElementObserved(operation.begin_callback_observation(prepared));
+        Ok(DomSourceCustomElementCallbackScope {
+            _scope: scope,
+            _registration: registration,
+        })
+    }
+
     /// Borrow the normalized name from the original factory while the
     /// constructor request is pending.
     pub fn custom_element_creation_name(
@@ -63,13 +336,116 @@ impl DomSourceLease<'_> {
             .as_ref()
             .filter(|pending| pending.request == request)
             .ok_or(DomError::InvalidSourceOperation)?;
-        operation.draft.source_step(cancel)?;
+        operation.custom_element_step(cancel)?;
         Ok(&pending.name.value.value.value)
     }
 }
 
 impl Operation {
     pub(super) fn waiting_custom_element(&self) -> Option<DomSourceCustomElementRequest> {
-        self.custom_element.as_ref().map(|pending| pending.request)
+        self.custom_element
+            .as_ref()
+            .filter(|pending| pending.outcome.is_none())
+            .map(|pending| pending.request)
+    }
+
+    fn custom_element_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        if let Some(observation) = self.callback_observation() {
+            observation.work.step(cancel)
+        } else {
+            self.draft.source_step(cancel)
+        }
+    }
+
+    fn qualify_custom_element_registration(
+        &self,
+        dom: &Dom,
+        registration: &Arc<ScriptRegistration>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let pending = self
+            .custom_element
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let original = match &self.draft {
+            OperationDraft::Segment(draft) => draft.script_registration.as_ref(),
+            OperationDraft::CustomElementObserved(_) => pending.registration.as_ref(),
+            _ => None,
+        };
+        if dom.active_script_registration() != Some(registration.key)
+            || !original.is_some_and(|original| Arc::ptr_eq(original, registration))
+        {
+            return Err(DomError::HostedSourceUnavailable);
+        }
+        let mut step = || {
+            self.custom_element_step(cancel)
+                .map_err(DomHostedError::from)
+        };
+        let unavailable = |error| match error {
+            DomHostedError::Dom(error) => error,
+            _ => DomError::HostedSourceUnavailable,
+        };
+        if !dom
+            .dispatch_script_registration_current_with(registration, &mut step)
+            .map_err(unavailable)?
+            || dom
+                .dispatch_global_document_current_with::<DomHostedError>(
+                    pending.request.global,
+                    &mut step,
+                )
+                .map_err(unavailable)?
+                != pending.request.document
+        {
+            return Err(DomError::HostedSourceUnavailable);
+        }
+        Ok(())
+    }
+
+    pub(super) fn qualify_active_custom_element_callback(
+        &self,
+        dom: &Dom,
+        cancel: &AtomicBool,
+    ) -> Result<&CallbackWork, DomError> {
+        let registration = self
+            .custom_element
+            .as_ref()
+            .and_then(|pending| pending.registration.as_ref())
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let observation = self
+            .callback_observation()
+            .filter(|observation| observation.work.active())
+            .ok_or(DomError::InvalidSourceOperation)?;
+        self.qualify_custom_element_registration(dom, registration, cancel)?;
+        Ok(&observation.work)
+    }
+}
+
+impl Dom {
+    /// Charge native work performed by the exact running constructor.
+    pub fn source_custom_element_callback_step(
+        &self,
+        request: DomSourceCustomElementRequest,
+        registration: &DomDocumentScriptRegistration,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let operation = self
+            .source_operation
+            .as_deref()
+            .filter(|operation| operation.waiting_custom_element() == Some(request))
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let pending = operation
+            .custom_element
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        if !pending
+            .registration
+            .as_ref()
+            .is_some_and(|original| Arc::ptr_eq(original, &registration.0))
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        operation
+            .qualify_active_custom_element_callback(self, cancel)?
+            .step(cancel)
     }
 }

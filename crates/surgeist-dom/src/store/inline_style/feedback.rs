@@ -239,7 +239,7 @@ impl Dom {
             &mut CssomStore,
         ) -> Result<DomInlineStyleOutcome, surgeist_cssom::CssomError>,
     ) -> Result<DomInlineStyleMutation<'a>, DomInlineStyleError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         self.state
             .node(self.owner, element)?
@@ -337,7 +337,11 @@ impl Dom {
             }),
         }
     }
-    fn require_inline_feedback_entry(&self, resident: &Resident) -> Result<(), DomError> {
+    fn require_inline_feedback_entry(
+        &self,
+        resident: &Resident,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         let same_observation = resident.observation.is_some()
             && self.state.incomplete_hosted.is_none()
             && self
@@ -346,7 +350,7 @@ impl Dom {
                 .and_then(|operation| operation.inline_feedback_observation())
                 == resident.observation;
         if !same_observation {
-            self.require_source_entry()?;
+            self.require_source_entry(cancel)?;
         }
         Ok(())
     }
@@ -357,7 +361,7 @@ impl Dom {
     ) -> Result<DomInlineStyleTerminal, DomInlineStyleError> {
         let owner = self.inline_styles.as_ref().expect("resident owner");
         let resident = owner.feedback.as_ref().expect("resident feedback").value();
-        self.require_inline_feedback_entry(resident)?;
+        self.require_inline_feedback_entry(resident, cancel)?;
         check_cancel(cancel)?;
         let original = resident.original.as_ref().expect("committed outcome");
         let effect = original
@@ -504,7 +508,7 @@ impl Dom {
         if original.owner_effects().is_empty() {
             return Ok(None);
         }
-        self.require_inline_feedback_entry(resident)?;
+        self.require_inline_feedback_entry(resident, cancel)?;
         check_cancel(cancel)?;
         assert_eq!(
             original.owner_effects().len(),

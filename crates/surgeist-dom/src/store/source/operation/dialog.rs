@@ -1,6 +1,6 @@
 //! Initial Show event observation without an old canonical Draft.
 use super::*;
-use crate::source::callback::CallbackWork;
+use crate::source::callback::{CallbackWork, DispatchScope};
 use crate::source::event::ExecutorBinding;
 use crate::source::*;
 use std::sync::Weak;
@@ -42,6 +42,7 @@ pub(super) enum OperationDraft {
     Segment(Draft),
     Observed(DialogObservation),
     AttributeObserved(CallbackObservation),
+    CustomElementObserved(CallbackObservation),
 }
 // Existing Style/child/installation/Select execution remains the original
 // segmented engine. Its entry points select the Segment phase before use.
@@ -50,7 +51,7 @@ impl std::ops::Deref for OperationDraft {
     fn deref(&self) -> &Draft {
         match self {
             Self::Segment(draft) => draft,
-            Self::Observed(_) | Self::AttributeObserved(_) => {
+            Self::Observed(_) | Self::AttributeObserved(_) | Self::CustomElementObserved(_) => {
                 unreachable!("observation has no Draft")
             }
         }
@@ -60,7 +61,7 @@ impl std::ops::DerefMut for OperationDraft {
     fn deref_mut(&mut self) -> &mut Draft {
         match self {
             Self::Segment(draft) => draft,
-            Self::Observed(_) | Self::AttributeObserved(_) => {
+            Self::Observed(_) | Self::AttributeObserved(_) | Self::CustomElementObserved(_) => {
                 unreachable!("observation has no Draft")
             }
         }
@@ -182,6 +183,25 @@ pub(super) struct CallbackObservation {
     pub(super) inputs: storage::Payload,
 }
 
+/// Fallible callback admission completed before changing the operation phase.
+/// No journal or canonical write is consumed by preparing this receipt.
+pub(super) struct PreparedCallback {
+    autofocus: usize,
+    work: Arc<CallbackWork>,
+    custody: Arc<formation::CallbackWorkCustody>,
+}
+
+impl PreparedCallback {
+    pub(super) fn open_scope(&self) -> Result<Arc<DispatchScope>, DomError> {
+        let scope = self
+            .work
+            .open_scope()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        self.work.stage.store(1, Ordering::Relaxed);
+        Ok(scope)
+    }
+}
+
 impl CallbackObservation {
     fn payload(&self) -> Result<storage::Payload, DomError> {
         Ok(storage::Payload {
@@ -231,26 +251,71 @@ impl Drop for Operation {
         if let Some(work) = self.event_work.upgrade() {
             work.stage.store(4, Ordering::Relaxed);
         }
-        if let OperationDraft::AttributeObserved(observation) = &self.draft {
+        if let OperationDraft::AttributeObserved(observation)
+        | OperationDraft::CustomElementObserved(observation) = &self.draft
+        {
             observation.work.stage.store(4, Ordering::Relaxed);
         }
     }
 }
 impl Operation {
+    pub(super) fn prepare_callback_observation(
+        &self,
+        cancel: &AtomicBool,
+    ) -> Result<PreparedCallback, DomError> {
+        let custody = formation::CallbackWorkCustody::prepare(
+            self.draft.custody_ledger(),
+            self.draft.source_work_custody(),
+            self.draft.source_ancestor_custody(),
+            |usage| self.draft.admit_custody_usage(usage, cancel),
+        )?;
+        let work = formation::allocated_arc(CallbackWork::new(
+            self.draft.source_work.source_arc().clone(),
+            self.limits.work,
+            self.draft.source_ancestors.clone(),
+            formation::SourceStorage::new(self.draft.custody_ledger().clone()),
+        ));
+        let autofocus = self.draft.autofocus_count(cancel)?;
+        Ok(PreparedCallback {
+            autofocus,
+            custody: custody.finish(work.clone()),
+            work,
+        })
+    }
+
+    pub(super) fn begin_callback_observation(
+        &mut self,
+        prepared: PreparedCallback,
+    ) -> CallbackObservation {
+        self.event_custody = Some(prepared.custody);
+        self.custody_bytes = 0;
+        self.custody_units = 0;
+        CallbackObservation {
+            owner: self.draft.owner.clone(),
+            work: prepared.work,
+            usage: Usage::capture(&mut self.draft, prepared.autofocus),
+            limits: self.limits,
+            inputs: std::mem::take(&mut self.command_storage),
+        }
+    }
+
     pub(in crate::store) fn dispatch_limit_formation(
         &self,
         cancel: &AtomicBool,
     ) -> Result<Option<formation::Formation>, DomError> {
         match &self.draft {
             OperationDraft::Segment(draft) => formation::Formation::new(draft, cancel),
-            OperationDraft::Observed(_) | OperationDraft::AttributeObserved(_) => Ok(None),
+            OperationDraft::Observed(_)
+            | OperationDraft::AttributeObserved(_)
+            | OperationDraft::CustomElementObserved(_) => Ok(None),
         }
     }
     pub(super) fn callback_observation(&self) -> Option<&CallbackObservation> {
         match &self.draft {
             OperationDraft::Segment(_) => None,
             OperationDraft::Observed(observation) => Some(&observation.common),
-            OperationDraft::AttributeObserved(observation) => Some(observation),
+            OperationDraft::AttributeObserved(observation)
+            | OperationDraft::CustomElementObserved(observation) => Some(observation),
         }
     }
 
@@ -258,20 +323,25 @@ impl Operation {
         match &mut self.draft {
             OperationDraft::Segment(_) => None,
             OperationDraft::Observed(observation) => Some(&mut observation.common),
-            OperationDraft::AttributeObserved(observation) => Some(observation),
+            OperationDraft::AttributeObserved(observation)
+            | OperationDraft::CustomElementObserved(observation) => Some(observation),
         }
     }
 
     pub(super) fn observation(&self) -> Option<&DialogObservation> {
         match &self.draft {
             OperationDraft::Observed(observation) => Some(observation),
-            OperationDraft::Segment(_) | OperationDraft::AttributeObserved(_) => None,
+            OperationDraft::Segment(_)
+            | OperationDraft::AttributeObserved(_)
+            | OperationDraft::CustomElementObserved(_) => None,
         }
     }
     fn observation_mut(&mut self) -> Option<&mut DialogObservation> {
         match &mut self.draft {
             OperationDraft::Observed(observation) => Some(observation),
-            OperationDraft::Segment(_) | OperationDraft::AttributeObserved(_) => None,
+            OperationDraft::Segment(_)
+            | OperationDraft::AttributeObserved(_)
+            | OperationDraft::CustomElementObserved(_) => None,
         }
     }
     pub(in crate::store) fn id(&self) -> DomSourceOperationId {
@@ -290,11 +360,17 @@ impl Operation {
     pub(in crate::store) fn permits_reentry(&self) -> bool {
         self.callback_observation()
             .is_some_and(|observation| observation.work.active())
-            && (!matches!(self.draft, OperationDraft::AttributeObserved(_))
-                || self
+            && match self.draft {
+                OperationDraft::AttributeObserved(_) => self
                     .attribute_verification
                     .as_ref()
-                    .is_some_and(super::attribute::Pending::registration_is_active))
+                    .is_some_and(super::attribute::Pending::registration_is_active),
+                OperationDraft::CustomElementObserved(_) => self
+                    .custom_element
+                    .as_ref()
+                    .is_some_and(super::custom_element::Pending::registration_is_active),
+                _ => true,
+            }
     }
     pub(super) fn admit_observation_limits(
         &mut self,
@@ -774,6 +850,8 @@ impl Dom {
                 .filter(|binding| binding.live.load(Ordering::Relaxed))
                 .ok_or(DomError::InvalidSourceEvent)?;
             event.request.validate_executor(&executor)?;
+        } else if matches!(operation.draft, OperationDraft::CustomElementObserved(_)) {
+            operation.qualify_active_custom_element_callback(self, cancel)?;
         } else {
             operation.qualify_active_attribute_callback(self, cancel)?;
         }
@@ -850,12 +928,8 @@ impl Dom {
         &self,
         cancel: &AtomicBool,
     ) -> Result<Option<formation::Formation>, DomError> {
-        if self
-            .source_operation
-            .as_ref()
-            .is_some_and(|operation| !operation.permits_reentry())
-        {
-            return Err(DomError::SourceOperationPending);
+        if self.source_operation.is_some() {
+            self.require_source_entry(cancel)?;
         }
         self.source_observation_formation(cancel)
     }
@@ -1011,7 +1085,11 @@ impl Dom {
             Some(OperationDraft::Segment(draft)) => {
                 custody::Usage::new(draft.source_other_bytes, draft.source_other_units)
             }
-            Some(OperationDraft::Observed(_) | OperationDraft::AttributeObserved(_)) => {
+            Some(
+                OperationDraft::Observed(_)
+                | OperationDraft::AttributeObserved(_)
+                | OperationDraft::CustomElementObserved(_),
+            ) => {
                 // These are cached input receipts and fixed owner headers. The
                 // only iteration is the actual Source ancestor stack; no bank,
                 // canonical payload, or effect frontier is inspected or metered.
@@ -1621,6 +1699,7 @@ impl DomSourceLease<'_> {
             installation: None,
             dialog_toggle_disposition,
             design_mode_range_disposition: None,
+            custom_element_disposition: None,
         });
         observation.request.work.stage.store(4, Ordering::Relaxed);
         self.complete = true;

@@ -90,7 +90,7 @@ impl Dom {
         {
             return Err(DomError::IncompleteSourceOperation.into());
         }
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         if id.stamp.owner() != self.owner {
             return Err(DomError::ForeignOwner.into());
