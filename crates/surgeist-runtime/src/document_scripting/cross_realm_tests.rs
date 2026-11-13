@@ -21,6 +21,7 @@ mod scoped_registries;
 mod split_text;
 mod template_content;
 mod title_text;
+mod toggle_attribute;
 mod trusted_attribute;
 mod whole_text;
 
@@ -362,6 +363,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     meta_reflection::meta_reflections_read_and_mutate_the_live_native_element();
     element_reflection::element_reflections_use_the_exact_native_attributes();
     element_attributes::element_attribute_methods_observe_and_remove_canonical_attributes();
+    toggle_attribute::element_toggle_attribute_uses_one_canonical_edit();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
