@@ -239,6 +239,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::document_element_factories_use_native_names_and_identity();
     super::guest::tests::registered_origin::borrowed_element_factory_keeps_dom_on_wrapper_refusal();
     super::guest::tests::registered_origin::element_factory_admits_exact_projection_work();
+    super::guest::tests::custom_element_registry_identity_is_canonical();
     super::guest::tests::registered_origin::registered_character_factory_refuses_without_publication(
     );
     public_and_source_comment_projection_share_identity();

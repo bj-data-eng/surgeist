@@ -6,6 +6,29 @@ pub(in crate::document_scripting) mod registered_origin;
 pub(in crate::document_scripting) mod shadow_root;
 pub(in crate::document_scripting) mod trusted_policy;
 
+pub(in crate::document_scripting) fn custom_element_registry_identity_is_canonical() {
+    let mut host = public_node_host(5_000, 60_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "typeof CustomElementRegistry === 'function'")?;
+        assert_guest(scope, r#"(() => {
+            const registry = window.customElements;
+            const element = document.createElement('div');
+            const shadow = element.attachShadow({mode: 'open'});
+            const nullElement = document.createElement('div', {customElementRegistry: null});
+            const nullShadow = nullElement.attachShadow({mode: 'open', customElementRegistry: null});
+            const getter = Object.getOwnPropertyDescriptor(Document.prototype, 'customElementRegistry').get;
+            let wrongReceiver = false;
+            try { getter.call(Object.create(document)); } catch (error) { wrongReceiver = error instanceof TypeError; }
+            return registry instanceof CustomElementRegistry && registry === window.customElements
+                && registry === document.customElementRegistry && registry === element.customElementRegistry
+                && registry === shadow.customElementRegistry && new Document().customElementRegistry === null
+                && nullElement.customElementRegistry === null && nullShadow.customElementRegistry === null
+                && wrongReceiver;
+        })()"#)
+    }).unwrap();
+}
+
 pub(in crate::document_scripting) fn assert_queued_trusted_types_violations(
     host: &DocumentScriptHost,
     expected: &[(usize, &str, &str)],
