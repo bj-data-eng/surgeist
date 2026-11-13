@@ -595,6 +595,69 @@ pub(in crate::document_scripting) fn implementation_factories_use_the_receiver_r
         .unwrap();
 }
 
+pub(in crate::document_scripting) fn native_processing_instruction_uses_its_creation_realm() {
+    let RegisteredOrigin {
+        mut host,
+        permit,
+        origin,
+        element,
+        cancellation,
+        ..
+    } = retired_origin_with_moved_element();
+    let instruction = host
+        .with_native(|dom, _, _| {
+            let document = dom
+                .snapshot()
+                .node(element)
+                .unwrap()
+                .owner_document()
+                .unwrap();
+            let mut batch = DomBatch::new();
+            let created = batch.create_processing_instruction(document, "foreign", "data");
+            batch.insert_before(&created, document, Some(element.into()));
+            dom.apply(batch, &cancellation)
+                .unwrap()
+                .created(&created)
+                .unwrap()
+                .unwrap()
+        })
+        .unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, instruction, "foreignInstruction");
+    let value = host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"
+            foreignInstruction.ownerDocument === originChild.ownerDocument &&
+            foreignInstruction.parentNode === originChild.parentNode &&
+            !(foreignInstruction instanceof ProcessingInstruction) &&
+            Object.getOwnPropertyDescriptor(ProcessingInstruction.prototype, 'target').get.call(foreignInstruction) === 'foreign'
+        "#)?;
+        let value = scope.evaluate(&units("foreignInstruction"))?;
+        Ok(scope.retain(&value))
+    }).unwrap();
+    let engine = host.engine.as_mut().unwrap();
+    let realm = engine
+        .creations
+        .find(origin.global(), || Ok::<_, Error>(()))
+        .unwrap()
+        .unwrap();
+    engine
+        .process
+        .execution()
+        .in_realm(realm, |scope| {
+            let value = scope.import(&value)?;
+            let global = scope.global()?;
+            scope.set(
+                &global,
+                PropertyKey::String(&units("foreignInstruction")),
+                &value,
+            )?;
+            assert_guest(
+                scope,
+                "Object.getPrototypeOf(foreignInstruction) === ProcessingInstruction.prototype",
+            )
+        })
+        .unwrap();
+}
+
 pub(in crate::document_scripting) fn implementation_factories_keep_the_projection_realm() {
     let cancel = Arc::new(AtomicBool::new(false));
     let (session, target) =

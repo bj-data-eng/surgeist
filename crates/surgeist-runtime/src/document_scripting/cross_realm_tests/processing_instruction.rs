@@ -15,7 +15,7 @@ pub(super) fn native_processing_instruction_uses_its_canonical_wrapper() {
     );
     let commit = session.dom().apply(batch, &cancel).unwrap();
     let instruction = commit.created(&instruction).unwrap().unwrap();
-    let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 5_000, 60_000);
     let permit = host.permit().unwrap();
     expose_public_node_for_source_test(&mut host, &permit, instruction, "instruction");
     expose_public_node_for_source_test(&mut host, &permit, instruction, "repeatedInstruction");
@@ -49,4 +49,22 @@ pub(super) fn native_processing_instruction_uses_its_canonical_wrapper() {
         panic!("native instruction");
     };
     assert_eq!(value.data().code_units(), &[0xd800, 120, 0xdc00]);
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.destroy(instruction);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    let retired = host.in_document(&permit, |scope| {
+        evaluate(scope, "instruction.target").map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = retired else {
+        panic!("expected retired instruction refusal: {retired:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
+        ))
+    ));
 }

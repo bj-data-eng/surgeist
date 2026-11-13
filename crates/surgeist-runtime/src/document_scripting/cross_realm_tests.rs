@@ -317,6 +317,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     dom_implementation::implementation_creates_native_doctypes();
     dom_implementation::implementation_creates_native_documents();
     processing_instruction::native_processing_instruction_uses_its_canonical_wrapper();
+    super::guest::tests::registered_origin::native_processing_instruction_uses_its_creation_realm();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
