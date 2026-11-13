@@ -6,6 +6,7 @@ mod element_tasks;
 mod inline_style;
 mod nested_dispatch;
 mod node_relations;
+mod normalize;
 mod processing_instruction;
 mod trusted_attribute;
 
@@ -321,6 +322,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::native_processing_instruction_uses_its_creation_realm();
     node_relations::node_relations_follow_the_live_ordinary_tree();
     node_relations::node_relations_project_native_processing_instructions();
+    normalize::normalize_keeps_native_text_and_range_identity();
+    normalize::normalize_preserves_typed_native_refusal();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
@@ -1028,6 +1031,10 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
                 cancelChecks &&= dialog.textContent === 'native event\ud800';
                 cancelChecks &&= dialog.hasChildNodes() && dialog.firstChild === dialog.lastChild &&
                     dialog.firstChild.parentElement === dialog && dialog.firstChild.nextSibling === null;
+                const survivor = dialog.firstChild;
+                const merge = dialog.appendChild(attachedDocument.createTextNode(' tail'));
+                cancelChecks &&= dialog.normalize() === undefined && dialog.firstChild === survivor &&
+                    survivor.data === 'native event\ud800 tail' && merge.parentNode === null;
                 const impl = attachedDocument.implementation;
                 const type = impl.createDocumentType('root', '', '');
                 const xml = impl.createDocument(null, 'root', type);

@@ -45,6 +45,21 @@ pub(super) fn install<'scope>(
             true,
         )?;
     }
+    let handler = capture(size_of::<Capture>())?;
+    let name = &ascii(b"normalize");
+    let callback = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| handler.normalize_node(scope, arguments)),
+        FunctionMetadata { name, length: 0 },
+    )?;
+    define_data(
+        scope,
+        prototype,
+        PropertyKey::String(name),
+        &callback,
+        true,
+        true,
+        true,
+    )?;
     Ok(())
 }
 
@@ -81,6 +96,30 @@ pub(super) fn install_adoption<'scope>(
 }
 
 impl Capture {
+    fn normalize_node<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let Some(node) = projected_node(scope, arguments.receiver())? else {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Node required"))?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            events.step()?;
+            self.apply_tree_edit(
+                scope,
+                &owner,
+                &events,
+                DomSourceEdit::normalize(node.node()),
+                Completion::Undefined,
+            )
+        })();
+        tree_completion(scope, &events, result)
+    }
+
     fn adopt_node<'scope>(
         &self,
         scope: &mut Scope<'scope>,
