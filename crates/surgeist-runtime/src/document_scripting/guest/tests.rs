@@ -484,6 +484,50 @@ pub(in crate::document_scripting) fn custom_element_adoption_uses_the_original_d
     .unwrap();
 }
 
+pub(in crate::document_scripting) fn custom_element_reparenting_queues_each_receivers_reactions() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const calls = [];
+            let moving = false;
+            class Reparented extends HTMLElement {
+                static observedAttributes = ['data-step'];
+                connectedCallback() { calls.push(['connect', this]); }
+                disconnectedCallback() {
+                    calls.push(['disconnect', this]);
+                    if (moving && this === outer) {
+                        inner.setAttribute('data-step', 'inner');
+                        outer.setAttribute('data-step', 'outer');
+                        calls.push(['resume', this]);
+                    }
+                }
+                attributeChangedCallback() { calls.push(['attribute', this]); }
+            }
+            customElements.define('x-reparented-lifecycle', Reparented);
+            const root = document.documentElement;
+            const source = root.appendChild(document.createElement('div'));
+            const destination = root.appendChild(document.createElement('div'));
+            const outer = source.appendChild(document.createElement('x-reparented-lifecycle'));
+            const inner = outer.appendChild(document.createElement('x-reparented-lifecycle'));
+            calls.length = 0;
+            moving = true;
+            destination.appendChild(outer);
+            const expected = [
+                ['disconnect', outer],
+                ['disconnect', inner], ['connect', inner], ['attribute', inner],
+                ['connect', outer], ['attribute', outer], ['resume', outer],
+            ];
+            return calls.length === expected.length && calls.every(([kind, target], index) =>
+                kind === expected[index][0] && target === expected[index][1]);
+        })()"#,
+        )
+    })
+    .unwrap();
+}
+
 pub(in crate::document_scripting) fn registry_upgrade_preserves_nested_definition_and_shadow_refusal()
  {
     let mut host = public_node_host(20_000, 200_000);
