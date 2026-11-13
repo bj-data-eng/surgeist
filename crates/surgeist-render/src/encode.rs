@@ -207,6 +207,30 @@ fn push_vello_clip(
     }
 }
 
+struct EncodingSequence<'a> {
+    commands: &'a [RenderCommand],
+    transform: kurbo::Affine,
+}
+
+/// Suspends only real work after a child sequence: remaining siblings, or the
+/// exit of a successfully entered backend layer followed by its siblings.
+enum EncodingContinuation<'a> {
+    Siblings(EncodingSequence<'a>),
+    EndLayer(EncodingSequence<'a>),
+}
+
+impl<'a> EncodingContinuation<'a> {
+    fn resume(self, scene: &mut VelloScene, account: &Account) -> Result<EncodingSequence<'a>> {
+        match self {
+            Self::Siblings(sequence) => Ok(sequence),
+            Self::EndLayer(sequence) => {
+                scene.pop_layer(account)?;
+                Ok(sequence)
+            }
+        }
+    }
+}
+
 fn encode_vello_commands(
     commands: &[RenderCommand],
     scene: &mut VelloScene,
@@ -214,8 +238,22 @@ fn encode_vello_commands(
     target_extent: PhysicalSize,
     account: &Account,
 ) -> Result<()> {
-    for command in commands {
+    let mut current = EncodingSequence {
+        commands,
+        transform,
+    };
+    let mut pending = account.temporary::<EncodingContinuation<'_>>(0)?;
+    loop {
+        let Some((command, siblings)) = current.commands.split_first() else {
+            let Some(continuation) = pending.pop() else {
+                return Ok(());
+            };
+            current = continuation.resume(scene, account)?;
+            continue;
+        };
         account.work(RenderWork::CommandVisits, 1)?;
+        current.commands = siblings;
+        let transform = current.transform;
         match command {
             RenderCommand::Fill { shape, paint } => {
                 encode_fill(scene, transform, shape, paint, target_extent, account)?
@@ -362,29 +400,35 @@ fn encode_vello_commands(
             )?,
             RenderCommand::Layer { layer, children } => {
                 let layer_transform = affine_product(transform, layer.transform.into(), account)?;
-                if layer.isolation != LayerIsolation::None {
+                let continuation = if layer.isolation != LayerIsolation::None {
                     encode_layer_start(scene, layer, layer_transform, account)?;
-                    encode_vello_commands(
-                        children,
-                        scene,
-                        layer_transform,
-                        target_extent,
-                        account,
-                    )?;
-                    scene.pop_layer(account)?;
+                    if children.is_empty() {
+                        scene.pop_layer(account)?;
+                        continue;
+                    }
+                    Some(EncodingContinuation::EndLayer(current))
+                } else if children.is_empty() {
+                    continue;
+                } else if !siblings.is_empty() {
+                    Some(EncodingContinuation::Siblings(current))
                 } else {
-                    encode_vello_commands(
-                        children,
-                        scene,
-                        layer_transform,
-                        target_extent,
-                        account,
-                    )?;
+                    // A transparent single-child chain has no parent work to
+                    // resume and needs no continuation backing.
+                    None
+                };
+                if let Some(continuation) = continuation {
+                    if pending.len() == pending.capacity() {
+                        pending.grow(pending.capacity().max(1))?;
+                    }
+                    pending.push(continuation)?;
                 }
+                current = EncodingSequence {
+                    commands: children,
+                    transform: layer_transform,
+                };
             }
         }
     }
-    Ok(())
 }
 
 fn encode_fill(
