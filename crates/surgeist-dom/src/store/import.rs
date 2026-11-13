@@ -14,6 +14,7 @@ pub(super) enum Placement {
 }
 pub(super) struct CloneRequest {
     pub document: Key,
+    pub creation_global: Option<crate::DomHostedGlobalId>,
     pub placement: Placement,
     pub subtree: bool,
     pub scoped: bool,
@@ -23,6 +24,7 @@ pub(super) struct Frame {
     source: Source,
     copy: Key,
     document: Key,
+    creation_global: Option<crate::DomHostedGlobalId>,
     placement: Placement,
     template_child: usize,
     appended: bool,
@@ -44,6 +46,7 @@ impl Frame {
             source: self.source.clone(),
             copy: self.copy,
             document: self.document,
+            creation_global: self.creation_global,
             placement: self.placement,
             template_child: self.template_child,
             appended: self.appended,
@@ -162,6 +165,7 @@ impl Draft {
             payload,
             CloneRequest {
                 document,
+                creation_global: None,
                 placement: Placement::Detached,
                 subtree,
                 scoped: false,
@@ -177,6 +181,7 @@ impl Draft {
         &mut self,
         source: Key,
         subtree: bool,
+        fallback: Option<crate::DomCreationRealmFallback>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -188,11 +193,13 @@ impl Draft {
             return Err(DomError::NotSupported);
         }
         let document = self.node(source)?.document();
+        let creation_global = self.resolve_creation_global(document, fallback, cancel)?;
         self.begin_clone(
             Source::Staged(source),
             None,
             CloneRequest {
                 document,
+                creation_global,
                 placement: Placement::Detached,
                 subtree,
                 scoped: self.effect_scoped,
@@ -213,6 +220,7 @@ impl Draft {
     ) -> Result<Key, DomError> {
         let CloneRequest {
             document,
+            creation_global,
             placement,
             subtree,
             scoped,
@@ -220,6 +228,19 @@ impl Draft {
         } = request;
         let start = self.created.len();
         let copy = self.clone_single(&source, document, limits, cancel)?;
+        if creation_global.is_some() && self.node(copy)?.relevant_global().is_none() {
+            self.establish_creation_global(copy, creation_global, cancel)?;
+            let count = self.node(copy)?.attribute_ids().len();
+            for index in 0..count {
+                self.source_step(cancel)?;
+                let attribute = self
+                    .node(copy)?
+                    .attribute_ids()
+                    .get(index)
+                    .ok_or(DomError::StaleNode)?;
+                self.establish_creation_global(attribute, creation_global, cancel)?;
+            }
+        }
         let document = if matches!(self.node(copy)?.kind(), transaction::KindRead::Document(_)) {
             copy
         } else {
@@ -235,6 +256,7 @@ impl Draft {
                 source,
                 copy,
                 document,
+                creation_global,
                 placement,
                 template_child: 0,
                 appended: false,
@@ -267,12 +289,14 @@ impl Draft {
                 .template_contents()
                 .expect("fresh contents");
             let document = self.node(parent)?.document();
+            let creation_global = frame.creation_global;
             self.push_effect_retained(select::Effect::Clone(frame), scoped, payload, cancel)?;
             self.begin_clone(
                 source,
                 source_payload,
                 CloneRequest {
                     document,
+                    creation_global,
                     placement: Placement::BeforeChildren(parent),
                     subtree: true,
                     scoped,
@@ -300,12 +324,14 @@ impl Draft {
             frame.next_child += 1;
             let parent = frame.copy;
             let document = frame.document;
+            let creation_global = frame.creation_global;
             self.push_effect_retained(select::Effect::Clone(frame), scoped, payload, cancel)?;
             self.begin_clone(
                 source,
                 source_payload,
                 CloneRequest {
                     document,
+                    creation_global,
                     placement: Placement::BeforeChildren(parent),
                     subtree: true,
                     scoped,
@@ -327,16 +353,21 @@ impl Draft {
                     init = init.with_null_registry();
                 }
                 let root = self.attach_shadow(frame.copy, init, limits, cancel)?;
+                if frame.creation_global.is_some() && self.node(root)?.relevant_global().is_none() {
+                    self.establish_creation_global(root, frame.creation_global, cancel)?;
+                }
                 let mut cloned = self.shadow_state_mut(root, cancel)?;
                 cloned.retain_clone_flags(state);
                 cloned.commit(cancel)?;
                 let document = frame.document;
+                let creation_global = frame.creation_global;
                 self.push_effect_retained(select::Effect::Clone(frame), scoped, payload, cancel)?;
                 self.push_effect_retained(
                     select::Effect::Clone(Frame {
                         source,
                         copy: root,
                         document,
+                        creation_global,
                         placement: Placement::Detached,
                         template_child: 0,
                         appended: true,

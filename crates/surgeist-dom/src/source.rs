@@ -887,6 +887,22 @@ impl DomSourceEdit {
             command: Command::CloneNode {
                 source: source.into(),
                 subtree,
+                fallback: None,
+            },
+        }
+    }
+    /// Clone for an authenticated scripting attachment, supplying its Global
+    /// when the source node document has no native creation Global.
+    pub fn clone_node_in_attachment(
+        source: NodeId,
+        subtree: bool,
+        fallback: crate::DomCreationRealmFallback,
+    ) -> Self {
+        Self {
+            command: Command::CloneNode {
+                source: source.into(),
+                subtree,
+                fallback: Some(fallback),
             },
         }
     }

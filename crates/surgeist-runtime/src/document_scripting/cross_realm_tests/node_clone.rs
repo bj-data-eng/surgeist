@@ -1,13 +1,30 @@
 use super::*;
 use crate::document_scripting::guest::tests::{
-    attach_public_nodes, projected_node_id, refuse_next_source_node_validation,
+    attach_public_nodes, expose_public_node_for_source_test, projected_node_id,
+    refuse_next_source_node_validation,
 };
 
 pub(super) fn clone_node_returns_fresh_canonical_subtrees() {
     let cancel = Arc::new(AtomicBool::new(false));
-    let (session, target) = hosted_session(&cancel, 0);
+    let (mut session, target) = hosted_session(&cancel, 0);
+    let native_document = {
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        session
+            .dom()
+            .apply(batch, &cancel)
+            .unwrap()
+            .document(&document)
+            .unwrap()
+    };
     let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
     let permit = host.permit().unwrap();
+    expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        native_document.node(),
+        "nativeDocument",
+    );
     let (source, copied) = host
         .in_document(&permit, |scope| {
             let outcome = evaluate(
@@ -67,6 +84,19 @@ pub(super) fn clone_node_returns_fresh_canonical_subtrees() {
                     if (customCopy === custom || !(customCopy instanceof ClonedElement) ||
                         constructed !== 2 || customCopy.parentNode !== null)
                         return 'custom element upgrade';
+                    const foreignRoot = document.createElement('main');
+                    foreignRoot.setAttribute('copied', 'attribute');
+                    foreignRoot.appendChild(new Text('ordinary'));
+                    foreignRoot.attachShadow({mode: 'open', clonable: true}).appendChild(new Text('shadow'));
+                    nativeDocument.appendChild(foreignRoot);
+                    for (const root of [nativeDocument.cloneNode(true).documentElement,
+                                        foreignRoot.cloneNode(true)]) {
+                        if (!(root instanceof HTMLElement) || !(root.firstChild instanceof Text) ||
+                            root.firstChild.ownerDocument !== root.ownerDocument ||
+                            root.getAttributeNode('copied').value !== 'attribute' ||
+                            root.shadowRoot?.firstChild?.data !== 'shadow')
+                            return 'native document creation realm';
+                    }
                     Object.assign(globalThis, {cloneSource: source, cloneCopy: copied});
                     return 'ok';
                 })()

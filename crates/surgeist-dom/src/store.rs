@@ -3522,9 +3522,13 @@ impl Draft {
                 let key = self.construct_document(context, limits, cancelled)?;
                 self.register_ticket(key, cancelled)?;
             }
-            Command::CloneNode { source, subtree } => {
+            Command::CloneNode {
+                source,
+                subtree,
+                fallback,
+            } => {
                 let source = self.resolve(source.clone())?;
-                self.clone_node(source, *subtree, limits, cancelled)?;
+                self.clone_node(source, *subtree, *fallback, limits, cancelled)?;
             }
             Command::CreateXmlDocument {
                 associated_document,

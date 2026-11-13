@@ -1620,6 +1620,7 @@ impl Draft {
                                 None,
                                 import::CloneRequest {
                                     document: self.node(fragment)?.document(),
+                                    creation_global: None,
                                     placement: import::Placement::AfterClone(fragment),
                                     subtree: true,
                                     scoped: true,

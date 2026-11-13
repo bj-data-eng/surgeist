@@ -113,7 +113,11 @@ impl Capture {
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
             let realm = scope.realm_authority()?.identity();
             let mut driven = None;
-            let edit = DomSourceEdit::clone_node(node.node(), *subtree);
+            let edit = DomSourceEdit::clone_node_in_attachment(
+                node.node(),
+                *subtree,
+                creation_realm_fallback(&owner)?,
+            );
             let project =
                 |documents: &DocumentPrototypes, elements: &element::ElementBindings| match kind {
                     CloneKind::Document(interface) => {

@@ -4744,7 +4744,7 @@
       "kind": "native",
       "adapter": "node.clonenode.call",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "clone_node"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "clone_node_in_attachment"},
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation.rs", "symbol": "advance_watching_node_for_runtime"}
       ],
       "requirements": []
