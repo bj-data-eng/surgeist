@@ -254,25 +254,98 @@ impl<S: LayoutScalar> GridMinimumContentSuggestion<S> {
 pub(in crate::grid) fn compute_grid_minimum_contribution<Node: Copy, S: LayoutScalar, M>(
     node: Node,
     context: GridMinimumContext<'_, '_, S>,
-    mut query: impl FnMut(ComputeInputOf<S>) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M>,
+    query: impl FnMut(ComputeInputOf<S>) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M>,
 ) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M> {
-    let prepared = context.prepared;
-    let physical_axis = grid_axis_physical_axis(context.flow_axes, context.axis);
-    let plan = plan_grid_minimum(context).map_err(|error| sizing_resolution_error(node, error))?;
-    let known_border = match plan {
-        GridMinimumPlan::ReuseMinContent => return query(prepared),
-        GridMinimumPlan::KnownBorder(value) => value,
-        GridMinimumPlan::ContentSuggestion(suggestion) => {
-            let output = query(suggestion.query())?;
-            let border = match physical_axis {
-                PhysicalAxis::Horizontal => output.size.width,
-                PhysicalAxis::Vertical => output.size.height,
-            };
-            suggestion
-                .finish(border)
-                .map_err(|error| sizing_resolution_error(node, error))?
+    GridMinimumQuery::begin(node, context)?.compute(node, query)
+}
+
+/// A minimum contribution may need a content suggestion before it can issue
+/// the final child request with a known border extent.
+pub(in crate::grid) enum GridMinimumQuery<S: LayoutScalar> {
+    Final(ComputeInputOf<S>),
+    Suggestion {
+        prepared: ComputeInputOf<S>,
+        axis: PhysicalAxis,
+        suggestion: GridMinimumContentSuggestion<S>,
+    },
+}
+
+type GridMinimumReceipt<Node, S, M> =
+    LayoutResultOf<Node, ControlFlow<ComputeOutputOf<S>, ComputeInputOf<S>>, S, M>;
+
+impl<S: LayoutScalar> GridMinimumQuery<S> {
+    pub(in crate::grid) fn begin<Node: Copy, M>(
+        node: Node,
+        context: GridMinimumContext<'_, '_, S>,
+    ) -> LayoutResultOf<Node, Self, S, M> {
+        let prepared = context.prepared;
+        let axis = grid_axis_physical_axis(context.flow_axes, context.axis);
+        let plan =
+            plan_grid_minimum(context).map_err(|error| sizing_resolution_error(node, error))?;
+        Ok(match plan {
+            GridMinimumPlan::ReuseMinContent => Self::Final(prepared),
+            GridMinimumPlan::KnownBorder(border) => {
+                Self::Final(minimum_known_border_input(prepared, axis, border))
+            }
+            GridMinimumPlan::ContentSuggestion(suggestion) => Self::Suggestion {
+                prepared,
+                axis,
+                suggestion,
+            },
+        })
+    }
+
+    pub(in crate::grid) fn compute<Node: Copy, M>(
+        self,
+        node: Node,
+        mut query: impl FnMut(ComputeInputOf<S>) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M>,
+    ) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M> {
+        let output = query(self.input())?;
+        match self.accept(node, output)? {
+            ControlFlow::Break(output) => Ok(output),
+            ControlFlow::Continue(input) => query(input),
         }
-    };
+    }
+
+    pub(in crate::grid) fn input(&self) -> ComputeInputOf<S> {
+        match self {
+            Self::Final(input) => *input,
+            Self::Suggestion { suggestion, .. } => suggestion.query(),
+        }
+    }
+
+    pub(in crate::grid) fn accept<Node: Copy, M>(
+        self,
+        node: Node,
+        output: ComputeOutputOf<S>,
+    ) -> GridMinimumReceipt<Node, S, M> {
+        match self {
+            Self::Final(_) => Ok(ControlFlow::Break(output)),
+            Self::Suggestion {
+                prepared,
+                axis,
+                suggestion,
+            } => {
+                let actual_border = match axis {
+                    PhysicalAxis::Horizontal => output.size.width,
+                    PhysicalAxis::Vertical => output.size.height,
+                };
+                let border = suggestion
+                    .finish(actual_border)
+                    .map_err(|error| sizing_resolution_error(node, error))?;
+                Ok(ControlFlow::Continue(minimum_known_border_input(
+                    prepared, axis, border,
+                )))
+            }
+        }
+    }
+}
+
+fn minimum_known_border_input<S: LayoutScalar>(
+    prepared: ComputeInputOf<S>,
+    physical_axis: PhysicalAxis,
+    known_border: S,
+) -> ComputeInputOf<S> {
     let mut known = prepared.known();
     match physical_axis {
         PhysicalAxis::Horizontal => known.width = Some(known_border),
@@ -295,7 +368,7 @@ pub(in crate::grid) fn compute_grid_minimum_contribution<Node: Copy, S: LayoutSc
     if let Some(indent) = prepared.block_indent_context() {
         input = input.with_block_indent_context(indent);
     }
-    query(input)
+    input
 }
 
 /// Plan only: the caller executes every real child query and retains its

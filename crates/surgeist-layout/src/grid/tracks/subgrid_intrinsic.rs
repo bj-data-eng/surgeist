@@ -22,9 +22,21 @@ pub(super) fn compute_intrinsic_grid_child<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let prepared = intrinsic_stage_child_input::<Tree, M>(child, &args)?;
+    prepare_intrinsic_grid_child::<Tree, M>(child, &args)?.compute(child, |input| {
+        compute_prepared_intrinsic_grid_child(tree, child, args, input)
+    })
+}
+
+pub(super) fn prepare_intrinsic_grid_child<'input, Tree, M>(
+    child: Tree::Node,
+    args: &IntrinsicGridChildInput<'input, '_, Tree::Node, Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, GridMinimumQuery<Tree::Scalar>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let prepared = intrinsic_stage_child_input::<Tree, M>(child, args)?;
     if args.grid.query.purpose != GridContributionPurpose::Minimum {
-        return compute_prepared_intrinsic_grid_child(tree, child, args, prepared);
+        return Ok(GridMinimumQuery::Final(prepared));
     }
     let axis = args
         .grid
@@ -130,7 +142,7 @@ where
             .unwrap_or(prepared.parent()),
         GridAxisKind::Row => prepared.parent(),
     };
-    compute_grid_minimum_contribution(
+    GridMinimumQuery::begin(
         child,
         GridMinimumContext {
             item: args.child_style,
@@ -145,7 +157,6 @@ where
             subgrid_requests,
             algorithm: sizing_algorithm_for_grid_display(grid.style.display),
         },
-        |input| compute_prepared_intrinsic_grid_child(tree, child, args, input),
     )
 }
 

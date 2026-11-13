@@ -145,7 +145,7 @@ where
             probe.context.percent_basis,
             parent,
         ),
-        context: probe.context,
+        context: std::borrow::Cow::Owned(probe.context),
         subgrid_report: &probe.subgrid_report,
         sizing_flow_axes: flow,
         available,
