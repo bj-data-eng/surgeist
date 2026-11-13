@@ -319,6 +319,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     dom_implementation::implementation_creates_native_doctypes();
     dom_implementation::implementation_creates_native_documents();
     processing_instruction::native_processing_instruction_uses_its_canonical_wrapper();
+    processing_instruction::authored_processing_instructions_use_native_creation();
     super::guest::tests::registered_origin::native_processing_instruction_uses_its_creation_realm();
     node_relations::node_relations_follow_the_live_ordinary_tree();
     node_relations::node_relations_project_native_processing_instructions();
