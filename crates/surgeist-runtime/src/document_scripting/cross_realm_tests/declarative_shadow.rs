@@ -107,6 +107,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         FactoryReconnect,
         DefinitionScope,
         AttributeScope,
+        AttributeAbruptRefusal,
         Stop,
         Refuse,
         RefuseAfterFirst,
@@ -121,6 +122,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         (HtmlShadowRootMode::Open, Delivery::FactoryReconnect),
         (HtmlShadowRootMode::Open, Delivery::DefinitionScope),
         (HtmlShadowRootMode::Open, Delivery::AttributeScope),
+        (HtmlShadowRootMode::Open, Delivery::AttributeAbruptRefusal),
         (HtmlShadowRootMode::Closed, Delivery::Checkpoint),
         (HtmlShadowRootMode::Closed, Delivery::Stop),
         (HtmlShadowRootMode::Closed, Delivery::Refuse),
@@ -133,7 +135,9 @@ pub(super) fn verify_declarative_shadow_reuse() {
         let factory_reconnect = matches!(delivery, Delivery::FactoryReconnect);
         let factory_scope = matches!(delivery, Delivery::FactoryScope) || factory_reconnect;
         let definition_scope = matches!(delivery, Delivery::DefinitionScope);
-        let attribute_scope = matches!(delivery, Delivery::AttributeScope);
+        let attribute_abrupt_refusal = matches!(delivery, Delivery::AttributeAbruptRefusal);
+        let attribute_scope =
+            matches!(delivery, Delivery::AttributeScope) || attribute_abrupt_refusal;
         let refuse_after_first = matches!(delivery, Delivery::RefuseAfterFirst);
         let (markup, assertion) = match mode {
             HtmlShadowRootMode::Open => (
@@ -252,7 +256,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
             }
         }
         let first_entered = Rc::new(Cell::new(false));
-        if refuse_after_first {
+        if refuse_after_first || attribute_abrupt_refusal {
             super::super::guest::tests::expose_reaction_work_exhaustion(
                 &mut host,
                 &permit,
@@ -378,6 +382,10 @@ pub(super) fn verify_declarative_shadow_reuse() {
                         policyHead.appendChild(shadowPolicy);
                         trustedTypes.createPolicy('default', {{ createScript(value) {{
                             observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                            if ({attribute_abrupt_refusal}) {{
+                                exhaustReactionWork();
+                                throw shadowReuseException;
+                            }}
                             return value;
                         }} }});
                         shadowReuseReceiver.setAttribute('onclick', 'handler');
@@ -420,6 +428,31 @@ pub(super) fn verify_declarative_shadow_reuse() {
             );
             Ok(())
         });
+        if attribute_abrupt_refusal {
+            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+                panic!("abrupt attribute delivery must stop the original heap: {result:?}");
+            };
+            assert!(matches!(
+                failure.cause::<DocumentGuestEventError>(),
+                Some(DocumentGuestEventError::Document(
+                    DocumentScriptError::Script(Error::Exception(_))
+                ))
+            ));
+            assert!(first_entered.get());
+            assert!(matches!(
+                host.in_document(&permit, |_| Ok(())),
+                Err(DocumentScriptError::Script(Error::HostFailure(_)))
+            ));
+            let mut stopped = host.stop();
+            assert_eq!(
+                stopped
+                    .discard_pending_native_custom_element_reactions()
+                    .unwrap(),
+                1
+            );
+            assert!(stopped.into_session().is_ok());
+            continue;
+        }
         match result {
             Ok(()) => (),
             Err(DocumentScriptError::Script(Error::HostFailure(failure))) => panic!(
