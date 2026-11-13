@@ -5476,25 +5476,25 @@
     "Element.id/get": {
       "kind": "native",
       "adapter": "element.id.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
       "requirements": []
     },
     "Element.id/set": {
       "kind": "native",
       "adapter": "element.id.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
       "requirements": []
     },
     "Element.className/get": {
       "kind": "native",
       "adapter": "element.classname.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
       "requirements": []
     },
     "Element.className/set": {
       "kind": "native",
       "adapter": "element.classname.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
       "requirements": []
     },
     "Element.classList/get": {
@@ -5519,13 +5519,13 @@
     "Element.slot/get": {
       "kind": "native",
       "adapter": "element.slot.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
       "requirements": []
     },
     "Element.slot/set": {
       "kind": "native",
       "adapter": "element.slot.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
       "requirements": []
     },
     "Element.hasAttributes:0/call": {
