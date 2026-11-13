@@ -1,5 +1,58 @@
 use super::*;
 
+pub(super) fn live_attribute_resume_delivers_original_reaction() {
+    use super::super::guest::tests::attach_public_nodes;
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let document = target.document();
+    let mut host = attach_public_nodes(session, target, cancel, 20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"
+            globalThis.attributeCalls = [];
+            customElements.define('x-resumed-attribute', class extends HTMLElement {
+                static observedAttributes = ['onclick'];
+                attributeChangedCallback(name, oldValue, newValue, namespace) {
+                    attributeCalls.push([this, name, oldValue, newValue, namespace]);
+                }
+            });
+            globalThis.attributeReceiver = document.createElement('x-resumed-attribute');
+            document.documentElement.appendChild(attributeReceiver);
+        "#,
+        )
+        .map(drop)
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let root = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let receiver = *snapshot.node(root).unwrap().children().last().unwrap();
+    let operation = host.park_live_attribute_write_fixture(
+        &permit,
+        DomSourceEdit::set_attribute(receiver, "onclick", "original"),
+    );
+    let completed = complete_guest_attribute(host.resume_pending_attribute_write(&permit, SOURCE));
+    assert_eq!(completed.operation(), operation);
+    host.in_document(&permit, |scope| {
+        let correct = evaluate(
+            scope,
+            r#"
+            attributeCalls.length === 1 && attributeCalls[0].every(
+                (value, i) => value === [attributeReceiver, 'onclick', null, 'original', null][i])
+        "#,
+        )?;
+        assert!(scope.boolean(&correct)?);
+        Ok(())
+    })
+    .unwrap();
+    assert!(host.stop().into_session().is_ok());
+}
+
 pub(super) fn guest_verification_without_callback_retains_the_native_continuation() {
     use crate::document_scripting::guest::tests::{
         attach_public_nodes, expose_public_node_for_source_test,

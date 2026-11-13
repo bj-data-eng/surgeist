@@ -491,6 +491,52 @@ type NativeAttributeProgress = (
 );
 
 impl DocumentScriptHost {
+    #[cfg(test)]
+    pub(in crate::document_scripting) fn park_live_attribute_write_fixture(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        edit: DomSourceEdit,
+    ) -> surgeist_dom::DomSourceOperationId {
+        let owner = self.native.clone();
+        let events = self.guest_events().unwrap();
+        let capture = Capture {
+            callbacks: events.public.as_ref().unwrap().callbacks.clone(),
+            origin: None,
+            _backing: events.reserve(&owner, size_of::<Capture>()).unwrap(),
+        };
+        self.in_document(permit, |scope| {
+            let progress = {
+                let mut session = owner.session.borrow_mut();
+                session.source_execution().apply(
+                    &mut session.dom(),
+                    edit,
+                    events.limits.source_edits,
+                    &mut guest_source_services(&mut |_| None),
+                    &owner.cancellation,
+                )
+            };
+            let Ok(DomSourceDriveProgress::Pending {
+                request: DomSourceRequest::AttributeVerification(request),
+                ..
+            }) = progress
+            else {
+                panic!("expected original attribute verification: {progress:?}");
+            };
+            let retained = capture
+                .verify_attribute(scope, &owner, &events, request, None)
+                .unwrap();
+            assert!(
+                owner
+                    .pending_attribute
+                    .borrow_mut()
+                    .replace(retained)
+                    .is_none()
+            );
+            Ok(request.operation())
+        })
+        .unwrap()
+    }
+
     /// Resume the original attribute write after policy callback selection
     /// and any guest invocation have finished. The outer error carries
     /// admission or the original guest exception. The inner result is the
