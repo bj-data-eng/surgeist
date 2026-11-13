@@ -47,6 +47,30 @@ pub(super) fn observed_realm_is_the_callback_creation_realm(
     authority.check_owner_active()
 }
 
+pub(super) fn completing_with_an_occupied_failure_slot_refuses_before_entry(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let slot = HostFailureSlot::new(&scope.realm_authority()?, ())?;
+        let completed =
+            scope.complete_after_host_failure(&slot, std::io::Error::other("original"), |_| {
+                Ok::<_, Error>(17)
+            })?;
+        assert_eq!(completed, 17);
+        let entered = Cell::new(false);
+        let repeated =
+            scope.complete_after_host_failure(&slot, std::io::Error::other("replacement"), |_| {
+                entered.set(true);
+                Ok::<_, Error>(())
+            });
+        assert!(matches!(repeated, Err(Error::RegistryConflict)));
+        assert!(!entered.get());
+        scope.check_active()
+    })
+}
+
 #[derive(Debug)]
 struct NativeTicketError {
     requested: u64,

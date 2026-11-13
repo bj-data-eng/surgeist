@@ -177,7 +177,7 @@ fn a_semantic_failure_kind_finds_the_fault_through_every_nesting() {
 
 #[test]
 fn a_registry_formation_error_finds_the_fault_through_its_accounting_and_capture_variants() {
-    type Error = HtmlEmptyGlobalRegistryError<Infallible>;
+    type Error = HtmlRegistryFormationError<Infallible>;
     assert_eq!(Error::Accounting(FAULT).accounting_fault(), Some(FAULT));
     assert_eq!(Error::Capture(capture()).accounting_fault(), Some(FAULT));
     assert_eq!(Error::Capture(no_fault_capture()).accounting_fault(), None);

@@ -169,6 +169,21 @@ pub(super) fn verify_declarative_shadow_reuse() {
                         if (error.name !== "NotSupportedError" || shadowChild.parentNode === null)
                             return false;
                     }}
+                    if (original !== null) {{
+                        const calls = [];
+                        customElements.define('x-shadow-reuse-reaction', class extends HTMLElement {{
+                            disconnectedCallback() {{ calls.push(this); }}
+                        }});
+                        const custom = document.createElement('x-shadow-reuse-reaction');
+                        original.appendChild(custom);
+                        try {{ shadowHost.attachShadow({{mode: "{matching}"}}); return false; }}
+                        catch (error) {{
+                            if (error.name !== "NotSupportedError" || custom.parentNode !== original ||
+                                shadowChild.parentNode !== original || calls.length !== 0) return false;
+                        }}
+                        original.removeChild(custom);
+                        if (calls.length !== 1 || calls[0] !== custom) return false;
+                    }}
                     const observed = shadowHost.attachShadow({{mode: "{matching}"}});
                     try {{ shadowHost.attachShadow({{mode: "{matching}"}}); return false; }}
                     catch (error) {{

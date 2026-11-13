@@ -179,6 +179,233 @@ struct RegisteredOrigin {
     cancellation: Arc<AtomicBool>,
 }
 
+pub(in crate::document_scripting) fn custom_element_factories_use_the_correct_realm() {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) =
+        crate::document_scripting::cross_realm_tests::hosted_session(&cancellation, 0);
+    let origin = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted
+            .create_headless_host(&mut dom, &cancellation)
+            .unwrap();
+        hosted
+            .create_top_level(&mut dom, owner, &cancellation)
+            .unwrap()
+    };
+    let mut host = attach_public_nodes(session, target, cancellation, 20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.register_node_creation_realm(&permit, origin).unwrap();
+    let primary_interface = host
+        .in_document(&permit, |scope| {
+            let constructor = scope.evaluate(&units("HTMLElement"))?;
+            Ok(scope.retain(&constructor))
+        })
+        .unwrap();
+    expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        origin.document().node(),
+        "foreignDocument",
+    );
+    let realm_id = {
+        let engine = host.engine.as_mut().unwrap();
+        let realm = engine
+            .creations
+            .find(origin.global(), || Ok::<_, Error>(()))
+            .unwrap()
+            .unwrap();
+        engine.process.execution().in_realm(realm, |scope| {
+            let global = scope.global()?;
+            let primary_interface = scope.import(&primary_interface)?;
+            scope.set(&global, PropertyKey::String(&units("primaryHTMLElement")), &primary_interface)?;
+            let result = scope.evaluate(&units(r#"
+                function Foreign() {
+                    const node = Reflect.construct(primaryHTMLElement, [], new.target);
+                    if (Object.getPrototypeOf(node) !== HTMLElement.prototype) throw new Error('wrong prototype realm');
+                    throw globalThis.originalForeignThrow = {};
+                }
+                customElements.define('x-foreign', Foreign);
+                Foreign.prototype = null;
+            "#));
+            if let Err(Error::Exception(exception)) = &result {
+                let thrown = scope.import(exception.value())?;
+                panic!("origin setup: {}", String::from_utf16_lossy(&scope.to_utf16(&thrown)?));
+            }
+            result?;
+            Ok(scope.realm_authority()?.identity())
+        }).unwrap()
+    };
+    host.in_document(&permit, |scope| {
+        let global = scope.global()?;
+        let fallback = scope.evaluate(&units("Document.prototype.createElement.call(foreignDocument, 'x-foreign')"))?;
+        assert_eq!(scope.callback_object(&fallback)?.associated_realm().identity(), realm_id);
+        scope.set(&global, PropertyKey::String(&units("foreignFallback")), &fallback)?;
+        assert_guest(scope, "foreignFallback.ownerDocument === foreignDocument && !(foreignFallback instanceof HTMLUnknownElement)")
+    }).unwrap();
+    let report = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(report.realm, realm_id);
+    let engine = host.engine.as_mut().unwrap();
+    let realm = engine
+        .creations
+        .find(origin.global(), || Ok::<_, Error>(()))
+        .unwrap()
+        .unwrap();
+    engine
+        .process
+        .execution()
+        .in_realm(realm, |scope| {
+            let original = scope.evaluate(&units("originalForeignThrow"))?;
+            let reported = scope.import(report.exception.value())?;
+            assert!(scope.strict_equals(&original, &reported)?);
+            Ok(())
+        })
+        .unwrap();
+}
+
+pub(in crate::document_scripting) fn registered_origin_registry_keeps_exact_wrapper() {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) =
+        crate::document_scripting::cross_realm_tests::hosted_session(&cancellation, 0);
+    let origin = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted
+            .create_headless_host(&mut dom, &cancellation)
+            .unwrap();
+        hosted
+            .create_top_level(&mut dom, owner, &cancellation)
+            .unwrap()
+    };
+    let mut host = attach_public_nodes(session, target, cancellation, 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    host.register_node_creation_realm(&permit, origin).unwrap();
+    let (realm, registry) = {
+        let engine = host.engine.as_mut().unwrap();
+        let realm = engine
+            .creations
+            .find(origin.global(), || Ok::<_, Error>(()))
+            .unwrap()
+            .unwrap();
+        engine
+            .process
+            .execution()
+            .in_realm(realm, |scope| {
+                let value = scope.evaluate(&units("customElements"))?;
+                Ok((scope.realm_authority()?.identity(), scope.retain(&value)))
+            })
+            .unwrap()
+    };
+    host.in_document(&permit, |scope| {
+        let registry = scope.import(&registry)?;
+        let origin = scope.callback_object(&registry)?;
+        assert_eq!(origin.associated_realm().identity(), realm);
+        let global = scope.global()?;
+        scope.set(&global, PropertyKey::String(&units("otherRegistry")), &registry)?;
+        assert_guest(scope, r#"(() => {
+            if (otherRegistry === customElements || otherRegistry instanceof CustomElementRegistry) return false;
+            try { document.createElement('div', { customElementRegistry: otherRegistry }); }
+            catch (error) { return error.name === 'NotSupportedError'; }
+            return false;
+        })()"#)
+    }).unwrap();
+}
+
+pub(in crate::document_scripting) fn definition_queues_candidates_before_resolving_waiter() {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) =
+        crate::document_scripting::cross_realm_tests::hosted_session(&cancellation, 0);
+    let origin = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted
+            .create_headless_host(&mut dom, &cancellation)
+            .unwrap();
+        hosted
+            .create_top_level(&mut dom, owner, &cancellation)
+            .unwrap()
+    };
+    let mut host = attach_public_nodes(session, target, cancellation, 20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.register_node_creation_realm(&permit, origin).unwrap();
+    expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        origin.document().node(),
+        "otherDocument",
+    );
+    let foreign = {
+        let engine = host.engine.as_mut().unwrap();
+        let realm = engine
+            .creations
+            .find(origin.global(), || Ok::<_, Error>(()))
+            .unwrap()
+            .unwrap();
+        engine
+            .process
+            .execution()
+            .in_realm(realm, |scope| {
+                let value = scope.evaluate(&units(
+                    r#"
+                class Foreign extends HTMLElement {}
+                customElements.define('x-waiter-adoption', Foreign);
+                Foreign
+            "#,
+                ))?;
+                Ok(scope.retain(&value))
+            })
+            .unwrap()
+    };
+    host.in_document(&permit, |scope| {
+        let foreign = scope.import(&foreign)?;
+        let global = scope.global()?;
+        scope.set(&global, PropertyKey::String(&units("Foreign")), &foreign)?;
+        assert_guest(
+            scope,
+            r#"(() => {
+            const name = 'x-waiter-adoption';
+            const candidate = document.createElement(name);
+            document.documentElement.appendChild(candidate);
+            customElements.whenDefined(name);
+            const calls = [];
+            class Original extends HTMLElement {
+                constructor() {
+                    calls.push('original constructor');
+                    super();
+                }
+                static get then() {
+                    calls.push('then getter');
+                    otherDocument.documentElement.appendChild(candidate);
+                    calls.push('then resumes');
+                }
+            }
+            customElements.define(name, Original);
+            return candidate.ownerDocument === otherDocument && !(candidate instanceof Foreign) &&
+                calls.join(',') === 'then getter,original constructor,then resumes';
+        })()"#,
+        )
+    })
+    .unwrap();
+    let report = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        let original = scope.import(report.exception.value())?;
+        let global = scope.global()?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("originalUpgradeFailure")),
+            &original,
+        )?;
+        assert_guest(scope, "originalUpgradeFailure instanceof TypeError")
+    })
+    .unwrap();
+}
+
 fn retired_origin_with_moved_element() -> RegisteredOrigin {
     let cancellation = Arc::new(AtomicBool::new(false));
     let (mut session, target) =

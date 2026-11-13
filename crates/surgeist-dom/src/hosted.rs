@@ -2096,6 +2096,40 @@ pub(crate) struct ScriptRegistrationKey {
 pub struct DomDocumentScriptRegistration(pub(crate) Arc<ScriptRegistration>);
 
 impl DomDocumentScriptRegistration {
+    /// Enable capture of committed custom-element reaction facts for this script attachment.
+    pub fn observe_custom_element_reactions(&self) -> Result<(), crate::DomError> {
+        if !self.is_active() {
+            return Err(crate::DomError::HostedSourceUnavailable);
+        }
+        self.0
+            .custom_element_reactions
+            .get_or_init(Default::default);
+        Ok(())
+    }
+
+    /// Take the earliest committed custom-element reaction segment for this attachment.
+    pub fn take_custom_element_reactions(
+        &self,
+        operation: crate::DomSourceOperationId,
+        inspections: usize,
+    ) -> Result<Option<crate::DomCustomElementReactions>, crate::DomError> {
+        if !self.is_active() {
+            return Err(crate::DomError::HostedSourceUnavailable);
+        }
+        self.0
+            .custom_element_reactions
+            .get()
+            .map_or(Ok(None), |inbox| inbox.take(operation, inspections))
+    }
+
+    /// Number of queue entries to admit before scanning this attachment's inbox.
+    pub fn custom_element_reaction_segments(&self) -> usize {
+        self.0
+            .custom_element_reactions
+            .get()
+            .map_or(0, crate::store::source::reactions::Inbox::segments)
+    }
+
     /// Retained target body to admit before publishing the attachment.
     pub const fn storage_bytes() -> usize {
         size_of::<ScriptRegistration>()
@@ -2105,14 +2139,20 @@ impl DomDocumentScriptRegistration {
     pub fn is_active(&self) -> bool {
         self.0.is_active()
     }
-}
 
-impl Drop for DomDocumentScriptRegistration {
-    fn drop(&mut self) {
+    /// Revoke engine execution before disposing its heap. Original native
+    /// settlement may still authenticate this registration's identity.
+    pub fn revoke(&self) {
         let _ = self.0.end.set(ScriptRegistrationEnd::EngineDisposed);
         self.0
             .engine_disposed
             .store(true, std::sync::atomic::Ordering::Release);
+    }
+}
+
+impl Drop for DomDocumentScriptRegistration {
+    fn drop(&mut self) {
+        self.revoke();
     }
 }
 
@@ -2129,12 +2169,20 @@ pub(crate) struct ScriptRegistration {
     pub(crate) navigable: DomHostedNavigableId,
     pub(crate) end: std::sync::OnceLock<ScriptRegistrationEnd>,
     pub(crate) engine_disposed: std::sync::atomic::AtomicBool,
+    pub(crate) custom_element_reactions:
+        std::sync::OnceLock<crate::store::source::reactions::Inbox>,
     pub(crate) _backing: DomHostedRuntimeRetention,
 }
 
 impl ScriptRegistration {
     pub(crate) fn is_active(&self) -> bool {
         self.end.get().is_none()
+    }
+
+    pub(crate) fn has_pending_reactions(&self) -> bool {
+        self.custom_element_reactions
+            .get()
+            .is_some_and(crate::store::source::reactions::Inbox::has_pending)
     }
 }
 

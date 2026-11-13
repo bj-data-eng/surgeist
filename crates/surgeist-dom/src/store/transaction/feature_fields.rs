@@ -734,7 +734,65 @@ impl Draft {
             definition: element.custom_element_definition(),
             saved_is: element.saved_is().cloned(),
         };
-        let mut element = element.clone();
+        self.replace_element_custom_context(
+            key,
+            element.custom_element_state(),
+            association,
+            cancel,
+        )
+    }
+
+    #[cfg(test)]
+    pub(in crate::store) fn complete_element_upgrade(
+        &mut self,
+        key: Key,
+        definition: crate::DomRegistryDefinitionId,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        use surgeist_html::elements::native::HtmlCustomElementState;
+
+        self.source_step(cancel)?;
+        let element = self
+            .node(key)?
+            .element()
+            .ok_or(DomError::WrongNodeKind)?
+            .language();
+        if element.custom_element_state() != HtmlCustomElementState::Undefined
+            || element.custom_element_definition() != crate::DomElementDefinition::Null
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        let registry = element.custom_element_registry();
+        if self.lookup_element_definition(key, registry, cancel)? != Some(definition) {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        let association = crate::element::CustomAssociation {
+            registry,
+            definition: crate::DomElementDefinition::Definition(definition),
+            saved_is: element.saved_is().cloned(),
+        };
+        self.replace_element_custom_context(
+            key,
+            HtmlCustomElementState::Custom,
+            association,
+            cancel,
+        )
+    }
+
+    pub(in crate::store) fn replace_element_custom_context(
+        &mut self,
+        key: Key,
+        state: surgeist_html::elements::native::HtmlCustomElementState,
+        association: crate::element::CustomAssociation,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        let mut element = self
+            .node(key)?
+            .element()
+            .ok_or(DomError::WrongNodeKind)?
+            .language()
+            .clone();
         let registry = self.custody_registry().clone();
         let mut admit = |usage| self.admit_custody_usage(usage, cancel);
         let mut formation = crate::element::ElementFormation::new(
@@ -745,9 +803,54 @@ impl Draft {
             &mut admit,
         );
         let custom = formation.custom(association, source::storage::Payload::default())?;
-        element.set_custom_payload(Some(custom));
+        element.set_custom_context(state, Some(custom));
         let formed = formation.finish(element);
         self.replace_element_formed(key, formed, None, cancel)
+    }
+
+    pub(in crate::store) fn finalize_autonomous_element(
+        &mut self,
+        key: Key,
+        name: Arc<payload::Payload<crate::element::ElementName>>,
+        registry: crate::DomRegistryBinding,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        let mut element = self
+            .node(key)?
+            .element()
+            .ok_or(DomError::WrongNodeKind)?
+            .language()
+            .clone();
+        let before = element.units().ok_or(DomError::RepresentationExhausted)?;
+        let custody_registry = self.custody_registry().clone();
+        let mut admit_custody = |usage| self.admit_custody_usage(usage, cancel);
+        let mut formation = crate::element::ElementFormation::new(
+            &custody_registry,
+            &self.blocks,
+            None,
+            cancel,
+            &mut admit_custody,
+        );
+        let association = crate::element::CustomAssociation {
+            registry,
+            definition: element.custom_element_definition(),
+            saved_is: None,
+        };
+        let custom = formation.custom(association, source::storage::Payload::default())?;
+        element.set_custom_context(element.custom_element_state(), Some(custom));
+        element.set_name_payload(name);
+        let after = element.units().ok_or(DomError::RepresentationExhausted)?;
+        let units = self
+            .units
+            .checked_sub(before)
+            .and_then(|units| units.checked_add(after))
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(units, self.dom_limits.units, DomResource::StringCodeUnits)?;
+        let formed = formation.finish(element);
+        self.replace_element_formed(key, formed, None, cancel)?;
+        self.units = units;
+        Ok(())
     }
 }
 

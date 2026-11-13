@@ -64,6 +64,21 @@ impl<'a> DomNamedNodeMap<'a> {
             .filter_map(move |id| self.element.snapshot.attr(*id).ok())
     }
 
+    /// Visit attributes in their stored order with metered canonical lookups.
+    pub fn visit_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+        mut visit: impl FnMut(DomAttr<'a>) -> Result<(), E>,
+    ) -> Result<(), E> {
+        for &id in self.ids() {
+            step()?;
+            let node = self.element.snapshot.node_with(id, &mut step)?;
+            let attribute = node.as_attr().ok_or(DomError::WrongNodeKind)?;
+            visit(attribute)?;
+        }
+        Ok(())
+    }
+
     pub fn get_named_item(self, qualified_name: &DocumentString) -> Option<DomAttr<'a>> {
         self.get_named_item_with(qualified_name, || Ok::<_, DomError>(()))
             .ok()

@@ -239,6 +239,35 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::document_element_factories_use_native_names_and_identity();
     super::guest::tests::registered_origin::borrowed_element_factory_keeps_dom_on_wrapper_refusal();
     super::guest::tests::registered_origin::element_factory_admits_exact_projection_work();
+    super::guest::tests::custom_element_registry_identity_is_canonical();
+    super::guest::tests::a_new_heap_cannot_claim_an_existing_executable_registry();
+    super::guest::tests::only_public_origin_projection_requires_constructor_custody();
+    super::guest::tests::element_factory_qualifies_the_explicit_registry();
+    super::guest::tests::registry_definition_preserves_guest_identity_and_failure();
+    super::guest::tests::registry_when_defined_retains_original_promise_and_constructor();
+    super::guest::tests::registry_define_upgrades_existing_candidates_in_tree_order();
+    super::guest::tests::reinserted_candidate_drains_its_queued_upgrade_once();
+    super::guest::tests::reinserted_upgrade_receiver_drains_initial_reactions();
+    super::guest::tests::successful_constructor_needs_no_fallback_admission();
+    super::guest::tests::form_associated_definition_refuses_before_publication();
+    super::guest::tests::reentrant_attribute_write_drains_the_receivers_fifo();
+    super::guest::tests::custom_element_subtree_reacts_to_connection_changes();
+    super::guest::tests::custom_element_move_uses_the_registered_move_reaction();
+    super::guest::tests::custom_element_adoption_uses_the_original_documents();
+    super::guest::tests::custom_element_reparenting_queues_each_receivers_reactions();
+    super::guest::tests::custom_element_reacts_to_the_committed_prefix_of_a_failed_edit();
+    super::guest::tests::custom_element_reacts_to_an_inline_joined_failure();
+    super::guest::tests::failed_tree_edit_keeps_its_error_when_reaction_admission_refuses();
+    super::guest::tests::failed_tree_edit_precedes_nested_host_refusal();
+    super::guest::tests::registry_upgrade_preserves_nested_definition_and_shadow_refusal();
+    super::guest::tests::registry_upgrade_retains_unfinished_candidates_on_refusal();
+    super::guest::tests::insertion_upgrade_keeps_only_unentered_callbacks_on_refusal();
+    super::guest::tests::registry_upgrade_attempts_adopted_candidate_and_reports_callback();
+    super::guest::tests::document_factories_execute_the_reached_custom_constructor();
+    super::guest::tests::direct_registered_constructors_create_canonical_elements();
+    super::guest::tests::registered_origin::custom_element_factories_use_the_correct_realm();
+    super::guest::tests::registered_origin::registered_origin_registry_keeps_exact_wrapper();
+    super::guest::tests::registered_origin::definition_queues_candidates_before_resolving_waiter();
     super::guest::tests::registered_origin::registered_character_factory_refuses_without_publication(
     );
     public_and_source_comment_projection_share_identity();
@@ -257,7 +286,11 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     trusted_attribute::hosted_meta_source_publishes_ordered_csp_for_the_registered_attribute_verifier();
     trusted_attribute::guest_tree_edits_deliver_original_meta_policies();
     inline_style::guest_insertion_publishes_a_sheet_under_the_known_empty_policy();
+    inline_style::guest_meta_completion_delivers_its_connection_reaction();
     inline_style::style_runtime_refusal_preserves_the_original_guest_edit();
+    inline_style::stopped_style_edit_retains_its_committed_reaction_prefix();
+    inline_style::live_style_resume_delivers_committed_reactions();
+    inline_style::stopped_upgrade_can_settle_its_published_style_child();
     inline_style::guest_style_preserves_foreign_and_unavailable_policy();
     inline_style::guest_style_reports_to_current_window_for_another_document();
     inline_style::guest_insertion_uses_the_effective_meta_style_directive();
@@ -270,6 +303,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     trusted_attribute::guest_attribute_policy_keeps_original_authority_after_adoption();
     trusted_attribute::guest_attribute_policy_verifies_html_and_svg_sinks();
     trusted_attribute::guest_verification_without_callback_retains_the_native_continuation();
+    trusted_attribute::live_attribute_resume_delivers_original_reaction();
+    trusted_attribute::live_attribute_delivery_refusal_stops_the_original_heap();
     trusted_attribute::default_factory_retains_the_real_guest_callback();
     super::guest::tests::trusted_policy::window_factory_creates_the_exact_default_policy();
     super::guest::tests::trusted_policy::guest_attribute_writes_reach_the_native_element();
@@ -311,6 +346,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::full_guest_report_reservation_keeps_exact_invalid_state();
     super::guest::tests::full_guest_report_bank_preserves_original_registry_work();
     super::window_timers::tests::run_timer_tests();
+    super::guest::tests::document_factories_upgrade_the_reached_customized_builtin();
 }
 
 fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {

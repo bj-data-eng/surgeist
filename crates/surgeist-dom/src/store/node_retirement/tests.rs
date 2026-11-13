@@ -94,7 +94,7 @@ fn prepared_detached_element_publishes_only_after_projection_and_watch_admission
     assert!(dom.pending_source_edit().is_none());
     assert!(dom.node_retirements.is_none());
 
-    let (watched, projection) = dom
+    let crate::DomWatchedElementCreation::Created(watched, projection) = dom
         .create_detached_element_with_node_retirement_watch(
             document,
             input(),
@@ -103,7 +103,10 @@ fn prepared_detached_element_publishes_only_after_projection_and_watch_admission
             &cancel,
             |_| Ok::<_, DomError>(Projection(&drops)),
         )
-        .unwrap();
+        .unwrap()
+    else {
+        panic!("ordinary watched element");
+    };
     assert_ne!(dom.snapshot().stamp(), before);
     assert!(dom.snapshot().node(watched.node()).is_ok());
     assert_eq!(drops.get(), 1);

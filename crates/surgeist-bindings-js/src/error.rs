@@ -81,6 +81,8 @@ pub enum Error {
     /// This operation requires an exact native object of the requested type.
     ExpectedNativeObject,
     ExpectedFunction,
+    /// This operation requires an object with an ECMAScript `[[Construct]]` method.
+    ExpectedConstructor,
     /// This object has no supported associated engine creation Realm.
     CallbackRealmUnavailable,
     /// Web IDL EnforceRange rejected a nonfinite or out-of-range Number.
@@ -129,6 +131,7 @@ impl fmt::Display for Error {
             Self::ExpectedObject => "an object is required",
             Self::ExpectedNativeObject => "the exact native object is required",
             Self::ExpectedFunction => "a callable function is required",
+            Self::ExpectedConstructor => "a constructible object is required",
             Self::CallbackRealmUnavailable => {
                 "the callback object's associated realm is unavailable"
             }

@@ -248,4 +248,19 @@ impl<'s> Conversion<'_, 's> {
             _ => Err(self.validation(Rule::Interface(name))),
         }
     }
+
+    pub(super) fn custom_element_registry_member(
+        &mut self,
+        value: &Value<'s>,
+    ) -> Result<Option<crate::CustomElementRegistryIdentity>, Failure> {
+        self.work(Work::Value, 1).map_err(Failure)?;
+        let kind = self.scope.kind(value);
+        if self.core(kind)? == ValueKind::Null {
+            return Ok(None);
+        }
+        let token = self.scope.custom_element_registry_identity(value);
+        self.core(token)?
+            .map(Some)
+            .ok_or_else(|| self.validation(Rule::Interface("CustomElementRegistry")))
+    }
 }

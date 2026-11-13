@@ -1,5 +1,5 @@
 //! The original standard setter's registered verification and retained reply.
-use super::dialog::{CallbackObservation, OperationDraft, Usage};
+use super::dialog::OperationDraft;
 use super::*;
 use crate::hosted::ScriptRegistration;
 use crate::source::callback::CallbackWork;
@@ -270,7 +270,17 @@ impl Operation {
         &mut self,
         dom: &Dom,
         cancel: &AtomicBool,
+        execution: &mut Execution<'_>,
     ) -> Result<(), DomError> {
+        if let Some(pending) = &mut self.custom_element {
+            let fallback_needed = match execution.synchronous_node.as_mut() {
+                Some(synchronous_node::SynchronousNode::ReturnedCustomElement(required)) => {
+                    Some(&mut **required)
+                }
+                _ => None,
+            };
+            return pending.finish(&mut self.draft, dom.limits, cancel, fallback_needed);
+        }
         if let Some(pending) = &self.attribute_verification {
             self.draft.source_step(cancel)?;
             let mut plan = None;
@@ -479,34 +489,11 @@ impl Operation {
             .and_then(|next| next.checked_add(protected))
             .and_then(|next| next.checked_add(headroom::FINAL_PUBLICATION))
             .ok_or(DomError::RevisionExhausted)?;
-        let custody = formation::CallbackWorkCustody::prepare(
-            self.draft.custody_ledger(),
-            self.draft.source_work_custody(),
-            self.draft.source_ancestor_custody(),
-            |usage| self.draft.admit_custody_usage(usage, cancel),
-        )?;
-        let work = formation::allocated_arc(CallbackWork::new(
-            self.draft.source_work.source_arc().clone(),
-            self.limits.work,
-            self.draft.source_ancestors.clone(),
-            formation::SourceStorage::new(self.draft.custody_ledger().clone()),
-        ));
-        let autofocus = self.draft.autofocus_count(cancel)?;
-        let observation = CallbackObservation {
-            owner: self.draft.owner.clone(),
-            usage: Usage::capture(&mut self.draft, autofocus),
-            limits: self.limits,
-            inputs: self.command_storage,
-            work: work.clone(),
-        };
-        self.event_custody = Some(custody.finish(work));
+        let prepared = self.prepare_callback_observation(cancel)?;
         self.headroom = Some(headroom::Reservation {
             remaining_phases: headroom::FINAL_PUBLICATION,
         });
-        self.draft = OperationDraft::AttributeObserved(observation);
-        self.command_storage = storage::Payload::default();
-        self.custody_bytes = 0;
-        self.custody_units = 0;
+        self.draft = OperationDraft::AttributeObserved(self.begin_callback_observation(prepared));
         Ok(())
     }
 
@@ -541,7 +528,7 @@ impl Operation {
                 .attribute_verification
                 .as_ref()
                 .map(|pending| &pending.registration),
-            OperationDraft::Observed(_) => None,
+            OperationDraft::Observed(_) | OperationDraft::CustomElementObserved(_) => None,
         };
         if registration.global != global
             || dom.active_script_registration() != Some(registration.key)
@@ -723,7 +710,7 @@ impl DomSourceLease<'_> {
             .flatten())
     }
 
-    pub(super) fn rebase_attribute_observation(
+    pub(super) fn rebase_registered_callback(
         &mut self,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -732,8 +719,10 @@ impl DomSourceLease<'_> {
             .source_operation
             .as_deref()
             .ok_or(DomError::InvalidSourceOperation)?;
-        let OperationDraft::AttributeObserved(observation) = &operation.draft else {
-            return Err(DomError::InvalidSourceOperation);
+        let observation = match &operation.draft {
+            OperationDraft::AttributeObserved(observation)
+            | OperationDraft::CustomElementObserved(observation) => observation,
+            _ => return Err(DomError::InvalidSourceOperation),
         };
         let limits = self.dom.source_rebase_transferred_limits(
             observation.limits,
@@ -762,16 +751,39 @@ impl DomSourceLease<'_> {
         )?;
         let custody_bytes = self.dom.source_owner_custody_bytes()?;
         let custody_units = self.dom.fullscreen_custody_units()?;
+        let requested_limits = observation.limits;
         let mut operation = self
             .dom
             .source_operation
             .take()
             .ok_or(DomError::InvalidSourceOperation)?;
+        let refreshed = (|| {
+            draft.source_limits = Some(self.dom.source_rebase_limits(requested_limits, cancel)?);
+            self.dom
+                .source_retained_stack_bytes()?
+                .checked_add(
+                    self.dom
+                        .source_dispatch_custody_bytes(|| draft.source_step(cancel))?,
+                )
+                .ok_or(DomError::RepresentationExhausted)
+        })();
+        let canonical_aux_bytes = match refreshed {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                self.dom.source_operation = Some(operation);
+                return Err(error);
+            }
+        };
         operation.prepare_rebased_inline(self.dom, &mut draft);
         let old = std::mem::replace(&mut operation.draft, OperationDraft::Segment(draft));
-        let OperationDraft::AttributeObserved(observation) = old else {
-            self.dom.source_operation = Some(operation);
-            return Err(DomError::InvalidSourceOperation);
+        let observation = match old {
+            OperationDraft::AttributeObserved(observation)
+            | OperationDraft::CustomElementObserved(observation) => observation,
+            old => {
+                operation.draft = old;
+                self.dom.source_operation = Some(operation);
+                return Err(DomError::InvalidSourceOperation);
+            }
         };
         observation.work.stage.store(4, Ordering::Relaxed);
         observation.usage.restore(&mut operation.draft);
@@ -781,22 +793,10 @@ impl DomSourceLease<'_> {
         operation.command_storage = command;
         operation.custody_bytes = custody_bytes;
         operation.custody_units = custody_units;
+        operation.canonical_aux_bytes = canonical_aux_bytes;
         operation.limits = observation.limits;
-        let refreshed = (|| {
-            operation.draft.source_limits =
-                Some(self.dom.source_rebase_limits(operation.limits, cancel)?);
-            operation.canonical_aux_bytes = self
-                .dom
-                .source_retained_stack_bytes()?
-                .checked_add(
-                    self.dom
-                        .source_dispatch_custody_bytes(|| operation.draft.source_step(cancel))?,
-                )
-                .ok_or(DomError::RepresentationExhausted)?;
-            Ok(())
-        })();
         self.dom.source_operation = Some(operation);
-        refreshed
+        Ok(())
     }
 
     /// Open the exact original verifier's one callback scope. Drop the lease
@@ -971,7 +971,7 @@ impl DomSourceLease<'_> {
         )?;
         let debit = self
             .dom
-            .retain_source_attribute_observer_payload(custody::Usage::new(bytes, units), cancel)?;
+            .retain_source_callback_payload(custody::Usage::new(bytes, units), cancel)?;
         Ok(DomSourceAttributePayloadRetention { _debit: debit })
     }
 
@@ -1258,8 +1258,7 @@ impl Dom {
         cancel: &AtomicBool,
     ) -> Result<crate::DomSourceAttributePayloadRetention, DomError> {
         self.active_source_attribute_callback_work(request, registration, cancel)?;
-        let debit =
-            self.retain_source_attribute_observer_payload(custody::Usage::new(0, units), cancel)?;
+        let debit = self.retain_source_callback_payload(custody::Usage::new(0, units), cancel)?;
         Ok(crate::DomSourceAttributePayloadRetention { _debit: debit })
     }
 
@@ -1284,7 +1283,7 @@ impl Dom {
     }
 
     // The caller has qualified the original request in its required scope.
-    pub(in crate::store) fn retain_source_attribute_observer_payload(
+    pub(in crate::store) fn retain_source_callback_payload(
         &self,
         usage: custody::Usage,
         cancel: &AtomicBool,

@@ -232,16 +232,22 @@ pub(super) type DispatchFailure =
     HostFailureSlot<DocumentGuestEventError, DomHostedRuntimeRetention>;
 
 pub(in crate::document_scripting) struct GuestExceptionReports {
-    queue: RefCell<VecDeque<DocumentGuestListenerException>>,
+    queue: RefCell<VecDeque<GuestExceptionReport>>,
     capacity: usize,
     reserved: Cell<usize>,
     _backing: DomHostedRuntimeRetention,
 }
 
+enum GuestExceptionReport {
+    Listener(DocumentGuestListenerException),
+    Constructor(DocumentGuestConstructorException),
+    CustomElementCallback(DocumentGuestCustomElementCallbackException),
+}
+
 impl GuestExceptionReports {
     pub(super) fn storage_bytes(capacity: usize) -> Option<usize> {
         capacity
-            .checked_mul(size_of::<DocumentGuestListenerException>())?
+            .checked_mul(size_of::<GuestExceptionReport>())?
             .checked_add(size_of::<Self>())
     }
 
@@ -262,7 +268,38 @@ impl GuestExceptionReports {
     }
 
     pub(super) fn take(&self) -> Option<DocumentGuestListenerException> {
-        self.queue.borrow_mut().pop_front()
+        let mut queue = self.queue.borrow_mut();
+        let index = queue
+            .iter()
+            .position(|report| matches!(report, GuestExceptionReport::Listener(_)))?;
+        match queue.remove(index)? {
+            GuestExceptionReport::Listener(exception) => Some(exception),
+            _ => None,
+        }
+    }
+
+    pub(super) fn take_constructor(&self) -> Option<DocumentGuestConstructorException> {
+        let mut queue = self.queue.borrow_mut();
+        let index = queue
+            .iter()
+            .position(|report| matches!(report, GuestExceptionReport::Constructor(_)))?;
+        match queue.remove(index)? {
+            GuestExceptionReport::Constructor(exception) => Some(exception),
+            _ => None,
+        }
+    }
+
+    pub(super) fn take_custom_element_callback(
+        &self,
+    ) -> Option<DocumentGuestCustomElementCallbackException> {
+        let mut queue = self.queue.borrow_mut();
+        let index = queue
+            .iter()
+            .position(|report| matches!(report, GuestExceptionReport::CustomElementCallback(_)))?;
+        match queue.remove(index)? {
+            GuestExceptionReport::CustomElementCallback(exception) => Some(exception),
+            _ => None,
+        }
     }
 
     pub(super) fn reserve<'a>(
@@ -298,6 +335,19 @@ impl GuestExceptionReports {
         Ok(ReportReservation {
             reports: self,
             roots,
+        })
+    }
+
+    pub(super) fn reserve_constructor(
+        self: &Rc<Self>,
+        events: &GuestEvents,
+        owner: &NativeOwner,
+    ) -> Result<ConstructorReportReservation, DocumentGuestEventError> {
+        let mut reservation = self.reserve_count(events, owner, 1)?;
+        let root = reservation.roots.take()?;
+        Ok(ConstructorReportReservation {
+            reports: self.clone(),
+            root: Some(root),
         })
     }
 }
@@ -404,8 +454,54 @@ impl ReportReservation<'_> {
         let backing = self.roots.take()?;
         self.reports.reserved.set(self.reports.reserved.get() - 1);
         scope.retain_exception_backing(&exception.exception, backing)?;
-        self.reports.queue.borrow_mut().push_back(exception);
+        self.reports
+            .queue
+            .borrow_mut()
+            .push_back(GuestExceptionReport::Listener(exception));
         Ok(())
+    }
+}
+
+pub(super) struct ConstructorReportReservation {
+    reports: Rc<GuestExceptionReports>,
+    root: Option<Box<dyn Any>>,
+}
+
+impl ConstructorReportReservation {
+    pub(super) fn needs_backing(&self) -> bool {
+        self.root.is_some()
+    }
+
+    pub(super) fn prepare(
+        &mut self,
+        scope: &mut Scope<'_>,
+        exception: &Exception,
+    ) -> Result<(), Error> {
+        let backing = self.root.take().ok_or(Error::RegistryConflict)?;
+        scope.retain_exception_backing(exception, backing)
+    }
+
+    pub(super) fn publish_custom_element_callback(
+        &self,
+        exception: DocumentGuestCustomElementCallbackException,
+    ) {
+        self.reports
+            .queue
+            .borrow_mut()
+            .push_back(GuestExceptionReport::CustomElementCallback(exception));
+    }
+
+    pub(super) fn publish(&self, exception: DocumentGuestConstructorException) {
+        self.reports
+            .queue
+            .borrow_mut()
+            .push_back(GuestExceptionReport::Constructor(exception));
+    }
+}
+
+impl Drop for ConstructorReportReservation {
+    fn drop(&mut self) {
+        self.reports.reserved.set(self.reports.reserved.get() - 1);
     }
 }
 

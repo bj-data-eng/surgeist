@@ -181,7 +181,7 @@ impl DomNodeIteratorFilterRequest {
         if dom.owner != self.id.owner {
             return Err(DomError::ForeignOwner);
         }
-        dom.require_source_entry()?;
+        dom.require_source_entry(cancel)?;
         let source = dom.dispatch_hosted_read_work(cancel)?;
         let same_scope = match (&self.source, &source) {
             (None, None) => true,
@@ -298,7 +298,7 @@ impl Dom {
         work_limit: u64,
         cancel: &AtomicBool,
     ) -> Result<DomNodeIteratorProgress, DomError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         let source = self.dispatch_hosted_read_work(cancel)?;
         let mut cursor = self.state.node_iterators.cursor(self.owner, id)?.clone();
         let work = Work {

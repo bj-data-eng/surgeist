@@ -432,21 +432,6 @@ pub surgeist_html_semantics::HtmlElementReferenceKey::PopoverTarget
 pub enum surgeist_html_semantics::HtmlElementReferenceOrigin
 pub surgeist_html_semantics::HtmlElementReferenceOrigin::ContentAttribute
 pub surgeist_html_semantics::HtmlElementReferenceOrigin::ExplicitPointer
-pub enum surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>
-pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
-pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::AllocationFailed
-pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::Capture(surgeist_html_semantics::HtmlCaptureError)
-pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::FormationBytes
-pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::FormationBytes::limit: usize
-pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::FormationBytes::required: usize
-pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::Interrupted(E)
-pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::RepresentationExhausted
-impl<E> surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>
-pub fn surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
-impl<E: core::error::Error + 'static> core::error::Error for surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>
-pub fn surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
-impl<E: core::fmt::Display> core::fmt::Display for surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>
-pub fn surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_semantics::HtmlEncodingUrlFactsError
 pub surgeist_html_semantics::HtmlEncodingUrlFactsError::ForeignProducer
 pub surgeist_html_semantics::HtmlEncodingUrlFactsError::Formation(surgeist_html_semantics::HtmlBaseFactsError)
@@ -1052,6 +1037,24 @@ pub surgeist_html_semantics::HtmlProtocolLanguage::Absent
 pub surgeist_html_semantics::HtmlProtocolLanguage::Multiple
 pub surgeist_html_semantics::HtmlProtocolLanguage::Single(surgeist_html::internal::values::document_string::DocumentString)
 pub surgeist_html_semantics::HtmlProtocolLanguage::Unavailable
+pub enum surgeist_html_semantics::HtmlRegistryFormationError<E>
+pub surgeist_html_semantics::HtmlRegistryFormationError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
+pub surgeist_html_semantics::HtmlRegistryFormationError::AllocationFailed
+pub surgeist_html_semantics::HtmlRegistryFormationError::Capture(surgeist_html_semantics::HtmlCaptureError)
+pub surgeist_html_semantics::HtmlRegistryFormationError::FormationBytes
+pub surgeist_html_semantics::HtmlRegistryFormationError::FormationBytes::limit: usize
+pub surgeist_html_semantics::HtmlRegistryFormationError::FormationBytes::required: usize
+pub surgeist_html_semantics::HtmlRegistryFormationError::FormationUnits
+pub surgeist_html_semantics::HtmlRegistryFormationError::FormationUnits::limit: usize
+pub surgeist_html_semantics::HtmlRegistryFormationError::FormationUnits::required: usize
+pub surgeist_html_semantics::HtmlRegistryFormationError::Interrupted(E)
+pub surgeist_html_semantics::HtmlRegistryFormationError::RepresentationExhausted
+impl<E> surgeist_html_semantics::HtmlRegistryFormationError<E>
+pub fn surgeist_html_semantics::HtmlRegistryFormationError<E>::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_html_semantics::HtmlRegistryFormationError<E>
+pub fn surgeist_html_semantics::HtmlRegistryFormationError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_html_semantics::HtmlRegistryFormationError<E>
+pub fn surgeist_html_semantics::HtmlRegistryFormationError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_semantics::HtmlRegistryScope
 pub surgeist_html_semantics::HtmlRegistryScope::Global
 pub surgeist_html_semantics::HtmlRegistryScope::Scoped
@@ -1703,8 +1706,9 @@ pub fn surgeist_html_semantics::HtmlBooleanAuthorContextReadback::attribute_repo
 pub fn surgeist_html_semantics::HtmlBooleanAuthorContextReadback::evidence(&self) -> &surgeist_html_semantics::HtmlBooleanAuthorContextEvidence
 pub struct surgeist_html_semantics::HtmlCapture(_)
 impl surgeist_html_semantics::HtmlCapture
-pub fn surgeist_html_semantics::HtmlCapture::complete_empty_global_registry_with<E>(host_revision: surgeist_html_semantics::HtmlHostFactsRevision, formation_bytes: usize, step: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlEmptyGlobalRegistryCapture, surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>>
-pub fn surgeist_html_semantics::HtmlCapture::complete_empty_global_registry_with_accounting<E>(host_revision: surgeist_html_semantics::HtmlHostFactsRevision, formation_bytes: usize, step: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<surgeist_html_semantics::HtmlEmptyGlobalRegistryCapture, surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>>
+pub fn surgeist_html_semantics::HtmlCapture::append_registry_definition_with<E>(&self, registry: &surgeist_html_semantics::HtmlCaptureRegistryId, definition: &surgeist_html_semantics::HtmlCustomElementDefinition, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, limits: surgeist_html_semantics::HtmlRegistryFormationLimits, step: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlRegistryCapture, surgeist_html_semantics::HtmlRegistryFormationError<E>>
+pub fn surgeist_html_semantics::HtmlCapture::complete_empty_global_registry_with<E>(host_revision: surgeist_html_semantics::HtmlHostFactsRevision, formation_bytes: usize, step: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlRegistryCapture, surgeist_html_semantics::HtmlRegistryFormationError<E>>
+pub fn surgeist_html_semantics::HtmlCapture::complete_empty_global_registry_with_accounting<E>(host_revision: surgeist_html_semantics::HtmlHostFactsRevision, formation_bytes: usize, step: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<surgeist_html_semantics::HtmlRegistryCapture, surgeist_html_semantics::HtmlRegistryFormationError<E>>
 impl surgeist_html_semantics::HtmlCapture
 pub fn surgeist_html_semantics::HtmlCapture::definition(&self, id: &surgeist_html_semantics::HtmlCaptureDefinitionId) -> core::result::Result<&surgeist_html_semantics::HtmlCustomElementDefinition, surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCapture::definition_id(&self, handle: &surgeist_html_semantics::HtmlCaptureBuilderDefinition) -> core::result::Result<surgeist_html_semantics::HtmlCaptureDefinitionId, surgeist_html_semantics::HtmlCaptureError>
@@ -1746,6 +1750,7 @@ pub fn surgeist_html_semantics::HtmlCaptureBuilder::definition_handle(&self, reg
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_children(&mut self, parent: &surgeist_html_semantics::HtmlCaptureBuilderSubject, children: &[surgeist_html_semantics::HtmlCaptureBuilderSubject]) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_children_with<E>(&mut self, parent: &surgeist_html_semantics::HtmlCaptureBuilderSubject, children: &[surgeist_html_semantics::HtmlCaptureBuilderSubject], step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureEdgeError<E>>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_custom_element_context(&mut self, subject: &surgeist_html_semantics::HtmlCaptureBuilderSubject, state: surgeist_html_semantics::HtmlCapturedCustomElementState, definition: surgeist_html_semantics::HtmlCaptureDefinitionInput) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
+pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_custom_element_context_with<E>(&mut self, subject: &surgeist_html_semantics::HtmlCaptureBuilderSubject, state: surgeist_html_semantics::HtmlCapturedCustomElementState, definition: surgeist_html_semantics::HtmlCaptureDefinitionInput, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureEdgeError<E>>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_document_image_support(&mut self, document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, support: surgeist_html_semantics::HtmlImageSupport) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_document_nonce_environment(&mut self, subject: &surgeist_html_semantics::HtmlCaptureBuilderSubject, environment: surgeist_html::internal::security::nonce::HtmlNonceDocumentEnvironment) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_document_template_facts(&mut self, document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, class: surgeist_html_semantics::HtmlDocumentClass, role: surgeist_html_semantics::HtmlTemplateDocumentRole, cache: surgeist_html_semantics::HtmlCaptureTemplateCacheInput) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
@@ -1768,11 +1773,14 @@ pub fn surgeist_html_semantics::HtmlCaptureBuilder::usage(&self) -> surgeist_htm
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::with_accounting(limits: surgeist_html_semantics::HtmlCaptureLimits, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl surgeist_html_semantics::HtmlCaptureBuilder
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::add_element_from_inputs<E>(&mut self, document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, name: &impl surgeist_html::internal::values::semantic_input::HtmlNameInput + ?core::marker::Sized, attributes: &impl surgeist_html::internal::values::semantic_input::HtmlAttributesInput + ?core::marker::Sized, is_value: surgeist_html_semantics::HtmlCapturedIsValue, registry: surgeist_html_semantics::HtmlCaptureRegistryInput, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlCaptureBuilderSubject, surgeist_html_semantics::HtmlCaptureElementError<E>>
+impl surgeist_html_semantics::HtmlCaptureBuilder
+pub fn surgeist_html_semantics::HtmlCaptureBuilder::import_registry_with<E>(&mut self, source: &surgeist_html_semantics::HtmlCapture, registry: &surgeist_html_semantics::HtmlCaptureRegistryId, step: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlCaptureBuilderRegistry, surgeist_html_semantics::HtmlRegistryFormationError<E>>
 pub struct surgeist_html_semantics::HtmlCaptureBuilderDefinition
 pub struct surgeist_html_semantics::HtmlCaptureBuilderRegistry
 pub struct surgeist_html_semantics::HtmlCaptureBuilderSubject
 pub struct surgeist_html_semantics::HtmlCaptureDefinitionId
 impl surgeist_html_semantics::HtmlCaptureDefinitionId
+pub fn surgeist_html_semantics::HtmlCaptureDefinitionId::ordinal(&self) -> usize
 pub fn surgeist_html_semantics::HtmlCaptureDefinitionId::registry(&self) -> &surgeist_html_semantics::HtmlCaptureRegistryId
 pub struct surgeist_html_semantics::HtmlCaptureDocumentId(_)
 impl surgeist_html_semantics::HtmlCaptureDocumentId
@@ -2203,13 +2211,6 @@ pub fn surgeist_html_semantics::HtmlEmbeddedDimensionAuthorReadback::pair(&self)
 pub fn surgeist_html_semantics::HtmlEmbeddedDimensionAuthorReadback::resource(&self) -> core::option::Option<&surgeist_html_semantics::HtmlNaturalResourceKey>
 pub fn surgeist_html_semantics::HtmlEmbeddedDimensionAuthorReadback::width_attribute(&self) -> core::option::Option<&surgeist_html::internal::values::Attribute>
 pub fn surgeist_html_semantics::HtmlEmbeddedDimensionAuthorReadback::width_syntax(&self) -> surgeist_html_semantics::HtmlDimensionAuthorSyntax
-pub struct surgeist_html_semantics::HtmlEmptyGlobalRegistryCapture
-impl surgeist_html_semantics::HtmlEmptyGlobalRegistryCapture
-pub fn surgeist_html_semantics::HtmlEmptyGlobalRegistryCapture::capture(&self) -> &surgeist_html_semantics::HtmlCapture
-pub fn surgeist_html_semantics::HtmlEmptyGlobalRegistryCapture::formation_peak_bytes(&self) -> usize
-pub fn surgeist_html_semantics::HtmlEmptyGlobalRegistryCapture::into_parts(self) -> (surgeist_html_semantics::HtmlCapture, surgeist_html_semantics::HtmlCaptureRegistryId)
-pub fn surgeist_html_semantics::HtmlEmptyGlobalRegistryCapture::registry(&self) -> &surgeist_html_semantics::HtmlCaptureRegistryId
-pub fn surgeist_html_semantics::HtmlEmptyGlobalRegistryCapture::retained_storage_usage(&self) -> surgeist_html_semantics::HtmlCaptureRetainedStorageUsage
 pub struct surgeist_html_semantics::HtmlEncodingUrlParseFacts(_)
 impl surgeist_html_semantics::HtmlEncodingUrlParseFacts
 pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::base(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord
@@ -2883,6 +2884,16 @@ pub fn surgeist_html_semantics::HtmlParticipationProducerId::fresh() -> Self
 impl core::cmp::Eq for surgeist_html_semantics::HtmlParticipationProducerId
 impl core::cmp::PartialEq for surgeist_html_semantics::HtmlParticipationProducerId
 pub fn surgeist_html_semantics::HtmlParticipationProducerId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html_semantics::HtmlRegistryCapture
+impl surgeist_html_semantics::HtmlRegistryCapture
+pub fn surgeist_html_semantics::HtmlRegistryCapture::capture(&self) -> &surgeist_html_semantics::HtmlCapture
+pub fn surgeist_html_semantics::HtmlRegistryCapture::formation_peak_bytes(&self) -> usize
+pub fn surgeist_html_semantics::HtmlRegistryCapture::into_parts(self) -> (surgeist_html_semantics::HtmlCapture, surgeist_html_semantics::HtmlCaptureRegistryId)
+pub fn surgeist_html_semantics::HtmlRegistryCapture::registry(&self) -> &surgeist_html_semantics::HtmlCaptureRegistryId
+pub fn surgeist_html_semantics::HtmlRegistryCapture::retained_storage_usage(&self) -> surgeist_html_semantics::HtmlCaptureRetainedStorageUsage
+pub struct surgeist_html_semantics::HtmlRegistryFormationLimits
+impl surgeist_html_semantics::HtmlRegistryFormationLimits
+pub const fn surgeist_html_semantics::HtmlRegistryFormationLimits::new(bytes: usize, retained_utf16_units: usize) -> Self
 pub struct surgeist_html_semantics::HtmlRelBookmarkSection
 impl surgeist_html_semantics::HtmlRelBookmarkSection
 pub fn surgeist_html_semantics::HtmlRelBookmarkSection::new(subject: surgeist_html_semantics::HtmlCaptureSubjectId, section: surgeist_html_semantics::HtmlRelSectionId) -> Self

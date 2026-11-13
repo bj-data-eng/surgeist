@@ -596,6 +596,18 @@ impl Formation {
                 limit: self.limit,
             })
     }
+    pub(in crate::store) fn retained_unit_limit(&self) -> usize {
+        self.unit_limit
+    }
+    pub(in crate::store) fn remaining_units(&self) -> Result<usize, DomError> {
+        self.unit_limit
+            .checked_sub(self.base_units)
+            .and_then(|units| units.checked_sub(self.storage.ledger().total().units()))
+            .ok_or(DomError::ResourceLimit {
+                resource: DomResource::SourceRetainedUnits,
+                limit: self.unit_limit,
+            })
+    }
     /// Charges the block `value` borrows, once for the store, as any other retained custody.
     pub(crate) fn adopt_block(
         &self,

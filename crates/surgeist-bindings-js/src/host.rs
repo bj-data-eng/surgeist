@@ -114,6 +114,10 @@ pub enum RecordFailure<E> {
 }
 
 impl<E: Cause + 'static, Storage: 'static> HostFailureSlot<E, Storage> {
+    pub(crate) fn owner_id(&self) -> u64 {
+        self.authority.key.owner
+    }
+
     /// Requested Rust target body for admission, excluding Rc metadata.
     pub const fn storage_bytes() -> usize {
         std::mem::size_of::<PreparedCause<E, Storage>>()

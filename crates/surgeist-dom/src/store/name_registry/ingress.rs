@@ -300,6 +300,24 @@ impl Draft {
         budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<crate::element::FormedElement, DomError> {
+        let name = self.native_element_name(name, options, document, budget, cancel)?;
+        self.form_native_element(
+            name,
+            options.is.as_ref(),
+            document.document_environment(),
+            budget,
+            cancel,
+        )
+    }
+
+    pub(in crate::store) fn native_element_name(
+        &self,
+        name: &crate::DomElementCreationName,
+        options: &crate::DomElementCreationOptions,
+        document: &DomDocumentMetadata,
+        budget: Option<&source::formation::Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<DomQualifiedName, DomError> {
         let name = match name {
             crate::DomElementCreationName::Local(name) => {
                 self.native_local_name(name, document, budget, cancel)?
@@ -308,16 +326,33 @@ impl Draft {
                 self.native_qualified_name(namespace, name, budget, cancel)?
             }
         };
-        if options.null_registry && options.is.is_some() {
+        if options.registry.is_some() && options.is.is_some() {
             return Err(DomError::NotSupported);
         }
-        self.form_native_element(
-            name,
-            options.is.as_ref(),
-            document.document_environment(),
-            budget,
-            cancel,
-        )
+        if let Some(crate::DomRegistryBinding::Registry(id)) = options.registry {
+            self.source_step(cancel)?;
+            let record = self
+                .registries
+                .as_ref()
+                .ok_or(DomError::HostedSourceUnavailable)?
+                .get_with(id, &mut || self.source_step(cancel))?;
+            let scope = record
+                .capture
+                .registry_scope(&record.local)
+                .map_err(DomError::SelectCapture)?;
+            use surgeist_html_semantics::HtmlRegistryScope;
+            match scope {
+                HtmlRegistryScope::Global
+                    if document.custom_element_registry()
+                        != crate::DomRegistryBinding::Registry(id) =>
+                {
+                    return Err(DomError::NotSupported);
+                }
+                HtmlRegistryScope::Unavailable => return Err(DomError::HostedSourceUnavailable),
+                HtmlRegistryScope::Global | HtmlRegistryScope::Scoped => (),
+            }
+        }
+        Ok(name)
     }
 
     fn native_local_name(
@@ -407,7 +442,7 @@ impl Draft {
         )
     }
 
-    fn form_native_element(
+    pub(in crate::store) fn form_native_element(
         &self,
         name: DomQualifiedName,
         saved_is: Option<&DocumentString>,

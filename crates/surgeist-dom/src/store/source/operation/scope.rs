@@ -76,7 +76,9 @@ impl OperationRoot {
             }
         }
         let command = match self {
-            Self::SelectCompletion(target) => return Some(*target),
+            Self::SelectCompletion(target) | Self::CustomElementUpgrade(target) => {
+                return Some(*target);
+            }
             Self::DialogTask(task) => return Some(task.id().target()),
             Self::NativeInstallation => return None,
             Self::Edit(commands) => commands.first(),

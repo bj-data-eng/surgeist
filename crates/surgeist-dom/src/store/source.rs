@@ -12,6 +12,7 @@ mod identities;
 pub(super) mod initial;
 pub(in crate::store) mod input;
 pub(crate) mod operation;
+pub(crate) mod reactions;
 pub(in crate::store) mod scratch;
 pub(crate) mod storage;
 pub(in crate::store) use identities::Privacy;

@@ -7,20 +7,39 @@ use surgeist_html::accounting::{
     HtmlAccountingFault, HtmlCapScope, HtmlHostScope, HtmlLedgerOutcome, HtmlLimits, HtmlResource,
     aggregate_tariffs, classify,
 };
+use surgeist_html::bounded::lexical::{
+    HtmlCustomNameScanAction, validate_custom_element_name_with,
+};
 use surgeist_html::values::DocumentString;
 use surgeist_ledger::{Change, Operation, Scope};
 
-/// A complete-empty Global registry and its owning immutable evidence.
+/// Finite formation allowances for the replacement graph.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlRegistryFormationLimits {
+    bytes: usize,
+    units: usize,
+}
+
+impl HtmlRegistryFormationLimits {
+    pub const fn new(bytes: usize, retained_utf16_units: usize) -> Self {
+        Self {
+            bytes,
+            units: retained_utf16_units,
+        }
+    }
+}
+
+/// One complete registry and its owning immutable evidence.
 /// The local registry identity is distinct from a consumer's canonical identity.
 #[derive(Debug)]
-pub struct HtmlEmptyGlobalRegistryCapture {
+pub struct HtmlRegistryCapture {
     capture: HtmlCapture,
     registry: HtmlCaptureRegistryId,
     retained: HtmlCaptureRetainedStorageUsage,
     peak: usize,
 }
 
-impl HtmlEmptyGlobalRegistryCapture {
+impl HtmlRegistryCapture {
     pub fn capture(&self) -> &HtmlCapture {
         &self.capture
     }
@@ -42,10 +61,14 @@ impl HtmlEmptyGlobalRegistryCapture {
     }
 }
 
-/// First refusal of the fixed empty-Global formation operation.
+/// First refusal of controlled registry formation.
 #[derive(Debug, Eq, PartialEq)]
-pub enum HtmlEmptyGlobalRegistryError<E> {
+pub enum HtmlRegistryFormationError<E> {
     FormationBytes {
+        limit: usize,
+        required: usize,
+    },
+    FormationUnits {
         limit: usize,
         required: usize,
     },
@@ -59,7 +82,7 @@ pub enum HtmlEmptyGlobalRegistryError<E> {
     Capture(HtmlCaptureError),
     Interrupted(E),
 }
-impl<E> HtmlEmptyGlobalRegistryError<E> {
+impl<E> HtmlRegistryFormationError<E> {
     /// The accounting fault of the ledger that carried the operation, when this error is one or
     /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
     /// error is decided here.
@@ -68,6 +91,7 @@ impl<E> HtmlEmptyGlobalRegistryError<E> {
             Self::Accounting(fault) => Some(*fault),
             Self::Capture(error) => error.accounting_fault(),
             Self::FormationBytes { .. }
+            | Self::FormationUnits { .. }
             | Self::RepresentationExhausted
             | Self::AllocationFailed
             | Self::Interrupted(_) => None,
@@ -75,31 +99,28 @@ impl<E> HtmlEmptyGlobalRegistryError<E> {
     }
 }
 
-impl<E: fmt::Display> fmt::Display for HtmlEmptyGlobalRegistryError<E> {
+impl<E: fmt::Display> fmt::Display for HtmlRegistryFormationError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::FormationBytes { limit, required } => write!(
                 f,
-                "empty Global registry requires {required} formation bytes, limit {limit}"
+                "registry requires {required} formation bytes, limit {limit}"
             ),
-            Self::RepresentationExhausted => {
-                f.write_str("empty Global registry representation exhausted")
-            }
-            Self::AllocationFailed => {
-                f.write_str("empty Global registry backing allocation failed")
-            }
+            Self::FormationUnits { limit, required } => write!(
+                f,
+                "registry requires {required} retained UTF-16 units, limit {limit}"
+            ),
+            Self::RepresentationExhausted => f.write_str("registry representation exhausted"),
+            Self::AllocationFailed => f.write_str("registry backing allocation failed"),
             Self::Accounting(fault) => {
-                write!(
-                    f,
-                    "empty Global registry formation accounting failed: {fault}"
-                )
+                write!(f, "registry formation accounting failed: {fault}")
             }
             Self::Capture(error) => error.fmt(f),
             Self::Interrupted(error) => error.fmt(f),
         }
     }
 }
-impl<E: Error + 'static> Error for HtmlEmptyGlobalRegistryError<E> {
+impl<E: Error + 'static> Error for HtmlRegistryFormationError<E> {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Accounting(fault) => Some(fault),
@@ -120,6 +141,15 @@ struct Workspace {
     _registry: Option<HtmlCaptureBuilderRegistry>,
 }
 
+enum Definitions<'a> {
+    EmptyGlobal,
+    Append {
+        capture: &'a HtmlCapture,
+        registry: &'a HtmlCaptureRegistryId,
+        definition: &'a HtmlCustomElementDefinition,
+    },
+}
+
 /// The formation byte allowance and the bytes a formation holds. The allowance is the cap of one
 /// ledger scope on the largest total a formation needs at one point, and the live backing is a
 /// balance of that scope.
@@ -127,10 +157,12 @@ struct Control {
     operation: Ledger,
     scope: Scope,
     fixed: usize,
+    units: usize,
+    unit_limit: usize,
 }
 impl Control {
     #[cfg(test)]
-    fn new<E>(limit: usize, fixed: usize) -> Result<Self, HtmlEmptyGlobalRegistryError<E>> {
+    fn new<E>(limit: usize, fixed: usize) -> Result<Self, HtmlRegistryFormationError<E>> {
         Self::charging(limit, fixed, None)
     }
     /// The control of a formation: a scope below the one `hosted` supplies when it is `Some`, else
@@ -139,7 +171,7 @@ impl Control {
         limit: usize,
         fixed: usize,
         hosted: Option<&HtmlHostScope>,
-    ) -> Result<Self, HtmlEmptyGlobalRegistryError<E>> {
+    ) -> Result<Self, HtmlRegistryFormationError<E>> {
         let caps = HtmlLimits::from_fn(
             |_| u64::MAX,
             |resource| match resource {
@@ -171,12 +203,14 @@ impl Control {
             operation,
             scope,
             fixed,
+            units: 0,
+            unit_limit: usize::MAX,
         })
     }
     /// The typed refusal of a ledger error: a refused allowance keeps its limit and the total the
     /// formation would have needed.
-    fn ledger_error<E>(error: LedgerError) -> HtmlEmptyGlobalRegistryError<E> {
-        use HtmlEmptyGlobalRegistryError as Error;
+    fn ledger_error<E>(error: LedgerError) -> HtmlRegistryFormationError<E> {
+        use HtmlRegistryFormationError as Error;
         let refusal = match classify(error) {
             HtmlLedgerOutcome::Fault(fault) => return Error::Accounting(fault),
             HtmlLedgerOutcome::Exhausted(_) => return Error::RepresentationExhausted,
@@ -196,25 +230,25 @@ impl Control {
         }
     }
     /// The live backing bytes.
-    fn backing<E>(&self) -> Result<usize, HtmlEmptyGlobalRegistryError<E>> {
+    fn backing<E>(&self) -> Result<usize, HtmlRegistryFormationError<E>> {
         let live = self
             .operation
             .read(self.scope, |usage| {
                 usage.live(HtmlResource::FormationBacking)
             })
             .map_err(Self::ledger_error)?;
-        usize::try_from(live).map_err(|_| HtmlEmptyGlobalRegistryError::RepresentationExhausted)
+        usize::try_from(live).map_err(|_| HtmlRegistryFormationError::RepresentationExhausted)
     }
     /// The largest total admitted so far.
-    fn peak<E>(&self) -> Result<usize, HtmlEmptyGlobalRegistryError<E>> {
+    fn peak<E>(&self) -> Result<usize, HtmlRegistryFormationError<E>> {
         let peak = self
             .operation
             .read(self.scope, |usage| usage.peak(HtmlResource::FormationBytes))
             .map_err(Self::ledger_error)?;
-        usize::try_from(peak).map_err(|_| HtmlEmptyGlobalRegistryError::RepresentationExhausted)
+        usize::try_from(peak).map_err(|_| HtmlRegistryFormationError::RepresentationExhausted)
     }
     /// Admits a total the formation needs at one point, refusing one beyond the allowance.
-    fn admit<E>(&mut self, required: usize) -> Result<(), HtmlEmptyGlobalRegistryError<E>> {
+    fn admit<E>(&mut self, required: usize) -> Result<(), HtmlRegistryFormationError<E>> {
         self.operation
             .record_largest(self.scope, HtmlResource::FormationBytes, wide(required))
             .map_err(Self::ledger_error)
@@ -224,7 +258,7 @@ impl Control {
         &mut self,
         old: usize,
         actual: usize,
-    ) -> Result<(), HtmlEmptyGlobalRegistryError<E>> {
+    ) -> Result<(), HtmlRegistryFormationError<E>> {
         self.operation
             .apply_batch(
                 self.scope,
@@ -235,15 +269,26 @@ impl Control {
             )
             .map_err(Self::ledger_error)
     }
-    fn plus<E>(a: usize, b: usize) -> Result<usize, HtmlEmptyGlobalRegistryError<E>> {
+    fn plus<E>(a: usize, b: usize) -> Result<usize, HtmlRegistryFormationError<E>> {
         a.checked_add(b)
-            .ok_or(HtmlEmptyGlobalRegistryError::RepresentationExhausted)
+            .ok_or(HtmlRegistryFormationError::RepresentationExhausted)
+    }
+    fn retain_units<E>(&mut self, additional: usize) -> Result<(), HtmlRegistryFormationError<E>> {
+        let required = Self::plus(self.units, additional)?;
+        if required > self.unit_limit {
+            return Err(HtmlRegistryFormationError::FormationUnits {
+                limit: self.unit_limit,
+                required,
+            });
+        }
+        self.units = required;
+        Ok(())
     }
     fn step<E>(
         step: &mut impl FnMut(usize) -> Result<(), E>,
         units: usize,
-    ) -> Result<(), HtmlEmptyGlobalRegistryError<E>> {
-        step(units).map_err(HtmlEmptyGlobalRegistryError::Interrupted)
+    ) -> Result<(), HtmlRegistryFormationError<E>> {
+        step(units).map_err(HtmlRegistryFormationError::Interrupted)
     }
 }
 /// The registry control paired with the caller's work step, applying the formation
@@ -253,7 +298,7 @@ struct Formation<'a, E> {
     step: &'a mut dyn FnMut(usize) -> Result<(), E>,
 }
 impl<E> preflight::ActionPolicy for Formation<'_, E> {
-    type Error = HtmlEmptyGlobalRegistryError<E>;
+    type Error = HtmlRegistryFormationError<E>;
     fn on_work(&mut self, units: usize) -> Result<(), Self::Error> {
         Control::step(&mut self.step, units)
     }
@@ -293,13 +338,243 @@ impl<E> preflight::ActionPolicy for Formation<'_, E> {
     }
 }
 
+impl<E> Formation<'_, E> {
+    fn reserve<T>(
+        &mut self,
+        values: &mut Vec<T>,
+        entries: usize,
+    ) -> Result<(), HtmlRegistryFormationError<E>> {
+        preflight::reserve_storage(values, entries, true, true, &mut |action| {
+            self.action(action)
+        })
+        .map_err(preflight_error)
+    }
+
+    fn append(
+        &mut self,
+        builder: &mut HtmlCaptureBuilder,
+        scope: HtmlRegistryScope,
+        previous: &[HtmlCustomElementDefinition],
+        definition: &HtmlCustomElementDefinition,
+    ) -> Result<usize, HtmlRegistryFormationError<E>> {
+        use HtmlRegistryFormationError::Capture;
+
+        self.on_work(1)?;
+        if validate_custom_element_name_with(definition.name(), |action| {
+            self.on_work(match action {
+                HtmlCustomNameScanAction::ReservedPair => 2,
+                _ => 1,
+            })
+        })?
+        .is_err()
+            || definition.local_name().is_empty()
+        {
+            return Err(Capture(HtmlCaptureError::InvalidDefinitionName));
+        }
+        let mut units = definition_units(definition)?;
+        for existing in previous {
+            self.on_work(1)?;
+            if self.names_equal(existing.name(), definition.name())? {
+                return Err(Capture(HtmlCaptureError::DuplicateDefinitionName));
+            }
+            units = Control::plus(units, definition_units(existing)?)?;
+        }
+        let count = Control::plus(previous.len(), 1)?;
+        let charges = builder.admit(0, 0, 0, units, 1, count).map_err(Capture)?;
+        let mut definitions = Vec::new();
+        self.reserve(&mut definitions, count)?;
+        for entry in previous.iter().chain(std::iter::once(definition)) {
+            self.on_work(1)?;
+            definitions.push(HtmlCustomElementDefinition::new(
+                self.retain_string(entry.name())?,
+                self.retain_string(entry.local_name())?,
+                entry.form_associated(),
+                entry.disable_shadow(),
+            ));
+        }
+        builder.commit(charges).map_err(Capture)?;
+        let index = builder.data.registries.len();
+        builder.data.registries.push(RegistryRecord {
+            definitions,
+            complete: true,
+            scope,
+            scope_established: true,
+        });
+        Ok(index)
+    }
+
+    fn names_equal(
+        &mut self,
+        left: &DocumentString,
+        right: &DocumentString,
+    ) -> Result<bool, HtmlRegistryFormationError<E>> {
+        if left.len() != right.len() {
+            return Ok(false);
+        }
+        for index in 0..left.len() {
+            self.on_work(2)?;
+            if left.code_units()[index] != right.code_units()[index] {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    fn retain_string(
+        &mut self,
+        value: &DocumentString,
+    ) -> Result<DocumentString, HtmlRegistryFormationError<E>> {
+        self.on_work(1)?;
+        let header = size_of::<Vec<u16>>();
+        if value.is_whole_block() {
+            let units = value.retained_units();
+            self.control.retain_units(units)?;
+            let backing = units
+                .checked_mul(size_of::<u16>())
+                .ok_or(HtmlRegistryFormationError::RepresentationExhausted)?;
+            let bytes = Control::plus(header, backing)?;
+            self.on_storage_before(bytes)?;
+            self.on_storage_after(0, bytes, true)?;
+            return Ok(value.clone());
+        }
+        // A range can borrow a much larger source block. Keep only its exact units
+        // so the new capture does not need to retain or index the source block.
+        let requested = value.len();
+        self.control.retain_units(requested)?;
+        self.on_storage_before(header)?;
+        self.on_storage_after(0, header, true)?;
+        let mut units = Vec::new();
+        preflight::reserve_storage(&mut units, requested, true, true, &mut |action| {
+            if let preflight::Action::StorageAfter { actual, .. } = action {
+                let exposed = actual / size_of::<u16>();
+                self.control.retain_units(exposed - requested)?;
+            }
+            self.action(action)
+        })
+        .map_err(preflight_error)?;
+        for index in 0..requested {
+            self.on_work(1)?;
+            units.push(value.code_units()[index]);
+        }
+        Ok(DocumentString::from_utf16(units))
+    }
+}
+
+fn definition_units<E>(
+    definition: &HtmlCustomElementDefinition,
+) -> Result<usize, HtmlRegistryFormationError<E>> {
+    Control::plus(definition.name().len(), definition.local_name().len())
+}
+
 fn preflight_error<E>(
-    error: preflight::Failure<HtmlEmptyGlobalRegistryError<E>>,
-) -> HtmlEmptyGlobalRegistryError<E> {
+    error: preflight::Failure<HtmlRegistryFormationError<E>>,
+) -> HtmlRegistryFormationError<E> {
     match error {
         preflight::Failure::Admission(error) => error,
-        preflight::Failure::Capture(error) => HtmlEmptyGlobalRegistryError::Capture(error),
-        preflight::Failure::AllocationFailed => HtmlEmptyGlobalRegistryError::AllocationFailed,
+        preflight::Failure::Capture(error) => HtmlRegistryFormationError::Capture(error),
+        preflight::Failure::AllocationFailed => HtmlRegistryFormationError::AllocationFailed,
+    }
+}
+
+impl HtmlCaptureBuilder {
+    /// Copies a complete registry of known scope from immutable evidence into this
+    /// capture. Definition order is preserved and all new IDs are local.
+    /// Work and cancellation are admitted before observations and reservation.
+    /// The destination admits the requested definition count and UTF-16 extent
+    /// before copying, and checks actual capacity before filling borrowed ranges.
+    pub fn import_registry_with<E>(
+        &mut self,
+        source: &HtmlCapture,
+        registry: &HtmlCaptureRegistryId,
+        mut step: impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<HtmlCaptureBuilderRegistry, HtmlRegistryFormationError<E>> {
+        use HtmlRegistryFormationError::Capture;
+
+        Control::step(&mut step, 1)?;
+        let scope = source.registry_scope(registry).map_err(Capture)?;
+        let HtmlCapturedDefinitions::Complete(definitions) =
+            source.definitions(registry).map_err(Capture)?
+        else {
+            return Err(Capture(HtmlCaptureError::UnavailableDefinitions(
+                registry.clone(),
+            )));
+        };
+        if scope == HtmlRegistryScope::Unavailable {
+            return Err(Capture(HtmlCaptureError::MissingFact {
+                subject: None,
+                fact: HtmlCaptureFact::RegistryScope,
+            }));
+        }
+        self.admit(0, 0, 0, 0, 1, definitions.len())
+            .map_err(Capture)?;
+        let mut units = 0;
+        for definition in definitions {
+            Control::step(&mut step, 1)?;
+            // Borrowed inputs are normalized to exact private blocks below;
+            // whole owners retain their exposed capacity.
+            units = Control::plus(units, definition.name().occurrence_units())?;
+            units = Control::plus(units, definition.local_name().occurrence_units())?;
+        }
+        self.admit(0, 0, 0, units, 1, definitions.len())
+            .map_err(Capture)?;
+        let mut staged = Vec::new();
+        Control::step(&mut step, 0)?;
+        staged
+            .try_reserve_exact(definitions.len())
+            .map_err(|_| HtmlRegistryFormationError::AllocationFailed)?;
+        for definition in definitions {
+            Control::step(&mut step, 1)?;
+            let mut string = |value: &DocumentString| {
+                Control::step(&mut step, 1)?;
+                if value.is_whole_block() {
+                    return Ok(value.clone());
+                }
+                let mut buffer = Vec::new();
+                Control::step(&mut step, 0)?;
+                buffer
+                    .try_reserve_exact(value.len())
+                    .map_err(|_| HtmlRegistryFormationError::AllocationFailed)?;
+                units = Control::plus(units, buffer.capacity() - value.len())?;
+                self.admit(0, 0, 0, units, 1, definitions.len())
+                    .map_err(Capture)?;
+                for offset in 0..value.len() {
+                    Control::step(&mut step, 1)?;
+                    buffer.push(value.code_units()[offset]);
+                }
+                Ok(DocumentString::from_utf16(buffer))
+            };
+            let name = string(definition.name())?;
+            let local = string(definition.local_name())?;
+            staged.push(HtmlCustomElementDefinition::new(
+                name,
+                local,
+                definition.form_associated(),
+                definition.disable_shadow(),
+            ));
+        }
+        let charges = self
+            .admit(0, 0, 0, units, 1, staged.len())
+            .map_err(Capture)?;
+        Control::step(&mut step, 1)?;
+        if self.data.registries.len() == self.data.registries.capacity() {
+            Control::step(&mut step, self.data.registries.len())?;
+        }
+        self.data
+            .registries
+            .try_reserve(1)
+            .map_err(|_| HtmlRegistryFormationError::AllocationFailed)?;
+        self.commit(charges).map_err(Capture)?;
+        let index = self.data.registries.len();
+        self.data.registries.push(RegistryRecord {
+            definitions: staged,
+            complete: true,
+            scope,
+            scope_established: true,
+        });
+        Ok(HtmlCaptureBuilderRegistry {
+            capture: self.data.identity.clone(),
+            index,
+        })
     }
 }
 
@@ -332,8 +607,15 @@ impl HtmlCapture {
         host_revision: HtmlHostFactsRevision,
         formation_bytes: usize,
         step: impl FnMut(usize) -> Result<(), E>,
-    ) -> Result<HtmlEmptyGlobalRegistryCapture, HtmlEmptyGlobalRegistryError<E>> {
-        Self::form_empty_global_registry(host_revision, formation_bytes, step, None)
+    ) -> Result<HtmlRegistryCapture, HtmlRegistryFormationError<E>> {
+        Self::form_registry(
+            host_revision,
+            Definitions::EmptyGlobal,
+            formation_bytes,
+            step,
+            None,
+            0,
+        )
     }
 
     /// Forms the registry as [`Self::complete_empty_global_registry_with`] does, charging scopes
@@ -347,72 +629,142 @@ impl HtmlCapture {
         formation_bytes: usize,
         step: impl FnMut(usize) -> Result<(), E>,
         accounting: &HtmlHostScope,
-    ) -> Result<HtmlEmptyGlobalRegistryCapture, HtmlEmptyGlobalRegistryError<E>> {
-        Self::form_empty_global_registry(host_revision, formation_bytes, step, Some(accounting))
+    ) -> Result<HtmlRegistryCapture, HtmlRegistryFormationError<E>> {
+        Self::form_registry(
+            host_revision,
+            Definitions::EmptyGlobal,
+            formation_bytes,
+            step,
+            Some(accounting),
+            0,
+        )
     }
 
-    fn form_empty_global_registry<E>(
+    /// Forms a new registry-only capture by appending to this capture's complete
+    /// registry of known scope. Its original scope and definition order are
+    /// preserved. All IDs in the returned capture are local to that new capture.
+    ///
+    /// `step` admits work and polls cancellation before each source observation.
+    /// The finite byte allowance follows
+    /// [the registry formation contract](Self::complete_empty_global_registry_with).
+    /// Whole UTF-16 blocks are shared and their retained extent is charged to the
+    /// new capture. Borrowed ranges admit their requested units before copying
+    /// and check the exposed capacity before writing any units.
+    pub fn append_registry_definition_with<E>(
+        &self,
+        registry: &HtmlCaptureRegistryId,
+        definition: &HtmlCustomElementDefinition,
         host_revision: HtmlHostFactsRevision,
+        limits: HtmlRegistryFormationLimits,
+        step: impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<HtmlRegistryCapture, HtmlRegistryFormationError<E>> {
+        Self::form_registry(
+            host_revision,
+            Definitions::Append {
+                capture: self,
+                registry,
+                definition,
+            },
+            limits.bytes,
+            step,
+            None,
+            limits.units,
+        )
+    }
+
+    fn form_registry<E>(
+        host_revision: HtmlHostFactsRevision,
+        definitions: Definitions<'_>,
         formation_bytes: usize,
         mut step: impl FnMut(usize) -> Result<(), E>,
         hosted: Option<&HtmlHostScope>,
-    ) -> Result<HtmlEmptyGlobalRegistryCapture, HtmlEmptyGlobalRegistryError<E>> {
+        retained_units: usize,
+    ) -> Result<HtmlRegistryCapture, HtmlRegistryFormationError<E>> {
         Control::step(&mut step, 1)?;
-        let fixed = Control::plus(
-            size_of::<Workspace>(),
-            size_of::<HtmlEmptyGlobalRegistryCapture>(),
-        )?;
+        let mut fixed = Control::plus(size_of::<Workspace>(), size_of::<HtmlRegistryCapture>())?;
+        let (unit_limit, definition_limit) = match definitions {
+            Definitions::EmptyGlobal => (0, 0),
+            Definitions::Append { .. } => {
+                fixed = Control::plus(fixed, size_of::<Vec<HtmlCustomElementDefinition>>())?;
+                // One staged definition and, for borrowed input, its UTF-16 Vec.
+                fixed = Control::plus(fixed, size_of::<HtmlCustomElementDefinition>())?;
+                fixed = Control::plus(fixed, size_of::<Vec<u16>>())?;
+                (usize::MAX, usize::MAX)
+            }
+        };
         let mut control = Control::charging(formation_bytes, fixed, hosted)?;
+        control.unit_limit = retained_units;
         control.admit(fixed)?;
-        let capture_limits = HtmlCaptureLimits::new(0, 0, 0, 0, 0, 1, 0, 16 * 1024 * 1024);
+        let capture_limits = HtmlCaptureLimits::new(0, 0, 0, unit_limit, 0, 1, definition_limit, 0);
         let mut builder = match hosted {
             Some(host) => HtmlCaptureBuilder::with_accounting(capture_limits, host_revision, host)
-                .map_err(HtmlEmptyGlobalRegistryError::Accounting)?,
+                .map_err(HtmlRegistryFormationError::Accounting)?,
             None => HtmlCaptureBuilder::new(capture_limits, host_revision),
         };
         let mut scratch = preflight::DepthScratch::new();
         builder.enable_controlled_storage();
-        // Pre-reserve the exact existing registry bank. The original add_registry
-        // call then retains its complete validation path without another growth.
-        preflight::reserve_storage(&mut builder.data.registries, 1, true, true, &mut |action| {
-            Formation {
-                control: &mut control,
-                step: &mut step,
+        let mut formation = Formation {
+            control: &mut control,
+            step: &mut step,
+        };
+        formation.reserve(&mut builder.data.registries, 1)?;
+        let index = match definitions {
+            Definitions::EmptyGlobal => {
+                formation.on_work(1)?;
+                let registry_call_headers = Control::plus(
+                    size_of::<Option<Vec<HtmlCustomElementDefinition>>>(),
+                    size_of::<HashSet<&DocumentString>>(),
+                )?;
+                let held = Control::plus(fixed, formation.control.backing()?)?;
+                formation
+                    .control
+                    .admit(Control::plus(held, registry_call_headers)?)?;
+                let registry = builder
+                    .add_registry(Some(Vec::new()))
+                    .map_err(HtmlRegistryFormationError::Capture)?;
+                formation.on_work(1)?;
+                builder
+                    .establish_registry_scope(&registry, HtmlRegistryScope::Global)
+                    .map_err(HtmlRegistryFormationError::Capture)?;
+                registry.index
             }
-            .action(action)
-        })
-        .map_err(preflight_error)?;
-        Control::step(&mut step, 1)?;
-        let registry_call_headers = Control::plus(
-            size_of::<Option<Vec<HtmlCustomElementDefinition>>>(),
-            size_of::<HashSet<&DocumentString>>(),
-        )?;
-        control.admit(Control::plus(
-            Control::plus(fixed, control.backing()?)?,
-            registry_call_headers,
-        )?)?;
-        let registry = builder
-            .add_registry(Some(Vec::new()))
-            .map_err(HtmlEmptyGlobalRegistryError::Capture)?;
-        Control::step(&mut step, 1)?;
-        builder
-            .establish_registry_scope(&registry, HtmlRegistryScope::Global)
-            .map_err(HtmlEmptyGlobalRegistryError::Capture)?;
-        builder
-            .preflight_finish(&mut scratch, &mut |action| {
-                Formation {
-                    control: &mut control,
-                    step: &mut step,
+            Definitions::Append {
+                capture,
+                registry,
+                definition,
+            } => {
+                formation.on_work(1)?;
+                let scope = capture
+                    .registry_scope(registry)
+                    .map_err(HtmlRegistryFormationError::Capture)?;
+                let HtmlCapturedDefinitions::Complete(previous) = capture
+                    .definitions(registry)
+                    .map_err(HtmlRegistryFormationError::Capture)?
+                else {
+                    return Err(HtmlRegistryFormationError::Capture(
+                        HtmlCaptureError::UnavailableDefinitions(registry.clone()),
+                    ));
+                };
+                if scope == HtmlRegistryScope::Unavailable {
+                    return Err(HtmlRegistryFormationError::Capture(
+                        HtmlCaptureError::MissingFact {
+                            subject: None,
+                            fact: HtmlCaptureFact::RegistryScope,
+                        },
+                    ));
                 }
-                .action(action)
-            })
+                formation.append(&mut builder, scope, previous, definition)?
+            }
+        };
+        builder
+            .preflight_finish(&mut scratch, &mut |action| formation.action(action))
             .map_err(preflight_error)?;
         let retained =
             storage::retained_storage_usage_with(&builder.data, || Control::step(&mut step, 1))
                 .map_err(|error| match error {
                     HtmlCaptureStorageError::Interrupted(error) => error,
                     HtmlCaptureStorageError::RepresentationExhausted => {
-                        HtmlEmptyGlobalRegistryError::RepresentationExhausted
+                        HtmlRegistryFormationError::RepresentationExhausted
                     }
                 })?;
         Control::step(&mut step, 1)?;
@@ -421,16 +773,17 @@ impl HtmlCapture {
             size_of::<CaptureData>(),
         )?;
         control.admit(required)?;
+        let peak = control.peak()?;
         let registry = HtmlCaptureRegistryId {
             capture: builder.data.identity.clone(),
-            index: registry.index,
+            index,
         };
         let capture = builder.publish();
-        Ok(HtmlEmptyGlobalRegistryCapture {
+        Ok(HtmlRegistryCapture {
             capture,
             registry,
             retained,
-            peak: control.peak()?,
+            peak,
         })
     }
 }
@@ -444,7 +797,7 @@ mod tests {
     fn action(
         control: &mut Control,
         action: preflight::Action,
-    ) -> Result<(), HtmlEmptyGlobalRegistryError<()>> {
+    ) -> Result<(), HtmlRegistryFormationError<()>> {
         Formation {
             control,
             step: &mut |_| Ok(()),
@@ -460,7 +813,7 @@ mod tests {
                 &mut control,
                 preflight::Action::StorageBefore { requested: 20 }
             ),
-            Err(HtmlEmptyGlobalRegistryError::FormationBytes {
+            Err(HtmlRegistryFormationError::FormationBytes {
                 limit: 119,
                 required: 120
             })
@@ -483,7 +836,7 @@ mod tests {
                     retained: true,
                 }
             ),
-            Err(HtmlEmptyGlobalRegistryError::FormationBytes {
+            Err(HtmlRegistryFormationError::FormationBytes {
                 limit: 125,
                 required: 130
             })
@@ -493,7 +846,7 @@ mod tests {
         assert_eq!(control.peak::<()>(), Ok(120));
         assert_eq!(
             Control::plus::<()>(usize::MAX, 1),
-            Err(HtmlEmptyGlobalRegistryError::RepresentationExhausted)
+            Err(HtmlRegistryFormationError::RepresentationExhausted)
         );
     }
 
@@ -522,7 +875,7 @@ mod tests {
                 },
             );
             assert!(
-                matches!(result, Err(HtmlEmptyGlobalRegistryError::Interrupted((at, _)))
+                matches!(result, Err(HtmlRegistryFormationError::Interrupted((at, _)))
                 if at == stop)
             );
             assert_eq!(seen, stop + 1);
@@ -534,7 +887,7 @@ mod tests {
         });
         assert!(matches!(
             result,
-            Err(HtmlEmptyGlobalRegistryError::FormationBytes { .. })
+            Err(HtmlRegistryFormationError::FormationBytes { .. })
         ));
         assert_eq!(Arc::strong_count(&revision.0), 1);
     }
@@ -561,7 +914,7 @@ mod tests {
         assert_eq!(
             formed.peak,
             size_of::<Workspace>()
-                + size_of::<HtmlEmptyGlobalRegistryCapture>()
+                + size_of::<HtmlRegistryCapture>()
                 + actual_bank
                 + size_of::<CaptureData>().max(registry_call_headers)
         );
@@ -572,7 +925,7 @@ mod tests {
     /// reported as exhaustion or as a backing allocation of the formation itself.
     #[test]
     fn ledger_failures_other_than_a_refused_allowance_are_accounting_faults() {
-        type Error = HtmlEmptyGlobalRegistryError<()>;
+        type Error = HtmlRegistryFormationError<()>;
         let mut control = Control::new::<()>(1_000, 10).unwrap();
         assert_eq!(
             control.replace_backing::<()>(5, 8),
@@ -595,19 +948,19 @@ mod tests {
     fn existing_safe_allocation_capture_and_admission_causes_are_distinct() {
         assert_eq!(
             preflight_error::<()>(preflight::Failure::AllocationFailed),
-            HtmlEmptyGlobalRegistryError::AllocationFailed
+            HtmlRegistryFormationError::AllocationFailed
         );
         assert_eq!(
             preflight_error::<()>(preflight::Failure::Capture(
                 HtmlCaptureError::ForeignBuilder
             )),
-            HtmlEmptyGlobalRegistryError::Capture(HtmlCaptureError::ForeignBuilder)
+            HtmlRegistryFormationError::Capture(HtmlCaptureError::ForeignBuilder)
         );
         assert_eq!(
             preflight_error(preflight::Failure::Admission(
-                HtmlEmptyGlobalRegistryError::Interrupted("cancelled")
+                HtmlRegistryFormationError::Interrupted("cancelled")
             )),
-            HtmlEmptyGlobalRegistryError::Interrupted("cancelled")
+            HtmlRegistryFormationError::Interrupted("cancelled")
         );
     }
 }

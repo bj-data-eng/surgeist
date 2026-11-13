@@ -687,7 +687,7 @@ impl Dom {
         limits: DomInlineStyleLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomInlineStyleError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         if self.inline_styles.is_some() {
             return Err(DomInlineStyleError::AlreadyConfigured);
@@ -727,7 +727,7 @@ impl Dom {
         ) -> Result<CssomAdmission, surgeist_cssom::CssomError>,
         cancel: &AtomicBool,
     ) -> Result<CssStyleProperties, DomInlineStyleError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         let node = self.state.node(self.owner, element)?;
         let language = node.element().ok_or(DomError::WrongNodeKind)?;

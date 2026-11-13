@@ -41,8 +41,13 @@ impl Drop for ActiveOwner {
 
 struct RootEntry {
     identity: Weak<RootIdentity>,
-    value: v8::Global<v8::Value>,
+    handle: RootHandle,
     backing: OnceCell<Box<dyn std::any::Any>>,
+}
+
+enum RootHandle {
+    Value(v8::Global<v8::Value>),
+    PromiseResolver(v8::Global<v8::PromiseResolver>),
 }
 
 enum NativeCallback {
@@ -95,6 +100,14 @@ impl Roots {
         realm: RealmKey,
         value: v8::Local<v8::Value>,
     ) -> Result<Root, Error> {
+        self.retain_handle(realm, || RootHandle::Value(v8::Global::new(scope, value)))
+    }
+
+    fn retain_handle(
+        &self,
+        realm: RealmKey,
+        handle: impl FnOnce() -> RootHandle,
+    ) -> Result<Root, Error> {
         self.available()?;
         if realm.owner != self.owner.id() {
             return Err(Error::ForeignOwner);
@@ -110,7 +123,7 @@ impl Roots {
         let root = Root(Rc::new(RootIdentity { realm, index }));
         let entry = RootEntry {
             identity: Rc::downgrade(&root.0),
-            value: v8::Global::new(scope, value),
+            handle: handle(),
             backing: OnceCell::new(),
         };
         self.entries
@@ -126,7 +139,22 @@ impl Roots {
         root: &Root,
     ) -> Result<v8::Local<'s, v8::Value>, Error> {
         let entry = self.entry(root)?;
-        Ok(v8::Local::new(scope, &entry.value))
+        match &entry.handle {
+            RootHandle::Value(value) => Ok(v8::Local::new(scope, value)),
+            RootHandle::PromiseResolver(_) => Err(self.conflict()),
+        }
+    }
+
+    fn promise_resolver<'s>(
+        &self,
+        scope: &v8::PinScope<'s, '_>,
+        root: &Root,
+    ) -> Result<v8::Local<'s, v8::PromiseResolver>, Error> {
+        let entry = self.entry(root)?;
+        match &entry.handle {
+            RootHandle::PromiseResolver(resolver) => Ok(v8::Local::new(scope, resolver)),
+            RootHandle::Value(_) => Err(self.conflict()),
+        }
     }
 
     fn entry(&self, root: &Root) -> Result<Rc<RootEntry>, Error> {
@@ -916,6 +944,17 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
+    fn is_constructor(&mut self, value: &Root) -> Result<bool, Error> {
+        self.validate_root(value)?;
+        self.attempt(ExceptionPhase::Coerce, |scope, roots, _, _| {
+            let value = roots.local(scope, value)?;
+            Ok(
+                v8::Local::<v8::Object>::try_from(value)
+                    .is_ok_and(|object| object.is_constructor()),
+            )
+        })
+    }
+
     fn callback_object_realm(&mut self, value: &Root) -> Result<RealmKey, Error> {
         self.observe_callback_object(value)
     }
@@ -950,6 +989,49 @@ impl Operations for Entered<'_, '_, '_> {
 
     fn argument_locals_storage_bytes(&self, count: usize) -> Option<usize> {
         std::mem::size_of::<v8::Local<'_, v8::Value>>().checked_mul(count)
+    }
+
+    fn new_promise_resolver(&mut self) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, _| {
+            let resolver = v8::PromiseResolver::new(scope).ok_or(Error::BackendUnavailable)?;
+            roots.retain_handle(realm, || {
+                RootHandle::PromiseResolver(v8::Global::new(scope, resolver))
+            })
+        })
+    }
+
+    fn resolver_promise(&mut self, resolver: &Root) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, _| {
+            let resolver = roots.promise_resolver(scope, resolver)?;
+            let promise = resolver.get_promise(scope);
+            roots.retain(scope, realm, promise.into())
+        })
+    }
+
+    fn settle_promise(&mut self, resolver: &Root, value: &Root, reject: bool) -> Result<(), Error> {
+        self.attempt(ExceptionPhase::Invoke, |scope, roots, _, _| {
+            let original_realm = resolver.0.realm;
+            let resolver = roots.promise_resolver(scope, resolver)?;
+            let value = roots.local(scope, value)?;
+            let promise = resolver.get_promise(scope);
+            let context = promise
+                .get_creation_context(scope)
+                .ok_or(Error::ExpiredIdentity)?;
+            if context.get_slot::<RealmKey>().as_deref() != Some(&original_realm) {
+                return Err(roots.conflict());
+            }
+            let scope = &mut v8::ContextScope::new(scope, context);
+            let result = if reject {
+                resolver.reject(scope, value)
+            } else {
+                resolver.resolve(scope, value)
+            };
+            if result == Some(true) {
+                Ok(())
+            } else {
+                Err(Error::BackendUnavailable)
+            }
+        })
     }
 
     fn native_error(&mut self) -> Result<Root, Error> {
@@ -1440,6 +1522,7 @@ impl Operations for Entered<'_, '_, '_> {
         function: &Root,
         receiver: &Root,
         arguments: &[Root],
+        enter: &mut dyn FnMut() -> Result<(), Error>,
     ) -> Result<Root, Error> {
         self.check_active()?;
         if arguments.len() > i32::MAX as usize {
@@ -1464,12 +1547,29 @@ impl Operations for Entered<'_, '_, '_> {
                 for argument in arguments {
                     values.push(roots.local(scope, argument)?);
                 }
+                enter()?;
                 let value = function
                     .call(scope, receiver, &values)
                     .ok_or(Error::BackendUnavailable)?;
                 roots.retain(scope, realm, value)
             },
         )
+    }
+
+    fn construct_without_arguments(&mut self, constructor: &Root) -> Result<Root, Error> {
+        self.validate_root(constructor)?;
+        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, _| {
+            let value = roots.local(scope, constructor)?;
+            let constructor =
+                v8::Local::<v8::Object>::try_from(value).map_err(|_| Error::ExpectedConstructor)?;
+            if !constructor.is_constructor() {
+                return Err(Error::ExpectedConstructor);
+            }
+            let result = constructor
+                .call_as_constructor(scope, &[])
+                .ok_or(Error::BackendUnavailable)?;
+            roots.retain(scope, realm, result)
+        })
     }
 
     fn coerce_string(&mut self, value: &Root) -> Result<CoercedString, Error> {

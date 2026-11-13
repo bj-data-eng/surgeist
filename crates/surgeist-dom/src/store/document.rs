@@ -156,7 +156,7 @@ impl Draft {
             )?;
             let root =
                 self.allocate_element_formed(element, document, limits, cancel, formation)?;
-            self.initialize_native_element(root, false, limits, cancel)?;
+            self.initialize_native_element(root, None, limits, cancel)?;
             Some(root)
         };
         // Root name validation precedes any doctype operand/effect. The real

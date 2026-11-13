@@ -62,7 +62,7 @@ impl Dom {
         request_limits: DomInlineStyleRequestLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceLease<'_>, DomInlineStyleError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         if context.basis.owner() != self.owner {
             return Err(DomError::ForeignOwner.into());
@@ -266,8 +266,27 @@ impl Operation {
             if incomplete || has_inputs {
                 return Err(DomError::IncompleteSourceOperation.into());
             }
-            if let synchronous_node::SynchronousNode::Watch(watch) = node {
-                watch.arm(dom, &segment, cancel)?;
+            // Synchronous shadow attachment returns a commit and root, with
+            // no reaction-delivery authority. Refuse before publishing a
+            // removal that requires the backup element queue.
+            if matches!(self.commands.first(), Some(Command::AttachShadow { .. }))
+                && segment.prepared.custom_element_reactions.is_some()
+            {
+                return Err(DomError::NotSupported.into());
+            }
+            if let synchronous_node::SynchronousNode::Watch(watch)
+            | synchronous_node::SynchronousNode::ElementFactory(watch) = node
+            {
+                watch.arm(dom, &segment, None, cancel)?;
+            }
+            let custom = self
+                .custom_element
+                .as_ref()
+                .and_then(custom_element::Pending::disposition);
+            if let synchronous_node::SynchronousNode::CustomElementResult(watch) = node
+                && custom != Some(crate::DomSourceCustomElementDisposition::Constructed)
+            {
+                watch.arm(dom, &segment, custom, cancel)?;
             }
         }
         let inline = if has_inputs {

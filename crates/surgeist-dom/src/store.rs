@@ -1068,6 +1068,7 @@ impl DomUsage {
 /// their entire state. Children includes derived Element-sibling/index changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomChange {
+    RegistryDefinitionAdded(crate::DomRegistryDefinitionId),
     RangeCreated(crate::DomRangeId),
     NodeIteratorCreated(crate::DomNodeIteratorId),
     NodeIteratorReference(crate::DomNodeIteratorId),
@@ -1852,7 +1853,7 @@ impl Dom {
         cancel: &AtomicBool,
         edit: impl FnOnce(&mut Draft) -> Result<T, DomError>,
     ) -> Result<T, DomError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         let batch = DomBatch::new();
         let mut draft = if self.source_operation.is_some() {
@@ -1912,7 +1913,7 @@ impl Dom {
         mut meta: Option<meta_atomic::Recording>,
         cancelled: &AtomicBool,
     ) -> Result<(Prepared, Option<meta_atomic::Recording>), DomError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancelled)?;
         check_cancel(cancelled)?;
         self.admit_batch_inputs(&batch.commands, || check_cancel(cancelled))?;
         let mut draft = if self
@@ -2170,6 +2171,7 @@ impl Dom {
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
         Ok(PreparedPublication {
+            custom_element_reactions: None,
             name_promotions,
             state_custody,
             allocation_ids,
@@ -2271,6 +2273,7 @@ struct PublicationFields<'a> {
 impl PublicationFields<'_> {
     fn publish(mut self, publication: PreparedPublication) -> CommittedPublication {
         let PreparedPublication {
+            custom_element_reactions,
             name_promotions,
             state_custody,
             allocation_ids: _,
@@ -2336,6 +2339,9 @@ impl PublicationFields<'_> {
             *self.style_cssom_roots = style_custody;
         }
         retirement_publication.publish();
+        if let Some(insertions) = custom_element_reactions {
+            insertions.publish();
+        }
         if let Some(plan) = node_retirement_publication {
             plan.publish();
         }
@@ -2399,6 +2405,7 @@ use transaction::staged::DraftNode;
 
 struct Draft {
     base: Arc<State>,
+    custom_element_reactions: Option<source::reactions::ReactionFacts>,
     script_registration: Option<Arc<crate::hosted::ScriptRegistration>>,
     event_recipients: Option<Arc<event::Owner>>,
     inline_membership: Option<inline_style::Membership>,
@@ -2515,6 +2522,7 @@ struct Draft {
     _header_custody: custody::Debit,
 }
 pub(crate) struct PreparedPublication {
+    custom_element_reactions: Option<source::reactions::Publication>,
     created_ranges: Vec<Option<crate::DomRangeId>>,
     state: Arc<State>,
     changed: bool,
@@ -2690,13 +2698,22 @@ impl Draft {
     fn initialize_native_element(
         &mut self,
         key: Key,
-        null_registry: bool,
+        registry: Option<crate::DomRegistryBinding>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !null_registry {
-            self.select_element_registry(key, cancel)?;
+        if registry != Some(crate::DomRegistryBinding::Null) {
+            self.select_element_registry_with(key, registry, cancel)?;
         }
+        self.initialize_native_element_features(key, limits, cancel)
+    }
+
+    fn initialize_native_element_features(
+        &mut self,
+        key: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         self.initialize_template_contents(key, limits, cancel)?;
         if self.node(key)?.hyperlink().is_some() {
             self.set_hyperlink_url(key, None, limits, cancel)?;
@@ -2907,6 +2924,7 @@ impl Draft {
             insertion_trace: None,
             document_environment: dom.document_environment.clone(),
             script_registration: dom.script_registration.as_ref().map(|slot| slot.0.clone()),
+            custom_element_reactions: None,
             input_processing: input_processing::InputProcessing::new(
                 dom.limits.input_scratch,
                 dom.limits.input_work,
@@ -3357,6 +3375,16 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.apply_command(command, limits, cancelled, None)
+    }
+
+    fn apply_command(
+        &mut self,
+        command: &Command,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+        reached: Option<&mut Option<source::operation::custom_element::Creation>>,
+    ) -> Result<(), DomError> {
         match command {
             Command::Normalize(node) => {
                 let node = self.resolve(node.clone())?;
@@ -3599,13 +3627,62 @@ impl Draft {
                 };
                 let metadata_formation = source::formation::Formation::new(self, cancelled)?;
                 if let Creation::Element { name, options } = kind {
-                    let formed = self.native_element(
-                        name,
-                        options,
-                        self.document_metadata(document)?,
-                        metadata_formation.as_ref(),
-                        cancelled,
-                    )?;
+                    let metadata = self.document_metadata(document)?;
+                    let (formed, selected) = if let Some(reached) = reached {
+                        let name = self.native_element_name(
+                            name,
+                            options,
+                            metadata,
+                            metadata_formation.as_ref(),
+                            cancelled,
+                        )?;
+                        let binding = options
+                            .registry
+                            .unwrap_or_else(|| metadata.custom_element_registry());
+                        if let Some(definition) = self.lookup_creation_definition(
+                            binding,
+                            &name,
+                            options.is.as_ref(),
+                            cancelled,
+                        )? {
+                            let document = DocumentId(
+                                self.published_id(document)
+                                    .ok_or(DomError::InvalidSourceOperation)?,
+                            );
+                            let name = self.form_element_name(
+                                name,
+                                metadata_formation.as_ref(),
+                                cancelled,
+                            )?;
+                            *reached = Some(source::operation::custom_element::Creation {
+                                document,
+                                name,
+                                definition,
+                            });
+                            return Ok(());
+                        }
+                        (
+                            self.form_native_element(
+                                name,
+                                options.is.as_ref(),
+                                metadata.document_environment(),
+                                metadata_formation.as_ref(),
+                                cancelled,
+                            )?,
+                            Some(binding),
+                        )
+                    } else {
+                        (
+                            self.native_element(
+                                name,
+                                options,
+                                metadata,
+                                metadata_formation.as_ref(),
+                                cancelled,
+                            )?,
+                            None,
+                        )
+                    };
                     let key = self.allocate_element_formed(
                         formed,
                         document,
@@ -3613,7 +3690,12 @@ impl Draft {
                         cancelled,
                         metadata_formation,
                     )?;
-                    self.initialize_native_element(key, options.null_registry, limits, cancelled)?;
+                    if let Some(binding) = selected {
+                        self.establish_element_registry(key, binding, cancelled)?;
+                        self.initialize_native_element_features(key, limits, cancelled)?;
+                    } else {
+                        self.initialize_native_element(key, options.registry, limits, cancelled)?;
+                    }
                     self.register_ticket(key, cancelled)?;
                     return Ok(());
                 }
@@ -3689,7 +3771,7 @@ impl Draft {
                 }
                 let key =
                     self.allocate_formed(kind, document, limits, cancelled, metadata_formation)?;
-                self.initialize_native_element(key, false, limits, cancelled)?;
+                self.initialize_native_element(key, None, limits, cancelled)?;
                 self.register_ticket(key, cancelled)?;
             }
             Command::Import {

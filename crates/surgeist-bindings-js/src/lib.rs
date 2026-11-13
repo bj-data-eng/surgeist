@@ -77,6 +77,7 @@ mod backend;
 mod callback_object;
 pub mod conversion;
 pub mod css;
+mod custom_elements;
 pub mod declarations;
 pub mod dom_exception;
 mod error;
@@ -84,18 +85,21 @@ mod host;
 mod idl;
 mod native_object;
 mod owner;
+mod promise;
 mod trusted_types;
 
 use std::marker::PhantomData;
 use std::rc::Rc;
 
 pub use callback_object::{CallbackObject, RetainedCallbackObject};
+pub use custom_elements::CustomElementRegistryIdentity;
 pub use error::{Error, Exception, ExceptionPhase};
 pub use host::{HostFailure, HostFailureSlot, RealmAuthority, RealmId, RecordFailure};
 pub use idl::{ByteString, DomString, IntegerKind, IntegerMode, IntegerValue, UsvString};
 pub use native_object::{
     NativeObject, NativeObjectToken, NativeProjectionPrototype, PreparedNativeProjection,
 };
+pub use promise::PromiseResolver;
 pub use trusted_types::{
     TrustedAttributeValue, TrustedPolicyCallback, TrustedType, TrustedTypeData, TrustedTypeKind,
 };
@@ -789,6 +793,40 @@ impl<'scope> Scope<'scope> {
         self.operations.refuse(Error::HostFailure(failure.clone()))
     }
 
+    /// Run completion steps after a native operation has already failed.
+    /// Successful steps leave the operation's ordinary error for the caller
+    /// to return. If the steps refuse or terminate execution, the earlier
+    /// native cause becomes the terminal error. Use an empty, funded
+    /// failure slot for this invocation.
+    pub fn complete_after_host_failure<T, E, Cause, Storage>(
+        &mut self,
+        slot: &HostFailureSlot<Cause, Storage>,
+        cause: Cause,
+        complete: impl FnOnce(&mut Self) -> Result<T, E>,
+    ) -> Result<T, Error>
+    where
+        Cause: std::error::Error + 'static,
+        Storage: 'static,
+    {
+        self.check_active()?;
+        let owner = self.operations.owner_state();
+        if slot.owner_id() != owner.id() {
+            return Err(Error::ForeignOwner);
+        }
+        let prior = slot.record(cause).map_err(|failure| match failure {
+            RecordFailure::Inactive { error, .. } => error,
+            RecordFailure::Occupied { .. } => Error::RegistryConflict,
+        })?;
+        let result = complete(self);
+        match result {
+            Ok(value) if self.check_active().is_ok() => Ok(value),
+            _ => {
+                owner.select_prior_host_failure(prior.clone());
+                Err(self.operations.refuse(Error::HostFailure(prior)))
+            }
+        }
+    }
+
     /// Refuses native continuation after a terminal host failure or execution
     /// termination. Native adapters must call this after guest reentry and
     /// before making their own externally observable mutations.
@@ -902,6 +940,24 @@ impl<'scope> Scope<'scope> {
     /// when called. Callability is separate from [`ValueKind::Object`].
     pub fn is_callable(&mut self, value: &Value<'scope>) -> Result<bool, Error> {
         self.operations.is_callable(&value.root)
+    }
+
+    /// Tests ECMAScript IsConstructor without reading properties or invoking
+    /// guest hooks. A revoked constructible proxy still has `[[Construct]]`.
+    pub fn is_constructor(&mut self, value: &Value<'scope>) -> Result<bool, Error> {
+        self.operations.is_constructor(&value.root)
+    }
+
+    /// Construct an exact guest object with no arguments, using the supplied
+    /// constructor as NewTarget and preserving the original thrown value.
+    pub fn construct_without_arguments(
+        &mut self,
+        constructor: &Value<'scope>,
+    ) -> Result<Value<'scope>, Error> {
+        let root = self
+            .operations
+            .construct_without_arguments(&constructor.root)?;
+        Ok(self.value(root))
     }
 
     /// Gets this realm's global object.
@@ -1037,12 +1093,41 @@ impl<'scope> Scope<'scope> {
         self.call_with_prefix(function, receiver, &[], arguments)
     }
 
+    /// Call a function and acknowledge entry after all backend preparation.
+    /// The acknowledgment runs once before the guest function can run. If
+    /// acknowledgment refuses, the guest function is never entered.
+    /// The acknowledgment is for native bookkeeping and must not reenter
+    /// the engine.
+    pub fn call_with_entry(
+        &mut self,
+        function: &Value<'scope>,
+        receiver: &Value<'scope>,
+        arguments: &[Value<'scope>],
+        enter: impl FnOnce() -> Result<(), Error>,
+    ) -> Result<Value<'scope>, Error> {
+        let mut enter = Some(enter);
+        self.call_with_entry_and_prefix(function, receiver, &[], arguments, &mut || {
+            enter.take().ok_or(Error::BackendUnavailable)?()
+        })
+    }
+
     pub(crate) fn call_with_prefix(
         &mut self,
         function: &Value<'scope>,
         receiver: &Value<'scope>,
         prefix: &[Value<'scope>],
         arguments: &[Value<'scope>],
+    ) -> Result<Value<'scope>, Error> {
+        self.call_with_entry_and_prefix(function, receiver, prefix, arguments, &mut || Ok(()))
+    }
+
+    fn call_with_entry_and_prefix(
+        &mut self,
+        function: &Value<'scope>,
+        receiver: &Value<'scope>,
+        prefix: &[Value<'scope>],
+        arguments: &[Value<'scope>],
+        enter: &mut dyn FnMut() -> Result<(), Error>,
     ) -> Result<Value<'scope>, Error> {
         self.check_active()?;
         let length = prefix
@@ -1064,7 +1149,7 @@ impl<'scope> Scope<'scope> {
         );
         let root = self
             .operations
-            .call(&function.root, &receiver.root, &roots)?;
+            .call(&function.root, &receiver.root, &roots, enter)?;
         Ok(self.value(root))
     }
 
@@ -1163,6 +1248,26 @@ impl<'scope> Scope<'scope> {
     pub fn import(&mut self, root: &Root) -> Result<Value<'scope>, Error> {
         self.operations.validate_root(root)?;
         Ok(self.value(root.clone()))
+    }
+
+    /// Capture a host-created exception value for reporting an invocation.
+    pub fn invocation_exception(&self, value: &Value<'scope>) -> Exception {
+        Exception {
+            phase: ExceptionPhase::Invoke,
+            value: self.retain(value),
+            rule: None,
+        }
+    }
+
+    /// Transfer already admitted backing to a retained invocation result.
+    /// The guard must contain no engine custody. A root accepts one guard.
+    pub fn retain_invocation_result_backing(
+        &mut self,
+        value: &Value<'scope>,
+        backing: Box<dyn std::any::Any>,
+    ) -> Result<(), Error> {
+        self.check_active()?;
+        self.operations.retain_root_backing(&value.root, backing)
     }
 
     /// Transfer already admitted backing to the exact original exception

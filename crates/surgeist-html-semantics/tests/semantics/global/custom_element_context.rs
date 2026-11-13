@@ -13,14 +13,14 @@ use surgeist_html::{
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureDefinitionInput,
-    HtmlCaptureError, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureResource,
-    HtmlCaptureSubjectKind, HtmlCapturedCustomElementState, HtmlCapturedDefinitions,
-    HtmlCapturedIsValue, HtmlCapturedNodeKind, HtmlCapturedRegistry, HtmlCustomElementDefinition,
-    HtmlCustomElementIsAuthorContext, HtmlIsAutonomousRequirement, HtmlIsContextUnavailable,
-    HtmlIsDefinitionRequirement, HtmlScriptingStatus, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult,
-    HtmlSemanticSession, HtmlSemanticValue,
+    HtmlCaptureEdgeError, HtmlCaptureError, HtmlCaptureLimits, HtmlCaptureRegistryInput,
+    HtmlCaptureResource, HtmlCaptureSubjectKind, HtmlCapturedCustomElementState,
+    HtmlCapturedDefinitions, HtmlCapturedIsValue, HtmlCapturedNodeKind, HtmlCapturedRegistry,
+    HtmlCustomElementDefinition, HtmlCustomElementIsAuthorContext, HtmlIsAutonomousRequirement,
+    HtmlIsContextUnavailable, HtmlIsDefinitionRequirement, HtmlScriptingStatus,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticResource,
+    HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticValue,
 };
 
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
@@ -30,6 +30,70 @@ fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
 }
 fn definition(name: &str, local: &str) -> HtmlCustomElementDefinition {
     HtmlCustomElementDefinition::new(name.into(), local.into(), false, false)
+}
+
+#[test]
+fn each_refused_association_comparison_keeps_the_original_capture_available() {
+    fn fixture() -> (
+        HtmlCaptureBuilder,
+        HtmlCaptureBuilderSubject,
+        HtmlCaptureDefinitionInput,
+    ) {
+        let (mut builder, document) = builder();
+        let registry = builder
+            .add_registry(Some(vec![definition("x-button", "button")]))
+            .unwrap();
+        let handle = builder.definition_handle(&registry, 0).unwrap();
+        let element = element(
+            &mut builder,
+            &document,
+            "button",
+            Some("different"),
+            HtmlCapturedIsValue::Value("x-button".into()),
+            HtmlCaptureRegistryInput::Null,
+        );
+        (
+            builder,
+            element,
+            HtmlCaptureDefinitionInput::Definition(handle),
+        )
+    }
+    let state = HtmlCapturedCustomElementState::Known(HtmlCustomElementState::Custom);
+    let (mut baseline, subject, definition) = fixture();
+    let before = baseline.usage();
+    let mut steps = 0;
+    baseline
+        .establish_custom_element_context_with(&subject, state, definition, || {
+            steps += 1;
+            Ok::<_, usize>(())
+        })
+        .unwrap();
+    assert!(steps >= 40);
+    assert_eq!(baseline.usage().relationships(), before.relationships() + 1);
+    for refusal in 1..=steps {
+        let (mut builder, subject, definition) = fixture();
+        let mut visits = 0;
+        let result = builder.establish_custom_element_context_with(
+            &subject,
+            state,
+            definition.clone(),
+            || {
+                visits += 1;
+                if visits == refusal {
+                    Err(refusal)
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert_eq!(result, Err(HtmlCaptureEdgeError::Interrupted(refusal)));
+        assert_eq!(visits, refusal);
+        assert_eq!(builder.usage(), before);
+        builder
+            .establish_custom_element_context(&subject, state, definition)
+            .unwrap();
+        assert_eq!(builder.usage(), baseline.usage());
+    }
 }
 fn element(
     b: &mut HtmlCaptureBuilder,

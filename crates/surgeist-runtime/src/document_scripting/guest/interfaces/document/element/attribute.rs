@@ -244,45 +244,55 @@ impl Capture {
                 }
             }
         }
-        match result {
-            Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
-                Err(DomError::Cancelled.into())
-            }
-            Ok(DomSourceDriveProgress::Complete(done)) => match (result_kind, done.output()) {
-                (AttributeResult::Value, None) => Ok(Completion::Undefined),
-                (
-                    AttributeResult::Attached(incoming, _),
-                    Some(DomSourceOutput::AttributeAttachment(DomAttributeAttachment::Appended(
-                        id,
-                    ))),
-                ) if id == incoming => Ok(Completion::Return(scope.primitive(Primitive::Null)?)),
-                (
-                    AttributeResult::Attached(incoming, value),
-                    Some(DomSourceOutput::AttributeAttachment(DomAttributeAttachment::Unchanged(
-                        id,
-                    ))),
-                )
-                | (
-                    AttributeResult::Removed(incoming, value),
-                    Some(DomSourceOutput::RemovedAttribute(id)),
-                ) if id == incoming => Ok(Completion::Return(value)),
-                (
-                    AttributeResult::Attached(incoming, _),
-                    Some(DomSourceOutput::AttributeAttachment(DomAttributeAttachment::Replaced(
-                        id,
-                    ))),
-                ) if id != incoming => match output {
-                    Some((staged, value)) if staged == id => Ok(Completion::Return(value)),
+        match result.map(guest_source_terminal) {
+            Ok(Some(Ok(done))) => {
+                let reactions = self.drain_native_reactions(scope, owner, events, done.operation());
+                if done.cancellation_requested() {
+                    return Err(DomError::Cancelled.into());
+                }
+                reactions?;
+                match (result_kind, done.output()) {
+                    (AttributeResult::Value, None) => Ok(Completion::Undefined),
+                    (
+                        AttributeResult::Attached(incoming, _),
+                        Some(DomSourceOutput::AttributeAttachment(
+                            DomAttributeAttachment::Appended(id),
+                        )),
+                    ) if id == incoming => {
+                        Ok(Completion::Return(scope.primitive(Primitive::Null)?))
+                    }
+                    (
+                        AttributeResult::Attached(incoming, value),
+                        Some(DomSourceOutput::AttributeAttachment(
+                            DomAttributeAttachment::Unchanged(id),
+                        )),
+                    )
+                    | (
+                        AttributeResult::Removed(incoming, value),
+                        Some(DomSourceOutput::RemovedAttribute(id)),
+                    ) if id == incoming => Ok(Completion::Return(value)),
+                    (
+                        AttributeResult::Attached(incoming, _),
+                        Some(DomSourceOutput::AttributeAttachment(
+                            DomAttributeAttachment::Replaced(id),
+                        )),
+                    ) if id != incoming => match output {
+                        Some((staged, value)) if staged == id => Ok(Completion::Return(value)),
+                        _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
+                    },
                     _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
-                },
-                _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
-            },
-            Ok(DomSourceDriveProgress::Failed(failure)) => {
-                let error = failure.into_parts().1;
+                }
+            }
+            Ok(Some(Err(failure))) => {
+                let (operation, error, _) = failure.into_parts();
+                let reactions = self.drain_native_reactions(scope, owner, events, operation);
                 if let (DomError::SourceAttributeVerificationAbrupt, Some(original)) =
                     (&error, abrupt)
                 {
                     return Err(original.into());
+                }
+                if reactions.is_err() {
+                    return Err(error.into());
                 }
                 attribute_failure(scope, error)
             }
@@ -293,11 +303,10 @@ impl Capture {
                 attribute_failure(scope, error)
             }
             Err(error) => refuse(scope, &attachment.source_failures, error).map_err(Into::into),
-            Ok(_) => Err(
-                pending.map_or(DocumentGuestEventError::HostRouteUnavailable, |status| {
+            Ok(None) => Err(pending
+                .map_or(DocumentGuestEventError::HostRouteUnavailable, |status| {
                     DocumentGuestEventError::SourcePending(status.operation())
-                }),
-            ),
+                })),
         }
     }
 
@@ -482,11 +491,58 @@ type NativeAttributeProgress = (
 );
 
 impl DocumentScriptHost {
-    /// Resume the original attribute write after policy callback selection
-    /// and any guest invocation have finished. The outer error carries
-    /// admission or the original guest exception. The inner result is the
-    /// original native Source progress.
-    /// This entry never invokes a guest callback or a microtask checkpoint.
+    #[cfg(test)]
+    pub(in crate::document_scripting) fn park_live_attribute_write_fixture(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        edit: DomSourceEdit,
+    ) -> surgeist_dom::DomSourceOperationId {
+        let owner = self.native.clone();
+        let events = self.guest_events().unwrap();
+        let capture = Capture {
+            callbacks: events.public.as_ref().unwrap().callbacks.clone(),
+            origin: None,
+            _backing: events.reserve(&owner, size_of::<Capture>()).unwrap(),
+        };
+        self.in_document(permit, |scope| {
+            let progress = {
+                let mut session = owner.session.borrow_mut();
+                session.source_execution().apply(
+                    &mut session.dom(),
+                    edit,
+                    events.limits.source_edits,
+                    &mut guest_source_services(&mut |_| None),
+                    &owner.cancellation,
+                )
+            };
+            let Ok(DomSourceDriveProgress::Pending {
+                request: DomSourceRequest::AttributeVerification(request),
+                ..
+            }) = progress
+            else {
+                panic!("expected original attribute verification: {progress:?}");
+            };
+            let retained = capture
+                .verify_attribute(scope, &owner, &events, request, None)
+                .unwrap();
+            assert!(
+                owner
+                    .pending_attribute
+                    .borrow_mut()
+                    .replace(retained)
+                    .is_none()
+            );
+            Ok(request.operation())
+        })
+        .unwrap()
+    }
+
+    /// Resume the original attribute write using its retained policy reply.
+    /// The outer error carries admission, the original guest exception, or a
+    /// reaction delivery failure. The inner result is the original native
+    /// Source progress. A settled write delivers committed reactions when
+    /// the original heap is live and the native Source is idle. Microtasks
+    /// still run at an explicit checkpoint.
     /// Nested recovery applies the supplied limits monotonically to interrupted
     /// attribute ancestors. Each successful raise survives a later refusal.
     /// Resume again to settle each restored ancestor.
@@ -498,7 +554,13 @@ impl DocumentScriptHost {
         self.check_permit(permit)?;
         // A native retry remains possible after a terminal bindings refusal.
         // The permit still authenticates the original native registration.
-        resume_retained_attribute(&self.native, limits, false)
+        let progress = resume_retained_attribute(&self.native, limits, false)?;
+        if let Ok(result) = &progress
+            && let Some(terminal) = guest_terminal_result(result)
+        {
+            self.deliver_resumed_source_reactions(permit, terminal)?;
+        }
+        Ok(progress)
     }
 }
 

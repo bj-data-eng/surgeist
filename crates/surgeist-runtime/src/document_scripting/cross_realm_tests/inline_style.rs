@@ -12,7 +12,178 @@ pub(super) fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
     guest_insertion(None, None, true);
 }
 
+pub(super) fn guest_meta_completion_delivers_its_connection_reaction() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
+        limits.with_meta_processing_work(1_000_000)
+    });
+    let document = target.document();
+    session
+        .style_execution()
+        .bind_root(
+            &session.dom(),
+            "guest-meta-reactions".into(),
+            &mut Some(DomStyleCssomRoot::new(
+                document.node(),
+                CssomStore::new(Default::default(), Default::default()).unwrap(),
+            )),
+            &cancel,
+        )
+        .unwrap();
+    let mut batch = DomBatch::new();
+    let fragment = batch.create_fragment(document);
+    let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+    batch.set_attribute(&meta, "http-equiv", "default-style");
+    batch.set_attribute(&meta, "content", "Prefix");
+    batch.insert_before(&meta, &fragment, None);
+    let committed = session.dom().apply(batch, &cancel).unwrap();
+    let fragment = committed.created(&fragment).unwrap().unwrap();
+    let snapshot = session.snapshot();
+    let root = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let head = snapshot.node(root).unwrap().children()[0];
+    let mut host = attach_public_nodes(session, target, cancel, 20_000, 200_000);
+    let permit = host.permit().unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, fragment, "metaFragment");
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"
+            globalThis.metaConnections = [];
+            customElements.define('x-meta-reaction', class extends HTMLElement {
+                connectedCallback() { metaConnections.push(this); }
+            });
+            globalThis.metaCustom = document.createElement('x-meta-reaction');
+            metaFragment.appendChild(metaCustom);
+        "#,
+        )
+        .map(drop)
+    })
+    .unwrap();
+    host.run_guest_meta_tree_edit_fixture(
+        &permit,
+        DomSourceEdit::insert_before(fragment, head, None),
+    )
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        let result = evaluate(
+            scope,
+            "metaConnections.length === 1 && metaConnections[0] === metaCustom",
+        )?;
+        let yes = scope.primitive(Primitive::Boolean(true))?;
+        assert!(scope.strict_equals(&result, &yes)?);
+        Ok(())
+    })
+    .unwrap();
+}
+
+pub(super) fn stopped_upgrade_can_settle_its_published_style_child() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session(&cancel, 0);
+    let document = target.document();
+    let mut batch = DomBatch::new();
+    let root = session
+        .snapshot()
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let style = batch.create_element_ns(document, Namespace::html(), "style");
+    let text = batch.create_text(document, "p { color: red }");
+    batch.insert_before(&text, &style, None);
+    let committed = session.dom().apply(batch, &cancel).unwrap();
+    let style = committed.created(&style).unwrap().unwrap();
+    let mut styles = session.style_execution();
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 5_000, 20_000);
+    let permit = host.permit().unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, style, "upgradeStyle");
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            "document.documentElement.appendChild(document.createElement('x-stopped-upgrade'))",
+        )
+        .map(drop)
+    })
+    .unwrap();
+    let candidate = *host
+        .snapshot()
+        .unwrap()
+        .node(root)
+        .unwrap()
+        .children()
+        .last()
+        .unwrap();
+    let result = host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"
+            customElements.define('x-stopped-upgrade', class extends HTMLElement {
+                constructor() { super(); this.appendChild(upgradeStyle); }
+            });
+        "#,
+        )
+        .map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("expected a metered Style refusal, got {result:?}");
+    };
+    let cause = failure.cause::<DomSourceDriveError>();
+    let child = host
+        .with_native(|dom, _, _| dom.pending_source_edit().unwrap())
+        .unwrap();
+    assert!(child.has_published());
+    assert!(child.parent_operation().is_some());
+    assert_ne!(
+        child.phase(),
+        surgeist_dom::DomSourcePhase::CustomElementConstruction,
+        "{failure:?}, {cause:?}"
+    );
+    assert_eq!(
+        host.snapshot().unwrap().node(style).unwrap().parent(),
+        Some(candidate)
+    );
+    let mut stopped = host.stop();
+    stopped.raise_pending_custom_element_limits(SOURCE).unwrap();
+    stopped
+        .with_native(|dom, _, _| {
+            styles
+                .bind_root(
+                    dom,
+                    "upgrade-style".into(),
+                    &mut Some(DomStyleCssomRoot::new(
+                        document.node(),
+                        CssomStore::new(Default::default(), Default::default()).unwrap(),
+                    )),
+                    &cancel,
+                )
+                .unwrap();
+        })
+        .unwrap();
+    assert!(matches!(
+        stopped.settle_pending_style_edit(child.operation(), SOURCE).unwrap().unwrap(),
+        DomSourceDriveProgress::Complete(done) if done.operation() == child.operation()
+    ));
+    stopped.settle_pending_custom_element(SOURCE).unwrap();
+    assert_eq!(stopped.discard_pending_definition_reactions().unwrap(), 0);
+    assert!(stopped.into_session().is_ok());
+}
+
 pub(super) fn style_runtime_refusal_preserves_the_original_guest_edit() {
+    check_parked_style_edit(false, false);
+}
+
+pub(super) fn stopped_style_edit_retains_its_committed_reaction_prefix() {
+    check_parked_style_edit(true, false);
+}
+
+pub(super) fn live_style_resume_delivers_committed_reactions() {
+    check_parked_style_edit(true, true);
+}
+
+fn check_parked_style_edit(with_reaction: bool, live_resume: bool) {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session(&cancel, 0);
     let document = target.document();
@@ -45,7 +216,7 @@ pub(super) fn style_runtime_refusal_preserves_the_original_guest_edit() {
         completions: 32,
         reports: 32,
         storage_bytes: 16_000_000,
-        work: 4,
+        work: if with_reaction { 1_000_000 } else { 4 },
         css_input: CssUtf16InputLimits::default(),
     };
     styles.set_limits(&session.dom(), limits, &cancel).unwrap();
@@ -53,23 +224,99 @@ pub(super) fn style_runtime_refusal_preserves_the_original_guest_edit() {
     let permit = host.permit().unwrap();
     expose_public_node_for_source_test(&mut host, &permit, body, "styleParent");
     expose_public_node_for_source_test(&mut host, &permit, style, "inlineStyle");
-    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = host
-        .in_document(&permit, |scope| {
-            evaluate(scope, "styleParent.appendChild(inlineStyle)").map(drop)
+    if with_reaction {
+        host.in_document(&permit, |scope| {
+            evaluate(
+                scope,
+                r#"
+            customElements.define('x-style-prefix', class extends HTMLElement {
+                connectedCallback() { globalThis.styleConnections.push(this); }
+            });
+            globalThis.styleConnections = [];
+            globalThis.styleFragment = document.createDocumentFragment();
+            globalThis.styleCustom = document.createElement('x-style-prefix');
+            styleFragment.appendChild(styleCustom);
+            styleFragment.appendChild(inlineStyle);
+        "#,
+            )
+            .map(drop)
+        })
+        .unwrap_or_else(|error| match error {
+            DocumentScriptError::Script(Error::HostFailure(failure)) => panic!(
+                "fixture preparation refused: {:?}, {:?}",
+                failure.cause::<DomSourceDriveError>(),
+                failure.cause::<DocumentGuestEventError>()
+            ),
+            other => panic!("fixture preparation refused: {other:?}"),
+        });
+    }
+    if live_resume {
+        let snapshot = host.snapshot().unwrap();
+        let fragment = snapshot.node(style).unwrap().parent().unwrap();
+        let operation = host.park_live_style_edit_fixture(
+            &permit,
+            DomSourceEdit::insert_before(fragment, body, None),
+            SOURCE,
+        );
+        host.with_native(|dom, _, _| {
+            styles
+                .bind_root(
+                    dom,
+                    "live-style".into(),
+                    &mut Some(DomStyleCssomRoot::new(
+                        document.node(),
+                        CssomStore::new(Default::default(), Default::default()).unwrap(),
+                    )),
+                    &cancel,
+                )
+                .unwrap();
+        })
+        .unwrap();
+        assert!(matches!(
+            host.resume_pending_style_edit(&permit, operation, SOURCE).unwrap().unwrap(),
+            DomSourceDriveProgress::Complete(done) if done.operation() == operation
+        ));
+        host.in_document(&permit, |scope| {
+            let value = evaluate(
+                scope,
+                "styleConnections.length === 1 && styleConnections[0] === styleCustom",
+            )?;
+            assert!(scope.boolean(&value)?);
+            Ok(())
+        })
+        .unwrap();
+        assert!(host.stop().into_session().is_ok());
+        return;
+    }
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        host.in_document(&permit, |scope| {
+            let source = if with_reaction {
+                "styleParent.appendChild(styleFragment)"
+            } else {
+                "styleParent.appendChild(inlineStyle)"
+            };
+            evaluate(scope, source).map(drop)
         })
     else {
-        panic!("the Style Runtime work gate must refuse");
+        panic!("the missing Style root must park the edit");
     };
-    assert!(matches!(
-        failure.cause::<DomSourceDriveError>(),
-        Some(DomSourceDriveError::Source(DomSourceRuntimeError::Style(
-            DomStyleRuntimeError::Admission
-        )))
-    ));
     let parked = host
         .with_native(|dom, _, _| dom.pending_source_edit().unwrap())
         .unwrap();
     assert!(parked.has_published());
+    if with_reaction {
+        assert!(matches!(
+            failure.cause::<DocumentGuestEventError>(),
+            Some(DocumentGuestEventError::SourcePending(operation)) if *operation == parked.operation()
+        ));
+    } else {
+        assert!(matches!(
+            failure.cause::<DomSourceDriveError>(),
+            Some(DomSourceDriveError::Source(DomSourceRuntimeError::Style(
+                DomStyleRuntimeError::Admission
+            )))
+        ));
+    }
     assert_eq!(
         host.snapshot().unwrap().node(style).unwrap().parent(),
         Some(body)
@@ -97,10 +344,12 @@ pub(super) fn style_runtime_refusal_preserves_the_original_guest_edit() {
         .stop()
         .into_session()
         .expect_err("Style remains pending");
-    limits.work = 1_000_000;
-    stopped
-        .with_native(|dom, _, _| styles.set_limits(dom, limits, &cancel).unwrap())
-        .unwrap();
+    if !with_reaction {
+        limits.work = 1_000_000;
+        stopped
+            .with_native(|dom, _, _| styles.set_limits(dom, limits, &cancel).unwrap())
+            .unwrap();
+    }
     assert!(matches!(
         stopped.settle_pending_style_edit(parked.operation(), SOURCE).unwrap().unwrap(),
         DomSourceDriveProgress::Pending {
@@ -121,12 +370,43 @@ pub(super) fn style_runtime_refusal_preserves_the_original_guest_edit() {
                     &cancel,
                 )
                 .unwrap();
+            if with_reaction {
+                dom.raw_mut()
+                    .resume_source_edit(parked.operation(), SOURCE, &cancel)
+                    .unwrap()
+                    .request_cancel();
+            }
         })
         .unwrap();
     assert!(matches!(
         stopped.settle_pending_style_edit(parked.operation(), SOURCE).unwrap().unwrap(),
-        DomSourceDriveProgress::Complete(done) if done.operation() == parked.operation()
+        DomSourceDriveProgress::Complete(done)
+            if done.operation() == parked.operation()
+                && done.cancellation_requested() == with_reaction
     ));
+    if with_reaction {
+        stopped = stopped
+            .into_session()
+            .expect_err("The committed reaction still belongs to the stopped attachment");
+        assert_eq!(
+            stopped
+                .discard_pending_native_custom_element_reactions()
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            stopped
+                .discard_pending_native_custom_element_reactions()
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            stopped
+                .discard_pending_queued_custom_element_reactions()
+                .unwrap(),
+            0
+        );
+    }
     let snapshot = stopped.into_session().unwrap().snapshot();
     assert!(
         snapshot
@@ -772,7 +1052,9 @@ fn guest_style(
         drop(session);
         assert!(matches!(
             host.resume_pending_style_edit(&permit, original.operation(), SOURCE),
-            Err(DocumentScriptNativeError::SourceAccess)
+            Err(DocumentGuestEventError::Document(
+                DocumentScriptError::Native(DocumentScriptNativeError::SourceAccess)
+            ))
         ));
     } else if inserted.is_err() {
         let pending = host

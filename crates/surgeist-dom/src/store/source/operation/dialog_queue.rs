@@ -536,6 +536,7 @@ impl<'dom> DomSourceLease<'dom> {
             let outputs = op
                 .outputs
                 .checked_add(prepared.changes.len())
+                .and_then(|count| count.checked_add(op.draft.custom_element_reaction_count()))
                 .ok_or(DomError::RepresentationExhausted)?;
             if outputs
                 .checked_add(future_outputs)
@@ -568,7 +569,13 @@ impl<'dom> DomSourceLease<'dom> {
             if let (Some(destination), Some(formation)) = (prepared.formation.as_ref(), formation) {
                 destination.absorb(formation);
             }
+            let insertions = op.draft.prepare_custom_element_reactions(
+                op.id,
+                &prepared.allocation_ids,
+                cancel,
+            )?;
             let mut prepared = self.dom.prepare_publication(prepared, cancel)?;
+            prepared.custom_element_reactions = insertions;
             let rebase = op.draft.prepare_rebase(&mut prepared, cancel)?;
             Ok((prepared, rebase, outputs, required_phases - 1))
         })();

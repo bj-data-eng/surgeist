@@ -385,13 +385,34 @@ impl Draft {
                 self.guard_pending_associations(document, cancelled)?;
             }
             let mut common = self.common_fields_mut(node, cancelled)?;
+            let old_document = common.document;
             common.document = document;
             common.commit(cancelled)?;
-            self.select_element_registry(node, cancelled)?;
             let binding = match self.node(document)?.kind() {
                 KindRead::Document(metadata) => metadata.custom_element_registry(),
                 _ => return Err(DomError::WrongDocument),
             };
+            let adopted = self.node(node)?;
+            if let KindRead::Element(element) = adopted.kind() {
+                let binding = match (
+                    element.language().custom_element_registry(),
+                    adopted.parent(),
+                ) {
+                    (crate::DomRegistryBinding::Null, Some(parent)) => {
+                        self.source_step(cancelled)?;
+                        match self.node(parent)?.kind() {
+                            KindRead::Element(parent) => {
+                                parent.language().custom_element_registry()
+                            }
+                            KindRead::ShadowRoot(parent) => parent.custom_element_registry(),
+                            _ => binding,
+                        }
+                    }
+                    _ => binding,
+                };
+                self.establish_element_registry(node, binding, cancelled)?;
+                self.record_custom_element_adoption(node, old_document, document, cancelled)?;
+            }
             if matches!(self.node(node)?.kind(), KindRead::ShadowRoot(_)) {
                 let mut state = self.shadow_state_mut(node, cancelled)?;
                 state.select_global_registry(binding);
@@ -1059,7 +1080,7 @@ impl Draft {
                             }
                         }
                     }
-                    if stage < 9 {
+                    if stage < 9 || (stage == 9 && self.captures_custom_element_reactions()) {
                         self.push_effect(
                             select::Effect::Tree(Frame::Node {
                                 key,
@@ -1087,6 +1108,7 @@ impl Draft {
                         6 => self.hyperlink_tree_change(key, Some(parent), cancel)?,
                         7 => self.style_tree_change(key, Some(parent), limits, cancel)?,
                         9 => self.dialog_removal(key, limits, cancel)?,
+                        10 => self.record_custom_element_removal(key, parent, cancel)?,
                         8 => match self.node(key)?.kind() {
                             KindRead::Element(element) if element.is_meta() => {
                                 let old_document =
@@ -1111,7 +1133,7 @@ impl Draft {
                         _ => (),
                     }
                 } else {
-                    if stage < 10 {
+                    if stage < 10 || (stage == 10 && self.captures_custom_element_reactions()) {
                         self.push_effect(
                             select::Effect::Tree(Frame::Node {
                                 key,
@@ -1146,6 +1168,7 @@ impl Draft {
                         8 => self.meta_inserted(key, limits, cancel)?,
                         9 => self.dialog_insertion(key, limits, cancel)?,
                         10 => self.autofocus_insertion(key, cancel)?,
+                        11 => self.record_custom_element_insertion(key, cancel)?,
                         _ => (),
                     }
                 }

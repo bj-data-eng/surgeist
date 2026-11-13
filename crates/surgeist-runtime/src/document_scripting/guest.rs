@@ -3,6 +3,7 @@
 mod csp_task;
 mod element_task;
 mod interfaces;
+pub(super) use interfaces::{ActiveConstructor, ActiveReactionQueue, PendingConstructor};
 mod listeners;
 mod reports;
 mod source_event;
@@ -19,6 +20,9 @@ use crate::dom_event::{
 };
 pub use csp_task::DocumentCspViolationProgress;
 use interfaces::PublicEventBindings;
+pub(super) use interfaces::creation_document_registry;
+#[cfg(test)]
+pub(super) use interfaces::document_registry_identity;
 pub(crate) use reports::QueuedViolation;
 use reports::{DirectExceptions, ExceptionRoots};
 pub(super) use reports::{GuestExceptionReports, ViolationQueue};
@@ -34,8 +38,8 @@ pub struct DocumentGuestEventLimits {
     pub storage_bytes: usize,
     /// Cumulative guest adapter work.
     pub work: u64,
-    /// Pending ordinary exceptions from attached dispatches, including
-    /// slots reserved by currently active dispatches.
+    /// Pending listener and constructor exceptions, including slots reserved
+    /// by currently active dispatches and constructors.
     pub pending_exception_reports: usize,
     /// Native path, callback, failure and work limits for one advance.
     pub dispatch: DomEventDispatchLimits,
@@ -96,6 +100,12 @@ impl From<DocumentScriptNativeError> for DocumentGuestEventError {
 impl From<DomError> for DocumentGuestEventError {
     fn from(error: DomError) -> Self {
         DocumentScriptNativeError::from(error).into()
+    }
+}
+
+impl From<DomHostedError> for DocumentGuestEventError {
+    fn from(error: DomHostedError) -> Self {
+        DocumentScriptNativeError::from(DomHostedRuntimeError::Dom(error)).into()
     }
 }
 
@@ -288,6 +298,47 @@ pub struct DocumentGuestListenerException {
     /// Associated callback Realm, independently qualified by the attachment.
     pub realm: RealmId,
     /// Original JavaScript thrown value.
+    pub exception: Exception,
+}
+
+/// An exception raised by synchronous custom element construction.
+#[derive(Debug)]
+pub struct DocumentGuestConstructorException {
+    /// Exact canonical definition selected by the factory.
+    pub definition: surgeist_dom::DomRegistryDefinitionId,
+    /// The selected constructor object's associated Realm.
+    pub realm: RealmId,
+    /// Original thrown value or the exception from native result validation.
+    pub exception: Exception,
+}
+
+/// The custom-element lifecycle callback that threw.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DocumentGuestCustomElementCallback {
+    /// An observed attribute reaction.
+    AttributeChanged,
+    /// A connection reaction.
+    Connected,
+    /// A disconnection reaction.
+    Disconnected,
+    /// A state-preserving move reaction.
+    ConnectedMove,
+    /// A change of owner Document.
+    Adopted,
+}
+
+/// The original exception from a custom-element lifecycle callback.
+#[derive(Debug)]
+pub struct DocumentGuestCustomElementCallbackException {
+    /// Exact definition associated with the callback.
+    pub definition: surgeist_dom::DomRegistryDefinitionId,
+    /// Original element receiver.
+    pub receiver: surgeist_dom::NodeId,
+    /// The callback that threw.
+    pub callback: DocumentGuestCustomElementCallback,
+    /// The callback object’s associated realm.
+    pub realm: RealmId,
+    /// Original thrown value.
     pub exception: Exception,
 }
 
@@ -613,6 +664,10 @@ impl GuestBudget {
 }
 
 impl GuestEvents {
+    pub(super) fn installs_public_bindings(&self) -> bool {
+        self.public.is_some()
+    }
+
     pub(super) fn prepare_origin(
         &self,
         owner: &NativeOwner,
@@ -646,14 +701,14 @@ impl GuestEvents {
         process: &mut Process,
         realm: &Realm,
         dom_exception_limits: DomExceptionLimits,
-        global: DomHostedGlobalId,
+        origin: (DomHostedGlobalId, DocumentId, surgeist_dom::DomRegistryId),
         admission: OriginAdmission,
     ) -> Result<(), DocumentScriptError> {
         let public = self.public.as_ref().ok_or(Error::RegistryConflict)?;
         process
             .execution()
             .in_realm(realm, |scope| {
-                Ok(public.install_origin(scope, self, dom_exception_limits, global, admission))
+                Ok(public.install_origin(scope, self, dom_exception_limits, origin, admission))
             })?
             .map_err(creation_realm_error)
     }
@@ -768,6 +823,7 @@ impl PreparedDocumentScriptHost {
             &admission,
         )?);
         let engine = script.publish(&self.native, policy)?;
+        engine.registration.observe_custom_element_reactions()?;
         Ok((engine, admission))
     }
 }
@@ -939,6 +995,32 @@ impl DocumentScriptHost {
             .as_ref()
             .ok_or(DocumentGuestEventError::RegistryState)?;
         Ok(reports.take())
+    }
+
+    /// Take the next reported custom element constructor exception.
+    pub fn take_guest_constructor_exception(
+        &self,
+        permit: &DocumentScriptPermit,
+    ) -> Result<Option<DocumentGuestConstructorException>, DocumentGuestEventError> {
+        self.check_permit(permit)?;
+        let reports = self
+            .guest_exception_reports
+            .as_ref()
+            .ok_or(DocumentGuestEventError::RegistryState)?;
+        Ok(reports.take_constructor())
+    }
+
+    /// Take the next reported custom-element lifecycle callback exception.
+    pub fn take_guest_custom_element_callback_exception(
+        &self,
+        permit: &DocumentScriptPermit,
+    ) -> Result<Option<DocumentGuestCustomElementCallbackException>, DocumentGuestEventError> {
+        self.check_permit(permit)?;
+        let reports = self
+            .guest_exception_reports
+            .as_ref()
+            .ok_or(DocumentGuestEventError::RegistryState)?;
+        Ok(reports.take_custom_element_callback())
     }
 
     fn guest_events(&self) -> Result<Rc<GuestEvents>, DocumentGuestEventError> {

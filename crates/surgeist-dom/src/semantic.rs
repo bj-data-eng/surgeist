@@ -28,11 +28,11 @@ use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderRegistry, HtmlCaptureBuilderSubject,
     HtmlCaptureDefinitionInput, HtmlCaptureEdgeError, HtmlCaptureElementError, HtmlCaptureError,
     HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureSubjectId,
-    HtmlCaptureTemplateCacheInput, HtmlCapturedCustomElementState, HtmlCapturedDefinitions,
-    HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlDocumentClass, HtmlHostFactsRevision,
-    HtmlRegistryScope, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
-    HtmlSemanticContextInput, HtmlSemanticFailure, HtmlSemanticLimits, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticSession, HtmlTemplateDocumentRole,
+    HtmlCaptureTemplateCacheInput, HtmlCapturedCustomElementState, HtmlCapturedIsValue,
+    HtmlCapturedShadowProperties, HtmlDocumentClass, HtmlHostFactsRevision,
+    HtmlRegistryFormationError, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSemanticFailure, HtmlSemanticLimits,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticSession, HtmlTemplateDocumentRole,
 };
 
 use crate::{
@@ -455,42 +455,30 @@ fn registry_input(
             .map(|entry| HtmlCaptureRegistryInput::Registry(entry.captured.clone()))
             .ok_or(DomHtmlCaptureError::UnmappedSubject);
     }
-    control.charge(1)?;
     let record = snapshot
         .state
         .registries
         .as_ref()
         .ok_or(DomError::StaleNode)?
-        .get(canonical)?;
-    control.charge(1)?;
-    let definitions = record.capture.definitions(&record.local)?;
-    // The canonical owner currently issues only the actual complete-empty
-    // Global profile. Preserve unavailable/unsupported evidence as a refusal;
-    // neither can become a null or guessed empty registry.
-    match definitions {
-        HtmlCapturedDefinitions::Complete([]) => {}
-        HtmlCapturedDefinitions::Complete(_) => return Err(DomError::NotSupported.into()),
-        HtmlCapturedDefinitions::Unavailable => {
-            return Err(HtmlCaptureError::UnavailableDefinitions(record.local.clone()).into());
-        }
-    }
-    control.charge(1)?;
-    let scope = record.capture.registry_scope(&record.local)?;
-    match scope {
-        HtmlRegistryScope::Global => {}
-        HtmlRegistryScope::Scoped => return Err(DomError::NotSupported.into()),
-        HtmlRegistryScope::Unavailable => {
-            return Err(HtmlCaptureError::MissingFact {
-                subject: None,
-                fact: surgeist_html_semantics::HtmlCaptureFact::Registry,
-            }
-            .into());
-        }
-    }
+        .get_with(canonical, &mut || control.charge(1))?;
     control.reserve(&mut registries.items, 1)?;
-    let captured = builder.add_registry(Some(Vec::new()))?;
-    control.charge(1)?;
-    builder.establish_registry_scope(&captured, scope)?;
+    let captured = builder
+        .import_registry_with(&record.capture, &record.local, |amount| {
+            control.charge(amount)
+        })
+        .map_err(|error| match error {
+            HtmlRegistryFormationError::Interrupted(error) => error,
+            HtmlRegistryFormationError::Capture(error) => error.into(),
+            HtmlRegistryFormationError::Accounting(fault) => {
+                DomError::from_accounting_fault(fault).into()
+            }
+            HtmlRegistryFormationError::AllocationFailed => DomHtmlCaptureError::AllocationFailed,
+            HtmlRegistryFormationError::RepresentationExhausted
+            | HtmlRegistryFormationError::FormationBytes { .. }
+            | HtmlRegistryFormationError::FormationUnits { .. } => {
+                DomHtmlCaptureError::RepresentationExhausted
+            }
+        })?;
     let position = registries.items.len();
     registries.items.push(StagedRegistry {
         canonical,
@@ -783,14 +771,37 @@ impl DomSnapshot {
                             || control.charge(1),
                         )
                         .map_err(element_capture_error)?;
-                    let definition = match element.custom_element_definition() {
-                        DomElementDefinition::Null => HtmlCaptureDefinitionInput::Null,
-                    };
-                    builder.establish_custom_element_context(
-                        &subject,
-                        HtmlCapturedCustomElementState::Known(element.custom_element_state()),
-                        definition,
-                    )?;
+                    let state =
+                        HtmlCapturedCustomElementState::Known(element.custom_element_state());
+                    match element.custom_element_definition() {
+                        DomElementDefinition::Null => builder.establish_custom_element_context(
+                            &subject,
+                            state,
+                            HtmlCaptureDefinitionInput::Null,
+                        )?,
+                        DomElementDefinition::Definition(id) => {
+                            let HtmlCaptureRegistryInput::Registry(registry) = registry_input(
+                                &mut builder,
+                                self,
+                                DomRegistryBinding::Registry(id.registry()),
+                                &mut registries,
+                                &mut control,
+                            )?
+                            else {
+                                return Err(DomHtmlCaptureError::UnmappedSubject);
+                            };
+                            control.charge(1)?;
+                            let definition = builder.definition_handle(&registry, id.ordinal())?;
+                            builder
+                                .establish_custom_element_context_with(
+                                    &subject,
+                                    state,
+                                    HtmlCaptureDefinitionInput::Definition(definition),
+                                    || control.charge(1),
+                                )
+                                .map_err(edge_capture_error)?;
+                        }
+                    }
                     if let Some(link) = node.as_link() {
                         control.charge(1)?;
                         builder.establish_link_history(&subject, link.history())?;

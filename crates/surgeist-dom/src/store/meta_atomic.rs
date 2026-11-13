@@ -829,7 +829,7 @@ fn prepare_ordinary<'dom, 'caps>(
     // Revalidate the initial declaration against this actual request. No lower
     // work has begun, and this envelope starts with the prepaid prefix already spent.
     let envelope = Envelope::new(request.0, request.1, request.2)?;
-    dom.require_source_entry()?;
+    dom.require_source_entry(cancel)?;
     envelope.step(cancel)?;
     let (recording, resolver) = match inline {
         Some(input) => {

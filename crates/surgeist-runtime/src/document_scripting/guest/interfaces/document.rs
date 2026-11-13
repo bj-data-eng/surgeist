@@ -1,6 +1,7 @@
 //! Document and Node bindings for the real attached Window.
 
 use super::*;
+use crate::DomSourceDriveProgress;
 use surgeist_bindings_js::conversion::declarations::node_get_root_node_0_options;
 use surgeist_dom::{
     DomBatch, DomNodeKind, DomNodeRetirementInbox, DomQualifiedName, DomTagName, NodeId,
@@ -12,6 +13,7 @@ const DOCUMENT: &[u16] = &ascii(b"Document");
 mod attr;
 mod attr_factory;
 mod character_data;
+pub(super) use character_data::copy_native_data;
 pub(super) mod element;
 mod element_factory;
 mod fragment;
@@ -22,6 +24,7 @@ mod style_policy;
 mod text;
 mod tree;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
+pub(in crate::document_scripting) use ordinary::PendingConstructor;
 
 fn guest_source_services(
     style_policy: &mut dyn FnMut(
@@ -33,6 +36,132 @@ fn guest_source_services(
         execution_scope: None,
         style_policy,
         url: None,
+    }
+}
+
+/// The guest receives the original DOM result. A completed composition's
+/// producer receipts have already published and carry no further authority.
+fn guest_source_terminal(
+    result: crate::DomSourceDriveProgress,
+) -> Option<Result<surgeist_dom::DomSourceCompletion, surgeist_dom::DomSourceFailure>> {
+    use crate::DomSourceDriveProgress as Drive;
+    use surgeist_dom::DomSourceProgress as Source;
+
+    let source = match result {
+        Drive::Complete(done) => return Some(Ok(done)),
+        Drive::Failed(failure) => return Some(Err(failure)),
+        Drive::InlineSource { source, .. } => source,
+        Drive::MetaSource(outcome) => outcome.into_parts().0,
+        Drive::InlineFullscreenHandoff { .. } | Drive::Pending { .. } => return None,
+    };
+    match source {
+        Source::Complete(done) => Some(Ok(done)),
+        Source::Failed(failure) => Some(Err(failure)),
+        Source::Request(_) => None,
+    }
+}
+
+impl DocumentScriptHost {
+    fn deliver_resumed_source_reactions(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        terminal: GuestTerminalSource<'_>,
+    ) -> Result<(), DocumentGuestEventError> {
+        if self.attachment()?.realm.check_owner_active().is_err()
+            || self
+                .native
+                .session
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?
+                .read_dom()
+                .pending_source_edit()
+                .is_some()
+        {
+            return Ok(());
+        }
+        let owner = self.native.clone();
+        let Some(events) = self
+            .engine
+            .as_ref()
+            .and_then(|engine| engine.guest_events.clone())
+        else {
+            return Ok(());
+        };
+        let Some(public) = &events.public else {
+            return Ok(());
+        };
+        let registration = owner
+            .attachment
+            .get()
+            .and_then(|attachment| attachment.registration.upgrade())
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        if registration.custom_element_reaction_segments() == 0 {
+            return Ok(());
+        }
+        self.in_document(permit, |scope| {
+            let drain = |scope: &mut Scope<'_>| {
+                let capture = Capture {
+                    callbacks: public.callbacks.clone(),
+                    origin: None,
+                    _backing: events.reserve(&owner, size_of::<Capture>())?,
+                };
+                capture.drain_native_reactions(scope, &owner, &events, terminal.operation)
+            };
+            if let Some(cause) = terminal.error {
+                type PriorFailure = HostFailureSlot<DocumentGuestEventError, GuestBacking>;
+                let backing = match events.reserve(
+                    &owner,
+                    PriorFailure::storage_bytes() + 2 * size_of::<usize>(),
+                ) {
+                    Ok(backing) => backing,
+                    Err(_) => return refuse(scope, &events.refusal, cause.clone().into()),
+                };
+                let prior = PriorFailure::new(&scope.realm_authority()?, backing)?;
+                return scope.complete_after_host_failure(&prior, cause.clone().into(), drain);
+            }
+            match drain(scope) {
+                Ok(()) => Ok(()),
+                Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                    Err(error)
+                }
+                Err(error) => refuse(scope, &events.refusal, error),
+            }
+        })?;
+        Ok(())
+    }
+}
+
+struct GuestTerminalSource<'a> {
+    operation: surgeist_dom::DomSourceOperationId,
+    error: Option<&'a surgeist_dom::DomError>,
+}
+
+fn guest_terminal_result(result: &DomSourceDriveProgress) -> Option<GuestTerminalSource<'_>> {
+    use surgeist_dom::DomSourceProgress as Source;
+    let complete = |done: &surgeist_dom::DomSourceCompletion| GuestTerminalSource {
+        operation: done.operation(),
+        error: done
+            .cancellation_requested()
+            .then_some(&surgeist_dom::DomError::Cancelled),
+    };
+    fn failed(failure: &surgeist_dom::DomSourceFailure) -> GuestTerminalSource<'_> {
+        GuestTerminalSource {
+            operation: failure.operation(),
+            error: Some(failure.error()),
+        }
+    }
+    let source = match result {
+        DomSourceDriveProgress::Complete(done) => return Some(complete(done)),
+        DomSourceDriveProgress::Failed(failure) => return Some(failed(failure)),
+        DomSourceDriveProgress::InlineSource { source, .. } => source,
+        DomSourceDriveProgress::MetaSource(outcome) => outcome.source(),
+        DomSourceDriveProgress::InlineFullscreenHandoff { .. }
+        | DomSourceDriveProgress::Pending { .. } => return None,
+    };
+    match source {
+        Source::Complete(done) => Some(complete(done)),
+        Source::Failed(failure) => Some(failed(failure)),
+        Source::Request(_) => None,
     }
 }
 
@@ -102,7 +231,7 @@ pub(super) struct DocumentBindings {
     documents: RefCell<Option<Box<DocumentPin>>>,
     prototypes: DocumentPrototypes,
     element: element::ElementBindings,
-    ordinary: ordinary::OrdinaryBindings,
+    pub(super) ordinary: ordinary::OrdinaryBindings,
 }
 
 pub(super) struct DocumentPrototypes {
@@ -161,6 +290,12 @@ impl DocumentPrototypes {
             fragment_callback,
         )?;
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
+        custom_elements::install_node_getter(
+            scope,
+            &document,
+            custom_elements::Receiver::DocumentOrShadowRoot,
+            funding.capture,
+        )?;
         fragment::install_factory(scope, &document, &funding.capture)?;
         attr_factory::install(scope, &document, &funding.capture)?;
         element_factory::install(scope, &document, &funding.capture)?;
@@ -612,6 +747,14 @@ fn install_getter<'scope>(
 }
 
 impl PublicEventBindings {
+    #[cfg(test)]
+    pub(in crate::document_scripting::guest) fn refuse_next_constructor_fallback(&self) {
+        self.document
+            .ordinary
+            .refuse_next_constructor_fallback
+            .set(true);
+    }
+
     #[cfg(test)]
     pub(in crate::document_scripting::guest) fn refuse_next_ordinary_wrapper_validation(&self) {
         self.document.ordinary.refuse_next_validation.set(true);

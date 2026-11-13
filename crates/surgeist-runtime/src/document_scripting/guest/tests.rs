@@ -6,6 +6,1530 @@ pub(in crate::document_scripting) mod registered_origin;
 pub(in crate::document_scripting) mod shadow_root;
 pub(in crate::document_scripting) mod trusted_policy;
 
+pub(in crate::document_scripting) fn exhaust_guest_reaction_work(host: &DocumentScriptHost) {
+    let events = host.guest_events().unwrap();
+    events.budget.work.set(events.limits.work);
+}
+
+pub(in crate::document_scripting) fn form_associated_definition_refuses_before_publication() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    let before = host.snapshot().unwrap().stamp();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const name = 'x-form-associated';
+            const reads = [];
+            const waiting = customElements.whenDefined(name);
+            class FormAssociated extends HTMLElement {
+                static get formAssociated() { reads.push('form'); return true; }
+                get formAssociatedCallback() { reads.push('callback'); return () => {}; }
+            }
+            try { customElements.define(name, FormAssociated); }
+            catch (error) {
+                return error instanceof DOMException && error.name === 'NotSupportedError' &&
+                    customElements.get(name) === undefined && customElements.whenDefined(name) === waiting &&
+                    reads.join(',') === 'form,callback';
+            }
+            return false;
+        })()"#)
+    }).unwrap();
+    assert_eq!(host.snapshot().unwrap().stamp(), before);
+    assert!(host.stop().into_session().is_ok());
+}
+
+pub(in crate::document_scripting) fn successful_constructor_needs_no_fallback_admission() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    let events = host.guest_events().unwrap();
+    let entered = Rc::new(Cell::new(false));
+    let observed = entered.clone();
+    host.in_document(&permit, |scope| {
+        let global = scope.global()?;
+        let events = Rc::downgrade(&events);
+        let callback = scope.function(&Callback::new(move |_, _| {
+            let events = events.upgrade().unwrap();
+            observed.set(true);
+            events.budget.work.set(events.limits.work);
+            Ok(Completion::Undefined)
+        }))?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("useRemainingWork")),
+            &callback,
+        )?;
+        assert_guest(
+            scope,
+            r#"(() => {
+            let constructed;
+            class Exact extends HTMLElement {
+                constructor() {
+                    super();
+                    constructed = this;
+                    useRemainingWork();
+                }
+            }
+            customElements.define('x-exact-autonomous', Exact);
+            return document.createElement('x-exact-autonomous') === constructed;
+        })()"#,
+        )
+    })
+    .unwrap();
+    assert!(entered.get());
+    drop(events);
+    assert!(host.stop().into_session().is_ok());
+}
+
+pub(in crate::document_scripting) fn custom_element_registry_identity_is_canonical() {
+    let mut host = public_node_host(5_000, 60_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "typeof CustomElementRegistry === 'function'")?;
+        assert_guest(scope, r#"(() => {
+            const registry = window.customElements;
+            const element = document.createElement('div');
+            const shadow = element.attachShadow({mode: 'open'});
+            const nullElement = document.createElement('div', {customElementRegistry: null});
+            const nullShadow = nullElement.attachShadow({mode: 'open', customElementRegistry: null});
+            const getter = Object.getOwnPropertyDescriptor(Document.prototype, 'customElementRegistry').get;
+            let wrongReceiver = false;
+            try { getter.call(Object.create(document)); } catch (error) { wrongReceiver = error instanceof TypeError; }
+            return registry instanceof CustomElementRegistry && registry === window.customElements
+                && registry === document.customElementRegistry && registry === element.customElementRegistry
+                && registry === shadow.customElementRegistry && new Document().customElementRegistry === null
+                && nullElement.customElementRegistry === null && nullShadow.customElementRegistry === null
+                && wrongReceiver;
+        })()"#)
+    }).unwrap();
+}
+
+pub(in crate::document_scripting) fn a_new_heap_cannot_claim_an_existing_executable_registry() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = super::super::cross_realm_tests::hosted_session(&cancel, 0);
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 20_000, 200_000);
+    let limits = host.guest_events().unwrap().limits;
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "customElements.define('x-original-heap', class extends HTMLElement {})",
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let original = host.snapshot().unwrap();
+    let mut session = host.stop().into_session().unwrap();
+    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 2,
+        nested_dispatches: 2,
+        storage_bytes: 32_000,
+        work: 10_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancel).unwrap();
+    let stamp = session.snapshot().stamp();
+    let mut registry = Some(registry);
+    let failure = PreparedDocumentScriptHost::prepare(session, 2_000_000, cancel)
+        .unwrap()
+        .enable_with_guest_event_registry(
+            target,
+            HtmlScriptingPolicy {
+                user_allows: true,
+                automation_allows: true,
+            },
+            DocumentScriptHooks {
+                child_count: &units("readChildCount"),
+                detach_source_node_if: &units("detachIf"),
+            },
+            &mut registry,
+            limits,
+        )
+        .expect_err("a fresh heap has no authority over the original constructor");
+    assert!(matches!(
+        failure.error,
+        DocumentGuestEventError::Document(DocumentScriptError::Native(
+            DocumentScriptNativeError::CustomElementRegistryCustodyUnavailable(registry)
+        )) if registry == document_registry_identity(&original, target.document()).unwrap()
+    ));
+    assert!(registry.is_some());
+    let stopped = failure.owner.into_session().unwrap().snapshot();
+    assert_eq!(stopped.stamp(), stamp);
+    let id = document_registry_identity(&original, target.document()).unwrap();
+    assert_eq!(original.registry(id).unwrap().definition_count(), 1);
+    assert_eq!(stopped.registry(id).unwrap().definition_count(), 1);
+}
+
+pub(in crate::document_scripting) fn only_public_origin_projection_requires_constructor_custody() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, origin) = super::super::cross_realm_tests::hosted_session(&cancel, 0);
+    let target = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted.create_headless_host(&mut dom, &cancel).unwrap();
+        hosted.create_top_level(&mut dom, owner, &cancel).unwrap()
+    };
+    let mut original = attach_public_nodes(session, origin, cancel.clone(), 20_000, 200_000);
+    let limits = original.guest_events().unwrap().limits;
+    let permit = original.permit().unwrap();
+    original
+        .in_document(&permit, |scope| {
+            scope
+                .evaluate(&units(
+                    "customElements.define('x-origin-heap', class extends HTMLElement {})",
+                ))
+                .map(drop)
+        })
+        .unwrap();
+    let session = original.stop().into_session().unwrap();
+    let id = document_registry_identity(&session.snapshot(), origin.document()).unwrap();
+    let mut public = attach_public_nodes(session, target, cancel.clone(), 20_000, 200_000);
+    let permit = public.permit().unwrap();
+    let stamp = public.snapshot().unwrap().stamp();
+    assert!(
+        matches!(public.register_node_creation_realm(&permit, origin), Err(DocumentScriptError::Native(DocumentScriptNativeError::CustomElementRegistryCustodyUnavailable(registry))) if registry == id)
+    );
+    assert_eq!(public.snapshot().unwrap().stamp(), stamp);
+    let mut session = public.stop().into_session().unwrap();
+    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 2,
+        nested_dispatches: 2,
+        storage_bytes: 32_000,
+        work: 10_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancel).unwrap();
+    let mut event_only = PreparedDocumentScriptHost::prepare(session, 2_000_000, cancel)
+        .unwrap()
+        .enable(
+            target,
+            HtmlScriptingPolicy {
+                user_allows: true,
+                automation_allows: true,
+            },
+            DocumentScriptHooks {
+                child_count: &units("readChildCount"),
+                detach_source_node_if: &units("detachIf"),
+            },
+        )
+        .unwrap();
+    let permit = event_only.permit().unwrap();
+    event_only
+        .attach_guest_event_registry(&permit, &mut Some(registry), limits)
+        .unwrap();
+    event_only
+        .register_node_creation_realm(&permit, origin)
+        .unwrap();
+    let stopped = event_only.stop().into_session().unwrap().snapshot();
+    assert_eq!(stopped.registry(id).unwrap().definition_count(), 1);
+}
+
+pub(in crate::document_scripting) fn element_factory_qualifies_the_explicit_registry() {
+    let mut host = public_node_host(5_000, 60_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const registry = window.customElements;
+            const opts = { customElementRegistry: registry };
+            const throws = (action, name) => {
+                try { action(); } catch (error) { return error.name === name; }
+                return false;
+            };
+            return document.createElement('div', opts).customElementRegistry === registry
+                && document.createElementNS('http://www.w3.org/2000/svg', 's:circle', opts).customElementRegistry === registry
+                && throws(() => new Document().createElement('div', opts), 'NotSupportedError')
+                && throws(() => document.createElement('div', { ...opts, is: 'x-div' }), 'NotSupportedError')
+                && throws(() => document.createElement('bad name', { ...opts, is: 'x-div' }), 'InvalidCharacterError')
+                && throws(() => document.createElement('div', { customElementRegistry: Object.create(registry) }), 'TypeError')
+                && throws(() => document.createElement('div', { customElementRegistry: new Proxy(registry, {}) }), 'TypeError');
+        })()"#)
+    }).unwrap();
+}
+
+pub(in crate::document_scripting) fn direct_registered_constructors_create_canonical_elements() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            class Unregistered extends HTMLElement {}
+            let rejected = false;
+            try { new Unregistered(); } catch (error) { rejected = error instanceof TypeError; }
+            class Autonomous extends HTMLElement {
+                constructor() { super(); this.setAttribute('data-constructed', 'autonomous'); }
+            }
+            class Customized extends HTMLButtonElement {
+                constructor() { super(); this.setAttribute('data-constructed', 'customized'); }
+            }
+            class Colon extends HTMLElement {}
+            class Template extends HTMLTemplateElement {}
+            customElements.define('x-direct-element', Autonomous);
+            customElements.define('x-direct-button', Customized, {extends: 'button'});
+            customElements.define('x-a:b', Colon);
+            customElements.define('x-direct-template', Template, {extends: 'template'});
+            const first = new Autonomous();
+            const second = new Autonomous();
+            const button = new Customized();
+            const colon = new Colon();
+            const template = new Template();
+            return rejected && first !== second && first instanceof Autonomous
+                && first.localName === 'x-direct-element' && first.ownerDocument === document
+                && first.parentNode === null && first.customElementRegistry === customElements
+                && first.getAttribute('data-constructed') === 'autonomous'
+                && button instanceof Customized && button.localName === 'button'
+                && button.ownerDocument === document && button.parentNode === null
+                && button.customElementRegistry === customElements
+                && button.getAttribute('data-constructed') === 'customized'
+                && colon.localName === 'x-a:b' && colon.prefix === null
+                && template instanceof Template && template.localName === 'template';
+        })()"#,
+        )
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let template = snapshot
+        .nodes()
+        .filter_map(|node| snapshot.node(node).unwrap().as_template())
+        .next()
+        .unwrap();
+    let contents = snapshot.node(template.contents().unwrap()).unwrap();
+    assert!(matches!(
+        contents.kind(),
+        surgeist_dom::DomNodeKind::DocumentFragment
+    ));
+    assert_ne!(
+        contents.owner_document(),
+        snapshot.node(template.id()).unwrap().owner_document()
+    );
+}
+
+pub(in crate::document_scripting) fn registry_define_upgrades_existing_candidates_in_tree_order() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const root = document.documentElement;
+            const host = document.createElement('div');
+            const shadow = host.attachShadow({mode: 'closed'});
+            const inside = document.createElement('x-upgrade');
+            const outside = document.createElement('x-upgrade');
+            const detached = document.createElement('x-upgrade');
+            inside.setAttribute('data-key', 'inside');
+            outside.setAttribute('data-key', 'outside');
+            shadow.appendChild(inside);
+            root.appendChild(host);
+            root.appendChild(outside);
+            const calls = [];
+            class Upgrade extends HTMLElement {
+                static observedAttributes = ['data-key'];
+                constructor() {
+                    super();
+                    calls.push(this, 'construct');
+                }
+                attributeChangedCallback(name, oldValue, value) {
+                    calls.push(this, name, oldValue, value);
+                }
+                connectedCallback() {
+                    calls.push(this, 'connected');
+                }
+            }
+            customElements.define('x-upgrade', Upgrade);
+            const expected = [
+                inside, 'construct', inside, 'data-key', null, 'inside', inside, 'connected',
+                outside, 'construct', outside, 'data-key', null, 'outside', outside, 'connected',
+            ];
+            return inside instanceof Upgrade && outside instanceof Upgrade
+                && !(detached instanceof Upgrade) && calls.length === expected.length
+                && calls.every((value, index) => value === expected[index]);
+        })()"#,
+        )
+    })
+    .unwrap();
+}
+
+pub(in crate::document_scripting) fn reinserted_candidate_drains_its_queued_upgrade_once() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const root = document.documentElement;
+            const first = document.createElement('x-reinserted-candidate');
+            const second = document.createElement('x-reinserted-candidate');
+            root.appendChild(first);
+            root.appendChild(second);
+            const calls = [];
+            class Reinserted extends HTMLElement {
+                constructor() {
+                    super();
+                    if (this === first) {
+                        calls.push('first starts');
+                        root.removeChild(second);
+                        root.appendChild(second);
+                        calls.push('first resumes');
+                    } else if (this === second) {
+                        calls.push('second constructs');
+                    }
+                }
+                connectedCallback() {
+                    calls.push(this === first ? 'first connects' : 'second connects');
+                }
+            }
+            customElements.define('x-reinserted-candidate', Reinserted);
+            const expected = ['first starts', 'second constructs', 'second connects', 'first resumes', 'first connects'];
+            return first instanceof Reinserted && second instanceof Reinserted
+                && calls.length === expected.length && calls.every((value, index) => value === expected[index]);
+        })()"#)
+    }).unwrap();
+}
+
+pub(in crate::document_scripting) fn reentrant_attribute_write_drains_the_receivers_fifo() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const element = document.createElement('x-attribute-fifo');
+            element.setAttribute('data-first', 'first');
+            element.setAttribute('data-next', 'original');
+            document.documentElement.appendChild(element);
+            const calls = [];
+            class Ordered extends HTMLElement {
+                static observedAttributes = ['data-first', 'data-next'];
+                attributeChangedCallback(name, oldValue, value, namespace) {
+                    calls.push([this, name, oldValue, value, namespace]);
+                    if (name === 'data-first') {
+                        this.setAttribute('data-next', 'original');
+                        calls.push('first resumes');
+                    }
+                }
+                connectedCallback() { calls.push('connected'); }
+            }
+            customElements.define('x-attribute-fifo', Ordered);
+            const expected = [
+                [element, 'data-first', null, 'first', null],
+                [element, 'data-next', null, 'original', null],
+                'connected',
+                [element, 'data-next', 'original', 'original', null],
+                'first resumes',
+            ];
+            return calls.length === expected.length && calls.every((actual, index) => {
+                const wanted = expected[index];
+                return Array.isArray(wanted)
+                    ? Array.isArray(actual) && actual.length === wanted.length
+                        && actual.every((value, offset) => value === wanted[offset])
+                    : actual === wanted;
+            });
+        })()"#,
+        )
+    })
+    .unwrap();
+}
+
+pub(in crate::document_scripting) fn reinserted_upgrade_receiver_drains_initial_reactions() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const root = document.documentElement;
+            const receiver = document.createElement('x-reinserted-receiver');
+            receiver.setAttribute('data-key', 'original');
+            root.appendChild(receiver);
+            const calls = [];
+            class Reinserted extends HTMLElement {
+                static observedAttributes = ['data-key'];
+                constructor() {
+                    super();
+                    calls.push('constructor enters');
+                    root.removeChild(this);
+                    root.appendChild(this);
+                    calls.push('constructor resumes');
+                }
+                attributeChangedCallback(name, oldValue, newValue, namespace) {
+                    if (this === receiver && name === 'data-key' && oldValue === null &&
+                        newValue === 'original' && namespace === null) calls.push('attribute');
+                }
+                connectedCallback() {
+                    if (this === receiver) calls.push('connected');
+                }
+            }
+            customElements.define('x-reinserted-receiver', Reinserted);
+            return receiver instanceof Reinserted && calls.join(',') ===
+                'constructor enters,attribute,connected,constructor resumes';
+        })()"#,
+        )
+    })
+    .unwrap();
+}
+
+pub(in crate::document_scripting) fn custom_element_subtree_reacts_to_connection_changes() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const calls = [];
+            class Connected extends HTMLElement {
+                connectedCallback() { calls.push(['connected', this]); }
+                disconnectedCallback() { calls.push(['disconnected', this]); }
+            }
+            customElements.define('x-connection-changes', Connected);
+            const outer = document.createElement('x-connection-changes');
+            const inner = document.createElement('x-connection-changes');
+            outer.appendChild(inner);
+            if (calls.length !== 0) return false;
+            const root = document.documentElement;
+            root.appendChild(outer);
+            if (calls.length !== 2) return false;
+            root.removeChild(outer);
+            if (calls.length !== 4) return false;
+            root.appendChild(outer);
+            const expected = [
+                ['connected', outer], ['connected', inner],
+                ['disconnected', outer], ['disconnected', inner],
+                ['connected', outer], ['connected', inner],
+            ];
+            return calls.length === expected.length && calls.every(([kind, target], index) =>
+                kind === expected[index][0] && target === expected[index][1]);
+        })()"#,
+        )
+    })
+    .unwrap();
+}
+
+pub(in crate::document_scripting) fn custom_element_move_uses_the_registered_move_reaction() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const calls = [];
+            const marker = globalThis.moveReactionException = {};
+            let throwOnDisconnect = false;
+            class Lifecycle extends HTMLElement {
+                connectedCallback() { calls.push(['connected', this]); }
+                disconnectedCallback() {
+                    calls.push(['disconnected', this]);
+                    if (throwOnDisconnect) throw marker;
+                }
+            }
+            class Moving extends Lifecycle {
+                connectedMoveCallback() { calls.push(['moved', this]); }
+            }
+            customElements.define('x-move-lifecycle', Moving);
+            customElements.define('x-move-fallback', class extends Lifecycle {});
+            const root = document.documentElement;
+            const source = document.createElement('div');
+            const destination = document.createElement('div');
+            root.appendChild(source);
+            root.appendChild(destination);
+            const moving = source.appendChild(document.createElement('x-move-lifecycle'));
+            const fallback = source.appendChild(document.createElement('x-move-fallback'));
+            calls.length = 0;
+            destination.moveBefore(moving, null);
+            destination.moveBefore(fallback, null);
+            throwOnDisconnect = true;
+            source.moveBefore(fallback, null);
+            const expected = [
+                ['moved', moving], ['disconnected', fallback], ['connected', fallback],
+                ['disconnected', fallback],
+            ];
+            return calls.length === expected.length && calls.every(([kind, target], index) =>
+                kind === expected[index][0] && target === expected[index][1]);
+        })()"#,
+        )
+    })
+    .unwrap();
+    let report = host
+        .take_guest_custom_element_callback_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        report.callback,
+        DocumentGuestCustomElementCallback::Disconnected
+    );
+    host.in_document(&permit, |scope| {
+        let marker = scope.evaluate(&units("moveReactionException"))?;
+        let exception = scope.import(report.exception.value())?;
+        assert!(scope.strict_equals(&marker, &exception)?);
+        Ok(())
+    })
+    .unwrap();
+}
+
+pub(in crate::document_scripting) fn custom_element_adoption_uses_the_original_documents() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const calls = [];
+            class Adopted extends HTMLElement {
+                disconnectedCallback() { calls.push([this, null, null]); }
+                adoptedCallback(oldDocument, newDocument) {
+                    calls.push([this, oldDocument, newDocument]);
+                }
+            }
+            customElements.define('x-adopted-lifecycle', Adopted);
+            const element = document.createElement('x-adopted-lifecycle');
+            const other = new Document();
+            document.documentElement.appendChild(element);
+            if (other.adoptNode(element) !== element || element.ownerDocument !== other) return false;
+            if (other.adoptNode(element) !== element || calls.length !== 2) return false;
+            if (document.adoptNode(element) !== element || element.ownerDocument !== document) return false;
+            const expected = [
+                [element, null, null],
+                [element, document, other],
+                [element, other, document],
+            ];
+            return calls.length === expected.length && calls.every((call, index) =>
+                call.every((value, offset) => value === expected[index][offset]));
+        })()"#)
+    })
+    .unwrap();
+}
+
+pub(in crate::document_scripting) fn custom_element_reparenting_queues_each_receivers_reactions() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const calls = [];
+            let moving = false;
+            class Reparented extends HTMLElement {
+                static observedAttributes = ['data-step'];
+                connectedCallback() { calls.push(['connect', this]); }
+                disconnectedCallback() {
+                    calls.push(['disconnect', this]);
+                    if (moving && this === outer) {
+                        inner.setAttribute('data-step', 'inner');
+                        outer.setAttribute('data-step', 'outer');
+                        calls.push(['resume', this]);
+                    }
+                }
+                attributeChangedCallback() { calls.push(['attribute', this]); }
+            }
+            customElements.define('x-reparented-lifecycle', Reparented);
+            const root = document.documentElement;
+            const source = root.appendChild(document.createElement('div'));
+            const destination = root.appendChild(document.createElement('div'));
+            const outer = source.appendChild(document.createElement('x-reparented-lifecycle'));
+            const inner = outer.appendChild(document.createElement('x-reparented-lifecycle'));
+            calls.length = 0;
+            moving = true;
+            destination.appendChild(outer);
+            const expected = [
+                ['disconnect', outer],
+                ['disconnect', inner], ['connect', inner], ['attribute', inner],
+                ['connect', outer], ['attribute', outer], ['resume', outer],
+            ];
+            return calls.length === expected.length && calls.every(([kind, target], index) =>
+                kind === expected[index][0] && target === expected[index][1]);
+        })()"#,
+        )
+    })
+    .unwrap();
+}
+
+pub(in crate::document_scripting) fn custom_element_reacts_to_the_committed_prefix_of_a_failed_edit()
+ {
+    let mut host = public_node_host_with_reports(4);
+    let (permit, edit) = prepare_failed_tree_edit(&mut host);
+    host.run_guest_tree_edit_fixture(&permit, edit).unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "disconnectCalls.length === 1 && disconnectCalls[0] === prefixReceiver",
+        )
+    })
+    .unwrap();
+}
+
+pub(in crate::document_scripting) fn failed_tree_edit_keeps_its_error_when_reaction_admission_refuses()
+ {
+    let mut host = public_node_host_with_reports(1);
+    let (permit, edit) = prepare_failed_tree_edit(&mut host);
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                r#"
+            customElements.define('x-used-report', class extends HTMLElement {
+                connectedCallback() { throw {}; }
+            });
+            document.documentElement.appendChild(document.createElement('x-used-report'));
+        "#,
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let result = host.run_guest_tree_edit_fixture(&permit, edit);
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("expected a terminal reaction admission refusal: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::HierarchyRequest))
+        ))
+    ));
+    let mut stopped = host.stop();
+    assert_eq!(
+        stopped
+            .discard_pending_queued_custom_element_reactions()
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        stopped
+            .discard_pending_native_custom_element_reactions()
+            .unwrap(),
+        0
+    );
+    assert!(stopped.into_session().is_ok());
+}
+
+pub(in crate::document_scripting) fn failed_tree_edit_precedes_nested_host_refusal() {
+    let mut host = public_node_host_with_reports(4);
+    let (permit, edit) = prepare_failed_tree_edit(&mut host);
+    let entered = Rc::new(Cell::new(false));
+    let observed = entered.clone();
+    host.in_document(&permit, |scope| {
+        let slot = HostFailureSlot::new(&scope.realm_authority()?, ())?;
+        let callback = scope.function(&Callback::new(move |scope, _| {
+            observed.set(true);
+            let failure = slot
+                .record(std::io::Error::other("nested host refusal"))
+                .unwrap();
+            Err(scope.refuse_host(&failure))
+        }))?;
+        let global = scope.global()?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("onPrefixDisconnect")),
+            &callback,
+        )
+    })
+    .unwrap();
+    let result = host.run_guest_tree_edit_fixture(&permit, edit);
+    assert!(entered.get());
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("expected a terminal nested refusal: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::HierarchyRequest))
+        ))
+    ));
+    let mut stopped = host.stop();
+    assert_eq!(
+        stopped
+            .discard_pending_queued_custom_element_reactions()
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        stopped
+            .discard_pending_native_custom_element_reactions()
+            .unwrap(),
+        0
+    );
+    assert!(stopped.into_session().is_ok());
+}
+
+fn prepare_failed_tree_edit(
+    host: &mut DocumentScriptHost,
+) -> (DocumentScriptPermit, surgeist_dom::DomSourceEdit) {
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                r#"
+            globalThis.disconnectCalls = [];
+            customElements.define('x-prefix-reaction', class extends HTMLElement {
+                disconnectedCallback() {
+                    disconnectCalls.push(this);
+                    globalThis.onPrefixDisconnect?.();
+                }
+            });
+            globalThis.prefixReceiver = document.createElement('x-prefix-reaction');
+            document.documentElement.appendChild(prefixReceiver);
+        "#,
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let document = permit.document;
+    let root = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let receiver = *snapshot.node(root).unwrap().children().last().unwrap();
+    let edit = surgeist_dom::DomSourceEdit::append(
+        document.node(),
+        vec![
+            receiver.into(),
+            surgeist_dom::DocumentString::from("text").into(),
+        ],
+    );
+    (permit, edit)
+}
+
+pub(in crate::document_scripting) fn custom_element_reacts_to_an_inline_joined_failure() {
+    use crate::dom_source::inline_tests::{bind, inline_parser, requests};
+    use surgeist_dom::{DomInlineStyleProfile, DomInlineStyleSourceContext};
+
+    let mut host = public_node_host(20_000, 200_000);
+    let (permit, _) = prepare_failed_tree_edit(&mut host);
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units("globalThis.inlineDestination = new Document()"))
+            .map(drop)
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let source = permit.document;
+    let destination = snapshot
+        .nodes()
+        .filter_map(|id| snapshot.node(id).unwrap().as_document())
+        .map(|document| document.id())
+        .find(|document| *document != source)
+        .unwrap();
+    let root = snapshot
+        .document(source)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let receiver = *snapshot.node(root).unwrap().children().last().unwrap();
+    let context = {
+        let mut session = host.native.session.borrow_mut();
+        let _ = bind(&mut session, receiver, source);
+        let version = surgeist_cssom::CssomInputVersion {
+            role: surgeist_cssom::CssomInputRole::Support,
+            identity: "runtime-source".into(),
+            revision: 1,
+        };
+        let profiles = [source, destination]
+            .into_iter()
+            .map(|document| {
+                DomInlineStyleProfile::new(
+                    receiver,
+                    document,
+                    inline_parser(&session.snapshot(), document),
+                    version.clone(),
+                    surgeist_cssom::CssomDeclarationSupport::default(),
+                )
+                .unwrap()
+            })
+            .collect();
+        DomInlineStyleSourceContext::new(session.snapshot().stamp(), profiles).unwrap()
+    };
+    let edit = surgeist_dom::DomSourceEdit::append(
+        destination.node(),
+        vec![
+            receiver.into(),
+            surgeist_dom::DocumentString::from("text").into(),
+        ],
+    );
+    host.run_guest_joined_tree_edit_fixture(
+        &permit,
+        crate::DomSourceInlineStyleEdit::new(edit, context, requests()),
+    )
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "disconnectCalls.length === 1 && disconnectCalls[0] === prefixReceiver && prefixReceiver.ownerDocument === inlineDestination")
+    }).unwrap();
+}
+
+pub(in crate::document_scripting) fn registry_upgrade_preserves_nested_definition_and_shadow_refusal()
+ {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const root = document.documentElement;
+            const first = document.createElement('x-nested-definition');
+            const second = document.createElement('x-nested-candidate');
+            const blocked = document.createElement('x-shadow-blocked');
+            blocked.attachShadow({mode: 'closed'});
+            root.appendChild(first);
+            root.appendChild(second);
+            root.appendChild(blocked);
+            let nested;
+            class Child extends HTMLElement {}
+            class Parent extends HTMLElement {
+                constructor() {
+                    super();
+                    customElements.define('x-nested-candidate', Child);
+                    nested = document.createElement('x-nested-definition');
+                }
+            }
+            customElements.define('x-nested-definition', Parent);
+            let blockedCalls = 0;
+            class Blocked extends HTMLElement {
+                static disabledFeatures = ['shadow'];
+                constructor() { super(); blockedCalls++; }
+                connectedCallback() { blockedCalls++; }
+            }
+            customElements.define('x-shadow-blocked', Blocked);
+            return first instanceof Parent && second instanceof Child
+                && nested instanceof HTMLUnknownElement && !(blocked instanceof Blocked)
+                && blockedCalls === 0;
+        })()"#,
+        )
+    })
+    .unwrap();
+    let nested = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    let blocked = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert!(
+        host.take_guest_constructor_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    host.in_document(&permit, |scope| {
+        let global = scope.global()?;
+        for (name, report) in [("nestedUpgradeError", nested), ("blockedUpgradeError", blocked)] {
+            let error = scope.import(report.exception.value())?;
+            scope.set(&global, PropertyKey::String(&units(name)), &error)?;
+        }
+        assert_guest(scope, "nestedUpgradeError instanceof TypeError && blockedUpgradeError.name === 'NotSupportedError'")
+    }).unwrap();
+}
+
+pub(in crate::document_scripting) fn registry_upgrade_attempts_adopted_candidate_and_reports_callback()
+ {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const root = document.documentElement;
+            const destination = new Document();
+            const first = document.createElement('x-adopt-during-upgrade');
+            const second = document.createElement('x-adopt-during-upgrade');
+            globalThis.adoptedUpgradeReceiver = second;
+            root.appendChild(first);
+            root.appendChild(second);
+            const marker = globalThis.upgradeCallbackMarker = {};
+            let attempted = 0;
+            let prototypeReads = 0;
+            let readsBeforeAdoptedSuper;
+            class Adopting extends HTMLElement {
+                constructor() {
+                    attempted++;
+                    if (attempted === 2) readsBeforeAdoptedSuper = prototypeReads;
+                    super();
+                    if (this === first) destination.adoptNode(second);
+                }
+                connectedCallback() { throw marker; }
+            }
+            const registered = new Proxy(Adopting, {
+                get(target, key, receiver) {
+                    if (key === 'prototype') prototypeReads++;
+                    return Reflect.get(target, key, receiver);
+                },
+            });
+            customElements.define('x-adopt-during-upgrade', registered);
+            return attempted === 2 && first instanceof Adopting && !(second instanceof Adopting)
+                && second.ownerDocument === destination && second.customElementRegistry === null
+                && prototypeReads === readsBeforeAdoptedSuper;
+        })()"#,
+        )
+    })
+    .unwrap();
+    let receiver = host
+        .in_document(&permit, |scope| {
+            let receiver = scope.evaluate(&units("adoptedUpgradeReceiver"))?;
+            Ok(scope
+                .native_object::<interfaces::GuestNodeProjection>(&receiver)?
+                .unwrap()
+                .payload()
+                .id()
+                .unwrap()
+                .node())
+        })
+        .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let element = snapshot.node(receiver).unwrap().as_element().unwrap();
+    assert_eq!(
+        element.custom_element_state(),
+        surgeist_dom::HtmlCustomElementState::Precustomized
+    );
+    assert_eq!(
+        element.custom_element_definition(),
+        surgeist_dom::DomElementDefinition::Null
+    );
+    let constructor = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    let callback = host
+        .take_guest_custom_element_callback_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        callback.callback,
+        DocumentGuestCustomElementCallback::Connected
+    );
+    assert_eq!(callback.definition, constructor.definition);
+    assert!(
+        host.take_guest_custom_element_callback_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    host.in_document(&permit, |scope| {
+        let marker = scope.evaluate(&units("upgradeCallbackMarker"))?;
+        let exception = scope.import(callback.exception.value())?;
+        assert!(scope.strict_equals(&marker, &exception)?);
+        Ok(())
+    })
+    .unwrap();
+}
+
+pub(in crate::document_scripting) fn registry_upgrade_retains_unfinished_candidates_on_refusal() {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
+        registrations: 64,
+        pending_events: 8,
+        nested_dispatches: 4,
+        storage_bytes: 32_000,
+        work: 100_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancellation).unwrap();
+    let mut host = attach_public_nodes_with_registry_and_reports(
+        session,
+        target,
+        cancellation,
+        20_000,
+        200_000,
+        &mut Some(registry),
+        1,
+    );
+    let permit = host.permit().unwrap();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                r#"
+            const root = document.documentElement;
+            root.appendChild(document.createElement('x-pending-upgrade'));
+            root.appendChild(document.createElement('x-pending-upgrade'));
+            customElements.define('x-pending-upgrade', class extends HTMLElement {
+                connectedCallback() { throw {}; }
+            });
+        "#,
+            ))
+            .map(drop)
+    });
+    assert!(matches!(
+        result,
+        Err(DocumentScriptError::Script(Error::HostFailure(_)))
+    ));
+    let mut stopped = host.stop();
+    assert_eq!(stopped.discard_pending_definition_reactions().unwrap(), 1);
+    assert_eq!(stopped.discard_pending_definition_reactions().unwrap(), 0);
+    assert!(stopped.into_session().is_ok());
+}
+
+pub(in crate::document_scripting) fn insertion_upgrade_keeps_only_unentered_callbacks_on_refusal() {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
+        registrations: 64,
+        pending_events: 8,
+        nested_dispatches: 4,
+        storage_bytes: 32_000,
+        work: 100_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancellation).unwrap();
+    let mut host = attach_public_nodes_with_registry_and_reports(
+        session,
+        target,
+        cancellation,
+        20_000,
+        200_000,
+        &mut Some(registry),
+        1,
+    );
+    let permit = host.permit().unwrap();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                r#"
+            const candidate = document.createElement('x-pending-callback');
+            const sibling = document.createElement('x-pending-callback');
+            const fragment = document.createDocumentFragment();
+            fragment.appendChild(candidate);
+            fragment.appendChild(sibling);
+            candidate.setAttribute('data-first', '1');
+            candidate.setAttribute('data-second', '2');
+            customElements.define('x-pending-callback', class extends HTMLElement {
+                static observedAttributes = ['data-first', 'data-second'];
+                attributeChangedCallback() { throw {}; }
+            });
+            document.documentElement.appendChild(fragment);
+        "#,
+            ))
+            .map(drop)
+    });
+    assert!(matches!(
+        result,
+        Err(DocumentScriptError::Script(Error::HostFailure(_)))
+    ));
+    let mut stopped = host.stop();
+    assert_eq!(
+        stopped
+            .discard_pending_native_custom_element_reactions()
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        stopped
+            .discard_pending_queued_custom_element_reactions()
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        stopped
+            .discard_pending_queued_custom_element_reactions()
+            .unwrap(),
+        0
+    );
+    assert!(stopped.into_session().is_ok());
+}
+
+pub(in crate::document_scripting) fn registry_when_defined_retains_original_promise_and_constructor()
+ {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const registry = customElements;
+            if (typeof registry.whenDefined !== 'function') return false;
+            const waiting = registry.whenDefined('x-waiting');
+            if (!(waiting instanceof Promise) || registry.whenDefined('x-waiting') !== waiting) return false;
+            globalThis.definitionResults = [];
+            waiting.then(value => definitionResults.push(value));
+            registry.whenDefined('Invalid').catch(error => definitionResults.push(error.name));
+            registry.whenDefined().catch(error => definitionResults.push(error instanceof TypeError));
+            registry.whenDefined.call({}).catch(error => definitionResults.push(error instanceof TypeError));
+            const thenFailure = {};
+            registry.whenDefined('x-rejecting').catch(error => definitionResults.push(error === thenFailure));
+            registry.define('x-rejecting', class { static get then() { throw thenFailure; } });
+            const conversion = {};
+            registry.whenDefined({ toString() { throw conversion; } })
+                .catch(error => definitionResults.push(error === conversion));
+            try { registry.define('x-waiting', {}); } catch {}
+            if (registry.whenDefined('x-waiting') !== waiting) return false;
+            let thenReads = 0;
+            globalThis.exactDefinition = class extends HTMLElement {
+                static get then() {
+                    thenReads++;
+                    if (registry.get('x-waiting') !== this) throw new Error('definition not published');
+                    return undefined;
+                }
+            };
+            registry.define('x-waiting', exactDefinition);
+            if (thenReads !== 1) return false;
+            const resolved = registry.whenDefined('x-waiting');
+            if (resolved === waiting || !(resolved instanceof Promise) || thenReads !== 2) return false;
+            resolved.then(value => definitionResults.push(value));
+            return definitionResults.length === 0;
+        })()"#)
+    }).unwrap();
+    host.checkpoint().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "definitionResults.length === 7 && definitionResults.filter(value => value === exactDefinition).length === 2 && definitionResults.includes('SyntaxError') && definitionResults.filter(value => value === true).length === 4")
+    }).unwrap();
+}
+
+pub(in crate::document_scripting) fn registry_definition_preserves_guest_identity_and_failure() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const registry = window.customElements;
+            const throws = (action, name) => {
+                try { action(); } catch (error) { return error.name === name; }
+                return false;
+            };
+            if (typeof registry.define !== 'function' || typeof registry.get !== 'function') return false;
+            const marker = new Error('original getter failure');
+            let extendsRead = false;
+            const options = { get extends() { extendsRead = true; throw marker; } };
+            if (!throws(() => registry.define('x-invalid', {}, options), 'TypeError') || extendsRead) return false;
+            let extendsFailure = false;
+            try { registry.define('x-arrow', () => {}, options); }
+            catch (error) { extendsFailure = error === marker; }
+            if (!extendsFailure || !extendsRead) return false;
+            const order = [];
+            class Reentrant {}
+            const Constructor = new Proxy(function Example() {}, {
+                get(target, key, receiver) {
+                    if (key === 'prototype') {
+                        order.push(throws(() => registry.define('x-reentrant', Reentrant), 'NotSupportedError'));
+                        if (order.length === 1) throw marker;
+                    }
+                    return Reflect.get(target, key, receiver);
+                },
+            });
+            let originalFailure = false;
+            try { registry.define('x-entry', Constructor); }
+            catch (error) { originalFailure = error === marker; }
+            if (!originalFailure || registry.get('x-entry') !== undefined) return false;
+            registry.define('x-entry', Constructor);
+            class Listing {}
+            registry.define('x-listing', Listing, { extends: 'listing' });
+            return registry.get('x-entry') === Constructor
+                && registry.get('x-listing') === Listing
+                && throws(() => registry.define('x-invalid-extends', class {}, { extends: 'applet' }), 'NotSupportedError')
+                && registry.get('x-reentrant') === undefined
+                && order.length === 2 && order.every(Boolean)
+                && throws(() => registry.define('x-duplicate', Constructor), 'NotSupportedError')
+                && throws(() => registry.define.call(Object.create(registry), 'x-forged', class {}), 'TypeError');
+        })()"#)
+    }).unwrap();
+
+    drop(host);
+    let mut refused = public_node_host(20_000, 0);
+    let permit = refused.permit().unwrap();
+    let events = refused.guest_events().unwrap();
+    let baseline = events.budget.used.get();
+    let before = refused
+        .with_native(|dom, _, _| dom.snapshot().stamp())
+        .unwrap();
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        refused.in_document(&permit, |scope| {
+            scope
+                .evaluate(&units(
+                    "customElements.define('x-refused', class Refused { connectedCallback() {} })",
+                ))
+                .map(drop)
+        })
+    else {
+        panic!("the canonical Source work cap must refuse publication");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Hosted(
+                crate::DomHostedRuntimeError::Dom(surgeist_dom::DomHostedError::Dom(
+                    DomError::SourceWorkLimit { limit: 0 }
+                ))
+            ))
+        ))
+    ));
+    assert_eq!(events.budget.used.get(), baseline);
+    assert_eq!(
+        refused
+            .with_native(|dom, _, _| dom.snapshot().stamp())
+            .unwrap(),
+        before
+    );
+}
+
+pub(in crate::document_scripting) fn document_factories_execute_the_reached_custom_constructor() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const observations = [];
+            class Autonomous extends HTMLElement {
+                constructor() {
+                    super();
+                    observations.push(this, document.createElement('span'), document.createTextNode('nested'));
+                }
+            }
+            customElements.define('x-autonomous', Autonomous);
+            let autonomous;
+            try { autonomous = document.createElement('X-AUTONOMOUS'); }
+            catch { return false; }
+            if (!(autonomous instanceof Autonomous) || autonomous !== observations[0]
+                || autonomous.ownerDocument !== document || autonomous.localName !== 'x-autonomous'
+                || autonomous.parentNode !== null || observations[1]?.localName !== 'span'
+                || observations[2]?.data !== 'nested' || observations.length !== 3) return false;
+
+            let ancestorReceiver;
+            class Inner extends HTMLElement {
+                constructor() {
+                    super();
+                    ancestorReceiver = Reflect.construct(HTMLElement, [], Outer);
+                }
+            }
+            class Outer extends HTMLElement {
+                constructor() {
+                    super();
+                    document.createElement('x-inner');
+                }
+            }
+            customElements.define('x-inner', Inner);
+            customElements.define('x-outer', Outer);
+            const outer = document.createElement('x-outer');
+            if (!(ancestorReceiver instanceof Outer) || outer === ancestorReceiver
+                || ancestorReceiver.localName !== 'x-outer' || !(outer instanceof Outer)) return false;
+
+            let failedReceiver;
+            class Failing extends HTMLElement {
+                constructor() {
+                    super();
+                    failedReceiver = this;
+                    throw (globalThis.originalConstructorException = new Error('original constructor exception'));
+                }
+            }
+            customElements.define('x-failing', Failing);
+            const fallback = document.createElementNS('http://www.w3.org/1999/xhtml', 'p:x-failing');
+            return failedReceiver instanceof Failing && fallback !== failedReceiver
+                && fallback instanceof HTMLUnknownElement && fallback.localName === 'x-failing'
+                && fallback.prefix === 'p' && fallback.ownerDocument === document
+                && fallback.customElementRegistry === customElements;
+        })()"#)
+    }).unwrap();
+    let report = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(report.realm, permit.realm);
+    host.in_document(&permit, |scope| {
+        let original = scope.evaluate(&units("originalConstructorException"))?;
+        let reported = scope.import(report.exception.value())?;
+        assert!(scope.strict_equals(&original, &reported)?);
+        Ok(())
+    })
+    .unwrap();
+    assert!(
+        host.take_guest_constructor_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            customElements.define('x-interface', HTMLElement);
+            return document.createElement('x-interface') instanceof HTMLUnknownElement;
+        })()"#,
+        )
+    })
+    .unwrap();
+    let report = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        let reported = scope.import(report.exception.value())?;
+        let global = scope.global()?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("interfaceFailure")),
+            &reported,
+        )?;
+        assert_guest(scope, "interfaceFailure instanceof TypeError")
+    })
+    .unwrap();
+
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                r#"
+            globalThis.retriedConstructionCalls = 0;
+            customElements.define('x-retried-construction', class extends HTMLElement {
+                constructor() {
+                    super();
+                    retriedConstructionCalls++;
+                    throw (globalThis.retriedConstructionException = {});
+                }
+            });
+        "#,
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let events = host.guest_events().unwrap();
+    events
+        .public
+        .as_ref()
+        .unwrap()
+        .refuse_next_constructor_fallback();
+    assert!(matches!(
+        host.in_document(&permit, |scope| scope
+            .evaluate(&units("document.createElement('x-retried-construction')"))
+            .map(drop)),
+        Err(DocumentScriptError::Script(Error::HostFailure(_)))
+    ));
+    let limits = events.limits.source_edits;
+    let pending = host
+        .with_native(|dom, _, _| dom.pending_source_edit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        pending.phase(),
+        surgeist_dom::DomSourcePhase::CustomElementConstruction
+    );
+    drop(events);
+    let registration = Rc::downgrade(&host.engine.as_ref().unwrap().registration);
+    let mut stopped = host.stop();
+    assert!(!registration.upgrade().unwrap().is_active());
+    stopped.settle_pending_custom_element(limits).unwrap();
+    assert!(registration.upgrade().is_none());
+    assert!(
+        stopped
+            .with_native(|dom, _, _| dom.pending_source_edit())
+            .unwrap()
+            .is_none()
+    );
+    assert!(stopped.into_session().is_ok());
+}
+
+pub(in crate::document_scripting) fn document_factories_upgrade_the_reached_customized_builtin() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const destination = new Document();
+            class Adopting extends HTMLButtonElement {
+                constructor() {
+                    super();
+                    destination.adoptNode(this);
+                }
+            }
+            customElements.define('x-adopting-button', Adopting, { extends: 'button' });
+            const result = document.createElement('button', { is: 'x-adopting-button' });
+            return result instanceof Adopting && result.ownerDocument === destination
+                && result.customElementRegistry === destination.customElementRegistry;
+        })()"#)?;
+        assert_guest(scope, r#"(() => {
+            const receivers = [];
+            let nested;
+            class Customized extends HTMLButtonElement {
+                constructor() {
+                    super();
+                    receivers.push(this);
+                    if (receivers.length === 1) {
+                        nested = document.createElement('button', { is: 'x-customized' });
+                    }
+                    this.setAttribute('data-constructed', 'yes');
+                }
+            }
+            customElements.define('x-customized', Customized, { extends: 'button' });
+            const button = document.createElement('button', { is: 'x-customized' });
+            return button === receivers[0] && nested === receivers[1] && nested !== button
+                && button instanceof Customized && nested instanceof Customized
+                && button instanceof HTMLButtonElement && button.localName === 'button'
+                && button.ownerDocument === document && button.getAttribute('is') === null
+                && button.getAttribute('data-constructed') === 'yes';
+        })()"#)?;
+        assert_guest(scope, r#"(() => {
+            let receiver;
+            class Throwing extends HTMLButtonElement {
+                constructor() {
+                    super();
+                    receiver = this;
+                    throw globalThis.originalCustomizedThrow = {};
+                }
+            }
+            customElements.define('x-throwing-button', Throwing, { extends: 'button' });
+            const result = document.createElementNS('http://www.w3.org/1999/xhtml', 'p:button', { is: 'x-throwing-button' });
+            return result === receiver && result instanceof Throwing && result instanceof HTMLButtonElement
+                && !(result instanceof HTMLUnknownElement) && result.prefix === 'p';
+        })()"#)?;
+        assert_guest(scope, r#"(() => {
+            let receiver;
+            class Replacing extends HTMLButtonElement {
+                constructor() {
+                    super();
+                    receiver = this;
+                    return {};
+                }
+            }
+            customElements.define('x-replacing-button', Replacing, { extends: 'button' });
+            const result = document.createElement('button', { is: 'x-replacing-button' });
+            return result === receiver && result instanceof Replacing;
+        })()"#)?;
+        assert_guest(scope, r#"(() => {
+            class WrongInterface extends HTMLDivElement {}
+            customElements.define('x-wrong-button', WrongInterface, { extends: 'button' });
+            const result = document.createElement('button', { is: 'x-wrong-button' });
+            return result instanceof HTMLButtonElement && !(result instanceof WrongInterface);
+        })()"#)?;
+        assert_guest(scope, r#"(() => {
+            let sawMarker = false;
+            class DoubleSuper extends HTMLButtonElement {
+                constructor() {
+                    super();
+                    try { Reflect.construct(HTMLButtonElement, [], new.target); }
+                    catch (error) { sawMarker = error instanceof TypeError; }
+                }
+            }
+            customElements.define('x-double-button', DoubleSuper, { extends: 'button' });
+            const result = document.createElement('button', { is: 'x-double-button' });
+            return result instanceof DoubleSuper && sawMarker;
+        })()"#)
+    }).unwrap_or_else(|error| {
+        if let DocumentScriptError::Script(Error::HostFailure(failure)) = &error {
+            panic!("customized factory host refusal: {:?}", failure.cause::<DocumentGuestEventError>());
+        }
+        panic!("customized factory: {error:?}");
+    });
+    let original = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    let replacement = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    let interface = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert!(
+        host.take_guest_constructor_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    host.in_document(&permit, |scope| {
+        let marker = scope.evaluate(&units("originalCustomizedThrow"))?;
+        let reported = scope.import(original.exception.value())?;
+        assert!(scope.strict_equals(&marker, &reported)?);
+        let global = scope.global()?;
+        for (name, report) in [
+            ("replacementError", replacement),
+            ("interfaceError", interface),
+        ] {
+            assert_eq!(report.realm, permit.realm);
+            let error = scope.import(report.exception.value())?;
+            scope.set(&global, PropertyKey::String(&units(name)), &error)?;
+        }
+        assert_guest(
+            scope,
+            "replacementError instanceof TypeError && interfaceError instanceof TypeError",
+        )
+    })
+    .unwrap();
+}
+
 pub(in crate::document_scripting) fn assert_queued_trusted_types_violations(
     host: &DocumentScriptHost,
     expected: &[(usize, &str, &str)],
@@ -32,12 +1556,36 @@ fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
     attach_public_nodes(session, target, cancellation, node_work, source_work)
 }
 
+fn public_node_host_with_reports(pending_exception_reports: usize) -> DocumentScriptHost {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    attach_public_nodes_with_reports(
+        session,
+        target,
+        cancellation,
+        20_000,
+        200_000,
+        pending_exception_reports,
+    )
+}
+
 pub(in crate::document_scripting) fn attach_public_nodes(
+    session: DomSession,
+    target: DomHostedTopLevel,
+    cancellation: Arc<AtomicBool>,
+    node_work: u64,
+    source_work: u64,
+) -> DocumentScriptHost {
+    attach_public_nodes_with_reports(session, target, cancellation, node_work, source_work, 4)
+}
+
+fn attach_public_nodes_with_reports(
     mut session: DomSession,
     target: DomHostedTopLevel,
     cancellation: Arc<AtomicBool>,
     node_work: u64,
     source_work: u64,
+    pending_exception_reports: usize,
 ) -> DocumentScriptHost {
     let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
         registrations: 8,
@@ -49,13 +1597,14 @@ pub(in crate::document_scripting) fn attach_public_nodes(
     .unwrap();
     registry.bind(&mut session.dom(), &cancellation).unwrap();
     let mut registry = Some(registry);
-    attach_public_nodes_with_registry(
+    attach_public_nodes_with_registry_and_reports(
         session,
         target,
         cancellation,
         node_work,
         source_work,
         &mut registry,
+        pending_exception_reports,
     )
 }
 
@@ -101,7 +1650,7 @@ pub(in crate::document_scripting) fn attach_public_nodes_with_registry_and_repor
             },
             registry,
             DocumentGuestEventLimits {
-                storage_bytes: 96 * 1024,
+                storage_bytes: 192 * 1024,
                 work: 10_000,
                 pending_exception_reports,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),

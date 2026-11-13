@@ -202,10 +202,6 @@ impl Capture {
         edit: DomSourceEdit,
         completion: Completion<'scope>,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
-        let attachment = owner
-            .attachment
-            .get()
-            .ok_or(DocumentScriptNativeError::Revoked)?;
         let limits = events.limits.source_edits;
         let cancel = &owner.cancellation;
         let event = owner.active_event_request();
@@ -235,18 +231,35 @@ impl Capture {
             .map_err(|_| DocumentScriptNativeError::Busy)?
             .read_dom()
             .pending_source_edit();
-        match result {
-            Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
-                Err(DomError::Cancelled.into())
-            }
-            Ok(DomSourceDriveProgress::Complete(_)) => Ok(completion),
-            Ok(DomSourceDriveProgress::Failed(failure)) => {
-                let error = failure.into_parts().1;
-                match tree_exception(&error) {
-                    Some(name) => Ok(Completion::Throw(scope.dom_exception(name, &[])?)),
-                    None => Err(error.into()),
+        self.finish_guest_tree_edit(scope, owner, events, result, (parent, pending), completion)
+    }
+
+    fn finish_guest_tree_edit<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        result: Result<DomSourceDriveProgress, DomSourceDriveError>,
+        (parent, pending): (
+            Option<surgeist_dom::DomSourceOperationId>,
+            Option<DomSourceStatus>,
+        ),
+        completion: Completion<'scope>,
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let attachment = owner
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        match result.map(guest_source_terminal) {
+            Ok(Some(Ok(done))) => {
+                let reactions = self.drain_native_reactions(scope, owner, events, done.operation());
+                if done.cancellation_requested() {
+                    return Err(DomError::Cancelled.into());
                 }
+                reactions?;
+                Ok(completion)
             }
+            Ok(Some(Err(failure))) => self.finish_failed_tree_edit(scope, owner, events, failure),
             Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(error)))
                 if pending.map(DomSourceStatus::operation) == parent
                     && tree_exception(&error).is_some() =>
@@ -256,12 +269,39 @@ impl Capture {
                 Ok(Completion::Throw(scope.dom_exception(name, &[])?))
             }
             Err(error) => refuse(scope, &attachment.source_failures, error).map_err(Into::into),
-            Ok(_) => Err(
-                pending.map_or(DocumentGuestEventError::HostRouteUnavailable, |status| {
+            Ok(None) => Err(pending
+                .map_or(DocumentGuestEventError::HostRouteUnavailable, |status| {
                     DocumentGuestEventError::SourcePending(status.operation())
-                }),
-            ),
+                })),
         }
+    }
+
+    fn finish_failed_tree_edit<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        failure: surgeist_dom::DomSourceFailure,
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let (operation, error, _) = failure.into_parts();
+        let Some(name) = tree_exception(&error) else {
+            return Err(error.into());
+        };
+        let original = scope.dom_exception(name, &[])?;
+        type PriorFailure = HostFailureSlot<DocumentGuestEventError, GuestBacking>;
+        let prior = PriorFailure::new(
+            &scope.realm_authority()?,
+            events
+                .reserve(
+                    owner,
+                    PriorFailure::storage_bytes() + 2 * size_of::<usize>(),
+                )
+                .map_err(|_| DocumentGuestEventError::from(error.clone()))?,
+        )?;
+        scope.complete_after_host_failure(&prior, error.into(), |scope| {
+            self.drain_native_reactions(scope, owner, events, operation)
+        })?;
+        Ok(Completion::Throw(original))
     }
 }
 
@@ -271,6 +311,144 @@ fn tree_exception(error: &DomError) -> Option<DomExceptionName> {
         DomError::NotFound => Some(DomExceptionName::NotFoundError),
         DomError::NotSupported => Some(DomExceptionName::NotSupportedError),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+impl DocumentScriptHost {
+    pub(in crate::document_scripting) fn run_guest_tree_edit_fixture(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        edit: DomSourceEdit,
+    ) -> Result<(), DocumentScriptError> {
+        let owner = self.native.clone();
+        let events = self.guest_events().unwrap();
+        let public = events.public.as_ref().unwrap();
+        let capture = Capture {
+            callbacks: public.callbacks.clone(),
+            origin: None,
+            _backing: events.reserve(&owner, size_of::<Capture>()).unwrap(),
+        };
+        self.in_document(permit, |scope| {
+            let result =
+                capture.apply_tree_edit(scope, &owner, &events, edit, Completion::Undefined);
+            let Completion::Throw(exception) = tree_completion(scope, &events, result)? else {
+                panic!("the original compound edit must throw");
+            };
+            let name = scope.get(&exception, PropertyKey::String(&ascii(b"name")))?;
+            assert_eq!(scope.to_utf16(&name)?, ascii(b"HierarchyRequestError"));
+            Ok(())
+        })
+    }
+
+    pub(in crate::document_scripting) fn run_guest_joined_tree_edit_fixture(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        edit: crate::DomSourceInlineStyleEdit,
+    ) -> Result<(), DocumentScriptError> {
+        let owner = self.native.clone();
+        let events = self.guest_events().unwrap();
+        let public = events.public.as_ref().unwrap();
+        let capture = Capture {
+            callbacks: public.callbacks.clone(),
+            origin: None,
+            _backing: events.reserve(&owner, size_of::<Capture>()).unwrap(),
+        };
+        self.in_document(permit, |scope| {
+            let mut session = owner.session.borrow_mut();
+            let result = session.source_execution().apply_with_inline_styles(
+                &mut session.dom(),
+                edit,
+                events.limits.source_edits,
+                &mut guest_source_services(&mut |_| None),
+                |_, _| panic!("empty inline declarations require no parser decision"),
+                &owner.cancellation,
+            );
+            drop(session);
+            assert!(
+                matches!(
+                    result,
+                    Ok(DomSourceDriveProgress::InlineSource {
+                        source: surgeist_dom::DomSourceProgress::Failed(_),
+                        ..
+                    })
+                ),
+                "{result:?}"
+            );
+            let result = capture.finish_guest_tree_edit(
+                scope,
+                &owner,
+                &events,
+                result,
+                (None, None),
+                Completion::Undefined,
+            );
+            let Completion::Throw(exception) = tree_completion(scope, &events, result)? else {
+                panic!("the original compound edit must throw");
+            };
+            let name = scope.get(&exception, PropertyKey::String(&ascii(b"name")))?;
+            assert_eq!(scope.to_utf16(&name)?, ascii(b"HierarchyRequestError"));
+            Ok(())
+        })
+    }
+
+    pub(in crate::document_scripting) fn run_guest_meta_tree_edit_fixture(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        edit: DomSourceEdit,
+    ) -> Result<(), DocumentScriptError> {
+        let owner = self.native.clone();
+        let events = self.guest_events().unwrap();
+        let public = events.public.as_ref().unwrap();
+        let capture = Capture {
+            callbacks: public.callbacks.clone(),
+            origin: None,
+            _backing: events.reserve(&owner, size_of::<Capture>()).unwrap(),
+        };
+        self.in_document(permit, |scope| {
+            let mut session = owner.session.borrow_mut();
+            let result = session.source_execution().apply(
+                &mut session.dom(),
+                edit,
+                events.limits.source_edits,
+                &mut crate::DomSourceServices {
+                    meta: Some(
+                        surgeist_dom::DomMetaAtomicLimits::new(
+                            16_000_000, 1_000_000, 1_000_000, 128,
+                        )
+                        .unwrap(),
+                    ),
+                    ..guest_source_services(&mut |_| None)
+                },
+                &owner.cancellation,
+            );
+            drop(session);
+            let Ok(DomSourceDriveProgress::MetaSource(outcome)) = &result else {
+                panic!("expected the actual joined Meta result: {result:?}");
+            };
+            assert!(matches!(
+                outcome.source(),
+                surgeist_dom::DomSourceProgress::Complete(_)
+            ));
+            assert_eq!(outcome.preferences().len(), 1);
+            assert_eq!(
+                outcome.preferences()[0].observation().preferred_name(),
+                &surgeist_dom::DocumentString::from("Prefix")
+            );
+            let result = capture.finish_guest_tree_edit(
+                scope,
+                &owner,
+                &events,
+                result,
+                (None, None),
+                Completion::Undefined,
+            );
+            assert!(matches!(
+                tree_completion(scope, &events, result)?,
+                Completion::Undefined
+            ));
+            Ok(())
+        })
     }
 }
 

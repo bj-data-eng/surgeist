@@ -6,7 +6,7 @@ use surgeist_bindings_js::{
     conversion::declarations, declarations::ElementCreationArgument,
     dom_exception::DomExceptionName,
 };
-use surgeist_dom::{DomElementCreationName, DomElementCreationOptions};
+use surgeist_dom::{DomElementCreationName, DomElementCreationOptions, DomRegistryBinding};
 use surgeist_html::values::Namespace;
 
 pub(super) fn install<'scope>(
@@ -107,22 +107,31 @@ impl Capture {
             } else {
                 DomElementCreationName::Local(name)
             };
-            let (is, null_registry) = match options.get() {
+            let (is, registry) = match options.get() {
                 ArgumentValue::Present(ElementCreationArgument::Options(options)) => (
                     options
                         .is
                         .as_ref()
                         .map(|value| copy_native_data(&owner, &events, value.as_code_units()))
                         .transpose()?,
-                    options.custom_element_registry_is_null,
+                    options.custom_element_registry,
                 ),
-                ArgumentValue::Present(ElementCreationArgument::String(_)) => (None, false),
+                ArgumentValue::Present(ElementCreationArgument::String(_)) => (None, None),
                 ArgumentValue::Missing => return Err(Error::BackendUnavailable.into()),
             };
             let (is, _is_backing) = is.map_or((None, None), |(value, backing)| {
                 (Some(value), Some(backing))
             });
-            let options = DomElementCreationOptions { is, null_registry };
+            let registry = match registry {
+                None => None,
+                Some(None) => Some(DomRegistryBinding::Null),
+                Some(Some(identity)) => Some(DomRegistryBinding::Registry(
+                    self.callbacks.with_read(&owner, &events, |read, _| {
+                        public.native_registry(read, identity)
+                    })?,
+                )),
+            };
+            let options = DomElementCreationOptions { is, registry };
             public.document.ordinary.create_element(
                 scope,
                 self,

@@ -15,7 +15,7 @@ impl Dom {
         payload_bytes: usize,
         cancel: &AtomicBool,
     ) -> Result<DomEventRegistryPreparation, DomError> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
         if self
             .event_registry
@@ -66,7 +66,7 @@ impl DomEventRegistryPreparation {
         cancel: &AtomicBool,
     ) -> Result<DomEventRegistryAssociation, (DomError, Self)> {
         let validate = || -> Result<(), DomError> {
-            dom.require_source_entry()?;
+            dom.require_source_entry(cancel)?;
             check_cancel(cancel)?;
             if self.0.binding.owner != dom.owner {
                 return Err(DomError::ForeignOwner);

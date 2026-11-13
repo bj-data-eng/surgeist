@@ -66,13 +66,27 @@ fn session() -> DomSession {
 fn limits() -> DomSourceLimits {
     DomSourceLimits::new(64_000_000, 1_000_000, 16_000_000, 128, 1024, 1024, 4)
 }
-fn requests() -> DomInlineStyleRequestLimits {
+pub(crate) fn requests() -> DomInlineStyleRequestLimits {
     DomInlineStyleRequestLimits {
         input: surgeist_css::source::CssUtf16InputLimits::default(),
         declaration: surgeist_cssom::CssomDeclarationRequestLimits::default(),
     }
 }
-fn bind(
+pub(crate) fn inline_parser(
+    snapshot: &surgeist_dom::DomSnapshot,
+    document: surgeist_dom::DocumentId,
+) -> surgeist_css::CssParserContext {
+    use surgeist_css::CssParserMode;
+    use surgeist_html::construction::HtmlDocumentMode;
+    let mode = snapshot.document(document).unwrap().metadata().mode();
+    surgeist_css::CssParserContext::new(if mode == HtmlDocumentMode::Quirks {
+        CssParserMode::Quirks
+    } else {
+        CssParserMode::Standards
+    })
+}
+
+pub(crate) fn bind(
     session: &mut DomSession,
     element: surgeist_dom::NodeId,
     document: surgeist_dom::DocumentId,
@@ -101,7 +115,7 @@ fn bind(
         identity: "runtime-source".into(),
         revision: 1,
     };
-    let parser = surgeist_css::CssParserContext::default();
+    let parser = inline_parser(&session.snapshot(), document);
     let input = DomInlineStyleInputs::new(
         session.snapshot().document(document).unwrap().stamp(),
         parser,

@@ -515,6 +515,45 @@ fn attach_event_window(
     (host, top)
 }
 
+fn native_window_defines_and_constructs_custom_elements() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    eval(
+        &mut host,
+        &permit,
+        r#"
+        (() => {
+            const registry = window.customElements;
+            const name = 'x-native-construction';
+            if (typeof registry.whenDefined !== 'function') return 0;
+            const pending = registry.whenDefined(name);
+            let constructed;
+            let connected;
+            class NativeElement extends HTMLElement {
+                constructor() {
+                    super();
+                    constructed = this;
+                }
+                connectedCallback() { connected = this; }
+            }
+            const sameWaiter = pending === registry.whenDefined(name);
+            globalThis.definitionSettlements = 0;
+            pending.then(value => { if (value === NativeElement) ++definitionSettlements; });
+            registry.define(name, NativeElement);
+            const node = document.createElement(name);
+            (document.documentElement || document).appendChild(node);
+            return Number(sameWaiter && registry.get(name) === NativeElement &&
+                document.customElementRegistry === registry && node instanceof NativeElement &&
+                constructed === node && connected === node && definitionSettlements === 0);
+        })()
+        "#,
+        1.0,
+    );
+    host.checkpoint().unwrap();
+    eval(&mut host, &permit, "definitionSettlements", 1.0);
+    assert!(host.stop().into_session().is_ok());
+}
+
 fn native_window_constructs_event_with_exact_type_flags_and_clock() {
     let (mut host, top) = prepare_event_window();
     let permit = host.permit().unwrap();
@@ -2255,6 +2294,7 @@ fn main() {
             }
             "window-event-live-operations" => native_window_event_observes_its_live_standalone_dispatch(),
             "window-event-listeners" => native_window_registers_and_removes_guest_event_listeners(),
+            "custom-element-construction" => native_window_defines_and_constructs_custom_elements(),
             "window-document-projection" => window_document::window_projects_the_live_document_and_node_brands(),
             "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
             "document-fragment-retirement" => document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement(),
@@ -2336,6 +2376,7 @@ fn main() {
     native_window_constructs_distinct_event_targets_with_the_interface_prototype();
     native_window_event_observes_its_live_standalone_dispatch();
     native_window_registers_and_removes_guest_event_listeners();
+    native_window_defines_and_constructs_custom_elements();
     window_timers::window_schedules_and_cancels_after_guest_entry();
     window_document::window_projects_the_live_document_and_node_brands();
     document_fragment::creates_fragments_through_the_canonical_document();

@@ -1032,7 +1032,7 @@ impl super::Dom {
         text: &DocumentString,
         cancelled: &std::sync::atomic::AtomicBool,
     ) -> Result<DomNameAtom> {
-        self.require_source_entry()?;
+        self.require_source_entry(cancelled)?;
         let formation = self.dispatch_registration_formation(cancelled)?;
         let mut global = |next| match &formation {
             Some(formation) => formation.admit_custody_usage(next, cancelled),

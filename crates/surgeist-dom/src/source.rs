@@ -110,6 +110,8 @@ pub enum DomSourcePhase {
     AttributeVerification,
     /// A guest attachment awaits custody of its replaced Attr.
     AttributeAttachmentOutput,
+    /// A detached element factory awaits its registered constructor.
+    CustomElementConstruction,
     /// A reached synchronous firing awaits its original clock observation.
     EventFiring,
     /// Coherent current-state observation awaiting actual event dispatch.
@@ -178,6 +180,7 @@ impl DomSourceStatus {
 pub enum DomSourceRequest {
     AttributeVerification(DomSourceAttributeVerificationRequest),
     AttributeAttachmentOutput(DomSourceAttributeAttachmentOutput),
+    CustomElementConstruction(DomSourceCustomElementRequest),
     MetaCsp(DomSourceMetaCspRequest),
     FullscreenExitHandoff(crate::DomSourceFullscreenExitHandoffRequest),
     Style(DomStyleRequest),
@@ -190,6 +193,34 @@ pub enum DomSourceRequest {
     CloseWatcher(DomSourceCloseWatcherRequest),
     DesignMode(DomSourceDesignModeRequest),
     Script(DomSourceScriptRequest),
+}
+
+/// Exact synchronous constructor occurrence reached by a Document factory.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomSourceCustomElementRequest {
+    pub(crate) operation: DomSourceOperationId,
+    pub(crate) command: usize,
+    pub(crate) document: crate::DocumentId,
+    pub(crate) global: crate::DomHostedGlobalId,
+    pub(crate) definition: crate::DomRegistryDefinitionId,
+}
+
+impl DomSourceCustomElementRequest {
+    pub const fn operation(self) -> DomSourceOperationId {
+        self.operation
+    }
+
+    pub const fn document(self) -> crate::DocumentId {
+        self.document
+    }
+
+    pub const fn global(self) -> crate::DomHostedGlobalId {
+        self.global
+    }
+
+    pub const fn definition(self) -> crate::DomRegistryDefinitionId {
+        self.definition
+    }
 }
 
 /// Observation of one exact Meta CSP insertion in a private Source segment.
@@ -361,8 +392,16 @@ pub struct DomSourceCompletion {
     pub(crate) installation: Option<crate::DomNativeHtmlInstallation>,
     pub(crate) dialog_toggle_disposition: Option<DomDialogToggleTaskDisposition>,
     pub(crate) design_mode_range_disposition: Option<DomDesignModeRangeDisposition>,
+    pub(crate) custom_element_disposition: Option<crate::DomSourceCustomElementDisposition>,
 }
 impl DomSourceCompletion {
+    /// The original constructor result qualification, if this factory ran one.
+    pub const fn custom_element_disposition(
+        &self,
+    ) -> Option<crate::DomSourceCustomElementDisposition> {
+        self.custom_element_disposition
+    }
+
     pub const fn fullscreen_exit_return(&self) -> Option<crate::DomFullscreenExitReturn> {
         self.fullscreen_exit_return
     }
@@ -442,8 +481,8 @@ pub enum DomElementCreationName {
 pub struct DomElementCreationOptions {
     /// An exact saved `is` value supplied by the dictionary.
     pub is: Option<DocumentString>,
-    /// Select no registry instead of looking up the receiver's registry.
-    pub null_registry: bool,
+    /// An explicit registry selection, including null, or the receiver's default.
+    pub registry: Option<crate::DomRegistryBinding>,
 }
 
 /// One ordinary detached node creation with no connected-tree effects.

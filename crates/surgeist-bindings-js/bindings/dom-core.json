@@ -4169,7 +4169,7 @@
       "kind": "interface",
       "owner": "surgeist-dom",
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#customelementregistry",
-      "requirement": "Source-qualified CustomElementRegistry definition and its owning native/binding family; not an empty installed interface."
+      "requirement": "Global registry identity and factory argument branding are implemented. Scoped construction, canonical definition registration, and guest reactions require their owning native and Runtime routes."
     },
     {
       "name": "DOMHighResTimeStamp",
@@ -4376,8 +4376,8 @@
       "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "custom_element_registry"}],
       "requirements": [
         {
-          "owner": "surgeist-dom",
-          "contract": "Return the actual admitted registry binding; null-only profiles do not implement nonnull registry objects.",
+          "owner": "surgeist-runtime",
+          "contract": "Project scoped registries when canonical scoped creation and lifecycle are available. Registered Global identities are projected directly.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#mixin-documentorshadowroot"
         }
       ]
@@ -4990,7 +4990,7 @@
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "Supply the authentic non-null registry brand and synchronous constructor and reaction path for reached custom-element definitions.",
+          "contract": "Supply synchronous constructors and reactions for reached definitions and accept scoped registries when their canonical lifecycle is available.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document"
         },
         {
@@ -5007,7 +5007,7 @@
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "Supply the authentic non-null registry brand and synchronous constructor and reaction path for reached custom-element definitions.",
+          "contract": "Supply synchronous constructors and reactions for reached definitions and accept scoped registries when their canonical lifecycle is available.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document"
         },
         {
@@ -5563,11 +5563,11 @@
     "Element.customElementRegistry/get": {
       "kind": "native",
       "adapter": "element.customelementregistry.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "custom_element_registry"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/element.rs", "symbol": "custom_element_registry"}],
       "requirements": [
         {
-          "owner": "surgeist-dom",
-          "contract": "Return the actual admitted registry binding; null-only profiles do not implement nonnull registry objects.",
+          "owner": "surgeist-runtime",
+          "contract": "Project scoped registries when canonical scoped creation and lifecycle are available. Registered Global identities are projected directly.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element"
         }
       ]

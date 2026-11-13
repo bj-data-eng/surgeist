@@ -1242,23 +1242,38 @@ impl DomSnapshot {
     /// The checked association retained by this exact immutable snapshot.
     /// Current execution uses the exclusive Dom owner's qualified method.
     pub fn global_document(&self, global: DomHostedGlobalId) -> Result<DocumentId, DomHostedError> {
+        self.global_document_with(global, &mut || Ok(()))
+    }
+    /// Read the captured association with caller-supplied work accounting.
+    pub fn global_document_with<E>(
+        &self,
+        global: DomHostedGlobalId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<DocumentId, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
+        step()?;
         if global.source.owner != self.owner {
-            return Err(DomHostedError::ForeignSource);
+            return Err(DomHostedError::ForeignSource.into());
         }
         let document = self
             .state
             .hosted_globals
             .as_ref()
             .ok_or(DomHostedError::StaleIdentity)?
-            .document(global)?;
-        let metadata = self.document(document)?.metadata();
+            .document_with(global, step)?;
+        let node = self.node_with(document.node(), &mut *step)?;
+        let crate::DomNodeKind::Document(metadata) = node.kind() else {
+            return Err(DomError::WrongNodeKind.into());
+        };
         if metadata
             .document_environment()
             .hosted
             .as_ref()
             .is_none_or(|association| association.global != global)
         {
-            return Err(DomHostedError::StaleIdentity);
+            return Err(DomHostedError::StaleIdentity.into());
         }
         Ok(document)
     }
@@ -1267,13 +1282,21 @@ impl Dom {
     /// Current association qualified by the original issuer, role generations
     /// and this canonical owner's completed source basis.
     pub fn global_document(&self, global: DomHostedGlobalId) -> Result<DocumentId, DomHostedError> {
+        self.global_document_with(global, &mut || Ok(()))
+    }
+    pub(in crate::store) fn global_document_with(
+        &self,
+        global: DomHostedGlobalId,
+        step: &mut impl FnMut() -> Result<(), DomHostedError>,
+    ) -> Result<DocumentId, DomHostedError> {
         let snapshot = self.snapshot();
         snapshot.require_complete_source()?;
-        let document = snapshot.global_document(global)?;
-        let environment = snapshot
-            .document(document)?
-            .metadata()
-            .document_environment();
+        let document = snapshot.global_document_with(global, step)?;
+        let node = snapshot.node_with(document.node(), &mut *step)?;
+        let crate::DomNodeKind::Document(metadata) = node.kind() else {
+            return Err(DomError::WrongNodeKind.into());
+        };
+        let environment = metadata.document_environment();
         environment
             .hosted
             .as_ref()
@@ -2197,7 +2220,11 @@ impl DomHostedSource {
         check_cancel(cancel)?;
         dom.validate_hosted_source(self)?;
         dom.require_source_idle()?;
-        if dom.active_script_registration().is_some() {
+        if dom
+            .script_registration
+            .as_ref()
+            .is_some_and(|slot| slot.0.is_active() || slot.0.has_pending_reactions())
+        {
             return Err(DomHostedError::WrongPhase);
         }
         if dom.global_document(global)? != document {
@@ -2248,6 +2275,7 @@ impl DomHostedSource {
             navigable,
             end: std::sync::OnceLock::new(),
             engine_disposed: AtomicBool::new(false),
+            custom_element_reactions: std::sync::OnceLock::new(),
             _backing: backing,
         });
         let canonical = CanonicalScriptRegistration(registration.clone());
@@ -2359,6 +2387,34 @@ impl DomHostedSource {
 }
 
 impl Dom {
+    /// Whether this exact script attachment retains undelivered custom-element reaction facts.
+    pub fn has_pending_custom_element_reactions(&self, binding: &DomDocumentScriptBinding) -> bool {
+        self.script_registration
+            .as_ref()
+            .is_some_and(|slot| slot.0.key == binding.key() && slot.0.has_pending_reactions())
+    }
+
+    /// Discard reaction facts after this exact script attachment has closed.
+    pub fn discard_stopped_custom_element_reactions(
+        &mut self,
+        binding: &DomDocumentScriptBinding,
+    ) -> Result<usize, DomError> {
+        let Some(slot) = self
+            .script_registration
+            .as_ref()
+            .filter(|slot| slot.0.key == binding.key())
+        else {
+            return Ok(0);
+        };
+        if slot.0.is_active() {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        slot.0
+            .custom_element_reactions
+            .get()
+            .map_or(Ok(0), super::source::reactions::Inbox::discard)
+    }
+
     pub(in crate::store) fn active_script_registration(&self) -> Option<ScriptRegistrationKey> {
         self.script_registration
             .as_ref()
@@ -2368,12 +2424,11 @@ impl Dom {
 
     /// Release the exact closed registration after engine disposal. A parked
     /// Source retains its own funded reference and its original continuation.
+    /// Undelivered or loaned reactions must be settled before release.
     pub fn release_document_script_registration(&mut self, binding: &DomDocumentScriptBinding) {
-        if self
-            .script_registration
-            .as_ref()
-            .is_some_and(|slot| slot.0.key == binding.key() && !slot.0.is_active())
-        {
+        if self.script_registration.as_ref().is_some_and(|slot| {
+            slot.0.key == binding.key() && !slot.0.is_active() && !slot.0.has_pending_reactions()
+        }) {
             self.script_registration.take();
         }
     }

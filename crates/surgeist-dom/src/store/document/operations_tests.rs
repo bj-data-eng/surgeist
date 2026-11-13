@@ -200,6 +200,1599 @@ fn hosted(dom: &mut Dom, source: &mut DomHostedSource) -> DomHostedCreation {
     }
     lease.finish(dom, source, &cancel()).unwrap()
 }
+
+#[test]
+fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
+    use surgeist_html_semantics::{HtmlCaptureError, HtmlCustomElementDefinition};
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let other = hosted(&mut dom, &mut issuer);
+    let mut batch = DomBatch::new();
+    let existing = batch.create_element(other.document(), "x-item");
+    let unregistered = batch.create_element(owner.document(), "x-open");
+    let null_host = batch.create_element(other.document(), "div");
+    let null_child = batch.create_element(other.document(), "x-item");
+    let created = apply(&mut dom, batch);
+    let existing = created.created(&existing).unwrap().unwrap();
+    let unregistered = created.created(&unregistered).unwrap().unwrap();
+    let null_host = created.created(&null_host).unwrap().unwrap();
+    let null_child = created.created(&null_child).unwrap().unwrap();
+    let mut draft = Draft::new(&dom, DomBatch::new().owner, &cancel()).unwrap();
+    let root = draft
+        .allocate(
+            crate::store::NewNode::ShadowRoot(DomShadowRootState::from_parsed(
+                surgeist_html::construction::HtmlShadowRootProperties::new(
+                    HtmlShadowRootMode::Open,
+                    surgeist_html::construction::HtmlSlotAssignment::Named,
+                    false,
+                    false,
+                    false,
+                ),
+                true,
+                true,
+                false,
+            )),
+            Key::Existing(other.document().node()),
+            dom.limits(),
+            &cancel(),
+        )
+        .unwrap();
+    draft
+        .attach_parsed_shadow(Key::Existing(null_host), root, dom.limits(), &cancel())
+        .unwrap();
+    draft
+        .establish_element_registry(
+            Key::Existing(null_child),
+            DomRegistryBinding::Null,
+            &cancel(),
+        )
+        .unwrap();
+    let prepared = draft
+        .finish_with_mapping(&dom, &cancel(), std::iter::once(root))
+        .unwrap();
+    let root = prepared.1[0];
+    dom.publish(prepared.0, &cancel()).unwrap();
+    let mut batch = DomBatch::new();
+    batch.insert_before(null_child, root, None);
+    apply(&mut dom, batch);
+    let initial = dom.snapshot();
+    let registry = |document| {
+        let DomRegistryBinding::Registry(id) = initial
+            .document(document)
+            .unwrap()
+            .metadata()
+            .custom_element_registry()
+        else {
+            panic!("hosted Global has a registry");
+        };
+        id
+    };
+    let registry_id = registry(owner.document());
+    let other_registry = registry(other.document());
+    let original_limits = issuer.limits();
+    issuer
+        .set_limits(
+            DomHostedLimits::new(
+                DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 2),
+                original_limits.retained_bytes(),
+                original_limits.scratch_bytes(),
+                original_limits.work(),
+            ),
+            &cancel(),
+        )
+        .unwrap();
+
+    let autonomous = HtmlCustomElementDefinition::new(
+        DocumentString::from("x-item"),
+        DocumentString::from("x-item"),
+        false,
+        true,
+    );
+    let custom = HtmlCustomElementDefinition::new(
+        DocumentString::from("x-button"),
+        DocumentString::from("button"),
+        true,
+        true,
+    );
+    let retained = issuer.retained_storage_bytes();
+    let registry_limits = issuer.limits();
+    issuer
+        .set_limits(
+            DomHostedLimits::new(
+                registry_limits.records(),
+                registry_limits.retained_bytes(),
+                1,
+                registry_limits.work(),
+            ),
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            source_limits(1),
+            &cancel(),
+        ),
+        Err(DomHostedError::Limit {
+            resource: DomHostedResource::ScratchBytes,
+            limit: 1
+        })
+    ));
+    assert_eq!(issuer.retained_storage_bytes(), retained);
+    issuer.set_limits(registry_limits, &cancel()).unwrap();
+    let input_units = autonomous.name().retained_units() + autonomous.local_name().retained_units();
+    let canonical_units = dom.custody_registry.ledger().total().units();
+    assert!(matches!(
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            DomSourceLimits::new(
+                64_000_000,
+                canonical_units + input_units,
+                20_000_000,
+                1,
+                1,
+                1,
+                1,
+            ),
+            &cancel(),
+        ),
+        Err(DomHostedError::Dom(DomError::ResourceLimit {
+            resource: DomResource::SourceRetainedUnits,
+            ..
+        }))
+    ));
+    assert_eq!(issuer.retained_storage_bytes(), retained);
+    assert!(matches!(
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            other_registry,
+            &autonomous,
+            source_limits(1),
+            &cancel(),
+        ),
+        Err(DomHostedError::StaleIdentity)
+    ));
+    assert!(matches!(
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            source_limits(0),
+            &cancel(),
+        ),
+        Err(DomHostedError::Dom(DomError::SourceOutputLimit))
+    ));
+    assert!(matches!(
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            DomSourceLimits::new(64_000_000, 2_000_000, 20_000_000, 1, 1, 1, 0),
+            &cancel(),
+        ),
+        Err(DomHostedError::Dom(DomError::SourceNestedOperationLimit {
+            limit: 0
+        }))
+    ));
+    let staged = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap();
+    drop(staged);
+    assert_eq!(dom.snapshot().stamp(), initial.stamp());
+    assert_eq!(issuer.retained_storage_bytes(), retained);
+
+    let first = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap();
+    let (changes, first_id) = first.commit();
+    assert_eq!(first_id.registry(), registry_id);
+    assert_eq!(first_id.ordinal(), 0);
+    assert_eq!(
+        changes.changes().changes(),
+        &[DomChange::RegistryDefinitionAdded(first_id)]
+    );
+    let intermediate = dom.snapshot();
+    assert!(matches!(
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &autonomous,
+            source_limits(1),
+            &cancel(),
+        ),
+        Err(DomHostedError::Dom(DomError::SelectCapture(
+            HtmlCaptureError::DuplicateDefinitionName
+        )))
+    ));
+    assert_eq!(dom.snapshot().stamp(), intermediate.stamp());
+    let second = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry_id,
+            &custom,
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap();
+    let (changes, second_id) = second.commit();
+    assert_eq!(second_id.registry(), registry_id);
+    assert_eq!(second_id.ordinal(), 1);
+    assert_eq!(
+        changes.changes().changes(),
+        &[DomChange::RegistryDefinitionAdded(second_id)]
+    );
+    let current = dom.snapshot();
+    let before = initial.registry(registry_id).unwrap();
+    let after_first = intermediate.registry(registry_id).unwrap();
+    let after_second = current.registry(registry_id).unwrap();
+    assert_eq!(before.definition_count(), 0);
+    assert_eq!(after_first.definition_count(), 1);
+    assert_eq!(after_second.definition_count(), 2);
+    assert_eq!(after_first.definition(first_id).unwrap(), &autonomous);
+    assert_eq!(after_second.definition(first_id).unwrap(), &autonomous);
+    assert_eq!(after_second.definition(second_id).unwrap(), &custom);
+    for (snapshot, expected) in [(&initial, 0), (&intermediate, 1), (&current, 2)] {
+        let exported = snapshot
+            .html_capture(
+                owner.document(),
+                None,
+                surgeist_html_semantics::HtmlCaptureLimits::new(
+                    256, 4096, 1024, 65_536, 256, 16, 16, 1_000_000,
+                ),
+                DomHtmlCaptureLimits::new(256, 1_000_000),
+                &cancel(),
+            )
+            .unwrap();
+        let capture = exported.capture();
+        let document = capture
+            .node(&exported.subject(owner.document().node()).unwrap())
+            .unwrap();
+        let surgeist_html_semantics::HtmlCapturedRegistry::Registry(registry) =
+            document.lookup_registry()
+        else {
+            panic!("exported document has its registry");
+        };
+        assert!(matches!(
+            capture.definitions(&registry).unwrap(),
+            surgeist_html_semantics::HtmlCapturedDefinitions::Complete(definitions)
+                if definitions == &[autonomous.clone(), custom.clone()][..expected]
+        ));
+    }
+    assert!(after_first.definition(second_id).is_err());
+    assert!(before.definition(first_id).is_err());
+    assert!(
+        current
+            .registry(other_registry)
+            .unwrap()
+            .definition(first_id)
+            .is_err()
+    );
+
+    let mut adoption = DomBatch::new();
+    adoption.adopt(existing, owner.document());
+    adoption.adopt(null_host, owner.document());
+    apply(&mut dom, adoption);
+    let adopted = dom.snapshot();
+    let DomNodeKind::Element(element) = adopted.node(existing).unwrap().kind() else {
+        panic!("adopted element");
+    };
+    assert_eq!(
+        element.custom_element_registry(),
+        DomRegistryBinding::Registry(registry_id)
+    );
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Null
+    );
+    assert_eq!(
+        adopted
+            .shadow_root(root)
+            .unwrap()
+            .state()
+            .custom_element_registry(),
+        DomRegistryBinding::Null
+    );
+    let DomNodeKind::Element(element) = adopted.node(null_child).unwrap().kind() else {
+        panic!("adopted element under declarative root");
+    };
+    assert_eq!(element.custom_element_registry(), DomRegistryBinding::Null);
+    let init = DomShadowRootInit::new(HtmlShadowRootMode::Open);
+    let mut refused = DomBatch::new();
+    refused.attach_shadow(existing, init);
+    assert!(matches!(
+        dom.apply(refused, &cancel()),
+        Err(DomError::NotSupported)
+    ));
+    let mut allowed = DomBatch::new();
+    allowed.attach_shadow(unregistered, init);
+    assert!(dom.apply(allowed, &cancel()).is_ok());
+}
+
+#[test]
+fn document_factory_reaches_the_selected_definition_before_allocating_an_element() {
+    use surgeist_html::values::Namespace;
+    use surgeist_html_semantics::HtmlCustomElementDefinition;
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let registry = {
+        let snapshot = dom.snapshot();
+        let DomNodeKind::Document(metadata) = snapshot.node(document.node()).unwrap().kind() else {
+            panic!("hosted document");
+        };
+        let DomRegistryBinding::Registry(registry) = metadata.custom_element_registry() else {
+            panic!("hosted document registry");
+        };
+        registry
+    };
+    let mut define = |name: &str, local: &str| {
+        dom.prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry,
+            &HtmlCustomElementDefinition::new(name.into(), local.into(), false, false),
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap()
+        .commit()
+        .1
+    };
+    let autonomous = define("x-widget", "x-widget");
+    let customized = define("x-button", "button");
+    let before = dom.snapshot().stamp();
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1000);
+    let inbox = dom.node_retirement_inbox(watch_limits, &cancel()).unwrap();
+    let DomWatchedElementCreation::Constructor(watched_request) = dom
+        .create_detached_element_with_node_retirement_watch(
+            document,
+            (
+                DomElementCreationName::Local("x-widget".into()),
+                DomElementCreationOptions::default(),
+            ),
+            (&inbox, 0),
+            (source_limits(4096), watch_limits),
+            &cancel(),
+            |_| -> Result<(), DomError> { panic!("private wrapper was never prepared") },
+        )
+        .unwrap()
+    else {
+        panic!("watched constructor request");
+    };
+    assert_eq!(watched_request.definition(), autonomous);
+    assert_eq!(
+        dom.pending_source_edit().unwrap().operation(),
+        watched_request.operation()
+    );
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert!(dom.node_retirements.is_none());
+    dom.discard_unstarted_custom_element(watched_request)
+        .unwrap();
+    assert!(dom.pending_source_edit().is_none());
+    assert_eq!(dom.snapshot().stamp(), before);
+
+    for (name, options, definition, local, prefix) in [
+        (
+            DomElementCreationName::Qualified(Namespace::html(), "p:x-widget".into()),
+            DomElementCreationOptions::default(),
+            autonomous,
+            "x-widget",
+            Some("p"),
+        ),
+        (
+            DomElementCreationName::Local("BUTTON".into()),
+            DomElementCreationOptions {
+                is: Some("x-button".into()),
+                registry: None,
+            },
+            customized,
+            "button",
+            None,
+        ),
+    ] {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::create_element_with_options(document.node(), name, options),
+                source_limits(4096),
+                &cancel(),
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(request)) =
+            lease.advance(&cancel()).unwrap()
+        else {
+            panic!("the selected definition must be serviced synchronously");
+        };
+        assert_eq!(request.operation(), lease.operation());
+        assert_eq!(request.definition(), definition);
+        assert_eq!(request.document(), document);
+        assert_eq!(request.global(), owner.global());
+        let name = lease
+            .custom_element_creation_name(request, &cancel())
+            .unwrap();
+        assert_eq!(name.local_name(), &DocumentString::from(local));
+        assert_eq!(name.prefix(), prefix.map(DocumentString::from).as_ref());
+        assert!(!lease.status().has_published());
+        assert_eq!(lease.snapshot().stamp(), before);
+        drop(lease);
+        let mut lease = dom
+            .resume_source_edit(request.operation(), source_limits(4096), &cancel())
+            .unwrap();
+        let work = lease.status().spent_work();
+        assert!(matches!(
+            lease.advance(&cancel()).unwrap(),
+            DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(same))
+                if same == request
+        ));
+        assert_eq!(lease.status().spent_work(), work);
+        lease.request_cancel();
+        assert!(matches!(
+            lease.advance(&cancel()).unwrap(),
+            DomSourceProgress::Complete(done) if done.cancellation_requested()
+        ));
+        drop(lease);
+        assert_eq!(dom.snapshot().stamp(), before);
+    }
+
+    for (name, options) in [
+        (
+            DomElementCreationName::Local("x-widget".into()),
+            DomElementCreationOptions {
+                is: None,
+                registry: Some(DomRegistryBinding::Null),
+            },
+        ),
+        (
+            DomElementCreationName::Qualified(Namespace::svg(), "x-widget".into()),
+            DomElementCreationOptions::default(),
+        ),
+    ] {
+        let result = source(
+            &mut dom,
+            DomSourceEdit::create_element_with_options(document.node(), name, options),
+        );
+        let Some(DomSourceOutput::Node(node)) = result.output() else {
+            panic!("ordinary detached element");
+        };
+        assert_eq!(
+            dom.snapshot()
+                .node(node)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .custom_element_definition(),
+            DomElementDefinition::Null
+        );
+    }
+}
+
+#[test]
+fn definition_candidates_include_closed_shadow_in_tree_order() {
+    use surgeist_html::construction::HtmlShadowRootMode;
+    use surgeist_html::values::Namespace;
+    use surgeist_html_semantics::HtmlCustomElementDefinition;
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let snapshot = dom.snapshot();
+    let document_view = snapshot.document(document).unwrap();
+    let DomRegistryBinding::Registry(registry) = document_view.metadata().custom_element_registry()
+    else {
+        panic!("hosted registry");
+    };
+    let root = document_view.document_element().unwrap();
+    let mut batch = DomBatch::new();
+    let host = batch.create_element_ns(document, Namespace::html(), "div");
+    let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Closed));
+    let inside = batch.create_element_ns(document, Namespace::html(), "x-upgrade");
+    let light = batch.create_element_ns(document, Namespace::html(), "x-upgrade");
+    let outside = batch.create_element_ns(document, Namespace::html(), "x-upgrade");
+    let _detached = batch.create_element_ns(document, Namespace::html(), "x-upgrade");
+    let other_namespace = batch.create_element_ns(document, Namespace::svg(), "x-upgrade");
+    batch.insert_before(&inside, &shadow, None);
+    batch.insert_before(&light, &host, None);
+    batch.insert_before(&host, root, None);
+    batch.insert_before(&other_namespace, root, None);
+    batch.insert_before(&outside, root, None);
+    let commit = dom.apply(batch, &cancel()).unwrap();
+    let expected = [&inside, &light, &outside].map(|node| commit.created(node).unwrap().unwrap());
+    let snapshot = dom.snapshot();
+    let root = snapshot.node(document.node()).unwrap();
+    let definition =
+        HtmlCustomElementDefinition::new("x-upgrade".into(), "x-upgrade".into(), false, false);
+    let work = std::cell::Cell::new(0usize);
+    let mut actual = Vec::new();
+    root.visit_custom_element_upgrade_candidates_with(
+        (registry, &definition),
+        || {
+            work.set(work.get() + 1);
+            Ok::<_, DomError>(())
+        },
+        |_| Ok(()),
+        |node| {
+            actual.push(node);
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert_eq!(actual, expected);
+    let mut visits = 0;
+    assert!(matches!(
+        root.visit_custom_element_upgrade_candidates_with(
+            (registry, &definition),
+            || Ok(()),
+            |_| Err::<(), _>(DomError::AllocationFailed),
+            |_| {
+                visits += 1;
+                Ok(())
+            },
+        ),
+        Err(DomError::AllocationFailed)
+    ));
+    assert_eq!(visits, 0);
+    let remaining = std::cell::Cell::new(work.get() - 1);
+    assert!(matches!(
+        root.visit_custom_element_upgrade_candidates_with(
+            (registry, &definition),
+            || {
+                let next = remaining.get().checked_sub(1).ok_or(DomError::Cancelled)?;
+                remaining.set(next);
+                Ok(())
+            },
+            |_| Ok(()),
+            |_| Ok(()),
+        ),
+        Err(DomError::Cancelled)
+    ));
+    let mut buttons = Vec::new();
+    for saved in [Some("x-button"), Some("x-other"), None] {
+        let created = source(
+            &mut dom,
+            DomSourceEdit::create_element_with_options(
+                document.node(),
+                DomElementCreationName::Local("button".into()),
+                DomElementCreationOptions {
+                    is: saved.map(Into::into),
+                    registry: None,
+                },
+            ),
+        );
+        let Some(DomSourceOutput::Node(button)) = created.output() else {
+            panic!("button");
+        };
+        buttons.push(button);
+    }
+    let parent = dom
+        .snapshot()
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let mut connect = DomBatch::new();
+    for button in &buttons {
+        connect.insert_before(*button, parent, None);
+    }
+    dom.apply(connect, &cancel()).unwrap();
+    let snapshot = dom.snapshot();
+    let customized =
+        HtmlCustomElementDefinition::new("x-button".into(), "button".into(), false, false);
+    let mut matching = Vec::new();
+    snapshot
+        .node(document.node())
+        .unwrap()
+        .visit_custom_element_upgrade_candidates_with(
+            (registry, &customized),
+            || Ok::<_, DomError>(()),
+            |_| Ok(()),
+            |node| {
+                matching.push(node);
+                Ok(())
+            },
+        )
+        .unwrap();
+    assert_eq!(matching, [buttons[0]]);
+}
+
+#[test]
+fn insertion_reaction_receipt_preserves_shadow_order_and_refused_output() {
+    use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+    use surgeist_html_semantics::HtmlCustomElementDefinition;
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let snapshot = dom.snapshot();
+    let document_view = snapshot.document(document).unwrap();
+    let root = document_view.document_element().unwrap();
+    let DomRegistryBinding::Registry(registry) = document_view.metadata().custom_element_registry()
+    else {
+        panic!("hosted registry");
+    };
+    let mut batch = DomBatch::new();
+    let host = batch.create_element_ns(document, Namespace::html(), "div");
+    let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Closed));
+    let inside = batch.create_element_ns(document, Namespace::html(), "x-insertion");
+    let outside = batch.create_element_ns(document, Namespace::html(), "x-insertion");
+    let later = batch.create_element_ns(document, Namespace::html(), "x-insertion");
+    batch.insert_before(&inside, &shadow, None);
+    batch.insert_before(&outside, &host, None);
+    let committed = dom.apply(batch, &cancel()).unwrap();
+    let host = committed.created(&host).unwrap().unwrap();
+    let inside = committed.created(&inside).unwrap().unwrap();
+    let outside = committed.created(&outside).unwrap().unwrap();
+    let later = committed.created(&later).unwrap().unwrap();
+    let definition = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry,
+            &HtmlCustomElementDefinition::new(
+                "x-insertion".into(),
+                "x-insertion".into(),
+                false,
+                false,
+            ),
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap()
+        .commit()
+        .1;
+    let backing = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    let (binding, registration) = issuer
+        .attach_document_script_host(
+            &mut dom,
+            owner.global(),
+            document,
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel(),
+        )
+        .unwrap();
+    registration.observe_custom_element_reactions().unwrap();
+    let stamp = dom.snapshot().stamp();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(host, root, None),
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel()),
+        Err(DomError::SourceOutputLimit)
+    ));
+    drop(lease);
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    assert_eq!(registration.custom_element_reaction_segments(), 0);
+    let done = source(&mut dom, DomSourceEdit::insert_before(host, root, None));
+    let id = done.operation();
+    assert!(matches!(
+        registration.take_custom_element_reactions(id, 0),
+        Err(DomError::SourceOutputLimit)
+    ));
+    let mut loan = registration
+        .take_custom_element_reactions(id, 1)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        loan.facts().collect::<Vec<_>>(),
+        [
+            crate::DomCustomElementReaction {
+                element: inside,
+                definition,
+                kind: crate::DomCustomElementReactionKind::Upgrade,
+            },
+            crate::DomCustomElementReaction {
+                element: outside,
+                definition,
+                kind: crate::DomCustomElementReactionKind::Upgrade,
+            },
+        ]
+    );
+    assert!(
+        registration
+            .take_custom_element_reactions(id, 1)
+            .unwrap()
+            .is_none()
+    );
+    assert!(dom.has_pending_custom_element_reactions(&binding));
+    let later_operation =
+        source(&mut dom, DomSourceEdit::insert_before(later, root, None)).operation();
+    let mut later_loan = registration
+        .take_custom_element_reactions(later_operation, 2)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        later_loan.facts().collect::<Vec<_>>(),
+        [crate::DomCustomElementReaction {
+            element: later,
+            definition,
+            kind: crate::DomCustomElementReactionKind::Upgrade,
+        }]
+    );
+    later_loan.acknowledge_front();
+    drop(later_loan);
+    loan.acknowledge_front();
+    drop(loan);
+    let loan = registration
+        .take_custom_element_reactions(id, 2)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        loan.facts().collect::<Vec<_>>(),
+        [crate::DomCustomElementReaction {
+            element: outside,
+            definition,
+            kind: crate::DomCustomElementReactionKind::Upgrade,
+        }]
+    );
+    registration.revoke();
+    assert!(matches!(
+        registration.take_custom_element_reactions(id, 2),
+        Err(DomError::HostedSourceUnavailable)
+    ));
+    assert!(
+        dom.discard_stopped_custom_element_reactions(&binding)
+            .is_err()
+    );
+    dom.release_document_script_registration(&binding);
+    assert!(dom.has_pending_custom_element_reactions(&binding));
+    drop(loan);
+    dom.release_document_script_registration(&binding);
+    assert!(dom.has_pending_custom_element_reactions(&binding));
+    let replacement = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(
+        issuer.attach_document_script_host(
+            &mut dom,
+            owner.global(),
+            document,
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            replacement,
+            &cancel(),
+        ),
+        Err(DomHostedError::WrongPhase)
+    ));
+    assert_eq!(
+        dom.discard_stopped_custom_element_reactions(&binding)
+            .unwrap(),
+        1
+    );
+    assert!(!dom.has_pending_custom_element_reactions(&binding));
+    dom.release_document_script_registration(&binding);
+    let backing = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    let (_, replacement) = issuer
+        .attach_document_script_host(
+            &mut dom,
+            owner.global(),
+            document,
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel(),
+        )
+        .unwrap();
+    assert!(replacement.is_active());
+    assert_eq!(replacement.custom_element_reaction_segments(), 0);
+}
+
+#[test]
+fn customized_factory_publishes_one_receiver_and_retries_its_closing_phase() {
+    use surgeist_html::{
+        elements::native::HtmlCustomElementState,
+        scripting::{HtmlScriptingEngine, HtmlScriptingPolicy},
+    };
+    use surgeist_html_semantics::HtmlCustomElementDefinition;
+
+    let mut dom = Dom::new(bounds(1024, 1_000_000)).unwrap();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let before = dom.snapshot();
+    let DomRegistryBinding::Registry(registry) = before
+        .document(document)
+        .unwrap()
+        .metadata()
+        .custom_element_registry()
+    else {
+        panic!("hosted registry");
+    };
+    let definition = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry,
+            &HtmlCustomElementDefinition::new("x-button".into(), "button".into(), false, false),
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap()
+        .commit()
+        .1;
+    let backing = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    let (_, registration) = issuer
+        .attach_document_script_host(
+            &mut dom,
+            owner.global(),
+            document,
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel(),
+        )
+        .unwrap();
+    let bounds = source_limits(4096);
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1000);
+    let inbox = dom.node_retirement_inbox(watch_limits, &cancel()).unwrap();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::create_element_with_options(
+                document.node(),
+                DomElementCreationName::Local("button".into()),
+                DomElementCreationOptions {
+                    is: Some("x-button".into()),
+                    registry: None,
+                },
+            ),
+            bounds,
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(request)) =
+        lease.advance(&cancel()).unwrap()
+    else {
+        panic!("customized constructor request");
+    };
+    assert_eq!(request.definition(), definition);
+    let original = lease.snapshot().stamp();
+    drop(lease);
+    let mut lease = dom
+        .resume_source_edit(
+            request.operation(),
+            DomSourceLimits {
+                outputs: 3,
+                ..bounds
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.open_customized_element_callback_with_watch(
+            request,
+            &registration,
+            (&inbox, 0),
+            watch_limits,
+            &cancel(),
+            |_| -> Result<(), DomError> {
+                panic!("closing capacity must be admitted before wrapper formation")
+            }
+        ),
+        Err(DomError::SourceOutputLimit)
+    ));
+    assert_eq!(lease.snapshot().stamp(), original);
+    drop(lease);
+    let mut lease = dom
+        .resume_source_edit(
+            request.operation(),
+            DomSourceLimits {
+                outputs: 4,
+                ..bounds
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.open_customized_element_callback_with_watch(
+            request,
+            &registration,
+            (&inbox, 0),
+            watch_limits,
+            &cancel(),
+            |_| Err::<(), _>(DomError::AllocationFailed)
+        ),
+        Err(DomError::AllocationFailed)
+    ));
+    assert_eq!(lease.snapshot().stamp(), original);
+    let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        lease.open_customized_element_callback_with_watch(
+            request,
+            &registration,
+            (&inbox, 0),
+            watch_limits,
+            &cancel(),
+            |_| -> Result<(), DomError> { panic!("wrapper preparation unwind") },
+        )
+    }));
+    assert!(unwind.is_err());
+    assert_eq!(lease.snapshot().stamp(), original);
+    let (scope, watched, name) = lease
+        .open_customized_element_callback_with_watch(
+            request,
+            &registration,
+            (&inbox, 0),
+            watch_limits,
+            &cancel(),
+            |name| Ok::<_, DomError>(name.local_name().clone()),
+        )
+        .unwrap();
+    assert_eq!(name, "button".into());
+    let receiver = watched.node();
+    assert!(lease.status().has_published());
+    let published = lease.snapshot();
+    let element = published.node(receiver).unwrap().as_element().unwrap();
+    assert_eq!(
+        element.custom_element_state(),
+        HtmlCustomElementState::Precustomized
+    );
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Definition(definition)
+    );
+    assert_eq!(element.saved_is(), Some(&"x-button".into()));
+    drop(scope);
+    let mut outcome = Some(DomSourceCustomElementOutcome::Failed);
+    lease
+        .accept_custom_element_callback(request, &registration, &mut outcome, &cancel())
+        .unwrap();
+    assert_eq!(outcome, None);
+    assert!(matches!(
+        lease.finish_custom_element_with_watch(
+            request,
+            (&inbox, 1),
+            watch_limits,
+            &cancel(),
+            |_| -> Result<(), DomError> { panic!("existing watch must be reused") }
+        ),
+        Err(DomError::InvalidSourceOperation)
+    ));
+    let interrupted = AtomicBool::new(true);
+    assert!(matches!(
+        lease.advance(&interrupted),
+        Err(DomError::Cancelled)
+    ));
+    assert_eq!(lease.snapshot().stamp(), published.stamp());
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel()).unwrap() else {
+        panic!("original receiver must settle");
+    };
+    assert_eq!(done.output(), Some(DomSourceOutput::Node(receiver)));
+    assert_eq!(
+        done.custom_element_disposition(),
+        Some(DomSourceCustomElementDisposition::FailedReceiverAbrupt)
+    );
+    let settled = lease.snapshot();
+    let element = settled.node(receiver).unwrap().as_element().unwrap();
+    assert_eq!(
+        element.custom_element_state(),
+        HtmlCustomElementState::Failed
+    );
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Null
+    );
+    assert_eq!(element.saved_is(), Some(&"x-button".into()));
+    assert!(!element.has_failed_construction_interface());
+    drop(lease);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::create_element_with_options(
+                document.node(),
+                DomElementCreationName::Local("button".into()),
+                DomElementCreationOptions {
+                    is: Some("x-button".into()),
+                    registry: None,
+                },
+            ),
+            bounds,
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(request)) =
+        lease.advance(&cancel()).unwrap()
+    else {
+        panic!("customized constructor request");
+    };
+    let (scope, watched, ()) = lease
+        .open_customized_element_callback_with_watch(
+            request,
+            &registration,
+            (&inbox, 2),
+            watch_limits,
+            &cancel(),
+            |_| Ok::<_, DomError>(()),
+        )
+        .unwrap();
+    let retired = watched.node();
+    drop(lease);
+    let mut nested = dom
+        .begin_source_edit(DomSourceEdit::destroy(retired), bounds, &cancel())
+        .unwrap();
+    assert!(matches!(
+        nested.advance(&cancel()).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(nested);
+    drop(scope);
+    let mut lease = dom
+        .resume_source_edit(request.operation(), bounds, &cancel())
+        .unwrap();
+    let mut outcome = Some(DomSourceCustomElementOutcome::Returned(retired));
+    lease
+        .accept_custom_element_callback(request, &registration, &mut outcome, &cancel())
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel()).unwrap() else {
+        panic!("retired receiver must not strand the Source");
+    };
+    assert_eq!(done.published_node(), Some(retired));
+    assert_eq!(done.output(), None);
+    drop(lease);
+    assert!(dom.pending_source_edit().is_none());
+}
+
+#[test]
+fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refusal() {
+    use surgeist_html::{
+        scripting::{HtmlScriptingEngine, HtmlScriptingPolicy},
+        values::Namespace,
+    };
+    use surgeist_html_semantics::HtmlCustomElementDefinition;
+
+    let mut dom = Dom::new(
+        bounds(1024, 1_000_000).with_dispatch_custody(DomDispatchCustodyLimits::default()),
+    )
+    .unwrap();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let registry = {
+        let snapshot = dom.snapshot();
+        let DomNodeKind::Document(metadata) = snapshot.node(document.node()).unwrap().kind() else {
+            panic!("hosted document");
+        };
+        let DomRegistryBinding::Registry(registry) = metadata.custom_element_registry() else {
+            panic!("hosted document registry");
+        };
+        registry
+    };
+    dom.prepare_global_registry_definition(
+        &issuer,
+        owner.global(),
+        registry,
+        &HtmlCustomElementDefinition::new("x-broken".into(), "x-broken".into(), false, false),
+        source_limits(1),
+        &cancel(),
+    )
+    .unwrap()
+    .commit();
+    let backing = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    let (_, registration) = issuer
+        .attach_document_script_host(
+            &mut dom,
+            owner.global(),
+            document,
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel(),
+        )
+        .unwrap();
+    let bounds = source_limits(4096);
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1000);
+    let mut inbox = dom.node_retirement_inbox(watch_limits, &cancel()).unwrap();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::create_element_ns(document.node(), Namespace::html(), "p:x-broken"),
+            bounds,
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(request)) =
+        lease.advance(&cancel()).unwrap()
+    else {
+        panic!("selected constructor");
+    };
+    let scope = lease
+        .open_custom_element_callback(request, &registration, &cancel())
+        .unwrap();
+    assert!(matches!(
+        lease.open_custom_element_callback(request, &registration, &cancel()),
+        Err(DomError::InvalidSourceOperation)
+    ));
+    let mut result = Some(DomSourceCustomElementOutcome::Failed);
+    assert_eq!(
+        lease.accept_custom_element_callback(request, &registration, &mut result, &cancel()),
+        Err(DomError::InvalidSourceOperation)
+    );
+    drop(lease);
+
+    let before = dom.snapshot().stamp();
+    assert!(matches!(
+        dom.construct_autonomous_element_with_watch(
+            (request, request),
+            &registration,
+            owner.global(),
+            (&inbox, 0),
+            DomNodeRetirementLimits::new(16_000_000, 0),
+            &cancel(),
+        ),
+        Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert!(dom.node_retirements.is_none());
+    let created = dom
+        .construct_autonomous_element_with_watch(
+            (request, request),
+            &registration,
+            owner.global(),
+            (&inbox, 0),
+            watch_limits,
+            &cancel(),
+        )
+        .unwrap();
+    let constructed = created.node();
+    let snapshot = dom.snapshot();
+    let element = snapshot.node(constructed).unwrap().as_element().unwrap();
+    assert_eq!(element.name().prefix(), None);
+    assert_eq!(element.saved_is(), None);
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Definition(request.definition())
+    );
+    assert_eq!(
+        element.custom_element_state(),
+        surgeist_html::elements::native::HtmlCustomElementState::Custom
+    );
+
+    let child = source(
+        &mut dom,
+        DomSourceEdit::create_element(document.node(), "span"),
+    );
+    let Some(DomSourceOutput::Node(child)) = child.output() else {
+        panic!("nested detached element");
+    };
+    assert_eq!(
+        dom.pending_source_edit().unwrap().operation(),
+        request.operation()
+    );
+    drop(scope);
+
+    assert!(matches!(
+        dom.construct_autonomous_element_with_watch(
+            (request, request),
+            &registration,
+            owner.global(),
+            (&inbox, 1),
+            watch_limits,
+            &cancel(),
+        ),
+        Err(DomError::InvalidSourceOperation)
+    ));
+    let mut lease = dom
+        .resume_source_edit(request.operation(), bounds, &cancel())
+        .unwrap();
+    assert_eq!(
+        lease.accept_custom_element_callback(
+            request,
+            &registration,
+            &mut result,
+            &AtomicBool::new(true),
+        ),
+        Err(DomError::Cancelled)
+    );
+    assert_eq!(result, Some(DomSourceCustomElementOutcome::Failed));
+    lease
+        .accept_custom_element_callback(request, &registration, &mut result, &cancel())
+        .unwrap();
+    assert_eq!(result, None);
+    lease.request_cancel();
+    drop(lease);
+    let short = DomSourceLimits {
+        outputs: 0,
+        ..bounds
+    };
+    let mut lease = dom
+        .resume_source_edit(request.operation(), short, &cancel())
+        .unwrap();
+    let before_close = lease.snapshot().stamp();
+    assert!(matches!(
+        lease.advance(&cancel()),
+        Err(DomError::SourceOutputLimit)
+    ));
+    assert_eq!(lease.snapshot().stamp(), before_close);
+    drop(lease);
+    let mut lease = dom
+        .resume_source_edit(request.operation(), bounds, &cancel())
+        .unwrap();
+    let before_watch = lease.snapshot().stamp();
+    assert_eq!(
+        lease
+            .finish_returned_custom_element(request, &cancel())
+            .unwrap(),
+        None
+    );
+    assert_eq!(lease.snapshot().stamp(), before_watch);
+    assert_eq!(lease.status().operation(), request.operation());
+    assert!(matches!(
+        lease.finish_custom_element_with_watch(
+            request,
+            (&inbox, 1),
+            watch_limits,
+            &cancel(),
+            |_| Err::<(), _>(DomError::NotSupported),
+        ),
+        Err(DomError::NotSupported)
+    ));
+    assert_eq!(lease.snapshot().stamp(), before_watch);
+    let DomWatchedCustomElementResult::Fallback {
+        node: fallback_node,
+        watch: _fallback_watch,
+        projection,
+        disposition,
+    } = lease
+        .finish_custom_element_with_watch(request, (&inbox, 1), watch_limits, &cancel(), |name| {
+            Ok::<_, DomError>(name.name().prefix().cloned())
+        })
+        .unwrap()
+    else {
+        panic!("failed factory returns its watched fallback");
+    };
+    assert_eq!(disposition, DomSourceCustomElementDisposition::Abrupt);
+    assert_eq!(projection, Some("p".into()));
+    assert_ne!(child, fallback_node);
+    assert_ne!(constructed, fallback_node);
+    let snapshot = lease.snapshot();
+    assert!(snapshot.node(child).is_ok());
+    assert!(snapshot.node(constructed).is_ok());
+    let element = snapshot.node(fallback_node).unwrap().as_element().unwrap();
+    assert!(element.has_failed_construction_interface());
+    assert_eq!(element.name().prefix(), Some(&"p".into()));
+    assert_eq!(element.name().local_name(), &"x-broken".into());
+    assert_eq!(
+        element.custom_element_state(),
+        surgeist_html::elements::native::HtmlCustomElementState::Failed
+    );
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Null
+    );
+    assert_eq!(
+        element.custom_element_registry(),
+        DomRegistryBinding::Registry(registry)
+    );
+    drop(lease);
+    let mut retire = DomBatch::new();
+    retire.destroy(constructed);
+    retire.destroy(fallback_node);
+    dom.apply(retire, &cancel()).unwrap();
+    let mut notices = [inbox.take().unwrap(), inbox.take().unwrap()];
+    notices.sort_by_key(|notice| notice.custody_key());
+    assert_eq!(
+        (notices[0].node(), notices[0].custody_key()),
+        (constructed, 0)
+    );
+    assert_eq!(
+        (notices[1].node(), notices[1].custody_key()),
+        (fallback_node, 1)
+    );
+    assert!(inbox.take().is_none());
+    drop(created);
+
+    // A constructor may return a different eligible native element. The
+    // factory must preserve its identity and apply the requested prefix.
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::create_element_ns(document.node(), Namespace::html(), "q:x-broken"),
+            bounds,
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(request)) =
+        lease.advance(&cancel()).unwrap()
+    else {
+        panic!("selected constructor");
+    };
+    let scope = lease
+        .open_custom_element_callback(request, &registration, &cancel())
+        .unwrap();
+    drop(lease);
+    dom.source_custom_element_callback_step(request, &registration, &cancel())
+        .unwrap();
+    let returned = source(
+        &mut dom,
+        DomSourceEdit::create_element_with_options(
+            document.node(),
+            DomElementCreationName::Local("x-broken".into()),
+            DomElementCreationOptions {
+                is: None,
+                registry: Some(DomRegistryBinding::Null),
+            },
+        ),
+    );
+    let Some(DomSourceOutput::Node(returned)) = returned.output() else {
+        panic!("nested eligible element");
+    };
+    drop(scope);
+    let units = dom.usage().string_code_units();
+    let mut lease = dom
+        .resume_source_edit(request.operation(), bounds, &cancel())
+        .unwrap();
+    let mut outcome = Some(DomSourceCustomElementOutcome::Returned(returned));
+    lease
+        .accept_custom_element_callback(request, &registration, &mut outcome, &cancel())
+        .unwrap();
+    assert_eq!(
+        lease
+            .finish_returned_custom_element(request, &cancel())
+            .unwrap(),
+        Some(returned)
+    );
+    let snapshot = lease.snapshot();
+    let element = snapshot.node(returned).unwrap().as_element().unwrap();
+    assert!(!element.has_failed_construction_interface());
+    assert_eq!(element.name().prefix(), Some(&"q".into()));
+    assert_eq!(
+        element.custom_element_registry(),
+        DomRegistryBinding::Registry(registry)
+    );
+    drop(lease);
+    assert_eq!(dom.usage().string_code_units(), units + 1);
+}
+
+#[test]
+fn adopted_custom_element_exports_the_definition_from_its_original_registry() {
+    use surgeist_html::elements::native::HtmlCustomElementState;
+    use surgeist_html_semantics::{
+        HtmlCaptureLimits, HtmlCapturedCustomElementDefinition, HtmlCapturedNodeKind,
+        HtmlCapturedRegistry, HtmlCustomElementDefinition,
+    };
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let original = hosted(&mut dom, &mut issuer);
+    let destination = hosted(&mut dom, &mut issuer);
+    let mut batch = DomBatch::new();
+    let ticket = batch.create_element(original.document(), "x-widget");
+    let node = apply(&mut dom, batch).created(&ticket).unwrap().unwrap();
+    let initial = dom.snapshot();
+    let registry_of = |document| {
+        let DomRegistryBinding::Registry(id) = initial
+            .document(document)
+            .unwrap()
+            .metadata()
+            .custom_element_registry()
+        else {
+            panic!("hosted document registry");
+        };
+        id
+    };
+    let source_registry = registry_of(original.document());
+    let destination_registry = registry_of(destination.document());
+    let other = HtmlCustomElementDefinition::new("x-other".into(), "x-other".into(), false, false);
+    dom.prepare_global_registry_definition(
+        &issuer,
+        original.global(),
+        source_registry,
+        &other,
+        source_limits(1),
+        &cancel(),
+    )
+    .unwrap()
+    .commit();
+    let competing =
+        HtmlCustomElementDefinition::new("x-widget".into(), "x-widget".into(), false, true);
+    let (_, wrong) = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            destination.global(),
+            destination_registry,
+            &competing,
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap()
+        .commit();
+    let facts =
+        HtmlCustomElementDefinition::new("x-widget".into(), "x-widget".into(), false, false);
+    let (_, definition) = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            original.global(),
+            source_registry,
+            &facts,
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap()
+        .commit();
+
+    // This fixture starts at the native state publication boundary after a
+    // successful constructor. No guest completion is fabricated by the API.
+    let mut draft = Draft::new(&dom, DomBatch::new().owner, &cancel()).unwrap();
+    let key = Key::Existing(node);
+    let binding = DomRegistryBinding::Registry(source_registry);
+    assert_eq!(
+        draft.complete_element_upgrade(key, wrong, &cancel()),
+        Err(DomError::InvalidSourceOperation)
+    );
+    assert_eq!(
+        draft
+            .lookup_element_definition(key, binding, &cancel())
+            .unwrap(),
+        Some(definition)
+    );
+    draft
+        .complete_element_upgrade(key, definition, &cancel())
+        .unwrap();
+    let prepared = draft.finish(&dom, &cancel()).unwrap();
+    let commit = dom.publish(prepared, &cancel()).unwrap();
+    assert!(
+        commit
+            .changes()
+            .changes()
+            .contains(&DomChange::ElementState(node))
+    );
+    let before_adoption = dom.snapshot();
+    let mut batch = DomBatch::new();
+    batch.adopt(node, destination.document());
+    apply(&mut dom, batch);
+
+    let snapshot = dom.snapshot();
+    let view = snapshot.node(node).unwrap().as_element().unwrap();
+    assert_eq!(
+        view.custom_element_registry(),
+        DomRegistryBinding::Registry(destination_registry)
+    );
+    assert_eq!(
+        view.custom_element_definition(),
+        DomElementDefinition::Definition(definition)
+    );
+    assert_eq!(view.custom_element_state(), HtmlCustomElementState::Custom);
+    assert_eq!(
+        before_adoption
+            .node(node)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .custom_element_registry(),
+        binding
+    );
+    assert_eq!(
+        initial
+            .node(node)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .custom_element_definition(),
+        DomElementDefinition::Null
+    );
+
+    let export = snapshot
+        .html_capture(
+            destination.document(),
+            None,
+            HtmlCaptureLimits::new(256, 4096, 1024, 65_536, 256, 16, 16, 1_000_000),
+            DomHtmlCaptureLimits::new(256, 1_000_000),
+            &cancel(),
+        )
+        .unwrap();
+    let capture = export.capture();
+    let node = capture.node(&export.subject(node).unwrap()).unwrap();
+    let HtmlCapturedRegistry::Registry(current_registry) = node.lookup_registry() else {
+        panic!("adopted registry");
+    };
+    let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+        panic!("captured element");
+    };
+    let HtmlCapturedCustomElementDefinition::Definition(associated) =
+        element.custom_element_definition()
+    else {
+        panic!("captured definition");
+    };
+    assert_ne!(associated.registry(), &current_registry);
+    assert_eq!(definition.ordinal(), 1);
+    assert_eq!(associated.ordinal(), 1);
+    assert_eq!(capture.definition(associated).unwrap(), &facts);
+    let captured = HtmlCapturedRegistry::Registry(current_registry);
+    assert_eq!(
+        capture
+            .lookup_definition(
+                &captured,
+                &surgeist_html::values::Namespace::html(),
+                &"x-widget".into(),
+                None,
+            )
+            .unwrap(),
+        Some(&competing)
+    );
+}
+
 fn detached_document(
     snapshot: &DomSnapshot,
     document: DocumentId,

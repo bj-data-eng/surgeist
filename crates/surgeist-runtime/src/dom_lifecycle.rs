@@ -985,6 +985,37 @@ impl HostedRuntime {
             .retain_runtime_payload(dom.raw_mut(), bytes, cancel)
             .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
     }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn publish_script_registry_definition(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        registry: surgeist_dom::DomRegistryId,
+        definition: &surgeist_html_semantics::HtmlCustomElementDefinition,
+        limits: surgeist_dom::DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<surgeist_dom::DomRegistryDefinitionId, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        state.step(cancel)?;
+        let prepared = dom
+            .raw_mut()
+            .prepare_global_registry_definition(
+                &state.source,
+                global,
+                registry,
+                definition,
+                limits,
+                cancel,
+            )
+            .map_err(DomHostedRuntimeError::Dom)?;
+        let (_, id) = prepared.commit();
+        Ok(id)
+    }
 }
 
 impl HostedRuntime {

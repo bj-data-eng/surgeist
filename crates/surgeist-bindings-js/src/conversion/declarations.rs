@@ -68,7 +68,7 @@ fn convert_element_creation_options<'s>(
     input: &Value<'s>,
 ) -> Result<Converted<ElementCreationOptions>, Failure> {
     let object = cx.dictionary("ElementCreationOptions", input)?;
-    let custom_element_registry_is_null = match cx.member(
+    let custom_element_registry = match cx.member(
         input,
         object,
         &[
@@ -76,8 +76,8 @@ fn convert_element_creation_options<'s>(
             116, 114, 121,
         ],
     )? {
-        Some(value) => cx.null_interface_member("CustomElementRegistry", &value)?,
-        None => false,
+        Some(value) => Some(cx.custom_element_registry_member(&value)?),
+        None => None,
     };
     let is = match cx.member(input, object, &[105, 115])? {
         Some(value) => Some(cx.value(&types::DOM_STRING, &value)?),
@@ -92,7 +92,7 @@ fn convert_element_creation_options<'s>(
     };
     Ok(Converted {
         value: ElementCreationOptions {
-            custom_element_registry_is_null,
+            custom_element_registry,
             is,
         },
         storage,

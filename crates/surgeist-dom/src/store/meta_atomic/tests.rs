@@ -755,7 +755,7 @@ fn authentic_observed_callback_cannot_use_ordinary_prefix_as_source_parent_permi
     let scope = executor
         .enter_dispatch(&f.dom, permit.as_ref().unwrap(), &flag())
         .unwrap();
-    f.dom.require_source_entry().unwrap(); // this is an actual authorized observer
+    f.dom.require_source_entry(&flag()).unwrap(); // this is an actual authorized observer
     let before = snapshots(&f);
     let work = f.dom.pending_source_edit().unwrap().spent_work();
     let mut batch = DomBatch::new();

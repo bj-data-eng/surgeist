@@ -4236,6 +4236,7 @@ mod tests {
                     DomSourceProgress::Request(
                         surgeist_dom::DomSourceRequest::AttributeVerification(_)
                         | surgeist_dom::DomSourceRequest::AttributeAttachmentOutput(_)
+                        | surgeist_dom::DomSourceRequest::CustomElementConstruction(_)
                         | surgeist_dom::DomSourceRequest::Event(_)
                         | surgeist_dom::DomSourceRequest::Dialog(_)
                         | surgeist_dom::DomSourceRequest::DialogFocusing(_)

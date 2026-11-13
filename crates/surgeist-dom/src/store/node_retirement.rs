@@ -534,7 +534,7 @@ impl Index {
 
 enum Funding<'a> {
     Source(&'a Dom, &'a DomSourceEventRequest),
-    SourceAttribute(&'a Dom, &'a CallbackWork),
+    RegisteredCallback(&'a Dom, &'a CallbackWork),
     Ordinary(OrdinaryAdmission<'a>),
 }
 
@@ -570,7 +570,7 @@ impl WatchAdmission<'_> {
     fn step(&self) -> Result<(), DomError> {
         match &self.funding {
             Funding::Source(dom, request) => dom.source_event_step(request, self.cancel),
-            Funding::SourceAttribute(_, work) => work.step(self.cancel),
+            Funding::RegisteredCallback(_, work) => work.step(self.cancel),
             Funding::Ordinary(admission) => admission.admit_work(1),
         }
     }
@@ -590,9 +590,9 @@ impl WatchAdmission<'_> {
                 }
                 Reserved::Source(retained)
             }
-            Funding::SourceAttribute(dom, work) => {
-                let retained = dom
-                    .retain_source_attribute_observer_payload(Usage::new(bytes, 0), self.cancel)?;
+            Funding::RegisteredCallback(dom, work) => {
+                let retained =
+                    dom.retain_source_callback_payload(Usage::new(bytes, 0), self.cancel)?;
                 for _ in 0..RADIX_DISARM_WORK {
                     work.step(self.cancel)?;
                 }
@@ -773,15 +773,41 @@ impl Dom {
         custody_key: usize,
         cancel: &AtomicBool,
     ) -> Result<DomNodeRetirementWatch, DomError> {
+        self.watch_registered_callback_node(node, (inbox, custody_key), cancel, |dom| {
+            dom.active_source_attribute_callback_work(request, registration, cancel)
+        })
+    }
+
+    /// Watch the exact node generation under an active constructor callback.
+    pub fn watch_source_custom_element_node_retirement(
+        &mut self,
+        request: crate::DomSourceCustomElementRequest,
+        registration: &DomDocumentScriptRegistration,
+        node: NodeId,
+        (inbox, custody_key): (&DomNodeRetirementInbox, usize),
+        cancel: &AtomicBool,
+    ) -> Result<DomNodeRetirementWatch, DomError> {
+        self.watch_registered_callback_node(node, (inbox, custody_key), cancel, |dom| {
+            dom.active_custom_element_callback_work(request, registration, cancel)
+        })
+    }
+
+    fn watch_registered_callback_node(
+        &mut self,
+        node: NodeId,
+        (inbox, custody_key): (&DomNodeRetirementInbox, usize),
+        cancel: &AtomicBool,
+        qualify: impl FnOnce(&Dom) -> Result<&CallbackWork, DomError>,
+    ) -> Result<DomNodeRetirementWatch, DomError> {
         if inbox.owner != self.owner {
             return Err(DomError::ForeignOwner);
         }
-        let work = self.active_source_attribute_callback_work(request, registration, cancel)?;
+        let work = qualify(self)?;
         work.step(cancel)?;
         self.state
             .node_with(self.owner, node, &mut || work.step(cancel))?;
         let admission = WatchAdmission {
-            funding: Funding::SourceAttribute(self, work),
+            funding: Funding::RegisteredCallback(self, work),
             inbox,
             node,
             custody_key,

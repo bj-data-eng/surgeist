@@ -397,17 +397,61 @@ impl NativeOwner {
 }
 
 impl DocumentScriptHost {
+    #[cfg(test)]
+    pub(in crate::document_scripting) fn park_live_style_edit_fixture(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        edit: surgeist_dom::DomSourceEdit,
+        limits: DomSourceLimits,
+    ) -> surgeist_dom::DomSourceOperationId {
+        let owner = self.native.clone();
+        self.in_document(permit, |scope| {
+            let mut session = owner.session.borrow_mut();
+            let result = session.source_execution().apply(
+                &mut session.dom(),
+                edit,
+                limits,
+                &mut guest_source_services(&mut |_| None),
+                &owner.cancellation,
+            );
+            assert!(
+                matches!(
+                    result,
+                    Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::Style(_),
+                        ..
+                    })
+                ),
+                "{result:?}"
+            );
+            let pending = session.dom().pending_source_edit().unwrap();
+            assert!(pending.has_published());
+            drop(session);
+            owner.record_reached_style(scope.realm_authority()?.identity());
+            Ok(pending.operation())
+        })
+        .unwrap()
+    }
+
     /// Resume a parked Style edit with the same Session processor and report
-    /// queue. A refusal leaves the original Source operation available.
+    /// queue. A completed edit delivers committed reactions when the original
+    /// heap can still execute. After a terminal engine refusal, native
+    /// settlement remains available and the stopped host owns those reactions.
     pub fn resume_pending_style_edit(
         &mut self,
         permit: &DocumentScriptPermit,
         operation: surgeist_dom::DomSourceOperationId,
         limits: DomSourceLimits,
-    ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentScriptNativeError>
-    {
+    ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentGuestEventError> {
         self.check_permit(permit)?;
-        self.native.resume_style(operation, limits, true)
+        let progress = self.native.resume_style(operation, limits, true)?;
+        if let Ok(result) = &progress
+            && let Some(terminal) = guest_terminal_result(result)
+            && terminal.operation == operation
+        {
+            self.deliver_resumed_source_reactions(permit, terminal)?;
+        }
+        Ok(progress)
     }
 }
 

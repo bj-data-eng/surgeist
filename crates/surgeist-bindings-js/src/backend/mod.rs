@@ -113,6 +113,7 @@ pub(crate) trait Operations {
     fn primitive(&mut self, primitive: Primitive) -> Result<Root, Error>;
     fn kind(&mut self, value: &Root) -> Result<ValueKind, Error>;
     fn is_callable(&mut self, value: &Root) -> Result<bool, Error>;
+    fn is_constructor(&mut self, value: &Root) -> Result<bool, Error>;
     fn callback_object_realm(&mut self, value: &Root) -> Result<RealmKey, Error>;
     fn callback_object_storage_bytes(&self) -> usize;
     fn retain_callback_object(
@@ -127,6 +128,9 @@ pub(crate) trait Operations {
     -> Result<(), Error>;
     fn argument_locals_storage_bytes(&self, count: usize) -> Option<usize>;
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error>;
+    fn new_promise_resolver(&mut self) -> Result<Root, Error>;
+    fn resolver_promise(&mut self, resolver: &Root) -> Result<Root, Error>;
+    fn settle_promise(&mut self, resolver: &Root, value: &Root, reject: bool) -> Result<(), Error>;
     fn native_error(&mut self) -> Result<Root, Error>;
     fn dom_exception_profile(&mut self) -> Result<Option<DomExceptionProfile>, Error>;
     fn publish_dom_exception(
@@ -223,8 +227,14 @@ pub(crate) trait Operations {
     fn array(&mut self, values: &[Root]) -> Result<Root, Error>;
     fn well_known_symbol(&mut self, symbol: WellKnownSymbol) -> Result<Root, Error>;
     fn intrinsic(&mut self, intrinsic: Intrinsic) -> Result<Root, Error>;
-    fn call(&mut self, function: &Root, receiver: &Root, arguments: &[Root])
-    -> Result<Root, Error>;
+    fn call(
+        &mut self,
+        function: &Root,
+        receiver: &Root,
+        arguments: &[Root],
+        enter: &mut dyn FnMut() -> Result<(), Error>,
+    ) -> Result<Root, Error>;
+    fn construct_without_arguments(&mut self, constructor: &Root) -> Result<Root, Error>;
     fn coerce_string(&mut self, value: &Root) -> Result<CoercedString, Error>;
     /// Copies the entire string into an exactly sized, caller-owned buffer.
     fn copy_string(&mut self, string: &CoercedString, units: &mut [u16]) -> Result<(), Error>;
