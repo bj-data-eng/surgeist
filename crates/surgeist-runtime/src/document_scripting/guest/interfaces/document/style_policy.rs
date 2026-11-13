@@ -397,6 +397,42 @@ impl NativeOwner {
 }
 
 impl DocumentScriptHost {
+    #[cfg(test)]
+    pub(in crate::document_scripting) fn park_live_style_edit_fixture(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        edit: surgeist_dom::DomSourceEdit,
+        limits: DomSourceLimits,
+    ) -> surgeist_dom::DomSourceOperationId {
+        let owner = self.native.clone();
+        self.in_document(permit, |scope| {
+            let mut session = owner.session.borrow_mut();
+            let result = session.source_execution().apply(
+                &mut session.dom(),
+                edit,
+                limits,
+                &mut guest_source_services(&mut |_| None),
+                &owner.cancellation,
+            );
+            assert!(
+                matches!(
+                    result,
+                    Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::Style(_),
+                        ..
+                    })
+                ),
+                "{result:?}"
+            );
+            let pending = session.dom().pending_source_edit().unwrap();
+            assert!(pending.has_published());
+            drop(session);
+            owner.record_reached_style(scope.realm_authority()?.identity());
+            Ok(pending.operation())
+        })
+        .unwrap()
+    }
+
     /// Resume a parked Style edit with the same Session processor and report
     /// queue. A refusal leaves the original Source operation available.
     pub fn resume_pending_style_edit(

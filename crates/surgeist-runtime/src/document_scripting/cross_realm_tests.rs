@@ -285,6 +285,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     inline_style::guest_meta_completion_delivers_its_connection_reaction();
     inline_style::style_runtime_refusal_preserves_the_original_guest_edit();
     inline_style::stopped_style_edit_retains_its_committed_reaction_prefix();
+    inline_style::live_style_resume_delivers_committed_reactions();
     inline_style::stopped_upgrade_can_settle_its_published_style_child();
     inline_style::guest_style_preserves_foreign_and_unavailable_policy();
     inline_style::guest_style_reports_to_current_window_for_another_document();

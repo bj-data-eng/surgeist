@@ -172,14 +172,18 @@ pub(super) fn stopped_upgrade_can_settle_its_published_style_child() {
 }
 
 pub(super) fn style_runtime_refusal_preserves_the_original_guest_edit() {
-    check_parked_style_edit(false);
+    check_parked_style_edit(false, false);
 }
 
 pub(super) fn stopped_style_edit_retains_its_committed_reaction_prefix() {
-    check_parked_style_edit(true);
+    check_parked_style_edit(true, false);
 }
 
-fn check_parked_style_edit(with_reaction: bool) {
+pub(super) fn live_style_resume_delivers_committed_reactions() {
+    check_parked_style_edit(true, true);
+}
+
+fn check_parked_style_edit(with_reaction: bool, live_resume: bool) {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session(&cancel, 0);
     let document = target.document();
@@ -226,10 +230,12 @@ fn check_parked_style_edit(with_reaction: bool) {
                 scope,
                 r#"
             customElements.define('x-style-prefix', class extends HTMLElement {
-                connectedCallback() { throw {}; }
+                connectedCallback() { globalThis.styleConnections.push(this); }
             });
+            globalThis.styleConnections = [];
             globalThis.styleFragment = document.createDocumentFragment();
-            styleFragment.appendChild(document.createElement('x-style-prefix'));
+            globalThis.styleCustom = document.createElement('x-style-prefix');
+            styleFragment.appendChild(styleCustom);
             styleFragment.appendChild(inlineStyle);
         "#,
             )
@@ -243,6 +249,44 @@ fn check_parked_style_edit(with_reaction: bool) {
             ),
             other => panic!("fixture preparation refused: {other:?}"),
         });
+    }
+    if live_resume {
+        let snapshot = host.snapshot().unwrap();
+        let fragment = snapshot.node(style).unwrap().parent().unwrap();
+        let operation = host.park_live_style_edit_fixture(
+            &permit,
+            DomSourceEdit::insert_before(fragment, body, None),
+            SOURCE,
+        );
+        host.with_native(|dom, _, _| {
+            styles
+                .bind_root(
+                    dom,
+                    "live-style".into(),
+                    &mut Some(DomStyleCssomRoot::new(
+                        document.node(),
+                        CssomStore::new(Default::default(), Default::default()).unwrap(),
+                    )),
+                    &cancel,
+                )
+                .unwrap();
+        })
+        .unwrap();
+        assert!(matches!(
+            host.resume_pending_style_edit(&permit, operation, SOURCE).unwrap().unwrap(),
+            DomSourceDriveProgress::Complete(done) if done.operation() == operation
+        ));
+        host.in_document(&permit, |scope| {
+            let value = evaluate(
+                scope,
+                "styleConnections.length === 1 && styleConnections[0] === styleCustom",
+            )?;
+            assert!(scope.boolean(&value)?);
+            Ok(())
+        })
+        .unwrap();
+        assert!(host.stop().into_session().is_ok());
+        return;
     }
     let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
         host.in_document(&permit, |scope| {
