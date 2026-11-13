@@ -59,7 +59,7 @@ use input::{
     order_modified_indexes,
 };
 use intrinsic_stage::{
-    GridIntrinsicProbe, GridIntrinsicProbeKind, IntrinsicSubgridSource, GridTrackSizing,
+    GridIntrinsicProbe, GridIntrinsicProbeKind, GridTrackSizing, IntrinsicSubgridSource,
 };
 use lane_repeat::{LaneRepeatExpansion, LaneRepeatPlacement};
 pub use lanes::{
