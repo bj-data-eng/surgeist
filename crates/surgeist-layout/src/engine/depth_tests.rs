@@ -1210,3 +1210,107 @@ fn deep_auto_height_grid_lanes_uses_leaf_height() {
         },
     );
 }
+
+fn assert_accepted_grid_sizing_chain<S: LayoutScalar>(depth: u32) {
+    let mut tree = PublicLayoutTreeOf::<S>::new();
+    let track =
+        crate::TrackComponentOf::from(crate::LengthPercentageOf::px(S::from_f64(30.0)).unwrap());
+    for node in 0..=depth {
+        let mut style = NodeInputOf {
+            display: Display::Grid,
+            size: Size::new(
+                crate::PreferredSizeOf::AUTO,
+                crate::PreferredSizeOf::px(S::from_f64(40.0)),
+            ),
+            grid_template_columns: vec![track.clone(), track.clone()],
+            grid_template_rows: vec![crate::TrackComponentOf::from(
+                crate::LengthPercentageOf::px(S::from_f64(40.0)).unwrap(),
+            )],
+            justify_items: Some(crate::AlignItems::Start),
+            align_items: Some(crate::AlignItems::Baseline),
+            grid_column: crate::GridPlacement::try_span(2).unwrap(),
+            ..NodeInputOf::default()
+        };
+        style.min_size.width = crate::MinSizeOf::value(
+            crate::LengthPercentageOf::from_percent_fraction(S::ONE).unwrap(),
+        );
+        style.gap.width = crate::LengthOf::value(
+            crate::LengthPercentageOf::from_percent_fraction(S::from_f64(0.75)).unwrap(),
+        );
+        tree = tree.style(node, style);
+        if node < depth {
+            tree = tree.children(node, [node + 1, depth + 1 + node]).style(
+                depth + 1 + node,
+                NodeInputOf {
+                    display: Display::None,
+                    ..NodeInputOf::default()
+                },
+            );
+        }
+    }
+    let sizing = SizingRequestOf::new(
+        Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::Normal,
+        )),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    );
+    let request = LayoutRootRequestOf::standalone(
+        sizing,
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::NONE,
+    );
+    let batch = compute_layout(&tree, 0, request).expect("accepted sizing chain returns");
+    assert_eq!(batch.node_layouts().len(), (2 * depth + 1) as usize);
+    // The initial two-track width is 60. Each child spans those tracks and a
+    // gap equal to three quarters of its parent's unrounded width.
+    let mut widths = vec![S::from_f64(60.0)];
+    for index in 0..depth as usize {
+        widths.push(S::from_f64(60.0) + S::from_f64(0.75) * widths[index]);
+    }
+    for (node, view) in batch.node_layouts() {
+        if node > depth {
+            let hidden = view.non_box().expect("hidden sibling");
+            assert_eq!(hidden.kind(), crate::NonBoxKind::Hidden);
+            assert_eq!(hidden.source_index(), crate::SourceIndex::new(1));
+            continue;
+        }
+        let output = view
+            .single_box()
+            .expect("visible grid")
+            .final_entry()
+            .output();
+        assert_eq!(
+            output.size,
+            Size::new(widths[node as usize].round(), S::from_f64(40.0))
+        );
+        assert_eq!(output.location, crate::Point::ZERO);
+        assert_eq!(output.source_index, crate::SourceIndex::new(0));
+    }
+}
+
+#[test]
+fn shallow_accepted_grid_sizing_preserves_percentage_gaps() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_accepted_grid_sizing_preserves_percentage_gaps",
+        || {
+            assert_accepted_grid_sizing_chain::<f32>(2);
+            assert_accepted_grid_sizing_chain::<f64>(2);
+        },
+    );
+}
+
+#[test]
+fn deep_accepted_grid_sizing_preserves_percentage_gaps() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_accepted_grid_sizing_preserves_percentage_gaps",
+        || {
+            assert_accepted_grid_sizing_chain::<f32>(24);
+            assert_accepted_grid_sizing_chain::<f64>(24);
+        },
+    );
+}
