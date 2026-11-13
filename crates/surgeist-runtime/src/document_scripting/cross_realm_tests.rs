@@ -1,6 +1,7 @@
 mod authored_toggle;
 mod declarative_shadow;
 mod document_type;
+mod dom_implementation;
 mod element_tasks;
 mod inline_style;
 mod nested_dispatch;
@@ -311,6 +312,13 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::trusted_policy::guest_attribute_writes_reach_the_native_element();
     declarative_shadow::verify_declarative_shadow_reuse();
     document_type::document_type_tracks_native_tree();
+    dom_implementation::document_implementation_is_the_same_object();
+    dom_implementation::implementation_creates_native_doctypes();
+    dom_implementation::implementation_creates_native_documents();
+    dom_implementation::factory_refusal_preserves_native_dom();
+    dom_implementation::xml_factory_retains_the_original_style_operation();
+    super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
+    super::guest::tests::registered_origin::implementation_factories_keep_the_projection_realm();
     super::guest::tests::registered_origin::native_doctype_uses_its_registered_creation_realm();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
@@ -1012,6 +1020,17 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
                     && dialog.removeAttributeNode(cancelAttr) === cancelAttr;
                 dialog.textContent = 'native event\ud800';
                 cancelChecks &&= dialog.textContent === 'native event\ud800';
+                const impl = attachedDocument.implementation;
+                const type = impl.createDocumentType('root', '', '');
+                const xml = impl.createDocument(null, 'root', type);
+                cancelChecks &&= xml instanceof XMLDocument && xml.doctype === type &&
+                    type.ownerDocument === xml && xml.documentElement.ownerDocument === xml;
+                try {
+                    impl.createDocument(null, 'p:root', type);
+                    cancelChecks = false;
+                } catch (error) {
+                    cancelChecks &&= error.name === 'NamespaceError' && xml.doctype === type;
+                }
                 event.currentTarget.removeEventListener("cancel", removed);
                 event.preventDefault();
             }, {once: true});

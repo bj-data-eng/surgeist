@@ -493,6 +493,12 @@ pub enum DomDetachedNodeCreation {
     Fragment,
     Text(DocumentString),
     Comment(DocumentString),
+    DocumentType {
+        name: DocumentString,
+        public_id: DocumentString,
+        system_id: DocumentString,
+        fallback: crate::DomImplementationFallback,
+    },
 }
 
 impl DomDetachedNodeCreation {
@@ -505,6 +511,20 @@ impl DomDetachedNodeCreation {
             Self::Fragment => DomSourceEdit::create_fragment(document.node()),
             Self::Text(data) => DomSourceEdit::create_text(document.node(), data),
             Self::Comment(data) => DomSourceEdit::create_comment(document.node(), data),
+            Self::DocumentType {
+                name,
+                public_id,
+                system_id,
+                fallback,
+            } => DomSourceEdit::create(
+                Creation::DocumentType {
+                    name,
+                    public_id,
+                    system_id,
+                    fallback: Some(fallback),
+                },
+                Some(document.into()),
+            ),
         }
     }
 }
@@ -852,13 +872,44 @@ impl DomSourceEdit {
         qualified_name: impl Into<DocumentString>,
         doctype: Option<NodeId>,
     ) -> Self {
-        let doctype = doctype.map(crate::NodeOperand::Existing);
+        Self::xml_document(
+            associated_document,
+            namespace,
+            qualified_name.into(),
+            doctype,
+            None,
+        )
+    }
+    /// Create through DOMImplementation with the receiver's established guest realm.
+    pub fn create_xml_document_in_attachment(
+        associated_document: crate::DocumentId,
+        namespace: Namespace,
+        qualified_name: DocumentString,
+        doctype: Option<NodeId>,
+        fallback: crate::DomImplementationFallback,
+    ) -> Self {
+        Self::xml_document(
+            associated_document.node(),
+            namespace,
+            qualified_name,
+            doctype,
+            Some(fallback),
+        )
+    }
+    fn xml_document(
+        associated_document: NodeId,
+        namespace: Namespace,
+        qualified_name: DocumentString,
+        doctype: Option<NodeId>,
+        fallback: Option<crate::DomImplementationFallback>,
+    ) -> Self {
         Self {
             command: Command::CreateXmlDocument {
                 associated_document: associated_document.into(),
                 namespace,
-                qualified_name: qualified_name.into(),
-                doctype,
+                qualified_name,
+                doctype: doctype.map(crate::NodeOperand::Existing),
+                fallback,
             },
         }
     }
@@ -867,10 +918,26 @@ impl DomSourceEdit {
         associated_document: NodeId,
         title: Option<DocumentString>,
     ) -> Self {
+        Self::html_document(associated_document, title, None)
+    }
+    /// Create through DOMImplementation with the receiver's established guest realm.
+    pub fn create_html_document_in_attachment(
+        associated_document: crate::DocumentId,
+        title: Option<DocumentString>,
+        fallback: crate::DomImplementationFallback,
+    ) -> Self {
+        Self::html_document(associated_document.node(), title, Some(fallback))
+    }
+    fn html_document(
+        associated_document: NodeId,
+        title: Option<DocumentString>,
+        fallback: Option<crate::DomImplementationFallback>,
+    ) -> Self {
         Self {
             command: Command::CreateHtmlDocument {
                 associated_document: associated_document.into(),
                 title,
+                fallback,
             },
         }
     }
@@ -1148,6 +1215,7 @@ impl DomSourceEdit {
                 name: name.into(),
                 public_id: public_id.into(),
                 system_id: system_id.into(),
+                fallback: None,
             },
             Some(document.into()),
         )

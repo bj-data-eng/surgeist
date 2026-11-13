@@ -221,7 +221,7 @@ pub use host::{
 pub use hosted::{DomDocumentConstructorContext, DomDocumentConstructorError};
 pub use hosted::{
     DomDocumentScriptBinding, DomDocumentScriptRegistration, DomDocumentScriptingFacts,
-    DomDocumentScriptingObservation,
+    DomDocumentScriptingObservation, DomImplementationFallback,
 };
 pub use hosted::{
     DomHostedBrowsingContextId, DomHostedChildHistoryPublication, DomHostedChildHistoryRequest,

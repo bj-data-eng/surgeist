@@ -1826,6 +1826,69 @@ fn detached_document(
     );
     assert_eq!(view.active_range(), DomActiveRangeState::Known(None));
 }
+
+#[test]
+fn implementation_attachment_refuses_stale_factory_authority() {
+    use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let hosted = hosted(&mut dom, &mut issuer);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let document = apply(&mut dom, batch).document(&document).unwrap();
+    let backing = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    let (_, registration) = issuer
+        .attach_document_script_host(
+            &mut dom,
+            hosted.global(),
+            hosted.document(),
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel(),
+        )
+        .unwrap();
+    let fallback = registration.implementation_fallback();
+    registration.revoke();
+    let before = dom.snapshot().stamp();
+    for receiver in [document, hosted.document()] {
+        let mut batch = DomBatch::new();
+        batch.create_detached(
+            receiver,
+            DomDetachedNodeCreation::DocumentType {
+                name: "root".into(),
+                public_id: "".into(),
+                system_id: "".into(),
+                fallback,
+            },
+        );
+        assert!(matches!(
+            dom.apply(batch, &cancel()),
+            Err(DomError::HostedSourceUnavailable)
+        ));
+        let edit = DomSourceEdit::create_html_document_in_attachment(receiver, None, fallback);
+        let mut lease = dom
+            .begin_source_edit(edit, source_limits(1), &cancel())
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancel()),
+            Err(DomError::HostedSourceUnavailable)
+        ));
+    }
+    assert_eq!(dom.snapshot().stamp(), before);
+}
 #[test]
 fn associated_global_constructor_copies_exact_origin_but_keeps_defaults_and_no_window_association()
 {

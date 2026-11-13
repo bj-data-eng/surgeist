@@ -1383,27 +1383,14 @@ impl OrdinaryBindings {
                         DomDetachedNodeCreation::Fragment => GuestNode::Fragment,
                         DomDetachedNodeCreation::Text(_) => GuestNode::Text,
                         DomDetachedNodeCreation::Comment(_) => GuestNode::Comment,
+                        DomDetachedNodeCreation::DocumentType { .. } => GuestNode::DocumentType,
                     };
                     let mut dom = session.dom();
                     let dom = dom.raw_mut();
                     let cancel = &owner.cancellation;
                     let watched = if matches!(admission.route, AdmissionRoute::Ordinary) {
                         let mut batch = DomBatch::new();
-                        let ticket = match creation {
-                            DomDetachedNodeCreation::Attribute(name) => {
-                                batch.create_attribute(document, name)
-                            }
-                            DomDetachedNodeCreation::AttributeNs(namespace, name) => {
-                                batch.create_attribute_ns(document, namespace, name)
-                            }
-                            DomDetachedNodeCreation::Fragment => batch.create_fragment(document),
-                            DomDetachedNodeCreation::Text(data) => {
-                                batch.create_text(document, data)
-                            }
-                            DomDetachedNodeCreation::Comment(data) => {
-                                batch.create_comment(document, data)
-                            }
-                        };
+                        let ticket = batch.create_detached(document, creation);
                         dom.apply_with_node_retirement_watch(
                             batch,
                             &ticket,
