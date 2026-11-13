@@ -29,6 +29,63 @@ pub(in crate::document_scripting) fn custom_element_registry_identity_is_canonic
     }).unwrap();
 }
 
+pub(in crate::document_scripting) fn a_new_heap_cannot_claim_an_existing_executable_registry() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = super::super::cross_realm_tests::hosted_session(&cancel, 0);
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 20_000, 200_000);
+    let limits = host.guest_events().unwrap().limits;
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "customElements.define('x-original-heap', class extends HTMLElement {})",
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let original = host.snapshot().unwrap();
+    let mut session = host.stop().into_session().unwrap();
+    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 2,
+        nested_dispatches: 2,
+        storage_bytes: 32_000,
+        work: 10_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancel).unwrap();
+    let stamp = session.snapshot().stamp();
+    let mut registry = Some(registry);
+    let failure = PreparedDocumentScriptHost::prepare(session, 2_000_000, cancel)
+        .unwrap()
+        .enable_with_guest_event_registry(
+            target,
+            HtmlScriptingPolicy {
+                user_allows: true,
+                automation_allows: true,
+            },
+            DocumentScriptHooks {
+                child_count: &units("readChildCount"),
+                detach_source_node_if: &units("detachIf"),
+            },
+            &mut registry,
+            limits,
+        )
+        .expect_err("a fresh heap has no authority over the original constructor");
+    assert!(matches!(
+        failure.error,
+        DocumentGuestEventError::Document(DocumentScriptError::Native(
+            DocumentScriptNativeError::CreationGlobalUnavailable
+        ))
+    ));
+    assert!(registry.is_some());
+    let stopped = failure.owner.into_session().unwrap().snapshot();
+    assert_eq!(stopped.stamp(), stamp);
+    let id = creation_document_registry(&original, target.document()).unwrap();
+    assert_eq!(original.registry(id).unwrap().definition_count(), 1);
+    assert_eq!(stopped.registry(id).unwrap().definition_count(), 1);
+}
+
 pub(in crate::document_scripting) fn element_factory_qualifies_the_explicit_registry() {
     let mut host = public_node_host(5_000, 60_000);
     let permit = host.permit().unwrap();
