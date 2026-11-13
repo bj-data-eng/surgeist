@@ -24,6 +24,13 @@ pub(super) enum Effect<Node, S: LayoutScalar> {
     Geometry(LayoutOutputEntryOf<Node, S>),
     Clear { node: Node, index: usize },
     ClearInline(Node),
+    Body(crate::engine::block_scope::Body<Node, S>),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Profile {
+    Ordinary,
+    Scoped,
 }
 
 #[derive(Clone, Copy)]
@@ -49,12 +56,14 @@ struct Sample<S: LayoutScalar> {
 }
 
 struct Table<Node, S: LayoutScalar> {
+    profile: Profile,
     eligible: Vec<bool>,
     completions: Mutex<Completions<Node, S>>,
     samples: Mutex<Vec<Vec<Sample<S>>>>,
 }
 
-/// Completed effects can be shared with disposable trials of the same call.
+/// Ordinary completed effects can be shared with disposable trials of the same call.
+/// Scoped effects retain the original session's margin and body custody.
 /// In-flight writes belong to the individual session that executes them.
 pub(super) struct Memo<Node, S: LayoutScalar> {
     table: Arc<Table<Node, S>>,
@@ -73,11 +82,12 @@ pub(super) struct Capture<S: LayoutScalar> {
 }
 
 impl<Node: Copy + Eq, S: LayoutScalar> Memo<Node, S> {
-    fn new(eligible: Vec<bool>) -> Self {
+    fn new(eligible: Vec<bool>, profile: Profile) -> Self {
         let completions = (0..eligible.len()).map(|_| Vec::new()).collect();
         let samples = (0..eligible.len()).map(|_| Vec::new()).collect();
         Self {
             table: Arc::new(Table {
+                profile,
                 eligible,
                 completions: Mutex::new(Completions {
                     nodes: completions,
@@ -91,13 +101,24 @@ impl<Node: Copy + Eq, S: LayoutScalar> Memo<Node, S> {
         }
     }
 
-    pub(super) fn fork(&self) -> Self {
-        Self {
+    pub(super) fn fork(&self) -> Option<Self> {
+        if self.is_scoped() {
+            return None;
+        }
+        Some(Self {
             table: self.table.clone(),
             effects: Vec::new(),
             active: Vec::new(),
             failed: None,
-        }
+        })
+    }
+
+    pub(super) fn is_scoped(&self) -> bool {
+        self.table.profile == Profile::Scoped
+    }
+
+    pub(super) fn shares_samples(&self) -> bool {
+        self.table.profile == Profile::Ordinary
     }
 
     fn begin(&mut self, key: RequestKey<S>) -> Result<Capture<S>, TryReserveError> {
@@ -290,14 +311,26 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
         // These profiles own receipts or context beyond ordinary cache stores
         // and unrounded geometry. A continuous publication target contributes
         // no child state. Its host cache bypass is enforced by the cache owner.
-        if self.fragmentation.is_some()
-            || self.text.is_some()
+        if self.text.is_some()
             || self.groups.is_some()
             || self.wrapping.context.is_some()
+            || self.entry_sources.is_some()
         {
             return;
         }
         let Some(graph) = self.flow_graph else { return };
+        let profile = if self.fragmentation.is_some() {
+            if self.block_scopes().is_none()
+                || self.block_bodies.is_none()
+                || self.bound.is_none()
+                || graph.parents.iter().any(|parents| parents.len() > 1)
+            {
+                return;
+            }
+            Profile::Scoped
+        } else {
+            Profile::Ordinary
+        };
         // The public invalidation closure includes every affected ancestor.
         // Trial staging narrows it to its own subtree, preserving the same
         // immutable closure on each node's reachable descendants.
@@ -315,8 +348,35 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
                 || graph.children[index].is_empty())
                 && style.float_exclusion != crate::FloatExclusion::Shape
                 && graph.children[index].iter().all(|&child| eligible[child]);
+            if profile == Profile::Scoped {
+                let scopes = self
+                    .block_scopes()
+                    .expect("scoped memo has a fixed dispatch");
+                let terminal = graph.children[index].is_empty();
+                let terminal_parent = graph.parents[index].first().is_some_and(|&parent| {
+                    matches!(
+                        self.tree
+                            .node_input(graph.nodes[parent])
+                            .display
+                            .inner_display(),
+                        crate::Display::Flex | crate::Display::Grid | crate::Display::GridLanes
+                    )
+                });
+                eligible[index] &= !scopes.dispatch.owners.contains(&node)
+                    && !scopes.dispatch.paths.contains(&node)
+                    && style.float.is_none()
+                    && self.block_floats.needs_work(index) != Some(true)
+                    && match style.display.inner_display() {
+                        crate::Display::Flex | crate::Display::Grid | crate::Display::GridLanes => {
+                            true
+                        }
+                        crate::Display::Block => terminal && terminal_parent,
+                        crate::Display::None => terminal,
+                        _ => false,
+                    };
+            }
         }
-        self.memo = Some(Memo::new(eligible));
+        self.memo = Some(Memo::new(eligible, profile));
         if self.bound.is_none()
             && (0..graph.nodes.len()).any(|index| self.block_floats.needs_work(index) == Some(true))
         {
@@ -328,6 +388,12 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
         self.memo = None;
     }
 
+    pub(super) fn invalidate_scoped_request_memo(&mut self) {
+        if self.memo.as_ref().is_some_and(Memo::is_scoped) {
+            self.memo = None;
+        }
+    }
+
     pub(super) fn request_key(
         &self,
         node: Tree::Node,
@@ -337,6 +403,19 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
         let memo = self.memo.as_ref()?;
         let graph = self.flow_graph?;
         let index = graph.index(node)?;
+        // A terminal Block under Flex/Grid records an empty margin flow. Its
+        // retained row has invariant empty groups across exact request replay.
+        // Nonempty Blocks and scope entries have different margin custody.
+        if memo.is_scoped()
+            && self.tree.node_input(node).display.inner_display() == crate::Display::Block
+            && !matches!(
+                input.parent_formatting_context(),
+                crate::ParentFormattingContext::Flex | crate::ParentFormattingContext::Grid
+            )
+        {
+            memo.barrier();
+            return None;
+        }
         // Inherited float frames and framed entry observations contribute
         // mutable, purpose-scoped state beyond the ordinary request key.
         // The validated graph root is laid out once and can publish the whole
@@ -427,6 +506,7 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
                 Effect::Geometry(entry) => self.set_unrounded(entry),
                 Effect::Clear { node, .. } => self.cache_clear(node)?,
                 Effect::ClearInline(node) => self.set_unrounded_inline_fragment_state(node, None),
+                Effect::Body(body) => self.record_block_body(body.node, body.input, body.output)?,
             }
         }
         Ok(())
@@ -679,7 +759,7 @@ mod tests {
 
     #[test]
     fn replay_keeps_first_clear_order_across_repeated_child_completions() {
-        let memo = Memo::<u32, f32>::new(Vec::new());
+        let memo = Memo::<u32, f32>::new(Vec::new(), Profile::Ordinary);
         {
             let mut table = memo.table.completions.lock().unwrap();
             table.effects.push(vec![
@@ -709,3 +789,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "scoped_memo_tests.rs"]
+mod scoped_tests;

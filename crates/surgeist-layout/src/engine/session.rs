@@ -402,6 +402,7 @@ where
         root: Tree::Node,
         dispatch: super::block_scope::Dispatch<Tree::Node, Tree::Scalar>,
     ) -> SessionResult<Tree, ()> {
+        self.invalidate_scoped_request_memo();
         if let Some(fragment) = &mut self.fragmentation
             && self.bound.as_ref() == Some(&dispatch.target)
         {
@@ -635,7 +636,7 @@ where
         }
         probe.entry_sources = self.entry_sources.clone();
         if incoming.is_none() && self.entry_sources.is_none() {
-            probe.memo = self.memo.as_ref().map(memo::Memo::fork);
+            probe.memo = self.memo.as_ref().and_then(memo::Memo::fork);
         }
         probe.block_floats = self
             .block_floats
@@ -695,6 +696,7 @@ where
             crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>,
         >,
     ) {
+        self.invalidate_scoped_request_memo();
         self.bound = Some(target);
         self.fragmentation = Some(FragmentComputation {
             scopes: None,
@@ -711,6 +713,7 @@ where
             crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>,
         >,
     ) {
+        self.invalidate_scoped_request_memo();
         self.bound = Some(context.target.clone());
         self.fragmentation = Some(FragmentComputation {
             scopes: None,
@@ -741,6 +744,7 @@ where
         wrapping: std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>,
         graph: &'a crate::engine::validation::ValidationGraph<Tree::Node>,
     ) {
+        self.invalidate_scoped_request_memo();
         self.flow_graph = Some(graph);
         self.block_floats.configure(self.tree, graph);
         if let Some(nodes) = crate::group_alignment::dependencies(self.tree, graph) {
@@ -1022,6 +1026,7 @@ where
         node: Tree::Node,
         frames: Vec<crate::text_layout::state::CanonicalFrame<Tree::Node, Tree::Scalar>>,
     ) -> SessionResult<Tree, ()> {
+        self.invalidate_scoped_request_memo();
         if let Some(text) = self.text.as_mut() {
             text.formatted_next_pass().map_err(|error| {
                 LayoutErrorOf::new(
@@ -1071,6 +1076,7 @@ where
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
     ) -> SessionResult<Tree, ()> {
+        self.invalidate_scoped_request_memo();
         self.block_scopes_mut()
             .ok_or_else(|| crate::block::intrinsic::profile_error(node))?
             .push_frame(node, input, None)
@@ -1108,6 +1114,9 @@ where
                 )
             })?;
             bodies.push(body);
+        }
+        if let Some(memo) = &mut self.memo {
+            memo.record(node, memo::Effect::Body(body));
         }
         Ok(())
     }
@@ -1775,7 +1784,7 @@ where
                         .map_err(error)?;
                     Ok(result)
                 })
-            } else if self.memo.is_some() {
+            } else if self.memo.as_ref().is_some_and(memo::Memo::shares_samples) {
                 crate::measurement::compute_leaf_with_sampler(node, input, style, icb, |request| {
                     self.memo_sample(node, request)
                 })
@@ -2285,7 +2294,7 @@ where
         observation.block_floats = self.block_floats.fork();
         observation.entry_sources = self.entry_sources.clone();
         if self.entry_sources.is_none() {
-            observation.memo = self.memo.as_ref().map(memo::Memo::fork);
+            observation.memo = self.memo.as_ref().and_then(memo::Memo::fork);
         }
         observation.wrapping.context = self.wrapping.context.clone();
         observation.flow_graph = self.flow_graph;

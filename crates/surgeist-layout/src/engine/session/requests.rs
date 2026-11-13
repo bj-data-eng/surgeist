@@ -324,10 +324,10 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                         let capture = self.begin_memo(node, memo)?;
                         let initial = self.begin_uncached_layout(node, input);
                         let completion = ChildCompletion { cache, capture };
-                        let ordinary_display = (self.block_scopes().is_none() && !initial.leaf)
-                            .then(|| initial.style.display.inner_display());
-                        match ordinary_display {
-                            Some(Display::Block) => {
+                        let container_display =
+                            (!initial.leaf).then(|| initial.style.display.inner_display());
+                        match container_display {
+                            Some(Display::Block) if self.block_scopes().is_none() => {
                                 self.begin_block(node, input, completion, projection, pending)?
                             }
                             Some(Display::Flex) => {
