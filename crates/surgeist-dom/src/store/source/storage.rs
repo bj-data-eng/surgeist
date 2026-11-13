@@ -479,7 +479,7 @@ pub(in crate::store) fn commands(
                     }
                     payload.string(name)?;
                 }
-                Creation::ProcessingInstruction { target, data } => {
+                Creation::ProcessingInstruction { target, data, .. } => {
                     payload.string(target)?;
                     payload.string(data)?;
                 }

@@ -493,11 +493,16 @@ pub enum DomDetachedNodeCreation {
     Fragment,
     Text(DocumentString),
     Comment(DocumentString),
+    ProcessingInstruction {
+        target: DocumentString,
+        data: DocumentString,
+        fallback: crate::DomCreationRealmFallback,
+    },
     DocumentType {
         name: DocumentString,
         public_id: DocumentString,
         system_id: DocumentString,
-        fallback: crate::DomImplementationFallback,
+        fallback: crate::DomCreationRealmFallback,
     },
 }
 
@@ -511,6 +516,18 @@ impl DomDetachedNodeCreation {
             Self::Fragment => DomSourceEdit::create_fragment(document.node()),
             Self::Text(data) => DomSourceEdit::create_text(document.node(), data),
             Self::Comment(data) => DomSourceEdit::create_comment(document.node(), data),
+            Self::ProcessingInstruction {
+                target,
+                data,
+                fallback,
+            } => DomSourceEdit::create(
+                Creation::ProcessingInstruction {
+                    target,
+                    data,
+                    fallback: Some(fallback),
+                },
+                Some(document.into()),
+            ),
             Self::DocumentType {
                 name,
                 public_id,
@@ -886,7 +903,7 @@ impl DomSourceEdit {
         namespace: Namespace,
         qualified_name: DocumentString,
         doctype: Option<NodeId>,
-        fallback: crate::DomImplementationFallback,
+        fallback: crate::DomCreationRealmFallback,
     ) -> Self {
         Self::xml_document(
             associated_document.node(),
@@ -901,7 +918,7 @@ impl DomSourceEdit {
         namespace: Namespace,
         qualified_name: DocumentString,
         doctype: Option<NodeId>,
-        fallback: Option<crate::DomImplementationFallback>,
+        fallback: Option<crate::DomCreationRealmFallback>,
     ) -> Self {
         Self {
             command: Command::CreateXmlDocument {
@@ -924,14 +941,14 @@ impl DomSourceEdit {
     pub fn create_html_document_in_attachment(
         associated_document: crate::DocumentId,
         title: Option<DocumentString>,
-        fallback: crate::DomImplementationFallback,
+        fallback: crate::DomCreationRealmFallback,
     ) -> Self {
         Self::html_document(associated_document.node(), title, Some(fallback))
     }
     fn html_document(
         associated_document: NodeId,
         title: Option<DocumentString>,
-        fallback: Option<crate::DomImplementationFallback>,
+        fallback: Option<crate::DomCreationRealmFallback>,
     ) -> Self {
         Self {
             command: Command::CreateHtmlDocument {
@@ -1199,6 +1216,7 @@ impl DomSourceEdit {
             Creation::ProcessingInstruction {
                 target: target.into(),
                 data: data.into(),
+                fallback: None,
             },
             Some(document.into()),
         )

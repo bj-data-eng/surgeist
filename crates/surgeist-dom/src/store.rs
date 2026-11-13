@@ -3601,7 +3601,7 @@ impl Draft {
                         .saturating_sub(1)
                         .checked_add(namespace.uri().map_or(0, DocumentString::len)),
                     Creation::Text(data) | Creation::Comment(data) => Some(data.len()),
-                    Creation::ProcessingInstruction { target, data } => {
+                    Creation::ProcessingInstruction { target, data, .. } => {
                         target.len().checked_add(data.len())
                     }
                     Creation::DocumentType {
@@ -3710,7 +3710,11 @@ impl Draft {
                     Creation::DocumentType {
                         fallback: Some(fallback),
                         ..
-                    } => self.implementation_global(document, Some(*fallback), cancelled)?,
+                    }
+                    | Creation::ProcessingInstruction {
+                        fallback: Some(fallback),
+                        ..
+                    } => self.resolve_creation_global(document, Some(*fallback), cancelled)?,
                     _ => None,
                 };
                 let kind = match kind {
@@ -3741,7 +3745,7 @@ impl Draft {
                         metadata_formation.as_ref(),
                         cancelled,
                     )?),
-                    Creation::ProcessingInstruction { target, data } => {
+                    Creation::ProcessingInstruction { target, data, .. } => {
                         #[cfg(test)]
                         let _source_observation = self
                             .source_limits

@@ -1383,6 +1383,9 @@ impl OrdinaryBindings {
                         DomDetachedNodeCreation::Fragment => GuestNode::Fragment,
                         DomDetachedNodeCreation::Text(_) => GuestNode::Text,
                         DomDetachedNodeCreation::Comment(_) => GuestNode::Comment,
+                        DomDetachedNodeCreation::ProcessingInstruction { .. } => {
+                            GuestNode::ProcessingInstruction
+                        }
                         DomDetachedNodeCreation::DocumentType { .. } => GuestNode::DocumentType,
                     };
                     let mut dom = session.dom();

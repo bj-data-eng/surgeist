@@ -68,3 +68,105 @@ pub(super) fn native_processing_instruction_uses_its_canonical_wrapper() {
         ))
     ));
 }
+
+pub(super) fn authored_processing_instructions_use_native_creation() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    let before = host.snapshot().unwrap();
+    host.in_document(&permit, |scope| {
+        let result = evaluate(scope, r#"
+            (() => {
+                const method = Document.prototype.createProcessingInstruction;
+                if (typeof method !== 'function') return 'missing Document factory';
+                const fails = (action, name) => {
+                    try { action(); } catch (error) { return error.name === name; }
+                    return false;
+                };
+                let order = '';
+                const name = { toString() { order += 't'; return 'target'; } };
+                const data = { toString() { order += 'd'; return '\ud800\0\udc00'; } };
+                if (!fails(() => method.call({}, name, data), 'TypeError') || order ||
+                    !fails(() => method.call(document, name), 'TypeError') || order ||
+                    !fails(() => new ProcessingInstruction(), 'TypeError')) return 'receiver or arity';
+                if (!fails(() => method.call(document, 'bad target', ''), 'InvalidCharacterError') ||
+                    !fails(() => new ProcessingInstruction('good', '?>'), 'InvalidCharacterError'))
+                    return 'native validation';
+                const separate = new Document();
+                const node = method.call(separate, name, data);
+                if (order !== 'td' || node.target !== 'target' || node.data !== '\ud800\0\udc00' ||
+                    node.ownerDocument !== separate || node.parentNode !== null ||
+                    Object.getPrototypeOf(node) !== ProcessingInstruction.prototype)
+                    return 'Document factory result';
+                class Derived extends ProcessingInstruction {}
+                const created = new Derived('derived');
+                if (!(created instanceof Derived) || created.target !== 'derived' ||
+                    created.data !== '' || created.ownerDocument !== document || created.parentNode !== null ||
+                    ProcessingInstruction.length !== 1 || method.length !== 2) return 'constructor result';
+                const exact = {};
+                const fail = new Proxy(function () {}, {
+                    get(_, key) { if (key === 'prototype') throw exact; }
+                });
+                try { Reflect.construct(ProcessingInstruction, ['valid'], fail); return 'prototype throw'; }
+                catch (error) { if (error !== exact) return 'wrong prototype exception'; }
+                let calls = '';
+                function Fallback() {}
+                Fallback.prototype = 0;
+                const reenter = new Proxy(Fallback, {
+                    get(object, key) {
+                        if (key === 'prototype') {
+                            calls += 'p';
+                            document.createTextNode('nested');
+                        }
+                        return Reflect.get(object, key);
+                    }
+                });
+                const fallback = Reflect.construct(ProcessingInstruction, [
+                    {toString() { calls += 't'; return 'fallback'; }},
+                    {toString() { calls += 'd'; return ''; }}
+                ], reenter);
+                if (calls !== 'tdp' || Object.getPrototypeOf(fallback) !== ProcessingInstruction.prototype ||
+                    fallback.ownerDocument !== document || fallback.target !== 'fallback')
+                    return 'prototype fallback or reentry';
+                return 'ok';
+            })()
+        "#)?;
+        assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
+        Ok(())
+    }).unwrap();
+    let after = host.snapshot().unwrap();
+    assert_eq!(
+        after
+            .nodes()
+            .filter(|id| before.node(*id).is_err()
+                && matches!(
+                    after.node(*id).unwrap().kind(),
+                    surgeist_dom::DomNodeKind::ProcessingInstruction(_)
+                ))
+            .count(),
+        3
+    );
+}
+
+pub(super) fn authored_instruction_wrapper_refusal_is_atomic() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    let before = host.snapshot().unwrap();
+    crate::document_scripting::guest::tests::refuse_next_source_node_validation(&host);
+    let result = host.in_document(&permit, |scope| {
+        evaluate(scope, "document.createProcessingInstruction('target', '')").map(drop)
+    });
+    assert!(
+        matches!(
+            result,
+            Err(DocumentScriptError::Script(Error::BackendUnavailable))
+        ),
+        "{result:?}"
+    );
+    let after = host.snapshot().unwrap();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.nodes().count(), before.nodes().count());
+}

@@ -22,12 +22,24 @@ mod element_factory;
 mod fragment;
 mod ordinary;
 mod parent_node;
+mod processing_instruction;
 mod shadow;
 mod style_policy;
 mod text;
 mod tree;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
 pub(in crate::document_scripting) use ordinary::PendingConstructor;
+
+fn creation_realm_fallback(
+    owner: &NativeOwner,
+) -> Result<surgeist_dom::DomCreationRealmFallback, DocumentScriptNativeError> {
+    owner
+        .attachment
+        .get()
+        .and_then(|attachment| attachment.registration.upgrade())
+        .map(|registration| registration.creation_realm_fallback())
+        .ok_or(DocumentScriptNativeError::Revoked)
+}
 
 fn guest_source_services(
     style_policy: &mut dyn FnMut(

@@ -28,10 +28,10 @@ impl XmlDocumentFrame {
 }
 
 impl Draft {
-    pub(super) fn implementation_global(
+    pub(super) fn resolve_creation_global(
         &self,
         document: Key,
-        fallback: Option<crate::DomImplementationFallback>,
+        fallback: Option<crate::DomCreationRealmFallback>,
         cancel: &AtomicBool,
     ) -> Result<Option<crate::DomHostedGlobalId>, DomError> {
         let global = self.node(document)?.relevant_global();
@@ -137,7 +137,7 @@ impl Draft {
     }
     pub(super) fn create_xml_document(
         &mut self,
-        (associated, fallback): (Key, Option<crate::DomImplementationFallback>),
+        (associated, fallback): (Key, Option<crate::DomCreationRealmFallback>),
         namespace: &surgeist_html::values::Namespace,
         qualified_name: &DocumentString,
         doctype: Option<&NodeOperand>,
@@ -149,7 +149,7 @@ impl Draft {
             .document_metadata(associated)?
             .document_environment()
             .input_platform();
-        let global = self.implementation_global(associated, fallback, cancel)?;
+        let global = self.resolve_creation_global(associated, fallback, cancel)?;
         admit(
             self.nodes
                 .checked_add(1)
@@ -330,7 +330,7 @@ impl Draft {
         &mut self,
         associated_document: Key,
         title: Option<&DocumentString>,
-        fallback: Option<crate::DomImplementationFallback>,
+        fallback: Option<crate::DomCreationRealmFallback>,
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<Key, DomError> {
@@ -339,7 +339,7 @@ impl Draft {
         let transaction::KindRead::Document(source) = &associated.kind() else {
             return Err(DomError::WrongNodeKind);
         };
-        let global = self.implementation_global(associated_document, fallback, cancelled)?;
+        let global = self.resolve_creation_global(associated_document, fallback, cancelled)?;
         // Origin follows the source operation; the selected immutable native
         // environment also remains established. Other metadata uses defaults;
         // no browsing context or host/resource capability is implicitly copied.
