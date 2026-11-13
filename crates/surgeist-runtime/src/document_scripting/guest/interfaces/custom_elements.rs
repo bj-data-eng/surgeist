@@ -89,6 +89,37 @@ pub(super) fn reserve_constructor_frame(
 }
 
 impl PublicEventBindings {
+    pub(super) fn direct_constructor_definition<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        read: &NativeRead<'_>,
+        global: DomHostedGlobalId,
+        new_target: &Value<'scope>,
+    ) -> Result<Option<(DomRegistryDefinitionId, &'static str)>, DocumentGuestEventError> {
+        let mut lookup = |registry: &GlobalRegistry| {
+            let rows = registry
+                .definitions
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            for (ordinal, row) in rows.rows.iter().enumerate() {
+                read.step()?;
+                if row.id.registry() != registry.id || row.id.ordinal() != ordinal {
+                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
+                }
+                let constructor = scope.open_callback_object(&row.constructor)?;
+                if scope.strict_equals(&constructor, new_target)? {
+                    return Ok(Some((row.id, row.interface)));
+                }
+            }
+            Ok(None)
+        };
+        self.with_registry(
+            read,
+            |registry| registry.global == global,
+            |registry| lookup(registry),
+        )
+    }
+
     pub(super) fn enter_factory_constructor<'a, 'scope>(
         &self,
         owner: &'a NativeOwner,

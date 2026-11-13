@@ -516,9 +516,33 @@ impl Capture {
                 arguments.new_target(),
             )?
             else {
-                return Ok(ConstructorCompletion::Throw(
-                    scope.type_error(&ascii(b"Illegal constructor"))?,
-                ));
+                let Some((definition, selected_interface)) =
+                    self.callbacks.with_read(&owner, &events, |read, _| {
+                        public.direct_constructor_definition(
+                            scope,
+                            read,
+                            global,
+                            arguments.new_target(),
+                        )
+                    })?
+                else {
+                    return Ok(ConstructorCompletion::Throw(
+                        scope.type_error(&ascii(b"Illegal constructor"))?,
+                    ));
+                };
+                if selected_interface != interface {
+                    return Ok(ConstructorCompletion::Throw(
+                        scope.type_error(&ascii(b"Illegal constructor"))?,
+                    ));
+                }
+                let selected = arguments.select_prototype(scope)?;
+                let element = public.document.ordinary.construct_direct(
+                    scope,
+                    (&owner, &events),
+                    (definition, global),
+                    selected.prototype(),
+                )?;
+                return Ok(ConstructorCompletion::Return(element));
             };
             if frame.interface != interface {
                 return Ok(ConstructorCompletion::Throw(

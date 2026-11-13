@@ -1019,31 +1019,156 @@ impl Dom {
             None,
             name.local_name_atom().clone(),
         )?;
-        let mut draft =
+        let draft =
             self.source_observed_batch(formation::allocated_arc(BatchIdentity), &[], 0, cancel)?;
         let document = draft.resolve(document.into())?;
         let budget = formation::Formation::new(&draft, cancel)?;
         let name = draft.bind_canonical_name(&name, budget.as_ref(), cancel)?;
+        self.publish_constructed_custom_element(
+            draft,
+            document,
+            (name, None, selected.definition),
+            (inbox, key, limits),
+            budget,
+            cancel,
+        )
+    }
+
+    /// Create the original native receiver for a registered HTML constructor
+    /// with an empty construction stack. The Global must own the definition's
+    /// registry. The caller supplies the active script registration and watch.
+    pub fn construct_registered_element_with_watch(
+        &mut self,
+        (definition, global): (crate::DomRegistryDefinitionId, crate::DomHostedGlobalId),
+        registration: &DomDocumentScriptRegistration,
+        (inbox, key, watch_limits): (
+            &crate::DomNodeRetirementInbox,
+            usize,
+            crate::DomNodeRetirementLimits,
+        ),
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<crate::DomWatchedNode, DomError> {
+        self.require_source_entry(cancel)?;
+        if limits.nested_operations() == 0 {
+            return Err(DomError::SourceNestedOperationLimit { limit: 0 });
+        }
+        if limits.phase_publications() == 0 {
+            return Err(DomError::SourcePublicationLimit);
+        }
+        if limits.output_records() == 0 {
+            return Err(DomError::SourceOutputLimit);
+        }
+        if limits.published_native_identities() == 0 {
+            return Err(DomError::SourceIdentityLimit);
+        }
+        let limits = self.source_child_limits(limits, cancel)?;
+        let owner = formation::allocated_arc(BatchIdentity);
+        let (draft, _) = Draft::new_source_root(self, owner, &[], 0, limits, cancel)?;
+        let mut step = || draft.source_step(cancel).map_err(DomHostedError::from);
+        let unavailable = |error| match error {
+            DomHostedError::Dom(error) => error,
+            _ => DomError::HostedSourceUnavailable,
+        };
+        if self.active_script_registration() != Some(registration.0.key)
+            || !self
+                .dispatch_script_registration_current_with(&registration.0, &mut step)
+                .map_err(unavailable)?
+        {
+            return Err(DomError::HostedSourceUnavailable);
+        }
+        let document = self
+            .dispatch_global_document_current_with(global, &mut step)
+            .map_err(unavailable)?;
+        let document = draft.resolve(document.into())?;
+        let metadata = draft.document_metadata(document)?;
+        if metadata.custom_element_registry()
+            != crate::DomRegistryBinding::Registry(definition.registry())
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        let facts = draft
+            .creation_registry(definition.registry(), cancel)?
+            .definition(definition.ordinal())
+            .map_err(DomError::SelectCapture)?;
+        let customized = !crate::names::same_code_units(
+            facts.name().code_units(),
+            facts.local_name().code_units(),
+            &mut || draft.source_step(cancel),
+        )?;
+        let saved_is = customized.then(|| facts.name().clone());
+        let raw = surgeist_html::values::QualifiedName::new(
+            surgeist_html::values::Namespace::html(),
+            None,
+            facts.local_name().clone(),
+        );
+        let budget = formation::Formation::new(&draft, cancel)?;
+        crate::names::validate_element_components(&raw, &mut || draft.name_step(cancel))?;
+        let name = draft.bind_name(&raw, budget.as_ref(), cancel)?;
+        self.publish_constructed_custom_element(
+            draft,
+            document,
+            (name, saved_is, definition),
+            (inbox, key, watch_limits),
+            budget,
+            cancel,
+        )
+    }
+
+    fn publish_constructed_custom_element(
+        &mut self,
+        mut draft: Draft,
+        document: Key,
+        (name, saved_is, definition): (
+            crate::DomQualifiedName,
+            Option<crate::DocumentString>,
+            crate::DomRegistryDefinitionId,
+        ),
+        (inbox, key, limits): (
+            &crate::DomNodeRetirementInbox,
+            usize,
+            crate::DomNodeRetirementLimits,
+        ),
+        budget: Option<formation::Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<crate::DomWatchedNode, DomError> {
+        let draft_limits = draft
+            .source_limits
+            .ok_or(DomError::InvalidSourceOperation)?;
         let formed = draft.form_native_element(
             name,
-            None,
+            saved_is.as_ref(),
             draft.document_metadata(document)?.document_environment(),
             budget.as_ref(),
             cancel,
         )?;
         let node = draft.allocate_element_formed(formed, document, self.limits, cancel, budget)?;
+        draft.initialize_native_element_features(node, self.limits, cancel)?;
         draft.replace_element_custom_context(
             node,
             surgeist_html::elements::native::HtmlCustomElementState::Custom,
             crate::element::CustomAssociation {
-                registry: crate::DomRegistryBinding::Registry(selected.definition.registry()),
-                definition: crate::DomElementDefinition::Definition(selected.definition),
-                saved_is: None,
+                registry: crate::DomRegistryBinding::Registry(definition.registry()),
+                definition: crate::DomElementDefinition::Definition(definition),
+                saved_is,
             },
             cancel,
         )?;
         draft.register_ticket(node, cancel)?;
         let mut prepared = draft.finish(self, cancel)?;
+        if u64::try_from(prepared.allocation_ids.len())
+            .map_err(|_| DomError::RepresentationExhausted)?
+            > draft_limits.identities
+        {
+            return Err(DomError::SourceIdentityLimit);
+        }
+        if prepared
+            .inline_recording
+            .as_ref()
+            .is_some_and(|recording| recording.has_inputs())
+        {
+            return Err(DomError::IncompleteSourceOperation);
+        }
         prepared.state.incomplete_source = self.state.incomplete_source;
         let [Some(node)] = prepared.node_outputs.as_slice() else {
             return Err(DomError::UnavailableCreation);

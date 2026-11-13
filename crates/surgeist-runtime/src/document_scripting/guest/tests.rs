@@ -189,11 +189,17 @@ pub(in crate::document_scripting) fn direct_registered_constructors_create_canon
             class Customized extends HTMLButtonElement {
                 constructor() { super(); this.setAttribute('data-constructed', 'customized'); }
             }
+            class Colon extends HTMLElement {}
+            class Template extends HTMLTemplateElement {}
             customElements.define('x-direct-element', Autonomous);
             customElements.define('x-direct-button', Customized, {extends: 'button'});
+            customElements.define('x-a:b', Colon);
+            customElements.define('x-direct-template', Template, {extends: 'template'});
             const first = new Autonomous();
             const second = new Autonomous();
             const button = new Customized();
+            const colon = new Colon();
+            const template = new Template();
             return rejected && first !== second && first instanceof Autonomous
                 && first.localName === 'x-direct-element' && first.ownerDocument === document
                 && first.parentNode === null && first.customElementRegistry === customElements
@@ -201,11 +207,28 @@ pub(in crate::document_scripting) fn direct_registered_constructors_create_canon
                 && button instanceof Customized && button.localName === 'button'
                 && button.ownerDocument === document && button.parentNode === null
                 && button.customElementRegistry === customElements
-                && button.getAttribute('data-constructed') === 'customized';
+                && button.getAttribute('data-constructed') === 'customized'
+                && colon.localName === 'x-a:b' && colon.prefix === null
+                && template instanceof Template && template.localName === 'template';
         })()"#,
         )
     })
     .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let template = snapshot
+        .nodes()
+        .filter_map(|node| snapshot.node(node).unwrap().as_template())
+        .next()
+        .unwrap();
+    let contents = snapshot.node(template.contents().unwrap()).unwrap();
+    assert!(matches!(
+        contents.kind(),
+        surgeist_dom::DomNodeKind::DocumentFragment
+    ));
+    assert_ne!(
+        contents.owner_document(),
+        snapshot.node(template.id()).unwrap().owner_document()
+    );
 }
 
 pub(in crate::document_scripting) fn registry_define_upgrades_existing_candidates_in_tree_order() {

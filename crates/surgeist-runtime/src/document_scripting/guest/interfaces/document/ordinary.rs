@@ -1147,6 +1147,53 @@ impl OrdinaryBindings {
         )
     }
 
+    pub(super) fn construct_direct<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        target: (surgeist_dom::DomRegistryDefinitionId, DomHostedGlobalId),
+        prototype: &Value<'scope>,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let registration = owner
+            .attachment
+            .get()
+            .and_then(|attachment| attachment.registration.upgrade())
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        let constructor = owner.current_constructor_registration()?;
+        let attribute = owner.active_attribute_registration()?;
+        let event = owner.active_event_request();
+        let admission = match (&constructor, &attribute, &event) {
+            (Some(request), _, _) => Admission::constructor(owner, events, request),
+            (_, Some((request, registration)), _) => {
+                Admission::attribute(owner, events, *request, registration)
+            }
+            (_, _, Some(request)) => Admission::source(owner, events, request),
+            _ => Admission::ordinary(owner, events),
+        };
+        self.project(
+            scope,
+            admission,
+            (NodePrototype::Selected(prototype), |inbox, key| {
+                let mut session = owner
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                let watched = session
+                    .dom()
+                    .raw_mut()
+                    .construct_registered_element_with_watch(
+                        target,
+                        &registration,
+                        (inbox, key, events.limits.node_retirement),
+                        events.limits.source_edits,
+                        &owner.cancellation,
+                    )?;
+                let (_, node, watch) = watched.into_parts();
+                Ok((GuestNode::Element(node), watch))
+            }),
+        )
+    }
+
     fn project_element<'scope>(
         &self,
         scope: &mut Scope<'scope>,
