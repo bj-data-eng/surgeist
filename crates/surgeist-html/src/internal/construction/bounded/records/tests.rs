@@ -1544,6 +1544,65 @@ fn inserting_at_a_place_writes_the_entries_shifted_towards_the_nearer_end() {
 }
 
 /// A fragment `root` with the ordinary children `a` (position 1) and `b` (position 2).
+/// The records visited and written by inserting a fresh element before the child at `place` of
+/// `fanout` children, or last when `place == fanout`, with room in the child order.
+fn insert_work_at(fanout: usize, place: usize) -> [u64; 5] {
+    let mut storage = storage();
+    let root = ok(storage.create_fragment(&mut Meter::default()));
+    ok(storage.reserve_records(fanout + 2, &mut Meter::default()));
+    let mut children = Vec::new();
+    for _ in 0..fanout {
+        let child = element(&mut storage, "x");
+        insert(&mut storage, &child, &root);
+        children.push(child);
+    }
+    let fresh = element(&mut storage, "fresh");
+    // The insertion's own reservation is not the cost being compared.
+    let mut meter = Meter::default();
+    let spare = element(&mut storage, "spare");
+    ok(storage.insert(&spare, &root, None, &mut meter));
+    ok(storage.detach(&spare, &mut meter));
+    let mut meter = Meter::default();
+    ok(storage.insert(&fresh, &root, children.get(place), &mut meter));
+    assert!(meter.growths.is_empty(), "the insertion grew a bank");
+    meter.work
+}
+
+#[test]
+fn inserting_before_a_sibling_visits_the_same_records_at_every_place() {
+    let fanout = 60;
+    let base = insert_work_at(fanout, 0)[VISIT];
+    for place in [1, 7, 29, 30, 31, 53, 59, 60] {
+        assert_eq!(
+            insert_work_at(fanout, place)[VISIT],
+            base,
+            "inserting before the child at place {place} of {fanout}"
+        );
+    }
+}
+
+#[test]
+fn the_writes_of_an_insert_in_the_middle_of_a_parent_stay_constant_as_the_fanout_doubles() {
+    let base = insert_work_at(1_000, 500)[WRITE];
+    for fanout in [2_000, 4_000, 8_000] {
+        assert_eq!(
+            insert_work_at(fanout, fanout / 2)[WRITE],
+            base,
+            "inserting in the middle of {fanout} children"
+        );
+    }
+}
+
+#[test]
+fn a_build_row_is_thirty_two_bytes_and_the_bank_that_holds_it_grows_by_that_size() {
+    let mut storage = storage();
+    let mut meter = Meter::default();
+    ok(storage.create_fragment(&mut meter));
+    let growth = meter.growths[0];
+    assert_eq!(growth.bank(), HtmlConstructionBank::Records);
+    assert_eq!(growth.element_size(), 32);
+}
+
 fn membership_tree() -> (HtmlConstructionStorage, HtmlBuilderNode) {
     let mut storage = storage();
     let root = ok(storage.create_fragment(&mut Meter::default()));
