@@ -32,7 +32,8 @@ pub use guest::{
     DocumentCspViolationProgress, DocumentGuestConstructorException, DocumentGuestEvent,
     DocumentGuestEventDispatchFailure, DocumentGuestEventError, DocumentGuestEventLimits,
     DocumentGuestEventReport, DocumentGuestEventTarget, DocumentGuestEventView,
-    DocumentGuestListenerException, EnableDocumentGuestEventsFailure,
+    DocumentGuestListenerException, DocumentGuestUpgradeCallback, DocumentGuestUpgradeException,
+    EnableDocumentGuestEventsFailure,
 };
 mod source;
 mod window_event;
@@ -175,6 +176,7 @@ struct NativeOwner {
     active_attribute: Cell<Option<surgeist_dom::DomSourceAttributeVerificationRequest>>,
     active_constructor: RefCell<Option<Rc<guest::ActiveConstructor>>>,
     pending_constructor: RefCell<Option<Box<guest::PendingConstructor>>>,
+    pending_definition_reactions: RefCell<Option<Box<guest::PendingDefinitionReactions>>>,
     pending_attribute: RefCell<Option<Box<guest::PendingAttribute>>>,
     pending_style: Cell<Option<(surgeist_dom::DomSourceOperationId, RealmId)>>,
     trusted_types_reports: RefCell<Option<Box<guest::ViolationQueue>>>,
@@ -404,6 +406,7 @@ impl NativeOwner {
         let pending_source = native.session.get_mut().read_dom().pending_source_edit();
         if native.pending_attribute.get_mut().is_some()
             || native.pending_constructor.get_mut().is_some()
+            || native.pending_definition_reactions.get_mut().is_some()
             || pending_source.is_some_and(|status| {
                 native
                     .pending_style
@@ -540,6 +543,7 @@ impl PreparedDocumentScriptHost {
                 active_attribute: Cell::new(None),
                 active_constructor: RefCell::new(None),
                 pending_constructor: RefCell::new(None),
+                pending_definition_reactions: RefCell::new(None),
                 pending_attribute: RefCell::new(None),
                 pending_style: Cell::new(None),
                 trusted_types_reports: RefCell::new(None),
@@ -1411,6 +1415,15 @@ impl fmt::Debug for NativeOwner {
 }
 
 impl StoppedDocumentScriptHost {
+    /// Raise closed custom-element constructor ancestors so a pending nested
+    /// native operation can resume. Original constructor work stays charged.
+    pub fn raise_pending_custom_element_limits(
+        &mut self,
+        limits: surgeist_dom::DomSourceLimits,
+    ) -> Result<(), DocumentScriptNativeError> {
+        self.native.raise_stopped_constructor_limits(limits)
+    }
+
     /// Settle the current retained constructor result after engine disposal.
     /// This publishes only the original native result and runs no guest code.
     pub fn settle_pending_custom_element(
@@ -1418,6 +1431,15 @@ impl StoppedDocumentScriptHost {
         limits: surgeist_dom::DomSourceLimits,
     ) -> Result<(), DocumentGuestEventError> {
         self.native.settle_stopped_constructor(limits)
+    }
+
+    /// Discard unprocessed definition reactions after their original heap
+    /// has stopped. Returns the number of unfinished candidates. An already
+    /// entered native constructor is settled separately.
+    pub fn discard_pending_definition_reactions(
+        &mut self,
+    ) -> Result<usize, DocumentScriptNativeError> {
+        self.native.discard_stopped_definition_reactions()
     }
 
     /// Borrow the original native owners for recovery after engine disposal.

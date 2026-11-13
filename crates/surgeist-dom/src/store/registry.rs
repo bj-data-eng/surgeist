@@ -401,12 +401,15 @@ impl Dom {
         limits: crate::DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<DomRegistryDefinitionPreparation<'a>, DomHostedError> {
-        self.require_source_idle()?;
+        self.require_source_entry(cancel)?;
         self.validate_hosted_source(source)?;
         check_cancel(cancel)?;
         let work = source.work(cancel)?;
         work.step(cancel)?;
-        let document = self.global_document_with(global, &mut || work.step(cancel))?;
+        let document =
+            self.dispatch_global_document_with::<DomHostedError>(global, cancel, &mut || {
+                work.step(cancel)
+            })?;
         let snapshot = self.snapshot();
         if registry.owner != self.owner {
             return Err(DomError::ForeignOwner.into());
@@ -431,8 +434,12 @@ impl Dom {
         if limits.published_native_identities() == 0 {
             return Err(DomError::SourceIdentityLimit.into());
         }
-        let mut draft =
-            Draft::new_source_root(self, DomBatch::new().owner, &[], 0, limits, cancel)?.0;
+        let owner = DomBatch::new().owner;
+        let mut draft = if self.source_operation.is_some() {
+            self.source_observed_batch(owner, &[], 0, cancel)?
+        } else {
+            Draft::new_source_root(self, owner, &[], 0, limits, cancel)?.0
+        };
         let formation = source::formation::Formation::new(&draft, cancel)?;
         let formation = formation.ok_or(DomError::HostedSourceUnavailable)?;
         let mut input = source::storage::Payload::default();
@@ -463,6 +470,7 @@ impl Dom {
         drop(operands);
         draft.set_registries(Some(bank), Some(formation), cancel)?;
         let mut prepared = draft.finish(self, cancel)?;
+        prepared.state.incomplete_source = self.state.incomplete_source;
         source::formation::reserve(
             &mut prepared.changes,
             1,

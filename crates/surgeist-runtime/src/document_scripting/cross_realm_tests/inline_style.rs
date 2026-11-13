@@ -12,6 +12,97 @@ pub(super) fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
     guest_insertion(None, None, true);
 }
 
+pub(super) fn stopped_upgrade_can_settle_its_published_style_child() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session(&cancel, 0);
+    let document = target.document();
+    let mut batch = DomBatch::new();
+    let root = session
+        .snapshot()
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let style = batch.create_element_ns(document, Namespace::html(), "style");
+    let text = batch.create_text(document, "p { color: red }");
+    batch.insert_before(&text, &style, None);
+    let committed = session.dom().apply(batch, &cancel).unwrap();
+    let style = committed.created(&style).unwrap().unwrap();
+    let mut styles = session.style_execution();
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 5_000, 20_000);
+    let permit = host.permit().unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, style, "upgradeStyle");
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            "document.documentElement.appendChild(document.createElement('x-stopped-upgrade'))",
+        )
+        .map(drop)
+    })
+    .unwrap();
+    let candidate = *host
+        .snapshot()
+        .unwrap()
+        .node(root)
+        .unwrap()
+        .children()
+        .last()
+        .unwrap();
+    let result = host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"
+            customElements.define('x-stopped-upgrade', class extends HTMLElement {
+                constructor() { super(); this.appendChild(upgradeStyle); }
+            });
+        "#,
+        )
+        .map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("expected a metered Style refusal, got {result:?}");
+    };
+    let cause = failure.cause::<DomSourceDriveError>();
+    let child = host
+        .with_native(|dom, _, _| dom.pending_source_edit().unwrap())
+        .unwrap();
+    assert!(child.has_published());
+    assert!(child.parent_operation().is_some());
+    assert_ne!(
+        child.phase(),
+        surgeist_dom::DomSourcePhase::CustomElementConstruction,
+        "{failure:?}, {cause:?}"
+    );
+    assert_eq!(
+        host.snapshot().unwrap().node(style).unwrap().parent(),
+        Some(candidate)
+    );
+    let mut stopped = host.stop();
+    stopped.raise_pending_custom_element_limits(SOURCE).unwrap();
+    stopped
+        .with_native(|dom, _, _| {
+            styles
+                .bind_root(
+                    dom,
+                    "upgrade-style".into(),
+                    &mut Some(DomStyleCssomRoot::new(
+                        document.node(),
+                        CssomStore::new(Default::default(), Default::default()).unwrap(),
+                    )),
+                    &cancel,
+                )
+                .unwrap();
+        })
+        .unwrap();
+    assert!(matches!(
+        stopped.settle_pending_style_edit(child.operation(), SOURCE).unwrap().unwrap(),
+        DomSourceDriveProgress::Complete(done) if done.operation() == child.operation()
+    ));
+    stopped.settle_pending_custom_element(SOURCE).unwrap();
+    assert_eq!(stopped.discard_pending_definition_reactions().unwrap(), 1);
+    assert!(stopped.into_session().is_ok());
+}
+
 pub(super) fn style_runtime_refusal_preserves_the_original_guest_edit() {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session(&cancel, 0);

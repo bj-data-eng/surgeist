@@ -3,7 +3,7 @@
 mod csp_task;
 mod element_task;
 mod interfaces;
-pub(super) use interfaces::{ActiveConstructor, PendingConstructor};
+pub(super) use interfaces::{ActiveConstructor, PendingConstructor, PendingDefinitionReactions};
 mod listeners;
 mod reports;
 mod source_event;
@@ -98,6 +98,12 @@ impl From<DocumentScriptNativeError> for DocumentGuestEventError {
 impl From<DomError> for DocumentGuestEventError {
     fn from(error: DomError) -> Self {
         DocumentScriptNativeError::from(error).into()
+    }
+}
+
+impl From<DomHostedError> for DocumentGuestEventError {
+    fn from(error: DomHostedError) -> Self {
+        DocumentScriptNativeError::from(DomHostedRuntimeError::Dom(error)).into()
     }
 }
 
@@ -301,6 +307,30 @@ pub struct DocumentGuestConstructorException {
     /// The selected constructor object's associated Realm.
     pub realm: RealmId,
     /// Original thrown value or the exception from native result validation.
+    pub exception: Exception,
+}
+
+/// The initial lifecycle callback that threw while upgrading an element.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DocumentGuestUpgradeCallback {
+    /// An initial observed attribute reaction.
+    AttributeChanged,
+    /// The initial connection reaction.
+    Connected,
+}
+
+/// The original exception from an initial upgrade callback.
+#[derive(Debug)]
+pub struct DocumentGuestUpgradeException {
+    /// Exact definition whose upgrade scheduled the callback.
+    pub definition: surgeist_dom::DomRegistryDefinitionId,
+    /// Original element receiver.
+    pub receiver: surgeist_dom::NodeId,
+    /// The callback that threw.
+    pub callback: DocumentGuestUpgradeCallback,
+    /// The callback object’s associated realm.
+    pub realm: RealmId,
+    /// Original thrown value.
     pub exception: Exception,
 }
 
@@ -965,6 +995,19 @@ impl DocumentScriptHost {
             .as_ref()
             .ok_or(DocumentGuestEventError::RegistryState)?;
         Ok(reports.take_constructor())
+    }
+
+    /// Take the next exception from an initial custom element upgrade callback.
+    pub fn take_guest_upgrade_exception(
+        &self,
+        permit: &DocumentScriptPermit,
+    ) -> Result<Option<DocumentGuestUpgradeException>, DocumentGuestEventError> {
+        self.check_permit(permit)?;
+        let reports = self
+            .guest_exception_reports
+            .as_ref()
+            .ok_or(DocumentGuestEventError::RegistryState)?;
+        Ok(reports.take_upgrade())
     }
 
     fn guest_events(&self) -> Result<Rc<GuestEvents>, DocumentGuestEventError> {

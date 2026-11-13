@@ -1244,14 +1244,18 @@ impl DomSnapshot {
     pub fn global_document(&self, global: DomHostedGlobalId) -> Result<DocumentId, DomHostedError> {
         self.global_document_with(global, &mut || Ok(()))
     }
-    pub(in crate::store) fn global_document_with(
+    /// Read the captured association with caller-supplied work accounting.
+    pub fn global_document_with<E>(
         &self,
         global: DomHostedGlobalId,
-        step: &mut impl FnMut() -> Result<(), DomHostedError>,
-    ) -> Result<DocumentId, DomHostedError> {
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<DocumentId, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
         step()?;
         if global.source.owner != self.owner {
-            return Err(DomHostedError::ForeignSource);
+            return Err(DomHostedError::ForeignSource.into());
         }
         let document = self
             .state
@@ -1269,7 +1273,7 @@ impl DomSnapshot {
             .as_ref()
             .is_none_or(|association| association.global != global)
         {
-            return Err(DomHostedError::StaleIdentity);
+            return Err(DomHostedError::StaleIdentity.into());
         }
         Ok(document)
     }

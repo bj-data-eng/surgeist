@@ -241,6 +241,7 @@ pub(in crate::document_scripting) struct GuestExceptionReports {
 enum GuestExceptionReport {
     Listener(DocumentGuestListenerException),
     Constructor(DocumentGuestConstructorException),
+    Upgrade(DocumentGuestUpgradeException),
 }
 
 impl GuestExceptionReports {
@@ -273,7 +274,7 @@ impl GuestExceptionReports {
             .position(|report| matches!(report, GuestExceptionReport::Listener(_)))?;
         match queue.remove(index)? {
             GuestExceptionReport::Listener(exception) => Some(exception),
-            GuestExceptionReport::Constructor(_) => None,
+            _ => None,
         }
     }
 
@@ -284,7 +285,18 @@ impl GuestExceptionReports {
             .position(|report| matches!(report, GuestExceptionReport::Constructor(_)))?;
         match queue.remove(index)? {
             GuestExceptionReport::Constructor(exception) => Some(exception),
-            GuestExceptionReport::Listener(_) => None,
+            _ => None,
+        }
+    }
+
+    pub(super) fn take_upgrade(&self) -> Option<DocumentGuestUpgradeException> {
+        let mut queue = self.queue.borrow_mut();
+        let index = queue
+            .iter()
+            .position(|report| matches!(report, GuestExceptionReport::Upgrade(_)))?;
+        match queue.remove(index)? {
+            GuestExceptionReport::Upgrade(exception) => Some(exception),
+            _ => None,
         }
     }
 
@@ -465,6 +477,13 @@ impl ConstructorReportReservation {
     ) -> Result<(), Error> {
         let backing = self.root.take().ok_or(Error::RegistryConflict)?;
         scope.retain_exception_backing(exception, backing)
+    }
+
+    pub(super) fn publish_upgrade(&self, exception: DocumentGuestUpgradeException) {
+        self.reports
+            .queue
+            .borrow_mut()
+            .push_back(GuestExceptionReport::Upgrade(exception));
     }
 
     pub(super) fn publish(&self, exception: DocumentGuestConstructorException) {

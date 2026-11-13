@@ -104,7 +104,7 @@ pub(super) struct DocumentBindings {
     documents: RefCell<Option<Box<DocumentPin>>>,
     prototypes: DocumentPrototypes,
     element: element::ElementBindings,
-    ordinary: ordinary::OrdinaryBindings,
+    pub(super) ordinary: ordinary::OrdinaryBindings,
 }
 
 pub(super) struct DocumentPrototypes {

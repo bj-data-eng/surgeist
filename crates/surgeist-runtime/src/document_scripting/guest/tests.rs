@@ -97,6 +97,177 @@ pub(in crate::document_scripting) fn registry_define_upgrades_existing_candidate
     .unwrap();
 }
 
+pub(in crate::document_scripting) fn registry_upgrade_preserves_nested_definition_and_shadow_refusal()
+ {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const root = document.documentElement;
+            const first = document.createElement('x-nested-definition');
+            const second = document.createElement('x-nested-candidate');
+            const blocked = document.createElement('x-shadow-blocked');
+            blocked.attachShadow({mode: 'closed'});
+            root.appendChild(first);
+            root.appendChild(second);
+            root.appendChild(blocked);
+            let nested;
+            class Child extends HTMLElement {}
+            class Parent extends HTMLElement {
+                constructor() {
+                    super();
+                    customElements.define('x-nested-candidate', Child);
+                    nested = document.createElement('x-nested-definition');
+                }
+            }
+            customElements.define('x-nested-definition', Parent);
+            let blockedCalls = 0;
+            class Blocked extends HTMLElement {
+                static disabledFeatures = ['shadow'];
+                constructor() { super(); blockedCalls++; }
+                connectedCallback() { blockedCalls++; }
+            }
+            customElements.define('x-shadow-blocked', Blocked);
+            return first instanceof Parent && second instanceof Child
+                && nested instanceof HTMLUnknownElement && !(blocked instanceof Blocked)
+                && blockedCalls === 0;
+        })()"#,
+        )
+    })
+    .unwrap();
+    let nested = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    let blocked = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert!(
+        host.take_guest_constructor_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    host.in_document(&permit, |scope| {
+        let global = scope.global()?;
+        for (name, report) in [("nestedUpgradeError", nested), ("blockedUpgradeError", blocked)] {
+            let error = scope.import(report.exception.value())?;
+            scope.set(&global, PropertyKey::String(&units(name)), &error)?;
+        }
+        assert_guest(scope, "nestedUpgradeError instanceof TypeError && blockedUpgradeError.name === 'NotSupportedError'")
+    }).unwrap();
+}
+
+pub(in crate::document_scripting) fn registry_upgrade_attempts_adopted_candidate_and_reports_callback()
+ {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const root = document.documentElement;
+            const destination = new Document();
+            const first = document.createElement('x-adopt-during-upgrade');
+            const second = document.createElement('x-adopt-during-upgrade');
+            root.appendChild(first);
+            root.appendChild(second);
+            const marker = globalThis.upgradeCallbackMarker = {};
+            let attempted = 0;
+            let prototypeReads = 0;
+            let readsBeforeAdoptedSuper;
+            class Adopting extends HTMLElement {
+                constructor() {
+                    attempted++;
+                    if (attempted === 2) readsBeforeAdoptedSuper = prototypeReads;
+                    super();
+                    if (this === first) destination.adoptNode(second);
+                }
+                connectedCallback() { throw marker; }
+            }
+            const registered = new Proxy(Adopting, {
+                get(target, key, receiver) {
+                    if (key === 'prototype') prototypeReads++;
+                    return Reflect.get(target, key, receiver);
+                },
+            });
+            customElements.define('x-adopt-during-upgrade', registered);
+            return attempted === 2 && first instanceof Adopting && !(second instanceof Adopting)
+                && second.ownerDocument === destination && second.customElementRegistry === null
+                && prototypeReads === readsBeforeAdoptedSuper;
+        })()"#,
+        )
+    })
+    .unwrap();
+    let constructor = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    let callback = host.take_guest_upgrade_exception(&permit).unwrap().unwrap();
+    assert_eq!(callback.callback, DocumentGuestUpgradeCallback::Connected);
+    assert_eq!(callback.definition, constructor.definition);
+    assert!(
+        host.take_guest_upgrade_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    host.in_document(&permit, |scope| {
+        let marker = scope.evaluate(&units("upgradeCallbackMarker"))?;
+        let exception = scope.import(callback.exception.value())?;
+        assert!(scope.strict_equals(&marker, &exception)?);
+        Ok(())
+    })
+    .unwrap();
+}
+
+pub(in crate::document_scripting) fn registry_upgrade_retains_unfinished_candidates_on_refusal() {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
+        registrations: 64,
+        pending_events: 8,
+        nested_dispatches: 4,
+        storage_bytes: 32_000,
+        work: 100_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancellation).unwrap();
+    let mut host = attach_public_nodes_with_registry_and_reports(
+        session,
+        target,
+        cancellation,
+        20_000,
+        200_000,
+        &mut Some(registry),
+        1,
+    );
+    let permit = host.permit().unwrap();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                r#"
+            const root = document.documentElement;
+            root.appendChild(document.createElement('x-pending-upgrade'));
+            root.appendChild(document.createElement('x-pending-upgrade'));
+            customElements.define('x-pending-upgrade', class extends HTMLElement {
+                connectedCallback() { throw {}; }
+            });
+        "#,
+            ))
+            .map(drop)
+    });
+    assert!(matches!(
+        result,
+        Err(DocumentScriptError::Script(Error::HostFailure(_)))
+    ));
+    let mut stopped = host.stop();
+    assert_eq!(stopped.discard_pending_definition_reactions().unwrap(), 1);
+    assert_eq!(stopped.discard_pending_definition_reactions().unwrap(), 0);
+    assert!(stopped.into_session().is_ok());
+}
+
 pub(in crate::document_scripting) fn registry_when_defined_retains_original_promise_and_constructor()
  {
     let mut host = public_node_host(20_000, 200_000);

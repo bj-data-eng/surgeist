@@ -16,7 +16,7 @@ pub(in crate::store) struct Creation {
 
 pub(super) struct Pending {
     request: DomSourceCustomElementRequest,
-    name: payload::Sealed<ElementName>,
+    name: Option<payload::Sealed<ElementName>>,
     registration: Option<Arc<ScriptRegistration>>,
     outcome: Option<DomSourceCustomElementOutcome>,
     disposition: Option<DomSourceCustomElementDisposition>,
@@ -49,7 +49,7 @@ impl Pending {
                 global,
                 definition,
             },
-            name,
+            name: Some(name),
             registration: None,
             outcome: None,
             disposition: None,
@@ -122,6 +122,7 @@ impl Pending {
             });
             return Ok(());
         }
+        let name = self.name.as_ref().ok_or(DomError::InvalidSourceOperation)?;
         let document = draft.resolve(self.request.document.into())?;
         let registry = crate::DomRegistryBinding::Registry(self.request.definition.registry());
         let returned = match outcome {
@@ -135,12 +136,7 @@ impl Pending {
         };
         let (key, disposition) = match returned {
             Ok(key) => {
-                draft.finalize_autonomous_element(
-                    key,
-                    self.name.value.clone(),
-                    registry,
-                    cancel,
-                )?;
+                draft.finalize_autonomous_element(key, name.value.clone(), registry, cancel)?;
                 (key, DomSourceCustomElementDisposition::Constructed)
             }
             Err(disposition) => {
@@ -154,7 +150,7 @@ impl Pending {
                     &mut admit,
                 );
                 let formed = DomElement::failed_autonomous_construction(
-                    self.name.value.clone(),
+                    name.value.clone(),
                     registry,
                     element_formation,
                 )?;
@@ -169,12 +165,22 @@ impl Pending {
         Ok(())
     }
 
+    fn creation_name(&self) -> Result<&crate::DomQualifiedName, DomError> {
+        self.name
+            .as_ref()
+            .map(|name| &name.value.value.value)
+            .ok_or(DomError::InvalidSourceOperation)
+    }
+
     pub(super) fn disposition(&self) -> Option<DomSourceCustomElementDisposition> {
         self.disposition
     }
 
     pub(super) fn accepted_autonomous(&self, request: DomSourceCustomElementRequest) -> bool {
-        self.request == request && self.receiver.is_none() && self.outcome.is_some()
+        self.request == request
+            && self.name.is_some()
+            && self.receiver.is_none()
+            && self.outcome.is_some()
     }
 
     fn qualify_returned(
@@ -205,7 +211,7 @@ impl Pending {
         {
             return Ok(Err(DomSourceCustomElementDisposition::InvalidElement));
         }
-        let requested = &self.name.value.value.value;
+        let requested = self.creation_name()?;
         draft.source_step(cancel)?;
         if !crate::names::expanded_equals_with(
             element.name(),
@@ -254,6 +260,19 @@ pub struct DomSourceCustomElementRetention {
 pub struct DomSourceCustomElementCallbackScope<'registration> {
     _scope: Arc<DispatchScope>,
     _registration: &'registration DomDocumentScriptRegistration,
+}
+
+/// The original upgrade boundary for an existing element.
+pub enum DomSourceCustomElementUpgrade<'registration> {
+    /// Invoke the constructor with the existing receiver.
+    Callback {
+        request: DomSourceCustomElementRequest,
+        receiver_registry_matches: bool,
+        scope: DomSourceCustomElementCallbackScope<'registration>,
+    },
+    /// The definition forbids this receiver's existing shadow root. The
+    /// failed state is canonical and no constructor may run.
+    ShadowForbidden,
 }
 
 impl DomSourceLease<'_> {
@@ -448,7 +467,7 @@ impl DomSourceLease<'_> {
             .filter(|pending| pending.request == request)
             .ok_or(DomError::InvalidSourceOperation)?;
         operation.custom_element_step(cancel)?;
-        Ok(&pending.name.value.value.value)
+        pending.creation_name()
     }
 }
 
@@ -500,7 +519,7 @@ impl Operation {
             .custom_element
             .as_ref()
             .ok_or(DomError::InvalidSourceOperation)?;
-        let name = pending.name.value.value.value.clone();
+        let name = pending.creation_name()?.clone();
         let input_bytes = self.input_bytes()?;
         let checkpoint = self.draft.source_checkpoint(input_bytes, 0, cancel)?;
         let prior = self.headroom.replace(headroom::Reservation {
@@ -696,6 +715,232 @@ impl Operation {
 }
 
 impl Dom {
+    /// Start an upgrade of one existing receiver selected by a registry
+    /// definition. The receiver is requalified against the live tree.
+    /// An ineligible or retired candidate is skipped.
+    pub fn open_custom_element_upgrade<'registration>(
+        &mut self,
+        receiver: NodeId,
+        (definition, global): (crate::DomRegistryDefinitionId, crate::DomHostedGlobalId),
+        registration: &'registration DomDocumentScriptRegistration,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Option<DomSourceCustomElementUpgrade<'registration>>, DomError> {
+        use surgeist_html::elements::native::HtmlCustomElementState;
+
+        let lease = self.begin_source_root(
+            OperationRoot::CustomElementUpgrade(receiver),
+            formation::allocated_arc(BatchIdentity),
+            limits,
+            cancel,
+        )?;
+        let dom = &mut *lease.dom;
+        let mut operation = dom
+            .source_operation
+            .take()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let result = (|| {
+            operation.draft.source_step(cancel)?;
+            let key = match operation.draft.resolve(receiver.into()) {
+                Ok(key) => key,
+                Err(DomError::StaleNode) => return Ok(None),
+                Err(error) => return Err(error),
+            };
+            let node = operation.draft.node(key)?;
+            let Some(element) = node.element() else {
+                return Ok(None);
+            };
+            let definition_registry = crate::DomRegistryBinding::Registry(definition.registry());
+            let registry = element.custom_element_registry();
+            if element.custom_element_state() != HtmlCustomElementState::Undefined
+                || operation
+                    .draft
+                    .lookup_element_definition(key, definition_registry, cancel)?
+                    != Some(definition)
+            {
+                return Ok(None);
+            }
+            let document = dom
+                .dispatch_global_document_current_with::<DomHostedError>(global, &mut || {
+                    operation.draft.source_step(cancel).map_err(Into::into)
+                })
+                .map_err(|error| match error {
+                    DomHostedError::Dom(error) => error,
+                    _ => DomError::HostedSourceUnavailable,
+                })?;
+            let registry_metadata = operation
+                .draft
+                .document_metadata(Key::Existing(document.node()))?;
+            if registry_metadata.custom_element_registry() != definition_registry {
+                return Err(DomError::InvalidSourceOperation);
+            }
+            let saved_is = element.saved_is().cloned();
+            let shadow_forbidden = node.shadow_root().is_some()
+                && operation
+                    .draft
+                    .creation_registry(definition.registry(), cancel)?
+                    .definition(definition.ordinal())
+                    .map_err(DomError::SelectCapture)?
+                    .disable_shadow();
+
+            let request = DomSourceCustomElementRequest {
+                operation: operation.id,
+                command: 0,
+                document,
+                global,
+                definition,
+            };
+            operation.custom_element = Some(Pending {
+                request,
+                name: None,
+                registration: None,
+                outcome: None,
+                disposition: None,
+                receiver: Some(receiver),
+            });
+            operation.qualify_custom_element_registration(dom, &registration.0, cancel)?;
+            operation.headroom = Some(headroom::Reservation {
+                remaining_phases: 1 + headroom::FINAL_PUBLICATION,
+            });
+            if shadow_forbidden {
+                operation.draft.replace_element_custom_context(
+                    key,
+                    HtmlCustomElementState::Failed,
+                    crate::element::CustomAssociation {
+                        registry,
+                        definition: crate::DomElementDefinition::Null,
+                        saved_is,
+                    },
+                    cancel,
+                )?;
+                let segment = operation
+                    .prepare_segment(dom, false, PublicationTarget::None, None, cancel)
+                    .map_err(|error| match error {
+                        DomHostedError::Dom(error) => error,
+                        _ => DomError::HostedSourceUnavailable,
+                    })?;
+                if segment
+                    .prepared
+                    .inline_recording
+                    .as_ref()
+                    .is_some_and(|recording| recording.has_inputs())
+                {
+                    return Err(DomError::IncompleteSourceOperation);
+                }
+                segment.publish(&mut operation, dom);
+                return Ok(Some(DomSourceCustomElementUpgrade::ShadowForbidden));
+            }
+            operation.draft.replace_element_custom_context(
+                key,
+                HtmlCustomElementState::Precustomized,
+                crate::element::CustomAssociation {
+                    registry,
+                    definition: crate::DomElementDefinition::Definition(definition),
+                    saved_is,
+                },
+                cancel,
+            )?;
+            let observed = operation.prepare_callback_observation(cancel)?;
+            let scope = observed.open_scope()?;
+            let segment = operation
+                .prepare_segment(dom, true, PublicationTarget::None, None, cancel)
+                .map_err(|error| match error {
+                    DomHostedError::Dom(error) => error,
+                    _ => DomError::HostedSourceUnavailable,
+                })?;
+            if segment
+                .prepared
+                .inline_recording
+                .as_ref()
+                .is_some_and(|recording| recording.has_inputs())
+            {
+                return Err(DomError::IncompleteSourceOperation);
+            }
+            if segment
+                .outputs
+                .checked_add(2)
+                .is_none_or(|outputs| outputs > limits.outputs)
+            {
+                return Err(DomError::SourceOutputLimit);
+            }
+            let pending = operation
+                .custom_element
+                .as_mut()
+                .ok_or(DomError::InvalidSourceOperation)?;
+            pending.registration = Some(registration.0.clone());
+            segment.publish(&mut operation, dom);
+            operation.command_admitted = true;
+            operation.draft = OperationDraft::CustomElementObserved(
+                operation.begin_callback_observation(observed),
+            );
+            Ok(Some(DomSourceCustomElementUpgrade::Callback {
+                request,
+                receiver_registry_matches: registry == definition_registry,
+                scope: DomSourceCustomElementCallbackScope {
+                    _scope: scope,
+                    _registration: registration,
+                },
+            }))
+        })();
+        if matches!(
+            result,
+            Ok(Some(DomSourceCustomElementUpgrade::ShadowForbidden))
+        ) {
+            dom.source_operation = dom.source_parents.pop();
+            return result;
+        }
+        if !matches!(result, Ok(Some(_))) {
+            operation.custom_element = None;
+        }
+        dom.source_operation = Some(operation);
+        result
+    }
+
+    /// Raise closed constructor ancestors during stopped-host recovery.
+    /// Original callback work and accepted results remain charged.
+    pub fn raise_stopped_constructor_ancestors(
+        &mut self,
+        registration: &DomDocumentScriptRegistration,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        check_cancel(cancel)?;
+        if registration.is_active() {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        let mut remaining = limits.work;
+        for operation in self.source_parents.iter_mut().rev() {
+            check_cancel(cancel)?;
+            remaining = remaining
+                .checked_sub(1)
+                .ok_or(DomError::SourceWorkLimit { limit: limits.work })?;
+            let OperationDraft::CustomElementObserved(observation) = &operation.draft else {
+                continue;
+            };
+            if !observation.work.scope_closed()
+                || !operation
+                    .custom_element
+                    .as_ref()
+                    .and_then(|pending| pending.registration.as_ref())
+                    .is_some_and(|original| Arc::ptr_eq(original, &registration.0))
+            {
+                continue;
+            }
+            let old = observation.limits;
+            let raised = DomSourceLimits::new(
+                limits.retained_bytes.max(old.retained_bytes),
+                limits.retained_units.max(old.retained_units),
+                limits.work.max(old.work),
+                limits.phases.max(old.phases),
+                limits.outputs.max(old.outputs),
+                limits.identities.max(old.identities),
+                limits.nested_operations.max(old.nested_operations),
+            );
+            operation.admit_observation_limits(raised, cancel)?;
+        }
+        Ok(())
+    }
+
     /// Whether the exact factory remains in the current Source stack.
     pub fn retains_custom_element(
         &self,
@@ -766,12 +1011,9 @@ impl Dom {
                 break;
             }
         }
-        let name = &selected_name
+        let name = selected_name
             .ok_or(DomError::InvalidSourceOperation)?
-            .name
-            .value
-            .value
-            .value;
+            .creation_name()?;
         let name = crate::DomQualifiedName::from_atoms(
             name.namespace().cloned(),
             None,

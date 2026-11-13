@@ -4,7 +4,7 @@ pub(in crate::store) mod attribute;
 pub(in crate::store) mod custom_element;
 pub use custom_element::{
     DomSourceCustomElementCallbackScope, DomSourceCustomElementDisposition,
-    DomSourceCustomElementOutcome, DomSourceCustomElementRetention,
+    DomSourceCustomElementOutcome, DomSourceCustomElementRetention, DomSourceCustomElementUpgrade,
 };
 #[cfg(test)]
 mod design_mode_tests;
@@ -53,6 +53,7 @@ use surgeist_html::values::DocumentString;
 enum OperationRoot {
     Edit([Command; 1]),
     NativeInstallation,
+    CustomElementUpgrade(NodeId),
     SelectCompletion(NodeId),
     DialogTask(crate::DomDialogTaskInfo),
     #[cfg(test)]
@@ -72,7 +73,10 @@ impl std::ops::Deref for OperationRoot {
     fn deref(&self) -> &[Command] {
         match self {
             Self::Edit(commands) => commands,
-            Self::NativeInstallation | Self::SelectCompletion(_) | Self::DialogTask(_) => &[],
+            Self::NativeInstallation
+            | Self::CustomElementUpgrade(_)
+            | Self::SelectCompletion(_)
+            | Self::DialogTask(_) => &[],
             #[cfg(test)]
             Self::Commands(commands) => commands,
         }
@@ -2436,7 +2440,10 @@ impl DomSourceLease<'_> {
                     Ok(())
                 } else if op.started {
                     op.draft.run_effects(self.dom.limits, cancel)
-                } else if op.index < op.commands.len() && !op.cancelled {
+                } else if (op.index < op.commands.len()
+                    || matches!(op.commands, OperationRoot::CustomElementUpgrade(_)))
+                    && !op.cancelled
+                {
                     op.apply_reached_command(self.dom, cancel)
                 } else {
                     Ok(())

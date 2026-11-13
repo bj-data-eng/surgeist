@@ -10,7 +10,7 @@ use surgeist_dom::{
     DomSourceCustomElementRequest, DomSourceEventRequest, DomWatchedCustomElementResult,
 };
 
-pub(super) struct OrdinaryBindings {
+pub(in crate::document_scripting::guest::interfaces) struct OrdinaryBindings {
     inbox: RefCell<DomNodeRetirementInbox>,
     pins: RefCell<OrdinaryPins>,
     #[cfg(test)]
@@ -106,10 +106,37 @@ impl NativeOwner {
         *slot = Some(pending);
     }
 
+    pub(in crate::document_scripting) fn raise_stopped_constructor_limits(
+        &self,
+        limits: surgeist_dom::DomSourceLimits,
+    ) -> Result<(), DocumentScriptNativeError> {
+        let slot = self
+            .pending_constructor
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let Some(pending) = slot.as_ref() else {
+            return Ok(());
+        };
+        let mut session = self
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        session
+            .dom()
+            .raw_mut()
+            .raise_stopped_constructor_ancestors(
+                &pending.registration,
+                limits,
+                &AtomicBool::new(false),
+            )?;
+        Ok(())
+    }
+
     pub(in crate::document_scripting) fn settle_stopped_constructor(
         &self,
         limits: surgeist_dom::DomSourceLimits,
     ) -> Result<(), DocumentGuestEventError> {
+        self.raise_stopped_constructor_limits(limits)?;
         let mut session = self
             .session
             .try_borrow_mut()
@@ -661,6 +688,124 @@ impl OrdinaryBindings {
                 Err(error)
             }
         }
+    }
+
+    pub(in crate::document_scripting::guest::interfaces) fn upgrade_existing<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        (node, definition, global): (
+            NodeId,
+            surgeist_dom::DomRegistryDefinitionId,
+            DomHostedGlobalId,
+        ),
+        (constructor, interface, realm): (&Value<'scope>, &'static str, RealmId),
+        receiver: &Value<'scope>,
+    ) -> Result<bool, DocumentGuestEventError> {
+        let registration = owner
+            .attachment
+            .get()
+            .and_then(|attachment| attachment.registration.upgrade())
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        let backing = events.reserve(owner, size_of::<PendingConstructor>())?;
+        let mut report = events.reports.reserve_constructor(events, owner)?;
+        let frame = super::super::custom_elements::reserve_constructor_frame(owner, events)?;
+        let retained_constructor = scope.retain(constructor);
+        let retained_receiver = scope.retain(receiver);
+        let root_bytes = events
+            .exception_root_bytes
+            .checked_add(size_of::<GuestBacking>())
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        let root_backing = events.reserve(owner, root_bytes)?;
+        scope.retain_invocation_result_backing(receiver, Box::new(root_backing))?;
+        let callback = {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            session.dom().raw_mut().open_custom_element_upgrade(
+                node,
+                (definition, global),
+                &registration,
+                events.limits.source_edits,
+                &owner.cancellation,
+            )?
+        };
+        let (request, callback, receiver_registry_matches) = match callback {
+            None => return Ok(false),
+            Some(surgeist_dom::DomSourceCustomElementUpgrade::Callback {
+                request,
+                scope,
+                receiver_registry_matches,
+            }) => (request, scope, receiver_registry_matches),
+            Some(surgeist_dom::DomSourceCustomElementUpgrade::ShadowForbidden) => {
+                let value = scope.dom_exception(
+                    surgeist_bindings_js::dom_exception::DomExceptionName::NotSupportedError,
+                    &[],
+                )?;
+                let exception = scope.invocation_exception(&value);
+                report.prepare(scope, &exception)?;
+                report.publish(DocumentGuestConstructorException {
+                    definition,
+                    realm,
+                    exception,
+                });
+                return Ok(false);
+            }
+        };
+        let mut pending = Box::new(PendingConstructor {
+            request,
+            registration: registration.clone(),
+            outcome: Some(DomSourceCustomElementOutcome::Failed),
+            returned: Some(retained_receiver.clone()),
+            receiver: Some(node),
+            realm,
+            report,
+            exception: None,
+            next: None,
+            _backing: backing,
+        });
+        let run = (|| {
+            let entry = PublicEventBindings::enter_constructor(
+                owner,
+                request,
+                registration.clone(),
+                retained_constructor,
+                interface,
+                frame,
+            )?;
+            entry
+                .frame
+                .receiver_registry_matches
+                .set(receiver_registry_matches);
+            entry
+                .frame
+                .receiver
+                .set(retained_receiver)
+                .map_err(|_| DocumentScriptNativeError::ProjectionCustody)?;
+            Ok::<_, DocumentGuestEventError>(scope.construct_without_arguments(constructor))
+        })();
+        drop(callback);
+        let result = (|| {
+            pending.outcome = Some(match run? {
+                Ok(value) if scope.strict_equals(receiver, &value)? => {
+                    DomSourceCustomElementOutcome::Returned(node)
+                }
+                Ok(_) => DomSourceCustomElementOutcome::InvalidInterface,
+                Err(Error::Exception(exception)) => {
+                    pending.exception = Some(exception);
+                    DomSourceCustomElementOutcome::Failed
+                }
+                Err(error) => return Err(error.into()),
+            });
+            let successful = pending.outcome == Some(DomSourceCustomElementOutcome::Returned(node));
+            self.finish_customized_constructor(scope, owner, events, &mut pending)?;
+            Ok(successful)
+        })();
+        if result.is_err() {
+            owner.keep_constructor_result(pending);
+        }
+        result
     }
 
     fn open_customized_callback<'scope, 'registration>(

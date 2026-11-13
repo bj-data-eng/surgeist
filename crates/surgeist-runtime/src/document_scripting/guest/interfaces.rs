@@ -9,8 +9,10 @@ mod toggle_event;
 mod trusted_policy;
 
 use super::*;
-pub(in crate::document_scripting) use custom_elements::ActiveConstructor;
 pub(in crate::document_scripting) use custom_elements::document_registry as creation_document_registry;
+pub(in crate::document_scripting) use custom_elements::{
+    ActiveConstructor, PendingDefinitionReactions,
+};
 pub(in crate::document_scripting) use document::PendingConstructor;
 pub(super) use document::{GuestNodeProjection, NodeLifetime};
 use surgeist_bindings_js::{

@@ -525,9 +525,17 @@ impl Capture {
                     scope.type_error(&ascii(b"Illegal constructor"))?,
                 ));
             }
+            let receiver_frame = frame.receiver_frame(&events)?;
+            if receiver_frame.is_some_and(|frame| !frame.receiver_registry_matches.get()) {
+                return Ok(ConstructorCompletion::Throw(
+                    scope.type_error(&ascii(b"Illegal constructor"))?,
+                ));
+            }
             let selected = arguments.select_prototype(scope)?;
-            if let Some(receiver) = frame.receiver.get() {
-                if frame.constructed.get() {
+            if let Some(receiver_frame) = receiver_frame
+                && let Some(receiver) = receiver_frame.receiver.get()
+            {
+                if receiver_frame.constructed.get() {
                     return Ok(ConstructorCompletion::Throw(
                         scope.type_error(&ascii(b"Element already constructed"))?,
                     ));
@@ -542,7 +550,7 @@ impl Capture {
                     }
                     result => result?,
                 }
-                frame.constructed.set(true);
+                receiver_frame.constructed.set(true);
                 return Ok(ConstructorCompletion::Return(receiver));
             }
             let element = public.document.ordinary.construct_autonomous(

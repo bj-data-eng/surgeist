@@ -7,7 +7,7 @@ use surgeist_bindings_js::{
 };
 use surgeist_dom::{
     DocumentString, DomDocumentScriptRegistration, DomNodeKind, DomRegistryBinding,
-    DomRegistryDefinitionId, DomRegistryId, DomSnapshot, DomSourceCustomElementRequest,
+    DomRegistryDefinitionId, DomRegistryId, DomSnapshot, DomSourceCustomElementRequest, NodeId,
 };
 use surgeist_html_semantics::HtmlCustomElementDefinition;
 
@@ -20,8 +20,28 @@ pub(in crate::document_scripting) struct ActiveConstructor {
     pub(super) interface: &'static str,
     pub(super) receiver: std::cell::OnceCell<surgeist_bindings_js::Root>,
     pub(super) constructed: Cell<bool>,
+    pub(super) receiver_registry_matches: Cell<bool>,
     previous: Option<Rc<Self>>,
     _backing: GuestBacking,
+}
+
+impl ActiveConstructor {
+    pub(super) fn receiver_frame(
+        &self,
+        events: &GuestEvents,
+    ) -> Result<Option<&Self>, DocumentGuestEventError> {
+        let mut next = Some(self);
+        while let Some(frame) = next {
+            events.step()?;
+            if frame.request.definition() == self.request.definition()
+                && frame.receiver.get().is_some()
+            {
+                return Ok(Some(frame));
+            }
+            next = frame.previous.as_deref();
+        }
+        Ok(None)
+    }
 }
 
 pub(super) struct ConstructorEntry<'a> {
@@ -58,6 +78,16 @@ pub(super) fn active_constructor_for_target<'scope>(
     Ok(None)
 }
 
+pub(super) fn reserve_constructor_frame(
+    owner: &NativeOwner,
+    events: &GuestEvents,
+) -> Result<GuestBacking, DocumentGuestEventError> {
+    events.reserve(
+        owner,
+        size_of::<ActiveConstructor>() + 2 * size_of::<usize>(),
+    )
+}
+
 impl PublicEventBindings {
     pub(super) fn enter_factory_constructor<'a, 'scope>(
         &self,
@@ -68,10 +98,25 @@ impl PublicEventBindings {
         (constructor, interface): (&Value<'scope>, &'static str),
         registration: Rc<DomDocumentScriptRegistration>,
     ) -> Result<ConstructorEntry<'a>, DocumentGuestEventError> {
-        let backing = events.reserve(
+        let backing = reserve_constructor_frame(owner, events)?;
+        Self::enter_constructor(
             owner,
-            size_of::<ActiveConstructor>() + 2 * size_of::<usize>(),
-        )?;
+            request,
+            registration,
+            scope.retain(constructor),
+            interface,
+            backing,
+        )
+    }
+
+    pub(super) fn enter_constructor<'a>(
+        owner: &'a NativeOwner,
+        request: DomSourceCustomElementRequest,
+        registration: Rc<DomDocumentScriptRegistration>,
+        constructor: surgeist_bindings_js::Root,
+        interface: &'static str,
+        backing: GuestBacking,
+    ) -> Result<ConstructorEntry<'a>, DocumentGuestEventError> {
         let previous = owner
             .active_constructor
             .try_borrow()
@@ -80,10 +125,11 @@ impl PublicEventBindings {
         let frame = Rc::new(ActiveConstructor {
             request,
             registration,
-            constructor: scope.retain(constructor),
+            constructor,
             interface,
             receiver: std::cell::OnceCell::new(),
             constructed: Cell::new(false),
+            receiver_registry_matches: Cell::new(true),
             previous: previous.clone(),
             _backing: backing,
         });
@@ -186,13 +232,13 @@ struct Definition {
     name: DocumentString,
     constructor: RetainedCallbackObject,
     _callbacks: [Option<RetainedCallbackObject>; CALLBACK_COUNT],
-    _observed: Option<ObservedAttributes>,
+    _observed: Option<Rc<ObservedAttributes>>,
     _disable_internals: bool,
     _name_backing: GuestBacking,
 }
 
 struct ObservedAttributes {
-    _values: Vec<(DocumentString, GuestBacking)>,
+    values: Vec<(DocumentString, GuestBacking)>,
     _backing: GuestBacking,
 }
 
@@ -205,6 +251,7 @@ impl ObservedAttributes {
         let count = source.get().len();
         let bytes = count
             .checked_mul(size_of::<(DocumentString, GuestBacking)>())
+            .and_then(|bytes| bytes.checked_add(size_of::<Self>() + 2 * size_of::<usize>()))
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
         let backing = events.reserve(owner, bytes)?;
         let mut values = Vec::new();
@@ -223,7 +270,7 @@ impl ObservedAttributes {
             )?);
         }
         Ok(Self {
-            _values: values,
+            values,
             _backing: backing,
         })
     }
@@ -657,7 +704,7 @@ impl Capture {
             drop(running);
             let observed_attributes = read
                 .observed
-                .map(|source| ObservedAttributes::copy(&owner, &events, source))
+                .map(|source| ObservedAttributes::copy(&owner, &events, source).map(Rc::new))
                 .transpose()?;
             let undefined = scope.primitive(Primitive::Undefined)?;
             let mut callbacks = [const { None }; CALLBACK_COUNT];
@@ -686,6 +733,42 @@ impl Capture {
                 read.form,
                 read.disable_shadow,
             );
+            let candidates = self.callbacks.with_read(&owner, &events, |read, _| {
+                let document = read
+                    .snapshot
+                    .global_document_with(registry.global, &mut || read.step())?;
+                let mut candidates = ReactionList::default();
+                read.node(document.node())?
+                    .visit_custom_element_upgrade_candidates_with(
+                        (registry.id, &facts),
+                        || read.step(),
+                        |bytes| read.reserve(bytes),
+                        |node| candidates.push(read, node),
+                    )?;
+                Ok(candidates)
+            })?;
+            let candidate_constructor = if candidates.values.is_empty() {
+                None
+            } else {
+                Some((
+                    scope.open_callback_object(&constructor)?,
+                    constructor.associated_realm().identity(),
+                ))
+            };
+            let mut reactions = if candidates.values.is_empty() {
+                None
+            } else {
+                let backing = events.reserve(&owner, size_of::<PendingDefinitionReactions>())?;
+                Some(Box::new(PendingDefinitionReactions {
+                    candidates,
+                    cursor: 0,
+                    next: None,
+                    _backing: backing,
+                }))
+            };
+            let initial_attribute = callbacks[4].clone();
+            let connected = callbacks[0].clone();
+            let observed = observed_attributes.clone();
             let mut rows = registry
                 .definitions
                 .try_borrow_mut()
@@ -739,9 +822,155 @@ impl Capture {
             });
             drop(rows);
             drop(waiting);
-            if let Some((resolver, constructor)) = resolver.zip(definition_value) {
-                scope.resolve_promise(resolver, &constructor)?;
+            let drive = (|| {
+                if let Some((resolver, constructor)) = resolver.zip(definition_value) {
+                    scope.resolve_promise(resolver, &constructor)?;
+                }
+                if let Some(((constructor, realm), reactions)) =
+                    candidate_constructor.zip(reactions.as_mut())
+                {
+                    while let Some(&node) = reactions.candidates.values.get(reactions.cursor) {
+                        let initial = self.callbacks.with_read(&owner, &events, |read, _| {
+                            let node = match read.node(node) {
+                                Ok(node) => node,
+                                Err(DocumentGuestEventError::Document(
+                                    DocumentScriptError::Native(DocumentScriptNativeError::Dom(
+                                        surgeist_dom::DomError::StaleNode,
+                                    )),
+                                )) => return Ok(None),
+                                Err(error) => return Err(error),
+                            };
+                            let Some(element) = node.as_element() else {
+                                return Ok(None);
+                            };
+                            if element.custom_element_state()
+                                != surgeist_dom::HtmlCustomElementState::Undefined
+                            {
+                                return Ok(None);
+                            }
+                            let mut attributes = ReactionList::default();
+                            if let (Some(observed), Some(_)) = (&observed, &initial_attribute)
+                                && let Some(map) = node.attributes()
+                            {
+                                map.visit_with(
+                                    || read.step(),
+                                    |attribute| {
+                                        let name = attribute.name();
+                                        for (expected, _) in &observed.values {
+                                            read.step()?;
+                                            if registry_name_matches_with(
+                                                name.local_name().code_units(),
+                                                expected.code_units(),
+                                                || read.step(),
+                                            )? {
+                                                let local = self
+                                                    .callbacks
+                                                    .conversion
+                                                    .run(scope, |cx| {
+                                                        cx.copy_to_js(
+                                                            name.local_name().code_units(),
+                                                        )
+                                                    })
+                                                    .map_err(Error::from)?;
+                                                let value = self
+                                                    .callbacks
+                                                    .conversion
+                                                    .run(scope, |cx| {
+                                                        cx.copy_to_js(
+                                                            attribute.value().code_units(),
+                                                        )
+                                                    })
+                                                    .map_err(Error::from)?;
+                                                let namespace = match name.namespace_uri() {
+                                                    Some(uri) => self
+                                                        .callbacks
+                                                        .conversion
+                                                        .run(scope, |cx| {
+                                                            cx.copy_to_js(uri.code_units())
+                                                        })
+                                                        .map_err(Error::from)?,
+                                                    None => scope.primitive(Primitive::Null)?,
+                                                };
+                                                let old = scope.primitive(Primitive::Null)?;
+                                                let root_bytes = events
+                                                    .exception_root_bytes
+                                                    .checked_add(size_of::<GuestBacking>())
+                                                    .ok_or(
+                                                        DocumentScriptNativeError::StorageLimit,
+                                                    )?;
+                                                let arguments = [local, old, value, namespace];
+                                                for argument in &arguments {
+                                                    scope.retain_invocation_result_backing(
+                                                        argument,
+                                                        Box::new(read.reserve(root_bytes)?),
+                                                    )?;
+                                                }
+                                                attributes.push(read, arguments)?;
+                                                break;
+                                            }
+                                        }
+                                        Ok(())
+                                    },
+                                )?;
+                            }
+                            let is_connected = connected.is_some()
+                                && matches!(
+                                    node.root_with(true, || read.step())?.kind(),
+                                    DomNodeKind::Document(_)
+                                );
+                            Ok(Some((attributes, is_connected)))
+                        })?;
+                        let Some((attributes, is_connected)) = initial else {
+                            reactions.cursor += 1;
+                            continue;
+                        };
+                        let receiver = public.project_node(scope, &owner, &events, node)?;
+                        if public.document.ordinary.upgrade_existing(
+                            scope,
+                            (&owner, &events),
+                            (node, id, registry.global),
+                            (&constructor, interface, realm),
+                            &receiver,
+                        )? {
+                            if let Some(callback) = &initial_attribute {
+                                for arguments in &attributes.values {
+                                    invoke_initial_reaction(
+                                        scope,
+                                        (&owner, &events),
+                                        (id, node, DocumentGuestUpgradeCallback::AttributeChanged),
+                                        callback,
+                                        &receiver,
+                                        arguments,
+                                    )?;
+                                }
+                            }
+                            if let Some(callback) = connected.as_ref().filter(|_| is_connected) {
+                                invoke_initial_reaction(
+                                    scope,
+                                    (&owner, &events),
+                                    (id, node, DocumentGuestUpgradeCallback::Connected),
+                                    callback,
+                                    &receiver,
+                                    &[],
+                                )?;
+                            }
+                        }
+                        reactions.cursor += 1;
+                    }
+                }
+                Ok::<(), DocumentGuestEventError>(())
+            })();
+            if drive.is_err()
+                && let Some(mut reactions) = reactions
+            {
+                let mut pending = owner
+                    .pending_definition_reactions
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                reactions.next = pending.take();
+                *pending = Some(reactions);
             }
+            drive?;
             Ok(Completion::Return(undefined))
         })();
         match result {
@@ -983,6 +1212,122 @@ impl GlobalRegistry {
             }
         }
         Ok(None)
+    }
+}
+
+pub(in crate::document_scripting) struct PendingDefinitionReactions {
+    candidates: ReactionList<NodeId>,
+    cursor: usize,
+    next: Option<Box<Self>>,
+    _backing: GuestBacking,
+}
+
+impl Drop for PendingDefinitionReactions {
+    fn drop(&mut self) {
+        let mut next = self.next.take();
+        while let Some(mut item) = next {
+            next = item.next.take();
+        }
+    }
+}
+
+impl NativeOwner {
+    pub(in crate::document_scripting) fn discard_stopped_definition_reactions(
+        &self,
+    ) -> Result<usize, DocumentScriptNativeError> {
+        let mut pending = self
+            .pending_definition_reactions
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let mut discarded = 0usize;
+        let mut next = pending.as_deref();
+        while let Some(item) = next {
+            discarded = discarded
+                .checked_add(item.candidates.values.len() - item.cursor)
+                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+            next = item.next.as_deref();
+        }
+        pending.take();
+        Ok(discarded)
+    }
+}
+
+struct ReactionList<T> {
+    values: Vec<T>,
+    backing: Option<GuestBacking>,
+}
+
+impl<T> Default for ReactionList<T> {
+    fn default() -> Self {
+        Self {
+            values: Vec::new(),
+            backing: None,
+        }
+    }
+}
+
+impl<T> ReactionList<T> {
+    fn push(&mut self, read: &NativeRead<'_>, value: T) -> Result<(), DocumentGuestEventError> {
+        read.step()?;
+        if self.values.len() == self.values.capacity() {
+            let capacity = self
+                .values
+                .capacity()
+                .checked_mul(2)
+                .map(|capacity| capacity.max(1))
+                .ok_or(DocumentScriptNativeError::StorageLimit)?;
+            let bytes = capacity
+                .checked_mul(size_of::<T>())
+                .ok_or(DocumentScriptNativeError::StorageLimit)?;
+            let backing = read.reserve(bytes)?;
+            let mut next = Vec::new();
+            next.try_reserve_exact(capacity)
+                .map_err(|_| Error::Allocation)?;
+            if next.capacity() > capacity {
+                return Err(DocumentScriptNativeError::StorageLimit.into());
+            }
+            for _ in &self.values {
+                read.step()?;
+            }
+            next.append(&mut self.values);
+            self.values = next;
+            self.backing = Some(backing);
+        }
+        self.values.push(value);
+        Ok(())
+    }
+}
+
+fn invoke_initial_reaction<'scope>(
+    scope: &mut Scope<'scope>,
+    (owner, events): (&NativeOwner, &GuestEvents),
+    (definition, node, kind): (
+        DomRegistryDefinitionId,
+        NodeId,
+        DocumentGuestUpgradeCallback,
+    ),
+    callback: &RetainedCallbackObject,
+    receiver: &Value<'scope>,
+    arguments: &[Value<'scope>],
+) -> Result<(), DocumentGuestEventError> {
+    let mut report = events.reports.reserve_constructor(events, owner)?;
+    let realm = callback.associated_realm().identity();
+    let callback = scope.open_callback_object(callback)?;
+    let _arguments = events.reserve(owner, scope.argument_copy_storage_bytes(arguments.len())?)?;
+    match scope.call(&callback, receiver, arguments) {
+        Ok(_) => Ok(()),
+        Err(Error::Exception(exception)) => {
+            report.prepare(scope, &exception)?;
+            report.publish_upgrade(DocumentGuestUpgradeException {
+                receiver: node,
+                callback: kind,
+                definition,
+                realm,
+                exception,
+            });
+            Ok(())
+        }
+        Err(error) => Err(error.into()),
     }
 }
 

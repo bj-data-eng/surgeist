@@ -244,6 +244,9 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registry_definition_preserves_guest_identity_and_failure();
     super::guest::tests::registry_when_defined_retains_original_promise_and_constructor();
     super::guest::tests::registry_define_upgrades_existing_candidates_in_tree_order();
+    super::guest::tests::registry_upgrade_preserves_nested_definition_and_shadow_refusal();
+    super::guest::tests::registry_upgrade_retains_unfinished_candidates_on_refusal();
+    super::guest::tests::registry_upgrade_attempts_adopted_candidate_and_reports_callback();
     super::guest::tests::document_factories_execute_the_reached_custom_constructor();
     super::guest::tests::registered_origin::custom_element_factories_use_the_correct_realm();
     super::guest::tests::registered_origin::registered_origin_registry_keeps_exact_wrapper();
@@ -266,6 +269,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     trusted_attribute::guest_tree_edits_deliver_original_meta_policies();
     inline_style::guest_insertion_publishes_a_sheet_under_the_known_empty_policy();
     inline_style::style_runtime_refusal_preserves_the_original_guest_edit();
+    inline_style::stopped_upgrade_can_settle_its_published_style_child();
     inline_style::guest_style_preserves_foreign_and_unavailable_policy();
     inline_style::guest_style_reports_to_current_window_for_another_document();
     inline_style::guest_insertion_uses_the_effective_meta_style_directive();
