@@ -6,6 +6,7 @@ mod element_tasks;
 mod inline_style;
 mod nested_dispatch;
 mod node_relations;
+mod normalize;
 mod processing_instruction;
 mod trusted_attribute;
 
@@ -321,6 +322,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::native_processing_instruction_uses_its_creation_realm();
     node_relations::node_relations_follow_the_live_ordinary_tree();
     node_relations::node_relations_project_native_processing_instructions();
+    normalize::normalize_keeps_native_text_and_range_identity();
+    normalize::normalize_preserves_typed_native_refusal();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
