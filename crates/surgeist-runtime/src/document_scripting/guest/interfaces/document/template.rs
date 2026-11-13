@@ -48,20 +48,6 @@ pub(super) fn install<'scope>(
             Reflection::Mode,
         ),
         (
-            &ascii(b"shadowRootSlotAssignment")[..],
-            &ascii(b"get shadowRootSlotAssignment")[..],
-            &ascii(b"set shadowRootSlotAssignment")[..],
-            Attribute::Shadowrootslotassignment,
-            Reflection::SlotAssignment,
-        ),
-        (
-            &ascii(b"shadowRootCustomElementRegistry")[..],
-            &ascii(b"get shadowRootCustomElementRegistry")[..],
-            &ascii(b"set shadowRootCustomElementRegistry")[..],
-            Attribute::Shadowrootcustomelementregistry,
-            Reflection::String,
-        ),
-        (
             &ascii(b"shadowRootDelegatesFocus")[..],
             &ascii(b"get shadowRootDelegatesFocus")[..],
             &ascii(b"set shadowRootDelegatesFocus")[..],
@@ -76,11 +62,25 @@ pub(super) fn install<'scope>(
             Reflection::Boolean,
         ),
         (
+            &ascii(b"shadowRootSlotAssignment")[..],
+            &ascii(b"get shadowRootSlotAssignment")[..],
+            &ascii(b"set shadowRootSlotAssignment")[..],
+            Attribute::Shadowrootslotassignment,
+            Reflection::SlotAssignment,
+        ),
+        (
             &ascii(b"shadowRootClonable")[..],
             &ascii(b"get shadowRootClonable")[..],
             &ascii(b"set shadowRootClonable")[..],
             Attribute::Shadowrootclonable,
             Reflection::Boolean,
+        ),
+        (
+            &ascii(b"shadowRootCustomElementRegistry")[..],
+            &ascii(b"get shadowRootCustomElementRegistry")[..],
+            &ascii(b"set shadowRootCustomElementRegistry")[..],
+            Attribute::Shadowrootcustomelementregistry,
+            Reflection::String,
         ),
     ] {
         let get = capture(size_of::<(Capture, Attribute, Reflection)>())?;
