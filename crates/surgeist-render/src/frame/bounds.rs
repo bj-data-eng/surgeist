@@ -14,6 +14,9 @@ use crate::{
 #[cfg(test)]
 use crate::{geometry::Size, paint::Color, renderer::Antialiasing};
 
+#[cfg(test)]
+mod bounded_operation_tests;
+
 impl FrameContext {
     #[cfg(test)]
     pub(super) fn try_for_spatial_test(surface_scale: f64) -> Result<Self> {
@@ -595,16 +598,33 @@ impl SemanticSourceContribution {
 }
 
 fn commands_have_bounded_operation(commands: &RenderCommands, account: &Account) -> Result<bool> {
-    for command in commands.iter() {
+    let mut commands = commands.as_ref();
+    let mut pending = account.temporary(0)?;
+    loop {
+        let Some((command, siblings)) = commands.split_first() else {
+            let Some(siblings) = pending.pop() else {
+                return Ok(false);
+            };
+            commands = siblings;
+            continue;
+        };
+        commands = siblings;
         account.work(RenderWork::CommandVisits, 1)?;
-        if let RenderCommand::Layer { layer, children } = command
-            && ((!layer.composition.is_source_over() && !layer.composition.is_plus())
-                || commands_have_bounded_operation(children, account)?)
-        {
-            return Ok(true);
+        if let RenderCommand::Layer { layer, children } = command {
+            if !layer.composition.is_source_over() && !layer.composition.is_plus() {
+                return Ok(true);
+            }
+            if !children.is_empty() {
+                if !siblings.is_empty() {
+                    if pending.len() == pending.capacity() {
+                        pending.grow(pending.capacity().max(1))?;
+                    }
+                    pending.push(siblings)?;
+                }
+                commands = children;
+            }
         }
     }
-    Ok(false)
 }
 
 #[derive(Clone, Debug, PartialEq)]
