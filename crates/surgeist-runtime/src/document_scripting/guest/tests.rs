@@ -11,6 +11,32 @@ pub(in crate::document_scripting) fn exhaust_guest_reaction_work(host: &Document
     events.budget.work.set(events.limits.work);
 }
 
+pub(in crate::document_scripting) fn form_associated_definition_refuses_before_publication() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    let before = host.snapshot().unwrap().stamp();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const name = 'x-form-associated';
+            const reads = [];
+            const waiting = customElements.whenDefined(name);
+            class FormAssociated extends HTMLElement {
+                static get formAssociated() { reads.push('form'); return true; }
+                get formAssociatedCallback() { reads.push('callback'); return () => {}; }
+            }
+            try { customElements.define(name, FormAssociated); }
+            catch (error) {
+                return error instanceof DOMException && error.name === 'NotSupportedError' &&
+                    customElements.get(name) === undefined && customElements.whenDefined(name) === waiting &&
+                    reads.join(',') === 'form,callback';
+            }
+            return false;
+        })()"#)
+    }).unwrap();
+    assert_eq!(host.snapshot().unwrap().stamp(), before);
+    assert!(host.stop().into_session().is_ok());
+}
+
 pub(in crate::document_scripting) fn successful_constructor_needs_no_fallback_admission() {
     let mut host = public_node_host(20_000, 200_000);
     let permit = host.permit().unwrap();
