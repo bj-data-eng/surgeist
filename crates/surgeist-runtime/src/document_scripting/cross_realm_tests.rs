@@ -320,6 +320,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     dom_implementation::implementation_creates_native_documents();
     processing_instruction::native_processing_instruction_uses_its_canonical_wrapper();
     processing_instruction::authored_processing_instructions_use_native_creation();
+    processing_instruction::authored_instruction_wrapper_refusal_is_atomic();
     super::guest::tests::registered_origin::native_processing_instruction_uses_its_creation_realm();
     super::guest::tests::registered_origin::authored_instruction_separates_document_and_prototype_realms();
     node_relations::node_relations_follow_the_live_ordinary_tree();
@@ -1037,6 +1038,9 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
                 const merge = dialog.appendChild(attachedDocument.createTextNode(' tail'));
                 cancelChecks &&= dialog.normalize() === undefined && dialog.firstChild === survivor &&
                     survivor.data === 'native event\ud800 tail' && merge.parentNode === null;
+                const instruction = new ProcessingInstruction('during-cancel');
+                cancelChecks &&= instruction.ownerDocument === attachedDocument &&
+                    instruction.target === 'during-cancel' && instruction.parentNode === null;
                 const impl = attachedDocument.implementation;
                 const type = impl.createDocumentType('root', '', '');
                 const xml = impl.createDocument(null, 'root', type);

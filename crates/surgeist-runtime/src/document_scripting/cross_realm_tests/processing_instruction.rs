@@ -148,3 +148,25 @@ pub(super) fn authored_processing_instructions_use_native_creation() {
         3
     );
 }
+
+pub(super) fn authored_instruction_wrapper_refusal_is_atomic() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    let before = host.snapshot().unwrap();
+    crate::document_scripting::guest::tests::refuse_next_source_node_validation(&host);
+    let result = host.in_document(&permit, |scope| {
+        evaluate(scope, "document.createProcessingInstruction('target', '')").map(drop)
+    });
+    assert!(
+        matches!(
+            result,
+            Err(DocumentScriptError::Script(Error::BackendUnavailable))
+        ),
+        "{result:?}"
+    );
+    let after = host.snapshot().unwrap();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.nodes().count(), before.nodes().count());
+}

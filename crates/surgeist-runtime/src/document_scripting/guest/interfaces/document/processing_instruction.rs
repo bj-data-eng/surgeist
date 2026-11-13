@@ -122,11 +122,11 @@ impl Capture {
                         .origin
                         .as_ref()
                         .map_or(attached, |origin| origin.global);
-                    Ok(session.dom().raw().dispatch_global_document_with(
+                    session.dom().raw().dispatch_global_document_with(
                         global,
                         &owner.cancellation,
                         &mut || events.step(),
-                    )?)
+                    )
                 },
             )?;
             self.publish_instruction(
