@@ -68,6 +68,7 @@ impl DocumentScriptHost {
         terminal: GuestTerminalSource<'_>,
         shadow_reactions: Option<surgeist_dom::DomSynchronousReactionQueue>,
         original_guest_exception: Option<&Error>,
+        reaction_failure: Option<&ReactionFailureSlot>,
     ) -> Result<(), DocumentGuestEventError> {
         if self.attachment()?.realm.check_owner_active().is_err()
             || self
@@ -116,11 +117,15 @@ impl DocumentScriptHost {
                 )
             };
             if let Some(original) = original_guest_exception {
-                let delivery = drain(scope);
-                return match delivery {
-                    Ok(()) => Ok(()),
-                    Err(_) => refuse(scope, &events.refusal, original.clone().into()),
-                };
+                if shadow_reactions.is_some() {
+                    let prior = reaction_failure.ok_or(Error::ExpiredIdentity)?;
+                    return scope.complete_after_host_failure(
+                        prior,
+                        original.clone().into(),
+                        drain,
+                    );
+                }
+                return Ok(());
             }
             if let Some(cause) = terminal.error {
                 type PriorFailure = HostFailureSlot<DocumentGuestEventError, GuestBacking>;
@@ -1052,16 +1057,21 @@ impl Capture {
     }
 }
 
-pub(super) fn settle_guest_abrupt<T>(
+pub(super) type ReactionFailureSlot = HostFailureSlot<DocumentGuestEventError, GuestBacking>;
+
+pub(super) fn prepare_reaction_failure(
     scope: &mut Scope<'_>,
+    owner: &NativeOwner,
     events: &GuestEvents,
-    original: Error,
-    delivery: Result<(), DocumentGuestEventError>,
-) -> Result<T, DocumentGuestEventError> {
-    if delivery.is_err() {
-        return refuse(scope, &events.refusal, original.into()).map_err(Into::into);
-    }
-    Err(original.into())
+) -> Result<ReactionFailureSlot, DocumentGuestEventError> {
+    let backing = events.reserve(
+        owner,
+        ReactionFailureSlot::storage_bytes() + 2 * size_of::<usize>(),
+    )?;
+    Ok(ReactionFailureSlot::new(
+        &scope.realm_authority()?,
+        backing,
+    )?)
 }
 
 pub(super) fn complete<'scope>(

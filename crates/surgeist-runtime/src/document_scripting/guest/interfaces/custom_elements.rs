@@ -691,6 +691,7 @@ impl Capture {
         }
         let (owner, events) = self.active(scope)?;
         let mut definition_scope = None;
+        let mut reaction_failure = None;
         let mut definition_invocation = None;
         let result = (|| -> Result<Completion<'scope>, DocumentGuestEventError> {
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
@@ -729,6 +730,7 @@ impl Capture {
                 ))) => return Ok(registry_type_error(scope)?),
                 result => result?,
             };
+            reaction_failure = Some(document::prepare_reaction_failure(scope, &owner, &events)?);
             definition_scope = Some(SynchronousReactionScope::enter(&owner)?);
             if !scope.is_constructor(constructor)? {
                 return Ok(registry_type_error(scope)?);
@@ -900,7 +902,7 @@ impl Capture {
             Ok(Completion::Return(undefined))
         })();
         let queue = pop_reaction_scope(definition_scope);
-        let delivery = (|| {
+        let delivery = |scope: &mut Scope<'scope>| {
             if let Some((before_waiter, mut invocation)) = definition_invocation {
                 if let Some(queue) = before_waiter {
                     self.drain_routed_reactions(scope, &owner, &events, Some(queue))?;
@@ -911,12 +913,24 @@ impl Capture {
                 self.drain_routed_reactions(scope, &owner, &events, Some(queue))?;
             }
             Ok::<_, DocumentGuestEventError>(())
-        })();
+        };
         let result = match result {
-            Ok(completion) => delivery.map(|()| completion),
+            Ok(Completion::Throw(value)) if queue.is_some() => {
+                let prior = reaction_failure.as_ref().ok_or(Error::ExpiredIdentity)?;
+                let original = Error::Exception(scope.invocation_exception(&value));
+                scope.complete_after_host_failure(prior, original.into(), delivery)?;
+                Ok(Completion::Throw(value))
+            }
+            Ok(completion) => delivery(scope).map(|()| completion),
             Err(DocumentGuestEventError::Document(DocumentScriptError::Script(
                 original @ Error::Exception(_),
-            ))) => document::settle_guest_abrupt(scope, &events, original, delivery),
+            ))) => {
+                if queue.is_some() {
+                    let prior = reaction_failure.as_ref().ok_or(Error::ExpiredIdentity)?;
+                    scope.complete_after_host_failure(prior, original.clone().into(), delivery)?;
+                }
+                Err(original.into())
+            }
             Err(error) => Err(error),
         };
         match result {

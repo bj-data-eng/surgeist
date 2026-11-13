@@ -449,7 +449,7 @@ impl DocumentScriptHost {
             && let Some(terminal) = guest_terminal_result(result)
             && terminal.operation == operation
         {
-            self.deliver_resumed_source_reactions(permit, terminal, None, None)?;
+            self.deliver_resumed_source_reactions(permit, terminal, None, None, None)?;
         }
         Ok(progress)
     }

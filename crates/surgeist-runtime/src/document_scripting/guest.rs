@@ -422,6 +422,7 @@ pub(super) struct PendingAttribute {
     parent: Option<surgeist_dom::DomSourceAttributeVerificationRequest>,
     interrupted_parent: Option<Box<Self>>,
     _header: GuestBacking,
+    reaction_failure: Option<HostFailureSlot<DocumentGuestEventError, GuestBacking>>,
     shadow_reactions: Option<surgeist_dom::DomSynchronousReactionQueue>,
 }
 
