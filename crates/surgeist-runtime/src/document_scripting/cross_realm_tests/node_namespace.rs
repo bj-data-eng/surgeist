@@ -49,7 +49,7 @@ pub(super) fn namespace_lookups_follow_live_native_names_and_declarations() {
                     return 'detached dispatch';
                 const attr = root.getAttributeNodeNS(xmlns, 'first');
                 if (attr.lookupNamespaceURI('r') !== 'urn:root') return 'owned attribute';
-                root.removeAttributeNS(xmlns, 'first');
+                root.removeAttributeNode(attr);
                 if (attr.lookupNamespaceURI('r') !== null ||
                     child.lookupPrefix('urn:shared') !== 'second') return 'detached attribute';
                 const changed = child.lookupNamespaceURI({

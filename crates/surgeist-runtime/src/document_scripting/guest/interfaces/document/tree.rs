@@ -7,6 +7,7 @@ use surgeist_dom::{DomSourceEdit, DomSourceStatus};
 
 mod clone;
 mod comparison;
+mod namespace;
 pub(super) use clone::install_import;
 
 #[derive(Clone, Copy)]
@@ -39,6 +40,7 @@ pub(super) fn install<'scope>(
 ) -> Result<(), DocumentGuestEventError> {
     clone::install(scope, prototype, capture)?;
     comparison::install(scope, prototype, capture)?;
+    namespace::install(scope, prototype, capture)?;
     for (key, method, length) in [
         (&ascii(b"appendChild")[..], Method::Append, 1),
         (&ascii(b"insertBefore")[..], Method::Insert, 2),

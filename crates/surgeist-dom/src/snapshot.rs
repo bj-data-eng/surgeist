@@ -5,6 +5,9 @@ use crate::{DocumentId, DomError, DomOwnerId, DomRevision, DomStamp, NodeId};
 use crate::{DomDocumentMetadata, DomDocumentType, DomElement, DomProcessingInstruction};
 use surgeist_html::values::DocumentString;
 
+mod namespace;
+pub use namespace::DomNamespaceUri;
+
 /// A borrowed view of a node's immutable payload in one captured snapshot.
 /// Copying this view preserves its snapshot lifetime and creates no node.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -134,17 +137,12 @@ impl DomSnapshot {
         if !matches!(document.kind(), DomNodeKind::Document(_)) {
             return Err(DomError::WrongNodeKind.into());
         }
-        for &child in document.children() {
-            if self
-                .state
-                .node_with(self.owner, child, &mut step)?
-                .element()
-                .is_some()
-            {
-                return Ok(Some(child));
-            }
-        }
-        Ok(None)
+        let document = DomNode {
+            snapshot: self,
+            id: id.node(),
+            node: document,
+        };
+        Ok(document.first_element_child_with(step)?.map(DomNode::id))
     }
 
     /// Every managed node, including detached nodes. Arena order is unspecified.
@@ -909,14 +907,17 @@ impl<'a> DomNode<'a> {
         self,
         step: impl FnMut() -> Result<(), E>,
     ) -> Result<Option<NodeId>, E> {
+        Ok(self.ordinary_parent_element(step)?.map(Self::id))
+    }
+    fn ordinary_parent_element<E: From<DomError>>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<Self>, E> {
         let Some(parent) = self.parent() else {
             return Ok(None);
         };
-        Ok(self
-            .snapshot
-            .node_with(parent, step)?
-            .as_element()
-            .map(|_| parent))
+        let parent = self.snapshot.node_with(parent, step)?;
+        Ok(parent.as_element().map(|_| parent))
     }
     pub fn element_children(self) -> impl DoubleEndedIterator<Item = NodeId> + 'a {
         self.node.children().iter().copied().filter(move |id| {
@@ -1009,6 +1010,18 @@ impl<'a> DomNode<'a> {
     }
     pub fn children(self) -> &'a [NodeId] {
         self.node.children()
+    }
+    fn first_element_child_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<Self>, E> {
+        for &child in self.children() {
+            let node = self.snapshot.node_with(child, &mut step)?;
+            if node.as_element().is_some() {
+                return Ok(Some(node));
+            }
+        }
+        Ok(None)
     }
     pub fn data(self) -> Option<&'a DocumentString> {
         match self.kind() {

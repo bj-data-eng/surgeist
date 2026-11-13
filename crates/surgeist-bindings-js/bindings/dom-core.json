@@ -4807,11 +4807,7 @@
       "owner": "surgeist-dom",
       "contract": "Apply the source Element/Document/Attr/null node-kind dispatch and namespace-declaration lookup over ordinary ancestors and exact XMLNS attributes.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}
-      ],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot/namespace.rs", "symbol": "lookup_prefix_with"}],
       "requirements": []
     },
     "Node.lookupNamespaceURI:0/call": {
@@ -4820,11 +4816,7 @@
       "owner": "surgeist-dom",
       "contract": "Apply the source node-kind dispatch, Element prefix/default namespace declaration lookup and ordinary ancestor rules with empty-prefix normalization.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}
-      ],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot/namespace.rs", "symbol": "lookup_namespace_uri_with"}],
       "requirements": []
     },
     "Node.isDefaultNamespace:0/call": {
@@ -4833,11 +4825,7 @@
       "owner": "surgeist-dom",
       "contract": "Compare the source-normalized namespace argument with the source namespace lookup result over exact canonical names/declarations.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}
-      ],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot/namespace.rs", "symbol": "is_default_namespace_with"}],
       "requirements": []
     },
     "Node.insertBefore:0/call": {

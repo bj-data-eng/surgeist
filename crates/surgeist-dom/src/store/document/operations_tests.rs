@@ -83,6 +83,69 @@ fn ordinary_containment_resolves_template_contents_without_crossing_the_host() {
     );
 }
 
+#[test]
+fn namespace_lookup_stops_at_inert_template_contents_and_preserves_refusal() {
+    let mut dom = dom();
+    let xmlns = Namespace::from_uri("http://www.w3.org/2000/xmlns/");
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let host = batch.create_element_ns(&document, Namespace::html(), "template");
+    batch.set_attribute_ns(&host, xmlns, "xmlns:outside", "urn:outside");
+    batch.insert_before(&host, &document, None);
+    let commit = apply(&mut dom, batch);
+    let host = commit.created(&host).unwrap().unwrap();
+    let snapshot = dom.snapshot();
+    let contents = snapshot
+        .node(host)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
+    let inert = snapshot.node(contents).unwrap().owner_document().unwrap();
+    let mut batch = DomBatch::new();
+    let element = batch.create_element_ns(inert, Namespace::none(), "inner");
+    batch.insert_before(&element, contents, None);
+    let element = apply(&mut dom, batch).created(&element).unwrap().unwrap();
+    let snapshot = dom.snapshot();
+    let host = snapshot.node(host).unwrap();
+    let prefix = "outside".encode_utf16().collect::<Vec<_>>();
+    let mut reached = 0;
+    let uri = host
+        .lookup_namespace_uri_with(Some(&prefix), || {
+            reached += 1;
+            Ok::<_, DomError>(())
+        })
+        .unwrap()
+        .unwrap();
+    assert!(
+        uri.code_units()
+            .iter()
+            .copied()
+            .eq("urn:outside".encode_utf16())
+    );
+    let inner = snapshot.node(element).unwrap();
+    assert!(
+        inner
+            .lookup_namespace_uri_with(Some(&prefix), || Ok::<_, DomError>(()))
+            .unwrap()
+            .is_none()
+    );
+    for refused in 1..=reached {
+        let mut attempted = 0;
+        let result = host.lookup_namespace_uri_with(Some(&prefix), || {
+            attempted += 1;
+            if attempted == refused {
+                Err(DomError::Cancelled)
+            } else {
+                Ok(())
+            }
+        });
+        assert!(matches!(result, Err(DomError::Cancelled)));
+        assert_eq!(attempted, refused);
+    }
+}
+
 fn source_limits(outputs: usize) -> DomSourceLimits {
     DomSourceLimits::new(64_000_000, 2_000_000, 20_000_000, 128, outputs, 4096, 8)
 }
