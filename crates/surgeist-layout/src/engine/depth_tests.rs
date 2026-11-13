@@ -1859,3 +1859,5 @@ fn scoped_flex_work_is_bounded_per_node_f64() {
         .join()
         .unwrap();
 }
+
+mod named_inline;

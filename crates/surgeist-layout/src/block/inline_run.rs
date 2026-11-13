@@ -7,7 +7,10 @@ mod fit;
 mod placement;
 mod prepare;
 
-use fit::{CapturedRunContext, NumericRunContext, fit_captured_run, fit_numeric_run};
+pub(crate) use fit::AtomicReceiverChild;
+use fit::NumericRunContext;
+use fit::{CapturedRunContext, fit_captured_run, fit_numeric_run};
+pub(in crate::block) use fit::{NumericFit, NumericRunFit};
 use placement::{InlineSourcePlacement, place_inline_sources};
 use prepare::PreparedInlineRun;
 pub(super) use prepare::{InlineRunPreparation, PendingInlinePreparation};
@@ -419,6 +422,81 @@ pub(super) struct InlineRunRequest<'input, Node, S: LayoutScalar> {
     pub(super) prepared: PreparedInlineRun<'input, Node, S>,
     pub(super) context: InlineRunContext<S>,
     pub(super) adjoining_margin: S,
+    pub(super) numeric_fit: Option<NumericRunFit<S>>,
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node, S> {
+    pub(in crate::block) fn begin_numeric_fit<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        container: Node,
+        run: &[Node],
+        constants: &Constants<S>,
+        context: &InlineRunContext<S>,
+    ) -> LayoutResultOf<Node, Option<Box<NumericFit<S>>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        if self.prepared.text_run.is_none()
+            && crate::inline::numeric_fit_is_ordinary(constants.wrap_style, context.inline_request)
+        {
+            return Ok(Some(Box::new(NumericFit::begin(
+                tree,
+                NumericRunContext {
+                    container,
+                    run,
+                    source_index_start: context.source_index_start,
+                    available_inline_extent: context.inline_request,
+                    cursor_block: self.prepared.cursor_block,
+                    uncollapsed_cursor_block: context.cursor_block,
+                    constants,
+                    provider_enabled: self.prepared.provider_enabled,
+                    line_box_context: context.line_box_context,
+                    tail: context.tail,
+                    indent_state: context.indent_state,
+                    participants: std::mem::take(&mut self.prepared.participants),
+                },
+            )?)));
+        }
+        Ok(None)
+    }
+
+    pub(in crate::block) fn advance_numeric_fit<Tree, M>(
+        &mut self,
+        fitting: &mut NumericFit<S>,
+        tree: &mut Tree,
+        container: Node,
+        constants: &Constants<S>,
+        exclusions: &FloatExclusions<S, Node>,
+    ) -> fit::AtomicReceiverNext<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        fitting.advance(
+            tree,
+            container,
+            constants,
+            exclusions,
+            &mut self.prepared.atomic_children,
+        )
+    }
+
+    pub(in crate::block) fn accept_receiver<M>(
+        &mut self,
+        fitting: &mut NumericFit<S>,
+        container: Node,
+        child: AtomicReceiverChild<Node, S>,
+        output: ComputeOutputOf<S>,
+        axes: FlowAxes,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        fitting.accept(
+            container,
+            &mut self.prepared.atomic_children,
+            child,
+            output,
+            axes,
+        )
+    }
 }
 
 pub(super) fn inline_atomic_child_request<S: LayoutScalar>(
@@ -466,6 +544,7 @@ where
         prepared,
         context,
         adjoining_margin,
+        numeric_fit,
     } = request;
     let PreparedInlineRun {
         mut cursor_block,
@@ -543,26 +622,29 @@ where
         text_output = Some(fit.output);
         fit.report
     } else {
-        let fit = fit_numeric_run(
-            tree,
-            NumericRunContext {
-                container,
-                run,
-                source_index_start,
-                available_inline_extent,
-                cursor_block,
-                uncollapsed_cursor_block,
-                constants,
-                provider_enabled,
-                line_box_context,
-                tail,
-                indent_state,
-                participants,
-            },
-            float_exclusions,
-            &mut atomic_children,
-            &provider_error,
-        )?;
+        let fit = match numeric_fit {
+            Some(fit) => fit,
+            None => fit_numeric_run(
+                tree,
+                NumericRunContext {
+                    container,
+                    run,
+                    source_index_start,
+                    available_inline_extent,
+                    cursor_block,
+                    uncollapsed_cursor_block,
+                    constants,
+                    provider_enabled,
+                    line_box_context,
+                    tail,
+                    indent_state,
+                    participants,
+                },
+                float_exclusions,
+                &mut atomic_children,
+                &provider_error,
+            )?,
+        };
         margin = fit.margin;
         cursor_block = fit.cursor_block;
         fit.report

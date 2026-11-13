@@ -1,22 +1,22 @@
 use super::super::{float_text, floats};
 use super::*;
 
-pub(super) struct NumericRunContext<'a, Node, S: LayoutScalar> {
-    pub(super) container: Node,
-    pub(super) run: &'a [Node],
-    pub(super) source_index_start: usize,
-    pub(super) available_inline_extent: AxisSizingRequestOf<S>,
-    pub(super) cursor_block: S,
-    pub(super) uncollapsed_cursor_block: S,
-    pub(super) constants: &'a Constants<S>,
-    pub(super) provider_enabled: bool,
-    pub(super) line_box_context: crate::line_box::LineBoxContext,
-    pub(super) tail: crate::text_layout::fit::TailContext,
-    pub(super) indent_state: crate::text_indent::IndentLineState,
-    pub(super) participants: Vec<MixedInlineParticipantOf<S>>,
+pub(in crate::block) struct NumericRunContext<'a, Node, S: LayoutScalar> {
+    pub(in crate::block) container: Node,
+    pub(in crate::block) run: &'a [Node],
+    pub(in crate::block) source_index_start: usize,
+    pub(in crate::block) available_inline_extent: AxisSizingRequestOf<S>,
+    pub(in crate::block) cursor_block: S,
+    pub(in crate::block) uncollapsed_cursor_block: S,
+    pub(in crate::block) constants: &'a Constants<S>,
+    pub(in crate::block) provider_enabled: bool,
+    pub(in crate::block) line_box_context: crate::line_box::LineBoxContext,
+    pub(in crate::block) tail: crate::text_layout::fit::TailContext,
+    pub(in crate::block) indent_state: crate::text_indent::IndentLineState,
+    pub(in crate::block) participants: Vec<MixedInlineParticipantOf<S>>,
 }
 
-pub(super) struct NumericRunFit<S: LayoutScalar> {
+pub(in crate::block) struct NumericRunFit<S: LayoutScalar> {
     pub(super) report: crate::inline::MixedInlineRunReportOf<S>,
     pub(super) margin: InlineRunMargin,
     pub(super) cursor_block: S,
@@ -35,95 +35,16 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    let NumericRunContext {
-        container,
-        run,
-        source_index_start,
-        available_inline_extent,
+    let container = context.container;
+    let constants = context.constants;
+    let provider_enabled = context.provider_enabled;
+    let NumericRunSetup {
+        input: numeric_input,
+        observe_formatted,
+        margin,
         cursor_block,
-        uncollapsed_cursor_block,
-        constants,
-        provider_enabled,
-        line_box_context,
-        tail,
-        indent_state,
-        participants,
-    } = context;
-    let wrapping = {
-        tree.wrapping_context()
-            .map(|(context, graph)| {
-                // Wrapping cuts index emitted participants, not native slots
-                // omitted for hidden or out-of-flow children.
-                let nodes: Vec<_> = participants
-                    .iter()
-                    .map(|participant| {
-                        let source_index = match participant {
-                            MixedInlineParticipantOf::Atomic { item, .. } => item.source_index,
-                            MixedInlineParticipantOf::ForcedLineBreak(control) => {
-                                control.source_index()
-                            }
-                            MixedInlineParticipantOf::Boundary(control) => control.source_index(),
-                        };
-                        run[source_index - source_index_start]
-                    })
-                    .collect();
-                context
-                    .numeric_projection(
-                        graph,
-                        container,
-                        crate::inline_wrapping::NativeRunSource {
-                            nodes: run,
-                            start: source_index_start,
-                        },
-                        &nodes,
-                    )
-                    .map(|projection| {
-                        if available_inline_extent.operation() == crate::SizingOperation::MinContent
-                        {
-                            projection.without_avoidance()
-                        } else {
-                            projection
-                        }
-                    })
-            })
-            .transpose()
-            .map_err(|error| crate::inline_wrapping::wrapping_error(container, error))?
-    };
-    let (margin, cursor_block) =
-        if crate::inline::numeric_run_has_formatted_line(&participants, wrapping.as_ref()) {
-            (InlineRunMargin::Separates, cursor_block)
-        } else {
-            (InlineRunMargin::Adjoins, uncollapsed_cursor_block)
-        };
+    } = prepare_numeric_run(tree, context)?;
     let logical_content_box_inset = constants.logical_content_box_inset();
-    let observe_formatted = matches!(
-        constants.wrap_style,
-        crate::TextWrapStyle::Balance
-            | crate::TextWrapStyle::AvoidShortLastLine
-            | crate::TextWrapStyle::Pretty
-    ) && crate::layout_math::normal_available_size(available_inline_extent)
-        .is_some()
-        || tree
-            .text_computation()
-            .is_some_and(|state| state.formatted_active());
-    let numeric_input = MixedInlineRunInputOf {
-        inline_baseline_context: constants.inline_baseline_context,
-        groups: tree
-            .group_computation()
-            .map(|groups| groups.snapshot())
-            .unwrap_or_default(),
-        wrapping,
-        text_wrap_style: constants.wrap_style,
-        line_box_context,
-        observe_tail: tail != crate::text_layout::fit::TailContext::Unrestricted,
-        available_inline_extent,
-        flow_axes: constants.flow_axes,
-        text_align: constants.text_align,
-        text_align_last: constants.text_align_last,
-        indent: resolve_text_indent(container, constants.text_indent, available_inline_extent)?,
-        indent_state,
-        participants,
-    };
     // The callbacks are sequential. A receiving fact is resolved before
     // any candidate band query, without aliasing the mutable child owner.
     let numeric_tree = std::cell::RefCell::new(&mut *tree);
@@ -198,6 +119,253 @@ where
         margin,
         cursor_block,
     })
+}
+
+struct NumericRunSetup<S: LayoutScalar> {
+    input: MixedInlineRunInputOf<S>,
+    observe_formatted: bool,
+    margin: InlineRunMargin,
+    cursor_block: S,
+}
+
+fn prepare_numeric_run<'input, Tree, S, M>(
+    tree: &mut Tree,
+    context: NumericRunContext<'_, Tree::Node, S>,
+) -> LayoutResultOf<Tree::Node, NumericRunSetup<S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let NumericRunContext {
+        container,
+        run,
+        source_index_start,
+        available_inline_extent,
+        cursor_block,
+        uncollapsed_cursor_block,
+        constants,
+        provider_enabled: _,
+        line_box_context,
+        tail,
+        indent_state,
+        participants,
+    } = context;
+    let wrapping = {
+        tree.wrapping_context()
+            .map(|(context, graph)| {
+                // Wrapping cuts index emitted participants, not native slots
+                // omitted for hidden or out-of-flow children.
+                let nodes: Vec<_> = participants
+                    .iter()
+                    .map(|participant| {
+                        let source_index = match participant {
+                            MixedInlineParticipantOf::Atomic { item, .. } => item.source_index,
+                            MixedInlineParticipantOf::ForcedLineBreak(control) => {
+                                control.source_index()
+                            }
+                            MixedInlineParticipantOf::Boundary(control) => control.source_index(),
+                        };
+                        run[source_index - source_index_start]
+                    })
+                    .collect();
+                context
+                    .numeric_projection(
+                        graph,
+                        container,
+                        crate::inline_wrapping::NativeRunSource {
+                            nodes: run,
+                            start: source_index_start,
+                        },
+                        &nodes,
+                    )
+                    .map(|projection| {
+                        if available_inline_extent.operation() == crate::SizingOperation::MinContent
+                        {
+                            projection.without_avoidance()
+                        } else {
+                            projection
+                        }
+                    })
+            })
+            .transpose()
+            .map_err(|error| crate::inline_wrapping::wrapping_error(container, error))?
+    };
+    let (margin, cursor_block) =
+        if crate::inline::numeric_run_has_formatted_line(&participants, wrapping.as_ref()) {
+            (InlineRunMargin::Separates, cursor_block)
+        } else {
+            (InlineRunMargin::Adjoins, uncollapsed_cursor_block)
+        };
+    let observe_formatted = matches!(
+        constants.wrap_style,
+        crate::TextWrapStyle::Balance
+            | crate::TextWrapStyle::AvoidShortLastLine
+            | crate::TextWrapStyle::Pretty
+    ) && crate::layout_math::normal_available_size(available_inline_extent)
+        .is_some()
+        || tree
+            .text_computation()
+            .is_some_and(|state| state.formatted_active());
+    let input = MixedInlineRunInputOf {
+        inline_baseline_context: constants.inline_baseline_context,
+        groups: tree
+            .group_computation()
+            .map(|groups| groups.snapshot())
+            .unwrap_or_default(),
+        wrapping,
+        text_wrap_style: constants.wrap_style,
+        line_box_context,
+        observe_tail: tail != crate::text_layout::fit::TailContext::Unrestricted,
+        available_inline_extent,
+        flow_axes: constants.flow_axes,
+        text_align: constants.text_align,
+        text_align_last: constants.text_align_last,
+        indent: resolve_text_indent(container, constants.text_indent, available_inline_extent)?,
+        indent_state,
+        participants,
+    };
+    Ok(NumericRunSetup {
+        input,
+        observe_formatted,
+        margin,
+        cursor_block,
+    })
+}
+
+pub(in crate::block) struct NumericFit<S: LayoutScalar> {
+    run: crate::inline::NumericRun<S>,
+    provider_enabled: bool,
+    margin: InlineRunMargin,
+    cursor_block: S,
+}
+
+impl<S: LayoutScalar> NumericFit<S> {
+    pub(super) fn begin<'input, Tree, M>(
+        tree: &mut Tree,
+        context: NumericRunContext<'_, Tree::Node, S>,
+    ) -> LayoutResultOf<Tree::Node, Self, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+    {
+        let container = context.container;
+        let provider_enabled = context.provider_enabled;
+        let NumericRunSetup {
+            input,
+            observe_formatted,
+            margin,
+            cursor_block,
+        } = prepare_numeric_run(tree, context)?;
+        let run = crate::inline::NumericRun::new(input, observe_formatted)
+            .map_err(|error| crate::inline_wrapping::numeric_wrapping_error(container, error))?;
+        Ok(Self {
+            run,
+            provider_enabled,
+            margin,
+            cursor_block,
+        })
+    }
+
+    pub(super) fn advance<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        container: Tree::Node,
+        constants: &Constants<S>,
+        exclusions: &FloatExclusions<S, Tree::Node>,
+        children: &mut [RetainedAtomicChild<'input, Tree::Node, S>],
+    ) -> AtomicReceiverNext<Tree::Node, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+    {
+        loop {
+            let cursor = self.cursor_block;
+            let inset = constants.logical_content_box_inset().inline_start;
+            let demand = self
+                .run
+                .advance(
+                    |start, end| {
+                        let band = if self.provider_enabled {
+                            exclusions.query_provider_band(
+                                tree,
+                                container,
+                                cursor + start,
+                                cursor + end,
+                            )?
+                        } else {
+                            exclusions
+                                .query_rectangular_line_band(cursor + start, cursor + end)
+                                .map_err(|error| text_run_error(container, error.into()))?
+                        };
+                        Ok(LogicalLineBandQueryResultOf {
+                            inline_start: band.inline_start - inset,
+                            inline_end: band.inline_end - inset,
+                            next_transition: band.next_transition.map(|value| value - cursor),
+                        })
+                    },
+                    |block, clear| {
+                        exclusions.clearance_for_line_intent(cursor + block, clear) - cursor
+                    },
+                )
+                .map_err(|error| numeric_fit_error(container, error))?;
+            let Some(demand) = demand else {
+                return Ok(None);
+            };
+            match prepare_atomic_receiver(
+                container,
+                children,
+                demand.source_index,
+                demand.expected,
+                constants.flow_axes,
+            )? {
+                std::ops::ControlFlow::Break(strut) => {
+                    self.run.accept_receiver(strut).map_err(|error| {
+                        crate::inline_wrapping::numeric_wrapping_error(container, error)
+                    })?
+                }
+                std::ops::ControlFlow::Continue(child) => return Ok(Some(child)),
+            }
+        }
+    }
+
+    pub(super) fn accept<'input, Node: Copy, M>(
+        &mut self,
+        container: Node,
+        children: &mut [RetainedAtomicChild<'input, Node, S>],
+        child: AtomicReceiverChild<Node, S>,
+        output: ComputeOutputOf<S>,
+        axes: FlowAxes,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let strut = accept_atomic_receiver(children, child, output, axes)?;
+        self.run
+            .accept_receiver(strut)
+            .map_err(|error| crate::inline_wrapping::numeric_wrapping_error(container, error))
+    }
+
+    pub(in crate::block) fn finish<Node: Copy, M>(
+        self,
+        container: Node,
+    ) -> LayoutResultOf<Node, NumericRunFit<S>, S, M> {
+        let report = self
+            .run
+            .finish()
+            .map_err(|error| numeric_fit_error(container, error))?;
+        Ok(NumericRunFit {
+            report,
+            margin: self.margin,
+            cursor_block: self.cursor_block,
+        })
+    }
+}
+
+fn numeric_fit_error<Node, S: LayoutScalar, M>(
+    container: Node,
+    error: crate::inline::NumericRunError<LayoutErrorOf<Node, S, M>>,
+) -> LayoutErrorOf<Node, S, M> {
+    match error {
+        crate::inline::NumericRunError::Numeric(error) => {
+            crate::inline_wrapping::numeric_wrapping_error(container, error)
+        }
+        crate::inline::NumericRunError::Band(error) => error,
+    }
 }
 
 pub(super) struct CapturedRunContext<'a, 'input, Node, S: LayoutScalar> {
@@ -646,6 +814,23 @@ where
     })
 }
 
+pub(super) type AtomicReceiverNext<Node, S, M> =
+    LayoutResultOf<Node, Option<AtomicReceiverChild<Node, S>>, S, M>;
+type AtomicReceiverPreparation<Node, S, M> = LayoutResultOf<
+    Node,
+    std::ops::ControlFlow<crate::inline::ReferencedInlineStrutOf<S>, AtomicReceiverChild<Node, S>>,
+    S,
+    M,
+>;
+
+pub(crate) struct AtomicReceiverChild<Node, S: LayoutScalar> {
+    pub(in crate::block) node: Node,
+    pub(in crate::block) input: ComputeInputOf<S>,
+    index: usize,
+    expected: crate::InlineBaselineContext,
+    demand: crate::output::NamedBaselineDemand,
+}
+
 fn resolve_atomic_receiver<'input, Tree, S, M>(
     tree: &mut Tree,
     container: Tree::Node,
@@ -658,6 +843,22 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
+    match prepare_atomic_receiver(container, children, source_index, expected, axes)? {
+        std::ops::ControlFlow::Break(strut) => Ok(strut),
+        std::ops::ControlFlow::Continue(child) => {
+            let output = tree.compute_child(child.node, child.input)?;
+            accept_atomic_receiver(children, child, output, axes)
+        }
+    }
+}
+
+fn prepare_atomic_receiver<Node: Copy, S: LayoutScalar, M>(
+    container: Node,
+    children: &[RetainedAtomicChild<'_, Node, S>],
+    source_index: usize,
+    expected: crate::InlineBaselineContext,
+    axes: FlowAxes,
+) -> AtomicReceiverPreparation<Node, S, M> {
     let invalid = |node| {
         LayoutErrorOf::new(
             LayoutErrorSiteOf::Node(node),
@@ -670,7 +871,7 @@ where
     let index = children
         .binary_search_by_key(&source_index, |row| row.source_index)
         .map_err(|_| invalid(container))?;
-    let row = &mut children[index];
+    let row = &children[index];
     let InlineParticipantKindOf::Box(style) = row.projection.kind() else {
         return Err(invalid(row.node));
     };
@@ -695,24 +896,64 @@ where
         && row.request.run_mode() == RunMode::ComputeSize
         && row.request.named_baseline_demand() == crate::output::NamedBaselineDemand::None
     {
-        // Refine only the missing fact under the original computation frame.
-        // Complete performed outputs are never speculatively placed again.
-        let refined =
-            tree.compute_child(row.node, row.request.with_named_baseline_demand(demand))?;
-        if refined.size != row.output.size {
-            return Err(invalid(row.node));
-        }
-        let (_, fact) = demand
-            .selected_fact(refined.named_baselines)
-            .expect("the retained source still selects one named fact");
-        let pair = row.output.named_baselines.get(name);
-        let pair = if style.baseline_source.prefers_last(style.display) {
-            crate::BaselinePairOf::new(pair.first(), fact)
-        } else {
-            crate::BaselinePairOf::new(fact, pair.last())
-        };
-        row.output.named_baselines = row.output.named_baselines.with(name, pair);
+        return Ok(std::ops::ControlFlow::Continue(AtomicReceiverChild {
+            node: row.node,
+            input: row.request.with_named_baseline_demand(demand),
+            index,
+            expected,
+            demand,
+        }));
     }
+    atomic_receiver_strut(row, expected, axes).map(std::ops::ControlFlow::Break)
+}
+
+fn accept_atomic_receiver<Node: Copy, S: LayoutScalar, M>(
+    children: &mut [RetainedAtomicChild<'_, Node, S>],
+    child: AtomicReceiverChild<Node, S>,
+    refined: ComputeOutputOf<S>,
+    axes: FlowAxes,
+) -> LayoutResultOf<Node, crate::inline::ReferencedInlineStrutOf<S>, S, M> {
+    let row = &mut children[child.index];
+    if refined.size != row.output.size {
+        return Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(row.node),
+            LayoutOperation::ChildLayout,
+            LayoutErrorKindOf::InternalInvariant(
+                crate::LayoutInternalInvariant::InvalidAtomicReceiverBasis,
+            ),
+        ));
+    }
+    let InlineParticipantKindOf::Box(style) = row.projection.kind() else {
+        unreachable!("validated atomic receiver is a box")
+    };
+    let crate::InlineBaselineContext::Named(name) = child.expected else {
+        unreachable!("validated receiver has a named reference")
+    };
+    let (_, fact) = child
+        .demand
+        .selected_fact(refined.named_baselines)
+        .expect("the retained source still selects one named fact");
+    let pair = row.output.named_baselines.get(name);
+    let pair = if style.baseline_source.prefers_last(style.display) {
+        crate::BaselinePairOf::new(pair.first(), fact)
+    } else {
+        crate::BaselinePairOf::new(fact, pair.last())
+    };
+    row.output.named_baselines = row.output.named_baselines.with(name, pair);
+    atomic_receiver_strut(row, child.expected, axes)
+}
+
+fn atomic_receiver_strut<Node: Copy, S: LayoutScalar, M>(
+    row: &RetainedAtomicChild<'_, Node, S>,
+    expected: crate::InlineBaselineContext,
+    axes: FlowAxes,
+) -> LayoutResultOf<Node, crate::inline::ReferencedInlineStrutOf<S>, S, M> {
+    let InlineParticipantKindOf::Box(style) = row.projection.kind() else {
+        unreachable!("validated atomic receiver is a box")
+    };
+    let crate::InlineBaselineContext::Named(name) = expected else {
+        unreachable!("validated receiver has a named reference")
+    };
     let inner =
         named_atomic_baseline(&style, row.output, row.margin, axes, name).map_err(|kind| {
             LayoutErrorOf::new(
@@ -738,6 +979,8 @@ where
     Ok(crate::inline::ReferencedInlineStrutOf {
         metrics,
         reference: expected,
-        source: crate::inline::InlineStrutSource::Atomic { source_index },
+        source: crate::inline::InlineStrutSource::Atomic {
+            source_index: row.source_index,
+        },
     })
 }
