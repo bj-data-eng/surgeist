@@ -6,21 +6,31 @@ use surgeist_cssom::CssomStore;
 use surgeist_dom::DomStyleCssomRoot;
 
 pub(super) fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
-    guest_insertion(None, true);
+    guest_insertion(None, None, true);
 }
 
 pub(super) fn guest_insertion_uses_the_effective_meta_style_directive() {
     guest_insertion(
         Some("default-src 'none'; style-src-elem 'unsafe-inline'"),
+        None,
         true,
     );
     guest_insertion(
         Some("style-src 'unsafe-inline'; style-src-elem 'none'"),
+        None,
         false,
     );
 }
 
-fn guest_insertion(policy: Option<&str>, expected_sheet: bool) {
+pub(super) fn guest_style_update_matches_the_exact_nonce() {
+    let policy = Some("style-src 'unsafe-inline' 'nonce-AbC'");
+    guest_insertion(policy, Some(("AbC", false)), true);
+    guest_insertion(policy, Some(("abc", false)), false);
+    guest_insertion(policy, Some(("AbC", true)), false);
+    guest_insertion(Some("style-src 'unsafe-inline' 'nonce-='"), None, true);
+}
+
+fn guest_insertion(policy: Option<&str>, nonce: Option<(&str, bool)>, expected_sheet: bool) {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
         limits.with_meta_processing_work(1_000_000)
@@ -62,8 +72,26 @@ fn guest_insertion(policy: Option<&str>, expected_sheet: bool) {
     if meta.is_some() {
         session.enable_trusted_types_csp(&cancel).unwrap();
     }
+    if let Some((value, true)) = nonce {
+        let mut slot = DomBatch::new();
+        slot.set_nonce(style, value);
+        session.dom().apply(slot, &cancel).unwrap();
+    }
     let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
     let permit = host.permit().unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, body, "styleParent");
+    expose_public_node_for_source_test(&mut host, &permit, style, "inlineStyle");
+    if let Some((value, slot_only)) = nonce {
+        host.in_document(&permit, |scope| {
+            evaluate(scope, "styleParent.appendChild(inlineStyle)")?;
+            if !slot_only {
+                let script = format!("inlineStyle.setAttribute('nonce', '{value}')");
+                evaluate(scope, &script)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
     if let Some(meta) = meta {
         expose_public_node_for_source_test(&mut host, &permit, head, "styleHead");
         expose_public_node_for_source_test(&mut host, &permit, meta, "styleMeta");
@@ -72,13 +100,13 @@ fn guest_insertion(policy: Option<&str>, expected_sheet: bool) {
         })
         .unwrap();
     }
-    expose_public_node_for_source_test(&mut host, &permit, body, "styleParent");
-    expose_public_node_for_source_test(&mut host, &permit, style, "inlineStyle");
     let inserted = host.in_document(&permit, |scope| {
-        let result = evaluate(
-            scope,
-            "styleParent.appendChild(inlineStyle) === inlineStyle",
-        )?;
+        let script = if nonce.is_some() {
+            "inlineStyle.textContent = 'p { color: blue }'; inlineStyle.textContent === 'p { color: blue }'"
+        } else {
+            "styleParent.appendChild(inlineStyle) === inlineStyle"
+        };
+        let result = evaluate(scope, script)?;
         let expected = scope.primitive(Primitive::Boolean(true))?;
         assert!(scope.strict_equals(&result, &expected)?);
         Ok(())
