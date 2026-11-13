@@ -1,5 +1,8 @@
 use super::*;
-use crate::document_scripting::guest::tests::attach_public_nodes;
+use crate::document_scripting::guest::tests::{
+    attach_public_nodes, attach_public_nodes_with_source_output_limit,
+    expose_public_node_for_source_test,
+};
 
 pub(super) fn adjacent_element_uses_the_current_native_branch_and_original_operand() {
     let cancel = Arc::new(AtomicBool::new(false));
@@ -80,4 +83,73 @@ pub(super) fn adjacent_element_uses_the_current_native_branch_and_original_opera
         assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
         Ok(())
     }).unwrap();
+    host.stop().into_session().unwrap();
+    adjacent_element_admits_each_return_branch_before_publication();
+}
+
+fn adjacent_element_admits_each_return_branch_before_publication() {
+    for outputs in [0, 1, 3, 4] {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (mut session, target) = hosted_session(&cancel, 0);
+        let mut batch = DomBatch::new();
+        let container = batch.create_element(target.document(), "div");
+        let receiver = batch.create_element(target.document(), "span");
+        let operand = batch.create_element(target.document(), "section");
+        batch.insert_before(&receiver, &container, None);
+        batch.insert_before(&operand, &container, None);
+        let done = session.dom().apply(batch, &cancel).unwrap();
+        let container = done.created(&container).unwrap().unwrap();
+        let receiver = done.created(&receiver).unwrap().unwrap();
+        let operand = done.created(&operand).unwrap().unwrap();
+        let mut host =
+            attach_public_nodes_with_source_output_limit(session, target, cancel, outputs);
+        let permit = host.permit().unwrap();
+        let detached = outputs < 2;
+        expose_public_node_for_source_test(
+            &mut host,
+            &permit,
+            if detached { container } else { receiver },
+            "limitedAdjacent",
+        );
+        expose_public_node_for_source_test(&mut host, &permit, operand, "limitedOperand");
+        let before = host.snapshot().unwrap();
+        let result = host.in_document(&permit, |scope| {
+            let script = if detached {
+                "limitedAdjacent.insertAdjacentElement('beforebegin', limitedOperand) === null"
+            } else {
+                "limitedAdjacent.insertAdjacentElement('beforeend', limitedOperand) === limitedOperand"
+            };
+            let actual = evaluate(scope, script)?;
+            let expected = scope.primitive(Primitive::Boolean(true))?;
+            assert!(scope.strict_equals(&actual, &expected)?);
+            Ok(())
+        });
+        let after = host.snapshot().unwrap();
+        if matches!(outputs, 0 | 3) {
+            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+                panic!(
+                    "one-short adjacent Element result must refuse before publication: {result:?}"
+                );
+            };
+            assert!(matches!(
+                failure.cause::<crate::DomSourceDriveError>(),
+                Some(crate::DomSourceDriveError::Source(
+                    crate::DomSourceRuntimeError::Dom(surgeist_dom::DomError::SourceOutputLimit)
+                ))
+            ));
+            assert_eq!(after.stamp(), before.stamp());
+            assert_eq!(after.node(operand).unwrap().parent(), Some(container));
+        } else {
+            result.unwrap();
+            if detached {
+                assert_eq!(after.stamp(), before.stamp());
+                assert_eq!(after.node(operand).unwrap().parent(), Some(container));
+            } else {
+                assert_eq!(after.node(operand).unwrap().parent(), Some(receiver));
+            }
+        }
+        host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
+            .unwrap();
+        host.stop().into_session().unwrap();
+    }
 }

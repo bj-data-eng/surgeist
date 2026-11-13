@@ -254,6 +254,99 @@ fn text_content_uses_character_data_and_replace_all_range_algorithms_and_explici
 }
 
 #[test]
+fn adjacent_element_admits_its_original_result_with_the_tree_mutation() {
+    let (mut dom, _, root, [a, b, c, d]) = fixture();
+    let before = dom.snapshot();
+    let policy =
+        |outputs| DomSourceLimits::new(64_000_000, 2_000_000, 20_000_000, 128, outputs, 0, 8);
+    let edit = || DomSourceEdit::insert_adjacent_element(a, "beforeend", b);
+    let mut lease = dom.begin_source_edit(edit(), policy(3), &cancel()).unwrap();
+    assert!(matches!(
+        lease.advance(&cancel()),
+        Err(DomError::SourceOutputLimit)
+    ));
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    drop(lease);
+    assert_eq!(children(&dom, root), [a, b, c, d]);
+    let mut lease = dom.begin_source_edit(edit(), policy(4), &cancel()).unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel()).unwrap() else {
+        panic!("actual adjacent Element insertion");
+    };
+    assert_eq!(
+        done.output(),
+        Some(DomSourceOutput::AdjacentElement(Some(b)))
+    );
+    assert_eq!(done.published_node(), None);
+    assert_eq!(
+        done.commit().changes().changes(),
+        [
+            DomChange::Children(root),
+            DomChange::Children(a),
+            DomChange::Parent(b)
+        ]
+    );
+    drop(lease);
+    assert_eq!(children(&dom, root), [a, c, d]);
+    assert_eq!(children(&dom, a), [b]);
+    assert_eq!(before.node(b).unwrap().parent(), Some(root));
+}
+
+#[test]
+fn adjacent_element_admits_null_and_self_results_without_mutating_or_adopting() {
+    let (mut dom, doc, root, [a, b, c, d]) = fixture();
+    let mut batch = DomBatch::new();
+    let other = batch.create_document();
+    let detached = batch.create_element(&other, "detached");
+    let detached = apply(&mut dom, batch).created(&detached).unwrap().unwrap();
+    let before = dom.snapshot();
+    let policy =
+        |outputs| DomSourceLimits::new(64_000_000, 2_000_000, 20_000_000, 128, outputs, 0, 8);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_adjacent_element(detached, "afterend", a),
+            policy(0),
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel()),
+        Err(DomError::SourceOutputLimit)
+    ));
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    drop(lease);
+    for (receiver, position, expected) in [
+        (detached, "beforebegin", None),
+        (detached, "afterend", None),
+        (a, "beforebegin", Some(a)),
+        (a, "afterend", Some(a)),
+    ] {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::insert_adjacent_element(receiver, position, a),
+                policy(1),
+                &cancel(),
+            )
+            .unwrap();
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel()).unwrap() else {
+            panic!("no-op adjacent Element result");
+        };
+        assert_eq!(
+            done.output(),
+            Some(DomSourceOutput::AdjacentElement(expected))
+        );
+        assert!(done.commit().changes().changes().is_empty());
+        assert_eq!(lease.snapshot().stamp(), before.stamp());
+    }
+    assert_eq!(dom.snapshot().node(a).unwrap().owner_document(), Some(doc));
+    assert_eq!(children(&dom, root), [a, b, c, d]);
+    assert!(
+        matches!(run(&mut dom, DomSourceEdit::insert_adjacent_element(detached, "invalid", a)), DomSourceProgress::Failed(failure) if failure.error() == &DomError::InvalidAdjacentPosition)
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.snapshot().node(a).unwrap().owner_document(), Some(doc));
+}
+
+#[test]
 fn adjacent_text_creates_exact_empty_text_and_interprets_ascii_positions_after_creation() {
     let (mut dom, doc, root, [a, b, c, d]) = fixture();
     complete(
