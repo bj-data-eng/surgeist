@@ -308,6 +308,12 @@ impl Draft {
                 self.establish_creation_global(attribute, creation_global, cancel)?;
             }
         }
+        if creation_global.is_some()
+            && let Some(contents) = self.node(copy)?.template_contents()
+            && self.node(contents)?.relevant_global().is_none()
+        {
+            self.establish_creation_global(contents, creation_global, cancel)?;
+        }
         let document = if matches!(self.node(copy)?.kind(), transaction::KindRead::Document(_)) {
             copy
         } else {

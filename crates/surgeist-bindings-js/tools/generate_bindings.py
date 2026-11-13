@@ -115,6 +115,8 @@ def attributes_shape(items):
         text(item["name"], "extended attribute name")
         if item["name"] in {"Exposed", "PutForwards"}:
             text(item.get("value"), "extended attribute value")
+        elif item["name"] == "Reflect" and "value" in item:
+            text(item["value"], "reflected attribute name")
         elif item["name"] == "ReflectRange":
             sequence(item.get("value"), "reflection range", nonempty=True)
             require(len(item["value"]) == 2, "reflection range needs two integers")
@@ -347,7 +349,7 @@ def attributes(items):
         value = item.get("value")
         if name in {"Exposed", "PutForwards", "ReflectRange"}:
             require(value is not None, f"{name} requires a value")
-        else:
+        elif name != "Reflect":
             require(value is None, f"{name} takes no value")
         if name == "Exposed":
             require(value in {"Window", "*"}, "unexpected selected exposure")
@@ -356,6 +358,9 @@ def attributes(items):
         elif name == "ReflectRange":
             require(isinstance(value, list) and len(value) == 2 and
                     all(type(x) is int for x in value), "invalid reflection range")
+        elif name == "Reflect" and value is not None:
+            require(re.fullmatch(r"[a-z][a-z0-9-]*", value), "invalid reflected attribute name")
+            value = json.dumps(value)
         suffix = ""
         if isinstance(value, list):
             suffix = "=(" + ", ".join(map(str, value)) + ")"

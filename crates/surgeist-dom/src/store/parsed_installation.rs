@@ -902,6 +902,65 @@ fn association_document(
     Ok(())
 }
 
+fn qualify_inert_template_realms(
+    report: &HtmlParseReport,
+    source: &Source<'_>,
+    draft: &mut Draft,
+    c: &mut Control<'_>,
+) -> Result<(), Error> {
+    use surgeist_html_parser::HtmlParseEffect;
+
+    for record in &source.metadata {
+        c.step(1)?;
+        if let Some((_, _, Some(inert))) = record.document_facts()
+            && let Some(row) = source.index(&record.node().id(), c)?
+        {
+            let owner = source.rows[row]
+                .key
+                .ok_or(Error::CapturedStateUnavailable)?;
+            let inert = source.key(&inert.id(), c)?;
+            inherit_template_realm(draft, owner, inert, c.cancel)?;
+        }
+    }
+    if source.capture.is_some() {
+        let effects = report.effects()?.ok_or(Error::NotCompletedFragmentReport)?;
+        for index in 0..effects.len() {
+            c.step(1)?;
+            if let Some(HtmlParseEffect::TemplateCache { document, inert }) =
+                effects.effect(index)?
+            {
+                let owner = source.captured_key(&document.id(), c)?;
+                let inert = source.key(&inert.id(), c)?;
+                inherit_template_realm(draft, owner, inert, c.cancel)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn inherit_template_realm(
+    draft: &mut Draft,
+    owner: Key,
+    inert: Key,
+    cancel: &AtomicBool,
+) -> Result<(), Error> {
+    if !matches!(inert, Key::Created(_))
+        || !matches!(
+            draft.node(owner)?.kind(),
+            transaction::KindRead::Document(_)
+        )
+        || !matches!(
+            draft.node(inert)?.kind(),
+            transaction::KindRead::Document(_)
+        )
+    {
+        return Err(Error::CapturedStateUnavailable);
+    }
+    let global = draft.node(owner)?.relevant_global();
+    draft.establish_creation_global(inert, global, cancel)?;
+    Ok(())
+}
+
 fn apply_fragment_effects(
     report: &HtmlParseReport,
     source: &Source<'_>,
@@ -1205,6 +1264,10 @@ impl Dom {
             }
             source.rows[i].key = Some(key);
         }
+        // An inert Template document has the realm of the Document that
+        // created it, even though it has no browsing context. Establish the
+        // provenance before forming nodes that belong to that inert owner.
+        qualify_inert_template_realms(&report, &source, &mut draft, &mut c)?;
         for i in 0..source.rows.len() {
             c.step(1)?;
             let node = source.rows[i].source;

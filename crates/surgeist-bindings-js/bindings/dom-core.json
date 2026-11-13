@@ -361,6 +361,16 @@
       "entries": ["HTMLTitleElement"]
     },
     {
+      "id": "HTMLTemplateElement.source",
+      "path": "references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md",
+      "anchor": "htmltemplateelement",
+      "block": 0,
+      "sha256": "bb9488c45807192cdf8b284b2ee2cda6b298df12101c4211c2194ff7e4df53c7",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element",
+      "entries": ["HTMLTemplateElement"]
+    },
+    {
       "id": "HTMLBodyElement.source",
       "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
       "anchor": "the&#45;body&#45;element",
@@ -3935,6 +3945,85 @@
           "name": "text",
           "readonly": false,
           "id": "HTMLTitleElement.text"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLTemplateElement",
+      "kind": "interface",
+      "name": "HTMLTemplateElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "attributes": [{"name": "HTMLConstructor"}],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLTemplateElement.constructor:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DocumentFragment"},
+          "name": "content",
+          "readonly": true,
+          "id": "HTMLTemplateElement.content"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect", "value": "for"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "htmlFor",
+          "readonly": false,
+          "id": "HTMLTemplateElement.htmlFor"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "shadowRootMode",
+          "readonly": false,
+          "id": "HTMLTemplateElement.shadowRootMode"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "shadowRootDelegatesFocus",
+          "readonly": false,
+          "id": "HTMLTemplateElement.shadowRootDelegatesFocus"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "shadowRootSerializable",
+          "readonly": false,
+          "id": "HTMLTemplateElement.shadowRootSerializable"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "shadowRootSlotAssignment",
+          "readonly": false,
+          "id": "HTMLTemplateElement.shadowRootSlotAssignment"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "shadowRootClonable",
+          "readonly": false,
+          "id": "HTMLTemplateElement.shadowRootClonable"
+        },
+        {
+          "attributes": [{"name": "CEReactions"}, {"name": "Reflect"}],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "DOMString"},
+          "name": "shadowRootCustomElementRegistry",
+          "readonly": false,
+          "id": "HTMLTemplateElement.shadowRootCustomElementRegistry"
         }
       ],
       "inherits": "HTMLElement"
@@ -7626,6 +7715,187 @@
           "contract": "The reached canonical string-replace-all continuation, without replaying individual detach/create edits.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-node-string-replace-all",
           "issue": 2276
+        }
+      ]
+    },
+    "HTMLTemplateElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.constructor.construct",
+      "producers": [{"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}],
+      "requirements": []
+    },
+    "HTMLTemplateElement.content/get": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.content.get",
+      "result_view": "live",
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/template.rs", "symbol": "content_fragment_with"}],
+      "requirements": []
+    },
+    "HTMLTemplateElement.htmlFor/get": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.htmlfor.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.htmlFor/set": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.htmlfor.set",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.shadowRootMode/get": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.shadowrootmode.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.shadowRootMode/set": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.shadowrootmode.set",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.shadowRootDelegatesFocus/get": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.shadowrootdelegatesfocus.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.shadowRootDelegatesFocus/set": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.shadowrootdelegatesfocus.set",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.shadowRootSerializable/get": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.shadowrootserializable.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.shadowRootSerializable/set": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.shadowrootserializable.set",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.shadowRootSlotAssignment/get": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.shadowrootslotassignment.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.shadowRootSlotAssignment/set": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.shadowrootslotassignment.set",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.shadowRootClonable/get": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.shadowrootclonable.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.shadowRootClonable/set": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.shadowrootclonable.set",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.shadowRootCustomElementRegistry/get": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.shadowrootcustomelementregistry.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
+        }
+      ]
+    },
+    "HTMLTemplateElement.shadowRootCustomElementRegistry/set": {
+      "kind": "native",
+      "adapter": "htmltemplateelement.shadowrootcustomelementregistry.set",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the selected HTML Template reflection through the canonical attribute operation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element"
         }
       ]
     },

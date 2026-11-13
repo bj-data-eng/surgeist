@@ -89,6 +89,7 @@ impl Draft {
                 Ok(state.inert().expect("actual cached Document"))
             }
             surgeist_html::elements::template::HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument => {
+                let global = self.node(document)?.relevant_global();
                 let KindRead::Document(source) = self.node(document)?.kind() else {
                     unreachable!("Document role requires Document")
                 };
@@ -101,6 +102,7 @@ impl Draft {
                 let key = Key::Created(self.created.len());
                 let key = self.allocate(NewNode::Document(metadata), key, limits, cancel)?;
                 drop(formation);
+                self.establish_creation_global(key, global, cancel)?;
                 let mut relation = self.template_document_mut(key, cancel)?;
                 *relation = Some(TemplateDocument::InertTemplate);
                 relation.commit(cancel)?;
@@ -126,6 +128,10 @@ impl Draft {
         let document =
             self.appropriate_template_document(self.node(node)?.document(), limits, cancel)?;
         let contents = self.allocate(NewNode::DocumentFragment, document, limits, cancel)?;
+        if self.node(contents)?.relevant_global().is_none() {
+            let global = self.node(node)?.relevant_global();
+            self.establish_creation_global(contents, global, cancel)?;
+        }
         let mut relation = self.host_mut(contents, cancel)?;
         *relation = Some(node);
         relation.commit(cancel)?;

@@ -25,6 +25,7 @@ mod parent_node;
 mod processing_instruction;
 mod shadow;
 mod style_policy;
+mod template;
 mod text;
 mod tree;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
