@@ -334,7 +334,9 @@ Element.shadowRoot exposes open roots. Node root reads and event paths use
 canonical identities and preserve closed-root visibility and retargeting.
 `Element.attachShadow` converts its options before revalidating the live host.
 Native Source attaches a new open or closed root or reuses a declarative root
-of the same mode. The wrapper uses the root's creation realm and keeps its
+of the same mode. Reuse that would enqueue custom-element disconnection
+reactions refuses before publication until backup queue delivery is available.
+The wrapper uses the root's creation realm and keeps its
 exact retirement watch. Reuse returns the existing wrapper when available
 and preserves the root's settings while removing its ordinary children.
 The synchronous binding requires one complete Source publication. Native
