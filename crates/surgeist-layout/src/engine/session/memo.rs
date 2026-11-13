@@ -279,6 +279,11 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
                 && graph.children[index].iter().all(|&child| eligible[child]);
         }
         self.memo = Some(Memo::new(eligible));
+        if self.bound.is_none()
+            && (0..graph.nodes.len()).any(|index| self.block_floats.needs_work(index) == Some(true))
+        {
+            self.cache.indexed_stores = Some(super::cache_stores::CacheStores::new());
+        }
     }
 
     pub(crate) fn release_request_memo(&mut self) {

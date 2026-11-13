@@ -59,7 +59,7 @@ pub(super) struct InFlowBoxPreparation<S: LayoutScalar> {
     parent_inline_basis: Option<S>,
     avoids_float_exclusions: bool,
     pub(super) inherits_float_exclusions: bool,
-    places_against_float_exclusions: bool,
+    pub(super) places_against_float_exclusions: bool,
 }
 
 impl<S: LayoutScalar> InFlowBoxPreparation<S> {
@@ -115,20 +115,16 @@ where
         clearance_funding: pending.clearance_funding,
         introduced_cut: pending.introduced_cut,
     };
-    finish_in_flow_box(tree, &computation, preparation, output)
+    Ok(finish_in_flow_box(&computation, preparation, output, None))
 }
 
-pub(super) fn finish_requested_box<'input, Tree, S, M>(
-    tree: &mut Tree,
-    computation: InFlowBoxComputation<'_, 'input, Tree::Node, S>,
+pub(super) fn finish_requested_box<Node: Copy + Eq, S: LayoutScalar>(
+    computation: InFlowBoxComputation<'_, '_, Node, S>,
     preparation: InFlowBoxPreparation<S>,
     output: ComputeOutputOf<S>,
-    resident_cut: Option<entry::canonical::Separation<Tree::Node, S>>,
-) -> InFlowBoxResult<Tree::Node, S, M>
-where
-    Tree: Compute<'input, M, Scalar = S>,
-    S: LayoutScalar,
-{
+    measured: Option<MeasuredAgainstFloats<S>>,
+    resident_cut: Option<entry::canonical::Separation<Node, S>>,
+) -> InFlowComputedBox<Node, S> {
     let output = InFlowBoxOutput {
         output,
         shared_child: None,
@@ -139,7 +135,7 @@ where
                 && cut.index == computation.index
         }),
     };
-    finish_in_flow_box(tree, &computation, preparation, output)
+    finish_in_flow_box(&computation, preparation, output, measured)
 }
 
 pub(super) fn prepare_in_flow_box<'input, Tree, S, M>(
@@ -244,101 +240,59 @@ where
     ))
 }
 
-fn finish_in_flow_box<'input, Tree, S, M>(
-    tree: &mut Tree,
-    computation: &InFlowBoxComputation<'_, 'input, Tree::Node, S>,
+fn finish_in_flow_box<Node, S: LayoutScalar>(
+    computation: &InFlowBoxComputation<'_, '_, Node, S>,
     preparation: InFlowBoxPreparation<S>,
-    result: InFlowBoxOutput<Tree::Node, S>,
-) -> InFlowBoxResult<Tree::Node, S, M>
-where
-    Tree: Compute<'input, M, Scalar = S>,
-    S: LayoutScalar,
-{
+    result: InFlowBoxOutput<Node, S>,
+    measured: Option<MeasuredAgainstFloats<S>>,
+) -> InFlowComputedBox<Node, S> {
     let InFlowBoxComputation {
-        child,
-        child_style,
         constants,
         prepared,
-        adjoining,
-        float_exclusions,
-        input,
-        pass_request,
-        child_run_mode,
         content_inline_size,
         ..
     } = *computation;
     let InFlowBoxPreparation {
-        mut child_input,
-        child_indent_context,
+        child_input,
         parent_logical_unresolved_margin,
         parent_inline_basis,
         avoids_float_exclusions,
-        places_against_float_exclusions,
         ..
     } = preparation;
     let InFlowBoxOutput {
-        mut output,
+        output,
         shared_child,
         clearance_funding,
         introduced_cut,
     } = result;
-    let mut accepted_float_position = None;
-    let mut logical_child_size = constants.flow_axes.logical_size(output.size);
+    let (output, child_input, accepted_float_position) = measured
+        .map_or((output, child_input, None), |measured| {
+            (measured.output, measured.input, measured.position)
+        });
+    let logical_child_size = constants.flow_axes.logical_size(output.size);
     let mut logical_child_margin = resolve_logical_in_flow_margin(
         parent_logical_unresolved_margin,
         logical_child_size,
         parent_inline_basis,
     );
-    let mut child_margin = constants.flow_axes.physical_edges(logical_child_margin);
-    if places_against_float_exclusions {
-        let measured = compute_child_against_floats(
-            tree,
-            FloatAvoidingChild {
-                child,
-                child_style,
-                constants,
-                adjoining,
-                prepared,
-                pass_request,
-                child_run_mode,
-                child_indent_context,
-                parent_inline_basis,
-                containing_scrollbars: input.settled_auto_scrollbars(),
-                float_exclusions,
-                output,
-                child_margin,
-                child_input,
-            },
-        )?;
-        output = measured.output;
-        child_input = measured.input;
-        accepted_float_position = measured.position;
-        logical_child_size = constants.flow_axes.logical_size(output.size);
-        logical_child_margin = resolve_logical_in_flow_margin(
-            parent_logical_unresolved_margin,
-            logical_child_size,
-            parent_inline_basis,
-        );
-        if let Some(position) = accepted_float_position {
-            let inline_offset =
-                position.inline - constants.logical_content_box_inset().inline_start;
-            if matches!(
-                parent_logical_unresolved_margin.inline_start,
-                ResolvedLengthAutoOf::Auto
-            ) {
-                logical_child_margin.inline_start = inline_offset;
-            }
-            if matches!(
-                parent_logical_unresolved_margin.inline_end,
-                ResolvedLengthAutoOf::Auto
-            ) {
-                logical_child_margin.inline_end =
-                    content_inline_size - inline_offset - logical_child_size.inline;
-            }
+    if let Some(position) = accepted_float_position {
+        let inline_offset = position.inline - constants.logical_content_box_inset().inline_start;
+        if matches!(
+            parent_logical_unresolved_margin.inline_start,
+            ResolvedLengthAutoOf::Auto
+        ) {
+            logical_child_margin.inline_start = inline_offset;
         }
-        child_margin = constants.flow_axes.physical_edges(logical_child_margin);
+        if matches!(
+            parent_logical_unresolved_margin.inline_end,
+            ResolvedLengthAutoOf::Auto
+        ) {
+            logical_child_margin.inline_end =
+                content_inline_size - inline_offset - logical_child_size.inline;
+        }
     }
-    Ok(InFlowComputedBox {
+    let child_margin = constants.flow_axes.physical_edges(logical_child_margin);
+    InFlowComputedBox {
         output,
         child_input,
         child_margin,
@@ -351,7 +305,7 @@ where
         shared_child,
         clearance_funding,
         introduced_cut,
-    })
+    }
 }
 
 fn block_child_avoids_float_exclusions<S: LayoutScalar>(
@@ -396,81 +350,112 @@ fn set_parent_inline_space<S: LayoutScalar>(
     Ok(())
 }
 
-struct FloatAvoidingChild<'input, 'a, Node, S: LayoutScalar> {
-    child: Node,
-    child_style: &'a BlockChildProjection<'input, S>,
-    constants: &'a Constants<S>,
-    adjoining: &'a entry::AdjoiningFlow<S>,
-    prepared: &'a PreparedChild<S>,
-    pass_request: crate::SizingRequestOf<S>,
-    child_run_mode: RunMode,
-    child_indent_context: crate::text_indent::BlockIndentContext<S>,
-    parent_inline_basis: Option<S>,
-    containing_scrollbars: crate::scroll::SettledAutoScrollbarState,
-    float_exclusions: &'a FloatExclusions<S, Node>,
-    output: ComputeOutputOf<S>,
-    child_margin: Edges<S>,
-    child_input: ComputeInputOf<S>,
+pub(super) struct FloatAvoidance<S: LayoutScalar> {
+    block: Option<S>,
 }
 
-struct MeasuredAgainstFloats<S: LayoutScalar> {
+pub(crate) struct FloatBandRequest<S: LayoutScalar> {
+    pub(super) input: ComputeInputOf<S>,
+    pub(super) trial: Option<crate::engine::FloatChildTrial>,
+    next: Option<S>,
+}
+
+pub(super) struct MeasuredAgainstFloats<S: LayoutScalar> {
     output: ComputeOutputOf<S>,
     input: ComputeInputOf<S>,
     position: Option<LogicalPointOf<S>>,
 }
 
-fn compute_child_against_floats<'input, Tree, S, M>(
-    tree: &mut Tree,
-    request: FloatAvoidingChild<'input, '_, Tree::Node, S>,
-) -> ComputeResult<Tree::Node, MeasuredAgainstFloats<S>, S, M>
-where
-    Tree: Compute<'input, M, Scalar = S>,
-    S: LayoutScalar,
-{
-    let FloatAvoidingChild {
-        child,
-        child_style,
+fn float_child_block_start<Node, S: LayoutScalar>(
+    computation: &InFlowBoxComputation<'_, '_, Node, S>,
+    output: ComputeOutputOf<S>,
+    margin: Edges<S>,
+) -> S {
+    let InFlowBoxComputation {
         constants,
         adjoining,
-        prepared,
-        pass_request,
-        child_run_mode,
-        child_indent_context,
-        parent_inline_basis,
-        containing_scrollbars,
-        float_exclusions,
-        mut output,
-        child_margin,
-        mut child_input,
-    } = request;
-    let parent_logical_unresolved_margin = constants
-        .flow_axes
-        .logical_edges(prepared.unresolved_margin);
-    let child_flow_axes = child_style.common.flow_axes;
-    let child_parent_size = prepared.parent_size;
-    let child_logical_node_inner_size = child_flow_axes.logical_size(child_parent_size);
-    let child_logical_available = prepared.logical_available;
-    let available_child_inline = prepared.available_inline;
-    let child_padding = prepared.padding;
-    let child_border = prepared.border;
-    let mut accepted_float_position = None;
-    let block_start_for = |output: ComputeOutputOf<S>, margin: Edges<S>| {
-        let preview_top_margin = output
-            .block_margin_collapse
-            .at(constants.flow_axes.block_start())
-            .collapse_with_margin(margin.at_physical_side(constants.flow_axes.block_start()));
-        let start = adjoining.reduce_start(
-            constants.collapse_top_margin,
-            child_margin_can_collapse_with_parent(child_style),
-            preview_top_margin,
-        );
-        adjoining.cursor + start.offset
-    };
-    let preview_cursor_block = block_start_for(output, child_margin);
-    let inline_size_can_shrink = parent_inline_size_can_shrink(child_style, constants.flow_axes);
-    let band_request = |tree: &Tree,
-                        available_inline|
-     -> ComputeResult<Tree::Node, ComputeInputOf<S>, S, M> {
+        child_style,
+        ..
+    } = *computation;
+    let preview_top_margin = output
+        .block_margin_collapse
+        .at(constants.flow_axes.block_start())
+        .collapse_with_margin(margin.at_physical_side(constants.flow_axes.block_start()));
+    let start = adjoining.reduce_start(
+        constants.collapse_top_margin,
+        child_margin_can_collapse_with_parent(child_style),
+        preview_top_margin,
+    );
+    adjoining.cursor + start.offset
+}
+
+impl<S: LayoutScalar> FloatAvoidance<S> {
+    pub(super) fn begin<Node: Copy>(
+        computation: &InFlowBoxComputation<'_, '_, Node, S>,
+        preparation: &InFlowBoxPreparation<S>,
+        preview: ComputeOutputOf<S>,
+    ) -> Self {
+        let InFlowBoxComputation {
+            child_style,
+            constants,
+            float_exclusions,
+            ..
+        } = *computation;
+        let block = parent_inline_size_can_shrink(child_style, constants.flow_axes).then(|| {
+            let size = constants.flow_axes.logical_size(preview.size);
+            let margin = resolve_logical_in_flow_margin(
+                preparation.parent_logical_unresolved_margin,
+                size,
+                preparation.parent_inline_basis,
+            );
+            float_exclusions.clearance_block(
+                float_child_block_start(
+                    computation,
+                    preview,
+                    constants.flow_axes.physical_edges(margin),
+                ),
+                child_style.clear,
+            )
+        });
+        Self { block }
+    }
+
+    pub(super) fn request<'input, Tree, M>(
+        &self,
+        tree: &Tree,
+        computation: &InFlowBoxComputation<'_, 'input, Tree::Node, S>,
+        preparation: &InFlowBoxPreparation<S>,
+    ) -> ComputeResult<Tree::Node, FloatBandRequest<S>, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+    {
+        let Some(block) = self.block else {
+            return Ok(FloatBandRequest {
+                input: preparation.child_input,
+                trial: None,
+                next: None,
+            });
+        };
+        let (available_inline, next) = computation
+            .float_exclusions
+            .rectangular_bfc_opportunity(block, preparation.parent_logical_unresolved_margin);
+        let InFlowBoxComputation {
+            child,
+            child_style,
+            constants,
+            prepared,
+            pass_request,
+            child_run_mode,
+            input,
+            ..
+        } = *computation;
+        let child_flow_axes = child_style.common.flow_axes;
+        let child_parent_size = prepared.parent_size;
+        let child_logical_node_inner_size = child_flow_axes.logical_size(child_parent_size);
+        let child_logical_available = prepared.logical_available;
+        let available_child_inline = prepared.available_inline;
+        let child_padding = prepared.padding;
+        let child_border = prepared.border;
         let band_child_inline =
             crate::layout_math::remaining_available_extent(available_inline, S::ZERO)
                 .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
@@ -504,7 +489,7 @@ where
         ));
         set_parent_inline_space(&mut band_available, constants.flow_axes, band_child_inline)
             .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-        Ok(ComputeInputOf::<S>::for_child(
+        let request = ComputeInputOf::<S>::for_child(
             child_run_mode,
             SizingMode::InherentSize,
             RequestedAxis::Both,
@@ -513,69 +498,66 @@ where
             ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::BlockFlow),
             pass_request.with_axes(band_available),
         )
-        .with_containing_auto_scrollbar_pass(containing_scrollbars)
-        .with_block_indent_context(child_indent_context)
-        .with_baseline_demand_from(child_input))
-    };
+        .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
+        .with_block_indent_context(preparation.child_indent_context)
+        .with_baseline_demand_from(preparation.child_input);
+        Ok(FloatBandRequest {
+            input: request,
+            trial: request
+                .run_mode()
+                .is_perform_layout()
+                .then_some(crate::engine::FloatChildTrial::InFlow),
+            next,
+        })
+    }
 
-    if inline_size_can_shrink {
-        let mut block = float_exclusions.clearance_block(preview_cursor_block, child_style.clear);
-        loop {
-            let (available_inline, next) = float_exclusions
-                .rectangular_bfc_opportunity(block, parent_logical_unresolved_margin);
-            let request = band_request(tree, available_inline)?;
-            let packet = if request.run_mode().is_perform_layout() {
-                Some(tree.probe_float_child(
-                    child,
-                    request,
-                    crate::engine::FloatChildTrial::InFlow,
-                )?)
-            } else {
-                None
-            };
-            let measured = match &packet {
-                Some(packet) => packet.output,
-                None => tree.compute_child(child, request)?,
-            };
-            let size = constants.flow_axes.logical_size(measured.size);
+    pub(super) fn accept<Node: Copy>(
+        &mut self,
+        computation: &InFlowBoxComputation<'_, '_, Node, S>,
+        preparation: &InFlowBoxPreparation<S>,
+        request: FloatBandRequest<S>,
+        output: ComputeOutputOf<S>,
+    ) -> Option<MeasuredAgainstFloats<S>> {
+        let position = if let Some(block) = self.block {
+            let constants = computation.constants;
+            let size = constants.flow_axes.logical_size(output.size);
             let margin = resolve_logical_in_flow_margin(
-                parent_logical_unresolved_margin,
+                preparation.parent_logical_unresolved_margin,
                 size,
-                parent_inline_basis,
+                preparation.parent_inline_basis,
             );
-            let physical_margin = constants.flow_axes.physical_edges(margin);
-            let minimum_block = block_start_for(measured, physical_margin);
+            let minimum_block = float_child_block_start(
+                computation,
+                output,
+                constants.flow_axes.physical_edges(margin),
+            );
             if minimum_block > block {
-                block = minimum_block;
-                continue;
+                self.block = Some(minimum_block);
+                return None;
             }
-            let Some(location) = float_exclusions.rectangular_bfc_position(
+            let Some(location) = computation.float_exclusions.rectangular_bfc_position(
                 block,
                 size,
-                parent_logical_unresolved_margin,
+                preparation.parent_logical_unresolved_margin,
                 in_flow_child_inline_offset(size.inline, margin, constants),
             ) else {
-                block = next.expect("an intersecting float has a later boundary");
-                continue;
+                self.block = Some(
+                    request
+                        .next
+                        .expect("an intersecting float has a later boundary"),
+                );
+                return None;
             };
-            if let Some(packet) = packet {
-                tree.accept_float_child(&packet)?;
-            }
-            output = measured;
-            child_input = request;
-            accepted_float_position = Some(location);
-            break;
-        }
+            Some(location)
+        } else {
+            None
+        };
+        Some(MeasuredAgainstFloats {
+            output,
+            input: request.input,
+            position,
+        })
     }
-
-    if accepted_float_position.is_none() {
-        output = tree.compute_child(child, child_input)?;
-    }
-    Ok(MeasuredAgainstFloats {
-        output,
-        input: child_input,
-        position: accepted_float_position,
-    })
 }
 
 pub(super) struct PendingSharedBox<Node, S: LayoutScalar> {

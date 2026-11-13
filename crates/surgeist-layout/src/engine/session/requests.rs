@@ -1,9 +1,11 @@
 use std::{collections::TryReserveError, ops::ControlFlow};
 
 use super::memo::Capture;
-use super::{ChildAdmission, ChildCacheRequest, ComputeSession, SessionResult};
+use super::{ChildAdmission, ChildCacheRequest, ComputeSession, FloatChildTrial, SessionResult};
 use crate::block::intrinsic::{BlockAxisDemand, InlineContentChild};
-use crate::block::{BlockComputation, BlockResult, PendingBlockChild, begin_block_computation};
+use crate::block::{
+    BlockChildReceipt, BlockComputation, BlockResult, PendingBlockChild, begin_block_computation,
+};
 use crate::engine::block_scope::ordinary;
 use crate::engine::hidden::{HiddenChildren, HiddenRequest};
 use crate::{
@@ -25,7 +27,19 @@ enum Request<Node, S: LayoutScalar> {
         axis: PhysicalAxis,
     },
     AdvanceBlock,
+    FloatTrial(FloatTrialRequest<Node, S>),
     Complete(CompletedRequest<S>),
+}
+
+struct FloatTrialRequest<Node, S: LayoutScalar> {
+    node: Node,
+    input: ComputeInputOf<S>,
+    trial: FloatChildTrial,
+}
+
+enum RequestProgress<Node, S: LayoutScalar> {
+    Complete(CompletedRequest<S>),
+    FloatTrial(FloatTrialRequest<Node, S>),
 }
 
 #[derive(Clone, Copy)]
@@ -131,6 +145,12 @@ struct ChildCompletion<Node, S: LayoutScalar> {
 type SessionBlock<'input, Tree> =
     BlockRequest<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>;
 
+struct StagedTrial<'input, Tree: LayoutTree> {
+    request: FloatTrialRequest<Tree::Node, Tree::Scalar>,
+    session: ComputeSession<'input, Tree>,
+    pending: SessionPending<'input, Tree>,
+}
+
 fn reserve_error<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node, S, M> {
     LayoutErrorOf::new(
         LayoutErrorSiteOf::Node(node),
@@ -176,8 +196,71 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         request: SessionRequest<Tree>,
     ) -> SessionResult<Tree, CompletedRequest<Tree::Scalar>> {
         let mut pending = PendingRequests::new();
-        self.run_requests(request, &mut pending)
-            .map_err(|error| self.unwind_blocks(pending.blocks, error))
+        let mut staged = Vec::new();
+        let result = self.drive_staged_requests(request, &mut pending, &mut staged);
+        result.map_err(|mut error| {
+            while let Some(mut trial) = staged.pop() {
+                error = trial.session.unwind_blocks(trial.pending.blocks, error);
+            }
+            self.unwind_blocks(pending.blocks, error)
+        })
+    }
+
+    fn drive_staged_requests(
+        &mut self,
+        mut request: SessionRequest<Tree>,
+        pending: &mut SessionPending<'input, Tree>,
+        staged: &mut Vec<StagedTrial<'input, Tree>>,
+    ) -> SessionResult<Tree, CompletedRequest<Tree::Scalar>> {
+        loop {
+            let progress = if let Some(active) = staged.last_mut() {
+                active.session.run_requests(request, &mut active.pending)?
+            } else {
+                self.run_requests(request, pending)?
+            };
+            match progress {
+                RequestProgress::FloatTrial(trial) => {
+                    staged
+                        .try_reserve(1)
+                        .map_err(|_| reserve_error(trial.node))?;
+                    let parent = staged
+                        .last_mut()
+                        .map_or(&mut *self, |active| &mut active.session);
+                    let session = parent.child_staging(trial.node, trial.trial, None)?;
+                    request = Request::Child {
+                        node: trial.node,
+                        input: trial.input,
+                        projection: OutputProjection::Layout,
+                    };
+                    staged.push(StagedTrial {
+                        request: trial,
+                        session,
+                        pending: PendingRequests::new(),
+                    });
+                }
+                RequestProgress::Complete(output) => {
+                    let Some(finished) = staged.pop() else {
+                        return Ok(output);
+                    };
+                    let (parent, pending) = if let Some(active) = staged.last_mut() {
+                        (&mut active.session, &mut active.pending)
+                    } else {
+                        (&mut *self, &mut *pending)
+                    };
+                    let trial = finished.request;
+                    let packet = parent.seal_float_trial(
+                        trial.node,
+                        trial.input,
+                        trial.trial,
+                        finished.session,
+                        output.layout(),
+                    )?;
+                    assert!(matches!(pending.order.pop(), Some(PendingRequest::Block)));
+                    request =
+                        parent.resume_block(BlockChildReceipt::FloatTrial(packet), pending)?;
+                }
+            }
+        }
     }
 
     fn unwind_blocks(
@@ -203,7 +286,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         mut request: SessionRequest<Tree>,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, CompletedRequest<Tree::Scalar>> {
+    ) -> SessionResult<Tree, RequestProgress<Tree::Node, Tree::Scalar>> {
         loop {
             request = match request {
                 Request::Child {
@@ -249,8 +332,9 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     self.begin_axis(node, input, axis, pending)?
                 }
                 Request::AdvanceBlock => self.advance_block(pending)?,
+                Request::FloatTrial(trial) => return Ok(RequestProgress::FloatTrial(trial)),
                 Request::Complete(output) => match pending.order.pop() {
-                    None => return Ok(output),
+                    None => return Ok(RequestProgress::Complete(output)),
                     Some(PendingRequest::HiddenSiblings) => {
                         let (children, projection) = pending
                             .hidden
@@ -266,7 +350,9 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                         parent.accept_child(child, output.axis());
                         self.advance_block_axis(parent, pending)?
                     }
-                    Some(PendingRequest::Block) => self.resume_block(output.layout(), pending)?,
+                    Some(PendingRequest::Block) => {
+                        self.resume_block(BlockChildReceipt::Layout(output.layout()), pending)?
+                    }
                 },
             };
         }
@@ -302,7 +388,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
 
     fn resume_block(
         &mut self,
-        output: ComputeOutputOf<Tree::Scalar>,
+        output: BlockChildReceipt<Tree::Node, Tree::Scalar>,
         pending: &mut SessionPending<'input, Tree>,
     ) -> SessionResult<Tree, SessionRequest<Tree>> {
         let parent = pending.blocks.last_mut().expect("active Block request");
@@ -324,12 +410,20 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     request.entry.is_none(),
                     "ordinary request has no scope entry"
                 );
+                let trial = child.float_trial();
                 parent.child = Some(child);
                 pending
                     .order
                     .try_reserve(1)
                     .map_err(|_| reserve_error(request.node))?;
                 pending.order.push(PendingRequest::Block);
+                if let Some(trial) = trial {
+                    return Ok(Request::FloatTrial(FloatTrialRequest {
+                        node: request.node,
+                        input: request.input,
+                        trial,
+                    }));
+                }
                 Ok(Request::Child {
                     node: request.node,
                     input: request.input,

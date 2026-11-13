@@ -15,14 +15,25 @@ pub(crate) enum PendingInFlowChild<'input, Node, S: LayoutScalar> {
     Hidden,
     Box(PendingBox<'input, Node, S>),
     Inline(Option<crate::block::inline_run::PendingInlineAtomic<'input, Node, S>>),
+    FloatBand(FloatBandRequest<S>),
 }
 
-type ChildCompletion<'input, Node, S> = (PendingInFlowChild<'input, Node, S>, ComputeOutputOf<S>);
+type ChildCompletion<'input, Node, S> = (
+    PendingInFlowChild<'input, Node, S>,
+    BlockChildReceipt<Node, S>,
+);
 
 impl<Node: Copy, S: LayoutScalar> PendingInFlowChild<'_, Node, S> {
     pub(crate) fn shared_request(&self) -> Option<(Node, ComputeInputOf<S>)> {
         match self {
             Self::Box(child) => child.shared_request(),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn float_trial(&self) -> Option<crate::engine::FloatChildTrial> {
+        match self {
+            Self::FloatBand(band) => band.trial,
             _ => None,
         }
     }
@@ -46,6 +57,10 @@ impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         let Self { request, pending } = self;
+        if let Some(trial) = pending.float_trial() {
+            let packet = tree.probe_float_child(request.node, request.input, trial)?;
+            return Ok((pending, BlockChildReceipt::FloatTrial(packet)));
+        }
         let output = match &pending {
             PendingInFlowChild::Box(child) if child.preparation.inherits_float_exclusions => {
                 match tree.compute_child(request.node, request.input) {
@@ -57,11 +72,13 @@ impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
                 }
             }
             PendingInFlowChild::Box(_) => tree.compute_block_child(request)?,
-            PendingInFlowChild::Hidden | PendingInFlowChild::Inline(_) => {
+            PendingInFlowChild::Hidden
+            | PendingInFlowChild::Inline(_)
+            | PendingInFlowChild::FloatBand(_) => {
                 tree.compute_child(request.node, request.input)?
             }
         };
-        Ok((pending, output))
+        Ok((pending, BlockChildReceipt::Layout(output)))
     }
 }
 
@@ -88,6 +105,7 @@ struct ActiveInlineRun<'input, Node, S: LayoutScalar> {
 
 pub(in crate::block) struct InFlowTraversal<'input, Node, S: LayoutScalar> {
     active_inline: Option<ActiveInlineRun<'input, Node, S>>,
+    float_avoidance: Option<(PendingBox<'input, Node, S>, FloatAvoidance<S>)>,
     node: Node,
     input: ComputeInputOf<S>,
     inline_operation: crate::SizingOperation,
@@ -291,6 +309,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
         let slot_cursor = 0;
         Ok(Self {
             active_inline: None,
+            float_avoidance: None,
             node,
             input,
             inline_operation,
@@ -345,6 +364,19 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
     {
         if self.active_inline.is_some() {
             return self.advance_inline(tree, children, constants);
+        }
+        if let Some((pending, avoidance)) = &self.float_avoidance {
+            let computation =
+                self.box_computation(pending.child, &pending.style, &pending.prepared, constants);
+            let band = avoidance.request(tree, &computation, &pending.preparation)?;
+            return Ok(InFlowStep::Child(InFlowChild {
+                request: scope::ChildRequest {
+                    node: pending.child,
+                    input: band.input,
+                    entry: None,
+                },
+                pending: PendingInFlowChild::FloatBand(band),
+            }));
         }
         if self.index >= children.len() && self.slot_cursor >= self.slots.len() {
             return Ok(InFlowStep::Complete);
@@ -614,22 +646,42 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
         tree: &mut Tree,
         constants: &Constants<S>,
         pending: PendingInFlowChild<'input, Node, S>,
-        output: ComputeOutputOf<S>,
+        receipt: BlockChildReceipt<Node, S>,
     ) -> ComputeResult<Node, (), S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        let pending = match pending {
+        let mut pending = match pending {
             PendingInFlowChild::Inline(pending) => {
                 let active = self.active_inline.as_mut().expect("active inline run");
                 return active
                     .preparation
-                    .accept_child(tree, self.node, constants, &active.context, pending, output)
+                    .accept_child(
+                        tree,
+                        self.node,
+                        constants,
+                        &active.context,
+                        pending,
+                        receipt.layout(),
+                    )
                     .map_err(Into::into);
             }
             PendingInFlowChild::Box(pending) => Some(pending),
             PendingInFlowChild::Hidden => None,
+            PendingInFlowChild::FloatBand(band) => {
+                return self.accept_float_band(tree, constants, band, receipt);
+            }
         };
+        let output = receipt.layout();
+        if let Some(preview) = pending.as_ref()
+            && preview.preparation.places_against_float_exclusions
+        {
+            let computation =
+                self.box_computation(preview.child, &preview.style, &preview.prepared, constants);
+            let avoidance = FloatAvoidance::begin(&computation, &preview.preparation, output);
+            self.float_avoidance = Some((pending.take().expect("float child preview"), avoidance));
+            return Ok(());
+        }
         if let Some(PendingBox {
             child,
             style,
@@ -654,10 +706,54 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
                 self.remaining_cut = remaining_cut;
                 computed
             } else {
-                finish_requested_box(tree, computation, preparation, output, self.remaining_cut)?
+                finish_requested_box(computation, preparation, output, None, self.remaining_cut)
             };
             self.accept_box(tree, constants, self.index, child, &style, computed)?;
         }
+        self.index += 1;
+        Ok(())
+    }
+
+    fn accept_float_band<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        constants: &Constants<S>,
+        band: FloatBandRequest<S>,
+        receipt: BlockChildReceipt<Node, S>,
+    ) -> ComputeResult<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let (pending, mut avoidance) = self.float_avoidance.take().expect("active float avoidance");
+        let (output, packet) = match receipt {
+            BlockChildReceipt::Layout(output) => (output, None),
+            BlockChildReceipt::FloatTrial(packet) => (packet.output, Some(packet)),
+        };
+        let computation =
+            self.box_computation(pending.child, &pending.style, &pending.prepared, constants);
+        let Some(measured) = avoidance.accept(&computation, &pending.preparation, band, output)
+        else {
+            self.float_avoidance = Some((pending, avoidance));
+            return Ok(());
+        };
+        if let Some(packet) = packet {
+            tree.accept_float_child(&packet)?;
+        }
+        let computed = finish_requested_box(
+            computation,
+            pending.preparation,
+            output,
+            Some(measured),
+            self.remaining_cut,
+        );
+        self.accept_box(
+            tree,
+            constants,
+            self.index,
+            pending.child,
+            &pending.style,
+            computed,
+        )?;
         self.index += 1;
         Ok(())
     }
