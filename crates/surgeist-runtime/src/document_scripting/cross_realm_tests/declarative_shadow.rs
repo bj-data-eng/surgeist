@@ -494,6 +494,21 @@ pub(super) fn verify_declarative_shadow_reuse() {
             ),
             Err(error) => panic!("{matching} attachment failed: {error:?}"),
         }
+        if matches!(delivery, Delivery::Checkpoint | Delivery::Stop) {
+            let before = host.snapshot().unwrap().stamp();
+            let retirement = host
+                .with_native(|dom, _, _| {
+                    let mut batch = DomBatch::new();
+                    batch.destroy(custom);
+                    dom.apply(batch, &cancel)
+                })
+                .unwrap();
+            assert!(
+                retirement.is_err(),
+                "retirement must preserve the original pending receiver"
+            );
+            assert_eq!(host.snapshot().unwrap().stamp(), before);
+        }
         if matches!(
             delivery,
             Delivery::Stop | Delivery::Refuse | Delivery::RefuseAfterFirst
@@ -589,6 +604,18 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 Ok(())
             })
             .unwrap();
+        }
+        if matches!(delivery, Delivery::Checkpoint) {
+            host.with_native(|dom, _, _| {
+                let mut batch = DomBatch::new();
+                batch.destroy(custom);
+                dom.apply(batch, &cancel).unwrap();
+            })
+            .unwrap();
+            assert!(matches!(
+                host.snapshot().unwrap().node(custom),
+                Err(DomError::StaleNode)
+            ));
         }
         let after = host.snapshot().unwrap();
         assert_eq!(
