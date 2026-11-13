@@ -2,8 +2,8 @@
 #![cfg(not(target_family = "wasm"))]
 
 use surgeist_render::{
-    Color, ErrorCode, Image, Layer, Options, Parameters, Rect, RenderAttemptStatus, RenderPhase,
-    RenderResource, RenderWork, Renderer, Scene, Size,
+    Color, ErrorCode, Image, Layer, Options, Parameters, Rect, RenderAttemptStatus, RenderCpuScope,
+    RenderPhase, RenderResource, RenderWork, Renderer, Scene, Size,
 };
 
 #[test]
@@ -52,7 +52,11 @@ fn deep_invalid_image_source_preserves_publication_and_can_retry() {
             assert_eq!(normalized.work(RenderWork::CommandVisits), DEPTH + 1);
             assert_eq!(normalized.work(RenderWork::CommandsEmitted), 0);
             assert_eq!(attempt.usage().work(RenderWork::Submissions), 0);
-            let cpu = report.renderer_cpu().unwrap().usage();
+            let cpu = report
+                .renderer_cpu()
+                .unwrap()
+                .scope_usage(RenderCpuScope::FrameBacking);
+            assert!(cpu.peak(RenderResource::ScratchCpuBytes) > 0);
             for resource in [
                 RenderResource::ScratchCpuBytes,
                 RenderResource::RetainedCpuBytes,

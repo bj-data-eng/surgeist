@@ -617,165 +617,195 @@ pub(crate) fn normalize_commands(
 ) -> Result<RenderCommands> {
     let account = account.at(RenderPhase::Normalize);
     account.phase(RenderPhase::Normalize, || {
-        normalize_commands_in_context(commands, capabilities, 0, &account)
+        normalize_commands_in_context(commands, capabilities, &account)
     })
 }
+
+struct PendingLayer<'a> {
+    layer: &'a Layer,
+    siblings: &'a [Command],
+    parent: AccountedVec<RenderCommand>,
+}
+
 fn normalize_commands_in_context(
-    commands: &[Command],
+    mut commands: &[Command],
     capabilities: Capabilities,
-    layer_depth: usize,
     account: &Account,
 ) -> Result<RenderCommands> {
     let mut normalized = account.retained(commands.len())?;
-    for command in commands {
-        account.work(RenderWork::CommandVisits, 1)?;
-        let value = match command {
-            Command::Fill { shape, paint } => RenderCommand::Fill {
-                shape: RenderShape::from_authored_in(shape, account)?,
-                paint: RenderPaint::from_authored_in(paint, capabilities, account)?,
-            },
-            Command::Stroke {
-                shape,
-                stroke,
-                paint,
-            } => RenderCommand::Stroke {
-                shape: RenderStrokeShape::from_authored_in(shape, *stroke, account)?,
-                stroke: RenderStroke::try_from(*stroke)?,
-                paint: RenderPaint::from_authored_in(paint, capabilities, account)?,
-            },
-            Command::Shadow { shape, shadow } => RenderCommand::Shadow {
-                shape: ShadowShape::from_authored(shape, account)?,
-                shadow: RenderShadow::from_authored(shadow, account)?,
-            },
-            Command::Image { image, rect, fit } => {
-                validate_rect(*rect, "image target rectangle")?;
-                account.work(RenderWork::ImageIdentityCopies, 1)?;
-                RenderCommand::Image {
-                    image: shared(image.clone(), None, account.import_image(image)?, account)?,
-                    rect: *rect,
-                    fit: *fit,
-                }
-            }
-            Command::ImageRegion {
-                image,
-                source,
-                rect,
-            } => {
-                validate_rect(*rect, "image target rectangle")?;
-                let region = ResolvedImageRegion::try_new(image, *source, account)?;
-                account.work(RenderWork::ImageIdentityCopies, 1)?;
-                RenderCommand::ImageRegion {
-                    image: shared(image.clone(), None, account.import_image(image)?, account)?,
-                    rect: *rect,
-                    region,
-                }
-            }
-            Command::PreparedGlyphRun {
-                run,
-                transform,
-                paint,
-            } => {
-                validate_transform(*transform, "prepared outline transform")?;
-                validate_paint_in(paint.fill(), account)?;
-                RenderCommand::PreparedGlyphRun {
-                    run: shared(run.clone(), None, account.import_prepared(run)?, account)?,
-                    transform: *transform,
-                    paint: shared_paint(paint.fill(), capabilities, account)?,
-                }
-            }
-            Command::TextRun {
-                font,
-                size,
-                transform,
-                paint,
-                glyphs,
-                bounds,
-            } => {
-                validate_text_run_in(*size, *transform, glyphs, account)?;
-                validate_paint_in(paint.fill(), account)?;
-                let mut completion = DisposalCompletion::default();
-                let (copied_font, hold) = font.try_to_owned_in(account)?;
-                let hold = hold;
-                let owned_font = copied_font;
-                let start = completion.start([hold.as_ref(), None], None);
-                let import = font
-                    .data
-                    .as_ref()
-                    .map(|data| account.import_font(data.admitted_face().resource()))
-                    .transpose()?
-                    .flatten();
-                start.disarm();
-                let font = shared(owned_font, hold, import, account)?;
-                let mut copied = account.retained(glyphs.len())?;
-                for glyph in glyphs {
-                    account.work(RenderWork::GlyphVisits, 1)?;
-                    copied.push(*glyph)?;
-                }
-                let paint = shared_paint(paint.fill(), capabilities, account)?;
-                let (glyphs, hold) = copied.into_parts()?;
-                RenderCommand::TextRun {
-                    font,
-                    size: *size,
-                    transform: *transform,
-                    paint,
-                    glyphs: shared(glyphs, Some(hold), None, account)?,
-                    bounds: *bounds,
-                }
-            }
-            Command::TextShadowRun {
-                size,
-                transform,
-                paint,
-                glyphs,
-                shadows,
-                ..
-            } => {
-                validate_text_run_in(*size, *transform, glyphs, account)?;
-                validate_paint_in(paint.fill(), account)?;
-                for shadow in shadows.shadows() {
-                    validate_shadow_in(shadow, account)?;
-                }
-                return Err(unsupported_text_shadow_error(plan_text_shadow_run(
-                    shadows,
-                    capabilities,
-                    account,
-                )?));
-            }
-            Command::Layer { layer, children } => {
+    let mut pending: AccountedVec<PendingLayer<'_>> = account.temporary(0)?;
+    loop {
+        let value = if let Some((command, siblings)) = commands.split_first() {
+            commands = siblings;
+            account.work(RenderWork::CommandVisits, 1)?;
+            if let Command::Layer { layer, children } = command {
                 validate_layer_in(layer, account)?;
                 reject_unsupported_layer_effect(layer)?;
-                if layer.backdrop_filter().is_some() && layer_depth > 0 {
-                    return Err(nested_backdrop_capture_error());
+                if layer.backdrop_filter().is_some() {
+                    if !pending.is_empty() {
+                        return Err(nested_backdrop_capture_error());
+                    }
+                    if layer.transform() != Transform::identity() {
+                        return Err(transformed_backdrop_capture_error());
+                    }
+                    if commands_contain_backdrop_capture(&normalized, account)? {
+                        return Err(repeated_top_level_backdrop_capture_error());
+                    }
                 }
-                if layer.backdrop_filter().is_some() && layer.transform() != Transform::identity() {
-                    return Err(transformed_backdrop_capture_error());
+                if pending.len() == pending.capacity() {
+                    pending.grow(pending.capacity().max(1))?;
                 }
-                if layer.backdrop_filter().is_some()
-                    && commands_contain_backdrop_capture(&normalized, account)?
-                {
-                    return Err(repeated_top_level_backdrop_capture_error());
-                }
-                let children = normalize_commands_in_context(
-                    children,
-                    capabilities,
-                    layer_depth + 1,
-                    account,
-                )?;
-                RenderCommand::Layer {
-                    layer: NormalizedLayer::from_authored_in(
-                        layer,
-                        &children,
-                        capabilities,
-                        account,
-                    )?,
-                    children,
-                }
+                let child_output = account.retained(children.len())?;
+                pending.push(PendingLayer {
+                    layer,
+                    siblings,
+                    parent: std::mem::replace(&mut normalized, child_output),
+                })?;
+                commands = children;
+                continue;
+            }
+            normalize_leaf(command, capabilities, account)?
+        } else {
+            let children = RenderCommands::new_in(normalized, account)?;
+            let Some(PendingLayer {
+                layer,
+                siblings,
+                parent,
+            }) = pending.pop()
+            else {
+                return Ok(children);
+            };
+            commands = siblings;
+            normalized = parent;
+            RenderCommand::Layer {
+                layer: NormalizedLayer::from_authored_in(layer, &children, capabilities, account)?,
+                children,
             }
         };
         emit_command(&value, account)?;
         normalized.push(value)?;
     }
-    RenderCommands::new_in(normalized, account)
+}
+
+fn normalize_leaf(
+    command: &Command,
+    capabilities: Capabilities,
+    account: &Account,
+) -> Result<RenderCommand> {
+    Ok(match command {
+        Command::Fill { shape, paint } => RenderCommand::Fill {
+            shape: RenderShape::from_authored_in(shape, account)?,
+            paint: RenderPaint::from_authored_in(paint, capabilities, account)?,
+        },
+        Command::Stroke {
+            shape,
+            stroke,
+            paint,
+        } => RenderCommand::Stroke {
+            shape: RenderStrokeShape::from_authored_in(shape, *stroke, account)?,
+            stroke: RenderStroke::try_from(*stroke)?,
+            paint: RenderPaint::from_authored_in(paint, capabilities, account)?,
+        },
+        Command::Shadow { shape, shadow } => RenderCommand::Shadow {
+            shape: ShadowShape::from_authored(shape, account)?,
+            shadow: RenderShadow::from_authored(shadow, account)?,
+        },
+        Command::Image { image, rect, fit } => {
+            validate_rect(*rect, "image target rectangle")?;
+            account.work(RenderWork::ImageIdentityCopies, 1)?;
+            RenderCommand::Image {
+                image: shared(image.clone(), None, account.import_image(image)?, account)?,
+                rect: *rect,
+                fit: *fit,
+            }
+        }
+        Command::ImageRegion {
+            image,
+            source,
+            rect,
+        } => {
+            validate_rect(*rect, "image target rectangle")?;
+            let region = ResolvedImageRegion::try_new(image, *source, account)?;
+            account.work(RenderWork::ImageIdentityCopies, 1)?;
+            RenderCommand::ImageRegion {
+                image: shared(image.clone(), None, account.import_image(image)?, account)?,
+                rect: *rect,
+                region,
+            }
+        }
+        Command::PreparedGlyphRun {
+            run,
+            transform,
+            paint,
+        } => {
+            validate_transform(*transform, "prepared outline transform")?;
+            validate_paint_in(paint.fill(), account)?;
+            RenderCommand::PreparedGlyphRun {
+                run: shared(run.clone(), None, account.import_prepared(run)?, account)?,
+                transform: *transform,
+                paint: shared_paint(paint.fill(), capabilities, account)?,
+            }
+        }
+        Command::TextRun {
+            font,
+            size,
+            transform,
+            paint,
+            glyphs,
+            bounds,
+        } => {
+            validate_text_run_in(*size, *transform, glyphs, account)?;
+            validate_paint_in(paint.fill(), account)?;
+            let mut completion = DisposalCompletion::default();
+            let (copied_font, hold) = font.try_to_owned_in(account)?;
+            let hold = hold;
+            let owned_font = copied_font;
+            let start = completion.start([hold.as_ref(), None], None);
+            let import = font
+                .data
+                .as_ref()
+                .map(|data| account.import_font(data.admitted_face().resource()))
+                .transpose()?
+                .flatten();
+            start.disarm();
+            let font = shared(owned_font, hold, import, account)?;
+            let mut copied = account.retained(glyphs.len())?;
+            for glyph in glyphs {
+                account.work(RenderWork::GlyphVisits, 1)?;
+                copied.push(*glyph)?;
+            }
+            let paint = shared_paint(paint.fill(), capabilities, account)?;
+            let (glyphs, hold) = copied.into_parts()?;
+            RenderCommand::TextRun {
+                font,
+                size: *size,
+                transform: *transform,
+                paint,
+                glyphs: shared(glyphs, Some(hold), None, account)?,
+                bounds: *bounds,
+            }
+        }
+        Command::TextShadowRun {
+            size,
+            transform,
+            paint,
+            glyphs,
+            shadows,
+            ..
+        } => {
+            validate_text_run_in(*size, *transform, glyphs, account)?;
+            validate_paint_in(paint.fill(), account)?;
+            for shadow in shadows.shadows() {
+                validate_shadow_in(shadow, account)?;
+            }
+            return Err(unsupported_text_shadow_error(plan_text_shadow_run(
+                shadows,
+                capabilities,
+                account,
+            )?));
+        }
+        Command::Layer { .. } => return Err(crate::RenderAccountingError::Invariant.into()),
+    })
 }
 fn emit_command(command: &RenderCommand, account: &Account) -> Result<()> {
     match command {
@@ -854,18 +884,35 @@ fn observe_render_paint(paint: &RenderPaint, account: &Account) -> Result<()> {
 }
 
 fn commands_contain_backdrop_capture(
-    commands: &[RenderCommand],
+    mut commands: &[RenderCommand],
     account: &Account,
 ) -> Result<bool> {
-    for command in commands {
+    let mut pending = account.temporary(0)?;
+    loop {
+        let Some((command, siblings)) = commands.split_first() else {
+            let Some(siblings) = pending.pop() else {
+                return Ok(false);
+            };
+            commands = siblings;
+            continue;
+        };
+        commands = siblings;
         account.work(RenderWork::CommandVisits, 1)?;
-        if let RenderCommand::Layer { layer, children } = command
-            && (layer.backdrop.is_some() || commands_contain_backdrop_capture(children, account)?)
-        {
-            return Ok(true);
+        if let RenderCommand::Layer { layer, children } = command {
+            if layer.backdrop.is_some() {
+                return Ok(true);
+            }
+            if !children.is_empty() {
+                if !siblings.is_empty() {
+                    if pending.len() == pending.capacity() {
+                        pending.grow(pending.capacity().max(1))?;
+                    }
+                    pending.push(siblings)?;
+                }
+                commands = children;
+            }
         }
     }
-    Ok(false)
 }
 
 fn nested_backdrop_capture_error() -> Error {
