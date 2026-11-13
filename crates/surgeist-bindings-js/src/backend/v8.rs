@@ -1556,6 +1556,17 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
+    fn enqueue_microtask(&mut self, function: &Root) -> Result<(), Error> {
+        self.validate_root(function)?;
+        self.attempt(ExceptionPhase::Invoke, |scope, roots, _, _| {
+            let value = roots.local(scope, function)?;
+            let function =
+                v8::Local::<v8::Function>::try_from(value).map_err(|_| Error::ExpectedFunction)?;
+            scope.enqueue_microtask(function);
+            Ok(())
+        })
+    }
+
     fn construct_without_arguments(&mut self, constructor: &Root) -> Result<Root, Error> {
         self.validate_root(constructor)?;
         self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, _| {

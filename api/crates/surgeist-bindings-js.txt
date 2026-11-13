@@ -711,6 +711,7 @@ pub fn surgeist_bindings_js::Scope<'scope>::define_property(&mut self, object: &
 pub fn surgeist_bindings_js::Scope<'scope>::dom_exception(&mut self, name: surgeist_bindings_js::dom_exception::DomExceptionName, message: &[u16]) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::dom_string(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<surgeist_bindings_js::DomString, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::double(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<f64, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::enqueue_microtask(&mut self, function: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::evaluate(&mut self, source: &[u16]) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::fixed_arity_function(&mut self, callback: &surgeist_bindings_js::Callback, metadata: surgeist_bindings_js::FunctionMetadata<'_>) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::float(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<f32, surgeist_bindings_js::Error>

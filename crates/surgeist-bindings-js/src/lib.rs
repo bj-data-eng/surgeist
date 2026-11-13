@@ -843,6 +843,15 @@ impl<'scope> Scope<'scope> {
         Ok(self.value(root))
     }
 
+    /// Append an existing JavaScript function to this heap's microtask queue.
+    /// It runs with no arguments at an explicit checkpoint, in queue order
+    /// with Promise jobs. Native callbacks should report ordinary guest
+    /// exceptions within the callback. Terminal host refusal still stops
+    /// the owning heap and is returned by the checkpoint.
+    pub fn enqueue_microtask(&mut self, function: &Value<'scope>) -> Result<(), Error> {
+        self.operations.enqueue_microtask(&function.root)
+    }
+
     /// Creates a callable with declared name and length. The native handler
     /// receives only the supplied arguments up to that length.
     pub fn fixed_arity_function(

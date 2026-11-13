@@ -245,6 +245,23 @@ fn checkpoints_are_explicit_and_shared(process: &mut Process) -> Result<(), Erro
         &b,
         "globalThis.order = []; Promise.resolve().then(() => order.push('B')); 0",
     )?;
+    execution.in_realm(&a, |scope| {
+        let primitive = scope.primitive(Primitive::Undefined)?;
+        assert!(matches!(
+            scope.enqueue_microtask(&primitive),
+            Err(Error::ExpectedFunction)
+        ));
+        let callback = scope.function(&Callback::new(|scope, arguments| {
+            assert!(arguments.is_empty());
+            scope.evaluate(&units("order.push('native')"))?;
+            Ok(Completion::Undefined)
+        }))?;
+        scope.enqueue_microtask(&callback)?;
+        scope.evaluate(&units(
+            "Promise.resolve().then(() => order.push('tail')); 0",
+        ))?;
+        Ok(())
+    })?;
     assert_eq!(
         evaluate(&mut execution, &a, "order.join(',')")?,
         units("script")
@@ -253,7 +270,7 @@ fn checkpoints_are_explicit_and_shared(process: &mut Process) -> Result<(), Erro
     execution.checkpoint()?;
     assert_eq!(
         evaluate(&mut execution, &a, "order.join(',')")?,
-        units("script,A,nested")
+        units("script,A,native,tail,nested")
     );
     assert_eq!(evaluate(&mut execution, &b, "order.join(',')")?, units("B"));
     Ok(())
