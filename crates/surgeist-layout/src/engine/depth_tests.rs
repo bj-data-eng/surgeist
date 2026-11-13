@@ -563,7 +563,11 @@ fn measure_nested_leaf<S: LayoutScalar>(_: crate::LeafMeasureInputOf<S>) -> Size
     Size::new(S::from_f64(11.0), S::from_f64(7.0))
 }
 
-fn nested_leaf_measurement_count<S: LayoutScalar>(display: Display, depth: u32) -> usize {
+fn nested_leaf_measurement_count<S: LayoutScalar>(
+    display: Display,
+    depth: u32,
+    bound: bool,
+) -> usize {
     LEAF_MEASUREMENTS.set(0);
     let tree = chain::<S>(display, depth + 1)
         .style(
@@ -574,19 +578,40 @@ fn nested_leaf_measurement_count<S: LayoutScalar>(display: Display, depth: u32) 
             },
         )
         .measure_with(depth, measure_nested_leaf);
-    let batch = compute_layout(&tree, 0, standalone()).expect("nested layout");
+    let request = standalone();
+    let batch = if bound {
+        let bound =
+            crate::LayoutBoundRequestOf::continuous(crate::LayoutSourceBasis::fresh(), request);
+        let target = bound.target_basis();
+        let flow = crate::LayoutFlowInput::try_new_bound(
+            &tree,
+            0,
+            bound,
+            Vec::new(),
+            crate::WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
+        let batch =
+            crate::compute_layout_with_flow(&flow, 0, request).expect("bound continuous layout");
+        assert_eq!(batch.target_basis(), Some(&target));
+        assert!(batch.cache_store_entries().is_empty());
+        batch
+    } else {
+        compute_layout(&tree, 0, request).expect("nested layout")
+    };
     assert_eq!(batch.node_layouts().len(), (depth + 1) as usize);
     LEAF_MEASUREMENTS.get()
 }
 
-fn assert_nested_leaf_work_is_bounded(display: Display) {
+fn assert_nested_leaf_work_is_bounded(display: Display, bound: bool) {
     // This isolates measurement repetition from the separate traversal-depth limit.
     std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
         .spawn(move || {
             let counts = [
-                [1, 2, 3, 4].map(|depth| nested_leaf_measurement_count::<f32>(display, depth)),
-                [1, 2, 3, 4].map(|depth| nested_leaf_measurement_count::<f64>(display, depth)),
+                [1, 2, 3, 4].map(|depth| nested_leaf_measurement_count::<f32>(display, depth, bound)),
+                [1, 2, 3, 4].map(|depth| nested_leaf_measurement_count::<f64>(display, depth, bound)),
             ];
             assert!(
                 counts.iter().flatten().all(|&count| (1..=20).contains(&count)),
@@ -600,10 +625,20 @@ fn assert_nested_leaf_work_is_bounded(display: Display) {
 
 #[test]
 fn nested_flex_leaf_measurement_work_is_bounded_per_call() {
-    assert_nested_leaf_work_is_bounded(Display::Flex);
+    assert_nested_leaf_work_is_bounded(Display::Flex, false);
 }
 
 #[test]
 fn nested_grid_leaf_measurement_work_is_bounded_per_call() {
-    assert_nested_leaf_work_is_bounded(Display::Grid);
+    assert_nested_leaf_work_is_bounded(Display::Grid, false);
+}
+
+#[test]
+fn continuous_bound_flex_leaf_measurement_work_is_bounded_per_call() {
+    assert_nested_leaf_work_is_bounded(Display::Flex, true);
+}
+
+#[test]
+fn continuous_bound_grid_leaf_measurement_work_is_bounded_per_call() {
+    assert_nested_leaf_work_is_bounded(Display::Grid, true);
 }
