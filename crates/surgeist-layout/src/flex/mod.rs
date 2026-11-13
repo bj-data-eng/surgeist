@@ -216,11 +216,15 @@ enum CollectionPhase<S: LayoutScalar> {
     },
 }
 
-struct FlexIntrinsicPhase<Node, S: LayoutScalar> {
+struct CollectedFlexItems<Node, S: LayoutScalar> {
     phase: CollectionPhase<S>,
-    collected_items: Vec<CollectedFlexItem<Node, S>>,
+    items: Vec<CollectedFlexItem<Node, S>>,
     constants: Constants<S>,
     used_overflow: crate::scroll::UsedOverflow,
+}
+
+struct FlexIntrinsicPhase<Node, S: LayoutScalar> {
+    collection: CollectedFlexItems<Node, S>,
     round: FlexRound<Node, S>,
     measurement: IntrinsicMainSize<S>,
 }
@@ -316,7 +320,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexComputation<'input, Node, S> 
                     if let Some(child) = intrinsic.measurement.next(
                         tree,
                         &intrinsic.round.constants,
-                        intrinsic.round.items(&intrinsic.collected_items),
+                        intrinsic.round.items(&intrinsic.collection.items),
                     )? {
                         return Ok(ControlFlow::Continue(FlexChild {
                             phase: FlexChildPhase::Intrinsic(child),
@@ -328,22 +332,14 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexComputation<'input, Node, S> 
                     };
                     let outer_size = intrinsic.measurement.outer_size(&intrinsic.round.constants);
                     let FlexIntrinsicPhase {
-                        phase,
-                        collected_items,
-                        constants,
-                        used_overflow,
-                        round,
-                        ..
+                        collection, round, ..
                     } = *intrinsic;
-                    let layout = round.finish(tree, self.node, &collected_items, outer_size)?;
+                    let layout = round.finish(tree, self.node, &collection.items, outer_size)?;
                     match finish_flex_collection(
                         tree,
                         self.node,
                         self.pass_input,
-                        phase,
-                        collected_items,
-                        constants,
-                        used_overflow,
+                        collection,
                         layout,
                     )? {
                         ControlFlow::Break(output) => output,
@@ -427,7 +423,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexComputation<'input, Node, S> 
                 intrinsic.measurement.accept(
                     tree,
                     &intrinsic.round.constants,
-                    intrinsic.round.items(&intrinsic.collected_items),
+                    intrinsic.round.items(&intrinsic.collection.items),
                     output,
                 )
             }
@@ -618,10 +614,12 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexCollection<'input, Node, S> {
                 ControlFlow::Continue(measurement) => {
                     return Ok(ControlFlow::Continue(Box::new(FlexPhase::Intrinsic(
                         Box::new(FlexIntrinsicPhase {
-                            phase,
-                            collected_items,
-                            constants,
-                            used_overflow,
+                            collection: CollectedFlexItems {
+                                phase,
+                                items: collected_items,
+                                constants,
+                                used_overflow,
+                            },
                             round,
                             measurement,
                         }),
@@ -633,10 +631,12 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexCollection<'input, Node, S> {
             tree,
             node,
             input,
-            phase,
-            collected_items,
-            constants,
-            used_overflow,
+            CollectedFlexItems {
+                phase,
+                items: collected_items,
+                constants,
+                used_overflow,
+            },
             layout,
         )
     }
@@ -646,10 +646,12 @@ fn finish_flex_collection<'input, Tree, M, S>(
     tree: &mut Tree,
     node: Tree::Node,
     input: ComputeInputOf<S>,
-    phase: CollectionPhase<S>,
-    collected_items: Vec<CollectedFlexItem<Tree::Node, S>>,
-    constants: Constants<S>,
-    used_overflow: crate::scroll::UsedOverflow,
+    CollectedFlexItems {
+        phase,
+        items: collected_items,
+        constants,
+        used_overflow,
+    }: CollectedFlexItems<Tree::Node, S>,
     (layout_constants, resolved_items, lines): ResolvedFlexRound<Tree>,
 ) -> FlexPassStart<'input, Tree::Node, S, M>
 where
@@ -684,50 +686,48 @@ where
         inherited_indefinite_cross,
         ..
     } = phase
+        && (!collected_items.is_empty() || own_ratio_cross.is_some())
+        && let Some(mut contents_constants) = constants
+            .complete_inline_contents(
+                final_scroll_box,
+                requested_inline_operation,
+                own_ratio_cross.is_some(),
+            )
+            .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?
     {
-        if (!collected_items.is_empty() || own_ratio_cross.is_some())
-            && let Some(mut contents_constants) = constants
-                .complete_inline_contents(
-                    final_scroll_box,
-                    requested_inline_operation,
-                    own_ratio_cross.is_some(),
-                )
-                .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?
-        {
-            if let Some(ratio) = own_ratio_cross {
-                let cross = settle_own_ratio_cross(tree, node, &contents_constants, ratio)?;
-                let size = contents_constants
-                    .axes
-                    .with_cross_size(final_scroll_box.border_box().size(), cross);
-                let settled = scroll_box_for(tree, &contents_constants, size)?;
-                contents_constants = contents_constants.with_final_scroll_box(settled);
-                let axes = constants.axes;
-                if !inherited_indefinite_cross
-                    && axes.main_size(constants.entry_percentage_basis).is_some()
-                {
-                    // Only an independently definite determining axis grants
-                    // percentage authority to the size transferred by the ratio.
-                    let cross_basis = Some(axes.cross_size(settled.content_box().size()));
-                    contents_constants.percentage_parent_size = axes
-                        .with_cross_size(contents_constants.percentage_parent_size, cross_basis);
-                    contents_constants.entry_percentage_basis = axes
-                        .with_cross_size(contents_constants.entry_percentage_basis, cross_basis);
-                }
-                contents_constants.max_inner_size = contents_constants
-                    .max_outer_size
-                    .sub_optional_unchecked(contents_constants.content_box_inset.sum_axes())
-                    .max_optional(Size::ZERO.map(Some));
+        if let Some(ratio) = own_ratio_cross {
+            let cross = settle_own_ratio_cross(tree, node, &contents_constants, ratio)?;
+            let size = contents_constants
+                .axes
+                .with_cross_size(final_scroll_box.border_box().size(), cross);
+            let settled = scroll_box_for(tree, &contents_constants, size)?;
+            contents_constants = contents_constants.with_final_scroll_box(settled);
+            let axes = constants.axes;
+            if !inherited_indefinite_cross
+                && axes.main_size(constants.entry_percentage_basis).is_some()
+            {
+                // Only an independently definite determining axis grants
+                // percentage authority to the size transferred by the ratio.
+                let cross_basis = Some(axes.cross_size(settled.content_box().size()));
+                contents_constants.percentage_parent_size =
+                    axes.with_cross_size(contents_constants.percentage_parent_size, cross_basis);
+                contents_constants.entry_percentage_basis =
+                    axes.with_cross_size(contents_constants.entry_percentage_basis, cross_basis);
             }
-            let items = ItemCollection::new(tree, node, contents_run_mode);
-            return Ok(ControlFlow::Continue(Box::new(FlexPhase::Collect(
-                Box::new(FlexCollection {
-                    phase: CollectionPhase::Accepted { contents_run_mode },
-                    items,
-                    constants: contents_constants,
-                    used_overflow,
-                }),
-            ))));
+            contents_constants.max_inner_size = contents_constants
+                .max_outer_size
+                .sub_optional_unchecked(contents_constants.content_box_inset.sum_axes())
+                .max_optional(Size::ZERO.map(Some));
         }
+        let items = ItemCollection::new(tree, node, contents_run_mode);
+        return Ok(ControlFlow::Continue(Box::new(FlexPhase::Collect(
+            Box::new(FlexCollection {
+                phase: CollectionPhase::Accepted { contents_run_mode },
+                items,
+                constants: contents_constants,
+                used_overflow,
+            }),
+        ))));
     }
     let no_eligible_items = collected_items.is_empty();
     if input.run_mode().is_perform_layout() {
@@ -1064,12 +1064,14 @@ where
     round.finish(tree, node, collected_items, outer_size)
 }
 
+type CollapsedFlexItems<Node, S> = (Vec<CollectedFlexItem<Node, S>>, Vec<FlexLine<S>>);
+
 struct FlexRound<Node, S: LayoutScalar> {
     constants: Constants<S>,
     kind: FlexLineCollectionRound,
     lines: Vec<FlexLine<S>>,
     collapsed_struts: Option<CollapsedFlexStruts<Node, S>>,
-    collapsed: Option<(Vec<CollectedFlexItem<Node, S>>, Vec<FlexLine<S>>)>,
+    collapsed: Option<CollapsedFlexItems<Node, S>>,
 }
 
 impl<Node: Copy + Eq, S: LayoutScalar> FlexRound<Node, S> {

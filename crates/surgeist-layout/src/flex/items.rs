@@ -1124,6 +1124,8 @@ struct AutomaticMinimum<S: LayoutScalar> {
     padding_border_main: S,
 }
 
+type AutomaticMinimumRequest<S> = Option<(AutomaticMinimum<S>, ComputeInputOf<S>)>;
+
 impl<S: LayoutScalar> AutomaticMinimum<S> {
     fn prepare<'input, Tree, M>(
         tree: &Tree,
@@ -1132,7 +1134,7 @@ impl<S: LayoutScalar> AutomaticMinimum<S> {
         constants: &Constants<S>,
         sizing: FlexItemSizes<S>,
         child_known: Size<Option<S>>,
-    ) -> LayoutResultOf<Tree::Node, Option<(Self, ComputeInputOf<S>)>, S, M>
+    ) -> LayoutResultOf<Tree::Node, AutomaticMinimumRequest<S>, S, M>
     where
         Tree: Compute<'input, M, Scalar = S>,
     {

@@ -2042,8 +2042,10 @@ where
             } else {
                 self.cache.stores.retain(|entry| entry.node() != node);
             }
-            if self.memo.is_some() && self.memo_hidden_leaf_index(node).is_none() {
-                self.memo.as_ref().expect("active memo").barrier();
+            if let Some(memo) = &self.memo
+                && self.memo_hidden_leaf_index(node).is_none()
+            {
+                memo.barrier();
             }
         }
         if let Some(memo) = &mut self.memo {
