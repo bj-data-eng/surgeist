@@ -6,7 +6,8 @@ use surgeist_bindings_js::NativeProjectionPrototype;
 use surgeist_dom::{
     DomDetachedNodeCreation, DomDocumentScriptRegistration, DomElementCreationName,
     DomElementCreationOptions, DomNodeRetirementWatch, DomSourceAttributeAttachmentOutput,
-    DomSourceAttributeVerificationRequest, DomSourceEventRequest,
+    DomSourceAttributeVerificationRequest, DomSourceCustomElementOutcome,
+    DomSourceCustomElementRequest, DomSourceEventRequest, DomWatchedCustomElementResult,
 };
 
 pub(super) struct OrdinaryBindings {
@@ -14,6 +15,8 @@ pub(super) struct OrdinaryBindings {
     pins: RefCell<OrdinaryPins>,
     #[cfg(test)]
     pub(super) refuse_next_validation: Cell<bool>,
+    #[cfg(test)]
+    pub(super) refuse_next_constructor_fallback: Cell<bool>,
 }
 
 pub(super) enum NodePrototype<'value, 'scope> {
@@ -44,12 +47,125 @@ enum ElementFactoryResult<'scope> {
     Constructor(surgeist_dom::DomSourceCustomElementRequest),
 }
 
+pub(in crate::document_scripting) struct PendingConstructor {
+    request: DomSourceCustomElementRequest,
+    registration: Rc<DomDocumentScriptRegistration>,
+    outcome: Option<DomSourceCustomElementOutcome>,
+    returned: Option<surgeist_bindings_js::Root>,
+    realm: RealmId,
+    report: super::super::super::reports::ConstructorReportReservation,
+    exception: Option<surgeist_bindings_js::Exception>,
+    next: Option<Box<Self>>,
+    _backing: GuestBacking,
+}
+
+impl Drop for PendingConstructor {
+    fn drop(&mut self) {
+        let mut pending = self.next.take();
+        while let Some(mut frame) = pending {
+            pending = frame.next.take();
+        }
+    }
+}
+
+impl NativeOwner {
+    pub(in crate::document_scripting) fn reconcile_pending_constructors(
+        &self,
+    ) -> Result<(), DocumentGuestEventError> {
+        let mut slot = self
+            .pending_constructor
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        if slot.is_none() {
+            return Ok(());
+        }
+        let mut session = self
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let dom = session.dom();
+        let cancel = AtomicBool::new(false);
+        let mut link = &mut *slot;
+        while let Some(frame) = link.as_mut() {
+            if dom.raw().retains_custom_element(frame.request, &cancel)? {
+                link = &mut link
+                    .as_mut()
+                    .ok_or(DocumentScriptNativeError::SourceAccess)?
+                    .next;
+            } else {
+                *link = frame.next.take();
+            }
+        }
+        Ok(())
+    }
+
+    fn keep_constructor_result(&self, mut pending: Box<PendingConstructor>) {
+        let mut slot = self.pending_constructor.borrow_mut();
+        pending.next = slot.take();
+        *slot = Some(pending);
+    }
+
+    pub(in crate::document_scripting) fn settle_stopped_constructor(
+        &self,
+        limits: surgeist_dom::DomSourceLimits,
+    ) -> Result<(), DocumentGuestEventError> {
+        let mut session = self
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let mut dom = session.dom();
+        let current = dom
+            .pending_source_edit()
+            .ok_or(DocumentScriptNativeError::SourceAccess)?
+            .operation();
+        let mut slot = self
+            .pending_constructor
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let mut link = &mut *slot;
+        while let Some(frame) = link.as_ref() {
+            if frame.request.operation() == current {
+                break;
+            }
+            link = &mut link
+                .as_mut()
+                .ok_or(DocumentScriptNativeError::SourceAccess)?
+                .next;
+        }
+        let pending = link
+            .as_mut()
+            .ok_or(DocumentScriptNativeError::SourceAccess)?;
+        let cancel = AtomicBool::new(false);
+        let mut lease = dom.raw_mut().resume_source_edit(current, limits, &cancel)?;
+        if pending.outcome.is_some() {
+            lease.accept_custom_element_callback(
+                pending.request,
+                &pending.registration,
+                &mut pending.outcome,
+                &cancel,
+            )?;
+        }
+        if !matches!(
+            lease.advance(&cancel)?,
+            surgeist_dom::DomSourceProgress::Complete(_)
+        ) {
+            return Err(DocumentScriptNativeError::SourceAccess.into());
+        }
+        *link = pending.next.take();
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy)]
 enum AdmissionRoute<'a> {
     Ordinary,
     Event(&'a DomSourceEventRequest),
     Attribute(
         DomSourceAttributeVerificationRequest,
+        &'a DomDocumentScriptRegistration,
+    ),
+    Constructor(
+        DomSourceCustomElementRequest,
         &'a DomDocumentScriptRegistration,
     ),
     AttachmentOutput(
@@ -59,6 +175,21 @@ enum AdmissionRoute<'a> {
 }
 
 impl<'a> Admission<'a> {
+    pub(super) fn constructor(
+        owner: &'a NativeOwner,
+        events: &'a GuestEvents,
+        (request, registration): &'a (
+            DomSourceCustomElementRequest,
+            Rc<DomDocumentScriptRegistration>,
+        ),
+    ) -> Self {
+        Self {
+            owner,
+            events,
+            route: AdmissionRoute::Constructor(*request, registration),
+        }
+    }
+
     pub(super) fn ordinary(owner: &'a NativeOwner, events: &'a GuestEvents) -> Self {
         Self {
             owner,
@@ -126,6 +257,10 @@ impl<'a> Admission<'a> {
             AdmissionRoute::AttachmentOutput(request, registration) => {
                 dom.raw()
                     .source_attribute_attachment_output_step(request, registration, cancel)?;
+            }
+            AdmissionRoute::Constructor(request, registration) => {
+                dom.raw()
+                    .source_custom_element_callback_step(request, registration, cancel)?;
             }
         }
         Ok(())
@@ -349,6 +484,248 @@ impl OrdinaryPins {
 }
 
 impl OrdinaryBindings {
+    fn run_constructor<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        public: &PublicEventBindings,
+        request: DomSourceCustomElementRequest,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let cancel = &owner.cancellation;
+        let (constructor, registration, entry, backing, realm, report, returned_backing) = (|| {
+            let (constructor, realm) = public.factory_constructor(scope, events, request)?;
+            let registration = owner
+                .attachment
+                .get()
+                .and_then(|attachment| attachment.registration.upgrade())
+                .ok_or(DocumentScriptNativeError::Revoked)?;
+            let backing = events.reserve(owner, size_of::<PendingConstructor>())?;
+            let report = events.reports.reserve_constructor(events, owner)?;
+            let returned_bytes = events
+                .exception_root_bytes
+                .checked_add(size_of::<GuestBacking>())
+                .ok_or(DocumentScriptNativeError::StorageLimit)?;
+            let returned_backing = events.reserve(owner, returned_bytes)?;
+            let entry = public.enter_factory_constructor(
+                owner,
+                events,
+                scope,
+                request,
+                &constructor,
+                registration.clone(),
+            )?;
+            Ok::<_, DocumentGuestEventError>((
+                constructor,
+                registration,
+                entry,
+                backing,
+                realm,
+                report,
+                Box::new(returned_backing),
+            ))
+        })(
+        )
+        .inspect_err(|_| {
+            if let Ok(mut session) = owner.session.try_borrow_mut() {
+                let _ = session
+                    .dom()
+                    .raw_mut()
+                    .discard_unstarted_custom_element(request);
+            }
+        })?;
+        let mut pending = Box::new(PendingConstructor {
+            request,
+            registration,
+            outcome: None,
+            returned: None,
+            realm,
+            report,
+            exception: None,
+            next: None,
+            _backing: backing,
+        });
+        let callback_scope = (|| {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let mut dom = session.dom();
+            let mut lease = dom.raw_mut().resume_source_edit(
+                request.operation(),
+                events.limits.source_edits,
+                cancel,
+            )?;
+            lease
+                .open_custom_element_callback(request, &pending.registration, cancel)
+                .map_err(DocumentGuestEventError::from)
+        })();
+        let callback_scope = match callback_scope {
+            Ok(callback_scope) => callback_scope,
+            Err(error) => {
+                drop(entry);
+                let mut session = owner
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                session
+                    .dom()
+                    .raw_mut()
+                    .discard_unstarted_custom_element(request)?;
+                return Err(error);
+            }
+        };
+        let result = scope.construct_without_arguments(&constructor);
+        drop(callback_scope);
+        drop(entry);
+        let result = match result {
+            Ok(value) => {
+                if let Err(error) = scope.retain_invocation_result_backing(&value, returned_backing)
+                {
+                    pending.outcome = Some(DomSourceCustomElementOutcome::Failed);
+                    owner.keep_constructor_result(pending);
+                    return Err(error.into());
+                }
+                pending.returned = Some(scope.retain(&value));
+                scope
+                    .native_object::<GuestNodeProjection>(&value)
+                    .map(|projection| projection.and_then(|native| native.payload().id()))
+            }
+            Err(error) => Err(error),
+        };
+        pending.outcome = Some(match result {
+            Ok(Some(GuestNode::Element(node))) => DomSourceCustomElementOutcome::Returned(node),
+            Ok(_) => DomSourceCustomElementOutcome::InvalidInterface,
+            Err(Error::Exception(exception)) => {
+                pending.exception = Some(exception);
+                DomSourceCustomElementOutcome::Failed
+            }
+            Err(error) => {
+                pending.outcome = Some(DomSourceCustomElementOutcome::Failed);
+                owner.keep_constructor_result(pending);
+                return Err(error.into());
+            }
+        });
+        match self.finish_constructor(scope, (owner, events), public, &mut pending) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                owner.keep_constructor_result(pending);
+                Err(error)
+            }
+        }
+    }
+
+    fn finish_constructor<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        public: &PublicEventBindings,
+        pending: &mut PendingConstructor,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let admission = Admission::ordinary(owner, events);
+        let mut pins = self
+            .pins
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let (key, reserved) = pins.reserve(admission)?;
+        let inbox = self
+            .inbox
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let pin = PreparedPin::new(admission)?;
+        let (payload, holder) =
+            scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
+        let backing = (admission.reserve(payload)?, admission.reserve(holder)?);
+        let returned = pending
+            .returned
+            .as_ref()
+            .map(|root| scope.import(root))
+            .transpose()?;
+        if let Some(exception) = &pending.exception
+            && pending.report.needs_backing()
+        {
+            pending.report.prepare(scope, exception)?;
+        }
+        let prototype = public.unknown_element_prototype(events, pending.request.global())?;
+        let cancel = &owner.cancellation;
+        let result = {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let mut dom = session.dom();
+            let mut lease = dom.raw_mut().resume_source_edit(
+                pending.request.operation(),
+                events.limits.source_edits,
+                cancel,
+            )?;
+            if pending.outcome.is_some() {
+                lease.accept_custom_element_callback(
+                    pending.request,
+                    &pending.registration,
+                    &mut pending.outcome,
+                    cancel,
+                )?;
+            }
+            lease.finish_custom_element_with_watch(
+                pending.request,
+                (&inbox, key),
+                events.limits.node_retirement,
+                cancel,
+                |name| {
+                    name.step()?;
+                    if pending.exception.is_none()
+                        && name.custom_element_disposition() != Some(surgeist_dom::DomSourceCustomElementDisposition::Abrupt)
+                    {
+                        let value = match name.custom_element_disposition() {
+                            Some(surgeist_dom::DomSourceCustomElementDisposition::InvalidInterface) => scope.type_error(&ascii(b"HTMLElement required"))?,
+                            Some(surgeist_dom::DomSourceCustomElementDisposition::InvalidElement) => scope.dom_exception(
+                                surgeist_bindings_js::dom_exception::DomExceptionName::NotSupportedError, &[],
+                            )?,
+                            _ => return Err(DocumentScriptNativeError::ProjectionCustody.into()),
+                        };
+                        let exception = scope.invocation_exception(&value);
+                        pending.report.prepare(scope, &exception)?;
+                        pending.exception = Some(exception);
+                    }
+                    #[cfg(test)]
+                    if self.refuse_next_constructor_fallback.replace(false) {
+                        return Err(DocumentScriptNativeError::ProjectionCustody.into());
+                    }
+                    scope.prepare_retained_native_object(
+                        NodePrototype::Creation(&prototype).projection(),
+                        pin.projection(),
+                        |_, _| Ok::<_, DocumentGuestEventError>(backing),
+                    )
+                },
+            )?
+        };
+        match result {
+            DomWatchedCustomElementResult::Returned(_) => {
+                returned.ok_or(DocumentScriptNativeError::ProjectionCustody.into())
+            }
+            DomWatchedCustomElementResult::Fallback {
+                node,
+                watch,
+                projection,
+                disposition: _,
+            } => {
+                let (value, holder, live) = projection.publish(|payload| {
+                    Self::bind_projection(payload, GuestNode::Element(node), watch)
+                });
+                pin.publish(reserved, holder, live);
+                if let Some(exception) = pending.exception.take() {
+                    pending.report.publish(DocumentGuestConstructorException {
+                        definition: pending.request.definition(),
+                        realm: pending.realm,
+                        exception,
+                    });
+                }
+                Ok(value)
+            }
+        }
+    }
+
     pub(super) fn create_element<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -363,12 +740,14 @@ impl OrdinaryBindings {
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let event = owner.active_event_request();
         let attribute = owner.active_attribute_registration()?;
-        let admission = match (&attribute, &event) {
-            (Some((request, registration)), _) => {
+        let active = owner.current_constructor_registration()?;
+        let admission = match (&active, &attribute, &event) {
+            (Some(active), _, _) => Admission::constructor(owner, events, active),
+            (None, Some((request, registration)), _) => {
                 Admission::attribute(owner, events, *request, registration)
             }
-            (None, Some(request)) => Admission::source(owner, events, request),
-            (None, None) => Admission::ordinary(owner, events),
+            (None, None, Some(request)) => Admission::source(owner, events, request),
+            (None, None, None) => Admission::ordinary(owner, events),
         };
         let project = |elements: &element::ElementBindings| {
             self.project_element(
@@ -391,17 +770,46 @@ impl OrdinaryBindings {
         match result {
             ElementFactoryResult::Created(value) => Ok(value),
             ElementFactoryResult::Constructor(request) => {
+                self.run_constructor(scope, owner, events, public, request)
+            }
+        }
+    }
+
+    pub(super) fn construct_autonomous<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        frame: &super::super::custom_elements::ActiveConstructor,
+        global: DomHostedGlobalId,
+        prototype: &Value<'scope>,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let active = owner
+            .current_constructor_registration()?
+            .ok_or(DocumentScriptNativeError::SourceAccess)?;
+        let admission = Admission::constructor(owner, events, &active);
+        self.project(
+            scope,
+            admission,
+            (NodePrototype::Selected(prototype), |inbox, key| {
                 let mut session = owner
                     .session
                     .try_borrow_mut()
                     .map_err(|_| DocumentScriptNativeError::Busy)?;
-                session
+                let watched = session
                     .dom()
                     .raw_mut()
-                    .discard_unstarted_custom_element(request)?;
-                Err(DomError::NotSupported.into())
-            }
-        }
+                    .construct_autonomous_element_with_watch(
+                        (active.0, frame.request),
+                        &active.1,
+                        global,
+                        (inbox, key),
+                        events.limits.node_retirement,
+                        &owner.cancellation,
+                    )?;
+                let (_, node, watch) = watched.into_parts();
+                Ok((GuestNode::Element(node), watch))
+            }),
+        )
     }
 
     fn project_element<'scope>(
@@ -484,6 +892,8 @@ impl OrdinaryBindings {
             pins: RefCell::new(OrdinaryPins::default()),
             #[cfg(test)]
             refuse_next_validation: Cell::new(false),
+            #[cfg(test)]
+            refuse_next_constructor_fallback: Cell::new(false),
         }
     }
 
@@ -516,12 +926,14 @@ impl OrdinaryBindings {
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let event = owner.active_event_request();
         let attribute = owner.active_attribute_registration()?;
-        let admission = match (&attribute, &event) {
-            (Some((request, registration)), _) => {
+        let active = owner.current_constructor_registration()?;
+        let admission = match (&active, &attribute, &event) {
+            (Some(active), _, _) => Admission::constructor(owner, events, active),
+            (None, Some((request, registration)), _) => {
                 Admission::attribute(owner, events, *request, registration)
             }
-            (None, Some(request)) => Admission::source(owner, events, request),
-            (None, None) => Admission::ordinary(owner, events),
+            (None, None, Some(request)) => Admission::source(owner, events, request),
+            (None, None, None) => Admission::ordinary(owner, events),
         };
         let publish = |inbox: &DomNodeRetirementInbox, key| {
             capture
@@ -645,16 +1057,13 @@ impl OrdinaryBindings {
         )
     }
 
-    pub(super) fn watch_attribute<'scope>(
+    pub(super) fn watch_registered_callback<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         admission: Admission<'_>,
         node: GuestNode,
         prototype: &RetainedCallbackObject,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
-        let AdmissionRoute::Attribute(request, registration) = admission.route else {
-            return Err(DocumentScriptNativeError::SourceAccess.into());
-        };
         self.project(
             scope,
             admission,
@@ -666,17 +1075,29 @@ impl OrdinaryBindings {
                         .session
                         .try_borrow_mut()
                         .map_err(|_| DocumentScriptNativeError::Busy)?;
-                    let watch = session
-                        .dom()
-                        .raw_mut()
-                        .watch_source_attribute_node_retirement(
-                            request,
-                            registration,
-                            node.node(),
-                            inbox,
-                            key,
-                            &admission.owner.cancellation,
-                        )?;
+                    let mut dom = session.dom();
+                    let dom = dom.raw_mut();
+                    let cancel = &admission.owner.cancellation;
+                    let watch = match admission.route {
+                        AdmissionRoute::Attribute(request, registration) => dom
+                            .watch_source_attribute_node_retirement(
+                                request,
+                                registration,
+                                node.node(),
+                                inbox,
+                                key,
+                                cancel,
+                            )?,
+                        AdmissionRoute::Constructor(request, registration) => dom
+                            .watch_source_custom_element_node_retirement(
+                                request,
+                                registration,
+                                node.node(),
+                                (inbox, key),
+                                cancel,
+                            )?,
+                        _ => return Err(DocumentScriptNativeError::SourceAccess.into()),
+                    };
                     Ok((node, watch))
                 },
             ),

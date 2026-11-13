@@ -145,7 +145,7 @@ pub(in crate::document_scripting) fn document_factories_execute_the_reached_cust
             class Autonomous extends HTMLElement {
                 constructor() {
                     super();
-                    observations.push(this, document.createElement('span'));
+                    observations.push(this, document.createElement('span'), document.createTextNode('nested'));
                 }
             }
             customElements.define('x-autonomous', Autonomous);
@@ -155,26 +155,33 @@ pub(in crate::document_scripting) fn document_factories_execute_the_reached_cust
             if (!(autonomous instanceof Autonomous) || autonomous !== observations[0]
                 || autonomous.ownerDocument !== document || autonomous.localName !== 'x-autonomous'
                 || autonomous.parentNode !== null || observations[1]?.localName !== 'span'
-                || observations.length !== 2) return false;
+                || observations[2]?.data !== 'nested' || observations.length !== 3) return false;
 
-            let builtinReceiver;
-            class Customized extends HTMLButtonElement {
+            let ancestorReceiver;
+            class Inner extends HTMLElement {
                 constructor() {
                     super();
-                    builtinReceiver = this;
+                    ancestorReceiver = Reflect.construct(HTMLElement, [], Outer);
                 }
             }
-            customElements.define('x-customized', Customized, { extends: 'button' });
-            const button = document.createElement('button', { is: 'x-customized' });
-            if (button !== builtinReceiver || !(button instanceof Customized)
-                || !(button instanceof HTMLButtonElement) || button.localName !== 'button') return false;
+            class Outer extends HTMLElement {
+                constructor() {
+                    super();
+                    document.createElement('x-inner');
+                }
+            }
+            customElements.define('x-inner', Inner);
+            customElements.define('x-outer', Outer);
+            const outer = document.createElement('x-outer');
+            if (!(ancestorReceiver instanceof Outer) || outer === ancestorReceiver
+                || ancestorReceiver.localName !== 'x-outer' || !(outer instanceof Outer)) return false;
 
             let failedReceiver;
             class Failing extends HTMLElement {
                 constructor() {
                     super();
                     failedReceiver = this;
-                    throw new Error('original constructor exception');
+                    throw (globalThis.originalConstructorException = new Error('original constructor exception'));
                 }
             }
             customElements.define('x-failing', Failing);
@@ -185,6 +192,125 @@ pub(in crate::document_scripting) fn document_factories_execute_the_reached_cust
                 && fallback.customElementRegistry === customElements;
         })()"#)
     }).unwrap();
+    let report = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(report.realm, permit.realm);
+    host.in_document(&permit, |scope| {
+        let original = scope.evaluate(&units("originalConstructorException"))?;
+        let reported = scope.import(report.exception.value())?;
+        assert!(scope.strict_equals(&original, &reported)?);
+        Ok(())
+    })
+    .unwrap();
+    assert!(
+        host.take_guest_constructor_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            customElements.define('x-interface', HTMLElement);
+            return document.createElement('x-interface') instanceof HTMLUnknownElement;
+        })()"#,
+        )
+    })
+    .unwrap();
+    let report = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        let reported = scope.import(report.exception.value())?;
+        let global = scope.global()?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("interfaceFailure")),
+            &reported,
+        )?;
+        assert_guest(scope, "interfaceFailure instanceof TypeError")
+    })
+    .unwrap();
+
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                r#"
+            globalThis.retriedConstructionCalls = 0;
+            customElements.define('x-retried-construction', class extends HTMLElement {
+                constructor() {
+                    super();
+                    retriedConstructionCalls++;
+                    throw (globalThis.retriedConstructionException = {});
+                }
+            });
+        "#,
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let events = host.guest_events().unwrap();
+    events
+        .public
+        .as_ref()
+        .unwrap()
+        .refuse_next_constructor_fallback();
+    assert!(matches!(
+        host.in_document(&permit, |scope| scope
+            .evaluate(&units("document.createElement('x-retried-construction')"))
+            .map(drop)),
+        Err(DocumentScriptError::Script(Error::HostFailure(_)))
+    ));
+    let limits = events.limits.source_edits;
+    let pending = host
+        .with_native(|dom, _, _| dom.pending_source_edit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        pending.phase(),
+        surgeist_dom::DomSourcePhase::CustomElementConstruction
+    );
+    drop(events);
+    let registration = Rc::downgrade(&host.engine.as_ref().unwrap().registration);
+    let mut stopped = host.stop();
+    assert!(!registration.upgrade().unwrap().is_active());
+    stopped.settle_pending_custom_element(limits).unwrap();
+    assert!(registration.upgrade().is_none());
+    assert!(
+        stopped
+            .with_native(|dom, _, _| dom.pending_source_edit())
+            .unwrap()
+            .is_none()
+    );
+    assert!(stopped.into_session().is_ok());
+}
+
+pub(in crate::document_scripting) fn document_factories_upgrade_the_reached_customized_builtin() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            let builtinReceiver;
+            class Customized extends HTMLButtonElement {
+                constructor() {
+                    super();
+                    builtinReceiver = this;
+                }
+            }
+            customElements.define('x-customized', Customized, { extends: 'button' });
+            const button = document.createElement('button', { is: 'x-customized' });
+            return button === builtinReceiver && button instanceof Customized
+                && button instanceof HTMLButtonElement && button.localName === 'button';
+        })()"#,
+        )
+    })
+    .unwrap();
 }
 
 pub(in crate::document_scripting) fn assert_queued_trusted_types_violations(

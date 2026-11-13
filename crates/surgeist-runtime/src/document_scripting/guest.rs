@@ -3,6 +3,7 @@
 mod csp_task;
 mod element_task;
 mod interfaces;
+pub(super) use interfaces::{ActiveConstructor, PendingConstructor};
 mod listeners;
 mod reports;
 mod source_event;
@@ -35,8 +36,8 @@ pub struct DocumentGuestEventLimits {
     pub storage_bytes: usize,
     /// Cumulative guest adapter work.
     pub work: u64,
-    /// Pending ordinary exceptions from attached dispatches, including
-    /// slots reserved by currently active dispatches.
+    /// Pending listener and constructor exceptions, including slots reserved
+    /// by currently active dispatches and constructors.
     pub pending_exception_reports: usize,
     /// Native path, callback, failure and work limits for one advance.
     pub dispatch: DomEventDispatchLimits,
@@ -289,6 +290,17 @@ pub struct DocumentGuestListenerException {
     /// Associated callback Realm, independently qualified by the attachment.
     pub realm: RealmId,
     /// Original JavaScript thrown value.
+    pub exception: Exception,
+}
+
+/// An exception raised by synchronous custom element construction.
+#[derive(Debug)]
+pub struct DocumentGuestConstructorException {
+    /// Exact canonical definition selected by the factory.
+    pub definition: surgeist_dom::DomRegistryDefinitionId,
+    /// The selected constructor object's associated Realm.
+    pub realm: RealmId,
+    /// Original thrown value or the exception from native result validation.
     pub exception: Exception,
 }
 
@@ -940,6 +952,19 @@ impl DocumentScriptHost {
             .as_ref()
             .ok_or(DocumentGuestEventError::RegistryState)?;
         Ok(reports.take())
+    }
+
+    /// Take the next reported custom element constructor exception.
+    pub fn take_guest_constructor_exception(
+        &self,
+        permit: &DocumentScriptPermit,
+    ) -> Result<Option<DocumentGuestConstructorException>, DocumentGuestEventError> {
+        self.check_permit(permit)?;
+        let reports = self
+            .guest_exception_reports
+            .as_ref()
+            .ok_or(DocumentGuestEventError::RegistryState)?;
+        Ok(reports.take_constructor())
     }
 
     fn guest_events(&self) -> Result<Rc<GuestEvents>, DocumentGuestEventError> {

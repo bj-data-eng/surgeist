@@ -358,8 +358,8 @@ pub use store::source::operation::meta::{
 };
 pub use store::source::operation::{
     DomPreparedElementName, DomSourceCustomElementCallbackScope, DomSourceCustomElementDisposition,
-    DomSourceCustomElementOutcome, DomSourceEventFiringLoan, DomSourceLease, DomStyleCspBudget,
-    DomWatchedElementCreation,
+    DomSourceCustomElementOutcome, DomSourceCustomElementRetention, DomSourceEventFiringLoan,
+    DomSourceLease, DomStyleCspBudget, DomWatchedCustomElementResult, DomWatchedElementCreation,
 };
 pub use style::{
     DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCspRetention,

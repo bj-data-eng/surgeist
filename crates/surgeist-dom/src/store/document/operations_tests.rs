@@ -784,7 +784,7 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
     let before = dom.snapshot().stamp();
     assert!(matches!(
         dom.construct_autonomous_element_with_watch(
-            request,
+            (request, request),
             &registration,
             owner.global(),
             (&inbox, 0),
@@ -797,7 +797,7 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
     assert!(dom.node_retirements.is_none());
     let created = dom
         .construct_autonomous_element_with_watch(
-            request,
+            (request, request),
             &registration,
             owner.global(),
             (&inbox, 0),
@@ -834,7 +834,7 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
 
     assert!(matches!(
         dom.construct_autonomous_element_with_watch(
-            request,
+            (request, request),
             &registration,
             owner.global(),
             (&inbox, 1),
@@ -879,22 +879,39 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
     let mut lease = dom
         .resume_source_edit(request.operation(), bounds, &cancel())
         .unwrap();
-    let DomSourceProgress::Complete(done) = lease.advance(&cancel()).unwrap() else {
-        panic!("close the original factory");
+    let before_watch = lease.snapshot().stamp();
+    assert!(matches!(
+        lease.finish_custom_element_with_watch(
+            request,
+            (&inbox, 1),
+            watch_limits,
+            &cancel(),
+            |_| Err::<(), _>(DomError::NotSupported),
+        ),
+        Err(DomError::NotSupported)
+    ));
+    assert_eq!(lease.snapshot().stamp(), before_watch);
+    let DomWatchedCustomElementResult::Fallback {
+        node: fallback_node,
+        watch: _fallback_watch,
+        projection,
+        disposition,
+    } = lease
+        .finish_custom_element_with_watch(request, (&inbox, 1), watch_limits, &cancel(), |name| {
+            Ok::<_, DomError>(name.name().prefix().cloned())
+        })
+        .unwrap()
+    else {
+        panic!("failed factory returns its watched fallback");
     };
-    assert_eq!(
-        done.custom_element_disposition(),
-        Some(DomSourceCustomElementDisposition::Abrupt)
-    );
-    let Some(DomSourceOutput::Node(fallback)) = done.output() else {
-        panic!("failed factory returns its fallback");
-    };
-    assert_ne!(child, fallback);
-    assert_ne!(constructed, fallback);
+    assert_eq!(disposition, DomSourceCustomElementDisposition::Abrupt);
+    assert_eq!(projection, Some("p".into()));
+    assert_ne!(child, fallback_node);
+    assert_ne!(constructed, fallback_node);
     let snapshot = lease.snapshot();
     assert!(snapshot.node(child).is_ok());
     assert!(snapshot.node(constructed).is_ok());
-    let element = snapshot.node(fallback).unwrap().as_element().unwrap();
+    let element = snapshot.node(fallback_node).unwrap().as_element().unwrap();
     assert!(element.has_failed_construction_interface());
     assert_eq!(element.name().prefix(), Some(&"p".into()));
     assert_eq!(element.name().local_name(), &"x-broken".into());
@@ -913,9 +930,18 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
     drop(lease);
     let mut retire = DomBatch::new();
     retire.destroy(constructed);
+    retire.destroy(fallback_node);
     dom.apply(retire, &cancel()).unwrap();
-    let notice = inbox.take().unwrap();
-    assert_eq!((notice.node(), notice.custody_key()), (constructed, 0));
+    let mut notices = [inbox.take().unwrap(), inbox.take().unwrap()];
+    notices.sort_by_key(|notice| notice.custody_key());
+    assert_eq!(
+        (notices[0].node(), notices[0].custody_key()),
+        (constructed, 0)
+    );
+    assert_eq!(
+        (notices[1].node(), notices[1].custody_key()),
+        (fallback_node, 1)
+    );
     assert!(inbox.take().is_none());
     drop(created);
 
@@ -962,14 +988,13 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
     lease
         .accept_custom_element_callback(request, &registration, &mut outcome, &cancel())
         .unwrap();
-    let DomSourceProgress::Complete(done) = lease.advance(&cancel()).unwrap() else {
-        panic!("close the original factory");
-    };
-    assert_eq!(done.output(), Some(DomSourceOutput::Node(returned)));
-    assert_eq!(
-        done.custom_element_disposition(),
-        Some(DomSourceCustomElementDisposition::Constructed)
-    );
+    assert!(matches!(
+        lease.finish_custom_element_with_watch(
+            request, (&inbox, 2), watch_limits, &cancel(),
+            |_| -> Result<(), DomError> { panic!("existing projection must be reused") },
+        ).unwrap(),
+        DomWatchedCustomElementResult::Returned(node) if node == returned
+    ));
     let snapshot = lease.snapshot();
     let element = snapshot.node(returned).unwrap().as_element().unwrap();
     assert!(!element.has_failed_construction_interface());

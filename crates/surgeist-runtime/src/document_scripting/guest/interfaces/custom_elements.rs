@@ -5,12 +5,122 @@ use surgeist_bindings_js::{
     CustomElementRegistryIdentity, ValueKind, conversion::types, dom_exception::DomExceptionName,
 };
 use surgeist_dom::{
-    DocumentString, DomNodeKind, DomRegistryBinding, DomRegistryDefinitionId, DomRegistryId,
-    DomSnapshot,
+    DocumentString, DomDocumentScriptRegistration, DomNodeKind, DomRegistryBinding,
+    DomRegistryDefinitionId, DomRegistryId, DomSnapshot, DomSourceCustomElementRequest,
 };
 use surgeist_html_semantics::HtmlCustomElementDefinition;
 
 const INTERFACE: &[u16] = &ascii(b"CustomElementRegistry");
+
+pub(in crate::document_scripting) struct ActiveConstructor {
+    pub(in crate::document_scripting) request: DomSourceCustomElementRequest,
+    pub(in crate::document_scripting) registration: Rc<DomDocumentScriptRegistration>,
+    constructor: surgeist_bindings_js::Root,
+    previous: Option<Rc<Self>>,
+    _backing: GuestBacking,
+}
+
+pub(super) struct ConstructorEntry<'a> {
+    slot: &'a RefCell<Option<Rc<ActiveConstructor>>>,
+    previous: Option<Rc<ActiveConstructor>>,
+}
+
+impl Drop for ConstructorEntry<'_> {
+    fn drop(&mut self) {
+        self.slot.replace(self.previous.take());
+    }
+}
+
+pub(super) fn active_constructor_for_target<'scope>(
+    owner: &NativeOwner,
+    events: &GuestEvents,
+    scope: &mut Scope<'scope>,
+    new_target: &Value<'scope>,
+) -> Result<Option<Rc<ActiveConstructor>>, DocumentGuestEventError> {
+    let active = owner
+        .active_constructor
+        .try_borrow()
+        .map_err(|_| DocumentScriptNativeError::Busy)?;
+    let mut current = active.as_ref();
+    while let Some(frame) = current {
+        events.step()?;
+        let constructor = scope.import(&frame.constructor)?;
+        if scope.strict_equals(&constructor, new_target)? {
+            return Ok(Some(frame.clone()));
+        }
+        current = frame.previous.as_ref();
+    }
+    Ok(None)
+}
+
+impl PublicEventBindings {
+    pub(super) fn enter_factory_constructor<'a, 'scope>(
+        &self,
+        owner: &'a NativeOwner,
+        events: &GuestEvents,
+        scope: &mut Scope<'scope>,
+        request: DomSourceCustomElementRequest,
+        constructor: &Value<'scope>,
+        registration: Rc<DomDocumentScriptRegistration>,
+    ) -> Result<ConstructorEntry<'a>, DocumentGuestEventError> {
+        let backing = events.reserve(
+            owner,
+            size_of::<ActiveConstructor>() + 2 * size_of::<usize>(),
+        )?;
+        let previous = owner
+            .active_constructor
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .clone();
+        let frame = Rc::new(ActiveConstructor {
+            request,
+            registration,
+            constructor: scope.retain(constructor),
+            previous: previous.clone(),
+            _backing: backing,
+        });
+        owner.active_constructor.replace(Some(frame));
+        Ok(ConstructorEntry {
+            slot: &owner.active_constructor,
+            previous,
+        })
+    }
+
+    pub(super) fn factory_constructor<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        events: &GuestEvents,
+        request: DomSourceCustomElementRequest,
+    ) -> Result<(Value<'scope>, RealmId), DocumentGuestEventError> {
+        let id = request.definition();
+        let open = |scope: &mut Scope<'scope>, registry: &GlobalRegistry| {
+            events.step()?;
+            if registry.id != id.registry() || registry.global != request.global() {
+                return Err(DocumentScriptNativeError::ProjectionCustody.into());
+            }
+            let rows = registry
+                .definitions
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let row = rows
+                .rows
+                .get(id.ordinal())
+                .filter(|row| row.id == id)
+                .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+            Ok((
+                scope.open_callback_object(&row.constructor)?,
+                row.constructor.associated_realm().identity(),
+            ))
+        };
+        if self.custom_elements.global == request.global() {
+            open(scope, &self.custom_elements)
+        } else {
+            self.with_origin(events, request.global(), |origin| {
+                open(scope, &origin.custom_elements)
+            })
+        }
+    }
+}
 
 pub(super) struct GlobalRegistry {
     global: DomHostedGlobalId,
@@ -666,6 +776,10 @@ fn read_callback<'scope>(
 }
 
 impl GlobalRegistry {
+    pub(super) fn is_global(&self, global: DomHostedGlobalId) -> bool {
+        self.global == global
+    }
+
     fn find<'scope>(
         &self,
         scope: &mut Scope<'scope>,

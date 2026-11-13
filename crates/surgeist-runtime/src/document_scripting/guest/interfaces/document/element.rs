@@ -53,6 +53,7 @@ pub(in crate::document_scripting::guest::interfaces) struct ElementBindings {
     element: RetainedCallbackObject,
     mathml: RetainedCallbackObject,
     html: Vec<HtmlPrototype>,
+    html_constructor: RetainedCallbackObject,
     svg: svg::SvgBindings,
     _html_backing: GuestBacking,
 }
@@ -105,8 +106,21 @@ impl ElementBindings {
         let (constructor, element) = install(scope, &global, ELEMENT, node_constructor, node)?;
         let (_, mathml) = install(scope, &global, MATHML_ELEMENT, &constructor, &element)?;
         let svg = svg::SvgBindings::install(scope, &global, &constructor, &element, fund)?;
-        let (html_constructor, html) =
-            install(scope, &global, HTML_ELEMENT, &constructor, &element)?;
+        let fallback = capture(size_of::<Capture>())?;
+        let construct = capture(size_of::<Capture>())?;
+        let html_callback = ConstructorCallback::bounded(
+            0,
+            move |scope| fallback.html_element_prototype(scope),
+            move |scope, arguments| construct.construct_html_element(scope, arguments),
+        );
+        let (html_constructor, html) = install_constructor(
+            scope,
+            &global,
+            HTML_ELEMENT,
+            &constructor,
+            &element,
+            &html_callback,
+        )?;
         let (media_constructor, media) =
             install(scope, &global, HTML_MEDIA_ELEMENT, &html_constructor, &html)?;
         let capacity = KnownHtmlElement::ALL.len() + OBSOLETE_SPECIAL.len() + 2;
@@ -202,10 +216,12 @@ impl ElementBindings {
         )?;
         let base = scope.callback_object(&element)?;
         let mathml = scope.callback_object(&mathml)?;
+        let html_constructor = scope.callback_object(&html_constructor)?;
         Ok(Self {
             element: scope.retain_callback_object(base, fund)?,
             mathml: scope.retain_callback_object(mathml, fund)?,
             html: classes,
+            html_constructor: scope.retain_callback_object(html_constructor, fund)?,
             svg,
             _html_backing: html_backing,
         })
@@ -325,7 +341,6 @@ fn install<'scope>(
     parent_constructor: &Value<'scope>,
     parent: &Value<'scope>,
 ) -> Result<(Value<'scope>, Value<'scope>), Error> {
-    let prototype = scope.object(ObjectPrototype::Object(parent))?;
     let callback = ConstructorCallback::bounded(
         0,
         |_| Err(Error::BackendUnavailable),
@@ -335,7 +350,19 @@ fn install<'scope>(
             ))
         },
     );
-    let constructor = scope.constructor(&callback, FunctionMetadata { name, length: 0 })?;
+    install_constructor(scope, global, name, parent_constructor, parent, &callback)
+}
+
+fn install_constructor<'scope>(
+    scope: &mut Scope<'scope>,
+    global: &Value<'scope>,
+    name: &[u16],
+    parent_constructor: &Value<'scope>,
+    parent: &Value<'scope>,
+    callback: &ConstructorCallback,
+) -> Result<(Value<'scope>, Value<'scope>), Error> {
+    let prototype = scope.object(ObjectPrototype::Object(parent))?;
+    let constructor = scope.constructor(callback, FunctionMetadata { name, length: 0 })?;
     scope.set_prototype(&constructor, ObjectPrototype::Object(parent_constructor))?;
     scope.define_property(
         &constructor,
@@ -349,6 +376,139 @@ fn install<'scope>(
     )?;
     install_interface(scope, global, name, &constructor, &prototype)?;
     Ok((constructor, prototype))
+}
+
+impl PublicEventBindings {
+    pub(super) fn unknown_element_prototype(
+        &self,
+        events: &GuestEvents,
+        global: DomHostedGlobalId,
+    ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
+        let retain = |bindings: &ElementBindings| {
+            bindings
+                .prototype(ElementInterface::Html("HTMLUnknownElement"), || {
+                    events.step()
+                })
+                .cloned()
+        };
+        if self.custom_elements.is_global(global) {
+            retain(&self.document.element)
+        } else {
+            self.with_origin(events, global, |origin| retain(&origin.elements))
+        }
+    }
+
+    fn html_element_prototype<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        events: &GuestEvents,
+        primary_realm: RealmId,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let realm = scope.realm_authority()?.identity();
+        let open = |scope: &mut Scope<'scope>, bindings: &ElementBindings| {
+            let prototype =
+                bindings.prototype(ElementInterface::Html("HTMLElement"), || events.step())?;
+            Ok(scope.open_callback_object(prototype)?)
+        };
+        if realm == primary_realm {
+            return open(scope, &self.document.element);
+        }
+        let origins = self
+            .origins
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let mut next = origins.as_deref();
+        while let Some(origin) = next {
+            events.step()?;
+            if origin.target.associated_realm().identity() == realm {
+                return open(scope, &origin.elements);
+            }
+            next = origin.next.as_deref();
+        }
+        Err(DocumentGuestEventError::CallbackRealmUnavailable)
+    }
+}
+
+impl Capture {
+    fn html_element_prototype<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+    ) -> Result<Value<'scope>, Error> {
+        let events = self
+            .callbacks
+            .access
+            .get()
+            .and_then(|access| access.events.upgrade())
+            .ok_or(Error::ExpiredIdentity)?;
+        let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+        match public.html_element_prototype(scope, &events, self.callbacks.permit.realm) {
+            Ok(prototype) => Ok(prototype),
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                Err(error)
+            }
+            Err(error) => refuse(scope, &events.refusal, error),
+        }
+    }
+
+    fn construct_html_element<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: ConstructorArguments<'scope>,
+    ) -> Result<ConstructorCompletion<'scope>, Error> {
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let attached = owner
+                .attachment
+                .get()
+                .ok_or(Error::ExpiredIdentity)?
+                .target
+                .global();
+            let global = self
+                .origin
+                .as_ref()
+                .map_or(attached, |origin| origin.global);
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let own = if self.origin.is_some() {
+                public.with_origin(&events, global, |origin| {
+                    Ok(scope.open_callback_object(&origin.elements.html_constructor)?)
+                })?
+            } else {
+                scope.open_callback_object(&public.document.element.html_constructor)?
+            };
+            if scope.strict_equals(&own, arguments.new_target())? {
+                return Ok(ConstructorCompletion::Throw(
+                    scope.type_error(&ascii(b"Illegal constructor"))?,
+                ));
+            }
+            let Some(frame) = custom_elements::active_constructor_for_target(
+                &owner,
+                &events,
+                scope,
+                arguments.new_target(),
+            )?
+            else {
+                return Ok(ConstructorCompletion::Throw(
+                    scope.type_error(&ascii(b"Illegal constructor"))?,
+                ));
+            };
+            let selected = arguments.select_prototype(scope)?;
+            let element = public.document.ordinary.construct_autonomous(
+                scope,
+                (&owner, &events),
+                &frame,
+                global,
+                selected.prototype(),
+            )?;
+            Ok(ConstructorCompletion::Return(element))
+        })();
+        match result {
+            Ok(completion) => Ok(completion),
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                Err(error)
+            }
+            Err(error) => refuse(scope, &events.refusal, error),
+        }
+    }
 }
 
 fn install_named<'scope>(
@@ -379,12 +539,14 @@ impl PublicEventBindings {
         let bindings = &self.document;
         let request = owner.attached_event_request();
         let attribute = owner.active_attribute_registration()?;
-        let admission = match (&attribute, &request) {
-            (Some((request, registration)), _) => {
+        let active = owner.current_constructor_registration()?;
+        let admission = match (&active, &attribute, &request) {
+            (Some(active), _, _) => ordinary::Admission::constructor(owner, events, active),
+            (None, Some((request, registration)), _) => {
                 ordinary::Admission::attribute(owner, events, *request, registration)
             }
-            (None, Some(request)) => ordinary::Admission::source(owner, events, request),
-            (None, None) => ordinary::Admission::ordinary(owner, events),
+            (None, None, Some(request)) => ordinary::Admission::source(owner, events, request),
+            (None, None, None) => ordinary::Admission::ordinary(owner, events),
         };
         if let Some(value) = bindings.find(scope, admission, node)? {
             return Ok(value);
@@ -441,16 +603,20 @@ impl PublicEventBindings {
                 Ok((
                     origin,
                     attached,
-                    NativeProjection::Element(element_interface(element.name(), || read.step())?),
+                    NativeProjection::Element(if element.has_failed_construction_interface() {
+                        ElementInterface::Html("HTMLUnknownElement")
+                    } else {
+                        element_interface(element.name(), || read.step())?
+                    }),
                 ))
             })?;
         let watch = |scope: &mut Scope<'scope>, node, prototype: &RetainedCallbackObject| match (
-            &attribute, &request,
+            &active, &attribute, &request,
         ) {
-            (Some(_), _) => bindings
+            (Some(_), _, _) | (None, Some(_), _) => bindings
                 .ordinary
-                .watch_attribute(scope, admission, node, prototype),
-            (None, Some(request)) => bindings.ordinary.watch_source(
+                .watch_registered_callback(scope, admission, node, prototype),
+            (None, None, Some(request)) => bindings.ordinary.watch_source(
                 scope,
                 (owner, events),
                 request,
@@ -458,7 +624,7 @@ impl PublicEventBindings {
                 prototype,
                 Ok(()),
             ),
-            (None, None) => {
+            (None, None, None) => {
                 bindings
                     .ordinary
                     .watch(scope, owner, events, &self.callbacks, node, prototype)

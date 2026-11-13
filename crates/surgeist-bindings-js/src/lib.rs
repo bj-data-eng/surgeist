@@ -1185,6 +1185,26 @@ impl<'scope> Scope<'scope> {
         Ok(self.value(root.clone()))
     }
 
+    /// Capture a host-created exception value for reporting an invocation.
+    pub fn invocation_exception(&self, value: &Value<'scope>) -> Exception {
+        Exception {
+            phase: ExceptionPhase::Invoke,
+            value: self.retain(value),
+            rule: None,
+        }
+    }
+
+    /// Transfer already admitted backing to a retained invocation result.
+    /// The guard must contain no engine custody. A root accepts one guard.
+    pub fn retain_invocation_result_backing(
+        &mut self,
+        value: &Value<'scope>,
+        backing: Box<dyn std::any::Any>,
+    ) -> Result<(), Error> {
+        self.check_active()?;
+        self.operations.retain_root_backing(&value.root, backing)
+    }
+
     /// Transfer already admitted backing to the exact original exception
     /// root. The engine releases it after the persistent handle is destroyed.
     /// The guard covers the managed-root extent and its own boxed storage,

@@ -25,6 +25,7 @@ impl CallbackObject<'_> {
 
 /// One retained guest object in its original process. The backend holds its
 /// admitted backing until the actual persistent handle is released.
+#[derive(Clone)]
 pub struct RetainedCallbackObject {
     holder: Rc<CallbackObjectIdentity>,
     realm: RealmAuthority,

@@ -4,7 +4,7 @@ pub(in crate::store) mod attribute;
 pub(in crate::store) mod custom_element;
 pub use custom_element::{
     DomSourceCustomElementCallbackScope, DomSourceCustomElementDisposition,
-    DomSourceCustomElementOutcome,
+    DomSourceCustomElementOutcome, DomSourceCustomElementRetention,
 };
 #[cfg(test)]
 mod design_mode_tests;
@@ -33,7 +33,9 @@ mod scope_tests;
 mod script;
 mod show_modal;
 mod synchronous_node;
-pub use synchronous_node::{DomPreparedElementName, DomWatchedElementCreation};
+pub use synchronous_node::{
+    DomPreparedElementName, DomWatchedCustomElementResult, DomWatchedElementCreation,
+};
 mod watcher;
 use super::Invocation;
 use super::*;

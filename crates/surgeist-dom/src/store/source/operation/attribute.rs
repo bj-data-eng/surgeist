@@ -964,7 +964,7 @@ impl DomSourceLease<'_> {
         )?;
         let debit = self
             .dom
-            .retain_source_attribute_observer_payload(custody::Usage::new(bytes, units), cancel)?;
+            .retain_source_callback_payload(custody::Usage::new(bytes, units), cancel)?;
         Ok(DomSourceAttributePayloadRetention { _debit: debit })
     }
 
@@ -1251,8 +1251,7 @@ impl Dom {
         cancel: &AtomicBool,
     ) -> Result<crate::DomSourceAttributePayloadRetention, DomError> {
         self.active_source_attribute_callback_work(request, registration, cancel)?;
-        let debit =
-            self.retain_source_attribute_observer_payload(custody::Usage::new(0, units), cancel)?;
+        let debit = self.retain_source_callback_payload(custody::Usage::new(0, units), cancel)?;
         Ok(crate::DomSourceAttributePayloadRetention { _debit: debit })
     }
 
@@ -1277,7 +1276,7 @@ impl Dom {
     }
 
     // The caller has qualified the original request in its required scope.
-    pub(in crate::store) fn retain_source_attribute_observer_payload(
+    pub(in crate::store) fn retain_source_callback_payload(
         &self,
         usage: custody::Usage,
         cancel: &AtomicBool,

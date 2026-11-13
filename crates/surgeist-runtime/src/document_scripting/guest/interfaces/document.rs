@@ -23,6 +23,7 @@ mod style_policy;
 mod text;
 mod tree;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
+pub(in crate::document_scripting) use ordinary::PendingConstructor;
 
 fn guest_source_services(
     style_policy: &mut dyn FnMut(
@@ -619,6 +620,14 @@ fn install_getter<'scope>(
 }
 
 impl PublicEventBindings {
+    #[cfg(test)]
+    pub(in crate::document_scripting::guest) fn refuse_next_constructor_fallback(&self) {
+        self.document
+            .ordinary
+            .refuse_next_constructor_fallback
+            .set(true);
+    }
+
     #[cfg(test)]
     pub(in crate::document_scripting::guest) fn refuse_next_ordinary_wrapper_validation(&self) {
         self.document.ordinary.refuse_next_validation.set(true);

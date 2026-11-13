@@ -716,6 +716,7 @@ pub fn surgeist_bindings_js::Scope<'scope>::global(&mut self) -> core::result::R
 pub fn surgeist_bindings_js::Scope<'scope>::import(&mut self, root: &surgeist_bindings_js::Root) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::integer(&mut self, value: &surgeist_bindings_js::Value<'scope>, kind: surgeist_bindings_js::IntegerKind, mode: surgeist_bindings_js::IntegerMode) -> core::result::Result<surgeist_bindings_js::IntegerValue, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::intrinsic(&mut self, intrinsic: surgeist_bindings_js::Intrinsic) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::invocation_exception(&self, value: &surgeist_bindings_js::Value<'scope>) -> surgeist_bindings_js::Exception
 pub fn surgeist_bindings_js::Scope<'scope>::is_callable(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<bool, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::is_constructor(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<bool, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::kind(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<surgeist_bindings_js::ValueKind, surgeist_bindings_js::Error>
@@ -727,6 +728,7 @@ pub fn surgeist_bindings_js::Scope<'scope>::realm_authority(&self) -> core::resu
 pub fn surgeist_bindings_js::Scope<'scope>::refuse_host(&self, failure: &surgeist_bindings_js::HostFailure) -> surgeist_bindings_js::Error
 pub fn surgeist_bindings_js::Scope<'scope>::retain(&self, value: &surgeist_bindings_js::Value<'scope>) -> surgeist_bindings_js::Root
 pub fn surgeist_bindings_js::Scope<'scope>::retain_exception_backing(&mut self, exception: &surgeist_bindings_js::Exception, backing: alloc::boxed::Box<dyn core::any::Any>) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::retain_invocation_result_backing(&mut self, value: &surgeist_bindings_js::Value<'scope>, backing: alloc::boxed::Box<dyn core::any::Any>) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::set(&mut self, object: &surgeist_bindings_js::Value<'scope>, key: surgeist_bindings_js::PropertyKey<'_, 'scope>, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::set_prototype(&mut self, object: &surgeist_bindings_js::Value<'scope>, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::strict_equals(&mut self, left: &surgeist_bindings_js::Value<'scope>, right: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<bool, surgeist_bindings_js::Error>

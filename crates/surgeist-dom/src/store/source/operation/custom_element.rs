@@ -79,6 +79,9 @@ impl Pending {
                 self.qualify_returned(draft, node, cancel)?
             }
             DomSourceCustomElementOutcome::Failed => Err(DomSourceCustomElementDisposition::Abrupt),
+            DomSourceCustomElementOutcome::InvalidInterface => {
+                Err(DomSourceCustomElementDisposition::InvalidInterface)
+            }
         };
         let (key, disposition) = match returned {
             Ok(key) => {
@@ -118,6 +121,10 @@ impl Pending {
 
     pub(super) fn disposition(&self) -> Option<DomSourceCustomElementDisposition> {
         self.disposition
+    }
+
+    pub(super) fn accepted(&self, request: DomSourceCustomElementRequest) -> bool {
+        self.request == request && self.outcome.is_some()
     }
 
     fn qualify_returned(
@@ -168,6 +175,7 @@ impl Pending {
 pub enum DomSourceCustomElementOutcome {
     Returned(NodeId),
     Failed,
+    InvalidInterface,
 }
 
 /// Disposition of an autonomous factory's completed native publication.
@@ -180,6 +188,11 @@ pub enum DomSourceCustomElementDisposition {
     InvalidInterface,
     /// The returned HTMLElement requires a NotSupportedError and a distinct fallback.
     InvalidElement,
+}
+
+/// Admitted UTF-16 scratch retained during an original constructor callback.
+pub struct DomSourceCustomElementRetention {
+    _debit: custody::Debit,
 }
 
 /// The exact native reentry authority of a running autonomous constructor.
@@ -421,39 +434,77 @@ impl Operation {
 }
 
 impl Dom {
+    /// Whether the exact factory remains in the current Source stack.
+    pub fn retains_custom_element(
+        &self,
+        request: DomSourceCustomElementRequest,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        for operation in self
+            .source_operation
+            .iter()
+            .chain(self.source_parents.iter().rev())
+        {
+            check_cancel(cancel)?;
+            if operation.id == request.operation {
+                return Ok(operation
+                    .custom_element
+                    .as_ref()
+                    .is_some_and(|pending| pending.request == request));
+            }
+        }
+        Ok(false)
+    }
+
+    /// Admit scratch UTF-16 units held by the exact running constructor.
+    pub fn retain_source_custom_element_units(
+        &self,
+        request: DomSourceCustomElementRequest,
+        registration: &DomDocumentScriptRegistration,
+        units: usize,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceCustomElementRetention, DomError> {
+        self.source_custom_element_callback_step(request, registration, cancel)?;
+        let debit = self.retain_source_callback_payload(custody::Usage::new(0, units), cancel)?;
+        Ok(DomSourceCustomElementRetention { _debit: debit })
+    }
     /// Publish the native result of an autonomous constructor's HTMLElement
-    /// super call, with its retirement watch. The supplied Global identifies
-    /// the actual HTML constructor interface's realm.
-    /// This is a callback mutation, charged to the active observation's work
-    /// and retained storage. The factory still owns its final publication.
+    /// super call, with its retirement watch. The running callback pays for
+    /// the mutation. The selected constructor can be an active ancestor.
+    /// The supplied Global identifies the actual HTML interface's realm.
     pub fn construct_autonomous_element_with_watch(
         &mut self,
-        request: DomSourceCustomElementRequest,
+        (running, selected): (DomSourceCustomElementRequest, DomSourceCustomElementRequest),
         registration: &DomDocumentScriptRegistration,
         callee_global: crate::DomHostedGlobalId,
         (inbox, key): (&crate::DomNodeRetirementInbox, usize),
         limits: crate::DomNodeRetirementLimits,
         cancel: &AtomicBool,
     ) -> Result<crate::DomWatchedNode, DomError> {
-        self.source_custom_element_callback_step(request, registration, cancel)?;
-        let operation = self
-            .source_operation
-            .as_deref()
-            .ok_or(DomError::InvalidSourceOperation)?;
-        let work = operation
-            .callback_observation()
-            .ok_or(DomError::InvalidSourceOperation)?;
+        let work = self.active_custom_element_callback_work(running, registration, cancel)?;
+        work.step(cancel)?;
         let document = self
             .dispatch_global_document_current_with::<DomHostedError>(callee_global, &mut || {
-                work.work.step(cancel).map_err(Into::into)
+                work.step(cancel).map_err(Into::into)
             })
             .map_err(|error| match error {
                 DomHostedError::Dom(error) => error,
                 _ => DomError::HostedSourceUnavailable,
             })?;
-        let name = &operation
-            .custom_element
-            .as_ref()
+        let mut selected_name = None;
+        for operation in self
+            .source_operation
+            .iter()
+            .chain(self.source_parents.iter().rev())
+        {
+            work.step(cancel)?;
+            if operation.waiting_custom_element() == Some(selected) {
+                operation.qualify_active_custom_element_callback(self, cancel)?;
+                selected_name = operation.custom_element.as_ref();
+                break;
+            }
+        }
+        let name = &selected_name
             .ok_or(DomError::InvalidSourceOperation)?
             .name
             .value
@@ -481,8 +532,8 @@ impl Dom {
             node,
             surgeist_html::elements::native::HtmlCustomElementState::Custom,
             crate::element::CustomAssociation {
-                registry: crate::DomRegistryBinding::Registry(request.definition.registry()),
-                definition: crate::DomElementDefinition::Definition(request.definition),
+                registry: crate::DomRegistryBinding::Registry(selected.definition.registry()),
+                definition: crate::DomElementDefinition::Definition(selected.definition),
                 saved_is: None,
             },
             cancel,
@@ -534,6 +585,16 @@ impl Dom {
         registration: &DomDocumentScriptRegistration,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.active_custom_element_callback_work(request, registration, cancel)?
+            .step(cancel)
+    }
+
+    pub(in crate::store) fn active_custom_element_callback_work(
+        &self,
+        request: DomSourceCustomElementRequest,
+        registration: &DomDocumentScriptRegistration,
+        cancel: &AtomicBool,
+    ) -> Result<&CallbackWork, DomError> {
         let operation = self
             .source_operation
             .as_deref()
@@ -550,8 +611,6 @@ impl Dom {
         {
             return Err(DomError::InvalidSourceOperation);
         }
-        operation
-            .qualify_active_custom_element_callback(self, cancel)?
-            .step(cancel)
+        operation.qualify_active_custom_element_callback(self, cancel)
     }
 }

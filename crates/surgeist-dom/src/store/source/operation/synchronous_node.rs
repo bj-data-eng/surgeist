@@ -7,6 +7,7 @@ pub(super) enum SynchronousNode<'a> {
     ReturnNode,
     Watch(NodeWatch<'a>),
     ElementFactory(NodeWatch<'a>),
+    CustomElementResult(NodeWatch<'a>),
 }
 
 /// Result of advancing a detached Element factory with retirement custody.
@@ -16,12 +17,24 @@ pub enum DomWatchedElementCreation<T> {
     Constructor(DomSourceCustomElementRequest),
 }
 
+/// Final output of an autonomous element factory with wrapper custody.
+pub enum DomWatchedCustomElementResult<T> {
+    Returned(NodeId),
+    Fallback {
+        node: NodeId,
+        watch: DomNodeRetirementWatch,
+        projection: T,
+        disposition: crate::DomSourceCustomElementDisposition,
+    },
+}
+
 /// A loan of the exact canonical name prepared for a detached Element. Work
 /// on this loan belongs to the original Source operation and its observers.
 pub struct DomPreparedElementName<'a> {
     name: &'a crate::DomQualifiedName,
     formation: &'a formation::Formation,
     cancel: &'a AtomicBool,
+    custom_element_disposition: Option<crate::DomSourceCustomElementDisposition>,
 }
 
 impl DomPreparedElementName<'_> {
@@ -31,6 +44,12 @@ impl DomPreparedElementName<'_> {
 
     pub fn step(&self) -> Result<(), DomError> {
         self.formation.step(self.cancel)
+    }
+
+    pub const fn custom_element_disposition(
+        &self,
+    ) -> Option<crate::DomSourceCustomElementDisposition> {
+        self.custom_element_disposition
     }
 }
 
@@ -49,6 +68,7 @@ impl NodeWatch<'_> {
         &mut self,
         dom: &mut Dom,
         segment: &SegmentPublication,
+        custom_element_disposition: Option<crate::DomSourceCustomElementDisposition>,
         cancel: &AtomicBool,
     ) -> Result<(), AdvanceError> {
         let [Some(node)] = segment.historical.as_slice() else {
@@ -71,6 +91,7 @@ impl NodeWatch<'_> {
                     name: element.name(),
                     formation,
                     cancel,
+                    custom_element_disposition,
                 })
             }))
             .map_err(AdvanceError::Unwind)?;
@@ -257,6 +278,81 @@ impl Dom {
 }
 
 impl DomSourceLease<'_> {
+    /// Finish the original factory. Only a distinct fallback requires a new
+    /// wrapper and watch. Any preparation refusal leaves the accepted result
+    /// in the original operation.
+    pub fn finish_custom_element_with_watch<T, E: From<DomError>>(
+        &mut self,
+        request: DomSourceCustomElementRequest,
+        (inbox, custody_key): (&DomNodeRetirementInbox, usize),
+        limits: DomNodeRetirementLimits,
+        cancel: &AtomicBool,
+        prepare: impl FnOnce(DomPreparedElementName<'_>) -> Result<T, E>,
+    ) -> Result<DomWatchedCustomElementResult<T>, E> {
+        let accepted = self
+            .dom
+            .source_operation
+            .as_deref()
+            .filter(|operation| operation.id == self.id)
+            .and_then(|operation| operation.custom_element.as_ref())
+            .is_some_and(|pending| pending.accepted(request));
+        if !accepted {
+            return Err(DomError::InvalidSourceOperation.into());
+        }
+        let mut prepare = Some(prepare);
+        let mut output = None;
+        let mut prepare_element = |name: DomPreparedElementName<'_>| {
+            output = prepare.take().map(|prepare| prepare(name));
+            matches!(output, Some(Ok(_)))
+        };
+        let mut execution = Execution::disabled();
+        execution.synchronous_node = Some(SynchronousNode::CustomElementResult(NodeWatch {
+            inbox,
+            custody_key,
+            limits,
+            prepare_element: Some(&mut prepare_element),
+            output: None,
+        }));
+        let progress = self.advance_node(&mut execution, cancel);
+        let Some(SynchronousNode::CustomElementResult(NodeWatch {
+            output: watched, ..
+        })) = execution.synchronous_node.take()
+        else {
+            return Err(DomError::InvalidSourceOperation.into());
+        };
+        if let Some(Err(error)) = output {
+            return Err(error);
+        }
+        let DomSourceProgress::Complete(done) = progress? else {
+            return Err(DomError::IncompleteSourceOperation.into());
+        };
+        match (
+            done.custom_element_disposition(),
+            done.output(),
+            watched,
+            output,
+        ) {
+            (
+                Some(crate::DomSourceCustomElementDisposition::Constructed),
+                Some(DomSourceOutput::Node(node)),
+                None,
+                None,
+            ) => Ok(DomWatchedCustomElementResult::Returned(node)),
+            (
+                Some(disposition),
+                Some(DomSourceOutput::Node(result)),
+                Some((node, watch)),
+                Some(Ok(projection)),
+            ) if node == result => Ok(DomWatchedCustomElementResult::Fallback {
+                node,
+                watch,
+                projection,
+                disposition,
+            }),
+            _ => Err(DomError::InvalidSourceOperation.into()),
+        }
+    }
+
     fn advance_node(
         &mut self,
         execution: &mut Execution<'_>,

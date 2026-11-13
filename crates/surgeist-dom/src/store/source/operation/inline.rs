@@ -269,7 +269,16 @@ impl Operation {
             if let synchronous_node::SynchronousNode::Watch(watch)
             | synchronous_node::SynchronousNode::ElementFactory(watch) = node
             {
-                watch.arm(dom, &segment, cancel)?;
+                watch.arm(dom, &segment, None, cancel)?;
+            }
+            let custom = self
+                .custom_element
+                .as_ref()
+                .and_then(custom_element::Pending::disposition);
+            if let synchronous_node::SynchronousNode::CustomElementResult(watch) = node
+                && custom != Some(crate::DomSourceCustomElementDisposition::Constructed)
+            {
+                watch.arm(dom, &segment, custom, cancel)?;
             }
         }
         let inline = if has_inputs {

@@ -9,7 +9,9 @@ mod toggle_event;
 mod trusted_policy;
 
 use super::*;
+pub(in crate::document_scripting) use custom_elements::ActiveConstructor;
 pub(in crate::document_scripting) use custom_elements::document_registry as creation_document_registry;
+pub(in crate::document_scripting) use document::PendingConstructor;
 pub(super) use document::{GuestNodeProjection, NodeLifetime};
 use surgeist_bindings_js::{
     Arguments, ConstructorArguments, ConstructorCallback, ConstructorCompletion, FunctionMetadata,
@@ -662,6 +664,10 @@ enum SourceReadRequest<'a> {
         request: surgeist_dom::DomSourceAttributeVerificationRequest,
         registration: Rc<surgeist_dom::DomDocumentScriptRegistration>,
     },
+    Constructor {
+        request: surgeist_dom::DomSourceCustomElementRequest,
+        registration: Rc<surgeist_dom::DomDocumentScriptRegistration>,
+    },
 }
 
 struct NativeRead<'a> {
@@ -679,6 +685,9 @@ enum NativeTextUnits {
     },
     Attribute {
         _retained: surgeist_dom::DomSourceAttributePayloadRetention,
+    },
+    Constructor {
+        _retained: surgeist_dom::DomSourceCustomElementRetention,
     },
 }
 
@@ -701,6 +710,16 @@ impl NativeRead<'_> {
                     registration,
                 } => {
                     dom.raw().source_attribute_callback_step(
+                        *request,
+                        registration,
+                        self.cancel,
+                    )?;
+                }
+                SourceReadRequest::Constructor {
+                    request,
+                    registration,
+                } => {
+                    dom.raw().source_custom_element_callback_step(
                         *request,
                         registration,
                         self.cancel,
@@ -759,6 +778,17 @@ impl NativeRead<'_> {
                     self.cancel,
                 )?,
             },
+            SourceReadRequest::Constructor {
+                request,
+                registration,
+            } => NativeTextUnits::Constructor {
+                _retained: dom.raw().retain_source_custom_element_units(
+                    *request,
+                    registration,
+                    units,
+                    self.cancel,
+                )?,
+            },
         };
         Ok(Some(retained))
     }
@@ -791,15 +821,21 @@ impl Callbacks {
             let snapshot = session.snapshot();
             let hosted = session.hosted_execution();
             let dom = session.dom();
-            let request =
-                if let Some((request, registration)) = owner.active_attribute_registration()? {
-                    Some(SourceReadRequest::Attribute {
-                        request,
-                        registration,
-                    })
-                } else {
-                    request.as_ref().map(SourceReadRequest::Event)
-                };
+            let request = if let Some((request, registration)) =
+                owner.active_constructor_registration(dom.pending_source_edit())?
+            {
+                Some(SourceReadRequest::Constructor {
+                    request,
+                    registration,
+                })
+            } else if let Some((request, registration)) = owner.active_attribute_registration()? {
+                Some(SourceReadRequest::Attribute {
+                    request,
+                    registration,
+                })
+            } else {
+                request.as_ref().map(SourceReadRequest::Event)
+            };
             let read = NativeRead {
                 snapshot,
                 events,
@@ -839,7 +875,17 @@ impl Callbacks {
             .session
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let status = if let Some((request, registration)) = owner.active_attribute_registration()? {
+        let current = session.read_dom().pending_source_edit();
+        let status = if let Some((request, registration)) =
+            owner.active_constructor_registration(current)?
+        {
+            session.dom().raw().source_custom_element_callback_step(
+                request,
+                &registration,
+                &owner.cancellation,
+            )?;
+            HtmlScriptingStatus::Enabled
+        } else if let Some((request, registration)) = owner.active_attribute_registration()? {
             session.dom().raw().source_attribute_callback_step(
                 request,
                 &registration,

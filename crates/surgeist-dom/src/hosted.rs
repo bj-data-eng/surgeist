@@ -2105,14 +2105,20 @@ impl DomDocumentScriptRegistration {
     pub fn is_active(&self) -> bool {
         self.0.is_active()
     }
-}
 
-impl Drop for DomDocumentScriptRegistration {
-    fn drop(&mut self) {
+    /// Revoke engine execution before disposing its heap. Original native
+    /// settlement may still authenticate this registration's identity.
+    pub fn revoke(&self) {
         let _ = self.0.end.set(ScriptRegistrationEnd::EngineDisposed);
         self.0
             .engine_disposed
             .store(true, std::sync::atomic::Ordering::Release);
+    }
+}
+
+impl Drop for DomDocumentScriptRegistration {
+    fn drop(&mut self) {
+        self.revoke();
     }
 }
 

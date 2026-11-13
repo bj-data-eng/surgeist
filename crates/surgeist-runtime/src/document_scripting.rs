@@ -29,10 +29,10 @@ use crate::{
 pub(crate) mod guest;
 mod projection;
 pub use guest::{
-    DocumentCspViolationProgress, DocumentGuestEvent, DocumentGuestEventDispatchFailure,
-    DocumentGuestEventError, DocumentGuestEventLimits, DocumentGuestEventReport,
-    DocumentGuestEventTarget, DocumentGuestEventView, DocumentGuestListenerException,
-    EnableDocumentGuestEventsFailure,
+    DocumentCspViolationProgress, DocumentGuestConstructorException, DocumentGuestEvent,
+    DocumentGuestEventDispatchFailure, DocumentGuestEventError, DocumentGuestEventLimits,
+    DocumentGuestEventReport, DocumentGuestEventTarget, DocumentGuestEventView,
+    DocumentGuestListenerException, EnableDocumentGuestEventsFailure,
 };
 mod source;
 mod window_event;
@@ -173,6 +173,8 @@ struct NativeOwner {
     active_source: Cell<Option<source::ActiveSource>>,
     active_attached_event: RefCell<Option<surgeist_dom::DomSourceEventRequest>>,
     active_attribute: Cell<Option<surgeist_dom::DomSourceAttributeVerificationRequest>>,
+    active_constructor: RefCell<Option<Rc<guest::ActiveConstructor>>>,
+    pending_constructor: RefCell<Option<Box<guest::PendingConstructor>>>,
     pending_attribute: RefCell<Option<Box<guest::PendingAttribute>>>,
     pending_style: Cell<Option<(surgeist_dom::DomSourceOperationId, RealmId)>>,
     trusted_types_reports: RefCell<Option<Box<guest::ViolationQueue>>>,
@@ -330,6 +332,44 @@ fn csp_work_error<E: From<DocumentScriptNativeError>>(
 }
 
 impl NativeOwner {
+    fn current_constructor_registration(
+        &self,
+    ) -> Result<
+        Option<(
+            surgeist_dom::DomSourceCustomElementRequest,
+            Rc<DomDocumentScriptRegistration>,
+        )>,
+        DocumentScriptNativeError,
+    > {
+        let session = self
+            .session
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        self.active_constructor_registration(session.read_dom().pending_source_edit())
+    }
+
+    fn active_constructor_registration(
+        &self,
+        current: Option<surgeist_dom::DomSourceStatus>,
+    ) -> Result<
+        Option<(
+            surgeist_dom::DomSourceCustomElementRequest,
+            Rc<DomDocumentScriptRegistration>,
+        )>,
+        DocumentScriptNativeError,
+    > {
+        let active = self
+            .active_constructor
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        Ok(active
+            .as_ref()
+            .filter(|frame| {
+                current.is_some_and(|status| status.operation() == frame.request.operation())
+            })
+            .map(|frame| (frame.request, frame.registration.clone())))
+    }
+
     fn active_attribute_registration(
         &self,
     ) -> Result<
@@ -351,7 +391,9 @@ impl NativeOwner {
     }
 
     fn recover(mut owner: Rc<Self>) -> Result<DomSession, Rc<Self>> {
-        if owner.reconcile_pending_attribute().is_err() {
+        if owner.reconcile_pending_attribute().is_err()
+            || owner.reconcile_pending_constructors().is_err()
+        {
             return Err(owner);
         }
         // Do not release the funded target body while an outstanding Weak can
@@ -361,6 +403,7 @@ impl NativeOwner {
         };
         let pending_source = native.session.get_mut().read_dom().pending_source_edit();
         if native.pending_attribute.get_mut().is_some()
+            || native.pending_constructor.get_mut().is_some()
             || pending_source.is_some_and(|status| {
                 native
                     .pending_style
@@ -495,6 +538,8 @@ impl PreparedDocumentScriptHost {
                 active_source: Cell::new(None),
                 active_attached_event: RefCell::new(None),
                 active_attribute: Cell::new(None),
+                active_constructor: RefCell::new(None),
+                pending_constructor: RefCell::new(None),
                 pending_attribute: RefCell::new(None),
                 pending_style: Cell::new(None),
                 trusted_types_reports: RefCell::new(None),
@@ -934,6 +979,12 @@ struct ScriptEngine {
     _hook_backing: DomHostedRuntimeRetention,
 }
 
+impl Drop for ScriptEngine {
+    fn drop(&mut self) {
+        self.registration.revoke();
+    }
+}
+
 impl ScriptEngine {
     fn retained_bytes_with(&self, additional: usize) -> Option<usize> {
         self.comments
@@ -1360,6 +1411,15 @@ impl fmt::Debug for NativeOwner {
 }
 
 impl StoppedDocumentScriptHost {
+    /// Settle the current retained constructor result after engine disposal.
+    /// This publishes only the original native result and runs no guest code.
+    pub fn settle_pending_custom_element(
+        &mut self,
+        limits: surgeist_dom::DomSourceLimits,
+    ) -> Result<(), DocumentGuestEventError> {
+        self.native.settle_stopped_constructor(limits)
+    }
+
     /// Borrow the original native owners for recovery after engine disposal.
     /// The loan can bind a missing producer or raise its limits before retry.
     pub fn with_native<T>(
@@ -1378,7 +1438,7 @@ impl StoppedDocumentScriptHost {
 
     /// Recover the same native Session. Its historical scripting facts remain
     /// usable with their exact historical snapshots.
-    /// Retained attribute and Style edits must be settled before recovery.
+    /// Retained attribute, custom element and Style edits must settle first.
     pub fn into_session(self) -> Result<DomSession, Self> {
         NativeOwner::recover(self.native).map_err(|native| Self { native })
     }
