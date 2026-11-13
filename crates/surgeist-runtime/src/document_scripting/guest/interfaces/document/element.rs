@@ -264,7 +264,10 @@ fn element_interface(
 ) -> Result<ElementInterface, DocumentGuestEventError> {
     step()?;
     match name.namespace_uri().map(DocumentString::code_units) {
-        Some(HTML_NAMESPACE) => Ok(ElementInterface::Html(html_interface(name, step)?)),
+        Some(HTML_NAMESPACE) => Ok(ElementInterface::Html(html_interface(
+            name.local_name(),
+            step,
+        )?)),
         Some(MATHML_NAMESPACE) => Ok(ElementInterface::Mathml),
         Some(SVG_NAMESPACE) => Ok(ElementInterface::Svg(svg::interface(
             name.local_name(),
@@ -274,11 +277,10 @@ fn element_interface(
     }
 }
 
-fn html_interface(
-    name: &DomQualifiedName,
+pub(in crate::document_scripting::guest::interfaces) fn html_interface(
+    local: &DocumentString,
     mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
 ) -> Result<&'static str, DocumentGuestEventError> {
-    let local = name.local_name();
     let matches = |spelling: &str| {
         local
             .code_units()

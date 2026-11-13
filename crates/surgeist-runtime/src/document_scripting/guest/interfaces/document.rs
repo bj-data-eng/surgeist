@@ -12,6 +12,7 @@ const DOCUMENT: &[u16] = &ascii(b"Document");
 mod attr;
 mod attr_factory;
 mod character_data;
+pub(super) use character_data::copy_native_data;
 pub(super) mod element;
 mod element_factory;
 mod fragment;

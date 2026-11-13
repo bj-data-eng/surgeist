@@ -106,7 +106,7 @@ struct OriginBindings {
     target: RetainedCallbackObject,
     documents: document::DocumentPrototypes,
     elements: document::element::ElementBindings,
-    custom_elements: custom_elements::GlobalRegistry,
+    custom_elements: Rc<custom_elements::GlobalRegistry>,
     next: Option<Box<Self>>,
     _backing: GuestBacking,
 }
@@ -150,7 +150,7 @@ pub(super) struct PublicEventBindings {
     trusted: RetainedCallbackObject,
     dispatch_in_attachment: RetainedCallbackObject,
     document: document::DocumentBindings,
-    custom_elements: custom_elements::GlobalRegistry,
+    custom_elements: Rc<custom_elements::GlobalRegistry>,
     origins: RefCell<Option<Box<OriginBindings>>>,
     origin_cost: OriginCost,
 }
@@ -191,6 +191,7 @@ impl PublicEventBindings {
                 .node_retirement_inbox(admission.limits.node_retirement, &owner.cancellation)?;
             (inbox, registry)
         };
+        let global = script.target.global();
         script
             .process
             .execution()
@@ -200,7 +201,7 @@ impl PublicEventBindings {
                     owner,
                     permit,
                     admission,
-                    (inbox, registry),
+                    (inbox, registry, global),
                 ))
             })?
     }
@@ -210,9 +211,10 @@ impl PublicEventBindings {
         owner: &Rc<NativeOwner>,
         permit: DocumentScriptPermit,
         admission: &GuestEventAdmission,
-        (inbox, registry): (
+        (inbox, registry, global): (
             surgeist_dom::DomNodeRetirementInbox,
             surgeist_dom::DomRegistryId,
+            DomHostedGlobalId,
         ),
     ) -> Result<Self, DocumentGuestEventError> {
         let fund = |bytes| admission.budget.reserve(owner, admission.limits, bytes);
@@ -225,14 +227,7 @@ impl PublicEventBindings {
             .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?;
         let conversion = ConversionAccount::standalone(
             scope,
-            WorkTable {
-                Value: work,
-                CodeUnit: work,
-                EnumerationLookup: work,
-                Argument: work,
-                DictionaryMember: work,
-                ..WorkTable::splat(0)
-            },
+            WorkTable::splat(work),
             ResourceTable {
                 BufferBytes: buffer_bytes,
             },
@@ -377,7 +372,7 @@ impl PublicEventBindings {
         let custom_elements = custom_elements::install(
             scope,
             &window,
-            document_id,
+            (document_id, global),
             registry,
             &capture_origin,
             &fund_origin,
@@ -478,8 +473,14 @@ impl PublicEventBindings {
             &fund,
         )?;
         let window = scope.global()?;
-        let custom_elements =
-            custom_elements::install(scope, &window, document, registry, &capture, &fund)?;
+        let custom_elements = custom_elements::install(
+            scope,
+            &window,
+            (document, global),
+            registry,
+            &capture,
+            &fund,
+        )?;
         let target = scope.callback_object(&target)?;
         let target = scope.retain_callback_object(target, fund)?;
         admission.finish()?;

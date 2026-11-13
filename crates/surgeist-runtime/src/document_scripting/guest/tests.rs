@@ -63,6 +63,13 @@ pub(in crate::document_scripting) fn registry_definition_preserves_guest_identit
             };
             if (typeof registry.define !== 'function' || typeof registry.get !== 'function') return false;
             const marker = new Error('original getter failure');
+            let extendsRead = false;
+            const options = { get extends() { extendsRead = true; throw marker; } };
+            if (!throws(() => registry.define('x-invalid', {}, options), 'TypeError') || extendsRead) return false;
+            let extendsFailure = false;
+            try { registry.define('x-arrow', () => {}, options); }
+            catch (error) { extendsFailure = error === marker; }
+            if (!extendsFailure || !extendsRead) return false;
             const order = [];
             class Reentrant {}
             const Constructor = new Proxy(function Example() {}, {
@@ -79,13 +86,54 @@ pub(in crate::document_scripting) fn registry_definition_preserves_guest_identit
             catch (error) { originalFailure = error === marker; }
             if (!originalFailure || registry.get('x-entry') !== undefined) return false;
             registry.define('x-entry', Constructor);
+            class Listing {}
+            registry.define('x-listing', Listing, { extends: 'listing' });
             return registry.get('x-entry') === Constructor
+                && registry.get('x-listing') === Listing
+                && throws(() => registry.define('x-invalid-extends', class {}, { extends: 'applet' }), 'NotSupportedError')
                 && registry.get('x-reentrant') === undefined
                 && order.length === 2 && order.every(Boolean)
                 && throws(() => registry.define('x-duplicate', Constructor), 'NotSupportedError')
                 && throws(() => registry.define.call(Object.create(registry), 'x-forged', class {}), 'TypeError');
         })()"#)
     }).unwrap();
+
+    drop(host);
+    let mut refused = public_node_host(20_000, 0);
+    let permit = refused.permit().unwrap();
+    let events = refused.guest_events().unwrap();
+    let baseline = events.budget.used.get();
+    let before = refused
+        .with_native(|dom, _, _| dom.snapshot().stamp())
+        .unwrap();
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        refused.in_document(&permit, |scope| {
+            scope
+                .evaluate(&units(
+                    "customElements.define('x-refused', class Refused { connectedCallback() {} })",
+                ))
+                .map(drop)
+        })
+    else {
+        panic!("the canonical Source work cap must refuse publication");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Hosted(
+                crate::DomHostedRuntimeError::Dom(surgeist_dom::DomHostedError::Dom(
+                    DomError::SourceWorkLimit { limit: 0 }
+                ))
+            ))
+        ))
+    ));
+    assert_eq!(events.budget.used.get(), baseline);
+    assert_eq!(
+        refused
+            .with_native(|dom, _, _| dom.snapshot().stamp())
+            .unwrap(),
+        before
+    );
 }
 
 pub(in crate::document_scripting) fn assert_queued_trusted_types_violations(

@@ -20,6 +20,15 @@ impl CustomElementRegistryIdentity {
 }
 
 impl<'scope> Scope<'scope> {
+    /// Observes the exact registered receiver without invoking guest code.
+    pub fn custom_element_registry_identity(
+        &mut self,
+        value: &crate::Value<'scope>,
+    ) -> Result<Option<CustomElementRegistryIdentity>, Error> {
+        self.native_object_token::<RegistryBrand>(value)
+            .map(|token| token.map(CustomElementRegistryIdentity::from_brand))
+    }
+
     /// Form and retain an exact registry object in the current realm. The
     /// caller owns the corresponding canonical registry and its lifetime.
     pub fn project_custom_element_registry<Storage: 'static, E: From<Error>>(

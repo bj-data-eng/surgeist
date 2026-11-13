@@ -258,11 +258,9 @@ impl<'s> Conversion<'_, 's> {
         if self.core(kind)? == ValueKind::Null {
             return Ok(None);
         }
-        let token = self
-            .scope
-            .native_object_token::<crate::custom_elements::RegistryBrand>(value);
+        let token = self.scope.custom_element_registry_identity(value);
         self.core(token)?
-            .map(|token| Some(crate::CustomElementRegistryIdentity::from_brand(token)))
+            .map(Some)
             .ok_or_else(|| self.validation(Rule::Interface("CustomElementRegistry")))
     }
 }
