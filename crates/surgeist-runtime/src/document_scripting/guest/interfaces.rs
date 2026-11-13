@@ -370,7 +370,7 @@ impl PublicEventBindings {
             &target,
             inbox,
             &capture,
-            &fund,
+            (&admission.budget, owner),
             OriginInterfaceFunding {
                 capture: &capture_origin,
                 retain: &fund_origin,

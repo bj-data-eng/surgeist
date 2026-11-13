@@ -454,7 +454,7 @@ impl DocumentBindings {
         target_prototype: &Value<'scope>,
         inbox: DomNodeRetirementInbox,
         capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
-        fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
+        (budget, owner): (&GuestBudget, &NativeOwner),
         origin: OriginInterfaceFunding<'_>,
     ) -> Result<Self, DocumentGuestEventError> {
         let (node_constructor, node) = install_node(scope, target_prototype, &origin.capture)?;
@@ -495,14 +495,16 @@ impl DocumentBindings {
             false,
             Callback::new(move |scope, arguments| getter.window_document(scope, arguments)),
         )?;
-        let attached = scope.project_retained_native_object(
-            ObjectPrototype::Object(&prototype),
-            GuestNodeProjection {
-                node: Cell::new(Some(GuestNode::Document(document))),
-                lifetime: None,
-            },
-            fund,
-        )?;
+        let attached = budget.phase(|| {
+            scope.project_retained_native_object(
+                ObjectPrototype::Object(&prototype),
+                GuestNodeProjection {
+                    node: Cell::new(Some(GuestNode::Document(document))),
+                    lifetime: None,
+                },
+                |bytes| budget.reserve(AccountScope::Projection, owner, bytes),
+            )
+        })?;
         Ok(Self {
             attached_id: document,
             attached,

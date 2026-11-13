@@ -2665,7 +2665,7 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     let mut foreign_registry = Some(foreign_registry);
     let mut bound = Some(bound);
     let limits = DocumentGuestEventLimits {
-        storage_bytes: 72_000,
+        storage_bytes: 64_000,
         work: 1_000,
         pending_exception_reports: 2,
         node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),

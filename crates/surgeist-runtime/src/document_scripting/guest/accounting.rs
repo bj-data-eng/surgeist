@@ -176,17 +176,16 @@ impl GuestBudget {
         Ok(GuestBacking {
             account: self.0.clone(),
             scope,
-            bytes,
             canonical,
         })
     }
 
     pub(super) fn adopt_fixed(
         &self,
-        bytes: usize,
         canonical: DomHostedRuntimeRetention,
     ) -> Result<GuestBacking, DocumentGuestEventError> {
-        let units = u64::try_from(bytes).map_err(|_| DocumentScriptNativeError::StorageLimit)?;
+        let units = u64::try_from(canonical.retained_bytes())
+            .map_err(|_| DocumentScriptNativeError::StorageLimit)?;
         let scope = AccountScope::Adapter;
         self.0.apply(
             scope,
@@ -195,7 +194,6 @@ impl GuestBudget {
         Ok(GuestBacking {
             account: self.0.clone(),
             scope,
-            bytes,
             canonical,
         })
     }
@@ -293,22 +291,27 @@ impl Accounting {
 pub(crate) struct GuestBacking {
     account: Rc<Accounting>,
     scope: AccountScope,
-    pub(super) bytes: usize,
     canonical: DomHostedRuntimeRetention,
 }
 
 impl GuestBacking {
+    pub(super) fn retained_bytes(&self) -> usize {
+        self.canonical.retained_bytes()
+    }
+
     pub(super) fn split_off(&mut self, bytes: usize) -> Result<Self, DocumentScriptNativeError> {
-        let remaining = self
-            .bytes
-            .checked_sub(bytes)
-            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-        let canonical = self.canonical.split_off(bytes)?;
-        self.bytes = remaining;
+        let canonical = self
+            .canonical
+            .split_off(bytes)
+            .map_err(|error| match error {
+                DomError::RepresentationExhausted => {
+                    DocumentScriptNativeError::RepresentationExhausted
+                }
+                other => other.into(),
+            })?;
         Ok(Self {
             account: self.account.clone(),
             scope: self.scope,
-            bytes,
             canonical,
         })
     }
@@ -316,7 +319,7 @@ impl GuestBacking {
 
 impl Drop for GuestBacking {
     fn drop(&mut self) {
-        if let Ok(units) = u64::try_from(self.bytes)
+        if let Ok(units) = u64::try_from(self.retained_bytes())
             && let Err(error) = self.account.ledger.apply(
                 self.account.scope(self.scope),
                 Change::Release(DocumentGuestResource::BackingBytes, units),

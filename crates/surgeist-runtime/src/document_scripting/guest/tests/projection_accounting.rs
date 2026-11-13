@@ -51,6 +51,7 @@ fn open(host: &mut DocumentScriptHost) -> Result<(), DocumentScriptError> {
 
 pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_changing_admission()
 {
+    oversized_profile_setup_returns_the_unpublished_owner();
     const NATIVE_WATCH_WORK: u64 = 5 + 2 * usize::BITS as u64 + 1;
     let mut control = host(ProfileMode::Off, NATIVE_WATCH_WORK);
     let events = control.guest_events().unwrap();
@@ -75,7 +76,7 @@ pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_
         (
             ProfileMode::Detailed {
                 timing: true,
-                event_limit: 2,
+                event_limit: 8,
                 filter: EventFilter::ScopeName("node-projection"),
             },
             true,
@@ -86,6 +87,9 @@ pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_
         let account = host.guest_accounting().unwrap();
         let initial = account.snapshot().unwrap().unwrap();
         let initial_root = &initial.scopes[0];
+        let attached = projection(&initial);
+        let attached_bytes = attached.usage.live(DocumentGuestResource::BackingBytes);
+        assert!(attached_bytes > 0 && attached.phases > 0);
         let events = host.guest_events().unwrap();
         let spare = events.limits.storage_bytes - events.budget.used() - bytes;
         let guard = events.reserve(&host.native, spare).unwrap();
@@ -110,10 +114,18 @@ pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_
         );
         assert_eq!(
             current.usage.live(DocumentGuestResource::BackingBytes),
-            bytes as u64
+            attached_bytes + bytes as u64
         );
-        assert_eq!(report.events.len(), if detailed { 2 } else { 0 });
+        assert_eq!(report.events.len(), if detailed { 8 } else { 0 });
         assert_eq!(report.dropped_events > 0, detailed);
+        if detailed {
+            assert!(report.events.len() > initial.events.len());
+            assert!(report.events.iter().all(|event| match event {
+                surgeist_ledger::Event::Accepted { scope, .. }
+                | surgeist_ledger::Event::Phase { scope, .. } => *scope == current.scope,
+                surgeist_ledger::Event::Refused { origin, .. } => *origin == current.scope,
+            }));
+        }
 
         drop(guard);
         events.budget.set_work_remaining(work);
@@ -224,7 +236,9 @@ pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_
             projection(&after)
                 .usage
                 .live(DocumentGuestResource::BackingBytes),
-            0
+            projection(&initial)
+                .usage
+                .live(DocumentGuestResource::BackingBytes)
         );
         assert!(projection(&after).usage.work(DocumentGuestWork::Adapter) > 0);
         assert_eq!(
@@ -240,4 +254,83 @@ pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_
             0
         );
     }
+}
+
+fn oversized_profile_setup_returns_the_unpublished_owner() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session(&cancel, 0);
+    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 2,
+        nested_dispatches: 2,
+        storage_bytes: 32_000,
+        work: 10_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancel).unwrap();
+    let mut registry = Some(registry);
+    let stamp = session.snapshot().stamp();
+    let prepared = PreparedDocumentScriptHost::prepare(session, 2_000_000, cancel).unwrap();
+    let prepared = prepared.with_guest_accounting_profile(ProfileMode::Detailed {
+        timing: true,
+        event_limit: 100_000,
+        filter: EventFilter::All,
+    });
+    let policy = HtmlScriptingPolicy {
+        user_allows: true,
+        automation_allows: true,
+    };
+    let read = units("readChildCount");
+    let detach = units("detachIf");
+    let hooks = DocumentScriptHooks {
+        child_count: &read,
+        detach_source_node_if: &detach,
+    };
+    let limits = DocumentGuestEventLimits {
+        storage_bytes: 192 * 1024,
+        work: 10_000,
+        pending_exception_reports: 4,
+        node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
+        source_edits: DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 3),
+        dispatch: DomEventDispatchLimits {
+            path_items: 8,
+            snapshot_listeners: 8,
+            failure_records: 4,
+            callbacks: 8,
+            work: 10_000,
+        },
+    };
+    let Err(failure) =
+        prepared.enable_with_guest_event_registry(target, policy, hooks, &mut registry, limits)
+    else {
+        panic!("observer setup exceeds the prepared host's storage");
+    };
+    assert!(matches!(
+        failure.error,
+        DocumentGuestEventError::Document(DocumentScriptError::Native(
+            DocumentScriptNativeError::StorageLimit
+        ))
+    ));
+    assert!(registry.is_some());
+    assert!(failure.owner.native.attachment.get().is_none());
+    assert_eq!(
+        failure.owner.native.session.borrow().snapshot().stamp(),
+        stamp
+    );
+    let host = enable_public_nodes(
+        failure
+            .owner
+            .with_guest_accounting_profile(ProfileMode::Summary { timing: false }),
+        target,
+        (1_000, 20_000, 4),
+        &mut registry,
+    );
+    assert!(registry.is_none());
+    assert!(
+        host.guest_accounting()
+            .unwrap()
+            .snapshot()
+            .unwrap()
+            .is_some()
+    );
 }

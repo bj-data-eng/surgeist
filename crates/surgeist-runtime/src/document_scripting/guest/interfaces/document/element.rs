@@ -410,17 +410,16 @@ impl PublicEventBindings {
         events: &GuestEvents,
         global: DomHostedGlobalId,
     ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
+        let step = || events.budget.charge_work(AccountScope::Projection, 1);
         let retain = |bindings: &ElementBindings| {
             bindings
-                .prototype(ElementInterface::Html("HTMLUnknownElement"), || {
-                    events.step()
-                })
+                .prototype(ElementInterface::Html("HTMLUnknownElement"), step)
                 .cloned()
         };
         if self.custom_elements.is_global(global) {
             retain(&self.document.element)
         } else {
-            self.with_origin(events, global, |origin| retain(&origin.elements))
+            self.with_origin_with(global, step, |origin| retain(&origin.elements))
         }
     }
 

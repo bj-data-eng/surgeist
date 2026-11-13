@@ -2020,6 +2020,11 @@ pub struct DomHostedRuntimeRetention {
     pub(crate) bytes: usize,
 }
 impl DomHostedRuntimeRetention {
+    /// The already admitted extent represented by this guard.
+    pub const fn retained_bytes(&self) -> usize {
+        self.bytes
+    }
+
     /// Transfer part of this already admitted extent to an independent guard
     /// of the same issuer. Refusal leaves the original extent unchanged.
     pub fn split_off(&mut self, bytes: usize) -> Result<Self, DomError> {

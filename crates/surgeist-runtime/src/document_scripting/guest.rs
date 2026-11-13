@@ -43,7 +43,9 @@ use surgeist_dom::{DomNodeRetirementLimits, DomSourceLimits};
 /// Guest adapter limits in addition to the original registry and Hosted limits.
 #[derive(Clone, Copy, Debug)]
 pub struct DocumentGuestEventLimits {
-    /// Maximum retained guest callback, projection and report backing.
+    /// Maximum retained guest callback, projection, report and refusal backing,
+    /// including the fixed receipts that release those charges. Ledger and
+    /// observer setup instead use the prepared host's storage limit.
     pub storage_bytes: usize,
     /// Cumulative guest adapter work.
     pub work: u64,
@@ -592,7 +594,7 @@ impl OriginAdmission {
     }
 
     fn finish(self) -> Result<(), DocumentScriptNativeError> {
-        if self.requests.get() != 0 || self.backing.into_inner().bytes != 0 {
+        if self.requests.get() != 0 || self.backing.into_inner().retained_bytes() != 0 {
             return Err(DocumentScriptNativeError::RepresentationExhausted);
         }
         Ok(())
@@ -826,9 +828,9 @@ impl GuestEventAdmission {
             )
         };
         let budget = GuestBudget::new(limits, mode, accounting)?;
-        let backing = budget.adopt_fixed(fixed, backing)?;
-        let report_backing = budget.adopt_fixed(report_bytes, report_backing)?;
-        let refusal_backing = budget.adopt_fixed(refusal_bytes, refusal_backing)?;
+        let backing = budget.adopt_fixed(backing)?;
+        let report_backing = budget.adopt_fixed(report_backing)?;
+        let refusal_backing = budget.adopt_fixed(refusal_backing)?;
         let reports = Rc::new(GuestExceptionReports::new(
             limits.pending_exception_reports,
             report_backing,

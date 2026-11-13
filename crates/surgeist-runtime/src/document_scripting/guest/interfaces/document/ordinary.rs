@@ -1041,93 +1041,95 @@ impl OrdinaryBindings {
             }
         }
         let admission = Admission::ordinary(owner, events);
-        let mut pins = self
-            .pins
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let (key, reserved) = pins.reserve(admission)?;
-        let inbox = self
-            .inbox
-            .try_borrow()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let pin = PreparedPin::new(admission)?;
-        let (payload, holder) =
-            scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
-        let backing = (admission.reserve(payload)?, admission.reserve(holder)?);
-        if let Some(exception) = &pending.exception
-            && pending.report.needs_backing()
-        {
-            pending.report.prepare(scope, exception)?;
-        }
-        let prototype = public.unknown_element_prototype(events, pending.request.global())?;
-        let result = {
-            let mut session = owner
-                .session
+        admission.phase(|| {
+            let mut pins = self
+                .pins
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
-            let mut dom = session.dom();
-            let mut lease = dom.raw_mut().resume_source_edit(
-                pending.request.operation(),
-                events.limits.source_edits,
-                cancel,
-            )?;
-            lease.finish_custom_element_with_watch(
-                pending.request,
-                (&inbox, key),
-                events.limits.node_retirement,
-                cancel,
-                |name| {
-                    name.step()?;
-                    if pending.exception.is_none()
-                        && name.custom_element_disposition() != Some(surgeist_dom::DomSourceCustomElementDisposition::Abrupt)
-                    {
-                        let value = match name.custom_element_disposition() {
-                            Some(surgeist_dom::DomSourceCustomElementDisposition::InvalidInterface) => scope.type_error(&ascii(b"HTMLElement required"))?,
-                            Some(surgeist_dom::DomSourceCustomElementDisposition::InvalidElement) => scope.dom_exception(
-                                surgeist_bindings_js::dom_exception::DomExceptionName::NotSupportedError, &[],
-                            )?,
-                            _ => return Err(DocumentScriptNativeError::ProjectionCustody.into()),
-                        };
-                        let exception = scope.invocation_exception(&value);
-                        pending.report.prepare(scope, &exception)?;
-                        pending.exception = Some(exception);
-                    }
-                    #[cfg(test)]
-                    if self.refuse_next_constructor_fallback.replace(false) {
-                        return Err(DocumentScriptNativeError::ProjectionCustody.into());
-                    }
-                    scope.prepare_retained_native_object(
-                        NodePrototype::Creation(&prototype).projection(),
-                        pin.projection(),
-                        |_, _| Ok::<_, DocumentGuestEventError>(backing),
-                    )
-                },
-            )?
-        };
-        match result {
-            DomWatchedCustomElementResult::Returned(_) => {
-                returned.ok_or(DocumentScriptNativeError::ProjectionCustody.into())
+            let (key, reserved) = pins.reserve(admission)?;
+            let inbox = self
+                .inbox
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let pin = PreparedPin::new(admission)?;
+            let (payload, holder) =
+                scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
+            let backing = (admission.reserve(payload)?, admission.reserve(holder)?);
+            if let Some(exception) = &pending.exception
+                && pending.report.needs_backing()
+            {
+                pending.report.prepare(scope, exception)?;
             }
-            DomWatchedCustomElementResult::Fallback {
-                node,
-                watch,
-                projection,
-                disposition: _,
-            } => {
-                let (value, holder, live) = projection.publish(|payload| {
-                    Self::bind_projection(payload, GuestNode::Element(node), watch)
-                });
-                pin.publish(reserved, holder, live);
-                if let Some(exception) = pending.exception.take() {
-                    pending.report.publish(DocumentGuestConstructorException {
-                        definition: pending.request.definition(),
-                        realm: pending.realm,
-                        exception,
-                    });
+            let prototype = public.unknown_element_prototype(events, pending.request.global())?;
+            let result = {
+                let mut session = owner
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                let mut dom = session.dom();
+                let mut lease = dom.raw_mut().resume_source_edit(
+                    pending.request.operation(),
+                    events.limits.source_edits,
+                    cancel,
+                )?;
+                lease.finish_custom_element_with_watch(
+                    pending.request,
+                    (&inbox, key),
+                    events.limits.node_retirement,
+                    cancel,
+                    |name| {
+                        name.step()?;
+                        if pending.exception.is_none()
+                            && name.custom_element_disposition() != Some(surgeist_dom::DomSourceCustomElementDisposition::Abrupt)
+                        {
+                            let value = match name.custom_element_disposition() {
+                                Some(surgeist_dom::DomSourceCustomElementDisposition::InvalidInterface) => scope.type_error(&ascii(b"HTMLElement required"))?,
+                                Some(surgeist_dom::DomSourceCustomElementDisposition::InvalidElement) => scope.dom_exception(
+                                    surgeist_bindings_js::dom_exception::DomExceptionName::NotSupportedError, &[],
+                                )?,
+                                _ => return Err(DocumentScriptNativeError::ProjectionCustody.into()),
+                            };
+                            let exception = scope.invocation_exception(&value);
+                            pending.report.prepare(scope, &exception)?;
+                            pending.exception = Some(exception);
+                        }
+                        #[cfg(test)]
+                        if self.refuse_next_constructor_fallback.replace(false) {
+                            return Err(DocumentScriptNativeError::ProjectionCustody.into());
+                        }
+                        scope.prepare_retained_native_object(
+                            NodePrototype::Creation(&prototype).projection(),
+                            pin.projection(),
+                            |_, _| Ok::<_, DocumentGuestEventError>(backing),
+                        )
+                    },
+                )?
+            };
+            match result {
+                DomWatchedCustomElementResult::Returned(_) => {
+                    returned.ok_or(DocumentScriptNativeError::ProjectionCustody.into())
                 }
-                Ok(value)
+                DomWatchedCustomElementResult::Fallback {
+                    node,
+                    watch,
+                    projection,
+                    disposition: _,
+                } => {
+                    let (value, holder, live) = projection.publish(|payload| {
+                        Self::bind_projection(payload, GuestNode::Element(node), watch)
+                    });
+                    pin.publish(reserved, holder, live);
+                    if let Some(exception) = pending.exception.take() {
+                        pending.report.publish(DocumentGuestConstructorException {
+                            definition: pending.request.definition(),
+                            realm: pending.realm,
+                            exception,
+                        });
+                    }
+                    Ok(value)
+                }
             }
-        }
+        })
     }
 
     pub(super) fn create_element<'scope>(
