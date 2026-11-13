@@ -12,7 +12,7 @@ use surgeist_html::{accounting::HtmlChargedError, security::csp::HtmlCspError};
 
 #[derive(Clone, Copy)]
 enum StyleReportDelivery {
-    Attached,
+    Live(RealmId),
     Stopped,
 }
 
@@ -29,8 +29,9 @@ impl NativeOwner {
         &self,
         result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
         limits: DomSourceLimits,
+        realm: RealmId,
     ) -> Result<(), DocumentScriptNativeError> {
-        self.finish_tree_policies(result, limits, StyleReportDelivery::Attached)
+        self.finish_tree_policies(result, limits, StyleReportDelivery::Live(realm))
     }
 
     fn finish_tree_policies(
@@ -72,8 +73,10 @@ impl NativeOwner {
         &self,
         result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
         limits: DomSourceLimits,
+        realm: Option<RealmId>,
     ) {
-        self.finish_style(result, limits, StyleReportDelivery::Attached);
+        let delivery = realm.map_or(StyleReportDelivery::Stopped, StyleReportDelivery::Live);
+        self.finish_style(result, limits, delivery);
     }
 
     fn finish_style(
@@ -82,7 +85,9 @@ impl NativeOwner {
         limits: DomSourceLimits,
         delivery: StyleReportDelivery,
     ) {
-        self.record_reached_style();
+        if let StyleReportDelivery::Live(realm) = delivery {
+            self.record_reached_style(realm);
+        }
         let cancel = &self.cancellation;
         while let Ok(DomSourceDriveProgress::Pending {
             request: DomSourceRequest::Style(request),
@@ -91,8 +96,9 @@ impl NativeOwner {
         {
             let operation = request.source().operation();
             let accepted = (|| {
-                let Some(mut prepared) = self.evaluate_guest_style(request, delivery)? else {
-                    return Ok(false);
+                let mut prepared = match self.evaluate_guest_style(request, delivery)? {
+                    Ok(prepared) => prepared,
+                    Err(reason) => return Ok(Err(reason)),
                 };
                 let mut session = self
                     .session
@@ -103,7 +109,7 @@ impl NativeOwner {
                 let Some(origin) = prepared.origin else {
                     drop(prepared.observation_backing.take());
                     lease.accept_inline_csp(request, &prepared.observation, cancel)?;
-                    return Ok(true);
+                    return Ok(Ok(()));
                 };
                 let mut queue = self
                     .trusted_types_reports
@@ -142,15 +148,20 @@ impl NativeOwner {
                 prepared_queue
                     .install()
                     .push_style(request.source().element(), prepared.reports);
-                Ok::<_, DomStyleRuntimeError>(true)
+                Ok::<_, DomStyleRuntimeError>(Ok(()))
             })();
             match accepted {
-                Ok(false) => return,
+                Ok(Err(unavailable)) => {
+                    if let Ok(DomSourceDriveProgress::Pending { reason, .. }) = result {
+                        *reason = DomSourceUnavailable::Style(unavailable);
+                    }
+                    return;
+                }
                 Err(error) => {
                     *result = Err(error.into());
                     return;
                 }
-                Ok(true) => {}
+                Ok(Ok(())) => {}
             };
             *result = match self.drive_pending_style(operation, limits) {
                 Ok(progress) => progress,
@@ -160,11 +171,15 @@ impl NativeOwner {
         }
     }
 
-    fn record_reached_style(&self) {
+    fn record_reached_style(&self, realm: RealmId) {
         if let Ok(session) = self.session.try_borrow()
             && let Some(operation) = session.read_dom().pending_style_source_edit()
+            && self
+                .pending_style
+                .get()
+                .is_none_or(|pending| pending.0 != operation)
         {
-            self.pending_style.set(Some(operation));
+            self.pending_style.set(Some((operation, realm)));
         }
     }
 
@@ -172,7 +187,7 @@ impl NativeOwner {
         &self,
         request: &surgeist_dom::DomStyleRequest,
         delivery: StyleReportDelivery,
-    ) -> Result<Option<PreparedStylePolicy>, DomStyleRuntimeError> {
+    ) -> Result<Result<PreparedStylePolicy, DomStyleUnavailable>, DomStyleRuntimeError> {
         let cancel = &self.cancellation;
         let session = self
             .session
@@ -187,7 +202,7 @@ impl NativeOwner {
             csp,
             surgeist_dom::DomDocumentCspState::ConstructorInitialEmpty
         ) {
-            return Ok(Some(PreparedStylePolicy {
+            return Ok(Ok(PreparedStylePolicy {
                 observation: DomStyleInlineCspObservation::complete_empty(input, 0),
                 reports: Vec::new(),
                 origin: None,
@@ -196,7 +211,7 @@ impl NativeOwner {
             }));
         }
         let Some(processor) = &session.trusted_types_csp else {
-            return Ok(None);
+            return Ok(Err(DomStyleUnavailable::InlinePolicy));
         };
         let processor = processor
             .processor
@@ -225,11 +240,11 @@ impl NativeOwner {
                 HtmlCspError::Protocol(_) => DomStyleRuntimeError::Protocol,
             })?;
         let Some(policies) = policies else {
-            return Ok(None);
+            return Ok(Err(DomStyleUnavailable::InlinePolicy));
         };
         let revision = input.stamp().revision().get();
         if policies.is_empty() {
-            return Ok(Some(PreparedStylePolicy {
+            return Ok(Ok(PreparedStylePolicy {
                 observation: DomStyleInlineCspObservation::complete_empty(input, revision),
                 reports: Vec::new(),
                 origin: None,
@@ -247,18 +262,22 @@ impl NativeOwner {
             let Some((matches, report_sample)) =
                 policy.inline_style(input.nonce_content(), &mut hashes, &mut || step())?
             else {
-                return Ok(None);
+                return Ok(Err(DomStyleUnavailable::InlinePolicy));
             };
             if matches {
                 continue;
             }
             allowed &= !policy.delivery().enforces();
-            if matches!(delivery, StyleReportDelivery::Stopped) {
+            let StyleReportDelivery::Live(realm) = delivery else {
                 continue;
-            }
+            };
             if reports.is_empty() {
-                let Some(attached) = self.attachment.get() else {
-                    return Ok(None);
+                let Some(attached) = self
+                    .attachment
+                    .get()
+                    .filter(|attached| attached.realm.identity() == realm)
+                else {
+                    return Ok(Err(DomStyleUnavailable::ViolationTarget));
                 };
                 let reporting_document = attached.target.document();
                 let global = attached.target.global();
@@ -266,7 +285,7 @@ impl NativeOwner {
                 // reporting Global comes from the original script attachment.
                 let document = snapshot.node_with(reporting_document.node(), &mut || step())?;
                 if document.relevant_global()? != Some(global) {
-                    return Ok(None);
+                    return Ok(Err(DomStyleUnavailable::ViolationTarget));
                 }
                 origin = Some(ViolationOrigin {
                     global,
@@ -332,7 +351,7 @@ impl NativeOwner {
             step()?;
             originals.push(policy.serialized().clone());
         }
-        Ok(Some(PreparedStylePolicy {
+        Ok(Ok(PreparedStylePolicy {
             observation: DomStyleInlineCspObservation::evaluated(
                 input,
                 Arc::new(originals),
@@ -365,7 +384,7 @@ impl NativeOwner {
     }
 
     fn reconcile_pending_style(&self) {
-        if let Some(operation) = self.pending_style.get()
+        if let Some((operation, _)) = self.pending_style.get()
             && let Ok(session) = self.session.try_borrow()
             && session
                 .read_dom()
@@ -388,8 +407,7 @@ impl DocumentScriptHost {
     ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentScriptNativeError>
     {
         self.check_permit(permit)?;
-        self.native
-            .resume_style(operation, limits, StyleReportDelivery::Attached)
+        self.native.resume_style(operation, limits, true)
     }
 }
 
@@ -403,8 +421,7 @@ impl StoppedDocumentScriptHost {
         limits: DomSourceLimits,
     ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentScriptNativeError>
     {
-        self.native
-            .resume_style(operation, limits, StyleReportDelivery::Stopped)
+        self.native.resume_style(operation, limits, false)
     }
 }
 
@@ -413,12 +430,19 @@ impl NativeOwner {
         &self,
         operation: surgeist_dom::DomSourceOperationId,
         limits: DomSourceLimits,
-        delivery: StyleReportDelivery,
+        live: bool,
     ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentScriptNativeError>
     {
-        if self.pending_style.get() != Some(operation) {
-            return Err(DocumentScriptNativeError::SourceAccess);
-        }
+        let (_, realm) = self
+            .pending_style
+            .get()
+            .filter(|pending| pending.0 == operation)
+            .ok_or(DocumentScriptNativeError::SourceAccess)?;
+        let delivery = if live {
+            StyleReportDelivery::Live(realm)
+        } else {
+            StyleReportDelivery::Stopped
+        };
         let mut result = self
             .drive_pending_style(operation, limits)
             .map_err(|_| DocumentScriptNativeError::Busy)?;

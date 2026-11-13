@@ -273,7 +273,11 @@ impl Capture {
                     );
                     Ok((result, parent))
                 })?;
-        owner.finish_guest_style(&mut result, events.limits.source_edits);
+        owner.finish_guest_style(
+            &mut result,
+            events.limits.source_edits,
+            Some(scope.realm_authority()?.identity()),
+        );
         let pending = owner
             .session
             .try_borrow()

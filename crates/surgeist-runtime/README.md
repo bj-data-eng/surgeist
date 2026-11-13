@@ -367,6 +367,9 @@ CSP. A blocked sheet stays out of CSSOM and queues a violation. At dispatch,
 the event targets the original Style element if it is still connected to the
 reporting Document, or that Document otherwise. An unavailable policy or
 required tokenizer fact leaves the original native request pending.
+Policy comes from the Style element's Document. Reports use the executing
+operation's Window. If the operation runs in a registered projection realm
+without a native report owner, the live edit stays pending for settlement.
 After a resource refusal, use `resume_pending_style_edit` with the original
 operation and higher Source limits. The host uses the same Session processor
 and report queue. After stopping the engine, use `settle_pending_style_edit`

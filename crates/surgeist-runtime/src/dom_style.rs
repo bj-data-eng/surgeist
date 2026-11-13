@@ -90,6 +90,8 @@ pub enum DomStyleUnavailable {
     RootList,
     /// Full current CSP policy/evaluation has not been supplied.
     InlinePolicy,
+    /// The executing realm has no native Window violation-delivery owner.
+    ViolationTarget,
     /// The actual media/environment or rendering observation is unavailable.
     Environment,
     /// Imports exist; this owner has not obtained their critical-resource outcomes.

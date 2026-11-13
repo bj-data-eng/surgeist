@@ -224,7 +224,11 @@ impl Capture {
                     );
                     Ok((result, parent))
                 })?;
-        owner.finish_guest_tree_policies(&mut result, limits)?;
+        owner.finish_guest_tree_policies(
+            &mut result,
+            limits,
+            scope.realm_authority()?.identity(),
+        )?;
         let pending = owner
             .session
             .try_borrow()

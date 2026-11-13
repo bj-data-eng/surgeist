@@ -174,7 +174,7 @@ struct NativeOwner {
     active_attached_event: RefCell<Option<surgeist_dom::DomSourceEventRequest>>,
     active_attribute: Cell<Option<surgeist_dom::DomSourceAttributeVerificationRequest>>,
     pending_attribute: RefCell<Option<Box<guest::PendingAttribute>>>,
-    pending_style: Cell<Option<surgeist_dom::DomSourceOperationId>>,
+    pending_style: Cell<Option<(surgeist_dom::DomSourceOperationId, RealmId)>>,
     trusted_types_reports: RefCell<Option<Box<guest::ViolationQueue>>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
@@ -361,8 +361,12 @@ impl NativeOwner {
         };
         let pending_source = native.session.get_mut().read_dom().pending_source_edit();
         if native.pending_attribute.get_mut().is_some()
-            || pending_source
-                .is_some_and(|status| *native.pending_style.get_mut() == Some(status.operation()))
+            || pending_source.is_some_and(|status| {
+                native
+                    .pending_style
+                    .get_mut()
+                    .is_some_and(|pending| pending.0 == status.operation())
+            })
         {
             return Err(owner);
         }

@@ -338,7 +338,7 @@ pub(super) fn guest_style_reports_to_current_window_for_another_document() {
             .unwrap()
             .unwrap(),
         DomSourceDriveProgress::Pending {
-            reason: DomSourceUnavailable::Style(crate::DomStyleUnavailable::InlinePolicy),
+            reason: DomSourceUnavailable::Style(crate::DomStyleUnavailable::ViolationTarget),
             ..
         }
     ));
