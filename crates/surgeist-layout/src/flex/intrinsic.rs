@@ -1,13 +1,15 @@
-use super::items::{CollectedFlexItem, ResolvedFlexItem};
+use std::ops::ControlFlow;
+
+use super::items::{CollectedFlexItem, FlexItemRequest, ResolvedFlexItem};
 use super::lines::FlexLine;
 use super::{Constants, resolve_length_or_zero};
 use crate::geometry::LogicalAxis;
 use crate::layout_math::{MaxBeforeMinScalarClampExt, OptionalSizeExt};
 use crate::sizing::resolve::SizeResultExt;
 use crate::{
-    AlignItems, AxisSizingRequestOf, Compute, ComputeInputOf, ContainingLayoutContext,
-    LayoutResultOf, LayoutScalar, ParentFormattingContext, RunMode, Size, SizingMode,
-    SizingOperation, Traverse,
+    AlignItems, AxisSizingRequestOf, Compute, ComputeInputOf, ComputeOutputOf,
+    ContainingLayoutContext, LayoutResultOf, LayoutScalar, ParentFormattingContext, RunMode, Size,
+    SizingMode, SizingOperation,
 };
 
 pub(super) fn intrinsic_content_main_size<Node, S: LayoutScalar>(
@@ -57,41 +59,15 @@ fn max_content_line_main_size<Node, S: LayoutScalar>(
         .fold(S::ZERO, |sum, value| sum + value)
 }
 
-pub(super) fn resolved_layout_constants<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    constants: &Constants<Tree::Scalar>,
-    items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
-    lines: &[FlexLine<Tree::Scalar>],
-) -> LayoutResultOf<<Tree as Traverse>::Node, Constants<Tree::Scalar>, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let mut constants = *constants;
-    determine_container_main_size(tree, node, &mut constants, items, lines)?;
-    constants.max_inner_size = constants.max_inner_size.or(constants.node_inner_size);
-    constants.gap = constants
-        .gap_input
-        .zip_map(constants.entry_percentage_basis, |length, basis| {
-            resolve_length_or_zero(length, Some(basis.unwrap_or(Tree::Scalar::ZERO)))
-        })
-        .transpose_with_node(tree, node)?;
-    Ok(constants)
-}
-
-fn determine_container_main_size<'input, Tree, M>(
-    tree: &mut Tree,
-    node: Tree::Node,
-    constants: &mut Constants<Tree::Scalar>,
-    items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
-    lines: &[FlexLine<Tree::Scalar>],
-) -> LayoutResultOf<<Tree as Traverse>::Node, (), Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let outer_main_size = if let Some(size) = constants.axes.main_size(constants.node_outer_size) {
-        size
-    } else {
+pub(super) fn begin_main_size<Node: Copy, S: LayoutScalar>(
+    constants: &Constants<S>,
+    items: &[CollectedFlexItem<Node, S>],
+    lines: &[FlexLine<S>],
+) -> ControlFlow<S, IntrinsicMainSize<S>> {
+    if let Some(size) = constants.axes.main_size(constants.node_outer_size) {
+        return ControlFlow::Break(size);
+    }
+    {
         let main_request = constants.available_main;
         let content_main = match (main_request.operation(), main_request.space()) {
             (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(available_main)) => {
@@ -100,7 +76,7 @@ where
                     .iter()
                     .map(|line| flex_basis_line_main_size(&items[line.start..line.end], constants))
                     .max_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal))
-                    .unwrap_or(Tree::Scalar::ZERO);
+                    .unwrap_or(S::ZERO);
                 if lines.len() > 1 {
                     longest.max(available_main)
                 } else {
@@ -114,14 +90,27 @@ where
                     }
                     SizingOperation::MinContent => SizingOperation::MinContent,
                 };
-                intrinsic_container_main_size(tree, constants, items, lines, intrinsic)?
+                return ControlFlow::Continue(IntrinsicMainSize::new(constants, lines, intrinsic));
             }
         };
-        content_main
-            + constants
-                .axes
-                .main_size(constants.content_box_inset.sum_axes())
-    };
+        ControlFlow::Break(
+            content_main
+                + constants
+                    .axes
+                    .main_size(constants.content_box_inset.sum_axes()),
+        )
+    }
+}
+
+pub(super) fn finish_main_size<'input, Tree, M>(
+    tree: &Tree,
+    node: Tree::Node,
+    mut constants: Constants<Tree::Scalar>,
+    outer_main_size: Tree::Scalar,
+) -> LayoutResultOf<Tree::Node, Constants<Tree::Scalar>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
     let outer_main_size =
         if constants.preferred_inline_phase == super::PreferredInlinePhase::Accepted {
             outer_main_size
@@ -152,7 +141,14 @@ where
         crate::layout_math::checked_available_space(inner_main_size)
             .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?,
     );
-    Ok(())
+    constants.max_inner_size = constants.max_inner_size.or(constants.node_inner_size);
+    constants.gap = constants
+        .gap_input
+        .zip_map(constants.entry_percentage_basis, |length, basis| {
+            resolve_length_or_zero(length, Some(basis.unwrap_or(Tree::Scalar::ZERO)))
+        })
+        .transpose_with_node(tree, node)?;
+    Ok(constants)
 }
 
 fn flex_basis_line_main_size<Node, S: LayoutScalar>(
@@ -180,63 +176,175 @@ fn flex_basis_line_main_size<Node, S: LayoutScalar>(
         .fold(S::ZERO, |sum, value| sum + value)
 }
 
-fn intrinsic_container_main_size<'input, Tree, M>(
-    tree: &mut Tree,
-    constants: &Constants<Tree::Scalar>,
-    items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
-    lines: &[FlexLine<Tree::Scalar>],
+pub(super) struct IntrinsicMainSize<S: LayoutScalar> {
     operation: SizingOperation,
-) -> LayoutResultOf<<Tree as Traverse>::Node, Tree::Scalar, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let largest_item = operation == SizingOperation::MinContent && constants.wraps;
-    let mut extent = if largest_item {
-        Tree::Scalar::ZERO
-    } else {
-        let gap_count = lines
-            .iter()
-            .map(|line| (line.end - line.start).saturating_sub(1))
-            .sum();
-        constants.axes.main_size(constants.gap) * Tree::Scalar::from_usize(gap_count)
-    };
-    // The first round measures collapsed struts with all items present.
-    // The final round supplies only the remaining items.
-    for item in items {
-        let contribution = intrinsic_item_main_contribution(tree, constants, item, operation)?;
-        extent = if largest_item {
-            extent.max(contribution)
-        } else {
-            extent + contribution
-        };
-    }
-    Ok(extent.max(Tree::Scalar::ZERO))
+    largest_item: bool,
+    extent: S,
+    index: usize,
+    pending: Option<IntrinsicItemRequest<S>>,
 }
 
-fn intrinsic_item_main_contribution<'input, Tree, M>(
-    tree: &mut Tree,
-    constants: &Constants<Tree::Scalar>,
-    item: &CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>,
-    operation: SizingOperation,
-) -> LayoutResultOf<<Tree as Traverse>::Node, Tree::Scalar, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let axes = constants.axes;
-    let cross_available = intrinsic_item_cross_available(constants, item)
-        .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
-    let child_known = intrinsic_item_known_size(constants, item);
-    let cross = axes.cross_size(child_known).map(|cross| {
-        cross.clamp_max_before_min_optional(
-            axes.cross_size(item.min_size),
-            axes.cross_size(item.max_size),
-        )
-    });
-    let child_known = axes.with_cross_size(child_known, cross);
-    // A flex allocation can supply the cross extent but cannot measure the
-    // item's intrinsic main content. Apply its authored main bounds below.
-    let child_owned_axes = super::child_preferred_axes::<Tree, M>(tree, item.node);
-    let measure = |tree: &mut Tree, operation| {
+struct IntrinsicItemRequest<S: LayoutScalar> {
+    cross_available: AxisSizingRequestOf<S>,
+    child_known: Size<Option<S>>,
+    child_owned_axes: Size<bool>,
+    measured: Option<S>,
+}
+
+impl<S: LayoutScalar> IntrinsicMainSize<S> {
+    fn new(constants: &Constants<S>, lines: &[FlexLine<S>], operation: SizingOperation) -> Self {
+        let largest_item = operation == SizingOperation::MinContent && constants.wraps;
+        let extent = if largest_item {
+            S::ZERO
+        } else {
+            let gap_count = lines
+                .iter()
+                .map(|line| (line.end - line.start).saturating_sub(1))
+                .sum();
+            constants.axes.main_size(constants.gap) * S::from_usize(gap_count)
+        };
+        Self {
+            operation,
+            largest_item,
+            extent,
+            index: 0,
+            pending: None,
+        }
+    }
+
+    pub(super) fn next<'input, Node: Copy, Tree, M>(
+        &mut self,
+        tree: &Tree,
+        constants: &Constants<S>,
+        items: &[CollectedFlexItem<Node, S>],
+    ) -> LayoutResultOf<Node, Option<FlexItemRequest<Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Some(item) = items.get(self.index) else {
+            return Ok(None);
+        };
+        if let Some(pending) = &self.pending {
+            debug_assert!(pending.measured.is_some());
+            return Ok(Some(FlexItemRequest {
+                node: item.node,
+                input: pending.input(constants, SizingOperation::MaxContent),
+            }));
+        }
+        let pending = IntrinsicItemRequest::prepare(tree, constants, item)?;
+        let input = pending.input(constants, self.operation);
+        self.pending = Some(pending);
+        Ok(Some(FlexItemRequest {
+            node: item.node,
+            input,
+        }))
+    }
+
+    pub(super) fn accept<'input, Node: Copy, Tree, M>(
+        &mut self,
+        tree: &Tree,
+        constants: &Constants<S>,
+        items: &[CollectedFlexItem<Node, S>],
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let item = &items[self.index];
+        let mut pending = self.pending.take().expect("active intrinsic Flex item");
+        let axes = constants.axes;
+        let size = axes.main_size(output.size);
+        let measured = pending.measured.unwrap_or(size);
+        let preferred = if pending.measured.is_some() {
+            size
+        } else {
+            let style = tree.node_input(item.node);
+            if axes.main_size(pending.child_owned_axes) {
+                if self.operation != SizingOperation::MaxContent {
+                    pending.measured = Some(measured);
+                    self.pending = Some(pending);
+                    return Ok(());
+                }
+                measured
+            } else if let Some(preferred) = axes.main_size(item.size) {
+                preferred
+            } else if let Some((cross, ratio)) =
+                axes.cross_size(pending.child_known).zip(style.aspect_ratio)
+            {
+                let padding_border = (item.padding + item.border).sum_axes();
+                let ratio_insets = if style.box_sizing == crate::BoxSizing::ContentBox {
+                    padding_border
+                } else {
+                    Size::ZERO
+                };
+                axes.main_size_from_cross_in_sizing_box(
+                    cross.max(axes.cross_size(padding_border)),
+                    ratio,
+                    ratio_insets,
+                )
+                .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?
+            } else {
+                S::ZERO
+            }
+        };
+        let contribution = intrinsic_item_contribution(constants, item, measured, preferred);
+        self.extent = if self.largest_item {
+            self.extent.max(contribution)
+        } else {
+            self.extent + contribution
+        };
+        self.index += 1;
+        Ok(())
+    }
+
+    pub(super) fn outer_size(&self, constants: &Constants<S>) -> S {
+        self.extent.max(S::ZERO)
+            + constants
+                .axes
+                .main_size(constants.content_box_inset.sum_axes())
+    }
+}
+
+impl<S: LayoutScalar> IntrinsicItemRequest<S> {
+    fn prepare<'input, Node: Copy, Tree, M>(
+        tree: &Tree,
+        constants: &Constants<S>,
+        item: &CollectedFlexItem<Node, S>,
+    ) -> LayoutResultOf<Node, Self, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let axes = constants.axes;
+        let cross_available = intrinsic_item_cross_available(constants, item)
+            .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
+        let child_known = intrinsic_item_known_size(constants, item);
+        let cross = axes.cross_size(child_known).map(|cross| {
+            cross.clamp_max_before_min_optional(
+                axes.cross_size(item.min_size),
+                axes.cross_size(item.max_size),
+            )
+        });
+        let child_known = axes.with_cross_size(child_known, cross);
+        // A flex allocation can supply the cross extent but cannot measure the
+        // item's intrinsic main content. Apply its authored main bounds below.
+        let child_owned_axes = super::child_preferred_axes::<Tree, M>(tree, item.node);
+        Ok(Self {
+            cross_available,
+            child_known,
+            child_owned_axes,
+            measured: None,
+        })
+    }
+
+    fn input(&self, constants: &Constants<S>, operation: SizingOperation) -> ComputeInputOf<S> {
+        let Self {
+            cross_available,
+            child_known,
+            child_owned_axes,
+            ..
+        } = *self;
+        let axes = constants.axes;
+
         let child_available = super::child_preferred_probe_axes(
             axes,
             axes.size_from_main_cross(
@@ -246,49 +354,30 @@ where
             child_known,
             child_owned_axes,
         );
-        tree.compute_child(
-            item.node,
-            ComputeInputOf::for_child(
-                RunMode::ComputeSize,
-                SizingMode::ContentSize,
-                axes.main_requested_axis(),
-                child_known,
-                axes.with_main_size(constants.percentage_parent_size, None),
-                ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
-                constants.sizing_request.with_axes(child_available),
-            )
-            .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
+        ComputeInputOf::for_child(
+            RunMode::ComputeSize,
+            SizingMode::ContentSize,
+            axes.main_requested_axis(),
+            child_known,
+            axes.with_main_size(constants.percentage_parent_size, None),
+            ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
+            constants.sizing_request.with_axes(child_available),
         )
-    };
-    let measured = axes.main_size(measure(tree, operation)?.size);
+        .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars)
+    }
+}
+
+fn intrinsic_item_contribution<Node, S: LayoutScalar>(
+    constants: &Constants<S>,
+    item: &CollectedFlexItem<Node, S>,
+    measured: S,
+    preferred: S,
+) -> S {
+    let axes = constants.axes;
     let padding_border = (item.padding + item.border).sum_axes();
-    let style = tree.node_input(item.node);
-    let preferred = if axes.main_size(child_owned_axes) {
-        if operation == SizingOperation::MaxContent {
-            measured
-        } else {
-            axes.main_size(measure(tree, SizingOperation::MaxContent)?.size)
-        }
-    } else if let Some(preferred) = axes.main_size(item.size) {
-        preferred
-    } else if let Some((cross, ratio)) = cross.zip(style.aspect_ratio) {
-        let ratio_insets = if style.box_sizing == crate::BoxSizing::ContentBox {
-            padding_border
-        } else {
-            Size::ZERO
-        };
-        axes.main_size_from_cross_in_sizing_box(
-            cross.max(axes.cross_size(padding_border)),
-            ratio,
-            ratio_insets,
-        )
-        .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?
-    } else {
-        Tree::Scalar::ZERO
-    };
     let flex_base = item.flex_base.outer();
-    let basis_min = (item.flex_shrink_factor == Tree::Scalar::ZERO).then_some(flex_base);
-    let basis_max = (item.flex_grow_factor == Tree::Scalar::ZERO).then_some(flex_base);
+    let basis_min = (item.flex_shrink_factor == S::ZERO).then_some(flex_base);
+    let basis_max = (item.flex_grow_factor == S::ZERO).then_some(flex_base);
     let minimum = axes
         .main_size(item.min_size)
         .or(item.automatic_min_main_size);
@@ -297,7 +386,7 @@ where
         .clamp_max_before_min_optional(basis_min, basis_max)
         .clamp_max_before_min_optional(minimum, axes.main_size(item.max_size))
         .max(axes.main_size(padding_border));
-    Ok(contribution + axes.main_edge_sum(item.margin))
+    contribution + axes.main_edge_sum(item.margin)
 }
 
 fn intrinsic_item_cross_available<Node, S: LayoutScalar>(

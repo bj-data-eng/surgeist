@@ -883,6 +883,22 @@ fn assert_layout_chain<S: LayoutScalar>(display: Display, position: crate::Posit
     }
     let batch = compute_layout(&tree, 0, standalone()).expect("layout chain returns");
     assert_eq!(batch.node_layouts().len(), (2 * depth + 1) as usize);
+    if position != crate::Position::Absolute {
+        assert!(
+            batch
+                .cache_clear_entries()
+                .iter()
+                .map(|entry| entry.node())
+                .eq((depth + 1..=2 * depth).rev()),
+            "hidden cache clears follow first encounter order"
+        );
+        assert!(
+            batch
+                .cache_store_entries()
+                .iter()
+                .all(|entry| entry.node() <= depth)
+        );
+    }
     for (node, view) in batch.node_layouts() {
         if node > depth {
             let hidden = view.non_box().expect("hidden sibling");
@@ -974,4 +990,33 @@ fn deep_in_flow_flex_chain_returns_on_bounded_stack() {
             assert_layout_chain::<f64>(Display::Flex, crate::Position::Relative, 24);
         },
     );
+}
+
+#[test]
+fn flex_containment_resolves_an_empty_intrinsic_ratio_pass() {
+    fn check<S: LayoutScalar>() {
+        let tree = PublicLayoutTreeOf::<S>::new().style(
+            0,
+            NodeInputOf {
+                display: Display::Flex,
+                size: Size::new(
+                    crate::PreferredSizeOf::MAX_CONTENT,
+                    crate::PreferredSizeOf::AUTO,
+                ),
+                min_size: Size::new(
+                    crate::MinSizeOf::AUTO,
+                    crate::MinSizeOf::value(crate::LengthPercentageOf::px(S::ZERO).unwrap()),
+                ),
+                size_containment: crate::SizeContainment::BothAxes,
+                aspect_ratio: Some(crate::AspectRatioOf::new(S::from_f64(2.0)).unwrap()),
+                ..NodeInputOf::default()
+            },
+        );
+        let batch = compute_layout(&tree, 0, standalone()).expect("contained Flex layout returns");
+        let output = batch.node_layouts().next().unwrap().1.single_box().unwrap();
+        assert_eq!(output.final_entry().output().size, Size::ZERO);
+    }
+
+    check::<f32>();
+    check::<f64>();
 }

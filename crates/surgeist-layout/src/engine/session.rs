@@ -1356,7 +1356,22 @@ where
         Ok(())
     }
 
+    fn memo_hidden_leaf_index(&self, node: Tree::Node) -> Option<usize> {
+        let graph = self.flow_graph?;
+        let index = graph.index(node)?;
+        (graph.children[index].is_empty()
+            && self
+                .tree
+                .layout_input(node)
+                .as_box()
+                .is_some_and(|style| style.display == crate::Display::None))
+        .then_some(index)
+    }
+
     fn staged_source_index(&self, node: Tree::Node) -> crate::SourceIndex {
+        if let Some(memo) = &self.memo {
+            memo.observe_geometry(node);
+        }
         self.outputs
             .unrounded
             .iter()
@@ -2027,10 +2042,11 @@ where
             } else {
                 self.cache.stores.retain(|entry| entry.node() != node);
             }
-            if let Some(memo) = &self.memo {
-                memo.barrier();
+            if self.memo.is_some() && self.memo_hidden_leaf_index(node).is_none() {
+                self.memo.as_ref().expect("active memo").barrier();
             }
-        } else if let Some(memo) = &mut self.memo {
+        }
+        if let Some(memo) = &mut self.memo {
             memo.record(node, memo::Effect::Geometry(entry));
         }
         if let Some(index) = self
@@ -2116,8 +2132,15 @@ where
         node: Self::Node,
         fragments: Option<Vec<InlineFragmentOutputOf<Self::Scalar>>>,
     ) {
-        if let Some(memo) = &self.memo {
-            memo.barrier();
+        let replayable = self.memo.is_some()
+            && fragments.is_none()
+            && self.memo_hidden_leaf_index(node).is_some();
+        if let Some(memo) = &mut self.memo {
+            if replayable {
+                memo.record(node, memo::Effect::ClearInline(node));
+            } else {
+                memo.barrier();
+            }
         }
         set_inline_fragment_group(&mut self.outputs.unrounded_fragments, node, fragments);
     }
@@ -2757,8 +2780,16 @@ where
     }
 
     fn cache_clear(&mut self, node: Self::Node) -> SessionResult<Tree, ()> {
-        if let Some(memo) = &self.memo {
-            memo.barrier();
+        let hidden_leaf_index = self
+            .memo
+            .as_ref()
+            .and_then(|_| self.memo_hidden_leaf_index(node));
+        if let Some(memo) = &mut self.memo {
+            if let Some(index) = hidden_leaf_index {
+                memo.record(node, memo::Effect::Clear { node, index });
+            } else {
+                memo.barrier();
+            }
         }
         let funding = if self.entry_storage.is_some() {
             self.entry_funding(node)?

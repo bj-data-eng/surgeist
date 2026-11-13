@@ -78,7 +78,7 @@ where
 pub(super) fn with_flex_item_projection<'input, Tree, M, Output>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    consume: impl FnOnce(&mut Tree, FlexItemProjection<'_, Tree::Scalar>) -> Output,
+    consume: impl FnOnce(&mut Tree, FlexItemProjection<'input, Tree::Scalar>) -> Output,
 ) -> Output
 where
     Tree: Compute<'input, M>,
