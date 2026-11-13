@@ -1492,10 +1492,16 @@ impl Operation {
                 .and_then(|next| next.checked_add(protected))
                 .ok_or(DomError::RevisionExhausted)?;
         }
+        let scalar_output = !incomplete
+            && matches!(
+                prepared.node_output_kinds.first(),
+                Some(NodeOutputKind::ProcessingInstructionAttributePresent(_))
+            );
         let outputs = self
             .outputs
             .checked_add(prepared.changes.len())
             .and_then(|count| count.checked_add(self.draft.custom_element_reaction_count()))
+            .and_then(|count| count.checked_add(usize::from(scalar_output)))
             .ok_or(DomError::RepresentationExhausted)?;
         if outputs
             .checked_add(self.meta_policy.as_ref().map_or(0, |p| p.outputs()))
@@ -1538,9 +1544,12 @@ impl Operation {
             )?;
             for ticket in &self.draft.tickets {
                 self.draft.source_step(cancel)?;
-                historical.push(match ticket.key() {
-                    Key::Created(index) => ids.get(index),
-                    Key::Existing(node) => Some(node),
+                historical.push(match ticket {
+                    NodeTicket::ProcessingInstructionAttributePresent(..) => None,
+                    _ => match ticket.key() {
+                        Key::Created(index) => ids.get(index),
+                        Key::Existing(node) => Some(node),
+                    },
                 });
             }
         }

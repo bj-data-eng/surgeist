@@ -20,7 +20,7 @@ use crate::{DomError, store::SharedVec};
 use std::mem::size_of;
 use surgeist_html::values::DocumentString;
 
-/// Canonical PI target, CharacterData and the map derived from that exact data.
+/// Canonical PI target, CharacterData and synchronized ordered pseudo-attributes.
 /// Construction applies DOM's XML Name rule, independently of HTML authoring.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomProcessingInstruction {
@@ -185,8 +185,9 @@ impl DomProcessingInstruction {
     pub fn data(&self) -> &DocumentString {
         &self.data
     }
-    /// Whole-string XML pseudo-attributes, in source order. Invalid data has an
-    /// empty map; it is never replaced by partially parsed successful fields.
+    /// Pseudo-attributes in canonical order. Data replacement parses the whole
+    /// string and clears the map on invalid input. Attribute edits serialize the
+    /// edited map and retain its entries.
     pub fn attributes(&self) -> impl ExactSizeIterator<Item = (&DocumentString, &DocumentString)> {
         self.attributes.iter().map(|(name, value)| (name, value))
     }

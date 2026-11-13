@@ -176,6 +176,14 @@ impl Capture {
                 Method::Toggle => (Edit::Toggle { name, force }, None),
                 _ => return Err(Error::BackendUnavailable.into()),
             };
+            let toggle_results = if matches!(method, Method::Toggle) {
+                Some((
+                    scope.primitive(Primitive::Boolean(false))?,
+                    scope.primitive(Primitive::Boolean(true))?,
+                ))
+            } else {
+                None
+            };
             let drive = self.drive_guest_tree_edit(
                 &owner,
                 &events,
@@ -188,18 +196,19 @@ impl Capture {
                 &events,
                 drive.progress,
                 (drive.parent, drive.pending),
-                |scope, done| {
-                    if !matches!(method, Method::Toggle) {
+                |_, done| {
+                    let Some((absent, present)) = toggle_results else {
                         return Ok(Completion::Undefined);
-                    }
-                    let Some(DomSourceOutput::ProcessingInstructionAttributePresent(present)) =
-                        done.output()
-                    else {
-                        return Err(DocumentScriptNativeError::ProjectionCustody.into());
                     };
-                    Ok(Completion::Return(
-                        scope.primitive(Primitive::Boolean(present))?,
-                    ))
+                    match done.output() {
+                        Some(DomSourceOutput::ProcessingInstructionAttributePresent(true)) => {
+                            Ok(Completion::Return(present))
+                        }
+                        Some(DomSourceOutput::ProcessingInstructionAttributePresent(false)) => {
+                            Ok(Completion::Return(absent))
+                        }
+                        _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
+                    }
                 },
             )
         })();

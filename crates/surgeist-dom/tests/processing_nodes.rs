@@ -54,6 +54,7 @@ fn authored_pi_attributes_preserve_map_order_and_move_live_ranges() {
         let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
             panic!("expected terminal PI edit");
         };
+        assert_eq!(done.published_node(), None);
         done.output()
     };
     assert_eq!(
@@ -116,6 +117,63 @@ fn authored_pi_attributes_preserve_map_order_and_move_live_ranges() {
     ));
     drop(lease);
     assert_eq!(dom.snapshot().stamp(), after.stamp());
+}
+
+#[test]
+fn pi_toggle_reserves_scalar_output_before_publication() {
+    use surgeist_dom::{
+        DomProcessingInstructionAttributeEdit as Edit, DomSourceEdit, DomSourceLimits,
+        DomSourceOutput, DomSourceProgress,
+    };
+    let cancel = AtomicBool::new(false);
+    let limits = |outputs| DomSourceLimits::new(16_000_000, 200_000, 60_000, 64, outputs, 0, 3);
+    let mut dom = Dom::new(self::limits()).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let instruction = batch.create_processing_instruction(&document, "target", "a='1'");
+    let instruction = apply(&mut dom, batch)
+        .created(&instruction)
+        .unwrap()
+        .unwrap();
+    let edit = |name: &str| {
+        DomSourceEdit::edit_processing_instruction_attribute(
+            instruction,
+            Edit::Toggle {
+                name: name.into(),
+                force: Some(true),
+            },
+        )
+    };
+    let before = dom.snapshot();
+    for (name, output_limit) in [("a", 0), ("b", 1)] {
+        let mut lease = dom
+            .begin_source_edit(edit(name), limits(output_limit), &cancel)
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancel),
+            Err(DomError::SourceOutputLimit)
+        ));
+        drop(lease);
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+    }
+    for (name, output_limit) in [("a", 1), ("b", 2)] {
+        let mut lease = dom
+            .begin_source_edit(edit(name), limits(output_limit), &cancel)
+            .unwrap();
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("expected terminal PI toggle");
+        };
+        assert_eq!(
+            done.output(),
+            Some(DomSourceOutput::ProcessingInstructionAttributePresent(true))
+        );
+        assert_eq!(done.published_node(), None);
+    }
+    let after = dom.snapshot();
+    assert_eq!(
+        after.node(instruction).unwrap().data(),
+        Some(&DocumentString::from("a=\"1\" b=\"\""))
+    );
 }
 
 #[test]
