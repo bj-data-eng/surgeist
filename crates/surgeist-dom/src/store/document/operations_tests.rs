@@ -1491,6 +1491,14 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
         .resume_source_edit(request.operation(), bounds, &cancel())
         .unwrap();
     let before_watch = lease.snapshot().stamp();
+    assert_eq!(
+        lease
+            .finish_returned_custom_element(request, &cancel())
+            .unwrap(),
+        None
+    );
+    assert_eq!(lease.snapshot().stamp(), before_watch);
+    assert_eq!(lease.status().operation(), request.operation());
     assert!(matches!(
         lease.finish_custom_element_with_watch(
             request,
@@ -1599,13 +1607,12 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
     lease
         .accept_custom_element_callback(request, &registration, &mut outcome, &cancel())
         .unwrap();
-    assert!(matches!(
-        lease.finish_custom_element_with_watch(
-            request, (&inbox, 2), watch_limits, &cancel(),
-            |_| -> Result<(), DomError> { panic!("existing projection must be reused") },
-        ).unwrap(),
-        DomWatchedCustomElementResult::Returned(node) if node == returned
-    ));
+    assert_eq!(
+        lease
+            .finish_returned_custom_element(request, &cancel())
+            .unwrap(),
+        Some(returned)
+    );
     let snapshot = lease.snapshot();
     let element = snapshot.node(returned).unwrap().as_element().unwrap();
     assert!(!element.has_failed_construction_interface());

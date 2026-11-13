@@ -7,6 +7,7 @@ pub(super) enum SynchronousNode<'a> {
     ReturnNode,
     Watch(NodeWatch<'a>),
     ElementFactory(NodeWatch<'a>),
+    ReturnedCustomElement(&'a mut bool),
     CustomElementResult(NodeWatch<'a>),
 }
 
@@ -278,6 +279,35 @@ impl Dom {
 }
 
 impl DomSourceLease<'_> {
+    /// Settle a returned autonomous receiver without preparing fallback custody.
+    /// `None` leaves the original accepted result pending for watched fallback.
+    pub fn finish_returned_custom_element(
+        &mut self,
+        request: DomSourceCustomElementRequest,
+        cancel: &AtomicBool,
+    ) -> Result<Option<NodeId>, DomError> {
+        self.qualify_autonomous_result(request)?;
+        let mut fallback = false;
+        let mut execution = Execution::disabled();
+        execution.synchronous_node = Some(SynchronousNode::ReturnedCustomElement(&mut fallback));
+        let progress = self.advance_node(&mut execution, cancel);
+        if fallback {
+            return Ok(None);
+        }
+        match progress? {
+            DomSourceProgress::Complete(done)
+                if done.custom_element_disposition()
+                    == Some(crate::DomSourceCustomElementDisposition::Constructed) =>
+            {
+                match done.output() {
+                    Some(DomSourceOutput::Node(node)) => Ok(Some(node)),
+                    _ => Err(DomError::InvalidSourceOperation),
+                }
+            }
+            _ => Err(DomError::IncompleteSourceOperation),
+        }
+    }
+
     /// Finish the original autonomous factory. Only a distinct fallback requires a new
     /// wrapper and watch. Any preparation refusal leaves the accepted result
     /// in the original operation.
@@ -289,16 +319,7 @@ impl DomSourceLease<'_> {
         cancel: &AtomicBool,
         prepare: impl FnOnce(DomPreparedElementName<'_>) -> Result<T, E>,
     ) -> Result<DomWatchedCustomElementResult<T>, E> {
-        let accepted = self
-            .dom
-            .source_operation
-            .as_deref()
-            .filter(|operation| operation.id == self.id)
-            .and_then(|operation| operation.custom_element.as_ref())
-            .is_some_and(|pending| pending.accepted_autonomous(request));
-        if !accepted {
-            return Err(DomError::InvalidSourceOperation.into());
-        }
+        self.qualify_autonomous_result(request)?;
         let mut prepare = Some(prepare);
         let mut output = None;
         let mut prepare_element = |name: DomPreparedElementName<'_>| {
@@ -350,6 +371,24 @@ impl DomSourceLease<'_> {
                 disposition,
             }),
             _ => Err(DomError::InvalidSourceOperation.into()),
+        }
+    }
+
+    fn qualify_autonomous_result(
+        &self,
+        request: DomSourceCustomElementRequest,
+    ) -> Result<(), DomError> {
+        if self
+            .dom
+            .source_operation
+            .as_deref()
+            .filter(|operation| operation.id == self.id)
+            .and_then(|operation| operation.custom_element.as_ref())
+            .is_some_and(|pending| pending.accepted_autonomous(request))
+        {
+            Ok(())
+        } else {
+            Err(DomError::InvalidSourceOperation)
         }
     }
 

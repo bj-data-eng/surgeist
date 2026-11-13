@@ -979,33 +979,13 @@ impl OrdinaryBindings {
         public: &PublicEventBindings,
         pending: &mut PendingConstructor,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
-        let admission = Admission::ordinary(owner, events);
-        let mut pins = self
-            .pins
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let (key, reserved) = pins.reserve(admission)?;
-        let inbox = self
-            .inbox
-            .try_borrow()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let pin = PreparedPin::new(admission)?;
-        let (payload, holder) =
-            scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
-        let backing = (admission.reserve(payload)?, admission.reserve(holder)?);
+        let cancel = &owner.cancellation;
         let returned = pending
             .returned
             .as_ref()
             .map(|root| scope.import(root))
             .transpose()?;
-        if let Some(exception) = &pending.exception
-            && pending.report.needs_backing()
         {
-            pending.report.prepare(scope, exception)?;
-        }
-        let prototype = public.unknown_element_prototype(events, pending.request.global())?;
-        let cancel = &owner.cancellation;
-        let result = {
             let mut session = owner
                 .session
                 .try_borrow_mut()
@@ -1024,6 +1004,44 @@ impl OrdinaryBindings {
                     cancel,
                 )?;
             }
+            if lease
+                .finish_returned_custom_element(pending.request, cancel)?
+                .is_some()
+            {
+                return returned.ok_or(DocumentScriptNativeError::ProjectionCustody.into());
+            }
+        }
+        let admission = Admission::ordinary(owner, events);
+        let mut pins = self
+            .pins
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let (key, reserved) = pins.reserve(admission)?;
+        let inbox = self
+            .inbox
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let pin = PreparedPin::new(admission)?;
+        let (payload, holder) =
+            scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
+        let backing = (admission.reserve(payload)?, admission.reserve(holder)?);
+        if let Some(exception) = &pending.exception
+            && pending.report.needs_backing()
+        {
+            pending.report.prepare(scope, exception)?;
+        }
+        let prototype = public.unknown_element_prototype(events, pending.request.global())?;
+        let result = {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let mut dom = session.dom();
+            let mut lease = dom.raw_mut().resume_source_edit(
+                pending.request.operation(),
+                events.limits.source_edits,
+                cancel,
+            )?;
             lease.finish_custom_element_with_watch(
                 pending.request,
                 (&inbox, key),

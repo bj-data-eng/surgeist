@@ -270,9 +270,16 @@ impl Operation {
         &mut self,
         dom: &Dom,
         cancel: &AtomicBool,
+        execution: &mut Execution<'_>,
     ) -> Result<(), DomError> {
         if let Some(pending) = &mut self.custom_element {
-            return pending.finish(&mut self.draft, dom.limits, cancel);
+            let fallback_needed = match execution.synchronous_node.as_mut() {
+                Some(synchronous_node::SynchronousNode::ReturnedCustomElement(required)) => {
+                    Some(&mut **required)
+                }
+                _ => None,
+            };
+            return pending.finish(&mut self.draft, dom.limits, cancel, fallback_needed);
         }
         if let Some(pending) = &self.attribute_verification {
             self.draft.source_step(cancel)?;

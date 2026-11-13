@@ -2451,7 +2451,7 @@ impl DomSourceLease<'_> {
                     || matches!(op.commands, OperationRoot::CustomElementUpgrade(_)))
                     && !op.cancelled
                 {
-                    op.apply_reached_command(self.dom, cancel)
+                    op.apply_reached_command(self.dom, cancel, execution)
                 } else {
                     Ok(())
                 }
