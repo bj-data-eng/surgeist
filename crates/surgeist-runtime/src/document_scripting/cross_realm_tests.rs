@@ -3,6 +3,7 @@ mod declarative_shadow;
 mod document_import;
 mod document_type;
 mod dom_implementation;
+mod element_attributes;
 mod element_reflection;
 mod element_tasks;
 mod inline_style;
@@ -360,6 +361,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     title_text::title_text_uses_direct_native_children_and_original_replacement();
     meta_reflection::meta_reflections_read_and_mutate_the_live_native_element();
     element_reflection::element_reflections_use_the_exact_native_attributes();
+    element_attributes::element_attribute_methods_observe_and_remove_canonical_attributes();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
