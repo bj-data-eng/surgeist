@@ -282,8 +282,11 @@ mod tests {
     use super::*;
     use surgeist_html::construction::HtmlDocumentMode;
 
+    /// The completion of the parser Document is one value of the session, held inline: starting
+    /// it admits no auxiliary entry and adds no registry row, so it cannot be refused for a
+    /// limit that its parse has already reached.
     #[test]
-    fn completion_metadata_consumes_one_actual_retained_slot_and_one_short_reclaims_capacity() {
+    fn completion_is_held_by_the_session_and_admits_no_auxiliary_entry() {
         let mut c = ParseControl::new(
             super::super::tests::limits(),
             crate::HtmlParseCancellation::new(),
@@ -297,50 +300,37 @@ mod tests {
             .current;
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
-        for allowance in [0, 1] {
-            let limits = super::super::tests::limits()
-                .into_builder()
-                .auxiliary_entries(initial + allowance)
-                .active_formatting_entries(initial + allowance)
-                .finish()
+        // A parse whose auxiliary entries are exactly those of the empty session can still
+        // start its completion.
+        let limits = super::super::tests::limits()
+            .into_builder()
+            .auxiliary_entries(initial)
+            .active_formatting_entries(initial)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
-            let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());
-            let mut session =
-                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
-                    .unwrap();
-            let before = session.active().unwrap().payloads.values.len();
-            let result = session.initialize_standalone_document(&mut c);
-            if allowance == 1 {
-                result.unwrap();
-                assert_eq!(session.active().unwrap().payloads.values.len(), before + 1);
-                assert_eq!(
-                    c.usage()
-                        .resource(HtmlParseResource::AuxiliaryEntries)
-                        .current,
-                    initial + 1
-                );
-                assert_eq!(
-                    session
-                        .standalone_document_state(&mut c)
-                        .unwrap()
-                        .completion,
-                    HtmlParseCompletion::Parsing
-                );
-            } else {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
-                        resource: HtmlParseResource::AuxiliaryEntries,
-                        ..
-                    }))
-                ));
-                assert_eq!(session.active().unwrap().payloads.values.len(), before);
-            }
-            let stop = c.stop();
-            session.release(&mut c).unwrap();
-            super::super::tests::storage_zero(&c);
-            assert_eq!(c.stop(), stop);
-        }
+        let before = session.active().unwrap().payloads.values.len();
+        session.initialize_standalone_document(&mut c).unwrap();
+        assert_eq!(session.active().unwrap().payloads.values.len(), before);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            initial
+        );
+        assert_eq!(
+            session
+                .standalone_document_state(&mut c)
+                .unwrap()
+                .completion,
+            HtmlParseCompletion::Parsing
+        );
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+        assert_eq!(c.stop(), None);
     }
 
     #[test]
