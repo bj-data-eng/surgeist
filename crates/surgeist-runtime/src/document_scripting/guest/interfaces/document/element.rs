@@ -159,7 +159,7 @@ impl ElementBindings {
     ) -> Result<Self, DocumentGuestEventError> {
         let global = scope.global()?;
         let (constructor, element) = install(scope, &global, ELEMENT, node_constructor, node)?;
-        let unscopables = scope.object(ObjectPrototype::Null)?;
+        let unscopables = super::tree_mutations::unscopables(scope, &element)?;
         let yes = scope.primitive(Primitive::Boolean(true))?;
         define_data(
             scope,
@@ -168,16 +168,6 @@ impl ElementBindings {
             &yes,
             true,
             true,
-            true,
-        )?;
-        let key = scope.well_known_symbol(WellKnownSymbol::Unscopables)?;
-        define_data(
-            scope,
-            &element,
-            PropertyKey::Value(&key),
-            &unscopables,
-            false,
-            false,
             true,
         )?;
         let (_, mathml) = install(scope, &global, MATHML_ELEMENT, &constructor, &element)?;
@@ -328,7 +318,15 @@ impl ElementBindings {
         super::parent_node::install(
             scope,
             &element,
-            super::parent_node::Receiver::Element,
+            super::tree_mutations::Receiver::Element,
+            &unscopables,
+            capture,
+        )?;
+        super::tree_mutations::install_child(
+            scope,
+            &element,
+            super::tree_mutations::Receiver::Element,
+            &unscopables,
             capture,
         )?;
         let base = scope.callback_object(&element)?;

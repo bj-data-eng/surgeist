@@ -31,6 +31,7 @@ mod template;
 mod text;
 mod title;
 pub(super) mod tree;
+mod tree_mutations;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
 pub(in crate::document_scripting) use ordinary::PendingConstructor;
 #[cfg(test)]
@@ -367,16 +368,20 @@ impl DocumentPrototypes {
         tree::install_adoption(scope, &document, funding.capture)?;
         tree::install_import(scope, &document, funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
+        let document_names = tree_mutations::unscopables(scope, &document)?;
         parent_node::install(
             scope,
             &document,
-            parent_node::Receiver::Document,
+            tree_mutations::Receiver::Document,
+            &document_names,
             funding.capture,
         )?;
+        let fragment_names = tree_mutations::unscopables(scope, &fragment)?;
         parent_node::install(
             scope,
             &fragment,
-            parent_node::Receiver::Fragment,
+            tree_mutations::Receiver::Fragment,
+            &fragment_names,
             funding.capture,
         )?;
         let character_data = character_data::CharacterBindings::install(

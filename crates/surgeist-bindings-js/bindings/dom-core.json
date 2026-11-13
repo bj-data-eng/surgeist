@@ -4577,41 +4577,20 @@
     "ParentNode.prepend:0/call": {
       "kind": "native",
       "adapter": "parentnode.prepend.call",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "The named prepend compound operation, original operands, publication and mandatory Source tails.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-parentnode",
-          "issue": 2276
-        }
-      ]
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "prepend"}],
+      "requirements": []
     },
     "ParentNode.append:0/call": {
       "kind": "native",
       "adapter": "parentnode.append.call",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "The named append compound operation, original operands, publication and mandatory Source tails.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-parentnode",
-          "issue": 2276
-        }
-      ]
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "append"}],
+      "requirements": []
     },
     "ParentNode.replaceChildren:0/call": {
       "kind": "native",
       "adapter": "parentnode.replacechildren.call",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "The named replaceChildren compound operation, original operands, publication and mandatory Source tails.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-parentnode",
-          "issue": 2276
-        }
-      ]
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "replace_children"}],
+      "requirements": []
     },
     "ParentNode.moveBefore:0/call": {
       "kind": "native",
@@ -4664,41 +4643,20 @@
     "ChildNode.before:0/call": {
       "kind": "native",
       "adapter": "childnode.before.call",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "The named before compound operation, original operands, publication and mandatory Source tails.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-childnode",
-          "issue": 2276
-        }
-      ]
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "before"}],
+      "requirements": []
     },
     "ChildNode.after:0/call": {
       "kind": "native",
       "adapter": "childnode.after.call",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "The named after compound operation, original operands, publication and mandatory Source tails.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-childnode",
-          "issue": 2276
-        }
-      ]
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "after"}],
+      "requirements": []
     },
     "ChildNode.replaceWith:0/call": {
       "kind": "native",
       "adapter": "childnode.replacewith.call",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "The named replaceWith compound operation, original operands, publication and mandatory Source tails.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-childnode",
-          "issue": 2276
-        }
-      ]
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "replace_with"}],
+      "requirements": []
     },
     "ChildNode.remove:0/call": {
       "kind": "native",
