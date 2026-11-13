@@ -1,12 +1,15 @@
 use super::*;
-use crate::document_scripting::guest::tests::attach_public_nodes;
+use crate::document_scripting::guest::tests::{
+    attach_public_nodes, attach_public_nodes_with_source_output_limit,
+    expose_public_node_for_source_test, projected_node_id,
+};
 
 pub(super) fn html_reflections_use_exact_live_attributes_and_html_brands() {
     let cancel = Arc::new(AtomicBool::new(false));
     let (session, target) = hosted_session(&cancel, 0);
     let mut host = attach_public_nodes(session, target, cancel, 8_000, 200_000);
     let permit = host.permit().unwrap();
-    host.in_document(&permit, |scope| {
+    let element = host.in_document(&permit, |scope| {
         let result = evaluate(scope, r#"
             (() => {
                 const selected = [['title', 'title'], ['lang', 'lang'],
@@ -44,7 +47,7 @@ pub(super) fn html_reflections_use_exact_live_attributes_and_html_brands() {
                 for (const key of ['title', 'lang', 'accessKey']) {
                     html[key] = exact;
                     if (html[key] !== exact ||
-                        html.getAttribute(key === 'accessKey' ? 'accesskey' : key) !== exact)
+                        html.getAttributeNS(null, key === 'accessKey' ? 'accesskey' : key) !== exact)
                         return 'exact string ' + key;
                 }
                 html.title = undefined;
@@ -56,9 +59,9 @@ pub(super) fn html_reflections_use_exact_live_attributes_and_html_brands() {
                 }};
                 if (html.accessKey !== exact) return 'reentry';
                 html.inert = 'false';
-                if (!html.inert || html.getAttribute('inert') !== '') return 'truthy inert';
+                if (!html.inert || html.getAttributeNS(null, 'inert') !== '') return 'truthy inert';
                 html.inert = 0;
-                if (html.inert || html.hasAttribute('inert')) return 'false inert';
+                if (html.inert || html.hasAttributeNS(null, 'inert')) return 'false inert';
                 html.inert = {valueOf() {throw Error('unexpected Boolean coercion');}};
                 if (!html.inert) return 'object Boolean';
                 const unknown = document.createElement('unknown-html-name');
@@ -91,6 +94,95 @@ pub(super) fn html_reflections_use_exact_live_attributes_and_html_brands() {
             })()
         "#)?;
         assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
-        Ok(())
+        let value = evaluate(scope, "reflectionElement")?;
+        projected_node_id(scope, &value)
     }).unwrap();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.set_attribute_ns(element, Namespace::none(), "title", "native");
+        dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    })
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        let actual = evaluate(scope, "reflectionElement.title === 'native'")?;
+        let expected = scope.primitive(Primitive::Boolean(true))?;
+        assert!(scope.strict_equals(&actual, &expected)?);
+        Ok(())
+    })
+    .unwrap();
+    host.stop().into_session().unwrap();
+    html_reflection_setters_admit_the_native_change_before_publication();
+}
+
+fn html_reflection_setters_admit_the_native_change_before_publication() {
+    for (property, outputs) in [("title", 1), ("title", 2), ("inert", 1), ("inert", 2)] {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (mut session, target) = hosted_session(&cancel, 0);
+        let mut batch = DomBatch::new();
+        let element = batch.create_element(target.document(), "div");
+        let element = session
+            .dom()
+            .apply(batch, &cancel)
+            .unwrap()
+            .created(&element)
+            .unwrap()
+            .unwrap();
+        let mut host =
+            attach_public_nodes_with_source_output_limit(session, target, cancel, outputs);
+        let permit = host.permit().unwrap();
+        expose_public_node_for_source_test(&mut host, &permit, element, "limitedReflection");
+        let before = host.snapshot().unwrap();
+        let result = host.in_document(&permit, |scope| {
+            evaluate(
+                scope,
+                if property == "title" {
+                    "limitedReflection.title = '\\ud800'"
+                } else {
+                    "limitedReflection.inert = true"
+                },
+            )
+            .map(drop)
+        });
+        let after = host.snapshot().unwrap();
+        if outputs == 1 {
+            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+                panic!("one-short reflection output must refuse before publication: {result:?}");
+            };
+            assert!(matches!(
+                failure.cause::<crate::DomSourceDriveError>(),
+                Some(crate::DomSourceDriveError::Source(
+                    crate::DomSourceRuntimeError::Dom(surgeist_dom::DomError::SourceOutputLimit)
+                ))
+            ));
+            assert_eq!(after.stamp(), before.stamp());
+            assert_eq!(after.nodes().count(), before.nodes().count());
+            assert!(
+                after
+                    .node(element)
+                    .unwrap()
+                    .attributes()
+                    .unwrap()
+                    .is_empty()
+            );
+        } else {
+            result.unwrap();
+            let name = property.into();
+            let attr = after
+                .node(element)
+                .unwrap()
+                .get_attribute_node_ns(&Namespace::none(), &name)
+                .unwrap();
+            assert_eq!(
+                attr.value().code_units(),
+                if property == "title" {
+                    &[0xd800][..]
+                } else {
+                    &[]
+                }
+            );
+        }
+        host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
+            .unwrap();
+        host.stop().into_session().unwrap();
+    }
 }

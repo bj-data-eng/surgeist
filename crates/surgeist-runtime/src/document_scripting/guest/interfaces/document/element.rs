@@ -60,6 +60,36 @@ const REFLECTIONS: &[super::reflection::Member] = &[
         super::reflection::Reflection::String,
     ),
 ];
+const HTML_REFLECTIONS: &[super::reflection::Member] = &[
+    (
+        &ascii(b"title"),
+        &ascii(b"get title"),
+        &ascii(b"set title"),
+        &ascii(b"title"),
+        super::reflection::Reflection::String,
+    ),
+    (
+        &ascii(b"lang"),
+        &ascii(b"get lang"),
+        &ascii(b"set lang"),
+        &ascii(b"lang"),
+        super::reflection::Reflection::String,
+    ),
+    (
+        &ascii(b"inert"),
+        &ascii(b"get inert"),
+        &ascii(b"set inert"),
+        &ascii(b"inert"),
+        super::reflection::Reflection::Boolean,
+    ),
+    (
+        &ascii(b"accessKey"),
+        &ascii(b"get accessKey"),
+        &ascii(b"set accessKey"),
+        &ascii(b"accesskey"),
+        super::reflection::Reflection::String,
+    ),
+];
 
 const OBSOLETE_SPECIAL: &[(&str, &str)] = &[
     ("dir", "HTMLDirectoryElement"),
@@ -159,6 +189,13 @@ impl ElementBindings {
             &constructor,
             &element,
             capture,
+        )?;
+        super::reflection::install(
+            scope,
+            &html,
+            capture,
+            super::reflection::Receiver::Html,
+            HTML_REFLECTIONS,
         )?;
         let (media_constructor, media) = install_html_constructor(
             scope,

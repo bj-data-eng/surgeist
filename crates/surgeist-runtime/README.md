@@ -383,6 +383,10 @@ accepted verification stops at that admission, live native retry returns the
 pending output request. The stopped host can settle the original native
 attachment and its exact output without entering JavaScript.
 
+`HTMLElement.title`, `lang` and `accessKey` reflect exact null-namespace attribute
+values. `inert` reflects presence. Their setters use the canonical Source
+operations and complete synchronous custom-element reactions before returning.
+
 Call `DomSession::enable_trusted_types_csp` to select the Session processor for
 the hosted initial `about:blank` profile. Runtime serves reached Meta policies
 through the original Source request. The Window's `trustedTypes` factory
