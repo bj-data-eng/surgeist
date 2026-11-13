@@ -128,6 +128,9 @@ pub(crate) trait Operations {
     -> Result<(), Error>;
     fn argument_locals_storage_bytes(&self, count: usize) -> Option<usize>;
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error>;
+    fn new_promise_resolver(&mut self) -> Result<Root, Error>;
+    fn resolver_promise(&mut self, resolver: &Root) -> Result<Root, Error>;
+    fn settle_promise(&mut self, resolver: &Root, value: &Root, reject: bool) -> Result<(), Error>;
     fn native_error(&mut self) -> Result<Root, Error>;
     fn dom_exception_profile(&mut self) -> Result<Option<DomExceptionProfile>, Error>;
     fn publish_dom_exception(

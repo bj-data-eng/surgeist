@@ -2,7 +2,8 @@
 
 use super::*;
 use surgeist_bindings_js::{
-    CustomElementRegistryIdentity, ValueKind, conversion::types, dom_exception::DomExceptionName,
+    CustomElementRegistryIdentity, PromiseResolver, ValueKind, conversion::types,
+    dom_exception::DomExceptionName,
 };
 use surgeist_dom::{
     DocumentString, DomDocumentScriptRegistration, DomNodeKind, DomRegistryBinding,
@@ -138,8 +139,26 @@ pub(super) struct GlobalRegistry {
     object: RetainedCallbackObject,
     identity: CustomElementRegistryIdentity,
     definitions: RefCell<DefinitionBank>,
+    waiting: RefCell<Option<Box<DefinitionWaiter>>>,
     running: Cell<bool>,
     _backing: GuestBacking,
+}
+
+struct DefinitionWaiter {
+    name: DocumentString,
+    resolver: PromiseResolver,
+    next: Option<Box<Self>>,
+    _record: GuestBacking,
+    _name: GuestBacking,
+}
+
+impl Drop for GlobalRegistry {
+    fn drop(&mut self) {
+        let mut waiting = self.waiting.get_mut().take();
+        while let Some(mut entry) = waiting {
+            waiting = entry.next.take();
+        }
+    }
 }
 
 type StringSequence = surgeist_bindings_js::conversion::Converted<
@@ -343,6 +362,7 @@ pub(super) fn install<'scope>(
         object,
         identity,
         definitions: RefCell::new(DefinitionBank::default()),
+        waiting: RefCell::new(None),
         running: Cell::new(false),
         _backing: backing,
     }))
@@ -375,6 +395,21 @@ fn install_definition_methods<'scope>(
             true,
         )?;
     }
+    let capture = capture(size_of::<Capture>())?;
+    let name = &ascii(b"whenDefined");
+    let function = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| capture.when_defined(scope, arguments)),
+        FunctionMetadata { name, length: 1 },
+    )?;
+    define_data(
+        scope,
+        prototype,
+        PropertyKey::String(name),
+        &function,
+        true,
+        true,
+        true,
+    )?;
     Ok(())
 }
 
@@ -410,6 +445,113 @@ pub(super) fn install_node_getter<'scope>(
 }
 
 impl Capture {
+    fn when_defined<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let (owner, events) = self.active(scope)?;
+        let result = (|| -> Result<Value<'scope>, DocumentGuestEventError> {
+            let registry = scope.custom_element_registry_identity(arguments.receiver())?;
+            let (Some(identity), Some(name)) = (registry, arguments.get(0)) else {
+                let reason =
+                    scope.type_error(&ascii(b"Invalid custom element registry arguments"))?;
+                return settled_definition_promise(scope, &owner, &events, &reason, true);
+            };
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let registry = self.callbacks.with_read(&owner, &events, |read, _| {
+                public.with_registry(
+                    read,
+                    |registry| registry.identity == identity,
+                    |registry| Ok(Rc::clone(registry)),
+                )
+            })?;
+            let converted = self
+                .callbacks
+                .conversion
+                .run(scope, |cx| cx.value(&types::DOM_STRING, name));
+            let name = match converted.map_err(Error::from) {
+                Ok(name) => name,
+                Err(Error::Exception(exception)) => {
+                    let reason = scope.import(exception.value())?;
+                    return settled_definition_promise(scope, &owner, &events, &reason, true);
+                }
+                Err(error) => return Err(error.into()),
+            };
+            let (name, name_backing) =
+                document::copy_native_data(&owner, &events, name.get().as_code_units())?;
+            if !valid_registry_name(&events, &name)? {
+                let reason = scope.dom_exception(DomExceptionName::SyntaxError, &[])?;
+                return settled_definition_promise(scope, &owner, &events, &reason, true);
+            }
+            let existing = self.callbacks.with_read(&owner, &events, |read, _| {
+                let constructor = registry.find_with(
+                    scope,
+                    || read.step(),
+                    |_, row| {
+                        registry_name_matches_with(row.name.code_units(), name.code_units(), || {
+                            read.step()?;
+                            read.step()
+                        })
+                    },
+                )?;
+                if let Some(constructor) = constructor {
+                    return Ok(Some((constructor, true)));
+                }
+                let waiting = registry
+                    .waiting
+                    .try_borrow()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                let mut next = waiting.as_deref();
+                while let Some(entry) = next {
+                    read.step()?;
+                    if registry_name_matches_with(
+                        entry.name.code_units(),
+                        name.code_units(),
+                        || {
+                            read.step()?;
+                            read.step()
+                        },
+                    )? {
+                        return Ok(Some((scope.resolver_promise(&entry.resolver)?, false)));
+                    }
+                    next = entry.next.as_deref();
+                }
+                Ok(None)
+            })?;
+            match existing {
+                Some((constructor, true)) => {
+                    return settled_definition_promise(scope, &owner, &events, &constructor, false);
+                }
+                Some((promise, false)) => return Ok(promise),
+                None => (),
+            }
+            let mut waiters = registry
+                .waiting
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let record = events.reserve(&owner, size_of::<DefinitionWaiter>())?;
+            let resolver = new_definition_resolver(scope, &owner, &events)?;
+            let promise = scope.resolver_promise(&resolver)?;
+            let entry = Box::new(DefinitionWaiter {
+                name,
+                resolver,
+                next: waiters.take(),
+                _record: record,
+                _name: name_backing,
+            });
+            *waiters = Some(entry);
+            Ok(promise)
+        })();
+        match result {
+            Ok(promise) => Ok(Completion::Return(promise)),
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                Err(error)
+            }
+            Err(error) => refuse(scope, &events.refusal, error),
+        }
+    }
+
     fn registry_method<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -468,18 +610,7 @@ impl Capture {
             }
             let (name, name_backing) =
                 document::copy_native_data(&owner, &events, name.get().as_code_units())?;
-            if surgeist_html::bounded::lexical::validate_custom_element_name_with(
-                &name,
-                |action| {
-                    use surgeist_html::bounded::lexical::HtmlCustomNameScanAction;
-                    events.charge_work(match action {
-                        HtmlCustomNameScanAction::ReservedPair => 2,
-                        _ => 1,
-                    })
-                },
-            )?
-            .is_err()
-            {
+            if !valid_registry_name(&events, &name)? {
                 return Ok(Completion::Throw(
                     scope.dom_exception(DomExceptionName::SyntaxError, &[])?,
                 ));
@@ -560,6 +691,16 @@ impl Capture {
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             let growth = rows.reserve(&owner, &events)?;
+            let mut waiting = registry
+                .waiting
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let waiter = matching_definition_waiter(&mut waiting, &events, &name)?;
+            let definition_value = if waiter.is_some() {
+                Some(scope.open_callback_object(&constructor)?)
+            } else {
+                None
+            };
             scope.check_active()?;
             let id = self.with_native(&owner, |session, _| {
                 let hosted = session.hosted_execution();
@@ -589,6 +730,18 @@ impl Capture {
                     _name_backing: name_backing,
                 },
             );
+            let resolver = waiter.and_then(|link| {
+                link.take().map(|entry| {
+                    let DefinitionWaiter { resolver, next, .. } = *entry;
+                    *link = next;
+                    resolver
+                })
+            });
+            drop(rows);
+            drop(waiting);
+            if let Some((resolver, constructor)) = resolver.zip(definition_value) {
+                scope.resolve_promise(resolver, &constructor)?;
+            }
             Ok(Completion::Return(undefined))
         })();
         match result {
@@ -802,6 +955,15 @@ impl GlobalRegistry {
         &self,
         scope: &mut Scope<'scope>,
         events: &GuestEvents,
+        matches: impl FnMut(&mut Scope<'scope>, &Definition) -> Result<bool, DocumentGuestEventError>,
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
+        self.find_with(scope, || events.step(), matches)
+    }
+
+    fn find_with<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
         mut matches: impl FnMut(
             &mut Scope<'scope>,
             &Definition,
@@ -812,7 +974,7 @@ impl GlobalRegistry {
             .try_borrow()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         for (ordinal, row) in rows.rows.iter().enumerate() {
-            events.step()?;
+            step()?;
             if row.id.registry() != self.id || row.id.ordinal() != ordinal {
                 return Err(DocumentScriptNativeError::ProjectionCustody.into());
             }
@@ -822,6 +984,69 @@ impl GlobalRegistry {
         }
         Ok(None)
     }
+}
+
+fn matching_definition_waiter<'a>(
+    mut link: &'a mut Option<Box<DefinitionWaiter>>,
+    events: &GuestEvents,
+    name: &DocumentString,
+) -> Result<Option<&'a mut Option<Box<DefinitionWaiter>>>, DocumentGuestEventError> {
+    while let Some(entry) = link.as_ref() {
+        events.step()?;
+        if registry_name_matches(events, entry.name.code_units(), name.code_units())? {
+            return Ok(Some(link));
+        }
+        link = &mut link
+            .as_mut()
+            .ok_or(DocumentScriptNativeError::ProjectionCustody)?
+            .next;
+    }
+    Ok(None)
+}
+
+fn new_definition_resolver(
+    scope: &mut Scope<'_>,
+    owner: &NativeOwner,
+    events: &GuestEvents,
+) -> Result<PromiseResolver, DocumentGuestEventError> {
+    let bytes = events
+        .exception_root_bytes
+        .checked_add(size_of::<GuestBacking>())
+        .ok_or(DocumentScriptNativeError::StorageLimit)?;
+    Ok(scope.promise_resolver(Box::new(events.reserve(owner, bytes)?))?)
+}
+
+fn settled_definition_promise<'scope>(
+    scope: &mut Scope<'scope>,
+    owner: &NativeOwner,
+    events: &GuestEvents,
+    value: &Value<'scope>,
+    reject: bool,
+) -> Result<Value<'scope>, DocumentGuestEventError> {
+    let resolver = new_definition_resolver(scope, owner, events)?;
+    let promise = scope.resolver_promise(&resolver)?;
+    if reject {
+        scope.reject_promise(resolver, value)?;
+    } else {
+        scope.resolve_promise(resolver, value)?;
+    }
+    Ok(promise)
+}
+
+fn valid_registry_name(
+    events: &GuestEvents,
+    name: &DocumentString,
+) -> Result<bool, DocumentGuestEventError> {
+    Ok(
+        surgeist_html::bounded::lexical::validate_custom_element_name_with(name, |action| {
+            use surgeist_html::bounded::lexical::HtmlCustomNameScanAction;
+            events.charge_work(match action {
+                HtmlCustomNameScanAction::ReservedPair => 2,
+                _ => 1,
+            })
+        })?
+        .is_ok(),
+    )
 }
 
 fn registry_type_error<'scope>(scope: &mut Scope<'scope>) -> Result<Completion<'scope>, Error> {
@@ -835,11 +1060,19 @@ fn registry_name_matches(
     left: &[u16],
     right: &[u16],
 ) -> Result<bool, DocumentGuestEventError> {
+    registry_name_matches_with(left, right, || events.charge_work(2))
+}
+
+fn registry_name_matches_with(
+    left: &[u16],
+    right: &[u16],
+    mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+) -> Result<bool, DocumentGuestEventError> {
     if left.len() != right.len() {
         return Ok(false);
     }
     for index in 0..left.len() {
-        events.charge_work(2)?;
+        step()?;
         if left[index] != right[index] {
             return Ok(false);
         }

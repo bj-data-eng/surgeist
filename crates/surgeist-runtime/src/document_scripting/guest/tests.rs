@@ -64,22 +64,35 @@ pub(in crate::document_scripting) fn registry_when_defined_retains_original_prom
             globalThis.definitionResults = [];
             waiting.then(value => definitionResults.push(value));
             registry.whenDefined('Invalid').catch(error => definitionResults.push(error.name));
+            registry.whenDefined().catch(error => definitionResults.push(error instanceof TypeError));
+            registry.whenDefined.call({}).catch(error => definitionResults.push(error instanceof TypeError));
+            const thenFailure = {};
+            registry.whenDefined('x-rejecting').catch(error => definitionResults.push(error === thenFailure));
+            registry.define('x-rejecting', class { static get then() { throw thenFailure; } });
             const conversion = {};
             registry.whenDefined({ toString() { throw conversion; } })
                 .catch(error => definitionResults.push(error === conversion));
             try { registry.define('x-waiting', {}); } catch {}
             if (registry.whenDefined('x-waiting') !== waiting) return false;
-            globalThis.exactDefinition = class extends HTMLElement {};
+            let thenReads = 0;
+            globalThis.exactDefinition = class extends HTMLElement {
+                static get then() {
+                    thenReads++;
+                    if (registry.get('x-waiting') !== this) throw new Error('definition not published');
+                    return undefined;
+                }
+            };
             registry.define('x-waiting', exactDefinition);
+            if (thenReads !== 1) return false;
             const resolved = registry.whenDefined('x-waiting');
-            if (resolved === waiting || !(resolved instanceof Promise)) return false;
+            if (resolved === waiting || !(resolved instanceof Promise) || thenReads !== 2) return false;
             resolved.then(value => definitionResults.push(value));
             return definitionResults.length === 0;
         })()"#)
     }).unwrap();
     host.checkpoint().unwrap();
     host.in_document(&permit, |scope| {
-        assert_guest(scope, "definitionResults.length === 4 && definitionResults.filter(value => value === exactDefinition).length === 2 && definitionResults.includes('SyntaxError') && definitionResults.includes(true)")
+        assert_guest(scope, "definitionResults.length === 7 && definitionResults.filter(value => value === exactDefinition).length === 2 && definitionResults.includes('SyntaxError') && definitionResults.filter(value => value === true).length === 4")
     }).unwrap();
 }
 

@@ -565,6 +565,7 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     invalid_receivers_and_callback_registration_fail_without_corrupting_state()?;
     callback_exception_reaches_the_host_and_later_execution_still_works()?;
     promise_callbacks_run_at_an_explicit_host_checkpoint()?;
+    promise_resolver_rejects_self_resolution_in_its_original_realm()?;
     host_teardown_releases_roots_and_native_resources_after_script_failure()?;
     replacing_a_callback_releases_the_previous_closure_and_its_native_capture()?;
     expired_native_identity_is_rejected_after_wrapper_collection()?;
@@ -1266,6 +1267,38 @@ fn promise_callbacks_run_at_an_explicit_host_checkpoint() -> TestResult {
     host.checkpoint()?;
     assert_eq!(native.value.get(), 7);
     assert_eq!(host.eval("a.value")?, "7");
+    Ok(())
+}
+
+fn promise_resolver_rejects_self_resolution_in_its_original_realm() -> TestResult {
+    use crate::{EngineKind, Process, PropertyKey};
+
+    let units = |input: &str| input.encode_utf16().collect::<Vec<_>>();
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut execution = process.execution();
+    let original = execution.create_realm()?;
+    let other = execution.create_realm()?;
+    let (resolver, promise, original_type_error) = execution.in_realm(&original, |scope| {
+        let resolver = scope.promise_resolver(Box::new(()))?;
+        let promise = scope.resolver_promise(&resolver)?;
+        let error = scope.evaluate(&units("TypeError"))?;
+        Ok((resolver, scope.retain(&promise), scope.retain(&error)))
+    })?;
+    execution.in_realm(&other, |scope| {
+        let global = scope.global()?;
+        let promise = scope.import(&promise)?;
+        let original_type_error = scope.import(&original_type_error)?;
+        scope.set(&global, PropertyKey::String(&units("originalPromise")), &promise)?;
+        scope.set(&global, PropertyKey::String(&units("originalTypeError")), &original_type_error)?;
+        scope.evaluate(&units("globalThis.correctRealm = false; originalPromise.catch(error => correctRealm = error instanceof originalTypeError && !(error instanceof TypeError))"))?;
+        scope.resolve_promise(resolver, &promise)
+    })?;
+    execution.checkpoint()?;
+    execution.in_realm(&other, |scope| {
+        let result = scope.evaluate(&units("correctRealm"))?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    })?;
     Ok(())
 }
 

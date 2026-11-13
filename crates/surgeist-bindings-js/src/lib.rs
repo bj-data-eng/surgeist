@@ -85,6 +85,7 @@ mod host;
 mod idl;
 mod native_object;
 mod owner;
+mod promise;
 mod trusted_types;
 
 use std::marker::PhantomData;
@@ -98,6 +99,7 @@ pub use idl::{ByteString, DomString, IntegerKind, IntegerMode, IntegerValue, Usv
 pub use native_object::{
     NativeObject, NativeObjectToken, NativeProjectionPrototype, PreparedNativeProjection,
 };
+pub use promise::PromiseResolver;
 pub use trusted_types::{
     TrustedAttributeValue, TrustedPolicyCallback, TrustedType, TrustedTypeData, TrustedTypeKind,
 };

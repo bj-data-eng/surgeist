@@ -680,6 +680,7 @@ impl surgeist_bindings_js::Process
 pub fn surgeist_bindings_js::Process::release_callback_object(&mut self, callback: surgeist_bindings_js::RetainedCallbackObject) -> core::result::Result<(), surgeist_bindings_js::Error>
 impl surgeist_bindings_js::Process
 pub fn surgeist_bindings_js::Process::release_trusted_policy_callback(&mut self, callback: surgeist_bindings_js::TrustedPolicyCallback) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub struct surgeist_bindings_js::PromiseResolver
 pub struct surgeist_bindings_js::Realm(_)
 pub struct surgeist_bindings_js::RealmAuthority
 impl surgeist_bindings_js::RealmAuthority
@@ -765,6 +766,11 @@ pub fn surgeist_bindings_js::Scope<'scope>::try_project_retained_native_object<T
 impl<'scope> surgeist_bindings_js::Scope<'scope>
 pub fn surgeist_bindings_js::Scope<'scope>::project_named_trusted_type<Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>, data: surgeist_bindings_js::conversion::Converted<surgeist_bindings_js::TrustedTypeData>, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<Storage, E>) -> core::result::Result<surgeist_bindings_js::Value<'scope>, E>
 pub fn surgeist_bindings_js::Scope<'scope>::project_trusted_type<Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>, data: surgeist_bindings_js::conversion::Converted<core::option::Option<surgeist_bindings_js::TrustedTypeData>>, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<Storage, E>) -> core::result::Result<core::option::Option<surgeist_bindings_js::Value<'scope>>, E>
+impl<'scope> surgeist_bindings_js::Scope<'scope>
+pub fn surgeist_bindings_js::Scope<'scope>::promise_resolver(&mut self, backing: alloc::boxed::Box<dyn core::any::Any>) -> core::result::Result<surgeist_bindings_js::PromiseResolver, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::reject_promise(&mut self, resolver: surgeist_bindings_js::PromiseResolver, reason: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::resolve_promise(&mut self, resolver: surgeist_bindings_js::PromiseResolver, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::resolver_promise(&mut self, resolver: &surgeist_bindings_js::PromiseResolver) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 impl<'scope> surgeist_bindings_js::Scope<'scope>
 pub fn surgeist_bindings_js::Scope<'scope>::release_trusted_policy_callback(&mut self, callback: surgeist_bindings_js::TrustedPolicyCallback) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::retain_trusted_policy_callback<Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, value: &surgeist_bindings_js::Value<'scope>, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<Storage, E>) -> core::result::Result<core::option::Option<surgeist_bindings_js::TrustedPolicyCallback>, E>
