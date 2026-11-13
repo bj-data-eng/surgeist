@@ -339,12 +339,13 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
         let index = graph.index(node)?;
         // Inherited float frames and framed entry observations contribute
         // mutable, purpose-scoped state beyond the ordinary request key.
-        // The root is executed once and can publish a full document's worth
-        // of geometry. Its descendants still admit their own exact requests.
+        // The validated graph root is laid out once and can publish the whole
+        // tree's geometry. Descendants can reuse exact requests that inherit
+        // the root layout mode.
         (memo.table.eligible[index]
             && self.entry_sources.is_none()
             && !self.block_floats.blocks_cache(node, &input)
-            && input.run_mode() != crate::RunMode::PerformRootLayout)
+            && (index != 0 || input.run_mode() != crate::RunMode::PerformRootLayout))
             .then_some(RequestKey {
                 index,
                 input,

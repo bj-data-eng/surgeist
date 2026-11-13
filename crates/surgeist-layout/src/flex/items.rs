@@ -210,12 +210,20 @@ type FlexItemCollectionResult<Tree, M> = LayoutResultOf<
 >;
 
 pub(super) struct ItemCollection<'input, Node, S: LayoutScalar> {
-    children: std::iter::Enumerate<std::vec::IntoIter<Node>>,
+    source: CollectionSource<Node>,
     items: Vec<CollectedFlexItem<Node, S>>,
     order_entries: Vec<(crate::ItemOrder, crate::SourceIndex)>,
     pending: Option<ItemBuilder<'input, Node, S>>,
     input: Option<ComputeInputOf<S>>,
     run_mode: RunMode,
+}
+
+enum CollectionSource<Node> {
+    Children(std::iter::Enumerate<std::vec::IntoIter<Node>>),
+    Recollect {
+        next_index: usize,
+        round: FlexLineCollectionRound,
+    },
 }
 
 impl<'input, Node: Copy, S: LayoutScalar> ItemCollection<'input, Node, S> {
@@ -227,7 +235,25 @@ impl<'input, Node: Copy, S: LayoutScalar> ItemCollection<'input, Node, S> {
         Self {
             items: Vec::with_capacity(children.len()),
             order_entries: Vec::with_capacity(children.len()),
-            children: children.into_iter().enumerate(),
+            source: CollectionSource::Children(children.into_iter().enumerate()),
+            pending: None,
+            input: None,
+            run_mode,
+        }
+    }
+
+    pub(super) fn recollect(
+        count: usize,
+        run_mode: RunMode,
+        round: FlexLineCollectionRound,
+    ) -> Self {
+        Self {
+            source: CollectionSource::Recollect {
+                next_index: 0,
+                round,
+            },
+            items: Vec::with_capacity(count),
+            order_entries: Vec::new(),
             pending: None,
             input: None,
             run_mode,
@@ -242,6 +268,30 @@ impl<'input, Node: Copy, S: LayoutScalar> ItemCollection<'input, Node, S> {
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
+        self.next_item(tree, constants, &[])
+    }
+
+    pub(super) fn next_recollected<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        constants: &Constants<S>,
+        original: &[CollectedFlexItem<Node, S>],
+    ) -> LayoutResultOf<Node, Option<FlexItemRequest<Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        self.next_item(tree, constants, original)
+    }
+
+    fn next_item<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        constants: &Constants<S>,
+        original: &[CollectedFlexItem<Node, S>],
+    ) -> LayoutResultOf<Node, Option<FlexItemRequest<Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
         if let Some(input) = self.input.take() {
             let node = self
                 .pending
@@ -252,9 +302,28 @@ impl<'input, Node: Copy, S: LayoutScalar> ItemCollection<'input, Node, S> {
             return Ok(Some(FlexItemRequest { node, input }));
         }
         debug_assert!(self.pending.is_none());
-        for (source_index, node) in self.children.by_ref() {
+        loop {
+            let (node, source_index, check_eligibility) = match &mut self.source {
+                CollectionSource::Children(children) => {
+                    let Some((source_index, node)) = children.next() else {
+                        return Ok(None);
+                    };
+                    (node, source_index, true)
+                }
+                CollectionSource::Recollect { next_index, round } => {
+                    let Some(item) = original.get(*next_index) else {
+                        return Ok(None);
+                    };
+                    *next_index += 1;
+                    if *round == FlexLineCollectionRound::Collapsed && item.is_collapsed() {
+                        self.items.push(*item);
+                        continue;
+                    }
+                    (item.node, item.source_index, false)
+                }
+            };
             let item = with_flex_item_projection::<Tree, M, _>(tree, node, |tree, style| {
-                if !is_eligible_item(&style) {
+                if check_eligibility && !is_eligible_item(&style) {
                     return Ok(None);
                 }
                 ItemBuilder::begin(tree, node, source_index, style, constants, self.run_mode)
@@ -265,7 +334,6 @@ impl<'input, Node: Copy, S: LayoutScalar> ItemCollection<'input, Node, S> {
                 return Ok(Some(FlexItemRequest { node, input }));
             }
         }
-        Ok(None)
     }
 
     pub(super) fn accept<Tree, M>(
@@ -281,8 +349,10 @@ impl<'input, Node: Copy, S: LayoutScalar> ItemCollection<'input, Node, S> {
         let item_order = builder.prepared.style.item_order;
         match builder.accept(tree, constants, self.run_mode, output)? {
             ControlFlow::Break(item) => {
-                self.order_entries
-                    .push((item_order, crate::SourceIndex::new(item.source_index)));
+                if matches!(self.source, CollectionSource::Children(_)) {
+                    self.order_entries
+                        .push((item_order, crate::SourceIndex::new(item.source_index)));
+                }
                 self.items.push(item);
             }
             ControlFlow::Continue((builder, input)) => {
@@ -294,6 +364,9 @@ impl<'input, Node: Copy, S: LayoutScalar> ItemCollection<'input, Node, S> {
     }
 
     pub(super) fn finish(self) -> Vec<CollectedFlexItem<Node, S>> {
+        if matches!(self.source, CollectionSource::Recollect { .. }) {
+            return self.items;
+        }
         let permutation = flex_item_order_permutation(&self.order_entries);
         let mut items_by_source = self
             .items
@@ -326,36 +399,6 @@ where
         collection.accept(tree, constants, output)?;
     }
     Ok(collection.finish())
-}
-
-pub(super) fn recollect_items<'input, Tree, M>(
-    tree: &mut Tree,
-    collected_items: &[CollectedFlexItem<Tree::Node, Tree::Scalar>],
-    constants: &Constants<Tree::Scalar>,
-    run_mode: RunMode,
-    round: FlexLineCollectionRound,
-) -> FlexItemCollectionResult<Tree, M>
-where
-    Tree: Compute<'input, M>,
-{
-    collected_items
-        .iter()
-        .map(|item| {
-            if round == FlexLineCollectionRound::Collapsed && item.is_collapsed() {
-                return Ok(*item);
-            }
-            with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
-                build_item(
-                    tree,
-                    item.node,
-                    item.source_index,
-                    style,
-                    constants,
-                    run_mode,
-                )
-            })
-        })
-        .collect()
 }
 
 pub(super) struct FlexItemRequest<Node, S: LayoutScalar> {
@@ -1253,38 +1296,6 @@ impl<S: LayoutScalar> AutomaticMinimum<S> {
         min_content.max(self.padding_border_main)
     }
 }
-
-fn build_item<'input, Tree, M>(
-    tree: &mut Tree,
-    node: Tree::Node,
-    source_index: usize,
-    style: FlexItemProjection<'input, Tree::Scalar>,
-    constants: &Constants<Tree::Scalar>,
-    run_mode: RunMode,
-) -> ItemBuildResult<Tree, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let (mut builder, mut input) =
-        ItemBuilder::begin(tree, node, source_index, style, constants, run_mode)?;
-    loop {
-        let output = tree.compute_child(node, input)?;
-        match builder.accept(tree, constants, run_mode, output)? {
-            ControlFlow::Break(item) => return Ok(item),
-            ControlFlow::Continue((next, request)) => {
-                builder = next;
-                input = request;
-            }
-        }
-    }
-}
-
-type ItemBuildResult<Tree, M> = LayoutResultOf<
-    <Tree as Traverse>::Node,
-    CollectedFlexItem<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
-    <Tree as Traverse>::Scalar,
-    M,
->;
 
 pub(super) fn flex_automatic_minimum_is_zero(overflow: ComputedOverflow) -> bool {
     overflow.x().is_scrollable() || overflow.y().is_scrollable()
