@@ -215,6 +215,94 @@ pub(super) fn guest_style_preserves_foreign_and_unavailable_policy() {
     }
 }
 
+pub(super) fn guest_style_reports_to_current_window_for_another_document() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
+        limits.with_meta_processing_work(1_000_000)
+    });
+    let other = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted.create_headless_host(&mut dom, &cancel).unwrap();
+        hosted.create_top_level(&mut dom, owner, &cancel).unwrap()
+    };
+    let destination = insert_hosted_element(&mut session, other, "div", &cancel);
+    let document = other.document();
+    let snapshot = session.snapshot();
+    let html = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let head = snapshot.node(html).unwrap().children()[0];
+    let mut batch = DomBatch::new();
+    let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+    batch.set_attribute(&meta, "http-equiv", "content-security-policy");
+    batch.set_attribute(&meta, "content", "style-src 'none' 'report-sample'");
+    let style = batch.create_element_ns(target.document(), Namespace::html(), "style");
+    let text = batch.create_text(target.document(), "p { color: red }");
+    batch.insert_before(&text, &style, None);
+    let commit = session.dom().apply(batch, &cancel).unwrap();
+    let meta = commit.created(&meta).unwrap().unwrap();
+    let style = commit.created(&style).unwrap().unwrap();
+    session.enable_trusted_types_csp(&cancel).unwrap();
+    install_policy_before_style_retry(&mut session, meta, head, &cancel);
+    let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    host.register_node_creation_realm(&permit, other).unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, destination, "otherStyleParent");
+    expose_public_node_for_source_test(&mut host, &permit, style, "movedStyle");
+    host.in_document(&permit, |scope| {
+        let result = evaluate(scope, r#"
+            globalThis.otherStyleReports = [];
+            document.addEventListener('securitypolicyviolation', event => otherStyleReports.push(event));
+            Node.prototype.appendChild.call(otherStyleParent, movedStyle) === movedStyle &&
+                movedStyle.ownerDocument === otherStyleParent.ownerDocument &&
+                movedStyle.ownerDocument !== document
+        "#)?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    }).unwrap_or_else(|error| {
+        if let DocumentScriptError::Script(Error::HostFailure(failure)) = &error {
+            panic!("guest insertion into the other Document refused: {:?}", failure.cause::<DocumentGuestEventError>());
+        }
+        panic!("guest insertion into the other Document must settle: {error:?}");
+    });
+    let snapshot = host.snapshot().unwrap();
+    assert_eq!(snapshot.node(style).unwrap().parent(), Some(destination));
+    assert!(
+        snapshot
+            .node(style)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .is_none()
+    );
+    assert_queued_style_violation(&host);
+    assert!(matches!(
+        host.run_attached_csp_violation_task(&permit, EVENT.dispatch)
+            .unwrap(),
+        DocumentCspViolationProgress::Complete(_)
+    ));
+    host.in_document(&permit, |scope| {
+        let result = evaluate(
+            scope,
+            r#"
+            otherStyleReports.length === 1 &&
+                otherStyleReports[0].target === document &&
+                otherStyleReports[0].isTrusted &&
+                otherStyleReports[0].effectiveDirective === 'style-src-elem' &&
+                otherStyleReports[0].sample === 'p { color: red }'
+        "#,
+        )?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    })
+    .unwrap();
+}
+
 pub(super) fn character_data_edit_in_a_native_listener_settles_style_before_return() {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target, dialog) = hosted_element(&cancel, "dialog");

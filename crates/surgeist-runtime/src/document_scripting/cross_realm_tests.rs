@@ -256,6 +256,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     inline_style::guest_insertion_publishes_a_sheet_under_the_known_empty_policy();
     inline_style::style_runtime_refusal_preserves_the_original_guest_edit();
     inline_style::guest_style_preserves_foreign_and_unavailable_policy();
+    inline_style::guest_style_reports_to_current_window_for_another_document();
     inline_style::guest_insertion_uses_the_effective_meta_style_directive();
     inline_style::guest_style_update_matches_the_exact_nonce();
     inline_style::guest_style_hashes_exact_utf16_source();
