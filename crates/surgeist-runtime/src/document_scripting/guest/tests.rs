@@ -400,12 +400,13 @@ pub(in crate::document_scripting) fn custom_element_move_uses_the_registered_mov
             scope,
             r#"(() => {
             const calls = [];
-            const marker = {};
+            const marker = globalThis.moveReactionException = {};
+            let throwOnDisconnect = false;
             class Lifecycle extends HTMLElement {
                 connectedCallback() { calls.push(['connected', this]); }
                 disconnectedCallback() {
                     calls.push(['disconnected', this]);
-                    if (this.hasAttribute('data-throw')) throw marker;
+                    if (throwOnDisconnect) throw marker;
                 }
             }
             class Moving extends Lifecycle {
@@ -423,7 +424,7 @@ pub(in crate::document_scripting) fn custom_element_move_uses_the_registered_mov
             calls.length = 0;
             destination.moveBefore(moving, null);
             destination.moveBefore(fallback, null);
-            fallback.setAttribute('data-throw', '');
+            throwOnDisconnect = true;
             source.moveBefore(fallback, null);
             const expected = [
                 ['moved', moving], ['disconnected', fallback], ['connected', fallback],
@@ -433,6 +434,21 @@ pub(in crate::document_scripting) fn custom_element_move_uses_the_registered_mov
                 kind === expected[index][0] && target === expected[index][1]);
         })()"#,
         )
+    })
+    .unwrap();
+    let report = host
+        .take_guest_custom_element_callback_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        report.callback,
+        DocumentGuestCustomElementCallback::Disconnected
+    );
+    host.in_document(&permit, |scope| {
+        let marker = scope.evaluate(&units("moveReactionException"))?;
+        let exception = scope.import(report.exception.value())?;
+        assert!(scope.strict_equals(&marker, &exception)?);
+        Ok(())
     })
     .unwrap();
 }
@@ -545,11 +561,17 @@ pub(in crate::document_scripting) fn registry_upgrade_attempts_adopted_candidate
         .take_guest_constructor_exception(&permit)
         .unwrap()
         .unwrap();
-    let callback = host.take_guest_upgrade_exception(&permit).unwrap().unwrap();
-    assert_eq!(callback.callback, DocumentGuestUpgradeCallback::Connected);
+    let callback = host
+        .take_guest_custom_element_callback_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        callback.callback,
+        DocumentGuestCustomElementCallback::Connected
+    );
     assert_eq!(callback.definition, constructor.definition);
     assert!(
-        host.take_guest_upgrade_exception(&permit)
+        host.take_guest_custom_element_callback_exception(&permit)
             .unwrap()
             .is_none()
     );

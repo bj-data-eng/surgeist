@@ -17,6 +17,7 @@ pub enum DomCustomElementReactionKind<'a> {
     Upgrade,
     Connected,
     Disconnected,
+    ConnectedMove,
     AttributeChanged {
         local_name: &'a [u16],
         old_value: Option<&'a [u16]>,
@@ -30,6 +31,7 @@ enum ReactionKind {
     Upgrade,
     Connected,
     Disconnected,
+    ConnectedMove,
     AttributeChanged {
         local_name: DocumentString,
         old_value: Option<DocumentString>,
@@ -51,6 +53,7 @@ impl Reaction {
             ReactionKind::Upgrade => DomCustomElementReactionKind::Upgrade,
             ReactionKind::Connected => DomCustomElementReactionKind::Connected,
             ReactionKind::Disconnected => DomCustomElementReactionKind::Disconnected,
+            ReactionKind::ConnectedMove => DomCustomElementReactionKind::ConnectedMove,
             ReactionKind::AttributeChanged {
                 local_name,
                 old_value,
@@ -380,6 +383,34 @@ impl Draft {
                 key,
                 definition,
                 ReactionKind::Disconnected,
+                cancel,
+            )?;
+        }
+        Ok(())
+    }
+
+    pub(in crate::store) fn record_custom_element_move(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if !self.captures_custom_element_reactions() {
+            return Ok(());
+        }
+        self.source_step(cancel)?;
+        let Some(element) = self.node(key)?.element().map(|element| element.language()) else {
+            return Ok(());
+        };
+        if element.custom_element_state()
+            == surgeist_html::elements::native::HtmlCustomElementState::Custom
+            && let crate::DomElementDefinition::Definition(definition) =
+                element.custom_element_definition()
+            && self.shadow_connected(key, cancel)?
+        {
+            self.record_custom_element_reaction(
+                key,
+                definition,
+                ReactionKind::ConnectedMove,
                 cancel,
             )?;
         }

@@ -316,24 +316,26 @@ pub struct DocumentGuestConstructorException {
 
 /// The custom-element lifecycle callback that threw.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DocumentGuestUpgradeCallback {
+pub enum DocumentGuestCustomElementCallback {
     /// An observed attribute reaction.
     AttributeChanged,
     /// A connection reaction.
     Connected,
     /// A disconnection reaction.
     Disconnected,
+    /// A state-preserving move reaction.
+    ConnectedMove,
 }
 
 /// The original exception from a custom-element lifecycle callback.
 #[derive(Debug)]
-pub struct DocumentGuestUpgradeException {
+pub struct DocumentGuestCustomElementCallbackException {
     /// Exact definition associated with the callback.
     pub definition: surgeist_dom::DomRegistryDefinitionId,
     /// Original element receiver.
     pub receiver: surgeist_dom::NodeId,
     /// The callback that threw.
-    pub callback: DocumentGuestUpgradeCallback,
+    pub callback: DocumentGuestCustomElementCallback,
     /// The callback object’s associated realm.
     pub realm: RealmId,
     /// Original thrown value.
@@ -1010,17 +1012,17 @@ impl DocumentScriptHost {
         Ok(reports.take_constructor())
     }
 
-    /// Take the next exception from an initial custom element upgrade callback.
-    pub fn take_guest_upgrade_exception(
+    /// Take the next reported custom-element lifecycle callback exception.
+    pub fn take_guest_custom_element_callback_exception(
         &self,
         permit: &DocumentScriptPermit,
-    ) -> Result<Option<DocumentGuestUpgradeException>, DocumentGuestEventError> {
+    ) -> Result<Option<DocumentGuestCustomElementCallbackException>, DocumentGuestEventError> {
         self.check_permit(permit)?;
         let reports = self
             .guest_exception_reports
             .as_ref()
             .ok_or(DocumentGuestEventError::RegistryState)?;
-        Ok(reports.take_upgrade())
+        Ok(reports.take_custom_element_callback())
     }
 
     fn guest_events(&self) -> Result<Rc<GuestEvents>, DocumentGuestEventError> {

@@ -225,6 +225,7 @@ impl Draft {
             self.select_moving_node(node, limits, cancel)?;
         } else {
             self.control_moving_node(node, cancel)?;
+            self.record_custom_element_move(node, cancel)?;
         }
         Ok(())
     }

@@ -29,11 +29,11 @@ use crate::{
 pub(crate) mod guest;
 mod projection;
 pub use guest::{
-    DocumentCspViolationProgress, DocumentGuestConstructorException, DocumentGuestEvent,
-    DocumentGuestEventDispatchFailure, DocumentGuestEventError, DocumentGuestEventLimits,
-    DocumentGuestEventReport, DocumentGuestEventTarget, DocumentGuestEventView,
-    DocumentGuestListenerException, DocumentGuestUpgradeCallback, DocumentGuestUpgradeException,
-    EnableDocumentGuestEventsFailure,
+    DocumentCspViolationProgress, DocumentGuestConstructorException,
+    DocumentGuestCustomElementCallback, DocumentGuestCustomElementCallbackException,
+    DocumentGuestEvent, DocumentGuestEventDispatchFailure, DocumentGuestEventError,
+    DocumentGuestEventLimits, DocumentGuestEventReport, DocumentGuestEventTarget,
+    DocumentGuestEventView, DocumentGuestListenerException, EnableDocumentGuestEventsFailure,
 };
 mod source;
 mod window_event;

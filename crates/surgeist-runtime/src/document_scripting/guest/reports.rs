@@ -241,7 +241,7 @@ pub(in crate::document_scripting) struct GuestExceptionReports {
 enum GuestExceptionReport {
     Listener(DocumentGuestListenerException),
     Constructor(DocumentGuestConstructorException),
-    Upgrade(DocumentGuestUpgradeException),
+    CustomElementCallback(DocumentGuestCustomElementCallbackException),
 }
 
 impl GuestExceptionReports {
@@ -289,13 +289,15 @@ impl GuestExceptionReports {
         }
     }
 
-    pub(super) fn take_upgrade(&self) -> Option<DocumentGuestUpgradeException> {
+    pub(super) fn take_custom_element_callback(
+        &self,
+    ) -> Option<DocumentGuestCustomElementCallbackException> {
         let mut queue = self.queue.borrow_mut();
         let index = queue
             .iter()
-            .position(|report| matches!(report, GuestExceptionReport::Upgrade(_)))?;
+            .position(|report| matches!(report, GuestExceptionReport::CustomElementCallback(_)))?;
         match queue.remove(index)? {
-            GuestExceptionReport::Upgrade(exception) => Some(exception),
+            GuestExceptionReport::CustomElementCallback(exception) => Some(exception),
             _ => None,
         }
     }
@@ -479,11 +481,14 @@ impl ConstructorReportReservation {
         scope.retain_exception_backing(exception, backing)
     }
 
-    pub(super) fn publish_upgrade(&self, exception: DocumentGuestUpgradeException) {
+    pub(super) fn publish_custom_element_callback(
+        &self,
+        exception: DocumentGuestCustomElementCallbackException,
+    ) {
         self.reports
             .queue
             .borrow_mut()
-            .push_back(GuestExceptionReport::Upgrade(exception));
+            .push_back(GuestExceptionReport::CustomElementCallback(exception));
     }
 
     pub(super) fn publish(&self, exception: DocumentGuestConstructorException) {

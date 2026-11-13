@@ -1118,8 +1118,11 @@ impl Capture {
                     scope,
                     (owner, events),
                     id,
-                    DocumentGuestUpgradeCallback::AttributeChanged,
-                    callback,
+                    (
+                        DocumentGuestCustomElementCallback::AttributeChanged,
+                        callback,
+                        None,
+                    ),
                     &receiver,
                     Some(arguments),
                 )?);
@@ -1130,8 +1133,11 @@ impl Capture {
                 scope,
                 (owner, events),
                 id,
-                DocumentGuestUpgradeCallback::Connected,
-                callback,
+                (
+                    DocumentGuestCustomElementCallback::Connected,
+                    callback,
+                    None,
+                ),
                 &receiver,
                 None,
             )?);
@@ -1210,12 +1216,13 @@ impl Capture {
                 new_value,
                 namespace,
             } => (
-                DocumentGuestUpgradeCallback::AttributeChanged,
+                DocumentGuestCustomElementCallback::AttributeChanged,
                 Some([Some(local_name), old_value, new_value, namespace]),
                 4,
             ),
-            Kind::Connected => (DocumentGuestUpgradeCallback::Connected, None, 0),
-            Kind::Disconnected => (DocumentGuestUpgradeCallback::Disconnected, None, 1),
+            Kind::Connected => (DocumentGuestCustomElementCallback::Connected, None, 0),
+            Kind::Disconnected => (DocumentGuestCustomElementCallback::Disconnected, None, 1),
+            Kind::ConnectedMove => (DocumentGuestCustomElementCallback::ConnectedMove, None, 2),
             _ => return Err(DocumentScriptNativeError::ProjectionCustody.into()),
         };
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
@@ -1235,10 +1242,31 @@ impl Capture {
                         .filter(|row| row.id == fact.definition)
                         .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
                     let Some(callback) = &row.callbacks[callback_index] else {
-                        return Ok(None);
+                        let fallback = match (kind, &row.callbacks[1], &row.callbacks[0]) {
+                            (
+                                DocumentGuestCustomElementCallback::ConnectedMove,
+                                Some(first),
+                                second,
+                            ) => Some((
+                                DocumentGuestCustomElementCallback::Disconnected,
+                                first.clone(),
+                                second.clone(),
+                            )),
+                            (
+                                DocumentGuestCustomElementCallback::ConnectedMove,
+                                None,
+                                Some(second),
+                            ) => Some((
+                                DocumentGuestCustomElementCallback::Connected,
+                                second.clone(),
+                                None,
+                            )),
+                            _ => None,
+                        };
+                        return Ok(fallback);
                     };
                     let Some([Some(local_name), ..]) = arguments else {
-                        return Ok(Some(callback.clone()));
+                        return Ok(Some((kind, callback.clone(), None)));
                     };
                     let Some(observed) = &row.observed else {
                         return Ok(None);
@@ -1248,14 +1276,14 @@ impl Capture {
                         if registry_name_matches_with(local_name, expected.code_units(), || {
                             read.step()
                         })? {
-                            return Ok(Some(callback.clone()));
+                            return Ok(Some((kind, callback.clone(), None)));
                         }
                     }
                     Ok(None)
                 },
             )
         })?;
-        let Some(callback) = callback else {
+        let Some((kind, callback, continuation)) = callback else {
             return Ok(None);
         };
         let receiver = public.project_node(scope, owner, events, fact.element)?;
@@ -1293,8 +1321,7 @@ impl Capture {
             scope,
             (owner, events),
             fact.definition,
-            kind,
-            &callback,
+            (kind, &callback, continuation),
             &receiver,
             arguments.as_ref(),
         )?;
@@ -1655,8 +1682,9 @@ impl<T> ReactionList<T> {
 
 struct CallbackReaction {
     definition: DomRegistryDefinitionId,
-    kind: DocumentGuestUpgradeCallback,
+    kind: DocumentGuestCustomElementCallback,
     callback: RetainedCallbackObject,
+    connect_after_disconnect: Option<RetainedCallbackObject>,
     receiver: surgeist_bindings_js::Root,
     arguments: Option<[surgeist_bindings_js::Root; 4]>,
     _backing: GuestBacking,
@@ -1667,8 +1695,11 @@ impl CallbackReaction {
         scope: &Scope<'scope>,
         (owner, events): (&NativeOwner, &GuestEvents),
         definition: DomRegistryDefinitionId,
-        kind: DocumentGuestUpgradeCallback,
-        callback: &RetainedCallbackObject,
+        (kind, callback, connect_after_disconnect): (
+            DocumentGuestCustomElementCallback,
+            &RetainedCallbackObject,
+            Option<RetainedCallbackObject>,
+        ),
         receiver: &Value<'scope>,
         arguments: Option<&[Value<'scope>; 4]>,
     ) -> Result<Self, DocumentGuestEventError> {
@@ -1677,6 +1708,7 @@ impl CallbackReaction {
             definition,
             kind,
             callback: callback.clone(),
+            connect_after_disconnect,
             receiver: scope.retain(receiver),
             arguments: arguments
                 .map(|arguments| std::array::from_fn(|index| scope.retain(&arguments[index]))),
@@ -1746,9 +1778,14 @@ impl ActiveReactionQueue {
                         ])
                     })
                     .transpose()?;
-                (receiver, callback, arguments)
+                let connected = next
+                    .connect_after_disconnect
+                    .as_ref()
+                    .map(|callback| scope.open_callback_object(callback))
+                    .transpose()?;
+                (receiver, callback, arguments, connected)
             };
-            let (receiver, callback, arguments) = next;
+            let (receiver, callback, arguments, connected) = next;
             let arguments = arguments
                 .as_ref()
                 .map_or(&[][..], |arguments| &arguments[..]);
@@ -1762,17 +1799,30 @@ impl ActiveReactionQueue {
                 .map_err(|_| DocumentScriptNativeError::Busy)?
                 .pop_front()
                 .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-            match scope.call(&callback, &receiver, arguments) {
+            let mut kind = reaction.kind;
+            let mut realm = reaction.callback.associated_realm().identity();
+            let mut result = scope.call(&callback, &receiver, arguments);
+            if result.is_ok()
+                && let Some((connected, callback)) =
+                    connected.zip(reaction.connect_after_disconnect.as_ref())
+            {
+                kind = DocumentGuestCustomElementCallback::Connected;
+                realm = callback.associated_realm().identity();
+                result = scope.call(&connected, &receiver, &[]);
+            }
+            match result {
                 Ok(_) => (),
                 Err(Error::Exception(exception)) => {
                     report.prepare(scope, &exception)?;
-                    report.publish_upgrade(DocumentGuestUpgradeException {
-                        receiver: self.receiver,
-                        callback: reaction.kind,
-                        definition: reaction.definition,
-                        realm: reaction.callback.associated_realm().identity(),
-                        exception,
-                    });
+                    report.publish_custom_element_callback(
+                        DocumentGuestCustomElementCallbackException {
+                            receiver: self.receiver,
+                            callback: kind,
+                            definition: reaction.definition,
+                            realm,
+                            exception,
+                        },
+                    );
                 }
                 Err(error) => return Err(error.into()),
             }
