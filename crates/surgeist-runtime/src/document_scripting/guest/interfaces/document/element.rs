@@ -7,6 +7,7 @@ use surgeist_html::{
     bounded::lexical::validate_custom_element_name_with, vocabulary::KnownHtmlElement,
 };
 
+mod adjacent;
 mod attribute;
 pub(super) use attribute::AttributeResult;
 mod svg;
@@ -286,6 +287,7 @@ impl ElementBindings {
             custom_elements::Receiver::Element,
             capture,
         )?;
+        adjacent::install(scope, &element, capture)?;
         super::parent_node::install(
             scope,
             &element,
