@@ -1314,3 +1314,43 @@ fn deep_accepted_grid_sizing_preserves_percentage_gaps() {
         },
     );
 }
+
+fn assert_shrinking_flex_chain<S: LayoutScalar>(depth: u32) {
+    assert_layout_chain_with_style::<S>(
+        Display::Flex,
+        crate::Position::Relative,
+        depth,
+        |node, leaf, style| {
+            style.size.width =
+                crate::PreferredSizeOf::px(S::from_f64(if node == 0 { 60.0 } else { 120.0 }));
+            style.min_size.width =
+                crate::MinSizeOf::value(crate::LengthPercentageOf::px(S::ZERO).unwrap());
+            style.align_items = Some(crate::AlignItems::Start);
+            if node != leaf {
+                style.size.height = crate::PreferredSizeOf::AUTO;
+            }
+        },
+    );
+}
+
+#[test]
+fn shallow_shrinking_flex_chain_uses_leaf_height() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_shrinking_flex_chain_uses_leaf_height",
+        || {
+            assert_shrinking_flex_chain::<f32>(2);
+            assert_shrinking_flex_chain::<f64>(2);
+        },
+    );
+}
+
+#[test]
+fn deep_shrinking_flex_chain_uses_leaf_height() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_shrinking_flex_chain_uses_leaf_height",
+        || {
+            assert_shrinking_flex_chain::<f32>(24);
+            assert_shrinking_flex_chain::<f64>(24);
+        },
+    );
+}

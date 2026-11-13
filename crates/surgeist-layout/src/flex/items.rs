@@ -1536,7 +1536,7 @@ where
     tree.compute_child(item.node, input)
 }
 
-fn sized_item_request<'input, Tree, M>(
+pub(super) fn sized_item_request<'input, Tree, M>(
     tree: &Tree,
     item: &ResolvedFlexItem<Tree::Node, Tree::Scalar>,
     style: &FlexItemProjection<'_, Tree::Scalar>,

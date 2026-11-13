@@ -28,6 +28,7 @@ use crate::sizing::resolve::{
 
 mod absolute;
 mod alignment;
+mod cross_size;
 mod distribution_number;
 mod flexible_lengths;
 mod input;
@@ -44,6 +45,7 @@ use alignment::{
     main_alignment_offset, resolve_main_axis_auto_margins, resolved_vertical_baselines,
     stretch_lines_on_cross_axis,
 };
+use cross_size::{CrossSizeChild, LineResolution};
 use distribution_number::DistributionNumber;
 use flexible_lengths::resolve_flexible_lengths;
 use input::{FlexContainerProjection, with_flex_container_projection, with_flex_item_projection};
@@ -173,6 +175,7 @@ pub(crate) struct FlexChild<'input, Node, S: LayoutScalar> {
 enum FlexChildPhase<'input, Node, S: LayoutScalar> {
     Collect(FlexItemRequest<Node, S>),
     Intrinsic(FlexItemRequest<Node, S>),
+    CrossSize(CrossSizeChild<Node, S>),
     Place(PendingFinalItem<'input, Node, S>),
     Absolute(AbsoluteChild<Node, S>),
 }
@@ -183,6 +186,7 @@ impl<Node: Copy, S: LayoutScalar> FlexChild<'_, Node, S> {
             FlexChildPhase::Collect(child) | FlexChildPhase::Intrinsic(child) => {
                 (child.node, child.input)
             }
+            FlexChildPhase::CrossSize(child) => (child.request.node, child.request.input),
             FlexChildPhase::Place(child) => (child.request.node, child.request.input),
             FlexChildPhase::Absolute(child) => (child.node, child.input),
         }
@@ -192,6 +196,7 @@ impl<Node: Copy, S: LayoutScalar> FlexChild<'_, Node, S> {
 enum FlexPhase<'input, Node, S: LayoutScalar> {
     Collect(Box<FlexCollection<'input, Node, S>>),
     Intrinsic(Box<FlexIntrinsicPhase<Node, S>>),
+    CrossSize(Box<FlexCrossSizePhase<Node, S>>),
     Place(FlexPlacement<Node, S>),
     Absolute(FlexPass<Node, S>),
 }
@@ -227,6 +232,11 @@ struct FlexIntrinsicPhase<Node, S: LayoutScalar> {
     collection: CollectedFlexItems<Node, S>,
     round: FlexRound<Node, S>,
     measurement: IntrinsicMainSize<S>,
+}
+
+struct FlexCrossSizePhase<Node, S: LayoutScalar> {
+    collection: CollectedFlexItems<Node, S>,
+    sizing: FlexRoundCrossSize<Node, S>,
 }
 
 struct FlexPlacement<Node, S: LayoutScalar> {
@@ -334,7 +344,27 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexComputation<'input, Node, S> 
                     let FlexIntrinsicPhase {
                         collection, round, ..
                     } = *intrinsic;
-                    let layout = round.finish(tree, self.node, &collection.items, outer_size)?;
+                    self.pass = Some(begin_cross_size_phase(
+                        tree, self.node, collection, round, outer_size,
+                    )?);
+                    continue;
+                }
+                Some(FlexPhase::CrossSize(cross)) => {
+                    if let Some(child) =
+                        cross
+                            .sizing
+                            .advance(tree, self.node, &cross.collection.items)?
+                    {
+                        return Ok(ControlFlow::Continue(FlexChild {
+                            phase: FlexChildPhase::CrossSize(child),
+                        }));
+                    }
+                    let phase = self.pass.take().expect("active Flex cross sizing");
+                    let FlexPhase::CrossSize(cross) = *phase else {
+                        unreachable!()
+                    };
+                    let FlexCrossSizePhase { collection, sizing } = *cross;
+                    let layout = sizing.finish();
                     match finish_flex_collection(
                         tree,
                         self.node,
@@ -426,6 +456,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexComputation<'input, Node, S> 
                     intrinsic.round.items(&intrinsic.collection.items),
                     output,
                 )
+            }
+            (Some(FlexPhase::CrossSize(cross)), FlexChildPhase::CrossSize(child)) => {
+                cross.sizing.accept(self.node, child, output)
             }
             (Some(FlexPhase::Place(placement)), FlexChildPhase::Place(child)) => placement
                 .items
@@ -592,54 +625,63 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexCollection<'input, Node, S> {
             CollectionPhase::Initial { first_run_mode, .. } => first_run_mode,
             CollectionPhase::Accepted { contents_run_mode } => contents_run_mode,
         };
-        let layout = if collected_items.iter().any(CollectedFlexItem::is_collapsed)
+        let collection = CollectedFlexItems {
+            phase,
+            items: collected_items,
+            constants,
+            used_overflow,
+        };
+        if collection.items.iter().any(CollectedFlexItem::is_collapsed)
             || column_cross_offer(
                 &constants,
-                &collected_items,
+                &collection.items,
                 FlexLineCollectionRound::Normal,
             )
             .is_some()
         {
-            resolve_flex_collection(tree, node, run_mode, &constants, &collected_items)?
-        } else {
-            let round = FlexRound::begin(node, constants, &collected_items, None)?;
-            match begin_main_size(
-                &round.constants,
-                round.items(&collected_items),
-                round.sizing_lines(),
-            ) {
-                ControlFlow::Break(outer_size) => {
-                    round.finish(tree, node, &collected_items, outer_size)?
-                }
-                ControlFlow::Continue(measurement) => {
-                    return Ok(ControlFlow::Continue(Box::new(FlexPhase::Intrinsic(
-                        Box::new(FlexIntrinsicPhase {
-                            collection: CollectedFlexItems {
-                                phase,
-                                items: collected_items,
-                                constants,
-                                used_overflow,
-                            },
-                            round,
-                            measurement,
-                        }),
-                    ))));
-                }
+            let layout =
+                resolve_flex_collection(tree, node, run_mode, &constants, &collection.items)?;
+            return finish_flex_collection(tree, node, input, collection, layout);
+        }
+
+        let round = FlexRound::begin(node, constants, &collection.items, None)?;
+        let phase = match begin_main_size(
+            &round.constants,
+            round.items(&collection.items),
+            round.sizing_lines(),
+        ) {
+            ControlFlow::Break(outer_size) => {
+                begin_cross_size_phase(tree, node, collection, round, outer_size)?
+            }
+            ControlFlow::Continue(measurement) => {
+                Box::new(FlexPhase::Intrinsic(Box::new(FlexIntrinsicPhase {
+                    collection,
+                    round,
+                    measurement,
+                })))
             }
         };
-        finish_flex_collection(
-            tree,
-            node,
-            input,
-            CollectedFlexItems {
-                phase,
-                items: collected_items,
-                constants,
-                used_overflow,
-            },
-            layout,
-        )
+        Ok(ControlFlow::Continue(phase))
     }
+}
+
+type FlexCrossSizeStart<'input, Node, S, M> =
+    LayoutResultOf<Node, Box<FlexPhase<'input, Node, S>>, S, M>;
+
+fn begin_cross_size_phase<'input, Tree, M>(
+    tree: &Tree,
+    node: Tree::Node,
+    collection: CollectedFlexItems<Tree::Node, Tree::Scalar>,
+    round: FlexRound<Tree::Node, Tree::Scalar>,
+    outer_size: Tree::Scalar,
+) -> FlexCrossSizeStart<'input, Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let sizing = round.begin_cross_size(tree, node, &collection.items, outer_size)?;
+    Ok(Box::new(FlexPhase::CrossSize(Box::new(
+        FlexCrossSizePhase { collection, sizing },
+    ))))
 }
 
 fn finish_flex_collection<'input, Tree, M, S>(
@@ -652,7 +694,7 @@ fn finish_flex_collection<'input, Tree, M, S>(
         constants,
         used_overflow,
     }: CollectedFlexItems<Tree::Node, S>,
-    (layout_constants, resolved_items, lines): ResolvedFlexRound<Tree>,
+    (layout_constants, resolved_items, lines): ResolvedFlexRound<Tree::Node, Tree::Scalar>,
 ) -> FlexPassStart<'input, Tree::Node, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
@@ -939,11 +981,13 @@ where
         .max(axes.cross_size(constants.padding_border_size)))
 }
 
-type ResolvedFlexRound<Tree> = (
-    Constants<<Tree as Traverse>::Scalar>,
-    Vec<ResolvedFlexItem<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>>,
-    Vec<FlexLine<<Tree as Traverse>::Scalar>>,
+type ResolvedFlexRound<Node, S> = (
+    Constants<S>,
+    Vec<ResolvedFlexItem<Node, S>>,
+    Vec<FlexLine<S>>,
 );
+
+type FlexRoundResult<Node, S, M> = LayoutResultOf<Node, ResolvedFlexRound<Node, S>, S, M>;
 
 fn resolve_flex_collection<'input, Tree, M>(
     tree: &mut Tree,
@@ -951,7 +995,7 @@ fn resolve_flex_collection<'input, Tree, M>(
     run_mode: RunMode,
     constants: &Constants<Tree::Scalar>,
     collected_items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
-) -> LayoutResultOf<<Tree as Traverse>::Node, ResolvedFlexRound<Tree>, Tree::Scalar, M>
+) -> FlexRoundResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -1041,7 +1085,7 @@ fn resolve_flex_round<'input, Tree, M>(
     constants: &Constants<Tree::Scalar>,
     collected_items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
     collapsed_struts: Option<CollapsedFlexStruts<Tree::Node, Tree::Scalar>>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, ResolvedFlexRound<Tree>, Tree::Scalar, M>
+) -> FlexRoundResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -1061,7 +1105,12 @@ where
             intrinsic.outer_size(constants)
         }
     };
-    round.finish(tree, node, collected_items, outer_size)
+    let mut sizing = round.begin_cross_size(tree, node, collected_items, outer_size)?;
+    while let Some(child) = sizing.advance(tree, node, collected_items)? {
+        let output = tree.compute_child(child.request.node, child.request.input)?;
+        sizing.accept(node, child, output)?;
+    }
+    Ok(sizing.finish())
 }
 
 type CollapsedFlexItems<Node, S> = (Vec<CollectedFlexItem<Node, S>>, Vec<FlexLine<S>>);
@@ -1115,13 +1164,13 @@ impl<Node: Copy + Eq, S: LayoutScalar> FlexRound<Node, S> {
             .map_or(self.lines.as_slice(), |(_, lines)| lines.as_slice())
     }
 
-    fn finish<'input, Tree, M>(
+    fn begin_cross_size<'input, Tree, M>(
         self,
-        tree: &mut Tree,
+        tree: &Tree,
         node: Node,
         collected_items: &[CollectedFlexItem<Node, S>],
         outer_size: S,
-    ) -> LayoutResultOf<Node, ResolvedFlexRound<Tree>, S, M>
+    ) -> LayoutResultOf<Node, FlexRoundCrossSize<Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -1132,7 +1181,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FlexRound<Node, S> {
             collapsed_struts,
             mut collapsed,
         } = self;
-        let mut layout_constants = finish_main_size(tree, node, constants, outer_size)?;
+        let layout_constants = finish_main_size(tree, node, constants, outer_size)?;
         if constants.wraps
             && !collected_items.is_empty()
             && flex_line_collection_size(&constants) != flex_line_collection_size(&layout_constants)
@@ -1145,27 +1194,96 @@ impl<Node: Copy + Eq, S: LayoutScalar> FlexRound<Node, S> {
                 .as_ref()
                 .map(|struts| struts.prepare_second_round(collected_items, &lines));
         }
-        let (layout_items, layout_lines) = collapsed
-            .as_mut()
-            .map_or((collected_items, &mut lines), |(items, lines)| {
-                (items.as_slice(), lines)
-            });
-        let mut resolved_items =
-            resolve_lines(tree, node, layout_items, layout_lines, &layout_constants)?;
-        let cross_layout_constants =
-            resolved_cross_layout_constants(&layout_constants, layout_lines);
-        if cross_layout_constants.node_inner_size != layout_constants.node_inner_size {
-            layout_constants = cross_layout_constants;
-            resolved_items =
-                resolve_lines(tree, node, layout_items, layout_lines, &layout_constants)?;
-        } else {
-            layout_constants = cross_layout_constants;
+        let (collapsed_items, lines) = match collapsed {
+            Some((items, lines)) => (Some(items), lines),
+            None => (None, lines),
+        };
+        let resolution =
+            LineResolution::new(collapsed_items.as_deref().unwrap_or(collected_items), lines);
+        Ok(FlexRoundCrossSize {
+            constants: layout_constants,
+            resolution: Some(resolution),
+            collapsed_items,
+            followup: None,
+            accepted_basis: false,
+        })
+    }
+}
+
+struct FlexRoundCrossSize<Node, S: LayoutScalar> {
+    constants: Constants<S>,
+    resolution: Option<LineResolution<Node, S>>,
+    collapsed_items: Option<Vec<CollectedFlexItem<Node, S>>>,
+    followup: Option<CrossSizeChild<Node, S>>,
+    accepted_basis: bool,
+}
+
+impl<Node: Copy, S: LayoutScalar> FlexRoundCrossSize<Node, S> {
+    fn advance<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        collected_items: &[CollectedFlexItem<Node, S>],
+    ) -> LayoutResultOf<Node, Option<CrossSizeChild<Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        if let Some(child) = self.followup.take() {
+            return Ok(Some(child));
         }
-        Ok((
-            layout_constants,
-            resolved_items,
-            collapsed.map_or(lines, |(_, lines)| lines),
-        ))
+        let resolution = self
+            .resolution
+            .as_mut()
+            .expect("active Flex line resolution");
+        if let Some(child) = resolution.advance(tree, node, &self.constants)? {
+            return Ok(Some(child));
+        }
+        if !self.accepted_basis {
+            let cross_constants =
+                resolved_cross_layout_constants(&self.constants, resolution.lines());
+            let retry = cross_constants.node_inner_size != self.constants.node_inner_size;
+            self.constants = cross_constants;
+            self.accepted_basis = true;
+            if retry {
+                let (_, lines) = self
+                    .resolution
+                    .take()
+                    .expect("first Flex cross sizing")
+                    .finish();
+                self.resolution = Some(LineResolution::new(
+                    self.collapsed_items.as_deref().unwrap_or(collected_items),
+                    lines,
+                ));
+                return self
+                    .resolution
+                    .as_mut()
+                    .expect("accepted Flex cross sizing")
+                    .advance(tree, node, &self.constants);
+            }
+        }
+        Ok(None)
+    }
+
+    fn accept<M>(
+        &mut self,
+        node: Node,
+        child: CrossSizeChild<Node, S>,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let resolution = self
+            .resolution
+            .as_mut()
+            .expect("active Flex line resolution");
+        self.followup = resolution.accept(node, &self.constants, child, output)?;
+        Ok(())
+    }
+
+    fn finish(self) -> ResolvedFlexRound<Node, S> {
+        let (items, lines) = self
+            .resolution
+            .expect("completed Flex line resolution")
+            .finish();
+        (self.constants, items, lines)
     }
 }
 
@@ -2209,290 +2327,6 @@ impl FlexAxes {
             PhysicalAxis::Vertical => RequestedAxis::Vertical,
         }
     }
-}
-
-#[expect(
-    clippy::type_complexity,
-    reason = "the private flex resolver preserves node, scalar, and provider error types"
-)]
-fn resolve_lines<'input, Tree, M>(
-    tree: &mut Tree,
-    container_node: <Tree as Traverse>::Node,
-    items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
-    lines: &mut [FlexLine<Tree::Scalar>],
-    constants: &Constants<Tree::Scalar>,
-) -> LayoutResultOf<
-    <Tree as Traverse>::Node,
-    Vec<ResolvedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>>,
-    Tree::Scalar,
-    M,
->
-where
-    Tree: Compute<'input, M>,
-{
-    let mut resolved_items = items
-        .iter()
-        .copied()
-        .map(ResolvedFlexItem::from)
-        .collect::<Vec<_>>();
-    let cross_gap = constants.axes.cross_size(constants.gap);
-    let mut cross_cursor = Tree::Scalar::ZERO;
-    let single_line = !constants.wraps;
-
-    for line in &mut *lines {
-        let invalid_main = |value| {
-            crate::error::sizing_resolution_error(
-                container_node,
-                LengthResolutionStatus::InvalidNumeric { value }.into(),
-            )
-        };
-        let wide = |value| DistributionNumber::finite(value).map_err(invalid_main);
-        resolve_flexible_lengths(&mut resolved_items[line.start..line.end], constants)
-            .map_err(invalid_main)?;
-
-        let item_count = line.end - line.start;
-        if item_count == 0 && line.contains_collapsed_slot {
-            line.max_item_cross_size = Tree::Scalar::ZERO;
-            line.main_size = DistributionNumber::ZERO;
-            line.main_overflows = false;
-            line.cross_size = if single_line {
-                constants
-                    .axes
-                    .cross_size(constants.node_inner_size)
-                    .unwrap_or(line.strut_floor)
-            } else {
-                line.strut_floor
-            };
-            line.offset_cross = cross_cursor;
-            cross_cursor = cross_cursor + line.cross_size + cross_gap;
-            continue;
-        }
-        resolve_main_axis_auto_margins(&mut resolved_items[line.start..line.end], constants)
-            .map_err(invalid_main)?;
-        let free_space = line_free_space(&resolved_items[line.start..line.end], constants)
-            .map_err(invalid_main)?;
-        let sign = free_space.sign();
-        line.main_overflows = sign == core::cmp::Ordering::Less;
-        let justify_content =
-            alignment_fallback_from_sign(Some(sign), item_count, constants.justify_content);
-        let main_gap = wide(constants.axes.main_size(constants.gap))?;
-        let mut main_cursor = main_alignment_offset(
-            free_space,
-            item_count,
-            main_gap,
-            justify_content,
-            constants.axes.main_is_reversed(),
-            true,
-        );
-        let mut cross_size = Tree::Scalar::ZERO;
-
-        for (index, item_index) in (line.start..line.end).enumerate() {
-            if index > 0 {
-                main_cursor = main_cursor
-                    + main_alignment_offset(
-                        free_space,
-                        item_count,
-                        main_gap,
-                        justify_content,
-                        constants.axes.main_is_reversed(),
-                        false,
-                    );
-            }
-
-            let item = &mut resolved_items[item_index];
-            determine_hypothetical_cross_size(tree, item, constants)?;
-            item.offset_main = main_cursor + wide(item.margin_main_start(constants))?;
-            item.offset_cross = cross_cursor + constants.axes.cross_start_edge(item.margin);
-
-            let margin = wide(item.margin_main_start(constants))?
-                + wide(constants.axes.main_end_edge(item.margin))?;
-            main_cursor = main_cursor + wide(constants.axes.main_size(item.target_size))? + margin;
-            cross_size = Tree::Scalar::max(
-                cross_size,
-                constants.axes.cross_size(item.target_size)
-                    + constants.axes.cross_edge_sum(item.margin),
-            );
-        }
-        line.max_item_cross_size = cross_size;
-        cross_size = Tree::Scalar::max(
-            cross_size,
-            line_cross_size(&resolved_items[line.start..line.end], constants),
-        );
-        cross_size = Tree::Scalar::max(cross_size, line.strut_floor);
-
-        line.main_size = main_cursor;
-        line.cross_size = if single_line {
-            constants
-                .axes
-                .cross_size(constants.node_inner_size)
-                .unwrap_or(cross_size)
-        } else {
-            cross_size
-        };
-        line.offset_cross = cross_cursor;
-        align_items_on_cross_axis(
-            &mut resolved_items[line.start..line.end],
-            line.cross_size,
-            cross_cursor,
-            constants,
-        );
-        cross_cursor = cross_cursor + line.cross_size + cross_gap;
-    }
-
-    stretch_lines_on_cross_axis(&mut resolved_items, lines, constants);
-    align_lines_on_cross_axis(&mut resolved_items, lines, constants);
-    Ok(resolved_items)
-}
-
-fn determine_hypothetical_cross_size<'input, Tree, M>(
-    tree: &mut Tree,
-    item: &mut ResolvedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>,
-    constants: &Constants<Tree::Scalar>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, (), Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let axes = constants.axes;
-    let padding_border = (item.padding + item.border).sum_axes();
-    let padding_border_cross = axes.cross_size(padding_border);
-    let minimum = axes.cross_size(item.min_size);
-    let maximum = axes.cross_size(item.max_size);
-    let clamp_cross = |size: Tree::Scalar| {
-        size.clamp_max_before_min_optional(minimum, maximum)
-            .max(padding_border_cross)
-    };
-    if let Some(authored_cross) = item.authored_cross_size {
-        item.target_size = axes.with_cross_size(item.target_size, clamp_cross(authored_cross));
-        if item.uses_native_cross_baseline(axes) && item.target_size != item.initial_output.size {
-            let output =
-                with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
-                    compute_sized_item(tree, item, &style, constants, RunMode::ComputeSize)
-                })?;
-            item.baseline.refresh(output);
-        }
-        return Ok(());
-    }
-
-    let used_main = axes.main_size(item.target_size);
-    let style = tree.node_input(item.node);
-    let ratio = style.aspect_ratio.filter(|_| item.cross_size_is_auto);
-    let ratio_box_insets = if style.box_sizing == BoxSizing::ContentBox {
-        padding_border
-    } else {
-        Size::ZERO
-    };
-    let scrolls_cross = axes.cross_size(Size::new(style.overflow.x(), style.overflow.y()));
-    let needs_ratio_minimum = axes
-        .cross_size(Size::new(&style.min_size.width, &style.min_size.height))
-        .is_auto()
-        && !style.item_is_replaced
-        && !scrolls_cross.is_scrollable();
-    let main_size_changed = (used_main - axes.main_size(item.initial_output.size)).abs()
-        > Tree::Scalar::from_f64(0.001);
-    if ratio.is_none()
-        && !item.initial_output_is_preferred_basis
-        && item.initial_output.content_size == item.initial_output.size
-        && !main_size_changed
-    {
-        let cross = clamp_cross(axes.cross_size(item.initial_output.size));
-        item.target_size = axes.with_cross_size(item.target_size, cross);
-        return Ok(());
-    }
-
-    let cross_request = crate::layout_math::with_available_extent(
-        axes.cross_size(constants.sizing_request.axes()),
-        constants.cross_content_extent(),
-    )
-    .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
-    let mut available_cross =
-        crate::layout_math::clamp_axis_request_space(cross_request, minimum, maximum)
-            .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
-    if let Some(extent) = available_cross.space().definite_size() {
-        available_cross = available_cross.with_space(
-            crate::layout_math::checked_available_space(extent.get().max(padding_border_cross))
-                .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?,
-        );
-    }
-    let available_main = crate::AxisSizingRequestOf::new(
-        crate::layout_math::checked_available_space(used_main)
-            .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?,
-        crate::SizingOperation::Normal,
-    );
-    let demand_baseline =
-        constants.physical_baseline_demand || item.uses_native_cross_baseline(axes);
-    let child_flow = FlowAxes::new(style.writing_mode, style.direction);
-    let measure_cross = |tree: &mut Tree,
-                         mode,
-                         known_cross: Option<Tree::Scalar>,
-                         cross_request,
-                         demand| {
-        let indefinite_axis = if known_cross.is_some() {
-            item.settled_indefinite_percentage_axis(axes, child_flow)
-        } else {
-            item.indefinite_percentage_axis
-        };
-        tree.compute_child(
-            item.node,
-            ComputeInputOf::for_child(
-                RunMode::ComputeSize,
-                mode,
-                axes.cross_requested_axis(),
-                axes.size_from_main_cross(Some(used_main), known_cross),
-                constants.percentage_parent_size,
-                ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
-                constants
-                    .sizing_request
-                    .with_axes(axes.size_from_main_cross(available_main, cross_request)),
-            )
-            .with_physical_baseline_demand(demand)
-            .with_indefinite_percentage_axis(indefinite_axis)
-            .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
-        )
-    };
-    let cross = if let Some(ratio) = ratio {
-        let transferred = axes
-            .cross_size_from_main_in_sizing_box(used_main, ratio, ratio_box_insets)
-            .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
-        // Measure the automatic minimum without giving descendants a provisional
-        // definite cross size.
-        let cross = if needs_ratio_minimum {
-            let min_request = crate::layout_math::with_available_extent(
-                axes.cross_size(constants.sizing_request.axes())
-                    .with_operation(crate::SizingOperation::MinContent),
-                constants
-                    .cross_content_offer
-                    .or(axes.cross_size(constants.percentage_parent_size)),
-            )
-            .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
-            let measured = measure_cross(tree, SizingMode::ContentSize, None, min_request, false)?;
-            transferred.max(axes.cross_size(measured.size))
-        } else {
-            transferred
-        };
-        let cross = clamp_cross(cross);
-        if item.uses_native_cross_baseline(axes) {
-            item.baseline.refresh(measure_cross(
-                tree,
-                SizingMode::InherentSize,
-                Some(cross),
-                available_cross,
-                true,
-            )?);
-        }
-        cross
-    } else {
-        let measured = measure_cross(
-            tree,
-            SizingMode::InherentSize,
-            None,
-            available_cross,
-            demand_baseline,
-        )?;
-        item.baseline.refresh(measured);
-        clamp_cross(axes.cross_size(measured.size))
-    };
-    item.target_size = axes.with_cross_size(item.target_size, cross);
-    Ok(())
 }
 
 #[derive(Clone, Copy)]
