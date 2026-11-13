@@ -293,21 +293,107 @@ pub(in crate::document_scripting) fn document_factories_upgrade_the_reached_cust
     let mut host = public_node_host(20_000, 200_000);
     let permit = host.permit().unwrap();
     host.in_document(&permit, |scope| {
-        assert_guest(
-            scope,
-            r#"(() => {
-            let builtinReceiver;
+        assert_guest(scope, r#"(() => {
+            const receivers = [];
+            let nested;
             class Customized extends HTMLButtonElement {
                 constructor() {
                     super();
-                    builtinReceiver = this;
+                    receivers.push(this);
+                    if (receivers.length === 1) {
+                        nested = document.createElement('button', { is: 'x-customized' });
+                    }
+                    this.setAttribute('data-constructed', 'yes');
                 }
             }
             customElements.define('x-customized', Customized, { extends: 'button' });
             const button = document.createElement('button', { is: 'x-customized' });
-            return button === builtinReceiver && button instanceof Customized
-                && button instanceof HTMLButtonElement && button.localName === 'button';
-        })()"#,
+            return button === receivers[0] && nested === receivers[1] && nested !== button
+                && button instanceof Customized && nested instanceof Customized
+                && button instanceof HTMLButtonElement && button.localName === 'button'
+                && button.ownerDocument === document && button.getAttribute('is') === null
+                && button.getAttribute('data-constructed') === 'yes';
+        })()"#)?;
+        assert_guest(scope, r#"(() => {
+            let receiver;
+            class Throwing extends HTMLButtonElement {
+                constructor() {
+                    super();
+                    receiver = this;
+                    throw globalThis.originalCustomizedThrow = {};
+                }
+            }
+            customElements.define('x-throwing-button', Throwing, { extends: 'button' });
+            const result = document.createElementNS('http://www.w3.org/1999/xhtml', 'p:button', { is: 'x-throwing-button' });
+            return result === receiver && result instanceof Throwing && result instanceof HTMLButtonElement
+                && !(result instanceof HTMLUnknownElement) && result.prefix === 'p';
+        })()"#)?;
+        assert_guest(scope, r#"(() => {
+            let receiver;
+            class Replacing extends HTMLButtonElement {
+                constructor() {
+                    super();
+                    receiver = this;
+                    return {};
+                }
+            }
+            customElements.define('x-replacing-button', Replacing, { extends: 'button' });
+            const result = document.createElement('button', { is: 'x-replacing-button' });
+            return result === receiver && result instanceof Replacing;
+        })()"#)?;
+        assert_guest(scope, r#"(() => {
+            class WrongInterface extends HTMLDivElement {}
+            customElements.define('x-wrong-button', WrongInterface, { extends: 'button' });
+            const result = document.createElement('button', { is: 'x-wrong-button' });
+            return result instanceof HTMLButtonElement && !(result instanceof WrongInterface);
+        })()"#)?;
+        assert_guest(scope, r#"(() => {
+            let sawMarker = false;
+            class DoubleSuper extends HTMLButtonElement {
+                constructor() {
+                    super();
+                    try { Reflect.construct(HTMLButtonElement, [], new.target); }
+                    catch (error) { sawMarker = error.name === 'InvalidStateError'; }
+                }
+            }
+            customElements.define('x-double-button', DoubleSuper, { extends: 'button' });
+            const result = document.createElement('button', { is: 'x-double-button' });
+            return result instanceof DoubleSuper && sawMarker;
+        })()"#)
+    }).unwrap();
+    let original = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    let replacement = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    let interface = host
+        .take_guest_constructor_exception(&permit)
+        .unwrap()
+        .unwrap();
+    assert!(
+        host.take_guest_constructor_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    host.in_document(&permit, |scope| {
+        let marker = scope.evaluate(&units("originalCustomizedThrow"))?;
+        let reported = scope.import(original.exception.value())?;
+        assert!(scope.strict_equals(&marker, &reported)?);
+        let global = scope.global()?;
+        for (name, report) in [
+            ("replacementError", replacement),
+            ("interfaceError", interface),
+        ] {
+            assert_eq!(report.realm, permit.realm);
+            let error = scope.import(report.exception.value())?;
+            scope.set(&global, PropertyKey::String(&units(name)), &error)?;
+        }
+        assert_guest(
+            scope,
+            "replacementError instanceof TypeError && interfaceError instanceof TypeError",
         )
     })
     .unwrap();
