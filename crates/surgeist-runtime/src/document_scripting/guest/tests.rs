@@ -528,6 +528,50 @@ pub(in crate::document_scripting) fn custom_element_reparenting_queues_each_rece
     .unwrap();
 }
 
+pub(in crate::document_scripting) fn custom_element_reacts_to_the_committed_prefix_of_a_failed_edit()
+ {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                r#"
+            globalThis.disconnectCalls = [];
+            customElements.define('x-prefix-reaction', class extends HTMLElement {
+                disconnectedCallback() { disconnectCalls.push(this); }
+            });
+            globalThis.prefixReceiver = document.createElement('x-prefix-reaction');
+            document.documentElement.appendChild(prefixReceiver);
+        "#,
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let document = permit.document;
+    let root = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let receiver = *snapshot.node(root).unwrap().children().last().unwrap();
+    let edit = surgeist_dom::DomSourceEdit::append(
+        document.node(),
+        vec![
+            receiver.into(),
+            surgeist_dom::DocumentString::from("text").into(),
+        ],
+    );
+    host.run_guest_tree_edit_fixture(&permit, edit).unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "disconnectCalls.length === 1 && disconnectCalls[0] === prefixReceiver",
+        )
+    })
+    .unwrap();
+}
+
 pub(in crate::document_scripting) fn registry_upgrade_preserves_nested_definition_and_shadow_refusal()
  {
     let mut host = public_node_host(20_000, 200_000);

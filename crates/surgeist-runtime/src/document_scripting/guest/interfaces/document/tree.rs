@@ -277,6 +277,34 @@ fn tree_exception(error: &DomError) -> Option<DomExceptionName> {
     }
 }
 
+#[cfg(test)]
+impl DocumentScriptHost {
+    pub(in crate::document_scripting) fn run_guest_tree_edit_fixture(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        edit: DomSourceEdit,
+    ) -> Result<(), DocumentScriptError> {
+        let owner = self.native.clone();
+        let events = self.guest_events().unwrap();
+        let public = events.public.as_ref().unwrap();
+        let capture = Capture {
+            callbacks: public.callbacks.clone(),
+            origin: None,
+            _backing: events.reserve(&owner, size_of::<Capture>()).unwrap(),
+        };
+        self.in_document(permit, |scope| {
+            let result =
+                capture.apply_tree_edit(scope, &owner, &events, edit, Completion::Undefined);
+            let Completion::Throw(exception) = tree_completion(scope, &events, result)? else {
+                panic!("the original compound edit must throw");
+            };
+            let name = scope.get(&exception, PropertyKey::String(&ascii(b"name")))?;
+            assert_eq!(scope.to_utf16(&name)?, ascii(b"HierarchyRequestError"));
+            Ok(())
+        })
+    }
+}
+
 pub(super) fn tree_completion<'scope>(
     scope: &mut Scope<'scope>,
     events: &GuestEvents,
