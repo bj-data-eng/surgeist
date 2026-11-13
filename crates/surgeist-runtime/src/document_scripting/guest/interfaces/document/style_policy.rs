@@ -66,10 +66,14 @@ impl DomSession {
                             )));
                         }
                         let mut allowed = true;
+                        let mut hashes = crate::trusted_types_csp::StyleHashes::new(input.text());
                         for policy in policies {
                             step()?;
-                            let Some(matches) =
-                                policy.inline_style(input.nonce_content(), &mut || step())?
+                            let Some(matches) = policy.inline_style(
+                                input.nonce_content(),
+                                &mut hashes,
+                                &mut || step(),
+                            )?
                             else {
                                 return Ok(None);
                             };

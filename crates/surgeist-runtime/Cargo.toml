@@ -14,9 +14,11 @@ path = "src/lib.rs"
 
 [features]
 default = []
-document-scripting = ["dep:surgeist-bindings-js", "dep:surgeist-ledger"]
+document-scripting = ["dep:base64", "dep:sha2", "dep:surgeist-bindings-js", "dep:surgeist-ledger"]
 
 [dependencies]
+base64 = { version = "=0.22.1", default-features = false, optional = true }
+sha2 = { version = "=0.10.9", default-features = false, optional = true }
 surgeist-bindings-js = { path = "../surgeist-bindings-js", version = "=0.1.0", optional = true }
 surgeist-css = { path = "../surgeist-css", version = "=0.1.0" }
 surgeist-cssom = { path = "../surgeist-cssom", version = "=0.1.0" }

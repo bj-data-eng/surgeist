@@ -17,6 +17,8 @@ mod factory;
 mod provider;
 mod reports;
 #[cfg(feature = "document-scripting")]
+mod style_hash;
+#[cfg(feature = "document-scripting")]
 pub(crate) use attribute::AttributeMismatchProgress;
 pub use attribute::{AttributeMismatch, AttributePolicies, AttributePolicyError};
 pub use factory::{AdmittedPolicyCreation, PolicyCreation, PolicyCreationError, PolicyFactory};
@@ -59,12 +61,12 @@ pub struct Policy {
 }
 
 impl Policy {
-    /// Evaluate inline Style keywords and nonce sources. A potentially
-    /// matching hash or unknown tokenizer history can require more facts.
+    /// Evaluate inline Style keywords, nonces and exact source hashes.
     #[cfg(feature = "document-scripting")]
-    pub(crate) fn inline_style<E>(
+    pub(crate) fn inline_style<E: From<surgeist_dom::DomError>>(
         &self,
         nonce: &surgeist_dom::DomStyleNonceContent,
+        hashes: &mut style_hash::StyleHashes<'_>,
         step: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<Option<bool>, E> {
         let serialized =
@@ -92,10 +94,12 @@ impl Policy {
                         _ => {}
                     }
                 } else {
-                    for prefix in [b"'sha256-", b"'sha384-", b"'sha512-"] {
-                        if inline_credential(token, prefix, step)?.is_some() {
+                    for algorithm in style_hash::Algorithm::ALL {
+                        if let Some(value) = inline_credential(token, algorithm.prefix(), step)? {
                             has_credential = true;
-                            unavailable = true;
+                            if hashes.matches(algorithm, value, step)? {
+                                return Ok(Some(true));
+                            }
                             break;
                         }
                     }
@@ -176,6 +180,9 @@ impl Policy {
         Ok(!(permitted && allows_duplicate))
     }
 }
+
+#[cfg(feature = "document-scripting")]
+pub(crate) use style_hash::StyleHashes;
 
 #[cfg(feature = "document-scripting")]
 fn inline_credential<'a, E>(
