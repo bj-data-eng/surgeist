@@ -385,6 +385,7 @@ impl Draft {
                 self.guard_pending_associations(document, cancelled)?;
             }
             let mut common = self.common_fields_mut(node, cancelled)?;
+            let old_document = common.document;
             common.document = document;
             common.commit(cancelled)?;
             let binding = match self.node(document)?.kind() {
@@ -410,6 +411,7 @@ impl Draft {
                     _ => binding,
                 };
                 self.establish_element_registry(node, binding, cancelled)?;
+                self.record_custom_element_adoption(node, old_document, document, cancelled)?;
             }
             if matches!(self.node(node)?.kind(), KindRead::ShadowRoot(_)) {
                 let mut state = self.shadow_state_mut(node, cancelled)?;

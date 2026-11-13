@@ -325,6 +325,8 @@ pub enum DocumentGuestCustomElementCallback {
     Disconnected,
     /// A state-preserving move reaction.
     ConnectedMove,
+    /// A change of owner Document.
+    Adopted,
 }
 
 /// The original exception from a custom-element lifecycle callback.

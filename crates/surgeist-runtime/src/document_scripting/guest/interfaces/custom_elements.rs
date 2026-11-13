@@ -1124,7 +1124,7 @@ impl Capture {
                         None,
                     ),
                     &receiver,
-                    Some(arguments),
+                    Some(ReactionArguments::Attribute(arguments.each_ref())),
                 )?);
             }
         }
@@ -1209,20 +1209,14 @@ impl Capture {
         fact: surgeist_dom::DomCustomElementReaction<'_>,
     ) -> Result<Option<(Rc<ActiveReactionQueue>, bool)>, DocumentGuestEventError> {
         use surgeist_dom::DomCustomElementReactionKind as Kind;
-        let (kind, arguments, callback_index) = match fact.kind {
-            Kind::AttributeChanged {
-                local_name,
-                old_value,
-                new_value,
-                namespace,
-            } => (
-                DocumentGuestCustomElementCallback::AttributeChanged,
-                Some([Some(local_name), old_value, new_value, namespace]),
-                4,
-            ),
-            Kind::Connected => (DocumentGuestCustomElementCallback::Connected, None, 0),
-            Kind::Disconnected => (DocumentGuestCustomElementCallback::Disconnected, None, 1),
-            Kind::ConnectedMove => (DocumentGuestCustomElementCallback::ConnectedMove, None, 2),
+        let (kind, callback_index) = match fact.kind {
+            Kind::AttributeChanged { .. } => {
+                (DocumentGuestCustomElementCallback::AttributeChanged, 4)
+            }
+            Kind::Connected => (DocumentGuestCustomElementCallback::Connected, 0),
+            Kind::Disconnected => (DocumentGuestCustomElementCallback::Disconnected, 1),
+            Kind::ConnectedMove => (DocumentGuestCustomElementCallback::ConnectedMove, 2),
+            Kind::Adopted { .. } => (DocumentGuestCustomElementCallback::Adopted, 3),
             _ => return Err(DocumentScriptNativeError::ProjectionCustody.into()),
         };
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
@@ -1265,7 +1259,7 @@ impl Capture {
                         };
                         return Ok(fallback);
                     };
-                    let Some([Some(local_name), ..]) = arguments else {
+                    let Kind::AttributeChanged { local_name, .. } = fact.kind else {
                         return Ok(Some((kind, callback.clone(), None)));
                     };
                     let Some(observed) = &row.observed else {
@@ -1308,22 +1302,48 @@ impl Capture {
             )?;
             Ok::<_, DocumentGuestEventError>(value)
         };
-        let arguments = match arguments {
-            Some([name, old, new, namespace]) => Some([
-                convert(name)?,
-                convert(old)?,
-                convert(new)?,
+        let arguments = match fact.kind {
+            Kind::AttributeChanged {
+                local_name,
+                old_value,
+                new_value,
+                namespace,
+            } => Some(ReactionArguments::Attribute([
+                convert(Some(local_name))?,
+                convert(old_value)?,
+                convert(new_value)?,
                 convert(namespace)?,
-            ]),
-            None => None,
+            ])),
+            Kind::Adopted {
+                old_document,
+                new_document,
+            } => {
+                let mut document = |id: DocumentId| {
+                    let value = public.project_node(scope, owner, events, id.node())?;
+                    scope.retain_invocation_result_backing(
+                        &value,
+                        Box::new(events.reserve(owner, bytes)?),
+                    )?;
+                    Ok::<_, DocumentGuestEventError>(value)
+                };
+                Some(ReactionArguments::Adoption([
+                    document(old_document)?,
+                    document(new_document)?,
+                ]))
+            }
+            _ => None,
         };
+        let arguments = arguments.as_ref().map(|arguments| match arguments {
+            ReactionArguments::Attribute(values) => ReactionArguments::Attribute(values.each_ref()),
+            ReactionArguments::Adoption(values) => ReactionArguments::Adoption(values.each_ref()),
+        });
         let reaction = CallbackReaction::prepare(
             scope,
             (owner, events),
             fact.definition,
             (kind, &callback, continuation),
             &receiver,
-            arguments.as_ref(),
+            arguments,
         )?;
         let mut current = owner
             .active_reaction_queue
@@ -1680,13 +1700,44 @@ impl<T> ReactionList<T> {
     }
 }
 
+enum ReactionArguments<T> {
+    Attribute([T; 4]),
+    Adoption([T; 2]),
+}
+
+impl<T> ReactionArguments<T> {
+    fn map<U, E>(
+        &self,
+        mut project: impl FnMut(&T) -> Result<U, E>,
+    ) -> Result<ReactionArguments<U>, E> {
+        Ok(match self {
+            Self::Attribute([name, old, new, namespace]) => ReactionArguments::Attribute([
+                project(name)?,
+                project(old)?,
+                project(new)?,
+                project(namespace)?,
+            ]),
+            Self::Adoption([old, new]) => {
+                ReactionArguments::Adoption([project(old)?, project(new)?])
+            }
+        })
+    }
+
+    fn as_slice(&self) -> &[T] {
+        match self {
+            Self::Attribute(values) => values,
+            Self::Adoption(values) => values,
+        }
+    }
+}
+
 struct CallbackReaction {
     definition: DomRegistryDefinitionId,
     kind: DocumentGuestCustomElementCallback,
     callback: RetainedCallbackObject,
     connect_after_disconnect: Option<RetainedCallbackObject>,
     receiver: surgeist_bindings_js::Root,
-    arguments: Option<[surgeist_bindings_js::Root; 4]>,
+    arguments: Option<ReactionArguments<surgeist_bindings_js::Root>>,
     _backing: GuestBacking,
 }
 
@@ -1701,7 +1752,7 @@ impl CallbackReaction {
             Option<RetainedCallbackObject>,
         ),
         receiver: &Value<'scope>,
-        arguments: Option<&[Value<'scope>; 4]>,
+        arguments: Option<ReactionArguments<&Value<'scope>>>,
     ) -> Result<Self, DocumentGuestEventError> {
         let backing = events.reserve(owner, size_of::<Self>() + 2 * size_of::<usize>())?;
         Ok(Self {
@@ -1710,8 +1761,14 @@ impl CallbackReaction {
             callback: callback.clone(),
             connect_after_disconnect,
             receiver: scope.retain(receiver),
-            arguments: arguments
-                .map(|arguments| std::array::from_fn(|index| scope.retain(&arguments[index]))),
+            arguments: arguments.map(|arguments| match arguments {
+                ReactionArguments::Attribute(values) => {
+                    ReactionArguments::Attribute(values.map(|value| scope.retain(value)))
+                }
+                ReactionArguments::Adoption(values) => {
+                    ReactionArguments::Adoption(values.map(|value| scope.retain(value)))
+                }
+            }),
             _backing: backing,
         })
     }
@@ -1769,14 +1826,7 @@ impl ActiveReactionQueue {
                 let arguments = next
                     .arguments
                     .as_ref()
-                    .map(|[name, old, new, namespace]| {
-                        Ok::<_, Error>([
-                            scope.import(name)?,
-                            scope.import(old)?,
-                            scope.import(new)?,
-                            scope.import(namespace)?,
-                        ])
-                    })
+                    .map(|arguments| arguments.map(|argument| scope.import(argument)))
                     .transpose()?;
                 let connected = next
                     .connect_after_disconnect
@@ -1788,7 +1838,7 @@ impl ActiveReactionQueue {
             let (receiver, callback, arguments, connected) = next;
             let arguments = arguments
                 .as_ref()
-                .map_or(&[][..], |arguments| &arguments[..]);
+                .map_or(&[][..], ReactionArguments::as_slice);
             let mut report = events.reports.reserve_constructor(events, owner)?;
             let _arguments =
                 events.reserve(owner, scope.argument_copy_storage_bytes(arguments.len())?)?;

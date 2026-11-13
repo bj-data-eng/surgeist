@@ -18,6 +18,10 @@ pub enum DomCustomElementReactionKind<'a> {
     Connected,
     Disconnected,
     ConnectedMove,
+    Adopted {
+        old_document: crate::DocumentId,
+        new_document: crate::DocumentId,
+    },
     AttributeChanged {
         local_name: &'a [u16],
         old_value: Option<&'a [u16]>,
@@ -27,11 +31,15 @@ pub enum DomCustomElementReactionKind<'a> {
 }
 
 #[derive(Clone, Debug)]
-enum ReactionKind {
+enum ReactionKind<D> {
     Upgrade,
     Connected,
     Disconnected,
     ConnectedMove,
+    Adopted {
+        old_document: D,
+        new_document: D,
+    },
     AttributeChanged {
         local_name: DocumentString,
         old_value: Option<DocumentString>,
@@ -44,7 +52,7 @@ enum ReactionKind {
 struct Reaction {
     element: NodeId,
     definition: crate::DomRegistryDefinitionId,
-    kind: ReactionKind,
+    kind: ReactionKind<crate::DocumentId>,
 }
 
 impl Reaction {
@@ -54,6 +62,13 @@ impl Reaction {
             ReactionKind::Connected => DomCustomElementReactionKind::Connected,
             ReactionKind::Disconnected => DomCustomElementReactionKind::Disconnected,
             ReactionKind::ConnectedMove => DomCustomElementReactionKind::ConnectedMove,
+            ReactionKind::Adopted {
+                old_document,
+                new_document,
+            } => DomCustomElementReactionKind::Adopted {
+                old_document: *old_document,
+                new_document: *new_document,
+            },
             ReactionKind::AttributeChanged {
                 local_name,
                 old_value,
@@ -244,7 +259,7 @@ pub(in crate::store) struct ReactionFacts {
 struct StagedReaction {
     element: Key,
     definition: crate::DomRegistryDefinitionId,
-    kind: ReactionKind,
+    kind: ReactionKind<Key>,
     strings: Option<custody::SharedDebit>,
 }
 
@@ -259,7 +274,7 @@ impl ReactionFacts {
 }
 
 fn retain_reaction_strings(
-    kind: &ReactionKind,
+    kind: &ReactionKind<Key>,
     budget: &formation::Formation,
     cancel: &AtomicBool,
 ) -> Result<(), DomError> {
@@ -454,11 +469,43 @@ impl Draft {
         )
     }
 
+    pub(in crate::store) fn record_custom_element_adoption(
+        &mut self,
+        key: Key,
+        old_document: Key,
+        new_document: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if !self.captures_custom_element_reactions() || old_document == new_document {
+            return Ok(());
+        }
+        self.source_step(cancel)?;
+        let Some(element) = self.node(key)?.element().map(|element| element.language()) else {
+            return Ok(());
+        };
+        if element.custom_element_state()
+            == surgeist_html::elements::native::HtmlCustomElementState::Custom
+            && let crate::DomElementDefinition::Definition(definition) =
+                element.custom_element_definition()
+        {
+            self.record_custom_element_reaction(
+                key,
+                definition,
+                ReactionKind::Adopted {
+                    old_document,
+                    new_document,
+                },
+                cancel,
+            )?;
+        }
+        Ok(())
+    }
+
     fn record_custom_element_reaction(
         &mut self,
         key: Key,
         definition: crate::DomRegistryDefinitionId,
-        kind: ReactionKind,
+        kind: ReactionKind<Key>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let registration = self
@@ -511,12 +558,13 @@ impl Draft {
         let mut facts = Vec::new();
         let mut strings = Vec::new();
         formation::reserve(&mut facts, pending.entries.len(), Some(&budget), cancel)?;
+        let resolve = |key| match key {
+            Key::Existing(id) => Ok(id),
+            Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation),
+        };
         for entry in pending.entries.iter() {
             budget.step(cancel)?;
-            let element = match entry.element {
-                Key::Existing(id) => id,
-                Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
-            };
+            let element = resolve(entry.element)?;
             if let Some(debit) = &entry.strings {
                 formation::reserve(&mut strings, 1, Some(&budget), cancel)?;
                 strings.push(debit.clone());
@@ -524,7 +572,30 @@ impl Draft {
             facts.push(Reaction {
                 element,
                 definition: entry.definition,
-                kind: entry.kind.clone(),
+                kind: match &entry.kind {
+                    ReactionKind::Upgrade => ReactionKind::Upgrade,
+                    ReactionKind::Connected => ReactionKind::Connected,
+                    ReactionKind::Disconnected => ReactionKind::Disconnected,
+                    ReactionKind::ConnectedMove => ReactionKind::ConnectedMove,
+                    ReactionKind::Adopted {
+                        old_document,
+                        new_document,
+                    } => ReactionKind::Adopted {
+                        old_document: crate::DocumentId(resolve(*old_document)?),
+                        new_document: crate::DocumentId(resolve(*new_document)?),
+                    },
+                    ReactionKind::AttributeChanged {
+                        local_name,
+                        old_value,
+                        new_value,
+                        namespace,
+                    } => ReactionKind::AttributeChanged {
+                        local_name: local_name.clone(),
+                        old_value: old_value.clone(),
+                        new_value: new_value.clone(),
+                        namespace: namespace.clone(),
+                    },
+                },
             });
         }
         let slot_backing = budget.fork();
