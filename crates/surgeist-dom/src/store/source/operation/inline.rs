@@ -36,6 +36,7 @@ pub(super) struct Execution<'a> {
     pub(super) native: Option<meta::Execution>,
     pub(super) hosted_events: bool,
     pub(super) synchronous_node: Option<synchronous_node::SynchronousNode<'a>>,
+    pub(super) shadow_reactions: Option<synchronous_node::ShadowReactionRoute<'a>>,
 }
 impl Execution<'_> {
     pub(super) fn disabled() -> Self {
@@ -45,6 +46,7 @@ impl Execution<'_> {
             native: None,
             hosted_events: false,
             synchronous_node: None,
+            shadow_reactions: None,
         }
     }
 }
@@ -154,6 +156,7 @@ impl DomSourceLease<'_> {
             native: None,
             hosted_events,
             synchronous_node: None,
+            shadow_reactions: None,
         };
         match self.advance_execution(&mut execution, None, cancel) {
             Ok(source) => Ok(DomSourceAdvance::Progress(DomInlineStyleSourceProgress {
@@ -266,13 +269,15 @@ impl Operation {
             if incomplete || has_inputs {
                 return Err(DomError::IncompleteSourceOperation.into());
             }
-            // Synchronous shadow attachment returns a commit and root, with
-            // no reaction-delivery authority. Refuse before publishing a
-            // removal that requires the backup element queue.
             if matches!(self.commands.first(), Some(Command::AttachShadow { .. }))
-                && segment.prepared.custom_element_reactions.is_some()
+                && let Some(reactions) = segment.prepared.custom_element_reactions.as_mut()
             {
-                return Err(DomError::NotSupported.into());
+                let route = execution
+                    .shadow_reactions
+                    .as_mut()
+                    .ok_or(DomError::NotSupported)?;
+                reactions.route_to_backup(route.registration)?;
+                *route.published = true;
             }
             if let synchronous_node::SynchronousNode::Watch(watch)
             | synchronous_node::SynchronousNode::ElementFactory(watch) = node

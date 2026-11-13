@@ -11,6 +11,11 @@ pub(super) enum SynchronousNode<'a> {
     CustomElementResult(NodeWatch<'a>),
 }
 
+pub(super) struct ShadowReactionRoute<'a> {
+    pub(super) registration: &'a crate::DomDocumentScriptRegistration,
+    pub(super) published: &'a mut bool,
+}
+
 /// Result of advancing a detached Element factory with retirement custody.
 /// A reached constructor retains its original Source operation in the DOM.
 pub enum DomWatchedElementCreation<T> {
@@ -175,15 +180,24 @@ impl Dom {
 
     /// Attach or reuse a ShadowRoot through a single complete Source publication.
     /// Operations reaching an external service require the ordinary Source lease.
+    /// If removal creates custom-element reactions, the original active script
+    /// registration is required. The result indicates whether it received a
+    /// backup reaction segment.
     pub fn attach_shadow_synchronously(
         &mut self,
         host: NodeId,
         init: crate::DomShadowRootInit,
         source_limits: DomSourceLimits,
+        registration: Option<&crate::DomDocumentScriptRegistration>,
         cancel: &AtomicBool,
-    ) -> Result<(DomCommit, NodeId), DomError> {
+    ) -> Result<(DomCommit, NodeId, bool), DomError> {
+        let mut reactions = false;
         let mut execution = Execution::disabled();
         execution.synchronous_node = Some(SynchronousNode::ReturnNode);
+        execution.shadow_reactions = registration.map(|registration| ShadowReactionRoute {
+            registration,
+            published: &mut reactions,
+        });
         let completed = self.finish_synchronous_node(
             DomSourceEdit::attach_shadow(host, init),
             source_limits,
@@ -193,25 +207,27 @@ impl Dom {
         let Some(DomSourceOutput::Node(root)) = completed.output() else {
             return Err(DomError::InvalidSourceOperation);
         };
-        Ok((completed.commit, root))
+        Ok((completed.commit, root, reactions))
     }
 
     /// Attach or reuse a ShadowRoot and arm its exact retirement watch in the
     /// same Source publication. Refusal leaves the original host relation and
-    /// retirement index intact.
+    /// retirement index intact. A reaction-producing reuse requires the
+    /// original active script registration and reports a queued backup segment.
     pub fn attach_shadow_with_node_retirement_watch(
         &mut self,
         host: NodeId,
         init: crate::DomShadowRootInit,
-        inbox: &DomNodeRetirementInbox,
-        custody_key: usize,
+        watch: (&DomNodeRetirementInbox, usize),
         (source_limits, watch_limits): (DomSourceLimits, DomNodeRetirementLimits),
+        registration: Option<&crate::DomDocumentScriptRegistration>,
         cancel: &AtomicBool,
-    ) -> Result<crate::DomWatchedNode, DomError> {
+    ) -> Result<(crate::DomWatchedNode, bool), DomError> {
         self.publish_watched_source_node(
             DomSourceEdit::attach_shadow(host, init),
-            (inbox, custody_key),
+            watch,
             (source_limits, watch_limits),
+            registration,
             cancel,
         )
     }
@@ -231,8 +247,10 @@ impl Dom {
             creation.into_edit(document),
             (inbox, custody_key),
             limits,
+            None,
             cancel,
         )
+        .map(|(watched, _)| watched)
     }
 
     fn publish_watched_source_node(
@@ -240,9 +258,15 @@ impl Dom {
         edit: DomSourceEdit,
         (inbox, custody_key): (&DomNodeRetirementInbox, usize),
         (source_limits, watch_limits): (DomSourceLimits, DomNodeRetirementLimits),
+        registration: Option<&crate::DomDocumentScriptRegistration>,
         cancel: &AtomicBool,
-    ) -> Result<crate::DomWatchedNode, DomError> {
+    ) -> Result<(crate::DomWatchedNode, bool), DomError> {
+        let mut reactions = false;
         let mut execution = Execution::disabled();
+        execution.shadow_reactions = registration.map(|registration| ShadowReactionRoute {
+            registration,
+            published: &mut reactions,
+        });
         execution.synchronous_node = Some(SynchronousNode::Watch(NodeWatch {
             inbox,
             custody_key,
@@ -259,7 +283,10 @@ impl Dom {
         else {
             return Err(DomError::UnavailableCreation);
         };
-        Ok(crate::DomWatchedNode::new(completion.commit, node, watch))
+        Ok((
+            crate::DomWatchedNode::new(completion.commit, node, watch),
+            reactions,
+        ))
     }
 
     fn finish_synchronous_node(

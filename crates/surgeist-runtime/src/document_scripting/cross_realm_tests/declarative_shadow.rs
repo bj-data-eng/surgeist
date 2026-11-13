@@ -224,7 +224,8 @@ pub(super) fn verify_declarative_shadow_reuse() {
             host.in_document(&permit, |scope| {
                 let correct = evaluate(
                     scope,
-                    "shadowReuseCalls.length === 3 && shadowReuseCalls[0] === 'before' && +                     shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls[2] === 'after'",
+                    "shadowReuseCalls.length === 3 && shadowReuseCalls[0] === 'before' && \
+                     shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls[2] === 'after'",
                 )?;
                 assert!(scope.boolean(&correct)?);
                 let marker = evaluate(scope, "shadowReuseException")?;

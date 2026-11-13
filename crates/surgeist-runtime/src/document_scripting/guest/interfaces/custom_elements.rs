@@ -14,6 +14,17 @@ use surgeist_html_semantics::HtmlCustomElementDefinition;
 
 const INTERFACE: &[u16] = &ascii(b"CustomElementRegistry");
 
+impl PublicEventBindings {
+    pub(super) fn schedule_backup_reactions(&self, scope: &mut Scope<'_>) -> Result<(), Error> {
+        if !self.backup_reactions_scheduled.get() {
+            let job = scope.open_callback_object(&self.backup_reaction_job)?;
+            scope.enqueue_microtask(&job)?;
+            self.backup_reactions_scheduled.set(true);
+        }
+        Ok(())
+    }
+}
+
 pub(in crate::document_scripting) struct ActiveConstructor {
     pub(in crate::document_scripting) request: DomSourceCustomElementRequest,
     pub(in crate::document_scripting) registration: Rc<DomDocumentScriptRegistration>,
@@ -871,23 +882,60 @@ impl Capture {
         events: &GuestEvents,
         operation: surgeist_dom::DomSourceOperationId,
     ) -> Result<(), DocumentGuestEventError> {
+        self.drain_reactions(scope, owner, events, Some(operation))
+            .map(drop)
+    }
+
+    pub(super) fn run_backup_reactions<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let (owner, events) = self.active(scope)?;
+        let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+        let result = (|| {
+            while self.drain_reactions(scope, &owner, &events, None)? {}
+            Ok(())
+        })();
+        public.backup_reactions_scheduled.set(false);
+        match result {
+            Ok(()) => Ok(Completion::Undefined),
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                Err(error)
+            }
+            Err(error) => refuse(scope, &events.refusal, error),
+        }
+    }
+
+    fn drain_reactions<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        operation: Option<surgeist_dom::DomSourceOperationId>,
+    ) -> Result<bool, DocumentGuestEventError> {
         let registration = owner
             .attachment
             .get()
             .and_then(|attachment| attachment.registration.upgrade())
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let mut invocation = ReactionInvocation::new(owner)?;
+        let mut received = false;
         let result = (|| {
             loop {
                 let inspections = registration.custom_element_reaction_segments();
                 let work =
                     u64::try_from(inspections).map_err(|_| DocumentGuestEventError::WorkLimit)?;
                 events.charge_work(work)?;
-                let Some(mut batch) =
-                    registration.take_custom_element_reactions(operation, inspections)?
-                else {
+                let batch = match operation {
+                    Some(operation) => {
+                        registration.take_custom_element_reactions(operation, inspections)?
+                    }
+                    None => registration.take_backup_custom_element_reactions(inspections)?,
+                };
+                let Some(mut batch) = batch else {
                     break;
                 };
+                received = true;
                 while let Some(fact) = batch.front() {
                     let reaction = if matches!(
                         fact.kind,
@@ -913,7 +961,8 @@ impl Capture {
                     batch.acknowledge_front();
                 }
             }
-            invocation.drain(self, scope, events)
+            invocation.drain(self, scope, events)?;
+            Ok(received)
         })();
         drop(invocation);
         result

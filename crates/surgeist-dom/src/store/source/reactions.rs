@@ -111,6 +111,7 @@ enum SlotState {
 
 struct Slot {
     operation: crate::DomSourceOperationId,
+    backup: bool,
     state: Mutex<SlotState>,
     _backing: Option<custody::Debit>,
 }
@@ -187,7 +188,7 @@ impl Inbox {
 
     pub(crate) fn take(
         &self,
-        operation: crate::DomSourceOperationId,
+        operation: Option<crate::DomSourceOperationId>,
         inspections: usize,
     ) -> Result<Option<DomCustomElementReactions>, DomError> {
         let mut queue = self.lock();
@@ -202,7 +203,12 @@ impl Inbox {
             if let Some(slot) = head.front()
                 && !matches!(*slot.lock(), SlotState::Settled)
             {
-                if selected.is_none() && slot.operation == operation {
+                if selected.is_none()
+                    && match operation {
+                        Some(operation) => !slot.backup && slot.operation == operation,
+                        None => slot.backup,
+                    }
+                {
                     selected = Some(slot.clone());
                 }
                 retained.append(&mut head);
@@ -309,6 +315,21 @@ pub(in crate::store) struct Publication {
 }
 
 impl Publication {
+    pub(in crate::store) fn route_to_backup(
+        &mut self,
+        registration: &crate::DomDocumentScriptRegistration,
+    ) -> Result<(), DomError> {
+        if !Arc::ptr_eq(&self.registration, &registration.0) || !registration.is_active() {
+            return Err(DomError::HostedSourceUnavailable);
+        }
+        for slot in &mut self.batches {
+            Arc::get_mut(slot)
+                .ok_or(DomError::InvalidSourceOperation)?
+                .backup = true;
+        }
+        Ok(())
+    }
+
     pub(in crate::store) fn publish(mut self) {
         if let Some(inbox) = self.registration.custom_element_reactions.get() {
             inbox.lock().append(&mut self.batches);
@@ -608,6 +629,7 @@ impl Draft {
         let mut batches = LinkedList::new();
         batches.push_back(formation::allocated_arc(Slot {
             operation,
+            backup: false,
             state: Mutex::new(SlotState::Ready(Batch {
                 facts,
                 cursor: 0,

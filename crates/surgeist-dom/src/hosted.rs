@@ -2119,7 +2119,22 @@ impl DomDocumentScriptRegistration {
         self.0
             .custom_element_reactions
             .get()
-            .map_or(Ok(None), |inbox| inbox.take(operation, inspections))
+            .map_or(Ok(None), |inbox| inbox.take(Some(operation), inspections))
+    }
+
+    /// Take the earliest committed reaction segment routed to the backup queue.
+    /// The original registration alone can loan these reactions.
+    pub fn take_backup_custom_element_reactions(
+        &self,
+        inspections: usize,
+    ) -> Result<Option<crate::DomCustomElementReactions>, crate::DomError> {
+        if !self.is_active() {
+            return Err(crate::DomError::HostedSourceUnavailable);
+        }
+        self.0
+            .custom_element_reactions
+            .get()
+            .map_or(Ok(None), |inbox| inbox.take(None, inspections))
     }
 
     /// Number of queue entries to admit before scanning this attachment's inbox.
