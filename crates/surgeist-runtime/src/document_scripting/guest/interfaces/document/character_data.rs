@@ -206,6 +206,7 @@ impl CharacterBindings {
         )?;
         if matches!(kind, CharacterKind::Text) {
             split_text::install(scope, &prototype, funding.capture)?;
+            text::install_whole_text(scope, &prototype, funding.capture)?;
         }
         let (name, _) = kind.factory();
         let factory = (funding.capture)(size_of::<(Capture, CharacterKind)>())?;

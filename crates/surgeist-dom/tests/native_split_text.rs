@@ -69,6 +69,45 @@ fn points(snapshot: &DomSnapshot, range: DomRangeId) -> ((NodeId, usize), (NodeI
 }
 
 #[test]
+fn contiguous_text_visit_stops_at_the_first_refusal_in_tree_order() {
+    let (mut dom, document, parent, middle) = fixture("middle".into(), true);
+    let cancel = cancel();
+    let stop = dom.snapshot().node(middle).unwrap().next_sibling().unwrap();
+    let mut batch = DomBatch::new();
+    let first = batch.create_text(document, "first");
+    let last = batch.create_text(document, "last");
+    batch.insert_before(&first, parent, Some(middle.into()));
+    batch.insert_before(&last, parent, Some(stop.into()));
+    dom.apply(batch, &cancel).unwrap();
+    let snapshot = dom.snapshot();
+    let mut observed = Vec::new();
+    let result = snapshot.node(middle).unwrap().visit_contiguous_text_with(
+        || Ok(()),
+        |text| {
+            observed.push(text.clone());
+            if observed.len() == 2 {
+                return Err(DomError::Cancelled);
+            }
+            Ok(())
+        },
+    );
+    assert_eq!(result, Err(DomError::Cancelled));
+    assert_eq!(observed, [DocumentString::from("first"), "middle".into()]);
+    let mut visited = false;
+    assert_eq!(
+        snapshot.node(middle).unwrap().visit_contiguous_text_with(
+            || Err(DomError::Cancelled),
+            |_| {
+                visited = true;
+                Ok(())
+            }
+        ),
+        Err(DomError::Cancelled)
+    );
+    assert!(!visited);
+}
+
+#[test]
 fn split_text_retirement_watch_refusal_leaves_the_split_private() {
     let (mut dom, _, parent, text) = fixture("abcd".into(), true);
     let cancel = cancel();

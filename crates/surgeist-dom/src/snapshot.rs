@@ -511,6 +511,58 @@ impl<'a> DomNode<'a> {
             shadow: false,
         }
     }
+    /// Visit this Text and its contiguous ordinary Text siblings in tree order.
+    /// Each inspected sibling and canonical lookup is admitted through `step`.
+    pub fn visit_contiguous_text_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+        mut visit: impl FnMut(&'a DocumentString) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let DomNodeKind::Text(value) = self.kind() else {
+            return Err(DomError::WrongNodeKind.into());
+        };
+        let Some(parent) = self.parent() else {
+            return visit(value);
+        };
+        let parent = self.snapshot.node_with(parent, &mut step)?;
+        let children = parent.children();
+        let mut siblings = children.iter().enumerate();
+        let index = loop {
+            let (index, child) = siblings.next().ok_or(DomError::NotFound)?;
+            step()?;
+            if *child == self.id {
+                break index;
+            }
+        };
+        let mut start = index;
+        for &sibling in children[..index].iter().rev() {
+            step()?;
+            let sibling = self.snapshot.node_with(sibling, &mut step)?;
+            if !matches!(sibling.kind(), DomNodeKind::Text(_)) {
+                break;
+            }
+            start -= 1;
+        }
+        for &sibling in &children[start..index] {
+            step()?;
+            let sibling = self.snapshot.node_with(sibling, &mut step)?;
+            let DomNodeKind::Text(text) = sibling.kind() else {
+                return Err(DomError::WrongNodeKind.into());
+            };
+            visit(text)?;
+        }
+        visit(value)?;
+        for (_, &sibling) in siblings {
+            step()?;
+            let sibling = self.snapshot.node_with(sibling, &mut step)?;
+            let DomNodeKind::Text(text) = sibling.kind() else {
+                break;
+            };
+            visit(text)?;
+        }
+        Ok(())
+    }
+
     /// Visit only ordinary descendant Text payloads, in tree order. The
     /// receiver, shadow trees hosted by descendants, and hosted Template
     /// contents are outside the traversal.
