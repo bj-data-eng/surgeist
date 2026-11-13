@@ -205,37 +205,104 @@ fn intrinsic_grid<'input, 'a, Node: Copy, S: LayoutScalar>(
     }
 }
 
-pub(super) fn intrinsic_repeat_growth_limits<'input, Tree, M>(
-    tree: &mut Tree,
-    node: Tree::Node,
-    input: &GridTrackResolutionInput<'input, '_, Tree::Node, Tree::Scalar>,
-    axis: GridAxisKind,
-) -> LayoutResultOf<Tree::Node, GridAxisTrackPhases<Tree::Scalar>, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let evaluation = evaluate_stage(
-        tree,
-        node,
-        input,
-        intrinsic_grid(input),
-        IntrinsicStageFrame {
-            axis,
-            stage: input.stage,
-            columns: None,
-            rows: None,
-            observed_axis: None,
-        },
-        GridAxisTrackSpace::Intrinsic,
-        StageMinContent::Discard,
-    )?;
-    intrinsic_axis_phases(
-        node,
-        input,
-        axis,
-        &evaluation.contributions,
-        phase_constraint(axis_track_available(node, input, axis)?),
-    )
+pub(super) struct IntrinsicRepeatSizing<Node, S: LayoutScalar> {
+    collection: ContributionCollection<Node, S>,
+    frame: RepeatSizingFrame<S>,
+}
+
+enum RepeatSizingFrame<S> {
+    Initial,
+    Tentative(Vec<S>),
+}
+
+type IntrinsicRepeatStep<Node, S, M> =
+    LayoutResultOf<Node, ControlFlow<GridAxisTrackPhases<S>, (Node, ComputeInputOf<S>)>, S, M>;
+
+impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicRepeatSizing<Node, S> {
+    pub(super) fn new() -> Self {
+        Self {
+            collection: ContributionCollection::new(StageMinContent::Discard),
+            frame: RepeatSizingFrame::Initial,
+        }
+    }
+
+    pub(super) fn advance<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        input: &GridTrackResolutionInput<'input, '_, Node, S>,
+    ) -> IntrinsicRepeatStep<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let axis = input.stage.first_axis;
+        loop {
+            let source = self.frame.source(input);
+            let evaluated = match self.collection.advance(tree, node, source)? {
+                ControlFlow::Continue(request) => return Ok(ControlFlow::Continue(request)),
+                ControlFlow::Break(CollectedContributions::Axis(evaluated)) => evaluated,
+                ControlFlow::Break(CollectedContributions::Observation(_)) => {
+                    unreachable!("repeat sizing collects all contribution roles")
+                }
+            };
+            if matches!(self.frame, RepeatSizingFrame::Initial)
+                && has_inherited_items(source.grid, axis)
+            {
+                let (tentative, _) = prepare_axis_track_inputs(
+                    node,
+                    input,
+                    axis,
+                    &evaluated.contributions,
+                    axis_available(input.available, axis),
+                    GridAxisTrackSpace::Intrinsic,
+                )?;
+                self.frame = RepeatSizingFrame::Tentative(tentative);
+                self.collection = ContributionCollection::new(StageMinContent::Discard);
+                continue;
+            }
+            return intrinsic_axis_phases(
+                node,
+                input,
+                axis,
+                &evaluated.contributions,
+                phase_constraint(axis_track_available(node, input, axis)?),
+            )
+            .map(ControlFlow::Break);
+        }
+    }
+
+    pub(super) fn accept<M>(
+        &mut self,
+        node: Node,
+        input: &GridTrackResolutionInput<'_, '_, Node, S>,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        self.collection
+            .accept(node, self.frame.source(input), output)
+    }
+}
+
+impl<S: LayoutScalar> RepeatSizingFrame<S> {
+    fn source<'input, 'a, Node: Copy>(
+        &'a self,
+        input: &'a GridTrackResolutionInput<'input, 'a, Node, S>,
+    ) -> ContributionSource<'input, 'a, Node, S> {
+        let observed_axis = match self {
+            Self::Initial => None,
+            Self::Tentative(values) => Some(values.as_slice()),
+        };
+        ContributionSource {
+            input,
+            grid: intrinsic_grid(input),
+            frame: IntrinsicStageFrame {
+                axis: input.stage.first_axis,
+                stage: input.stage,
+                columns: None,
+                rows: None,
+                observed_axis,
+            },
+        }
+    }
 }
 
 // A single source-ordered preparation serves full layout and bounded probes.
@@ -1309,46 +1376,6 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
         }
         Ok(())
     }
-
-    fn compute<'input, Tree, M>(
-        mut self,
-        tree: &mut Tree,
-        node: Node,
-        source: ContributionSource<'input, '_, Node, S>,
-    ) -> LayoutResultOf<Node, CollectedContributions<Node, S>, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        loop {
-            match self.advance(tree, node, source)? {
-                ControlFlow::Break(result) => return Ok(result),
-                ControlFlow::Continue((child, request)) => {
-                    let output = tree.compute_child(child, request)?;
-                    self.accept(node, source, output)?;
-                }
-            }
-        }
-    }
-}
-
-fn collect_purposes<'input, Tree, M>(
-    tree: &mut Tree,
-    node: Tree::Node,
-    input: &GridTrackResolutionInput<'input, '_, Tree::Node, Tree::Scalar>,
-    grid: IntrinsicGrid<'input, '_, Tree::Node, Tree::Scalar>,
-    frame: IntrinsicStageFrame<'_, Tree::Scalar>,
-    min_content: StageMinContent<Tree::Node, Tree::Scalar>,
-) -> StageResult<Tree::Node, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let source = ContributionSource { input, grid, frame };
-    match ContributionCollection::new(min_content).compute(tree, node, source)? {
-        CollectedContributions::Axis(result) => Ok(result),
-        CollectedContributions::Observation(_) => {
-            unreachable!("sizing executes all contribution roles")
-        }
-    }
 }
 
 fn finish_axis_contributions<Node, S: LayoutScalar, M>(
@@ -1389,45 +1416,6 @@ fn has_inherited_items<Node: Copy, S: LayoutScalar>(
         .items
         .iter()
         .any(|item| item_inherits_parent_axis(*item, axis))
-}
-
-fn evaluate_stage<'input, Tree, M>(
-    tree: &mut Tree,
-    node: Tree::Node,
-    input: &GridTrackResolutionInput<'input, '_, Tree::Node, Tree::Scalar>,
-    grid: IntrinsicGrid<'input, '_, Tree::Node, Tree::Scalar>,
-    frame: IntrinsicStageFrame<'_, Tree::Scalar>,
-    space: GridAxisTrackSpace<Tree::Scalar>,
-    min_content: StageMinContent<Tree::Node, Tree::Scalar>,
-) -> StageResult<Tree::Node, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    if !has_inherited_items(grid, frame.axis) {
-        return collect_purposes(tree, node, input, grid, frame, min_content);
-    }
-    let initial = collect_purposes(tree, node, input, grid, frame, StageMinContent::Discard)?;
-    let (tentative, _) = prepare_axis_track_inputs(
-        node,
-        input,
-        frame.axis,
-        &initial.contributions,
-        axis_available(input.available, frame.axis),
-        space,
-    )?;
-    let mut evaluated = collect_purposes(
-        tree,
-        node,
-        input,
-        grid,
-        IntrinsicStageFrame {
-            observed_axis: Some(&tentative),
-            ..frame
-        },
-        min_content,
-    )?;
-    evaluated.observed_axis = Some(tentative);
-    Ok(evaluated)
 }
 
 // All adapters use the same per-role opposite-axis/source preparation.

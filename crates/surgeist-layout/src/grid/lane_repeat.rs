@@ -1,6 +1,8 @@
 use super::*;
 use crate::GridSpan;
 
+use super::intrinsic_stage::IntrinsicRepeatSizing;
+
 #[derive(Clone, Copy)]
 pub(super) struct LaneRepeatExpansion<'a> {
     pub(super) axis: GridAxisKind,
@@ -15,31 +17,50 @@ pub(super) enum LaneRepeatPlacement<'a> {
     Actual,
 }
 
-pub(super) fn resolve_intrinsic_repeat<'input, Tree, M>(
+pub(super) struct LaneRepeatProbe<'input, Node, S: LayoutScalar> {
+    axis: GridAxisKind,
+    components: &'input [TrackComponentOf<S>],
+    group_tracks: usize,
+    constraint: AutoRepeatConstraint<S>,
+    basis: Option<S>,
+    gap: S,
+    constants: Constants<S>,
+    tracks: InitializedGridTracks<'input, Node, S>,
+    sizing: IntrinsicRepeatSizing<Node, S>,
+}
+
+type RepeatPreparation<'input, Node, S, M> = LayoutResultOf<
+    Node,
+    ControlFlow<Option<LaneRepeatExpansion<'static>>, Box<LaneRepeatProbe<'input, Node, S>>>,
+    S,
+    M,
+>;
+
+pub(super) fn prepare_intrinsic_repeat<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
-    style: &GridContainerProjection<'_, Tree::Scalar>,
+    style: &GridContainerProjection<'input, Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     parent: &GridParentContext<Tree::Scalar, Tree::Node>,
     available: LogicalSizeOf<AxisSizingRequestOf<Tree::Scalar>>,
     contained_inline: Option<Tree::Scalar>,
-) -> LayoutResultOf<Tree::Node, Option<LaneRepeatExpansion<'static>>, Tree::Scalar, M>
+) -> RepeatPreparation<'input, Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
     if !style.display.establishes_grid_lanes_formatting_context() {
-        return Ok(None);
+        return Ok(ControlFlow::Break(None));
     }
     let axis = grid_axis_for_grid_lanes(style);
     let components = match axis {
         GridAxisKind::Column if parent.columns.is_none() => style.grid_template_columns,
         GridAxisKind::Row if parent.rows.is_none() => style.grid_template_rows,
-        _ => return Ok(None),
+        _ => return Ok(ControlFlow::Break(None)),
     };
     let Some(group_tracks) = intrinsic_auto_repeat_track_count(components)
         .map_err(|error| grid_track_sizing_error(node, error))?
     else {
-        return Ok(None);
+        return Ok(ControlFlow::Break(None));
     };
     let used = |count| {
         Some(LaneRepeatExpansion {
@@ -53,7 +74,7 @@ where
         .auto_repeat_constraint(axis)
         .map_err(|status| crate::error::value_resolution_error(node, status))?;
     if matches!(constraint, AutoRepeatConstraint::One) {
-        return Ok(used(1));
+        return Ok(ControlFlow::Break(used(1)));
     }
     let initial_size = constants.initial_track_basis(constants.node_inner_size);
     let initial_available = constants.initial_track_basis(constants.available_inner_size);
@@ -111,7 +132,7 @@ where
         spans.push(span);
     }
     let Some(largest) = largest else {
-        return Ok(used(1));
+        return Ok(ControlFlow::Break(used(1)));
     };
     let count = hypothetical_repeat_groups(largest, group_tracks)
         .map_err(|error| grid_track_sizing_error(node, error))?;
@@ -134,9 +155,136 @@ where
     } else {
         *constants
     };
-    let input = GridTrackResolutionInput {
+    Ok(ControlFlow::Continue(Box::new(LaneRepeatProbe {
+        axis,
+        components,
+        group_tracks,
+        constraint,
+        basis,
+        gap,
+        constants: measurement_constants,
+        tracks: probe,
+        sizing: IntrinsicRepeatSizing::new(),
+    })))
+}
+
+type RepeatStep<Node, S, M> = LayoutResultOf<
+    Node,
+    ControlFlow<LaneRepeatExpansion<'static>, (Node, ComputeInputOf<S>)>,
+    S,
+    M,
+>;
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> LaneRepeatProbe<'input, Node, S> {
+    pub(super) fn advance<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        style: &GridContainerProjection<'input, S>,
+        parent: &GridParentContext<S, Node>,
+    ) -> RepeatStep<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let input = repeat_input(self.axis, &self.tracks, style, &self.constants, parent);
+        match self.sizing.advance(tree, node, &input)? {
+            ControlFlow::Continue(request) => Ok(ControlFlow::Continue(request)),
+            ControlFlow::Break(phases) => self.finish(node, phases).map(ControlFlow::Break),
+        }
+    }
+
+    pub(super) fn accept<M>(
+        &mut self,
+        node: Node,
+        style: &GridContainerProjection<'input, S>,
+        parent: &GridParentContext<S, Node>,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let input = repeat_input(self.axis, &self.tracks, style, &self.constants, parent);
+        self.sizing.accept(node, &input, output)
+    }
+
+    pub(super) fn compute<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        style: &GridContainerProjection<'input, S>,
+        parent: &GridParentContext<S, Node>,
+    ) -> LayoutResultOf<Node, LaneRepeatExpansion<'static>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            match self.advance(tree, node, style, parent)? {
+                ControlFlow::Continue((child, request)) => {
+                    let output = tree.compute_child(child, request)?;
+                    self.accept(node, style, parent, output)?;
+                }
+                ControlFlow::Break(expansion) => return Ok(expansion),
+            }
+        }
+    }
+
+    fn finish<M>(
+        &self,
+        node: Node,
+        phases: GridAxisTrackPhases<S>,
+    ) -> LayoutResultOf<Node, LaneRepeatExpansion<'static>, S, M> {
+        let (origins, tracks) = match self.axis {
+            GridAxisKind::Column => (
+                &self.tracks.context.topology.column_origins,
+                &self.tracks.column_tracks,
+            ),
+            GridAxisKind::Row => (
+                &self.tracks.context.topology.row_origins,
+                &self.tracks.row_tracks,
+            ),
+        };
+        let mut sizes = Vec::new();
+        sizes
+            .try_reserve_exact(self.group_tracks)
+            .map_err(|_| grid_track_sizing_error(node, SpanningContributionError::Allocation))?;
+        sizes.resize(self.group_tracks, S::ZERO);
+        for (((origin, track), base), limit) in origins
+            .iter()
+            .zip(tracks)
+            .zip(phases.base_sizes)
+            .zip(phases.growth_limits)
+        {
+            if let Some(repeated) = origin.auto_repeat {
+                let operand = definite_repeat_track_size(track, self.basis)
+                    .unwrap_or_else(|| limit.unwrap_or(base));
+                sizes[repeated.track_index] = sizes[repeated.track_index].max(operand);
+            }
+        }
+        let reserved = standalone_reserved_track_space(
+            self.components,
+            self.group_tracks,
+            self.basis,
+            self.gap,
+        )
+        .map_err(|error| grid_track_sizing_error(node, error))?;
+        let count =
+            auto_repeat_count_from_hypothetical(&sizes, self.constraint, self.gap, &reserved)
+                .map_err(|error| grid_track_sizing_error(node, error))?;
+        Ok(LaneRepeatExpansion {
+            axis: self.axis,
+            count,
+            placement: LaneRepeatPlacement::Actual,
+        })
+    }
+}
+
+fn repeat_input<'input, 'a, Node, S: LayoutScalar>(
+    axis: GridAxisKind,
+    probe: &'a InitializedGridTracks<'input, Node, S>,
+    style: &'a GridContainerProjection<'input, S>,
+    constants: &'a Constants<S>,
+    parent: &'a GridParentContext<S, Node>,
+) -> GridTrackResolutionInput<'input, 'a, Node, S> {
+    GridTrackResolutionInput {
         style,
-        constants: &measurement_constants,
+        constants,
         column_tracks: &probe.column_tracks,
         row_tracks: &probe.row_tracks,
         minimum_functions: minimum_parent_functions(
@@ -145,41 +293,14 @@ where
             probe.context.percent_basis,
             parent,
         ),
-        context: std::borrow::Cow::Owned(probe.context),
+        context: std::borrow::Cow::Borrowed(&probe.context),
         subgrid_report: &probe.subgrid_report,
-        sizing_flow_axes: flow,
-        available,
+        sizing_flow_axes: constants.flow_axes,
+        available: probe.track_available,
         placements: &probe.placements,
         stage: GridSizingStage {
             first_axis: axis,
             through: GridSizingPhase::InitialFirst,
         },
-    };
-    let phases = intrinsic_stage::intrinsic_repeat_growth_limits(tree, node, &input, axis)?;
-    let (origins, tracks) = match axis {
-        GridAxisKind::Column => (&input.context.topology.column_origins, input.column_tracks),
-        GridAxisKind::Row => (&input.context.topology.row_origins, input.row_tracks),
-    };
-    let mut sizes = Vec::new();
-    sizes
-        .try_reserve_exact(group_tracks)
-        .map_err(|_| grid_track_sizing_error(node, SpanningContributionError::Allocation))?;
-    sizes.resize(group_tracks, Tree::Scalar::ZERO);
-    for (((origin, track), base), limit) in origins
-        .iter()
-        .zip(tracks)
-        .zip(phases.base_sizes)
-        .zip(phases.growth_limits)
-    {
-        if let Some(repeated) = origin.auto_repeat {
-            let operand =
-                definite_repeat_track_size(track, basis).unwrap_or_else(|| limit.unwrap_or(base));
-            sizes[repeated.track_index] = sizes[repeated.track_index].max(operand);
-        }
     }
-    let reserved = standalone_reserved_track_space(components, group_tracks, basis, gap)
-        .map_err(|error| grid_track_sizing_error(node, error))?;
-    let count = auto_repeat_count_from_hypothetical(&sizes, constraint, gap, &reserved)
-        .map_err(|error| grid_track_sizing_error(node, error))?;
-    Ok(used(count))
 }
