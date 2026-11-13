@@ -155,34 +155,83 @@ pub(crate) fn choose_group<T, E>(
     auto: Option<GroupTrial<T>>,
     mut run: impl FnMut(BalanceGoal) -> Result<Option<GroupTrial<T>>, E>,
 ) -> Result<Option<GroupWinner<T>>, E> {
-    if !(2..=10).contains(&reference.len()) {
+    let Some(mut selection) = GroupSelection::new(reference, auto) else {
         return Ok(None);
-    }
-    let targets = goals(
-        auto.as_ref()
-            .filter(|trial| trial.residuals.len() == reference.len())
-            .map_or(reference, |trial| trial.residuals.as_slice()),
-    );
-    let admissible = |trial: &GroupTrial<T>| {
-        variance_order(&trial.residuals, reference).is_some_and(|order| order != Ordering::Greater)
     };
-    let mut winner = auto
-        .filter(admissible)
-        .map(|trial| GroupWinner { goal: None, trial });
-    for goal in targets {
-        let Some(trial) = run(goal)? else { continue };
-        if admissible(&trial)
-            && winner.as_ref().is_none_or(|prior| {
+    while let Some(goal) = selection.next_goal() {
+        selection.accept(run(goal)?);
+    }
+    Ok(selection.finish())
+}
+
+/// One finite portfolio shared by synchronous and suspended formatter owners.
+/// The pending goal owns exactly one returned trial; ranking retains Auto ties.
+pub(crate) struct GroupSelection<T> {
+    reference: Vec<NaturalResidual>,
+    goals: std::vec::IntoIter<BalanceGoal>,
+    pending: Option<BalanceGoal>,
+    winner: Option<GroupWinner<T>>,
+}
+
+impl<T> GroupSelection<T> {
+    pub(crate) fn new(reference: &[NaturalResidual], auto: Option<GroupTrial<T>>) -> Option<Self> {
+        if !(2..=10).contains(&reference.len()) {
+            return None;
+        }
+        let targets = goals(
+            auto.as_ref()
+                .filter(|trial| trial.residuals.len() == reference.len())
+                .map_or(reference, |trial| trial.residuals.as_slice()),
+        );
+        let winner = auto
+            .filter(|trial| {
+                variance_order(&trial.residuals, reference)
+                    .is_some_and(|order| order != Ordering::Greater)
+            })
+            .map(|trial| GroupWinner { goal: None, trial });
+        Some(Self {
+            reference: reference.to_vec(),
+            goals: targets.into_iter(),
+            pending: None,
+            winner,
+        })
+    }
+
+    pub(crate) fn next_goal(&mut self) -> Option<BalanceGoal> {
+        assert!(
+            self.pending.is_none(),
+            "the previous goal owns a trial receipt"
+        );
+        self.pending = self.goals.next();
+        self.pending
+    }
+
+    pub(crate) fn accept(&mut self, trial: Option<GroupTrial<T>>) {
+        let goal = self
+            .pending
+            .take()
+            .expect("a trial answers the pending goal");
+        let Some(trial) = trial else { return };
+        if variance_order(&trial.residuals, &self.reference)
+            .is_some_and(|order| order != Ordering::Greater)
+            && self.winner.as_ref().is_none_or(|prior| {
                 variance_order(&trial.residuals, &prior.trial.residuals) == Some(Ordering::Less)
             })
         {
-            winner = Some(GroupWinner {
+            self.winner = Some(GroupWinner {
                 goal: Some(goal),
                 trial,
             });
         }
     }
-    Ok(winner)
+
+    pub(crate) fn finish(self) -> Option<GroupWinner<T>> {
+        assert!(
+            self.pending.is_none() && self.goals.len() == 0,
+            "all finite goals were answered"
+        );
+        self.winner
+    }
 }
 
 #[cfg(test)]

@@ -46,6 +46,7 @@ impl NumericRunError<core::convert::Infallible> {
     }
 }
 
+mod balance;
 mod input;
 mod parent_edges;
 
@@ -2740,6 +2741,21 @@ impl NumericWalkControl {
         }
     }
 }
+struct NumericWalk {
+    control: NumericWalkControl,
+    direction: Direction,
+    formatted_count: usize,
+}
+impl NumericWalk {
+    fn new<S: LayoutScalar>(sequence: &NumericSequence<S>, control: NumericWalkControl) -> Self {
+        Self {
+            control,
+            direction: sequence.state.line_box_context.weak_direction(),
+            formatted_count: 0,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum NumericWalkOutcome {
     Exhausted,
@@ -2765,13 +2781,12 @@ where
     B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
-    let direction = sequence.state.line_box_context.weak_direction();
+    let mut walk = NumericWalk::new(sequence, control);
     match walk_numeric_sequence_step(
         request,
         sequence,
         line_boundaries,
-        control,
-        direction,
+        &mut walk,
         band_source,
         clear_source,
     )? {
@@ -2786,8 +2801,7 @@ fn walk_numeric_sequence_step<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     sequence: &mut NumericSequence<S>,
     line_boundaries: &mut std::iter::Peekable<impl Iterator<Item = InlineSourceCursor>>,
-    control: NumericWalkControl,
-    line_direction: Direction,
+    walk: &mut NumericWalk,
     mut band_source: B,
     mut clear_source: C,
 ) -> Result<NumericWalkStep, NumericRunError<BandError>>
@@ -2815,15 +2829,18 @@ where
         tail_frontier,
     } = sequence;
     let mut flow = *state;
-    let mut formatted_count = 0;
+    let control = walk.control;
+    let line_direction = walk.direction;
     let mut outcome = NumericWalkOutcome::Exhausted;
     'lines: loop {
-        if control.observe_frontier == Some(formatted_count) && tail_frontier.is_none() {
+        if control.observe_frontier == Some(walk.formatted_count) && tail_frontier.is_none() {
             *tail_frontier = Some(flow);
         }
         let goal = control.goal.filter(|_| {
-            formatted_count >= control.goal_start
-                && control.goal_end.is_none_or(|end| formatted_count < end)
+            walk.formatted_count >= control.goal_start
+                && control
+                    .goal_end
+                    .is_none_or(|end| walk.formatted_count < end)
         });
         let line_indent = input.indent.at(flow.indent_state);
         let next_boundary_descriptor = line_boundaries
@@ -2902,7 +2919,7 @@ where
             flow.pending_strut = provisional.pending_strut;
             let ending = provisional.line.ending;
             selected_lines.push(provisional.line);
-            if let Some(stop) = control.stop(ending, formatted_count) {
+            if let Some(stop) = control.stop(ending, walk.formatted_count) {
                 outcome = stop;
                 break;
             }
@@ -3133,8 +3150,8 @@ where
             clear_source(line_block_end, line.post_line_clear_intent).max(line_block_end);
         let ending = line.ending;
         selected_lines.push(line);
-        formatted_count += 1;
-        if let Some(stop) = control.stop(ending, formatted_count) {
+        walk.formatted_count += 1;
+        if let Some(stop) = control.stop(ending, walk.formatted_count) {
             outcome = stop;
             break;
         }
@@ -3172,12 +3189,6 @@ struct NumericGroupBasis<S: LayoutScalar> {
 struct NumericGroupProgram<S: LayoutScalar> {
     goal: Option<BalanceGoal>,
     basis: NumericGroupBasis<S>,
-}
-#[derive(Clone, Copy)]
-struct NumericGroupAttempt<'a, S: LayoutScalar> {
-    entry: NumericGroupEntry<S>,
-    reference: &'a NumericReferenceGroup<S>,
-    goal: Option<BalanceGoal>,
 }
 fn numeric_line_residual<S: LayoutScalar>(
     line: &SelectedInlineLineOf<S>,
@@ -3225,40 +3236,15 @@ fn numeric_reference_groups<S: LayoutScalar>(
         })
         .collect()
 }
-fn numeric_group_trial<S, B, C, BandError>(
-    request: NumericWalkInput<'_, S>,
-    boundaries: &[InlineSourceCursor],
-    sequence: &mut NumericSequence<S>,
-    attempt: NumericGroupAttempt<'_, S>,
-    band_source: &mut B,
-    clear_source: &mut C,
+fn finish_numeric_group_trial<S: LayoutScalar>(
+    sequence: &NumericSequence<S>,
+    entry: NumericGroupEntry<S>,
+    reference: &NumericReferenceGroup<S>,
+    outcome: NumericWalkOutcome,
 ) -> Result<
     Option<crate::inline_wrapping::balance::GroupTrial<NumericGroupBasis<S>>>,
-    NumericRunError<BandError>,
->
-where
-    S: LayoutScalar,
-    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
-    C: FnMut(S, PostLineClearIntent) -> S,
-{
-    let NumericGroupAttempt {
-        entry,
-        reference,
-        goal,
-    } = attempt;
-    sequence.restore(entry);
-    let mut remaining = boundaries[entry.state.boundary_index..]
-        .iter()
-        .copied()
-        .peekable();
-    let outcome = walk_numeric_sequence(
-        request,
-        sequence,
-        &mut remaining,
-        NumericWalkControl::group(goal.map(LineQualityGoal::Balance), Some(reference.count)),
-        band_source,
-        clear_source,
-    )?;
+    NumericWrappingError,
+> {
     if outcome != NumericWalkOutcome::GroupComplete {
         return Ok(None);
     }
@@ -3292,224 +3278,6 @@ where
         },
     }))
 }
-fn replay_numeric_auto<S, B, C, BandError>(
-    request: NumericWalkInput<'_, S>,
-    boundaries: &[InlineSourceCursor],
-    sequence: &mut NumericSequence<S>,
-    initial: NumericGroupEntry<S>,
-    band_source: &mut B,
-    clear_source: &mut C,
-) -> Result<(), NumericRunError<BandError>>
-where
-    S: LayoutScalar,
-    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
-    C: FnMut(S, PostLineClearIntent) -> S,
-{
-    sequence.restore(initial);
-    let mut cursor = boundaries.iter().copied().peekable();
-    walk_numeric_sequence(
-        request,
-        sequence,
-        &mut cursor,
-        NumericWalkControl::auto(),
-        band_source,
-        clear_source,
-    )?;
-    Ok(())
-}
-fn balance_numeric_sequence<S, B, C, BandError>(
-    request: NumericWalkInput<'_, S>,
-    boundaries: &[InlineSourceCursor],
-    sequence: &mut NumericSequence<S>,
-    mut band_source: B,
-    mut clear_source: C,
-) -> Result<(), NumericRunError<BandError>>
-where
-    S: LayoutScalar,
-    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
-    C: FnMut(S, PostLineClearIntent) -> S,
-{
-    use crate::inline_wrapping::balance::{choose_group, variance_order};
-    use std::cmp::Ordering;
-    let invalid = crate::inline_wrapping::NumericWrappingError::InvalidBalanceBasis;
-    let initial = sequence.checkpoint();
-    replay_numeric_auto(
-        request,
-        boundaries,
-        sequence,
-        initial,
-        &mut band_source,
-        &mut clear_source,
-    )?;
-    let references = numeric_reference_groups(&sequence.selected_lines)?;
-    sequence.restore(initial);
-    let mut program = Vec::with_capacity(references.len());
-    let mut improved = false;
-    for reference in &references {
-        let entry = sequence.checkpoint();
-        let auto = numeric_group_trial(
-            request,
-            boundaries,
-            sequence,
-            NumericGroupAttempt {
-                entry,
-                reference,
-                goal: None,
-            },
-            &mut band_source,
-            &mut clear_source,
-        )?;
-        let (goal, trial) = if let Some(residuals) = &reference.residuals {
-            let winner = choose_group(residuals, auto, |goal| {
-                numeric_group_trial(
-                    request,
-                    boundaries,
-                    sequence,
-                    NumericGroupAttempt {
-                        entry,
-                        reference,
-                        goal: Some(goal),
-                    },
-                    &mut band_source,
-                    &mut clear_source,
-                )
-            })?;
-            let Some(winner) = winner else {
-                return replay_numeric_auto(
-                    request,
-                    boundaries,
-                    sequence,
-                    initial,
-                    &mut band_source,
-                    &mut clear_source,
-                );
-            };
-            improved |= variance_order(&winner.trial.residuals, residuals).ok_or(invalid)?
-                == Ordering::Less;
-            (winner.goal, winner.trial)
-        } else {
-            let Some(auto) = auto else {
-                return replay_numeric_auto(
-                    request,
-                    boundaries,
-                    sequence,
-                    initial,
-                    &mut band_source,
-                    &mut clear_source,
-                );
-            };
-            // Noneligible groups use one actual local Auto invocation; do not
-            // format a long unrelated group again for winner selection.
-            program.push(NumericGroupProgram {
-                goal: None,
-                basis: auto.value,
-            });
-            continue;
-        };
-        let replay = numeric_group_trial(
-            request,
-            boundaries,
-            sequence,
-            NumericGroupAttempt {
-                entry,
-                reference,
-                goal,
-            },
-            &mut band_source,
-            &mut clear_source,
-        )?;
-        let Some(replay) = replay else {
-            return replay_numeric_auto(
-                request,
-                boundaries,
-                sequence,
-                initial,
-                &mut band_source,
-                &mut clear_source,
-            );
-        };
-        if replay.value != trial.value {
-            return Err(invalid.into());
-        }
-        program.push(NumericGroupProgram {
-            goal,
-            basis: replay.value,
-        });
-    }
-    // One whole-program replay starts at the true incoming state. Group slices
-    // index the one authentic hard-boundary inventory; earlier prefixes are
-    // borrowed and never replayed by another group's target portfolio.
-    sequence.restore(initial);
-    for (reference, program) in references.iter().zip(&program) {
-        let entry = sequence.checkpoint();
-        let replay = numeric_group_trial(
-            request,
-            boundaries,
-            sequence,
-            NumericGroupAttempt {
-                entry,
-                reference,
-                goal: program.goal,
-            },
-            &mut band_source,
-            &mut clear_source,
-        )?;
-        let Some(replay) = replay else {
-            return replay_numeric_auto(
-                request,
-                boundaries,
-                sequence,
-                initial,
-                &mut band_source,
-                &mut clear_source,
-            );
-        };
-        if replay.value != program.basis {
-            return Err(invalid.into());
-        }
-        if let Some(reference) = &reference.residuals
-            && variance_order(&replay.residuals, reference).ok_or(invalid)? == Ordering::Greater
-        {
-            return replay_numeric_auto(
-                request,
-                boundaries,
-                sequence,
-                initial,
-                &mut band_source,
-                &mut clear_source,
-            );
-        }
-    }
-    let before = sequence.selected_lines.len();
-    let mut remaining = boundaries[sequence.state.boundary_index..]
-        .iter()
-        .copied()
-        .peekable();
-    if walk_numeric_sequence(
-        request,
-        sequence,
-        &mut remaining,
-        NumericWalkControl::auto(),
-        &mut band_source,
-        &mut clear_source,
-    )? != NumericWalkOutcome::Exhausted
-        || sequence.selected_lines.len() != before
-    {
-        return Err(invalid.into());
-    }
-    if !improved {
-        return replay_numeric_auto(
-            request,
-            boundaries,
-            sequence,
-            initial,
-            &mut band_source,
-            &mut clear_source,
-        );
-    }
-    Ok(())
-}
-
 fn numeric_line_boundaries<S: LayoutScalar>(
     input: &MixedInlineRunInputOf<S>,
 ) -> Vec<InlineSourceCursor> {
@@ -3575,14 +3343,21 @@ fn numeric_line_boundaries<S: LayoutScalar>(
     .collect()
 }
 
-pub(super) fn numeric_fit_is_ordinary<S: LayoutScalar>(
+pub(super) fn numeric_fit_supports_continuation<S: LayoutScalar>(
     style: crate::TextWrapStyle,
     available: AxisSizingRequestOf<S>,
 ) -> bool {
     matches!(
         style,
-        crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable
+        crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable | crate::TextWrapStyle::Balance
     ) || crate::layout_math::normal_available_size(available).is_none()
+}
+
+enum NumericRunOwner<S: LayoutScalar> {
+    Ordinary(NumericWalk),
+    // Balance retains its reference groups and finite portfolio. Keep that
+    // state off the common request frame; ordinary runs need no allocation.
+    Balance(Box<balance::NumericBalance<S>>),
 }
 
 pub(super) struct NumericRun<S: LayoutScalar> {
@@ -3591,7 +3366,7 @@ pub(super) struct NumericRun<S: LayoutScalar> {
     available: S,
     boundaries: Vec<InlineSourceCursor>,
     sequence: NumericSequence<S>,
-    direction: Direction,
+    owner: NumericRunOwner<S>,
     pending: Option<AtomicReceiverDemand>,
 }
 
@@ -3602,18 +3377,33 @@ impl<S: LayoutScalar> NumericRun<S> {
     ) -> Result<Self, NumericWrappingError> {
         let supplied = project_inline_participants(&input.participants);
         let available = resolved_inline_available(&input, &supplied)?;
+        Ok(Self::from_resolved(input, supplied, available, observe))
+    }
+
+    fn from_resolved(
+        input: MixedInlineRunInputOf<S>,
+        supplied: Vec<SuppliedInlineParticipant>,
+        available: S,
+        observe: bool,
+    ) -> Self {
         let boundaries = numeric_line_boundaries(&input);
-        let sequence = NumericSequence::new(&input, observe);
-        let direction = input.line_box_context.weak_direction();
-        Ok(Self {
+        let balanced = input.text_wrap_style == crate::TextWrapStyle::Balance
+            && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
+        let sequence = NumericSequence::new(&input, observe || balanced);
+        let owner = if balanced {
+            NumericRunOwner::Balance(Box::new(balance::NumericBalance::new(&sequence)))
+        } else {
+            NumericRunOwner::Ordinary(NumericWalk::new(&sequence, NumericWalkControl::auto()))
+        };
+        Self {
             input,
             supplied,
             available,
             boundaries,
             sequence,
-            direction,
+            owner,
             pending: None,
-        })
+        }
     }
 
     pub(super) fn advance<B, C, BandError>(
@@ -3626,24 +3416,31 @@ impl<S: LayoutScalar> NumericRun<S> {
         C: FnMut(S, PostLineClearIntent) -> S,
     {
         debug_assert!(self.pending.is_none());
-        let mut boundaries = self.boundaries[self.sequence.state.boundary_index..]
-            .iter()
-            .copied()
-            .peekable();
-        let step = walk_numeric_sequence_step(
-            NumericWalkInput {
-                input: &self.input,
-                supplied: &self.supplied,
-                available: self.available,
-                receiver_source: ReceiverSourceMode::Deferred,
-            },
-            &mut self.sequence,
-            &mut boundaries,
-            NumericWalkControl::auto(),
-            self.direction,
-            band,
-            clear,
-        )?;
+        let request = NumericWalkInput {
+            input: &self.input,
+            supplied: &self.supplied,
+            available: self.available,
+            receiver_source: ReceiverSourceMode::Deferred,
+        };
+        let step = match &mut self.owner {
+            NumericRunOwner::Balance(balance) => {
+                balance.advance(request, &mut self.sequence, &self.boundaries, band, clear)?
+            }
+            NumericRunOwner::Ordinary(walk) => {
+                let mut boundaries = self.boundaries[self.sequence.state.boundary_index..]
+                    .iter()
+                    .copied()
+                    .peekable();
+                walk_numeric_sequence_step(
+                    request,
+                    &mut self.sequence,
+                    &mut boundaries,
+                    walk,
+                    band,
+                    clear,
+                )?
+            }
+        };
         match step {
             NumericWalkStep::Complete(_) => Ok(None),
             NumericWalkStep::Receiver(demand) => {
@@ -3679,7 +3476,7 @@ fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource, ReceiverSo
     mut band_source: BandSource,
     mut clear_source: ClearSource,
     observe_formatted: bool,
-    receiver_source: ReceiverSource,
+    mut receiver_source: ReceiverSource,
 ) -> Result<MixedInlineRunReportOf<S>, NumericRunError<BandError>>
 where
     S: LayoutScalar,
@@ -3692,22 +3489,21 @@ where
         )
             -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError>,
 {
-    let mut line_boundaries = numeric_line_boundaries(&input).into_iter().peekable();
-    let balance = match input.text_wrap_style {
-        crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable => false,
-        crate::TextWrapStyle::Balance => {
-            crate::layout_math::normal_available_size(input.available_inline_extent).is_some()
+    if input.text_wrap_style == crate::TextWrapStyle::Balance
+        && crate::layout_math::normal_available_size(input.available_inline_extent).is_some()
+    {
+        let mut run = NumericRun::from_resolved(input, supplied, available, observe_formatted);
+        while let Some(demand) = run.advance(&mut band_source, &mut clear_source)? {
+            run.accept_receiver(receiver_source(demand.source_index, demand.expected)?)?;
         }
-        crate::TextWrapStyle::AvoidShortLastLine | crate::TextWrapStyle::Pretty => false,
-    };
+        return run.finish();
+    }
+    let mut line_boundaries = numeric_line_boundaries(&input).into_iter().peekable();
     let repair_tail = input.text_wrap_style == crate::TextWrapStyle::AvoidShortLastLine
         && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
     let pretty = input.text_wrap_style == crate::TextWrapStyle::Pretty
         && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
-    let mut sequence = NumericSequence::new(
-        &input,
-        observe_formatted || balance || repair_tail || pretty,
-    );
+    let mut sequence = NumericSequence::new(&input, observe_formatted || repair_tail || pretty);
     let receiver_source = std::cell::RefCell::new(receiver_source);
     let request = NumericWalkInput {
         input: &input,
@@ -3715,16 +3511,7 @@ where
         available,
         receiver_source: ReceiverSourceMode::Immediate(&receiver_source),
     };
-    if balance {
-        let boundaries = line_boundaries.collect::<Vec<_>>();
-        balance_numeric_sequence(
-            request,
-            &boundaries,
-            &mut sequence,
-            &mut band_source,
-            &mut clear_source,
-        )?;
-    } else if repair_tail {
+    if repair_tail {
         let boundaries = line_boundaries.collect::<Vec<_>>();
         tail::repair_numeric_tail(
             request,
