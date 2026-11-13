@@ -2096,6 +2096,37 @@ pub(crate) struct ScriptRegistrationKey {
 pub struct DomDocumentScriptRegistration(pub(crate) Arc<ScriptRegistration>);
 
 impl DomDocumentScriptRegistration {
+    /// Enable capture of committed insertion facts for this script attachment.
+    pub fn observe_custom_element_insertions(&self) -> Result<(), crate::DomError> {
+        if !self.is_active() {
+            return Err(crate::DomError::HostedSourceUnavailable);
+        }
+        self.0
+            .custom_element_insertions
+            .get_or_init(Default::default);
+        Ok(())
+    }
+
+    /// Take the earliest committed insertion segment for this attachment.
+    pub fn take_custom_element_insertions(
+        &self,
+        operation: crate::DomSourceOperationId,
+        inspections: usize,
+    ) -> Result<Option<crate::DomCustomElementInsertions>, crate::DomError> {
+        self.0
+            .custom_element_insertions
+            .get()
+            .map_or(Ok(None), |inbox| inbox.take(operation, inspections))
+    }
+
+    /// Number of queue entries to admit before scanning this attachment's inbox.
+    pub fn custom_element_insertion_segments(&self) -> usize {
+        self.0
+            .custom_element_insertions
+            .get()
+            .map_or(0, crate::store::source::reactions::Inbox::segments)
+    }
+
     /// Retained target body to admit before publishing the attachment.
     pub const fn storage_bytes() -> usize {
         size_of::<ScriptRegistration>()
@@ -2135,6 +2166,8 @@ pub(crate) struct ScriptRegistration {
     pub(crate) navigable: DomHostedNavigableId,
     pub(crate) end: std::sync::OnceLock<ScriptRegistrationEnd>,
     pub(crate) engine_disposed: std::sync::atomic::AtomicBool,
+    pub(crate) custom_element_insertions:
+        std::sync::OnceLock<crate::store::source::reactions::Inbox>,
     pub(crate) _backing: DomHostedRuntimeRetention,
 }
 

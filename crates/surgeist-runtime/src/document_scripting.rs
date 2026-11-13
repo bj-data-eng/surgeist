@@ -410,6 +410,14 @@ impl NativeOwner {
         if native.pending_attribute.get_mut().is_some()
             || native.pending_constructor.get_mut().is_some()
             || native.pending_definition_reactions.get_mut().is_some()
+            || native.attachment.get().is_some_and(|attachment| {
+                native
+                    .session
+                    .get_mut()
+                    .dom()
+                    .raw()
+                    .has_pending_custom_element_insertions(&attachment.canonical)
+            })
             || pending_source.is_some_and(|status| {
                 native
                     .pending_style
@@ -1424,6 +1432,26 @@ impl fmt::Debug for NativeOwner {
 }
 
 impl StoppedDocumentScriptHost {
+    /// Discard insertion upgrades retained by the original stopped attachment.
+    pub fn discard_pending_insertion_upgrades(
+        &mut self,
+    ) -> Result<usize, DocumentScriptNativeError> {
+        let attachment = self
+            .native
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        let mut session = self
+            .native
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        Ok(session
+            .dom()
+            .raw_mut()
+            .discard_stopped_custom_element_insertions(&attachment.canonical)?)
+    }
+
     /// Raise closed custom-element constructor ancestors so a pending nested
     /// native operation can resume. Original constructor work stays charged.
     pub fn raise_pending_custom_element_limits(

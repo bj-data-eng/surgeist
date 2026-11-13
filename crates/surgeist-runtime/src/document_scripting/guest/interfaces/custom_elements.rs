@@ -262,8 +262,8 @@ struct Definition {
     id: DomRegistryDefinitionId,
     name: DocumentString,
     constructor: RetainedCallbackObject,
-    _callbacks: [Option<RetainedCallbackObject>; CALLBACK_COUNT],
-    _observed: Option<Rc<ObservedAttributes>>,
+    callbacks: [Option<RetainedCallbackObject>; CALLBACK_COUNT],
+    observed: Option<Rc<ObservedAttributes>>,
     _disable_internals: bool,
     _name_backing: GuestBacking,
 }
@@ -850,8 +850,8 @@ impl Capture {
                     id,
                     name,
                     constructor,
-                    _callbacks: callbacks,
-                    _observed: observed_attributes,
+                    callbacks,
+                    observed: observed_attributes,
                     _disable_internals: read.disable_internals,
                     _name_backing: name_backing,
                 },
@@ -873,131 +873,21 @@ impl Capture {
                     candidate_constructor.zip(reactions.as_mut())
                 {
                     while let Some(&node) = reactions.candidates.values.get(reactions.cursor) {
-                        let initial = self.callbacks.with_read(&owner, &events, |read, _| {
-                            let node = match read.node(node) {
-                                Ok(node) => node,
-                                Err(DocumentGuestEventError::Document(
-                                    DocumentScriptError::Native(DocumentScriptNativeError::Dom(
-                                        surgeist_dom::DomError::StaleNode,
-                                    )),
-                                )) => return Ok(None),
-                                Err(error) => return Err(error),
-                            };
-                            let Some(element) = node.as_element() else {
-                                return Ok(None);
-                            };
-                            if element.custom_element_state()
-                                != surgeist_dom::HtmlCustomElementState::Undefined
-                            {
-                                return Ok(None);
-                            }
-                            let mut attributes = ReactionList::default();
-                            if let (Some(observed), Some(_)) = (&observed, &initial_attribute)
-                                && let Some(map) = node.attributes()
-                            {
-                                map.visit_with(
-                                    || read.step(),
-                                    |attribute| {
-                                        let name = attribute.name();
-                                        for (expected, _) in &observed.values {
-                                            read.step()?;
-                                            if registry_name_matches_with(
-                                                name.local_name().code_units(),
-                                                expected.code_units(),
-                                                || read.step(),
-                                            )? {
-                                                let local = self
-                                                    .callbacks
-                                                    .conversion
-                                                    .run(scope, |cx| {
-                                                        cx.copy_to_js(
-                                                            name.local_name().code_units(),
-                                                        )
-                                                    })
-                                                    .map_err(Error::from)?;
-                                                let value = self
-                                                    .callbacks
-                                                    .conversion
-                                                    .run(scope, |cx| {
-                                                        cx.copy_to_js(
-                                                            attribute.value().code_units(),
-                                                        )
-                                                    })
-                                                    .map_err(Error::from)?;
-                                                let namespace = match name.namespace_uri() {
-                                                    Some(uri) => self
-                                                        .callbacks
-                                                        .conversion
-                                                        .run(scope, |cx| {
-                                                            cx.copy_to_js(uri.code_units())
-                                                        })
-                                                        .map_err(Error::from)?,
-                                                    None => scope.primitive(Primitive::Null)?,
-                                                };
-                                                let old = scope.primitive(Primitive::Null)?;
-                                                let root_bytes = events
-                                                    .exception_root_bytes
-                                                    .checked_add(size_of::<GuestBacking>())
-                                                    .ok_or(
-                                                        DocumentScriptNativeError::StorageLimit,
-                                                    )?;
-                                                let arguments = [local, old, value, namespace];
-                                                for argument in &arguments {
-                                                    scope.retain_invocation_result_backing(
-                                                        argument,
-                                                        Box::new(read.reserve(root_bytes)?),
-                                                    )?;
-                                                }
-                                                attributes.push(read, arguments)?;
-                                                break;
-                                            }
-                                        }
-                                        Ok(())
-                                    },
-                                )?;
-                            }
-                            let is_connected = connected.is_some()
-                                && matches!(
-                                    node.root_with(true, || read.step())?.kind(),
-                                    DomNodeKind::Document(_)
-                                );
-                            Ok(Some((attributes, is_connected)))
-                        })?;
-                        let Some((attributes, is_connected)) = initial else {
-                            reactions.cursor += 1;
-                            continue;
-                        };
-                        let receiver = public.project_node(scope, &owner, &events, node)?;
-                        if public.document.ordinary.upgrade_existing(
+                        self.invoke_upgrade_candidate(
                             scope,
-                            (&owner, &events),
-                            (node, id, registry.global),
-                            (&constructor, interface, realm),
-                            &receiver,
-                        )? {
-                            if let Some(callback) = &initial_attribute {
-                                for arguments in &attributes.values {
-                                    invoke_initial_reaction(
-                                        scope,
-                                        (&owner, &events),
-                                        (id, node, DocumentGuestUpgradeCallback::AttributeChanged),
-                                        callback,
-                                        &receiver,
-                                        arguments,
-                                    )?;
-                                }
-                            }
-                            if let Some(callback) = connected.as_ref().filter(|_| is_connected) {
-                                invoke_initial_reaction(
-                                    scope,
-                                    (&owner, &events),
-                                    (id, node, DocumentGuestUpgradeCallback::Connected),
-                                    callback,
-                                    &receiver,
-                                    &[],
-                                )?;
-                            }
-                        }
+                            (&owner, &events, public),
+                            node,
+                            UpgradeDefinition {
+                                id,
+                                global: registry.global,
+                                constructor: &constructor,
+                                interface,
+                                realm,
+                                initial_attribute: initial_attribute.as_ref(),
+                                connected: connected.as_ref(),
+                                observed: observed.as_deref(),
+                            },
+                        )?;
                         reactions.cursor += 1;
                     }
                 }
@@ -1023,6 +913,207 @@ impl Capture {
             }
             Err(error) => refuse(scope, &events.refusal, error),
         }
+    }
+
+    pub(super) fn drain_insertion_upgrades<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        operation: surgeist_dom::DomSourceOperationId,
+    ) -> Result<(), DocumentGuestEventError> {
+        let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+        let registration = owner
+            .attachment
+            .get()
+            .and_then(|attachment| attachment.registration.upgrade())
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        loop {
+            let inspections = registration.custom_element_insertion_segments();
+            let work =
+                u64::try_from(inspections).map_err(|_| DocumentGuestEventError::WorkLimit)?;
+            events.charge_work(work)?;
+            let Some(mut batch) =
+                registration.take_custom_element_insertions(operation, inspections)?
+            else {
+                break;
+            };
+            while let Some(&fact) = batch.facts().first() {
+                let (global, constructor, interface, initial_attribute, connected, observed) =
+                    self.callbacks.with_read(owner, events, |read, _| {
+                        public.with_registry(
+                            read,
+                            |registry| registry.id == fact.definition.registry(),
+                            |registry| {
+                                read.step()?;
+                                let rows = registry
+                                    .definitions
+                                    .try_borrow()
+                                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                                let row = rows
+                                    .rows
+                                    .get(fact.definition.ordinal())
+                                    .filter(|row| row.id == fact.definition)
+                                    .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+                                Ok((
+                                    registry.global,
+                                    row.constructor.clone(),
+                                    row.interface,
+                                    row.callbacks[4].clone(),
+                                    row.callbacks[0].clone(),
+                                    row.observed.clone(),
+                                ))
+                            },
+                        )
+                    })?;
+                let realm = constructor.associated_realm().identity();
+                let constructor = scope.open_callback_object(&constructor)?;
+                self.invoke_upgrade_candidate(
+                    scope,
+                    (owner, events, public),
+                    fact.element,
+                    UpgradeDefinition {
+                        id: fact.definition,
+                        global,
+                        constructor: &constructor,
+                        interface,
+                        realm,
+                        initial_attribute: initial_attribute.as_ref(),
+                        connected: connected.as_ref(),
+                        observed: observed.as_deref(),
+                    },
+                )?;
+                batch.acknowledge_front();
+            }
+        }
+        Ok(())
+    }
+
+    fn invoke_upgrade_candidate<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events, public): (&NativeOwner, &GuestEvents, &PublicEventBindings),
+        node: NodeId,
+        UpgradeDefinition {
+            id,
+            global,
+            constructor,
+            interface,
+            realm,
+            initial_attribute,
+            connected,
+            observed,
+        }: UpgradeDefinition<'_, 'scope>,
+    ) -> Result<(), DocumentGuestEventError> {
+        let initial = self.callbacks.with_read(owner, events, |read, _| {
+            let node = match read.node(node) {
+                Ok(node) => node,
+                Err(DocumentGuestEventError::Document(DocumentScriptError::Native(
+                    DocumentScriptNativeError::Dom(surgeist_dom::DomError::StaleNode),
+                ))) => return Ok(None),
+                Err(error) => return Err(error),
+            };
+            let Some(element) = node.as_element() else {
+                return Ok(None);
+            };
+            if element.custom_element_state() != surgeist_dom::HtmlCustomElementState::Undefined {
+                return Ok(None);
+            }
+            let mut attributes = ReactionList::default();
+            if let (Some(observed), Some(_)) = (observed, initial_attribute)
+                && let Some(map) = node.attributes()
+            {
+                map.visit_with(
+                    || read.step(),
+                    |attribute| {
+                        let name = attribute.name();
+                        for (expected, _) in &observed.values {
+                            read.step()?;
+                            if registry_name_matches_with(
+                                name.local_name().code_units(),
+                                expected.code_units(),
+                                || read.step(),
+                            )? {
+                                let local = self
+                                    .callbacks
+                                    .conversion
+                                    .run(scope, |cx| cx.copy_to_js(name.local_name().code_units()))
+                                    .map_err(Error::from)?;
+                                let value = self
+                                    .callbacks
+                                    .conversion
+                                    .run(scope, |cx| cx.copy_to_js(attribute.value().code_units()))
+                                    .map_err(Error::from)?;
+                                let namespace = match name.namespace_uri() {
+                                    Some(uri) => self
+                                        .callbacks
+                                        .conversion
+                                        .run(scope, |cx| cx.copy_to_js(uri.code_units()))
+                                        .map_err(Error::from)?,
+                                    None => scope.primitive(Primitive::Null)?,
+                                };
+                                let old = scope.primitive(Primitive::Null)?;
+                                let root_bytes = events
+                                    .exception_root_bytes
+                                    .checked_add(size_of::<GuestBacking>())
+                                    .ok_or(DocumentScriptNativeError::StorageLimit)?;
+                                let arguments = [local, old, value, namespace];
+                                for argument in &arguments {
+                                    scope.retain_invocation_result_backing(
+                                        argument,
+                                        Box::new(read.reserve(root_bytes)?),
+                                    )?;
+                                }
+                                attributes.push(read, arguments)?;
+                                break;
+                            }
+                        }
+                        Ok(())
+                    },
+                )?;
+            }
+            let is_connected = connected.is_some()
+                && matches!(
+                    node.root_with(true, || read.step())?.kind(),
+                    DomNodeKind::Document(_)
+                );
+            Ok(Some((attributes, is_connected)))
+        })?;
+        let Some((attributes, is_connected)) = initial else {
+            return Ok(());
+        };
+        let receiver = public.project_node(scope, owner, events, node)?;
+        if public.document.ordinary.upgrade_existing(
+            scope,
+            (owner, events),
+            (node, id, global),
+            (constructor, interface, realm),
+            &receiver,
+        )? {
+            if let Some(callback) = initial_attribute {
+                for arguments in &attributes.values {
+                    invoke_initial_reaction(
+                        scope,
+                        (owner, events),
+                        (id, node, DocumentGuestUpgradeCallback::AttributeChanged),
+                        callback,
+                        &receiver,
+                        arguments,
+                    )?;
+                }
+            }
+            if let Some(callback) = connected.filter(|_| is_connected) {
+                invoke_initial_reaction(
+                    scope,
+                    (owner, events),
+                    (id, node, DocumentGuestUpgradeCallback::Connected),
+                    callback,
+                    &receiver,
+                    &[],
+                )?;
+            }
+        }
+        Ok(())
     }
 
     fn registry_extends<'scope>(
@@ -1189,6 +1280,17 @@ impl Capture {
         });
         document::complete(scope, &events, result)
     }
+}
+
+struct UpgradeDefinition<'a, 'scope> {
+    id: DomRegistryDefinitionId,
+    global: DomHostedGlobalId,
+    constructor: &'a Value<'scope>,
+    interface: &'static str,
+    realm: RealmId,
+    initial_attribute: Option<&'a RetainedCallbackObject>,
+    connected: Option<&'a RetainedCallbackObject>,
+    observed: Option<&'a ObservedAttributes>,
 }
 
 struct DefinitionRead<'scope> {

@@ -824,6 +824,163 @@ fn definition_candidates_include_closed_shadow_in_tree_order() {
 }
 
 #[test]
+fn insertion_reaction_receipt_preserves_shadow_order_and_refused_output() {
+    use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+    use surgeist_html_semantics::HtmlCustomElementDefinition;
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let snapshot = dom.snapshot();
+    let document_view = snapshot.document(document).unwrap();
+    let root = document_view.document_element().unwrap();
+    let DomRegistryBinding::Registry(registry) = document_view.metadata().custom_element_registry()
+    else {
+        panic!("hosted registry");
+    };
+    let mut batch = DomBatch::new();
+    let host = batch.create_element_ns(document, Namespace::html(), "div");
+    let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Closed));
+    let inside = batch.create_element_ns(document, Namespace::html(), "x-insertion");
+    let outside = batch.create_element_ns(document, Namespace::html(), "x-insertion");
+    let later = batch.create_element_ns(document, Namespace::html(), "x-insertion");
+    batch.insert_before(&inside, &shadow, None);
+    batch.insert_before(&outside, &host, None);
+    let committed = dom.apply(batch, &cancel()).unwrap();
+    let host = committed.created(&host).unwrap().unwrap();
+    let inside = committed.created(&inside).unwrap().unwrap();
+    let outside = committed.created(&outside).unwrap().unwrap();
+    let later = committed.created(&later).unwrap().unwrap();
+    let definition = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry,
+            &HtmlCustomElementDefinition::new(
+                "x-insertion".into(),
+                "x-insertion".into(),
+                false,
+                false,
+            ),
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap()
+        .commit()
+        .1;
+    let backing = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    let (binding, registration) = issuer
+        .attach_document_script_host(
+            &mut dom,
+            owner.global(),
+            document,
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel(),
+        )
+        .unwrap();
+    registration.observe_custom_element_insertions().unwrap();
+    let stamp = dom.snapshot().stamp();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(host, root, None),
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel()),
+        Err(DomError::SourceOutputLimit)
+    ));
+    drop(lease);
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    assert_eq!(registration.custom_element_insertion_segments(), 0);
+    let done = source(&mut dom, DomSourceEdit::insert_before(host, root, None));
+    let id = done.operation();
+    assert!(matches!(
+        registration.take_custom_element_insertions(id, 0),
+        Err(DomError::SourceOutputLimit)
+    ));
+    let mut loan = registration
+        .take_custom_element_insertions(id, 1)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        loan.facts(),
+        [
+            crate::DomCustomElementInsertion {
+                element: inside,
+                definition
+            },
+            crate::DomCustomElementInsertion {
+                element: outside,
+                definition
+            },
+        ]
+    );
+    assert!(
+        registration
+            .take_custom_element_insertions(id, 1)
+            .unwrap()
+            .is_none()
+    );
+    assert!(dom.has_pending_custom_element_insertions(&binding));
+    let later_operation =
+        source(&mut dom, DomSourceEdit::insert_before(later, root, None)).operation();
+    let mut later_loan = registration
+        .take_custom_element_insertions(later_operation, 2)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        later_loan.facts(),
+        [crate::DomCustomElementInsertion {
+            element: later,
+            definition
+        }]
+    );
+    later_loan.acknowledge_front();
+    drop(later_loan);
+    loan.acknowledge_front();
+    drop(loan);
+    let loan = registration
+        .take_custom_element_insertions(id, 2)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        loan.facts(),
+        [crate::DomCustomElementInsertion {
+            element: outside,
+            definition
+        }]
+    );
+    registration.revoke();
+    assert!(
+        dom.discard_stopped_custom_element_insertions(&binding)
+            .is_err()
+    );
+    drop(loan);
+    assert_eq!(
+        dom.discard_stopped_custom_element_insertions(&binding)
+            .unwrap(),
+        1
+    );
+    assert!(!dom.has_pending_custom_element_insertions(&binding));
+}
+
+#[test]
 fn customized_factory_publishes_one_receiver_and_retries_its_closing_phase() {
     use surgeist_html::{
         elements::native::HtmlCustomElementState,

@@ -362,6 +362,7 @@ pub use store::source::operation::{
     DomSourceEventFiringLoan, DomSourceLease, DomStyleCspBudget, DomWatchedCustomElementResult,
     DomWatchedElementCreation,
 };
+pub use store::source::reactions::{DomCustomElementInsertion, DomCustomElementInsertions};
 pub use style::{
     DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCspRetention,
     DomStyleCssomOwnerBinding, DomStyleCssomPublicationRejection, DomStyleCssomRoot,

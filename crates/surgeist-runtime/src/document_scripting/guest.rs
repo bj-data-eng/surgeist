@@ -817,6 +817,9 @@ impl PreparedDocumentScriptHost {
             &admission,
         )?);
         let engine = script.publish(&self.native, policy)?;
+        if cfg!(test) {
+            engine.registration.observe_custom_element_insertions()?;
+        }
         Ok((engine, admission))
     }
 }

@@ -239,7 +239,10 @@ impl Capture {
             Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
                 Err(DomError::Cancelled.into())
             }
-            Ok(DomSourceDriveProgress::Complete(_)) => Ok(completion),
+            Ok(DomSourceDriveProgress::Complete(done)) => {
+                self.drain_insertion_upgrades(scope, owner, events, done.operation())?;
+                Ok(completion)
+            }
             Ok(DomSourceDriveProgress::Failed(failure)) => {
                 let error = failure.into_parts().1;
                 match tree_exception(&error) {

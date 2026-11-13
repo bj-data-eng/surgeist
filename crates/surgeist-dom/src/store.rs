@@ -2171,6 +2171,7 @@ impl Dom {
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
         Ok(PreparedPublication {
+            custom_element_insertions: None,
             name_promotions,
             state_custody,
             allocation_ids,
@@ -2272,6 +2273,7 @@ struct PublicationFields<'a> {
 impl PublicationFields<'_> {
     fn publish(mut self, publication: PreparedPublication) -> CommittedPublication {
         let PreparedPublication {
+            custom_element_insertions,
             name_promotions,
             state_custody,
             allocation_ids: _,
@@ -2337,6 +2339,9 @@ impl PublicationFields<'_> {
             *self.style_cssom_roots = style_custody;
         }
         retirement_publication.publish();
+        if let Some(insertions) = custom_element_insertions {
+            insertions.publish();
+        }
         if let Some(plan) = node_retirement_publication {
             plan.publish();
         }
@@ -2400,6 +2405,7 @@ use transaction::staged::DraftNode;
 
 struct Draft {
     base: Arc<State>,
+    custom_element_insertions: Option<source::reactions::InsertionFacts>,
     script_registration: Option<Arc<crate::hosted::ScriptRegistration>>,
     event_recipients: Option<Arc<event::Owner>>,
     inline_membership: Option<inline_style::Membership>,
@@ -2516,6 +2522,7 @@ struct Draft {
     _header_custody: custody::Debit,
 }
 pub(crate) struct PreparedPublication {
+    custom_element_insertions: Option<source::reactions::Publication>,
     created_ranges: Vec<Option<crate::DomRangeId>>,
     state: Arc<State>,
     changed: bool,
@@ -2917,6 +2924,7 @@ impl Draft {
             insertion_trace: None,
             document_environment: dom.document_environment.clone(),
             script_registration: dom.script_registration.as_ref().map(|slot| slot.0.clone()),
+            custom_element_insertions: None,
             input_processing: input_processing::InputProcessing::new(
                 dom.limits.input_scratch,
                 dom.limits.input_work,
