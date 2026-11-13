@@ -10,6 +10,8 @@ mod trusted_policy;
 
 use super::*;
 pub(in crate::document_scripting) use custom_elements::document_registry as creation_document_registry;
+#[cfg(test)]
+pub(in crate::document_scripting) use custom_elements::document_registry_identity;
 pub(in crate::document_scripting) use custom_elements::{
     ActiveConstructor, PendingDefinitionReactions,
 };
@@ -188,7 +190,7 @@ impl PublicEventBindings {
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             let snapshot = session.snapshot();
-            let registry = custom_elements::document_registry(&snapshot, permit.document)?;
+            let registry = custom_elements::document_registry(&snapshot, permit.document, true)?;
             let inbox = session
                 .dom()
                 .raw()

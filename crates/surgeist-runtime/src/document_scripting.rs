@@ -70,6 +70,9 @@ pub enum DocumentScriptNativeError {
     CreationGlobalUnavailable,
     /// The exact native Global already has a creation realm.
     CreationRealmAlreadyRegistered,
+    /// This Global retains definitions whose original executable custody is
+    /// absent from the new realm.
+    CustomElementRegistryCustodyUnavailable(surgeist_dom::DomRegistryId),
     /// The guest binding budget refused installation in the creation realm.
     CreationRealmWorkLimit,
     /// A previously admitted projected node lost its managed pin record.
@@ -1196,7 +1199,13 @@ impl DocumentScriptHost {
             let backing = hosted
                 .retain_script_payload(&mut dom, bytes, cancel)
                 .map_err(DocumentScriptNativeError::from)?;
-            let registry = guest::creation_document_registry(&dom.snapshot(), origin.document())?;
+            let snapshot = dom.snapshot();
+            let executable = engine
+                .guest_events
+                .as_ref()
+                .is_some_and(|events| events.installs_public_bindings());
+            let registry =
+                guest::creation_document_registry(&snapshot, origin.document(), executable)?;
             (backing, registry)
         };
         let admission = match &engine.guest_events {

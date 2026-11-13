@@ -241,6 +241,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::element_factory_admits_exact_projection_work();
     super::guest::tests::custom_element_registry_identity_is_canonical();
     super::guest::tests::a_new_heap_cannot_claim_an_existing_executable_registry();
+    super::guest::tests::only_public_origin_projection_requires_constructor_custody();
     super::guest::tests::element_factory_qualifies_the_explicit_registry();
     super::guest::tests::registry_definition_preserves_guest_identity_and_failure();
     super::guest::tests::registry_when_defined_retains_original_promise_and_constructor();

@@ -75,14 +75,79 @@ pub(in crate::document_scripting) fn a_new_heap_cannot_claim_an_existing_executa
     assert!(matches!(
         failure.error,
         DocumentGuestEventError::Document(DocumentScriptError::Native(
-            DocumentScriptNativeError::CreationGlobalUnavailable
-        ))
+            DocumentScriptNativeError::CustomElementRegistryCustodyUnavailable(registry)
+        )) if registry == document_registry_identity(&original, target.document()).unwrap()
     ));
     assert!(registry.is_some());
     let stopped = failure.owner.into_session().unwrap().snapshot();
     assert_eq!(stopped.stamp(), stamp);
-    let id = creation_document_registry(&original, target.document()).unwrap();
+    let id = document_registry_identity(&original, target.document()).unwrap();
     assert_eq!(original.registry(id).unwrap().definition_count(), 1);
+    assert_eq!(stopped.registry(id).unwrap().definition_count(), 1);
+}
+
+pub(in crate::document_scripting) fn only_public_origin_projection_requires_constructor_custody() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, origin) = super::super::cross_realm_tests::hosted_session(&cancel, 0);
+    let target = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted.create_headless_host(&mut dom, &cancel).unwrap();
+        hosted.create_top_level(&mut dom, owner, &cancel).unwrap()
+    };
+    let mut original = attach_public_nodes(session, origin, cancel.clone(), 20_000, 200_000);
+    let limits = original.guest_events().unwrap().limits;
+    let permit = original.permit().unwrap();
+    original
+        .in_document(&permit, |scope| {
+            scope
+                .evaluate(&units(
+                    "customElements.define('x-origin-heap', class extends HTMLElement {})",
+                ))
+                .map(drop)
+        })
+        .unwrap();
+    let session = original.stop().into_session().unwrap();
+    let id = document_registry_identity(&session.snapshot(), origin.document()).unwrap();
+    let mut public = attach_public_nodes(session, target, cancel.clone(), 20_000, 200_000);
+    let permit = public.permit().unwrap();
+    let stamp = public.snapshot().unwrap().stamp();
+    assert!(
+        matches!(public.register_node_creation_realm(&permit, origin), Err(DocumentScriptError::Native(DocumentScriptNativeError::CustomElementRegistryCustodyUnavailable(registry))) if registry == id)
+    );
+    assert_eq!(public.snapshot().unwrap().stamp(), stamp);
+    let mut session = public.stop().into_session().unwrap();
+    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 2,
+        nested_dispatches: 2,
+        storage_bytes: 32_000,
+        work: 10_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancel).unwrap();
+    let mut event_only = PreparedDocumentScriptHost::prepare(session, 2_000_000, cancel)
+        .unwrap()
+        .enable(
+            target,
+            HtmlScriptingPolicy {
+                user_allows: true,
+                automation_allows: true,
+            },
+            DocumentScriptHooks {
+                child_count: &units("readChildCount"),
+                detach_source_node_if: &units("detachIf"),
+            },
+        )
+        .unwrap();
+    let permit = event_only.permit().unwrap();
+    event_only
+        .attach_guest_event_registry(&permit, &mut Some(registry), limits)
+        .unwrap();
+    event_only
+        .register_node_creation_realm(&permit, origin)
+        .unwrap();
+    let stopped = event_only.stop().into_session().unwrap().snapshot();
     assert_eq!(stopped.registry(id).unwrap().definition_count(), 1);
 }
 

@@ -21,6 +21,8 @@ use crate::dom_event::{
 pub use csp_task::DocumentCspViolationProgress;
 use interfaces::PublicEventBindings;
 pub(super) use interfaces::creation_document_registry;
+#[cfg(test)]
+pub(super) use interfaces::document_registry_identity;
 pub(crate) use reports::QueuedViolation;
 use reports::{DirectExceptions, ExceptionRoots};
 pub(super) use reports::{GuestExceptionReports, ViolationQueue};
@@ -656,6 +658,10 @@ impl GuestBudget {
 }
 
 impl GuestEvents {
+    pub(super) fn installs_public_bindings(&self) -> bool {
+        self.public.is_some()
+    }
+
     pub(super) fn prepare_origin(
         &self,
         owner: &NativeOwner,

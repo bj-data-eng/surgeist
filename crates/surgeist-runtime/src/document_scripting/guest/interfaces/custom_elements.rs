@@ -338,6 +338,19 @@ impl Drop for Running<'_> {
 pub(in crate::document_scripting) fn document_registry(
     snapshot: &DomSnapshot,
     document: DocumentId,
+    executable: bool,
+) -> Result<DomRegistryId, DocumentScriptNativeError> {
+    let id = document_registry_identity(snapshot, document)?;
+    let registry = snapshot.registry(id)?;
+    if executable && registry.definition_count() != 0 {
+        return Err(DocumentScriptNativeError::CustomElementRegistryCustodyUnavailable(id));
+    }
+    Ok(id)
+}
+
+pub(in crate::document_scripting) fn document_registry_identity(
+    snapshot: &DomSnapshot,
+    document: DocumentId,
 ) -> Result<DomRegistryId, DocumentScriptNativeError> {
     let DomRegistryBinding::Registry(id) = snapshot
         .document(document)?
@@ -346,7 +359,6 @@ pub(in crate::document_scripting) fn document_registry(
     else {
         return Err(DocumentScriptNativeError::ProjectionCustody);
     };
-    snapshot.registry(id)?;
     Ok(id)
 }
 
