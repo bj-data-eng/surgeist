@@ -292,8 +292,8 @@ pub use slot::{
     DomSlotNotifications, DomSlotQueryLimits, DomSlotSignalCancellationReason,
 };
 pub use snapshot::{
-    DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomShadowRoot, DomSnapshot, DomTagName,
-    DomTreeOrder, DomTreeScope,
+    DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomShadowRoot, DomSiblingDirection,
+    DomSnapshot, DomTagName, DomTreeOrder, DomTreeScope,
 };
 pub use store::DomChildListNotification;
 pub use store::DomNodeIteratorFilterRequest;

@@ -357,6 +357,33 @@ fn element_traversal_filters_character_data_and_preserves_captured_indices() {
     assert_eq!(before.node(text).unwrap().element_index(), None);
     assert_eq!(before.node(b).unwrap().element_index(), Some(1));
     assert_eq!(before.node(a).unwrap().parent_element(), Some(root));
+    use surgeist_dom::DomSiblingDirection::{Next, Previous};
+    let mut parent_lookup = 0usize;
+    let found = before.node(b).unwrap().parent_element_with(|| {
+        parent_lookup += 1;
+        Ok::<_, DomError>(())
+    });
+    assert_eq!(found.unwrap(), Some(root));
+    for (node, direction, expected, inspections) in [
+        (a, Previous, None, 1),
+        (a, Next, Some(text), 2),
+        (b, Previous, Some(comment), 4),
+        (b, Next, None, 4),
+    ] {
+        for available in [parent_lookup + inspections - 1, parent_lookup + inspections] {
+            let mut remaining = available;
+            let observed = before.node(node).unwrap().sibling_with(direction, || {
+                remaining = remaining.checked_sub(1).ok_or(DomError::Cancelled)?;
+                Ok::<_, DomError>(())
+            });
+            assert_eq!(remaining, 0);
+            if available == parent_lookup + inspections {
+                assert_eq!(observed.unwrap(), expected);
+            } else {
+                assert_eq!(observed.unwrap_err(), DomError::Cancelled);
+            }
+        }
+    }
     let mut batch = DomBatch::new();
     batch.insert_before(b, root, Some(a.into()));
     apply(&mut dom, batch);

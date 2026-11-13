@@ -830,13 +830,23 @@ impl<'a> DomNode<'a> {
             .map(crate::DomAttr::value)
     }
     pub fn parent_element(self) -> Option<NodeId> {
-        self.parent().filter(|id| {
-            self.snapshot
-                .node(*id)
-                .expect("captured parent")
-                .as_element()
-                .is_some()
-        })
+        self.parent_element_with(|| Ok::<_, DomError>(()))
+            .expect("captured parent")
+    }
+    /// Observe the ordinary parent only when it is an Element. Charge the
+    /// reached parent lookup and return the original refusal.
+    pub fn parent_element_with<E: From<DomError>>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<NodeId>, E> {
+        let Some(parent) = self.parent() else {
+            return Ok(None);
+        };
+        Ok(self
+            .snapshot
+            .node_with(parent, step)?
+            .as_element()
+            .map(|_| parent))
     }
     pub fn element_children(self) -> impl DoubleEndedIterator<Item = NodeId> + 'a {
         self.node.children().iter().copied().filter(move |id| {
@@ -848,24 +858,43 @@ impl<'a> DomNode<'a> {
         })
     }
     pub fn previous_sibling(self) -> Option<NodeId> {
-        let parent = self.snapshot.node(self.parent()?).expect("captured parent");
-        let position = parent
-            .children()
-            .iter()
-            .position(|id| *id == self.id)
-            .expect("captured sibling");
-        position
-            .checked_sub(1)
-            .map(|position| parent.children()[position])
+        self.sibling_with(DomSiblingDirection::Previous, || Ok::<_, DomError>(()))
+            .expect("captured sibling")
     }
     pub fn next_sibling(self) -> Option<NodeId> {
-        let parent = self.snapshot.node(self.parent()?).expect("captured parent");
-        let position = parent
-            .children()
-            .iter()
-            .position(|id| *id == self.id)
-            .expect("captured sibling");
-        parent.children().get(position + 1).copied()
+        self.sibling_with(DomSiblingDirection::Next, || Ok::<_, DomError>(()))
+            .expect("captured sibling")
+    }
+    /// Observe the adjacent ordinary sibling, admitting the parent lookup
+    /// and each inspected child identity in tree order.
+    pub fn sibling_with<E: From<DomError>>(
+        self,
+        direction: DomSiblingDirection,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<NodeId>, E> {
+        let Some(parent) = self.parent() else {
+            return Ok(None);
+        };
+        let parent = self.snapshot.node_with(parent, &mut step)?;
+        let mut previous = None;
+        let mut children = parent.children().iter().copied();
+        for child in children.by_ref() {
+            step()?;
+            if child == self.id {
+                return match direction {
+                    DomSiblingDirection::Previous => Ok(previous),
+                    DomSiblingDirection::Next => {
+                        let next = children.next();
+                        if next.is_some() {
+                            step()?;
+                        }
+                        Ok(next)
+                    }
+                };
+            }
+            previous = Some(child);
+        }
+        Err(DomError::NotFound.into())
     }
     pub fn previous_element_sibling(self) -> Option<NodeId> {
         let mut next = self.previous_sibling();
@@ -958,6 +987,13 @@ impl<'a> DomNode<'a> {
             DomNodeKind::Document(_)
         )
     }
+}
+
+/// Which ordinary sibling to observe from a captured node.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSiblingDirection {
+    Previous,
+    Next,
 }
 
 /// One exact ordinary root and the separate host of a shadow tree scope.
