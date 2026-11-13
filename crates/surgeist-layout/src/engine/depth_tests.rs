@@ -1643,7 +1643,7 @@ fn deep_ratio_flex_chain_preserves_content_height() {
     );
 }
 
-fn assert_scoped_flex_chain<S: LayoutScalar>(depth: u32) {
+fn assert_scoped_container_chain<S: LayoutScalar>(display: Display, depth: u32) {
     use crate::{
         AlignItems, BlockFragmentainerOf, FragmentationBreakKinds, FragmentationKind,
         LayoutBoundRequestOf, LayoutFlowInput, LayoutSourceBasis, MinSizeOf, PageProgression,
@@ -1679,7 +1679,7 @@ fn assert_scoped_flex_chain<S: LayoutScalar>(depth: u32) {
                 display: if node == leaf {
                     Display::Block
                 } else {
-                    Display::Flex
+                    display
                 },
                 size: Size::new(px(60.0), px(40.0)),
                 min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
@@ -1732,7 +1732,8 @@ fn assert_scoped_flex_chain<S: LayoutScalar>(depth: u32) {
         Vec::new(),
     )
     .expect("bound numeric flow");
-    let batch = compute_layout_with_flow(&flow, 0, request).expect("scoped Flex chain returns");
+    let batch =
+        compute_layout_with_flow(&flow, 0, request).expect("scoped container chain returns");
     assert_eq!(batch.target_basis(), Some(&target));
     assert_eq!(batch.node_layouts().len(), (depth + 3) as usize);
     assert_eq!(batch.fragmentainers().len(), 1);
@@ -1758,8 +1759,8 @@ fn shallow_scoped_flex_chain_preserves_atomic_fragment_geometry() {
     on_bounded_stack(
         "engine::depth_tests::shallow_scoped_flex_chain_preserves_atomic_fragment_geometry",
         || {
-            assert_scoped_flex_chain::<f32>(2);
-            assert_scoped_flex_chain::<f64>(2);
+            assert_scoped_container_chain::<f32>(Display::Flex, 2);
+            assert_scoped_container_chain::<f64>(Display::Flex, 2);
         },
     );
 }
@@ -1769,8 +1770,52 @@ fn deep_scoped_flex_chain_preserves_atomic_fragment_geometry() {
     on_bounded_stack(
         "engine::depth_tests::deep_scoped_flex_chain_preserves_atomic_fragment_geometry",
         || {
-            assert_scoped_flex_chain::<f32>(24);
-            assert_scoped_flex_chain::<f64>(24);
+            assert_scoped_container_chain::<f32>(Display::Flex, 24);
+            assert_scoped_container_chain::<f64>(Display::Flex, 24);
+        },
+    );
+}
+
+#[test]
+fn shallow_scoped_grid_chain_preserves_atomic_fragment_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_scoped_grid_chain_preserves_atomic_fragment_geometry",
+        || {
+            assert_scoped_container_chain::<f32>(Display::Grid, 2);
+            assert_scoped_container_chain::<f64>(Display::Grid, 2);
+        },
+    );
+}
+
+#[test]
+fn deep_scoped_grid_chain_preserves_atomic_fragment_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_scoped_grid_chain_preserves_atomic_fragment_geometry",
+        || {
+            assert_scoped_container_chain::<f32>(Display::Grid, 24);
+            assert_scoped_container_chain::<f64>(Display::Grid, 24);
+        },
+    );
+}
+
+#[test]
+fn shallow_scoped_grid_lanes_chain_preserves_atomic_fragment_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_scoped_grid_lanes_chain_preserves_atomic_fragment_geometry",
+        || {
+            assert_scoped_container_chain::<f32>(Display::GridLanes, 2);
+            assert_scoped_container_chain::<f64>(Display::GridLanes, 2);
+        },
+    );
+}
+
+#[test]
+fn deep_scoped_grid_lanes_chain_preserves_atomic_fragment_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_scoped_grid_lanes_chain_preserves_atomic_fragment_geometry",
+        || {
+            assert_scoped_container_chain::<f32>(Display::GridLanes, 24);
+            assert_scoped_container_chain::<f64>(Display::GridLanes, 24);
         },
     );
 }
