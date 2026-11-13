@@ -250,6 +250,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::reentrant_attribute_write_drains_the_receivers_fifo();
     super::guest::tests::custom_element_subtree_reacts_to_connection_changes();
     super::guest::tests::custom_element_move_uses_the_registered_move_reaction();
+    super::guest::tests::custom_element_adoption_uses_the_original_documents();
     super::guest::tests::registry_upgrade_preserves_nested_definition_and_shadow_refusal();
     super::guest::tests::registry_upgrade_retains_unfinished_candidates_on_refusal();
     super::guest::tests::insertion_upgrade_keeps_only_unentered_callbacks_on_refusal();

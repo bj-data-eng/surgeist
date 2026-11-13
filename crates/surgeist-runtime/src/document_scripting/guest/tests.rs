@@ -453,6 +453,37 @@ pub(in crate::document_scripting) fn custom_element_move_uses_the_registered_mov
     .unwrap();
 }
 
+pub(in crate::document_scripting) fn custom_element_adoption_uses_the_original_documents() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const calls = [];
+            class Adopted extends HTMLElement {
+                disconnectedCallback() { calls.push([this, null, null]); }
+                adoptedCallback(oldDocument, newDocument) {
+                    calls.push([this, oldDocument, newDocument]);
+                }
+            }
+            customElements.define('x-adopted-lifecycle', Adopted);
+            const element = document.createElement('x-adopted-lifecycle');
+            const other = new Document();
+            document.documentElement.appendChild(element);
+            if (other.adoptNode(element) !== element || element.ownerDocument !== other) return false;
+            if (other.adoptNode(element) !== element || calls.length !== 2) return false;
+            if (document.adoptNode(element) !== element || element.ownerDocument !== document) return false;
+            const expected = [
+                [element, null, null],
+                [element, document, other],
+                [element, other, document],
+            ];
+            return calls.length === expected.length && calls.every((call, index) =>
+                call.every((value, offset) => value === expected[index][offset]));
+        })()"#)
+    })
+    .unwrap();
+}
+
 pub(in crate::document_scripting) fn registry_upgrade_preserves_nested_definition_and_shadow_refusal()
  {
     let mut host = public_node_host(20_000, 200_000);
