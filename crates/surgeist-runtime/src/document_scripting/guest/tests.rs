@@ -312,6 +312,50 @@ pub(in crate::document_scripting) fn reinserted_candidate_drains_its_queued_upgr
     }).unwrap();
 }
 
+pub(in crate::document_scripting) fn reentrant_attribute_write_drains_the_receivers_fifo() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const element = document.createElement('x-attribute-fifo');
+            element.setAttribute('data-first', 'first');
+            element.setAttribute('data-next', 'original');
+            document.documentElement.appendChild(element);
+            const calls = [];
+            class Ordered extends HTMLElement {
+                static observedAttributes = ['data-first', 'data-next'];
+                attributeChangedCallback(name, oldValue, value, namespace) {
+                    calls.push([this, name, oldValue, value, namespace]);
+                    if (name === 'data-first') {
+                        this.setAttribute('data-next', 'original');
+                        calls.push('first resumes');
+                    }
+                }
+                connectedCallback() { calls.push('connected'); }
+            }
+            customElements.define('x-attribute-fifo', Ordered);
+            const expected = [
+                [element, 'data-first', null, 'first', null],
+                [element, 'data-next', null, 'original', null],
+                'connected',
+                [element, 'data-next', 'original', 'original', null],
+                'first resumes',
+            ];
+            return calls.length === expected.length && calls.every((actual, index) => {
+                const wanted = expected[index];
+                return Array.isArray(wanted)
+                    ? Array.isArray(actual) && actual.length === wanted.length
+                        && actual.every((value, offset) => value === wanted[offset])
+                    : actual === wanted;
+            });
+        })()"#,
+        )
+    })
+    .unwrap();
+}
+
 pub(in crate::document_scripting) fn registry_upgrade_preserves_nested_definition_and_shadow_refusal()
  {
     let mut host = public_node_host(20_000, 200_000);
