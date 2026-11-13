@@ -663,7 +663,7 @@ fn propagation<S: LayoutScalar>() {
                         axes: input.flow_axes,
                     },
                     input.wrapping.as_ref(),
-                    |_, _| Ok(None),
+                    |_, _| Ok(ReceiverSeed::Unchanged),
                     |r| Ok(r.summary.used_inline_extent <= n(100.0)),
                 )
                 .map_err(NumericRunError::into_numeric)

@@ -176,7 +176,7 @@ fn exercise<S: LayoutScalar>(
             axes: flow.flow_axes,
         },
         Some(&projection),
-        |_, _| Ok(None),
+        |_, _| Ok(ReceiverSeed::Unchanged),
         |receipt| Ok(receipt.summary.used_inline_extent <= S::from_f64(25.0)),
     )
     .map_err(NumericRunError::into_numeric)
@@ -211,7 +211,7 @@ fn exercise<S: LayoutScalar>(
             axes: flow.flow_axes,
         },
         Some(&projection),
-        |_, _| Ok(None),
+        |_, _| Ok(ReceiverSeed::Unchanged),
         |receipt| Ok(receipt.summary.used_inline_extent <= S::from_f64(25.0)),
     )
     .map_err(NumericRunError::into_numeric)

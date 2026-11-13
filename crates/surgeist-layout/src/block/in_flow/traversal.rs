@@ -14,6 +14,7 @@ pub(crate) struct InFlowChild<'input, Node, S: LayoutScalar> {
 pub(crate) enum PendingInFlowChild<'input, Node, S: LayoutScalar> {
     Hidden,
     Box(PendingBox<'input, Node, S>),
+    InlineReceiver(crate::block::inline_run::AtomicReceiverChild<Node, S>),
     Inline(crate::block::inline_run::PendingInlinePreparation<'input, Node, S>),
     FloatBand(FloatBandRequest<S>),
 }
@@ -74,6 +75,7 @@ impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
             }
             PendingInFlowChild::Box(_) => tree.compute_block_child(request)?,
             PendingInFlowChild::Hidden
+            | PendingInFlowChild::InlineReceiver(_)
             | PendingInFlowChild::Inline(_)
             | PendingInFlowChild::FloatBand(_) => {
                 tree.compute_child(request.node, request.input)?
@@ -102,6 +104,7 @@ struct ActiveInlineRun<'input, Node, S: LayoutScalar> {
     transition: VisibleInlineRunTransition,
     context: InlineRunContext<S>,
     preparation: crate::block::inline_run::InlineRunPreparation<'input, Node, S>,
+    fitting: Option<Box<crate::block::inline_run::NumericFit<S>>>,
 }
 
 pub(in crate::block) struct InFlowTraversal<'input, Node, S: LayoutScalar> {
@@ -496,6 +499,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
                     transition,
                     context,
                     preparation,
+                    fitting: None,
                 });
                 return self.advance_inline(tree, children, constants);
             }
@@ -560,10 +564,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
     {
         let active = self.active_inline.as_mut().expect("active inline run");
         let run = &children[active.transition.start..active.transition.end];
-        if let Some(child) =
-            active
-                .preparation
-                .next_child(tree, self.node, run, constants, &active.context)?
+        if active.fitting.is_none()
+            && let Some(child) =
+                active
+                    .preparation
+                    .next_child(tree, self.node, run, constants, &active.context)?
         {
             return Ok(InFlowStep::Child(InFlowChild {
                 request: scope::ChildRequest {
@@ -574,11 +579,40 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
                 pending: PendingInFlowChild::Inline(child.pending),
             }));
         }
+        if active.fitting.is_none() {
+            active.fitting = active.preparation.begin_numeric_fit(
+                tree,
+                self.node,
+                run,
+                constants,
+                &active.context,
+            )?;
+        }
+        if let Some(fitting) = active.fitting.as_mut()
+            && let Some(child) = active.preparation.advance_numeric_fit(
+                fitting,
+                tree,
+                self.node,
+                constants,
+                &self.float_exclusions,
+            )?
+        {
+            return Ok(InFlowStep::Child(InFlowChild {
+                request: scope::ChildRequest {
+                    node: child.node,
+                    input: child.input,
+                    entry: None,
+                },
+                pending: PendingInFlowChild::InlineReceiver(child),
+            }));
+        }
         let ActiveInlineRun {
             transition,
             context,
             preparation,
+            fitting,
         } = self.active_inline.take().expect("completed inline run");
+        let numeric_fit = fitting.map(|fit| fit.finish(self.node)).transpose()?;
         transition.apply(
             tree,
             self.node,
@@ -588,6 +622,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
                 context,
                 prepared: preparation.prepared,
                 adjoining_margin: self.adjoining.adjoining_displacement(),
+                numeric_fit,
             },
             InlineRunTransitionState {
                 box_frontier: &mut self.box_frontier,
@@ -653,6 +688,22 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         let mut pending = match pending {
+            PendingInFlowChild::InlineReceiver(child) => {
+                let active = self.active_inline.as_mut().expect("active inline run");
+                return active
+                    .preparation
+                    .accept_receiver(
+                        active
+                            .fitting
+                            .as_mut()
+                            .expect("named receiver belongs to numeric fitting"),
+                        self.node,
+                        child,
+                        receipt.layout(),
+                        constants.flow_axes,
+                    )
+                    .map_err(Into::into);
+            }
             PendingInFlowChild::Inline(pending) => {
                 let active = self.active_inline.as_mut().expect("active inline run");
                 return active

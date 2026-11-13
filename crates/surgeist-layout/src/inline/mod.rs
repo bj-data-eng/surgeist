@@ -56,6 +56,8 @@ mod named_float_phase_tests;
 #[cfg(test)]
 mod no_strut_tests;
 #[cfg(test)]
+mod receiver_continuation_tests;
+#[cfg(test)]
 mod wrap_edges_tests;
 #[cfg(test)]
 mod wrap_inside_auto_tests;
@@ -533,6 +535,29 @@ struct SelectedInlineLineCandidateOf<S: LayoutScalar> {
 enum InlineSelectionStep<S: LayoutScalar> {
     Selected(Option<SelectedInlineLineCandidateOf<S>>),
     RetryReceiver(ReferencedInlineStrutOf<S>),
+    Receiver(AtomicReceiverDemand),
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct AtomicReceiverDemand {
+    pub source_index: usize,
+    pub expected: crate::InlineBaselineContext,
+}
+
+enum ReceiverSeed<S: LayoutScalar> {
+    Unchanged,
+    Resolved(ReferencedInlineStrutOf<S>),
+    Demand(AtomicReceiverDemand),
+}
+
+impl<S: LayoutScalar> ReceiverSeed<S> {
+    fn selection(self) -> Option<InlineSelectionStep<S>> {
+        match self {
+            Self::Unchanged => None,
+            Self::Resolved(seed) => Some(InlineSelectionStep::RetryReceiver(seed)),
+            Self::Demand(demand) => Some(InlineSelectionStep::Receiver(demand)),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -1812,7 +1837,7 @@ fn select_scope_inline_line<S: LayoutScalar, BandError>(
         SelectedInlineLineEnd,
         bool,
     ) -> Result<
-        Option<ReferencedInlineStrutOf<S>>,
+        ReceiverSeed<S>,
         crate::inline_wrapping::NumericWrappingError,
     >,
     mut native_fits: impl FnMut(
@@ -1974,8 +1999,10 @@ fn select_scope_inline_line<S: LayoutScalar, BandError>(
     // Earlier legal Soft candidates end after an Atomic and are therefore real
     // too. Boundaries supply no following permission; a scope force is Forced.
     // Prepare before allocation, preference or any height-dependent observation.
-    if let Some(seed) = prepare_receiver(completion.end, completion.summary.has_in_flow_content)? {
-        return Ok(InlineSelectionStep::RetryReceiver(seed));
+    if let Some(step) =
+        prepare_receiver(completion.end, completion.summary.has_in_flow_content)?.selection()
+    {
+        return Ok(step);
     }
     if let Some(fallback) = completion.summary.fallback_line_band {
         completion.has_fallback_atomic=run.participants[cursor.source..stop].iter().any(|p|matches!(*p,MixedInlineParticipantOf::Atomic {item,..} if item.fallback_block_start_in_band(axes,fallback).is_some()));
@@ -2084,8 +2111,10 @@ fn select_scope_inline_line<S: LayoutScalar, BandError>(
             end - cursor.source,
         );
         receipt.pending_strut = candidate.pending_strut;
-        if let Some(seed) = prepare_receiver(receipt.end, receipt.summary.has_in_flow_content)? {
-            return Ok(InlineSelectionStep::RetryReceiver(seed));
+        if let Some(step) =
+            prepare_receiver(receipt.end, receipt.summary.has_in_flow_content)?.selection()
+        {
+            return Ok(step);
         }
         if let Some(wrapping) = wrapping {
             allocate_numeric_box_metrics(
@@ -2152,9 +2181,10 @@ fn select_scope_inline_line<S: LayoutScalar, BandError>(
             pending,
             end - cursor.source,
         );
-        if let Some(seed) = prepare_receiver(candidate.end, candidate.summary.has_in_flow_content)?
+        if let Some(step) =
+            prepare_receiver(candidate.end, candidate.summary.has_in_flow_content)?.selection()
         {
-            return Ok(InlineSelectionStep::RetryReceiver(seed));
+            return Ok(step);
         }
         if let Some(wrapping) = wrapping {
             allocate_numeric_box_metrics(
@@ -2217,15 +2247,13 @@ fn prepare_selected_receiver<S: LayoutScalar>(
     prepare: &mut impl FnMut(
         SelectedInlineLineEnd,
         bool,
-    ) -> Result<
-        Option<ReferencedInlineStrutOf<S>>,
-        crate::inline_wrapping::NumericWrappingError,
-    >,
+    )
+        -> Result<ReceiverSeed<S>, crate::inline_wrapping::NumericWrappingError>,
 ) -> Result<InlineSelectionStep<S>, crate::inline_wrapping::NumericWrappingError> {
     if let Some(candidate) = &candidate
-        && let Some(seed) = prepare(candidate.end, candidate.line.has_in_flow_content)?
+        && let Some(step) = prepare(candidate.end, candidate.line.has_in_flow_content)?.selection()
     {
-        return Ok(InlineSelectionStep::RetryReceiver(seed));
+        return Ok(step);
     }
     Ok(InlineSelectionStep::Selected(candidate))
 }
@@ -2582,7 +2610,13 @@ struct NumericWalkInput<'a, S: LayoutScalar> {
     input: &'a MixedInlineRunInputOf<S>,
     supplied: &'a [SuppliedInlineParticipant],
     available: S,
-    receiver_source: &'a std::cell::RefCell<AtomicReceiverSource<'a, S>>,
+    receiver_source: ReceiverSourceMode<'a, S>,
+}
+
+#[derive(Clone, Copy)]
+enum ReceiverSourceMode<'a, S: LayoutScalar> {
+    Immediate(&'a std::cell::RefCell<AtomicReceiverSource<'a, S>>),
+    Deferred,
 }
 
 /// A metric-only private caller has supplied coordinates, not actual box facts.
@@ -2713,14 +2747,50 @@ enum NumericWalkOutcome {
     CountExceeded,
 }
 
+enum NumericWalkStep {
+    Complete(NumericWalkOutcome),
+    Receiver(AtomicReceiverDemand),
+}
+
 fn walk_numeric_sequence<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     sequence: &mut NumericSequence<S>,
     line_boundaries: &mut std::iter::Peekable<impl Iterator<Item = InlineSourceCursor>>,
     control: NumericWalkControl,
+    band_source: B,
+    clear_source: C,
+) -> Result<NumericWalkOutcome, NumericRunError<BandError>>
+where
+    S: LayoutScalar,
+    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
+    C: FnMut(S, PostLineClearIntent) -> S,
+{
+    let direction = sequence.state.line_box_context.weak_direction();
+    match walk_numeric_sequence_step(
+        request,
+        sequence,
+        line_boundaries,
+        control,
+        direction,
+        band_source,
+        clear_source,
+    )? {
+        NumericWalkStep::Complete(outcome) => Ok(outcome),
+        NumericWalkStep::Receiver(_) => {
+            unreachable!("synchronous receiver callback resolves its demand")
+        }
+    }
+}
+
+fn walk_numeric_sequence_step<S, B, C, BandError>(
+    request: NumericWalkInput<'_, S>,
+    sequence: &mut NumericSequence<S>,
+    line_boundaries: &mut std::iter::Peekable<impl Iterator<Item = InlineSourceCursor>>,
+    control: NumericWalkControl,
+    line_direction: Direction,
     mut band_source: B,
     mut clear_source: C,
-) -> Result<NumericWalkOutcome, NumericRunError<BandError>>
+) -> Result<NumericWalkStep, NumericRunError<BandError>>
 where
     S: LayoutScalar,
     B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
@@ -2744,43 +2814,18 @@ where
         formatted_lines,
         tail_frontier,
     } = sequence;
-    let NumericFlowState {
-        mut cursor,
-        mut boundary_index,
-        mut pending_strut,
-        mut indent_state,
-        mut line_box_context,
-        mut block_cursor,
-        mut float_strut,
-        mut continuation_inline_cursor,
-        mut advanced_phase_transition,
-        mut resolved_terminal_block_extent,
-        mut float_edge_phase,
-    } = *state;
-    let line_direction = line_box_context.weak_direction();
+    let mut flow = *state;
     let mut formatted_count = 0;
     let mut outcome = NumericWalkOutcome::Exhausted;
     'lines: loop {
         if control.observe_frontier == Some(formatted_count) && tail_frontier.is_none() {
-            *tail_frontier = Some(NumericFlowState {
-                cursor,
-                boundary_index,
-                pending_strut,
-                indent_state,
-                line_box_context,
-                block_cursor,
-                float_strut,
-                continuation_inline_cursor,
-                advanced_phase_transition,
-                resolved_terminal_block_extent,
-                float_edge_phase,
-            });
+            *tail_frontier = Some(flow);
         }
         let goal = control.goal.filter(|_| {
             formatted_count >= control.goal_start
                 && control.goal_end.is_none_or(|end| formatted_count < end)
         });
-        let line_indent = input.indent.at(indent_state);
+        let line_indent = input.indent.at(flow.indent_state);
         let next_boundary_descriptor = line_boundaries
             .peek()
             .map_or(supplied.len(), |boundary| boundary.descriptor);
@@ -2790,17 +2835,17 @@ where
                     goal,
                     indent: line_indent,
                     run,
-                    cursor,
+                    cursor: flow.cursor,
                     next_boundary_descriptor,
                     available: available - line_indent,
                     wraps,
-                    pending: pending_strut,
+                    pending: flow.pending_strut,
                     axes: input.flow_axes,
                 },
                 input.wrapping.as_ref(),
                 |ending, content| {
                     prepare_receiving_seed(
-                        pending_strut,
+                        flow.pending_strut,
                         input.inline_baseline_context,
                         ending,
                         content,
@@ -2809,15 +2854,15 @@ where
                 },
                 |receipt| {
                     validate_carried_reference(
-                        pending_strut,
+                        flow.pending_strut,
                         input.inline_baseline_context,
                         receipt.end.line_end(),
                         receipt.summary.has_in_flow_content,
                     )?;
                     resolve_numeric_candidate(
                         receipt,
-                        float_strut,
-                        block_cursor,
+                        flow.float_strut,
+                        flow.block_cursor,
                         line_indent,
                         available,
                         &mut band_source,
@@ -2826,7 +2871,11 @@ where
             )?;
             match step {
                 InlineSelectionStep::Selected(candidate) => break candidate,
-                InlineSelectionStep::RetryReceiver(seed) => pending_strut = Some(seed),
+                InlineSelectionStep::RetryReceiver(seed) => flow.pending_strut = Some(seed),
+                InlineSelectionStep::Receiver(demand) => {
+                    *state = flow;
+                    return Ok(NumericWalkStep::Receiver(demand));
+                }
             }
         };
         let Some(mut provisional) = provisional else {
@@ -2837,7 +2886,7 @@ where
             provisional.line.has_in_flow_content,
         ) == NumericLineDisposition::NonFormatted
         {
-            provisional.line.incoming_strut = pending_strut;
+            provisional.line.incoming_strut = flow.pending_strut;
             provisional.line.ending = provisional.end.line_end();
             provisional.line.next_cursor = provisional.next_cursor;
             provisional.line.indent = line_indent;
@@ -2846,11 +2895,11 @@ where
             provisional.line.band = LogicalLineBandOf {
                 inline_start: S::ZERO,
                 inline_end: available,
-                block_start: block_cursor,
-                block_end: block_cursor,
+                block_start: flow.block_cursor,
+                block_end: flow.block_cursor,
             };
-            cursor = provisional.next_cursor;
-            pending_strut = provisional.pending_strut;
+            flow.cursor = provisional.next_cursor;
+            flow.pending_strut = provisional.pending_strut;
             let ending = provisional.line.ending;
             selected_lines.push(provisional.line);
             if let Some(stop) = control.stop(ending, formatted_count) {
@@ -2860,7 +2909,7 @@ where
             continue;
         }
         validate_carried_reference(
-            pending_strut,
+            flow.pending_strut,
             input.inline_baseline_context,
             provisional.end.line_end(),
             provisional.line.has_in_flow_content,
@@ -2868,17 +2917,21 @@ where
         if let Some(error) = provisional.line.numeric_error {
             return Err(error.into());
         }
-        if float_strut.is_some() {
-            let _ = resolve_float_strut_phase(&mut provisional.line, float_strut, input.flow_axes)?;
+        if flow.float_strut.is_some() {
+            let _ = resolve_float_strut_phase(
+                &mut provisional.line,
+                flow.float_strut,
+                input.flow_axes,
+            )?;
         }
         let provisional_block_end = consumed_line_end(
-            block_cursor,
+            flow.block_cursor,
             provisional.line.baseline,
             provisional.line.after_baseline,
             provisional.line.has_displacement,
         )?;
         let mut queried_band =
-            band_source(block_cursor, provisional_block_end).map_err(NumericRunError::Band)?;
+            band_source(flow.block_cursor, provisional_block_end).map_err(NumericRunError::Band)?;
         let band_inline_end = queried_band.inline_end.max(queried_band.inline_start);
         let band_available = band_inline_end - queried_band.inline_start;
         let mut has_float_transition = queried_band.next_transition.is_some();
@@ -2887,9 +2940,9 @@ where
             && provisional.line.used_inline_extent > S::ZERO
             && let Some(next_transition) = queried_band
                 .next_transition
-                .filter(|transition| transition.is_finite() && *transition > block_cursor)
+                .filter(|transition| transition.is_finite() && *transition > flow.block_cursor)
         {
-            block_cursor = next_transition;
+            flow.block_cursor = next_transition;
             continue;
         }
 
@@ -2904,17 +2957,17 @@ where
                     goal,
                     indent: line_indent,
                     run,
-                    cursor,
+                    cursor: flow.cursor,
                     next_boundary_descriptor,
                     available: band_available - line_indent,
                     wraps,
-                    pending: pending_strut,
+                    pending: flow.pending_strut,
                     axes: input.flow_axes,
                 },
                 input.wrapping.as_ref(),
                 |ending, content| {
                     prepare_receiving_seed(
-                        pending_strut,
+                        flow.pending_strut,
                         input.inline_baseline_context,
                         ending,
                         content,
@@ -2923,15 +2976,15 @@ where
                 },
                 |receipt| {
                     validate_carried_reference(
-                        pending_strut,
+                        flow.pending_strut,
                         input.inline_baseline_context,
                         receipt.end.line_end(),
                         receipt.summary.has_in_flow_content,
                     )?;
                     resolve_numeric_candidate(
                         receipt,
-                        float_strut,
-                        block_cursor,
+                        flow.float_strut,
+                        flow.block_cursor,
                         line_indent,
                         available,
                         &mut band_source,
@@ -2942,8 +2995,12 @@ where
                 InlineSelectionStep::Selected(candidate) => candidate
                     .expect("a provisional line remains selectable against its queried band"),
                 InlineSelectionStep::RetryReceiver(seed) => {
-                    pending_strut = Some(seed);
+                    flow.pending_strut = Some(seed);
                     continue 'lines;
+                }
+                InlineSelectionStep::Receiver(demand) => {
+                    *state = flow;
+                    return Ok(NumericWalkStep::Receiver(demand));
                 }
             };
             (queried_band.inline_start, band_inline_end, selected)
@@ -2961,20 +3018,20 @@ where
         if selected.line.used_inline_extent > band_inline_end - band_inline_start - line_indent
             && let Some(next_transition) = queried_band
                 .next_transition
-                .filter(|transition| transition.is_finite() && *transition > block_cursor)
+                .filter(|transition| transition.is_finite() && *transition > flow.block_cursor)
         {
             // An indivisible first group cannot fit this float band.
             // Re-select at its next real transition; an ordinary fitting break
             // above already remains selected and does not enter this retry.
-            block_cursor = next_transition;
+            flow.block_cursor = next_transition;
             continue;
         }
-        let next_float_strut = if float_strut.is_some()
+        let next_float_strut = if flow.float_strut.is_some()
             || (has_float_transition && starts_inline_strut_phase(&selected.line))
         {
-            resolve_float_strut_phase(&mut selected.line, float_strut, input.flow_axes)?
+            resolve_float_strut_phase(&mut selected.line, flow.float_strut, input.flow_axes)?
         } else {
-            float_strut
+            flow.float_strut
         };
         resolve_completed_fallback_envelope(
             &mut selected.line,
@@ -2982,37 +3039,38 @@ where
             has_float_transition,
         );
         let selected_block_end = consumed_line_end(
-            block_cursor,
+            flow.block_cursor,
             selected.line.baseline,
             selected.line.after_baseline,
             selected.line.has_displacement,
         )?;
-        let continuation_overflows = continuation_inline_cursor
+        let continuation_overflows = flow
+            .continuation_inline_cursor
             .is_some_and(|cursor| cursor + selected.line.used_inline_extent > band_inline_end);
-        if !advanced_phase_transition
-            && float_strut.is_some()
+        if !flow.advanced_phase_transition
+            && flow.float_strut.is_some()
             && continuation_overflows
             && let Some(next_transition) = queried_band.next_transition.filter(|transition| {
                 transition.is_finite()
-                    && *transition > block_cursor
+                    && *transition > flow.block_cursor
                     && *transition < selected_block_end
             })
         {
-            block_cursor = next_transition;
-            advanced_phase_transition = true;
+            flow.block_cursor = next_transition;
+            flow.advanced_phase_transition = true;
             continue;
         }
 
         let mut line = selected.line;
-        line.incoming_strut = pending_strut;
+        line.incoming_strut = flow.pending_strut;
         line.indent = line_indent;
-        if advanced_phase_transition && continuation_inline_cursor.is_some() {
+        if flow.advanced_phase_transition && flow.continuation_inline_cursor.is_some() {
             line.inline_start_override = Some(band_inline_start + line_indent);
         }
         line.band = LogicalLineBandOf {
             inline_start: band_inline_start,
             inline_end: band_inline_end,
-            block_start: block_cursor,
+            block_start: flow.block_cursor,
             block_end: selected_block_end,
         };
         if line_boundaries
@@ -3023,9 +3081,9 @@ where
                 .next()
                 .expect("selected hard line end is present in source");
             debug_assert_eq!(consumed.descriptor, selected.next_cursor.descriptor);
-            boundary_index += 1;
+            flow.boundary_index += 1;
         }
-        cursor = selected.next_cursor;
+        flow.cursor = selected.next_cursor;
         line.alignment =
             numeric_line_alignment(input.text_align, input.text_align_last, selected.end);
         line.ending = selected.end.line_end();
@@ -3037,37 +3095,41 @@ where
                 ending: line.ending,
             });
         }
-        indent_state.commit(selected.end == SelectedInlineLineEnd::Forced);
-        line_box_context.commit(line_box_context.resolve(None));
-        pending_strut = selected.pending_strut;
-        let line_block_end = block_cursor + line.baseline + line.after_baseline;
+        flow.indent_state
+            .commit(selected.end == SelectedInlineLineEnd::Forced);
+        flow.line_box_context
+            .commit(flow.line_box_context.resolve(None));
+        flow.pending_strut = selected.pending_strut;
+        let line_block_end = flow.block_cursor + line.baseline + line.after_baseline;
         let line_inline_start = selected_line_inline_start(
             &line,
             input.flow_axes,
             line.alignment,
             line_direction,
             if crate::layout_math::normal_available_size(input.available_inline_extent).is_some() {
-                input.groups.insets::<S>(line_box_context.resolve(None))?
+                input
+                    .groups
+                    .insets::<S>(flow.line_box_context.resolve(None))?
             } else {
                 surgeist_text::LineAlignmentInsets::ZERO
             },
         )?;
         let line_inline_end = line_inline_start + line.used_inline_extent;
         if has_float_transition && line.split_baseline_edge_phase.is_some() {
-            float_edge_phase = line.split_baseline_edge_phase;
+            flow.float_edge_phase = line.split_baseline_edge_phase;
         }
-        resolved_terminal_block_extent = resolved_float_terminal_block_extent(
+        flow.resolved_terminal_block_extent = resolved_float_terminal_block_extent(
             &line,
-            float_strut,
+            flow.float_strut,
             queried_band.next_transition,
             input.flow_axes,
             line_inline_start,
             line_inline_end,
         )?;
-        continuation_inline_cursor = float_strut.is_some().then_some(line_inline_end);
-        float_strut = next_float_strut;
-        advanced_phase_transition = false;
-        block_cursor =
+        flow.continuation_inline_cursor = flow.float_strut.is_some().then_some(line_inline_end);
+        flow.float_strut = next_float_strut;
+        flow.advanced_phase_transition = false;
+        flow.block_cursor =
             clear_source(line_block_end, line.post_line_clear_intent).max(line_block_end);
         let ending = line.ending;
         selected_lines.push(line);
@@ -3078,20 +3140,8 @@ where
         }
     }
 
-    *state = NumericFlowState {
-        cursor,
-        boundary_index,
-        pending_strut,
-        indent_state,
-        line_box_context,
-        block_cursor,
-        float_strut,
-        continuation_inline_cursor,
-        advanced_phase_transition,
-        resolved_terminal_block_extent,
-        float_edge_phase,
-    };
-    Ok(outcome)
+    *state = flow;
+    Ok(NumericWalkStep::Complete(outcome))
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -3460,26 +3510,9 @@ where
     Ok(())
 }
 
-fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource, ReceiverSource, BandError>(
-    input: MixedInlineRunInputOf<S>,
-    supplied: Vec<SuppliedInlineParticipant>,
-    available: S,
-    mut band_source: BandSource,
-    mut clear_source: ClearSource,
-    observe_formatted: bool,
-    receiver_source: ReceiverSource,
-) -> Result<MixedInlineRunReportOf<S>, NumericRunError<BandError>>
-where
-    S: LayoutScalar,
-    BandSource: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
-    ClearSource: FnMut(S, PostLineClearIntent) -> S,
-    ReceiverSource:
-        FnMut(
-            usize,
-            crate::InlineBaselineContext,
-        )
-            -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError>,
-{
+fn numeric_line_boundaries<S: LayoutScalar>(
+    input: &MixedInlineRunInputOf<S>,
+) -> Vec<InlineSourceCursor> {
     let mut boundary_descriptor = 0;
     // Mandatory following breaks also delimit a line. Looking only for forced
     // controls would repeatedly query a suffix of discardable mandatory units.
@@ -3527,8 +3560,8 @@ where
                 })
         })
         .peekable();
-    let mut line_boundaries = std::iter::from_fn(move || {
-        match (original_boundaries.peek(), computed_boundaries.peek()) {
+    std::iter::from_fn(
+        move || match (original_boundaries.peek(), computed_boundaries.peek()) {
             (Some(a), Some(b)) if a.source == b.source => {
                 computed_boundaries.next();
                 original_boundaries.next()
@@ -3537,9 +3570,129 @@ where
             (_, Some(_)) => computed_boundaries.next(),
             (Some(_), None) => original_boundaries.next(),
             (None, None) => None,
+        },
+    )
+    .collect()
+}
+
+pub(super) fn numeric_fit_is_ordinary<S: LayoutScalar>(
+    style: crate::TextWrapStyle,
+    available: AxisSizingRequestOf<S>,
+) -> bool {
+    matches!(
+        style,
+        crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable
+    ) || crate::layout_math::normal_available_size(available).is_none()
+}
+
+pub(super) struct NumericRun<S: LayoutScalar> {
+    input: MixedInlineRunInputOf<S>,
+    supplied: Vec<SuppliedInlineParticipant>,
+    available: S,
+    boundaries: Vec<InlineSourceCursor>,
+    sequence: NumericSequence<S>,
+    direction: Direction,
+    pending: Option<AtomicReceiverDemand>,
+}
+
+impl<S: LayoutScalar> NumericRun<S> {
+    pub(super) fn new(
+        input: MixedInlineRunInputOf<S>,
+        observe: bool,
+    ) -> Result<Self, NumericWrappingError> {
+        let supplied = project_inline_participants(&input.participants);
+        let available = resolved_inline_available(&input, &supplied)?;
+        let boundaries = numeric_line_boundaries(&input);
+        let sequence = NumericSequence::new(&input, observe);
+        let direction = input.line_box_context.weak_direction();
+        Ok(Self {
+            input,
+            supplied,
+            available,
+            boundaries,
+            sequence,
+            direction,
+            pending: None,
+        })
+    }
+
+    pub(super) fn advance<B, C, BandError>(
+        &mut self,
+        band: B,
+        clear: C,
+    ) -> Result<Option<AtomicReceiverDemand>, NumericRunError<BandError>>
+    where
+        B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
+        C: FnMut(S, PostLineClearIntent) -> S,
+    {
+        debug_assert!(self.pending.is_none());
+        let mut boundaries = self.boundaries[self.sequence.state.boundary_index..]
+            .iter()
+            .copied()
+            .peekable();
+        let step = walk_numeric_sequence_step(
+            NumericWalkInput {
+                input: &self.input,
+                supplied: &self.supplied,
+                available: self.available,
+                receiver_source: ReceiverSourceMode::Deferred,
+            },
+            &mut self.sequence,
+            &mut boundaries,
+            NumericWalkControl::auto(),
+            self.direction,
+            band,
+            clear,
+        )?;
+        match step {
+            NumericWalkStep::Complete(_) => Ok(None),
+            NumericWalkStep::Receiver(demand) => {
+                self.pending = Some(demand);
+                Ok(Some(demand))
+            }
         }
-    })
-    .peekable();
+    }
+
+    pub(super) fn accept_receiver(
+        &mut self,
+        resolved: ReferencedInlineStrutOf<S>,
+    ) -> Result<(), NumericWrappingError> {
+        let demand = self
+            .pending
+            .take()
+            .expect("a suspended numeric run owns its receiver");
+        self.sequence.state.pending_strut = Some(validate_receiver(demand, resolved)?);
+        Ok(())
+    }
+
+    pub(super) fn finish<BandError>(
+        self,
+    ) -> Result<MixedInlineRunReportOf<S>, NumericRunError<BandError>> {
+        finish_numeric_run(self.input, self.supplied, self.sequence)
+    }
+}
+
+fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource, ReceiverSource, BandError>(
+    input: MixedInlineRunInputOf<S>,
+    supplied: Vec<SuppliedInlineParticipant>,
+    available: S,
+    mut band_source: BandSource,
+    mut clear_source: ClearSource,
+    observe_formatted: bool,
+    receiver_source: ReceiverSource,
+) -> Result<MixedInlineRunReportOf<S>, NumericRunError<BandError>>
+where
+    S: LayoutScalar,
+    BandSource: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
+    ClearSource: FnMut(S, PostLineClearIntent) -> S,
+    ReceiverSource:
+        FnMut(
+            usize,
+            crate::InlineBaselineContext,
+        )
+            -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError>,
+{
+    let mut line_boundaries = numeric_line_boundaries(&input).into_iter().peekable();
     let balance = match input.text_wrap_style {
         crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable => false,
         crate::TextWrapStyle::Balance => {
@@ -3560,7 +3713,7 @@ where
         input: &input,
         supplied: &supplied,
         available,
-        receiver_source: &receiver_source,
+        receiver_source: ReceiverSourceMode::Immediate(&receiver_source),
     };
     if balance {
         let boundaries = line_boundaries.collect::<Vec<_>>();
@@ -3599,6 +3752,14 @@ where
             &mut clear_source,
         )?;
     }
+    finish_numeric_run(input, supplied, sequence)
+}
+
+fn finish_numeric_run<S: LayoutScalar, BandError>(
+    input: MixedInlineRunInputOf<S>,
+    supplied: Vec<SuppliedInlineParticipant>,
+    sequence: NumericSequence<S>,
+) -> Result<MixedInlineRunReportOf<S>, NumericRunError<BandError>> {
     let NumericSequence {
         state,
         selected_lines,
@@ -4417,35 +4578,58 @@ fn prepare_receiving_seed<S: LayoutScalar>(
     expected: crate::InlineBaselineContext,
     ending: SelectedInlineLineEnd,
     content: bool,
-    source: &std::cell::RefCell<AtomicReceiverSource<'_, S>>,
-) -> Result<Option<ReferencedInlineStrutOf<S>>, crate::inline_wrapping::NumericWrappingError> {
+    source: ReceiverSourceMode<'_, S>,
+) -> Result<ReceiverSeed<S>, crate::inline_wrapping::NumericWrappingError> {
     if NumericLineDisposition::for_line(ending.line_end(), content)
         == NumericLineDisposition::NonFormatted
     {
-        return Ok(None);
+        return Ok(ReceiverSeed::Unchanged);
     }
     let Some(strut) = strut else {
-        return Ok(None);
+        return Ok(ReceiverSeed::Unchanged);
     };
     if strut.reference == expected {
-        return Ok(None);
+        return Ok(ReceiverSeed::Unchanged);
     }
     if let InlineStrutSource::Atomic { source_index } = strut.source
         && strut.reference == crate::InlineBaselineContext::Physical
         && matches!(expected, crate::InlineBaselineContext::Named(_))
     {
+        let ReceiverSourceMode::Immediate(source) = source else {
+            return Ok(ReceiverSeed::Demand(AtomicReceiverDemand {
+                source_index,
+                expected,
+            }));
+        };
         let resolved = source.borrow_mut()(source_index, expected)?;
-        if resolved.source != strut.source
-            || resolved.reference != expected
-            || !resolved.metrics.baseline.is_finite()
-            || !resolved.metrics.after_baseline.is_finite()
-        {
-            return Err(crate::inline_wrapping::NumericWrappingError::InvalidAtomicReceiverBasis);
-        }
-        return Ok(Some(resolved));
+        let resolved = validate_receiver(
+            AtomicReceiverDemand {
+                source_index,
+                expected,
+            },
+            resolved,
+        )?;
+        return Ok(ReceiverSeed::Resolved(resolved));
     }
     validate_carried_reference(Some(strut), expected, ending.line_end(), content)?;
-    Ok(None)
+    Ok(ReceiverSeed::Unchanged)
+}
+
+fn validate_receiver<S: LayoutScalar>(
+    demand: AtomicReceiverDemand,
+    resolved: ReferencedInlineStrutOf<S>,
+) -> Result<ReferencedInlineStrutOf<S>, NumericWrappingError> {
+    if resolved.source
+        != (InlineStrutSource::Atomic {
+            source_index: demand.source_index,
+        })
+        || resolved.reference != demand.expected
+        || !resolved.metrics.baseline.is_finite()
+        || !resolved.metrics.after_baseline.is_finite()
+    {
+        return Err(NumericWrappingError::InvalidAtomicReceiverBasis);
+    }
+    Ok(resolved)
 }
 
 fn validate_carried_reference<S: LayoutScalar>(
