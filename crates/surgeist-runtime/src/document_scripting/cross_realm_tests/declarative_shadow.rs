@@ -109,6 +109,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         AttributeScope,
         AttributeAbruptRefusal,
         AttributeAbruptCallbackRefusal,
+        AttributeRejectedCallbackRefusal,
         Stop,
         Refuse,
         RefuseAfterFirst,
@@ -128,6 +129,10 @@ pub(super) fn verify_declarative_shadow_reuse() {
             HtmlShadowRootMode::Open,
             Delivery::AttributeAbruptCallbackRefusal,
         ),
+        (
+            HtmlShadowRootMode::Open,
+            Delivery::AttributeRejectedCallbackRefusal,
+        ),
         (HtmlShadowRootMode::Closed, Delivery::Checkpoint),
         (HtmlShadowRootMode::Closed, Delivery::Stop),
         (HtmlShadowRootMode::Closed, Delivery::Refuse),
@@ -140,7 +145,9 @@ pub(super) fn verify_declarative_shadow_reuse() {
         let factory_reconnect = matches!(delivery, Delivery::FactoryReconnect);
         let factory_scope = matches!(delivery, Delivery::FactoryScope) || factory_reconnect;
         let definition_scope = matches!(delivery, Delivery::DefinitionScope);
-        let callback_refusal = matches!(delivery, Delivery::AttributeAbruptCallbackRefusal);
+        let native_rejection = matches!(delivery, Delivery::AttributeRejectedCallbackRefusal);
+        let callback_refusal =
+            matches!(delivery, Delivery::AttributeAbruptCallbackRefusal) || native_rejection;
         let attribute_abrupt_refusal =
             matches!(delivery, Delivery::AttributeAbruptRefusal) || callback_refusal;
         let attribute_scope =
@@ -392,6 +399,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
                         policyHead.appendChild(shadowPolicy);
                         trustedTypes.createPolicy('default', {{ createScript(value) {{
                             observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                            if ({native_rejection}) return null;
                             if ({attribute_abrupt_refusal}) {{
                                 if (!{callback_refusal}) exhaustReactionWork();
                                 throw shadowReuseException;
@@ -442,12 +450,27 @@ pub(super) fn verify_declarative_shadow_reuse() {
             let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
                 panic!("abrupt attribute delivery must stop the original heap: {result:?}");
             };
-            assert!(matches!(
-                failure.cause::<DocumentGuestEventError>(),
-                Some(DocumentGuestEventError::Document(
-                    DocumentScriptError::Script(Error::Exception(_))
-                ))
-            ));
+            let cause = failure.cause::<DocumentGuestEventError>();
+            if native_rejection {
+                assert!(
+                    matches!(
+                        cause,
+                        Some(DocumentGuestEventError::Document(
+                            DocumentScriptError::Native(DocumentScriptNativeError::Dom(
+                                DomError::SourceAttributeVerificationRejected
+                            ))
+                        ))
+                    ),
+                    "native verification must precede later callback refusal: {cause:?}"
+                );
+            } else {
+                assert!(matches!(
+                    cause,
+                    Some(DocumentGuestEventError::Document(
+                        DocumentScriptError::Script(Error::Exception(_))
+                    ))
+                ));
+            }
             assert!(first_entered.get());
             assert!(matches!(
                 host.in_document(&permit, |_| Ok(())),
