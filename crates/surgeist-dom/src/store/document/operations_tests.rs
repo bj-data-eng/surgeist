@@ -1860,7 +1860,7 @@ fn implementation_attachment_refuses_stale_factory_authority() {
             &cancel(),
         )
         .unwrap();
-    let fallback = registration.implementation_fallback();
+    let fallback = registration.creation_realm_fallback();
     registration.revoke();
     let before = dom.snapshot().stamp();
     for receiver in [document, hosted.document()] {

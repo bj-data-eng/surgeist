@@ -134,6 +134,7 @@ impl CharacterBindings {
             funding,
             constructors,
         )?;
+        let constructor = processing_instruction::constructor(funding.capture)?;
         let (_, instruction) = install_derived_interface(
             scope,
             &prototype,
@@ -142,8 +143,9 @@ impl CharacterBindings {
                 name: &ascii(b"ProcessingInstruction"),
                 length: 1,
             },
-            &illegal_constructor(),
+            &constructor,
         )?;
+        processing_instruction::install_factory(scope, document, funding.capture)?;
         let capture = (funding.capture)(size_of::<Capture>())?;
         install_getter(
             scope,

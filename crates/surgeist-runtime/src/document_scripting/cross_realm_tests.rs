@@ -321,6 +321,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     processing_instruction::native_processing_instruction_uses_its_canonical_wrapper();
     processing_instruction::authored_processing_instructions_use_native_creation();
     super::guest::tests::registered_origin::native_processing_instruction_uses_its_creation_realm();
+    super::guest::tests::registered_origin::authored_instruction_separates_document_and_prototype_realms();
     node_relations::node_relations_follow_the_live_ordinary_tree();
     node_relations::node_relations_project_native_processing_instructions();
     normalize::normalize_keeps_native_text_and_range_identity();

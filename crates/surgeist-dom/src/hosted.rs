@@ -2095,19 +2095,20 @@ pub(crate) struct ScriptRegistrationKey {
 #[derive(Debug)]
 pub struct DomDocumentScriptRegistration(pub(crate) Arc<ScriptRegistration>);
 
-/// The attachment's creation realm for a DOMImplementation whose native
+/// The attachment's creation realm for guest factories whose native receiving
 /// Document was first exposed without a recorded Global.
 #[derive(Clone, Copy, Debug)]
-pub struct DomImplementationFallback {
+pub struct DomCreationRealmFallback {
     pub(crate) key: ScriptRegistrationKey,
     pub(crate) global: DomHostedGlobalId,
 }
 
 impl DomDocumentScriptRegistration {
-    /// Observe this registration's fallback realm. Factory execution checks
-    /// the exact registration and prefers the receiving Document's own Global.
-    pub fn implementation_fallback(&self) -> DomImplementationFallback {
-        DomImplementationFallback {
+    /// Observe the registration's fallback realm for native node creation.
+    /// Creation checks this exact registration and prefers the receiving
+    /// Document's own Global.
+    pub fn creation_realm_fallback(&self) -> DomCreationRealmFallback {
+        DomCreationRealmFallback {
             key: self.0.key,
             global: self.0.global,
         }

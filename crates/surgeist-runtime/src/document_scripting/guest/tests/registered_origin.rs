@@ -717,6 +717,83 @@ pub(in crate::document_scripting) fn implementation_factories_keep_the_projectio
     );
 }
 
+pub(in crate::document_scripting) fn authored_instruction_separates_document_and_prototype_realms()
+{
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) =
+        crate::document_scripting::cross_realm_tests::hosted_session(&cancellation, 0);
+    let origin = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted
+            .create_headless_host(&mut dom, &cancellation)
+            .unwrap();
+        hosted
+            .create_top_level(&mut dom, owner, &cancellation)
+            .unwrap()
+    };
+    let mut host = attach_public_nodes(session, target, cancellation, 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    host.register_node_creation_realm(&permit, origin).unwrap();
+    let (constructor, new_target, prototype) = {
+        let engine = host.engine.as_mut().unwrap();
+        let realm = engine
+            .creations
+            .find(origin.global(), || Ok::<_, Error>(()))
+            .unwrap()
+            .unwrap();
+        engine.process.execution().in_realm(realm, |scope| {
+            let constructor = scope.evaluate(&units("ProcessingInstruction"))?;
+            let new_target = scope.evaluate(&units("(function () { function Fallback() {} Fallback.prototype = null; return Fallback; })()"))?;
+            let prototype = scope.get(&constructor, PropertyKey::String(&units("prototype")))?;
+            Ok((scope.retain(&constructor), scope.retain(&new_target), scope.retain(&prototype)))
+        }).unwrap()
+    };
+    expose_public_node_for_source_test(
+        &mut host,
+        &permit,
+        origin.document().node(),
+        "originDocument",
+    );
+    let (native, borrowed, cross) = host.in_document(&permit, |scope| {
+        let global = scope.global()?;
+        for (key, root) in [
+            ("OriginInstruction", constructor),
+            ("originNewTarget", new_target),
+            ("originInstructionPrototype", prototype),
+        ] {
+            let value = scope.import(&root)?;
+            scope.set(&global, PropertyKey::String(&units(key)), &value)?;
+        }
+        let results = scope.evaluate(&units(r#"(() => {
+            const native = new OriginInstruction('native');
+            const borrowed = Document.prototype.createProcessingInstruction.call(originDocument, 'borrowed', '');
+            const cross = Reflect.construct(ProcessingInstruction, ['cross'], originNewTarget);
+            if (native.ownerDocument !== originDocument || borrowed.ownerDocument !== originDocument ||
+                cross.ownerDocument !== document ||
+                ![native, borrowed, cross].every(node => Object.getPrototypeOf(node) === originInstructionPrototype))
+                throw new Error('creation authority and prototype must remain independent');
+            return {native, borrowed, cross};
+        })()"#))?;
+        let mut node = |key| {
+            let value = scope.get(&results, PropertyKey::String(&units(key)))?;
+            super::projected_node_id(scope, &value)
+        };
+        Ok((node("native")?, node("borrowed")?, node("cross")?))
+    }).unwrap();
+    let snapshot = host.snapshot().unwrap();
+    for (node, expected) in [
+        (native, origin.global()),
+        (borrowed, origin.global()),
+        (cross, target.global()),
+    ] {
+        assert_eq!(
+            snapshot.node(node).unwrap().relevant_global().unwrap(),
+            Some(expected)
+        );
+    }
+}
+
 pub(in crate::document_scripting) fn native_document_and_fragment_use_their_registered_realm() {
     let RegisteredOrigin {
         mut host,

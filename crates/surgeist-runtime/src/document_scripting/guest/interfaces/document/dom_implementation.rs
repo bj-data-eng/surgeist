@@ -6,10 +6,7 @@ use character_data::copy_native_data;
 use surgeist_bindings_js::{
     NativeProjectionPrototype, ValueKind, conversion::declarations, dom_exception::DomExceptionName,
 };
-use surgeist_dom::{
-    DomDetachedNodeCreation, DomImplementationFallback, DomSourceEdit, DomSourceOutput,
-    DomSourceStatus,
-};
+use surgeist_dom::{DomDetachedNodeCreation, DomSourceEdit, DomSourceOutput, DomSourceStatus};
 use surgeist_html::values::Namespace;
 
 const INTERFACE: &[u16] = &ascii(b"DOMImplementation");
@@ -262,7 +259,7 @@ impl Capture {
                         name,
                         public_id,
                         system_id,
-                        fallback: implementation_fallback(owner)?,
+                        fallback: creation_realm_fallback(owner)?,
                     },
                 ),
             )
@@ -329,7 +326,7 @@ impl Capture {
                 uri,
                 name,
                 doctype,
-                implementation_fallback(owner)?,
+                creation_realm_fallback(owner)?,
             ),
         )
     }
@@ -364,7 +361,7 @@ impl Capture {
             DomSourceEdit::create_html_document_in_attachment(
                 document,
                 title,
-                implementation_fallback(owner)?,
+                creation_realm_fallback(owner)?,
             ),
         )
     }
@@ -453,15 +450,4 @@ impl Capture {
         }
         result
     }
-}
-
-fn implementation_fallback(
-    owner: &NativeOwner,
-) -> Result<DomImplementationFallback, DocumentScriptNativeError> {
-    owner
-        .attachment
-        .get()
-        .and_then(|attachment| attachment.registration.upgrade())
-        .map(|registration| registration.implementation_fallback())
-        .ok_or(DocumentScriptNativeError::Revoked)
 }

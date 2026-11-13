@@ -218,11 +218,11 @@ pub use host::{
     DomHostDomains, DomHostError, DomHostObservations, DomHostPublication, DomHostPublisher,
     DomHostRecomputeReason, DomHostSourceId, DomHostStamp, HostStateRevision, Observed,
 };
-pub use hosted::{DomDocumentConstructorContext, DomDocumentConstructorError};
 pub use hosted::{
-    DomDocumentScriptBinding, DomDocumentScriptRegistration, DomDocumentScriptingFacts,
-    DomDocumentScriptingObservation, DomImplementationFallback,
+    DomCreationRealmFallback, DomDocumentScriptBinding, DomDocumentScriptRegistration,
+    DomDocumentScriptingFacts, DomDocumentScriptingObservation,
 };
+pub use hosted::{DomDocumentConstructorContext, DomDocumentConstructorError};
 pub use hosted::{
     DomHostedBrowsingContextId, DomHostedChildHistoryPublication, DomHostedChildHistoryRequest,
     DomHostedChildPreparation, DomHostedChildRemovalHandoff, DomHostedChildRemovalPublication,

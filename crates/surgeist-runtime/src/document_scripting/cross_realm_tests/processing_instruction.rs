@@ -104,6 +104,31 @@ pub(super) fn authored_processing_instructions_use_native_creation() {
                 if (!(created instanceof Derived) || created.target !== 'derived' ||
                     created.data !== '' || created.ownerDocument !== document || created.parentNode !== null ||
                     ProcessingInstruction.length !== 1 || method.length !== 2) return 'constructor result';
+                const exact = {};
+                const fail = new Proxy(function () {}, {
+                    get(_, key) { if (key === 'prototype') throw exact; }
+                });
+                try { Reflect.construct(ProcessingInstruction, ['valid'], fail); return 'prototype throw'; }
+                catch (error) { if (error !== exact) return 'wrong prototype exception'; }
+                let calls = '';
+                function Fallback() {}
+                Fallback.prototype = 0;
+                const reenter = new Proxy(Fallback, {
+                    get(object, key) {
+                        if (key === 'prototype') {
+                            calls += 'p';
+                            document.createTextNode('nested');
+                        }
+                        return Reflect.get(object, key);
+                    }
+                });
+                const fallback = Reflect.construct(ProcessingInstruction, [
+                    {toString() { calls += 't'; return 'fallback'; }},
+                    {toString() { calls += 'd'; return ''; }}
+                ], reenter);
+                if (calls !== 'tdp' || Object.getPrototypeOf(fallback) !== ProcessingInstruction.prototype ||
+                    fallback.ownerDocument !== document || fallback.target !== 'fallback')
+                    return 'prototype fallback or reentry';
                 return 'ok';
             })()
         "#)?;
@@ -120,6 +145,6 @@ pub(super) fn authored_processing_instructions_use_native_creation() {
                     surgeist_dom::DomNodeKind::ProcessingInstruction(_)
                 ))
             .count(),
-        2
+        3
     );
 }

@@ -86,12 +86,13 @@ pub(crate) enum Creation {
     ProcessingInstruction {
         target: DocumentString,
         data: DocumentString,
+        fallback: Option<crate::DomCreationRealmFallback>,
     },
     DocumentType {
         name: DocumentString,
         public_id: DocumentString,
         system_id: DocumentString,
-        fallback: Option<crate::DomImplementationFallback>,
+        fallback: Option<crate::DomCreationRealmFallback>,
     },
 }
 
@@ -205,12 +206,12 @@ pub(crate) enum Command {
         namespace: Namespace,
         qualified_name: DocumentString,
         doctype: Option<NodeOperand>,
-        fallback: Option<crate::DomImplementationFallback>,
+        fallback: Option<crate::DomCreationRealmFallback>,
     },
     CreateHtmlDocument {
         associated_document: NodeOperand,
         title: Option<DocumentString>,
-        fallback: Option<crate::DomImplementationFallback>,
+        fallback: Option<crate::DomCreationRealmFallback>,
     },
     AttachShadow {
         host: NodeOperand,
@@ -1020,6 +1021,7 @@ impl DomBatch {
             Creation::ProcessingInstruction {
                 target: target.into(),
                 data: data.into(),
+                fallback: None,
             },
             Some(document.into()),
         )
