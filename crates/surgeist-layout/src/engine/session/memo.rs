@@ -337,14 +337,25 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
         let mut eligible = vec![false; graph.nodes.len()];
         for &index in &graph.finish {
             let node = graph.nodes[index];
-            let style = self.tree.node_input(node);
+            let style = match self.tree.layout_input(node) {
+                crate::LayoutInputViewOf::Box(style) => style,
+                // With the context exclusions above, numeric leaf breaks and
+                // Contribution boundaries retain only staged source/edge geometry.
+                // BoxEdge requires a wrapping context and remains excluded, as do
+                // Text formatting receipts and scope-owned control effects.
+                crate::LayoutInputViewOf::LineBreak(_)
+                | crate::LayoutInputViewOf::InlineBoundary(_) => {
+                    eligible[index] =
+                        profile == Profile::Ordinary && graph.children[index].is_empty();
+                    continue;
+                }
+                crate::LayoutInputViewOf::InlineText(_)
+                | crate::LayoutInputViewOf::TextControl(_) => continue,
+            };
             // Hidden leaves have only ordinary staged geometry and clear effects.
             // Other hidden subtrees, shape providers and inline participants
             // retain their own placement paths.
-            eligible[index] = matches!(
-                self.tree.layout_input(node),
-                crate::LayoutInputViewOf::Box(_)
-            ) && (style.display != crate::Display::None
+            eligible[index] = (style.display != crate::Display::None
                 || graph.children[index].is_empty())
                 && style.float_exclusion != crate::FloatExclusion::Shape
                 && graph.children[index].iter().all(|&child| eligible[child]);
@@ -793,3 +804,7 @@ mod tests {
 #[cfg(test)]
 #[path = "scoped_memo_tests.rs"]
 mod scoped_tests;
+
+#[cfg(test)]
+#[path = "numeric_control_memo_tests.rs"]
+mod numeric_control_tests;

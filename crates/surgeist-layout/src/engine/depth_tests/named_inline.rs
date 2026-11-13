@@ -258,6 +258,26 @@ fn shallow_named_receiver_publishes_actual_named_lines() {
     );
 }
 
+#[test]
+fn deep_named_receiver_publishes_actual_named_lines_f32() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_named_receiver_publishes_actual_named_lines_f32",
+        || {
+            assert_named_receiver_geometry::<f32>(24);
+        },
+    );
+}
+
+#[test]
+fn deep_named_receiver_publishes_actual_named_lines_f64() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_named_receiver_publishes_actual_named_lines_f64",
+        || {
+            assert_named_receiver_geometry::<f64>(24);
+        },
+    );
+}
+
 fn assert_named_receiver_work<S: LayoutScalar>() {
     // Depths 2, 3 and 5 have 1, 2 and 4 identical nonterminal levels.
     // Their fixed geometry and sizing/named-demand frame set are the same,
