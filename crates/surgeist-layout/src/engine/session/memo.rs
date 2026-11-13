@@ -493,6 +493,188 @@ fn memo_allocation<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::layout_tree::PublicLayoutTreeOf;
+    use crate::{
+        AvailableSpaceOf, AxisSizingRequestOf, ContainingLayoutContext, Direction, Display,
+        FlowAxes, LayoutInputViewOf, NearestScrollportOf, NodeInputOf, OrthogonalFallbackLimitOf,
+        OrthogonalFallbackOf, ParentFormattingContext, PreferredSizeOf, SizingOperation,
+        SizingRequestOf, Traverse, WrappingInput, WritingMode,
+    };
+
+    struct ColdBlockTree<S: LayoutScalar> {
+        tree: PublicLayoutTreeOf<S>,
+        cache_reads: Cell<usize>,
+    }
+
+    impl<S: LayoutScalar> Traverse for ColdBlockTree<S> {
+        type Node = u32;
+        type Scalar = S;
+        type Children<'a> = <PublicLayoutTreeOf<S> as Traverse>::Children<'a>;
+
+        fn children(&self, node: u32) -> Self::Children<'_> {
+            Traverse::children(&self.tree, node)
+        }
+
+        fn child_count(&self, node: u32) -> usize {
+            self.tree.child_count(node)
+        }
+
+        fn child(&self, node: u32, index: usize) -> u32 {
+            self.tree.child(node, index)
+        }
+    }
+
+    impl<S: LayoutScalar> LayoutTree for ColdBlockTree<S> {
+        type MeasureError = core::convert::Infallible;
+
+        fn node_input(&self, node: u32) -> &NodeInputOf<S> {
+            self.tree.node_input(node)
+        }
+
+        fn layout_input(&self, node: u32) -> LayoutInputViewOf<'_, S> {
+            self.tree.layout_input(node)
+        }
+
+        fn cache_get(
+            &self,
+            _node: u32,
+            _input: &ComputeInputOf<S>,
+            _context: CacheKeyContext,
+        ) -> Option<ComputeOutputOf<S>> {
+            self.cache_reads.set(self.cache_reads.get() + 1);
+            None
+        }
+    }
+
+    fn assert_inherited_root_request_replays_staged_work<S: LayoutScalar>() {
+        const ROOT: u32 = 9;
+        const DESCENDANT: u32 = 0;
+        const LEAF: u32 = 7;
+        let block = NodeInputOf {
+            display: Display::Block,
+            ..NodeInputOf::default()
+        };
+        let tree = ColdBlockTree {
+            tree: PublicLayoutTreeOf::new()
+                .children(ROOT, [DESCENDANT])
+                .children(DESCENDANT, [LEAF])
+                .style(ROOT, block.clone())
+                .style(DESCENDANT, block.clone())
+                .style(
+                    LEAF,
+                    NodeInputOf {
+                        size: Size::new(
+                            PreferredSizeOf::AUTO,
+                            PreferredSizeOf::px(S::from_f64(7.0)),
+                        ),
+                        ..block
+                    },
+                ),
+            cache_reads: Cell::new(0),
+        };
+        let (graph, invalidated) =
+            crate::engine::validation::validate_layout_request_with_text_graph(
+                &tree,
+                ROOT,
+                &[],
+                &[],
+            )
+            .unwrap();
+        let wrapping = crate::inline_wrapping::WrappingContext::new(
+            &tree,
+            &graph,
+            &WrappingInput::default(),
+            &[],
+            |_| false,
+        )
+        .unwrap();
+        let mut session = ComputeSession::new(&tree, invalidated);
+        session.install_wrapping(Arc::new(wrapping), &graph);
+        session.enable_request_memo();
+
+        let input = |width, parent| {
+            ComputeInputOf::root_layout(
+                Size::new(Some(S::from_f64(width)), None),
+                Size::NONE,
+                ContainingLayoutContext::new(
+                    FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                    parent,
+                ),
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::Normal,
+                    )),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+            )
+        };
+
+        let root_input = input(100.0, ParentFormattingContext::NoParent);
+        session.compute_child(ROOT, root_input).unwrap();
+        let root_key = RequestKey {
+            index: graph.index(ROOT).unwrap(),
+            input: root_input,
+            context: CacheKeyContext::new(),
+        };
+        assert_eq!(root_key.index, 0);
+        assert!(session.memo_hit(ROOT, root_key).unwrap().is_none());
+        session.outputs.unrounded.clear();
+        session.cache.stores.clear();
+
+        let first = input(60.0, ParentFormattingContext::BlockFlow);
+        let output = session.compute_child(DESCENDANT, first).unwrap();
+        let geometry = session.staged_unrounded(LEAF).unwrap();
+        assert_eq!(
+            geometry.output().size,
+            Size::new(S::from_f64(60.0), S::from_f64(7.0))
+        );
+        let stores = std::mem::take(&mut session.cache.stores);
+        assert!(stores.iter().any(|entry| entry.node() == LEAF));
+
+        session.outputs.unrounded.clear();
+        tree.cache_reads.set(0);
+        assert_eq!(session.compute_child(DESCENDANT, first).unwrap(), output);
+        assert_eq!(
+            tree.cache_reads.get(),
+            0,
+            "repeat must skip the leaf's host cache"
+        );
+        assert_eq!(session.staged_unrounded(LEAF).unwrap(), geometry);
+        assert_eq!(session.cache.stores, stores);
+
+        let changed = input(80.0, ParentFormattingContext::BlockFlow);
+        assert_eq!(
+            session
+                .compute_child(DESCENDANT, changed)
+                .unwrap()
+                .size
+                .width,
+            S::from_f64(80.0)
+        );
+        assert_eq!(
+            session.staged_unrounded(LEAF).unwrap().output().size.width,
+            S::from_f64(80.0)
+        );
+        tree.cache_reads.set(0);
+        assert_eq!(session.compute_child(DESCENDANT, first).unwrap(), output);
+        assert_eq!(tree.cache_reads.get(), 0);
+        assert_eq!(session.staged_unrounded(LEAF).unwrap(), geometry);
+    }
+
+    #[test]
+    fn inherited_root_request_replays_staged_work_for_f32() {
+        assert_inherited_root_request_replays_staged_work::<f32>();
+    }
+
+    #[test]
+    fn inherited_root_request_replays_staged_work_for_f64() {
+        assert_inherited_root_request_replays_staged_work::<f64>();
+    }
 
     #[test]
     fn replay_keeps_first_clear_order_across_repeated_child_completions() {
