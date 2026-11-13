@@ -143,8 +143,7 @@ fn deep_named_receiver_returns_typed_refusal_f64() {
     );
 }
 
-fn assert_named_receiver_geometry<S: LayoutScalar>() {
-    let depth = 3;
+fn assert_named_receiver_geometry<S: LayoutScalar>(depth: u32) -> usize {
     let first_sibling = 3 * depth;
     let first_control = first_sibling + depth;
     let named = InlineBaselineContext::Named(BaselineName::Alphabetic);
@@ -160,6 +159,7 @@ fn assert_named_receiver_geometry<S: LayoutScalar>() {
                 )),
             );
     }
+    tree.reset_measurement_queries();
     let batch =
         compute_layout(&tree, 0, standalone()).expect("actual named line supplies the baseline");
     assert_eq!(batch.node_layouts().len(), (5 * depth - 2) as usize);
@@ -244,6 +244,7 @@ fn assert_named_receiver_geometry<S: LayoutScalar>() {
             .unwrap();
         assert_eq!(control.source_index(), crate::SourceIndex::new(1));
     }
+    tree.measurement_queries()
 }
 
 #[test]
@@ -251,8 +252,61 @@ fn shallow_named_receiver_publishes_actual_named_lines() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::shallow_named_receiver_publishes_actual_named_lines",
         || {
-            assert_named_receiver_geometry::<f32>();
-            assert_named_receiver_geometry::<f64>();
+            assert_named_receiver_geometry::<f32>(3);
+            assert_named_receiver_geometry::<f64>(3);
         },
     );
+}
+
+#[test]
+fn deep_named_receiver_publishes_actual_named_lines_f32() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_named_receiver_publishes_actual_named_lines_f32",
+        || {
+            assert_named_receiver_geometry::<f32>(24);
+        },
+    );
+}
+
+#[test]
+fn deep_named_receiver_publishes_actual_named_lines_f64() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_named_receiver_publishes_actual_named_lines_f64",
+        || {
+            assert_named_receiver_geometry::<f64>(24);
+        },
+    );
+}
+
+fn assert_named_receiver_work<S: LayoutScalar>() {
+    // Depths 2, 3 and 5 have 1, 2 and 4 identical nonterminal levels.
+    // Their fixed geometry and sizing/named-demand frame set are the same,
+    // while root and terminal work remain fixed. The two additional levels
+    // from depth 3 to 5 must add at most twice the work of depth 2 to 3.
+    let counts = [2, 3, 5].map(|depth| (depth, assert_named_receiver_geometry::<S>(depth)));
+    assert!(
+        counts[2].1 + 2 * counts[0].1 <= 3 * counts[1].1,
+        "named receiver work must remain bounded per source node: {counts:?}"
+    );
+}
+
+#[test]
+fn named_receiver_line_control_work_is_bounded_per_node_f32() {
+    // The existing two-MiB regressions cover stack use. This test isolates work.
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(assert_named_receiver_work::<f32>)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn named_receiver_line_control_work_is_bounded_per_node_f64() {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(assert_named_receiver_work::<f64>)
+        .unwrap()
+        .join()
+        .unwrap();
 }
