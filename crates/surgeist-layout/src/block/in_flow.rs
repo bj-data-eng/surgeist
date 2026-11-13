@@ -16,8 +16,9 @@ pub(crate) use traversal::{InFlowChild, PendingInFlowChild};
 pub(super) use traversal::{InFlowStep, InFlowTraversal};
 
 use child_compute::{
-    InFlowBoxComputation, InFlowBoxPreparation, InFlowComputedBox, PendingSharedBox,
-    finish_requested_box, finish_shared_box, prepare_in_flow_box, prepare_shared_box,
+    FloatAvoidance, FloatBandRequest, InFlowBoxComputation, InFlowBoxPreparation,
+    InFlowComputedBox, PendingSharedBox, finish_requested_box, finish_shared_box,
+    prepare_in_flow_box, prepare_shared_box,
 };
 use placement::{
     InFlowBoxOrigins, InFlowBoxPlacement, InFlowChildMargins, InFlowFloatItem, InFlowFloatPass,

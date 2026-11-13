@@ -1,3 +1,4 @@
+mod cache_stores;
 mod memo;
 mod requests;
 
@@ -275,8 +276,18 @@ impl<Node, S: LayoutScalar> OutputStaging<Node, S> {
 
 struct CacheStaging<Node, S: LayoutScalar> {
     stores: Vec<LayoutCacheStoreEntryOf<Node, S>>,
+    indexed_stores: Option<cache_stores::CacheStores<Node, S>>,
     clears: Vec<LayoutCacheClearEntry<Node>>,
     invalidated: Vec<Node>,
+}
+
+impl<Node: Copy, S: LayoutScalar> CacheStaging<Node, S> {
+    fn take_stores(&mut self) -> Vec<LayoutCacheStoreEntryOf<Node, S>> {
+        self.indexed_stores.take().map_or_else(
+            || std::mem::take(&mut self.stores),
+            cache_stores::CacheStores::into_ordered,
+        )
+    }
 }
 
 struct EntryStorage {
@@ -453,6 +464,7 @@ where
             outputs: OutputStaging::new(),
             cache: CacheStaging {
                 stores: Vec::new(),
+                indexed_stores: None,
                 clears: cache_clear_entries,
                 invalidated: invalidated_nodes,
             },
@@ -472,6 +484,92 @@ where
                 LayoutErrorKindOf::Text(error),
             )
         })
+    }
+
+    fn seal_float_trial(
+        &self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+        trial: FloatChildTrial,
+        mut probe: Self,
+        output: ComputeOutputOf<Tree::Scalar>,
+    ) -> FloatProbeResult<Tree, Tree::MeasureError> {
+        let (frames, pending, absolute_baselines, scope_fragments, formatted, boxes) =
+            probe.text.map_or_else(
+                || (None, Vec::new(), Vec::new(), Vec::new(), None, Vec::new()),
+                |text| {
+                    (
+                        Some(text.frames),
+                        text.pending,
+                        text.absolute_baselines,
+                        text.scope_fragments,
+                        text.formatted,
+                        text.boxes,
+                    )
+                },
+            );
+        let associations = self.text.as_ref().map(|text| text.associations.clone());
+        let funding = if self.entry_sources.is_some() {
+            self.entry_funding(node)?
+        } else {
+            None
+        };
+        let formatted_basis = self
+            .text
+            .as_ref()
+            .and_then(|text| text.formatted.as_ref())
+            .map(|state| state.entry_basis(funding.as_ref(), trial == FloatChildTrial::InFlow))
+            .transpose()
+            .map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })?;
+        let packet_owner = funding
+            .as_ref()
+            .map(|funding| {
+                funding.header::<(usize, usize, FloatChildPacket<Tree::Node, Tree::Scalar>)>()
+            })
+            .transpose()
+            .map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })?;
+        Ok(std::sync::Arc::new(FloatChildPacket {
+            groups: probe.groups,
+            boxes,
+            wrapping: self.wrapping.context.clone(),
+            formatted_basis,
+            formatted,
+            node,
+            input,
+            output,
+            frames,
+            associations,
+            entries: probe.outputs.unrounded,
+            fragments: probe.outputs.unrounded_fragments,
+            native_inline_runs: probe.wrapping.native_runs,
+            native_inline_completions: probe.wrapping.native_completions,
+            stores: probe.cache.take_stores(),
+            clears: probe.cache.clears,
+            pending,
+            absolute_baselines,
+            scope_fragments,
+            _entry_clears: probe
+                .entry_storage
+                .as_mut()
+                .map(|storage| std::mem::take(&mut storage.clears)),
+            _entry_stores: probe
+                .entry_storage
+                .as_mut()
+                .map(|storage| std::mem::take(&mut storage.stores)),
+            _entry_owner: packet_owner,
+        }))
     }
 
     /// Disposable custody for an exact native child trial. A framed caller
@@ -532,6 +630,9 @@ where
         let (dirty, dirty_storage) = dirty.into_parts();
         let (clears, clears_storage) = clears.into_parts();
         let mut probe = Self::with_invalidations(self.tree, dirty, clears);
+        if self.cache.indexed_stores.is_some() && incoming.is_none() && funding_ref.is_none() {
+            probe.cache.indexed_stores = Some(cache_stores::CacheStores::new());
+        }
         probe.entry_sources = self.entry_sources.clone();
         if incoming.is_none() && self.entry_sources.is_none() {
             probe.memo = self.memo.as_ref().map(memo::Memo::fork);
@@ -959,6 +1060,9 @@ where
         self.block_floats.reset();
         self.outputs.reset();
         self.cache.stores.clear();
+        if let Some(stores) = &mut self.cache.indexed_stores {
+            *stores = cache_stores::CacheStores::new();
+        }
         Ok(())
     }
 
@@ -1059,7 +1163,7 @@ where
         Ok(self.complete_for_root(root).with_placed_text(placed))
     }
 
-    fn complete(self, root: Tree::Node) -> CompletedLayoutBatchOf<Tree::Node, Tree::Scalar> {
+    fn complete(mut self, root: Tree::Node) -> CompletedLayoutBatchOf<Tree::Node, Tree::Scalar> {
         let mut unrounded_inline_fragments: Vec<_> = self
             .outputs
             .rounded_fragments
@@ -1115,7 +1219,7 @@ where
                 final_entries: self.outputs.rounded,
                 unrounded_inline: unrounded_inline_fragments,
                 final_inline: final_inline_fragments,
-                stores: self.cache.stores,
+                stores: self.cache.take_stores(),
                 clears: self.cache.clears,
                 invalidated: self.cache.invalidated,
             },
@@ -1914,7 +2018,15 @@ where
             if let Some(text) = &mut self.text {
                 text.discard_placement(node);
             }
-            self.cache.stores.retain(|entry| entry.node() != node);
+            if let Some(stores) = &mut self.cache.indexed_stores {
+                let index = self
+                    .flow_graph
+                    .and_then(|graph| graph.index(node))
+                    .expect("indexed store belongs to the validated graph");
+                stores.remove(index);
+            } else {
+                self.cache.stores.retain(|entry| entry.node() != node);
+            }
             if let Some(memo) = &self.memo {
                 memo.barrier();
             }
@@ -2217,86 +2329,8 @@ where
         Tree::MeasureError,
     > {
         let mut probe = self.child_staging(node, trial, None)?;
-        let frames = probe
-            .text
-            .as_ref()
-            .map(|state| std::sync::Arc::clone(&state.frames));
         let output = probe.compute_child(node, input)?;
-        let (pending, absolute_baselines, scope_fragments, formatted, boxes) =
-            probe.text.map_or_else(
-                || (Vec::new(), Vec::new(), Vec::new(), None, Vec::new()),
-                |text| {
-                    (
-                        text.pending,
-                        text.absolute_baselines,
-                        text.scope_fragments,
-                        text.formatted,
-                        text.boxes,
-                    )
-                },
-            );
-        let associations = self.text.as_ref().map(|text| text.associations.clone());
-        let funding = if self.entry_sources.is_some() {
-            self.entry_funding(node)?
-        } else {
-            None
-        };
-        let formatted_basis = self
-            .text
-            .as_ref()
-            .and_then(|text| text.formatted.as_ref())
-            .map(|state| state.entry_basis(funding.as_ref(), trial == FloatChildTrial::InFlow))
-            .transpose()
-            .map_err(|error| {
-                LayoutErrorOf::new(
-                    LayoutErrorSiteOf::Node(node),
-                    LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
-                )
-            })?;
-        let packet_owner = funding
-            .as_ref()
-            .map(|funding| {
-                funding.header::<(usize, usize, FloatChildPacket<Self::Node, Self::Scalar>)>()
-            })
-            .transpose()
-            .map_err(|error| {
-                LayoutErrorOf::new(
-                    LayoutErrorSiteOf::Node(node),
-                    LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
-                )
-            })?;
-        Ok(std::sync::Arc::new(FloatChildPacket {
-            groups: probe.groups,
-            boxes,
-            wrapping: self.wrapping.context.clone(),
-            formatted_basis,
-            formatted,
-            node,
-            input,
-            output,
-            frames,
-            associations,
-            entries: probe.outputs.unrounded,
-            fragments: probe.outputs.unrounded_fragments,
-            native_inline_runs: probe.wrapping.native_runs,
-            native_inline_completions: probe.wrapping.native_completions,
-            stores: probe.cache.stores,
-            clears: probe.cache.clears,
-            pending,
-            absolute_baselines,
-            scope_fragments,
-            _entry_clears: probe
-                .entry_storage
-                .as_mut()
-                .map(|storage| std::mem::take(&mut storage.clears)),
-            _entry_stores: probe
-                .entry_storage
-                .as_mut()
-                .map(|storage| std::mem::take(&mut storage.stores)),
-            _entry_owner: packet_owner,
-        }))
+        self.seal_float_trial(node, input, trial, probe, output)
     }
 
     fn accept_float_child(
@@ -2669,39 +2703,53 @@ where
             return Ok(());
         }
 
-        let funding = if self.entry_storage.is_some() {
-            self.entry_funding(node)?
-        } else {
-            None
-        };
-        let error = |error| {
-            LayoutErrorOf::new(
-                LayoutErrorSiteOf::Node(node),
-                LayoutOperation::ChildLayout,
-                LayoutErrorKindOf::Text(error),
-            )
-        };
-        let mut previous = None;
-        for (index, entry) in self.cache.stores.iter().enumerate() {
-            entry_staging::inspect(funding.as_ref(), 1).map_err(error)?;
-            if entry.node() == node && entry.input() == input && entry.context() == context {
-                previous = Some(index);
-                break;
-            }
-        }
-        if let Some(index) = previous {
-            entry_staging::inspect(funding.as_ref(), self.cache.stores.len() - index - 1)
-                .map_err(error)?;
-            self.cache.stores.remove(index);
-        }
-        if let Some(storage) = &mut self.entry_storage {
-            storage
-                .stores
-                .reserve_push(&mut self.cache.stores, funding.as_ref())
-                .map_err(error)?;
-        }
         let entry = LayoutCacheStoreEntryOf::new(node, *input, context, output);
-        self.cache.stores.push(entry);
+        if let Some(stores) = &mut self.cache.indexed_stores {
+            let index = self
+                .flow_graph
+                .and_then(|graph| graph.index(node))
+                .expect("indexed store belongs to the validated graph");
+            stores.store(index, entry).map_err(|_| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Allocation,
+                )
+            })?;
+        } else {
+            let funding = if self.entry_storage.is_some() {
+                self.entry_funding(node)?
+            } else {
+                None
+            };
+            let error = |error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Text(error),
+                )
+            };
+            let mut previous = None;
+            for (index, entry) in self.cache.stores.iter().enumerate() {
+                entry_staging::inspect(funding.as_ref(), 1).map_err(error)?;
+                if entry.node() == node && entry.input() == input && entry.context() == context {
+                    previous = Some(index);
+                    break;
+                }
+            }
+            if let Some(index) = previous {
+                entry_staging::inspect(funding.as_ref(), self.cache.stores.len() - index - 1)
+                    .map_err(error)?;
+                self.cache.stores.remove(index);
+            }
+            if let Some(storage) = &mut self.entry_storage {
+                storage
+                    .stores
+                    .reserve_push(&mut self.cache.stores, funding.as_ref())
+                    .map_err(error)?;
+            }
+            self.cache.stores.push(entry);
+        }
         if let Some(memo) = &mut self.memo {
             memo.record(node, memo::Effect::Store(entry));
         }

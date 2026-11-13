@@ -253,7 +253,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockComputation<'input, Node, S>
         &mut self,
         tree: &mut Tree,
         pending: PendingBlockChild<'input, Node, S>,
-        output: ComputeOutputOf<S>,
+        output: BlockChildReceipt<Node, S>,
     ) -> ComputeResult<Node, (), S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
@@ -510,6 +510,20 @@ pub(crate) enum PendingBlockChild<'input, Node, S: LayoutScalar> {
     Positioned(AbsoluteChild<Node, S>),
 }
 
+pub(crate) enum BlockChildReceipt<Node, S: LayoutScalar> {
+    Layout(ComputeOutputOf<S>),
+    FloatTrial(std::sync::Arc<crate::engine::FloatChildPacket<Node, S>>),
+}
+
+impl<Node, S: LayoutScalar> BlockChildReceipt<Node, S> {
+    fn layout(self) -> ComputeOutputOf<S> {
+        match self {
+            Self::Layout(output) => output,
+            Self::FloatTrial(_) => unreachable!("direct Block request has a layout receipt"),
+        }
+    }
+}
+
 impl<Node: Copy, S: LayoutScalar> PendingBlockChild<'_, Node, S> {
     pub(crate) fn shared_request(&self) -> Option<(Node, ComputeInputOf<S>)> {
         match self {
@@ -517,9 +531,19 @@ impl<Node: Copy, S: LayoutScalar> PendingBlockChild<'_, Node, S> {
             _ => None,
         }
     }
+
+    pub(crate) fn float_trial(&self) -> Option<crate::engine::FloatChildTrial> {
+        match self {
+            Self::InFlow(child) => child.float_trial(),
+            Self::Positioned(_) => None,
+        }
+    }
 }
 
-type BlockChildOutput<'input, Node, S> = (PendingBlockChild<'input, Node, S>, ComputeOutputOf<S>);
+type BlockChildOutput<'input, Node, S> = (
+    PendingBlockChild<'input, Node, S>,
+    BlockChildReceipt<Node, S>,
+);
 
 impl<'input, Node: Copy, S: LayoutScalar> BlockChild<'input, Node, S> {
     pub(crate) fn into_request(
@@ -558,7 +582,10 @@ impl<'input, Node: Copy, S: LayoutScalar> BlockChild<'input, Node, S> {
             }
             Self::Positioned(child) => {
                 let output = tree.compute_child(child.node, child.input)?;
-                Ok((PendingBlockChild::Positioned(child), output))
+                Ok((
+                    PendingBlockChild::Positioned(child),
+                    BlockChildReceipt::Layout(output),
+                ))
             }
         }
     }
@@ -834,7 +861,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
         &mut self,
         tree: &mut Tree,
         pending: PendingBlockChild<'input, Node, S>,
-        output: ComputeOutputOf<S>,
+        output: BlockChildReceipt<Node, S>,
     ) -> ComputeResult<Node, (), S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
@@ -851,7 +878,13 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockPass<'input, Node, S> {
                 .positioned
                 .as_mut()
                 .expect("positioned child resumes its owning pass")
-                .accept_child(tree, active.flow.node, &active.constants, child, output)
+                .accept_child(
+                    tree,
+                    active.flow.node,
+                    &active.constants,
+                    child,
+                    output.layout(),
+                )
                 .map_err(Into::into),
         }
     }

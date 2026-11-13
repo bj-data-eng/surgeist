@@ -642,3 +642,108 @@ fn continuous_bound_flex_leaf_measurement_work_is_bounded_per_call() {
 fn continuous_bound_grid_leaf_measurement_work_is_bounded_per_call() {
     assert_nested_leaf_work_is_bounded(Display::Grid, true);
 }
+
+fn assert_block_float_trial_chain<S: LayoutScalar>(depth: u32) {
+    let px = S::from_f64;
+    let preferred = |value| crate::PreferredSizeOf::px(px(value));
+    let first_float = depth + 1;
+    let mut tree = chain::<S>(Display::Block, depth + 1);
+    for level in 0..depth {
+        let float = first_float + level;
+        tree = tree.children(level, [float, level + 1]).style(
+            float,
+            NodeInputOf {
+                display: Display::Block,
+                float: crate::Float::Left,
+                size: Size::new(preferred(1.0), preferred(4.0)),
+                ..NodeInputOf::default()
+            },
+        );
+        if level != 0 {
+            tree = tree.style(
+                level,
+                NodeInputOf {
+                    display: Display::Block,
+                    block_flow_context: crate::BlockFlowContext::Independent,
+                    ..NodeInputOf::default()
+                },
+            );
+        }
+    }
+    tree = tree.style(
+        depth,
+        NodeInputOf {
+            display: Display::Block,
+            block_flow_context: crate::BlockFlowContext::Independent,
+            size: Size::new(crate::PreferredSizeOf::AUTO, preferred(5.0)),
+            ..NodeInputOf::default()
+        },
+    );
+    let batch = compute_layout(&tree, 0, standalone()).expect("nested Block float trials");
+    assert_eq!(batch.node_layouts().len(), (2 * depth + 1) as usize);
+    for node in 0..=depth {
+        let output = batch
+            .node_layout(node)
+            .unwrap()
+            .single_box()
+            .unwrap()
+            .final_output();
+        assert_eq!(
+            output.size,
+            Size::new(px(100.0 - f64::from(node)), px(5.0),),
+            "node {node}"
+        );
+        assert_eq!(
+            output.location,
+            crate::Point::new(px(f64::from(node != 0)), S::ZERO),
+            "node {node}"
+        );
+        assert_eq!(
+            output.source_index,
+            crate::SourceIndex::new(usize::from(node != 0)),
+            "node {node}"
+        );
+    }
+    for level in 0..depth {
+        let float = first_float + level;
+        let output = batch
+            .node_layout(float)
+            .unwrap()
+            .single_box()
+            .unwrap()
+            .final_output();
+        assert_eq!(
+            output.location,
+            crate::Point::new(S::ZERO, S::ZERO),
+            "float {float}"
+        );
+        assert_eq!(output.size, Size::new(px(1.0), px(4.0)), "float {float}");
+        assert_eq!(
+            output.source_index,
+            crate::SourceIndex::new(0),
+            "float {float}"
+        );
+    }
+}
+
+#[test]
+fn shallow_block_float_trial_layout_publishes_each_bfc() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_block_float_trial_layout_publishes_each_bfc",
+        || {
+            assert_block_float_trial_chain::<f32>(3);
+            assert_block_float_trial_chain::<f64>(3);
+        },
+    );
+}
+
+#[test]
+fn deep_block_float_trial_layout_returns_on_bounded_stack() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_block_float_trial_layout_returns_on_bounded_stack",
+        || {
+            assert_block_float_trial_chain::<f32>(64);
+            assert_block_float_trial_chain::<f64>(64);
+        },
+    );
+}
