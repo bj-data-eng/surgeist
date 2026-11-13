@@ -267,6 +267,8 @@ impl ElementBindings {
             super::reflection::Receiver::Element,
             REFLECTIONS,
         )?;
+        attribute::install(scope, &element, capture)?;
+        super::shadow::install_attachment(scope, &element, capture)?;
         let handler = capture(size_of::<(Capture, ElementMember)>())?;
         install_getter(
             scope,
@@ -278,14 +280,12 @@ impl ElementBindings {
                 handler.element_member(scope, arguments, ElementMember::ShadowRoot)
             }),
         )?;
-        super::shadow::install_attachment(scope, &element, capture)?;
         custom_elements::install_node_getter(
             scope,
             &element,
             custom_elements::Receiver::Element,
             capture,
         )?;
-        attribute::install(scope, &element, capture)?;
         super::parent_node::install(
             scope,
             &element,

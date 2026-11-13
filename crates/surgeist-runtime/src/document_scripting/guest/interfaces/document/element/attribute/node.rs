@@ -165,7 +165,7 @@ pub(in crate::document_scripting::guest::interfaces::document::element) fn insta
         (&ascii(b"setAttributeNodeNS")[..], Method::SetNode, 1),
         (&ascii(b"removeAttributeNode")[..], Method::RemoveNode, 1),
     ] {
-        let handler = capture(size_of::<(Capture, Method)>())?;
+        let handler = capture(size_of::<(Capture, Method, u32)>())?;
         let function = scope.fixed_arity_function(
             &Callback::new(move |scope, arguments| {
                 handler.attribute_entry(scope, arguments, method, length)
