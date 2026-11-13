@@ -57,7 +57,8 @@ impl Draft {
         if existing.is_some() {
             return Err(DomError::NotSupported);
         }
-        self.attach_new_shadow(host, document, init, limits, cancelled)
+        let registry = self.shadow_init_registry(document, init, cancelled)?;
+        self.attach_new_shadow(host, document, (init, registry), limits, cancelled)
     }
 
     pub(super) fn attach_shadow_command(
@@ -67,9 +68,12 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        let (document, existing) = self.qualify_shadow_host(host, cancelled)?;
+        let document = self.node(host)?.document();
+        let registry = self.shadow_init_registry(document, init, cancelled)?;
+        let (_, existing) = self.qualify_shadow_host(host, cancelled)?;
         let Some(root) = existing else {
-            let root = self.attach_new_shadow(host, document, init, limits, cancelled)?;
+            let root =
+                self.attach_new_shadow(host, document, (init, registry), limits, cancelled)?;
             return self.register_ticket(root, cancelled);
         };
         let node = self.node(root)?;
@@ -167,19 +171,34 @@ impl Draft {
         Ok((node.document(), node.shadow_root()))
     }
 
+    fn shadow_init_registry(
+        &self,
+        document: Key,
+        init: crate::DomShadowRootInit,
+        cancel: &AtomicBool,
+    ) -> Result<crate::DomRegistryBinding, DomError> {
+        use crate::DomRegistryBinding;
+        self.source_step(cancel)?;
+        let default = self.document_metadata(document)?.custom_element_registry();
+        let selected = init.registry.unwrap_or(default);
+        if let DomRegistryBinding::Registry(id) = selected
+            && selected != default
+            && self.creation_registry(id, cancel)?.scoped_origin.is_none()
+        {
+            return Err(DomError::NotSupported);
+        }
+        Ok(selected)
+    }
+
     fn attach_new_shadow(
         &mut self,
         host: Key,
         document: Key,
-        init: crate::DomShadowRootInit,
+        (init, registry): (crate::DomShadowRootInit, crate::DomRegistryBinding),
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<Key, DomError> {
-        let registry = self.document_metadata(document)?.custom_element_registry();
-        let mut state = crate::DomShadowRootState::native(init);
-        if !init.null_registry {
-            state.select_global_registry(registry);
-        }
+        let state = crate::DomShadowRootState::native(init, registry);
         let root = self.allocate(NewNode::ShadowRoot(state), document, limits, cancelled)?;
         let mut relation = self.host_mut(root, cancelled)?;
         *relation = Some(host);

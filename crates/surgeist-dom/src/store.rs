@@ -1071,6 +1071,7 @@ impl DomUsage {
 /// their entire state. Children includes derived Element-sibling/index changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomChange {
+    RegistryCreated(crate::DomRegistryId),
     RegistryDefinitionAdded(crate::DomRegistryDefinitionId),
     RangeCreated(crate::DomRangeId),
     NodeIteratorCreated(crate::DomNodeIteratorId),
@@ -2427,6 +2428,7 @@ use transaction::staged::DraftNode;
 
 struct Draft {
     base: Arc<State>,
+    pending_scoped_documents: Option<select::ScratchVec<(crate::DomRegistryId, Key)>>,
     custom_element_reactions: Option<source::reactions::ReactionFacts>,
     script_registration: Option<Arc<crate::hosted::ScriptRegistration>>,
     event_recipients: Option<Arc<event::Owner>>,
@@ -2953,6 +2955,7 @@ impl Draft {
             ),
             store: dom.owner,
             registries: dom.state.registries.clone(),
+            pending_scoped_documents: None,
             hosted_globals: dom.state.hosted_globals.clone(),
             hosted_history: dom.state.hosted_history.clone(),
             auxiliary: dom.state_custody.auxiliary.clone(),
@@ -3596,6 +3599,22 @@ impl Draft {
                 let host = self.resolve(host.clone())?;
                 self.attach_shadow_command(host, *init, limits, cancelled)?;
             }
+            Command::InitializeRegistry { root, registry } => {
+                self.apply_registry_subtree(
+                    self.resolve(root.clone())?,
+                    *registry,
+                    true,
+                    cancelled,
+                )?;
+            }
+            Command::UpgradeRegistry { root, registry } => {
+                self.apply_registry_subtree(
+                    self.resolve(root.clone())?,
+                    *registry,
+                    false,
+                    cancelled,
+                )?;
+            }
             Command::ViewTransition { basis, edit } => {
                 self.apply_view_transition(*basis, edit, limits, cancelled)?
             }
@@ -3710,6 +3729,13 @@ impl Draft {
                                 document,
                                 name,
                                 definition,
+                                global: self
+                                    .resolve_creation_global(
+                                        Key::Existing(document.node()),
+                                        *fallback,
+                                        cancelled,
+                                    )?
+                                    .ok_or(DomError::HostedSourceUnavailable)?,
                             });
                             return Ok(());
                         }
@@ -4131,6 +4157,7 @@ impl Draft {
         cancelled: &AtomicBool,
         requested: impl ExactSizeIterator<Item = Key>,
     ) -> Result<(Prepared, Vec<NodeId>), DomError> {
+        self.resolve_scoped_registry_documents(dom, cancelled)?;
         self.finish_sparse(dom, cancelled, requested)
     }
 }

@@ -128,10 +128,9 @@ member order, argument indices, optionality and defaults from the same authored
 JSON as the typed values. Dictionary conversion visits inherited members before
 derived members, sorts each declaration lexicographically, and converts each
 member immediately after reading it. Undefined and null dictionaries use the
-declared member defaults. `ShadowRootInit` preserves omission and explicit null
-for `customElementRegistry` and refuses non-null values in this attachment
-profile. Element creation options separately accept an exact host-projected
-registry brand.
+declared member defaults. `ShadowRootInit` and element creation options
+preserve omission, explicit null and the exact host-projected
+`CustomElementRegistry` brand.
 
 `Conversion::argument` converts one already-selected declaration argument from
 `arguments.get(descriptor.index())`. Optional omission and explicit undefined

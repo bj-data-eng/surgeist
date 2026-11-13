@@ -142,7 +142,7 @@ struct Workspace {
 }
 
 enum Definitions<'a> {
-    EmptyGlobal,
+    Empty(HtmlRegistryScope),
     Append {
         capture: &'a HtmlCapture,
         registry: &'a HtmlCaptureRegistryId,
@@ -610,7 +610,7 @@ impl HtmlCapture {
     ) -> Result<HtmlRegistryCapture, HtmlRegistryFormationError<E>> {
         Self::form_registry(
             host_revision,
-            Definitions::EmptyGlobal,
+            Definitions::Empty(HtmlRegistryScope::Global),
             formation_bytes,
             step,
             None,
@@ -632,10 +632,27 @@ impl HtmlCapture {
     ) -> Result<HtmlRegistryCapture, HtmlRegistryFormationError<E>> {
         Self::form_registry(
             host_revision,
-            Definitions::EmptyGlobal,
+            Definitions::Empty(HtmlRegistryScope::Global),
             formation_bytes,
             step,
             Some(accounting),
+            0,
+        )
+    }
+
+    /// Forms an empty scoped registry with the same work and byte admission as
+    /// [`Self::complete_empty_global_registry_with`].
+    pub fn complete_empty_scoped_registry_with<E>(
+        host_revision: HtmlHostFactsRevision,
+        formation_bytes: usize,
+        step: impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<HtmlRegistryCapture, HtmlRegistryFormationError<E>> {
+        Self::form_registry(
+            host_revision,
+            Definitions::Empty(HtmlRegistryScope::Scoped),
+            formation_bytes,
+            step,
+            None,
             0,
         )
     }
@@ -683,7 +700,7 @@ impl HtmlCapture {
         Control::step(&mut step, 1)?;
         let mut fixed = Control::plus(size_of::<Workspace>(), size_of::<HtmlRegistryCapture>())?;
         let (unit_limit, definition_limit) = match definitions {
-            Definitions::EmptyGlobal => (0, 0),
+            Definitions::Empty(_) => (0, 0),
             Definitions::Append { .. } => {
                 fixed = Control::plus(fixed, size_of::<Vec<HtmlCustomElementDefinition>>())?;
                 // One staged definition and, for borrowed input, its UTF-16 Vec.
@@ -709,7 +726,7 @@ impl HtmlCapture {
         };
         formation.reserve(&mut builder.data.registries, 1)?;
         let index = match definitions {
-            Definitions::EmptyGlobal => {
+            Definitions::Empty(scope) => {
                 formation.on_work(1)?;
                 let registry_call_headers = Control::plus(
                     size_of::<Option<Vec<HtmlCustomElementDefinition>>>(),
@@ -724,7 +741,7 @@ impl HtmlCapture {
                     .map_err(HtmlRegistryFormationError::Capture)?;
                 formation.on_work(1)?;
                 builder
-                    .establish_registry_scope(&registry, HtmlRegistryScope::Global)
+                    .establish_registry_scope(&registry, scope)
                     .map_err(HtmlRegistryFormationError::Capture)?;
                 registry.index
             }

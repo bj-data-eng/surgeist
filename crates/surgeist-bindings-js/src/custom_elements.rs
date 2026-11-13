@@ -12,6 +12,27 @@ pub struct CustomElementRegistryIdentity {
     index: u32,
 }
 
+/// A canonical publication joined to its exact authenticated guest object.
+pub struct PublishedCustomElementRegistry<'scope, T> {
+    value: crate::Value<'scope>,
+    holder: RetainedCallbackObject,
+    identity: CustomElementRegistryIdentity,
+    host: T,
+}
+
+impl<'scope, T> PublishedCustomElementRegistry<'scope, T> {
+    pub fn into_parts(
+        self,
+    ) -> (
+        crate::Value<'scope>,
+        RetainedCallbackObject,
+        CustomElementRegistryIdentity,
+        T,
+    ) {
+        (self.value, self.holder, self.identity, self.host)
+    }
+}
+
 impl CustomElementRegistryIdentity {
     pub(crate) fn from_brand(token: NativeObjectToken<RegistryBrand>) -> Self {
         let (owner, index) = token.identity_parts();
@@ -36,13 +57,34 @@ impl<'scope> Scope<'scope> {
         prototype: ObjectPrototype<'_, 'scope>,
         admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
     ) -> Result<(RetainedCallbackObject, CustomElementRegistryIdentity), E> {
+        let (_, holder, identity, ()) = self
+            .publish_custom_element_registry(prototype, admit, || Ok(()))?
+            .into_parts();
+        Ok((holder, identity))
+    }
+
+    /// Qualify a private registry wrapper, then publish it with the canonical
+    /// host operation. A refused host operation discards the private brand.
+    /// The closure receives no guest value and cannot expose the wrapper.
+    pub fn publish_custom_element_registry<Storage: 'static, E: From<Error>, T>(
+        &mut self,
+        prototype: ObjectPrototype<'_, 'scope>,
+        admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
+        publish_host: impl FnOnce() -> Result<T, E>,
+    ) -> Result<PublishedCustomElementRegistry<'scope, T>, E> {
         let prepared = self.prepare_retained_native_object(
             crate::NativeProjectionPrototype::Current(prototype),
             RegistryBrand,
             admit,
         )?;
         let identity = CustomElementRegistryIdentity::from_brand(prepared.token());
-        let (_, holder, ()) = prepared.publish(|_| ());
-        Ok((holder, identity))
+        let output = publish_host()?;
+        let (value, holder, ()) = prepared.publish(|_| ());
+        Ok(PublishedCustomElementRegistry {
+            value,
+            holder,
+            identity,
+            host: output,
+        })
     }
 }

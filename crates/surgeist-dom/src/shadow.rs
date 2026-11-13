@@ -8,11 +8,10 @@ use surgeist_html::construction::{
 /// named slot assignment and false delegates-focus, clonable and serializable.
 /// The registry defaults to the host's node Document registry. Explicit null
 /// is supported. Matching declarative roots keep their original options.
-/// Registry objects are unavailable.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomShadowRootInit {
     pub(crate) properties: HtmlShadowRootProperties,
-    pub(crate) null_registry: bool,
+    pub(crate) registry: Option<DomRegistryBinding>,
 }
 impl DomShadowRootInit {
     pub fn new(mode: HtmlShadowRootMode) -> Self {
@@ -24,7 +23,7 @@ impl DomShadowRootInit {
                 false,
                 false,
             ),
-            null_registry: false,
+            registry: None,
         }
     }
     pub fn properties(self) -> HtmlShadowRootProperties {
@@ -33,7 +32,13 @@ impl DomShadowRootInit {
 
     /// Select null for the new root's initial registry.
     pub fn with_null_registry(mut self) -> Self {
-        self.null_registry = true;
+        self.registry = Some(DomRegistryBinding::Null);
+        self
+    }
+
+    /// Select a canonical registry. Attachment checks its owner and scope.
+    pub fn with_registry(mut self, registry: crate::DomRegistryId) -> Self {
+        self.registry = Some(DomRegistryBinding::Registry(registry));
         self
     }
 }
@@ -41,7 +46,7 @@ impl From<HtmlShadowRootProperties> for DomShadowRootInit {
     fn from(properties: HtmlShadowRootProperties) -> Self {
         Self {
             properties,
-            null_registry: false,
+            registry: None,
         }
     }
 }
@@ -82,6 +87,9 @@ impl DomShadowRootState {
             self.registry = registry;
         }
     }
+    pub(crate) fn establish_registry(&mut self, registry: crate::DomRegistryId) {
+        self.registry = DomRegistryBinding::Registry(registry);
+    }
     /// Retains the actual source effect's already-qualified null-registry state;
     /// this does not run native attach checks or create a different root.
     pub(crate) fn from_parsed(
@@ -98,12 +106,12 @@ impl DomShadowRootState {
             registry: DomRegistryBinding::Null,
         }
     }
-    pub(crate) fn native(init: DomShadowRootInit) -> Self {
+    pub(crate) fn native(init: DomShadowRootInit, registry: DomRegistryBinding) -> Self {
         Self {
             properties: init.properties,
             available_to_element_internals: false,
             declarative: false,
-            registry: DomRegistryBinding::Null,
+            registry,
             keep_custom_element_registry_null: false,
         }
     }

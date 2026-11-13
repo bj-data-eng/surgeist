@@ -132,7 +132,7 @@ impl PublicEventBindings {
         global: DomHostedGlobalId,
         new_target: &Value<'scope>,
     ) -> Result<Option<(DomRegistryDefinitionId, &'static str)>, DocumentGuestEventError> {
-        let mut lookup = |registry: &GlobalRegistry| {
+        let mut lookup = |registry: &Registry| {
             let rows = registry
                 .definitions
                 .try_borrow()
@@ -215,9 +215,9 @@ impl PublicEventBindings {
         request: DomSourceCustomElementRequest,
     ) -> Result<(Value<'scope>, RealmId, &'static str, bool), DocumentGuestEventError> {
         let id = request.definition();
-        let open = |scope: &mut Scope<'scope>, registry: &GlobalRegistry| {
+        let open = |scope: &mut Scope<'scope>, registry: &Registry| {
             events.step()?;
-            if registry.id != id.registry() || registry.global != request.global() {
+            if !registry.scoped && registry.global != request.global() {
                 return Err(DocumentScriptNativeError::ProjectionCustody.into());
             }
             let rows = registry
@@ -236,25 +236,42 @@ impl PublicEventBindings {
                 row.customized,
             ))
         };
-        if self.custom_elements.global == request.global() {
-            open(scope, &self.custom_elements)
-        } else {
-            self.with_origin(events, request.global(), |origin| {
-                open(scope, &origin.custom_elements)
-            })
-        }
+        self.with_registry_step(
+            || events.step(),
+            |registry| registry.id == id.registry(),
+            |registry| open(scope, registry),
+        )
     }
 }
 
-pub(super) struct GlobalRegistry {
+pub(super) struct Registry {
     global: DomHostedGlobalId,
     id: DomRegistryId,
+    scoped: bool,
+    prototype: Option<RetainedCallbackObject>,
     object: RetainedCallbackObject,
     identity: CustomElementRegistryIdentity,
     definitions: RefCell<DefinitionBank>,
     waiting: RefCell<Option<Box<DefinitionWaiter>>>,
     running: Cell<bool>,
     _backing: GuestBacking,
+}
+
+#[derive(Default)]
+pub(super) struct ScopedRegistries(Option<Box<ScopedRegistry>>);
+
+struct ScopedRegistry {
+    registry: Rc<Registry>,
+    next: Option<Box<Self>>,
+    _backing: GuestBacking,
+}
+
+impl Drop for ScopedRegistries {
+    fn drop(&mut self) {
+        while let Some(mut entry) = self.0.take() {
+            self.0 = entry.next.take();
+        }
+    }
 }
 
 struct DefinitionWaiter {
@@ -265,7 +282,7 @@ struct DefinitionWaiter {
     _name: GuestBacking,
 }
 
-impl Drop for GlobalRegistry {
+impl Drop for Registry {
     fn drop(&mut self) {
         let mut waiting = self.waiting.get_mut().take();
         while let Some(mut entry) = waiting {
@@ -436,10 +453,16 @@ pub(super) fn install<'scope>(
     id: DomRegistryId,
     capture: CaptureFunding<'_>,
     fund: &dyn Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
-) -> Result<Rc<GlobalRegistry>, DocumentGuestEventError> {
+) -> Result<Rc<Registry>, DocumentGuestEventError> {
     let prototype = scope.object(ObjectPrototype::Default)?;
+    let fallback = capture(size_of::<(Capture, DomHostedGlobalId)>())?;
+    let construct = capture(size_of::<(Capture, DomHostedGlobalId)>())?;
     let constructor = scope.constructor(
-        &document::illegal_constructor(),
+        &ConstructorCallback::bounded(
+            0,
+            move |scope| fallback.registry_prototype(scope, global),
+            move |scope, arguments| construct.construct_scoped_registry(scope, arguments, global),
+        ),
         FunctionMetadata {
             name: INTERFACE,
             length: 0,
@@ -477,10 +500,14 @@ pub(super) fn install<'scope>(
         None,
         true,
     )?;
-    let backing = fund(size_of::<GlobalRegistry>() + 2 * size_of::<usize>())?;
-    Ok(Rc::new(GlobalRegistry {
+    let backing = fund(size_of::<Registry>() + 2 * size_of::<usize>())?;
+    let observed = scope.callback_object(&prototype)?;
+    let prototype = scope.retain_callback_object(observed, fund)?;
+    Ok(Rc::new(Registry {
         global,
         id,
+        scoped: false,
+        prototype: Some(prototype),
         object,
         identity,
         definitions: RefCell::new(DefinitionBank::default()),
@@ -517,10 +544,10 @@ fn install_definition_methods<'scope>(
             true,
         )?;
     }
-    let capture = capture(size_of::<Capture>())?;
-    let name = &ascii(b"whenDefined");
+    let get_name = capture(size_of::<Capture>())?;
+    let name = &ascii(b"getName");
     let function = scope.fixed_arity_function(
-        &Callback::new(move |scope, arguments| capture.when_defined(scope, arguments)),
+        &Callback::new(move |scope, arguments| get_name.registry_get_name(scope, arguments)),
         FunctionMetadata { name, length: 1 },
     )?;
     define_data(
@@ -532,6 +559,42 @@ fn install_definition_methods<'scope>(
         true,
         true,
     )?;
+    let when_defined = capture(size_of::<Capture>())?;
+    let name = &ascii(b"whenDefined");
+    let function = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| when_defined.when_defined(scope, arguments)),
+        FunctionMetadata { name, length: 1 },
+    )?;
+    define_data(
+        scope,
+        prototype,
+        PropertyKey::String(name),
+        &function,
+        true,
+        true,
+        true,
+    )?;
+    for (name, initialize) in [
+        (&ascii(b"upgrade")[..], false),
+        (&ascii(b"initialize")[..], true),
+    ] {
+        let handler = capture(size_of::<(Capture, bool)>())?;
+        let function = scope.fixed_arity_function(
+            &Callback::new(move |scope, arguments| {
+                handler.registry_subtree(scope, arguments, initialize)
+            }),
+            FunctionMetadata { name, length: 1 },
+        )?;
+        define_data(
+            scope,
+            prototype,
+            PropertyKey::String(name),
+            &function,
+            true,
+            true,
+            true,
+        )?;
+    }
     Ok(())
 }
 
@@ -567,6 +630,186 @@ pub(super) fn install_node_getter<'scope>(
 }
 
 impl Capture {
+    fn registry_subtree<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+        initialize: bool,
+    ) -> Result<Completion<'scope>, Error> {
+        let (Some(identity), Some(root)) = (
+            scope.custom_element_registry_identity(arguments.receiver())?,
+            arguments.get(0),
+        ) else {
+            return registry_type_error(scope);
+        };
+        let Some(root) = document::tree::projected_node(scope, root)? else {
+            return registry_type_error(scope);
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let id = self.callbacks.with_read(&owner, &events, |read, _| {
+                public.native_registry(read, identity)
+            })?;
+            let edit = if initialize {
+                surgeist_dom::DomSourceEdit::initialize_custom_element_registry(root.node(), id)
+            } else {
+                surgeist_dom::DomSourceEdit::upgrade_custom_element_registry(root.node(), id)
+            };
+            self.apply_tree_edit(scope, &owner, &events, edit, Completion::Undefined)
+        })();
+        document::tree::tree_completion(scope, &events, result)
+    }
+
+    fn registry_get_name<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let (Some(identity), Some(constructor)) = (
+            scope.custom_element_registry_identity(arguments.receiver())?,
+            arguments.get(0),
+        ) else {
+            return registry_type_error(scope);
+        };
+        if !scope.is_callable(constructor)? {
+            return registry_type_error(scope);
+        }
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            self.callbacks.with_read(&owner, &events, |read, _| {
+                public.with_registry(
+                    read,
+                    |registry| registry.identity == identity,
+                    |registry| {
+                        let definitions = registry
+                            .definitions
+                            .try_borrow()
+                            .map_err(|_| DocumentScriptNativeError::Busy)?;
+                        for definition in &definitions.rows {
+                            read.step()?;
+                            let stored = scope.open_callback_object(&definition.constructor)?;
+                            if scope.strict_equals(&stored, constructor)? {
+                                return Ok(Completion::Return(
+                                    self.callbacks
+                                        .conversion
+                                        .run(scope, |cx| {
+                                            cx.copy_to_js(definition.name.code_units())
+                                        })
+                                        .map_err(Error::from)?,
+                                ));
+                            }
+                        }
+                        Ok(Completion::Return(scope.primitive(Primitive::Null)?))
+                    },
+                )
+            })
+        })();
+        match result {
+            Ok(completion) => Ok(completion),
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                Err(error)
+            }
+            Err(error) => refuse(scope, &events.refusal, error),
+        }
+    }
+
+    fn registry_prototype<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        global: DomHostedGlobalId,
+    ) -> Result<Value<'scope>, Error> {
+        let (_, events) = self.active(scope)?;
+        let result = (|| {
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            public.with_registry_step(
+                || events.step(),
+                |registry| !registry.scoped && registry.global == global,
+                |registry| {
+                    let prototype = registry.prototype.as_ref().ok_or(Error::ExpiredIdentity)?;
+                    Ok(scope.open_callback_object(prototype)?)
+                },
+            )
+        })();
+        match result {
+            Ok(value) => Ok(value),
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                Err(error)
+            }
+            Err(error) => refuse(scope, &events.refusal, error),
+        }
+    }
+
+    fn construct_scoped_registry<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: ConstructorArguments<'scope>,
+        global: DomHostedGlobalId,
+    ) -> Result<ConstructorCompletion<'scope>, Error> {
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let selected = arguments.select_prototype(scope)?;
+            scope.check_active()?;
+            events.step()?;
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let backing = events.reserve(&owner, size_of::<Registry>() + 2 * size_of::<usize>())?;
+            let entry_backing = events.reserve(&owner, size_of::<ScopedRegistry>())?;
+            let mut scoped = public
+                .scoped_registries
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let published = scope.publish_custom_element_registry(
+                ObjectPrototype::Object(selected.prototype()),
+                |payload, holder| {
+                    Ok::<_, DocumentGuestEventError>((
+                        events.reserve(&owner, payload)?,
+                        events.reserve(&owner, holder)?,
+                    ))
+                },
+                || {
+                    self.with_native(&owner, |session, _| {
+                        let hosted = session.hosted_execution();
+                        hosted
+                            .create_script_scoped_registry(
+                                &mut session.dom(),
+                                global,
+                                events.limits.source_edits,
+                                &owner.cancellation,
+                            )
+                            .map_err(DocumentScriptNativeError::from)
+                            .map_err(Into::into)
+                    })
+                },
+            )?;
+            let (returned, object, identity, id) = published.into_parts();
+            scoped.0 = Some(Box::new(ScopedRegistry {
+                registry: Rc::new(Registry {
+                    global,
+                    id,
+                    scoped: true,
+                    prototype: None,
+                    object,
+                    identity,
+                    definitions: RefCell::default(),
+                    waiting: RefCell::default(),
+                    running: Cell::new(false),
+                    _backing: backing,
+                }),
+                next: scoped.0.take(),
+                _backing: entry_backing,
+            }));
+            Ok(returned)
+        })();
+        match result {
+            Ok(value) => Ok(ConstructorCompletion::Return(value)),
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                Err(error)
+            }
+            Err(error) => refuse(scope, &events.refusal, error),
+        }
+    }
+
     fn when_defined<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -756,6 +999,7 @@ impl Capture {
                 return Ok(registry_not_supported(scope)?);
             }
             let local = match extends {
+                Some(_) if registry.scoped => return Ok(registry_not_supported(scope)?),
                 Some(extends) => {
                     let units = extends.get().as_code_units();
                     let local = document::copy_native_data(&owner, &events, units)?;
@@ -817,17 +1061,36 @@ impl Capture {
                 read.disable_shadow,
             );
             let candidates = self.callbacks.with_read(&owner, &events, |read, _| {
-                let document = read
-                    .snapshot
-                    .global_document_with(registry.global, &mut || read.step())?;
                 let mut candidates = ReactionList::default();
-                read.node(document.node())?
-                    .visit_custom_element_upgrade_candidates_with(
+                let mut collect = |document: DocumentId| {
+                    let node = match read.node(document.node()) {
+                        Ok(node) => node,
+                        Err(DocumentGuestEventError::Document(DocumentScriptError::Native(
+                            DocumentScriptNativeError::Dom(surgeist_dom::DomError::StaleNode),
+                        ))) => return Ok(()),
+                        Err(error) => return Err(error),
+                    };
+                    node.visit_custom_element_upgrade_candidates_with(
                         (registry.id, &facts),
                         || read.step(),
                         |bytes| read.reserve(bytes),
                         |node| candidates.push(read, node),
+                    )
+                };
+                if registry.scoped {
+                    let documents = read
+                        .snapshot
+                        .scoped_registry_documents_with(registry.id, || read.step())?;
+                    for &document in documents {
+                        read.step()?;
+                        collect(document)?;
+                    }
+                } else {
+                    collect(
+                        read.snapshot
+                            .global_document_with(registry.global, &mut || read.step())?,
                     )?;
+                }
                 Ok(candidates)
             })?;
             let mut reactions = ReactionInvocation::new(&owner)?;
@@ -1643,9 +1906,9 @@ fn read_callback<'scope>(
     Ok(true)
 }
 
-impl GlobalRegistry {
+impl Registry {
     pub(super) fn is_global(&self, global: DomHostedGlobalId) -> bool {
-        self.global == global
+        !self.scoped && self.global == global
     }
 
     fn find<'scope>(
@@ -2505,8 +2768,8 @@ impl PublicEventBindings {
     fn with_registry<T>(
         &self,
         read: &NativeRead<'_>,
-        matches: impl FnMut(&GlobalRegistry) -> bool,
-        use_registry: impl FnOnce(&Rc<GlobalRegistry>) -> Result<T, DocumentGuestEventError>,
+        matches: impl FnMut(&Registry) -> bool,
+        use_registry: impl FnOnce(&Rc<Registry>) -> Result<T, DocumentGuestEventError>,
     ) -> Result<T, DocumentGuestEventError> {
         self.with_registry_step(|| read.step(), matches, use_registry)
     }
@@ -2514,8 +2777,8 @@ impl PublicEventBindings {
     fn with_registry_step<T>(
         &self,
         mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
-        mut matches: impl FnMut(&GlobalRegistry) -> bool,
-        use_registry: impl FnOnce(&Rc<GlobalRegistry>) -> Result<T, DocumentGuestEventError>,
+        mut matches: impl FnMut(&Registry) -> bool,
+        use_registry: impl FnOnce(&Rc<Registry>) -> Result<T, DocumentGuestEventError>,
     ) -> Result<T, DocumentGuestEventError> {
         step()?;
         if matches(&self.custom_elements) {
@@ -2532,6 +2795,18 @@ impl PublicEventBindings {
                 return use_registry(&origin.custom_elements);
             }
             next = origin.next.as_deref();
+        }
+        let scoped = self
+            .scoped_registries
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let mut next = scoped.0.as_deref();
+        while let Some(entry) = next {
+            step()?;
+            if matches(&entry.registry) {
+                return use_registry(&entry.registry);
+            }
+            next = entry.next.as_deref();
         }
         Err(DocumentScriptNativeError::CreationGlobalUnavailable.into())
     }

@@ -712,6 +712,9 @@ impl DomDocumentMetadata {
     pub fn custom_element_registry(&self) -> DomRegistryBinding {
         self.registry
     }
+    pub(crate) fn establish_registry(&mut self, registry: crate::DomRegistryId) {
+        self.registry = DomRegistryBinding::Registry(registry);
+    }
     pub fn document_environment(&self) -> DomDocumentEnvironment {
         self.environment.clone()
     }

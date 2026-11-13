@@ -577,17 +577,31 @@ impl Draft {
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        let node = self.node(key)?;
+        let binding = match node.kind() {
+            crate::store::transaction::KindRead::Element(element) => {
+                element.language().custom_element_registry()
+            }
+            crate::store::transaction::KindRead::ShadowRoot(root) => root.custom_element_registry(),
+            _ => return Ok(()),
+        };
+        let document = node.document();
+        if !self.shadow_connected(key, cancel)? {
+            return Ok(());
+        }
+        if let crate::DomRegistryBinding::Registry(id) = binding
+            && self.creation_registry(id, cancel)?.scoped_origin.is_some()
+        {
+            self.associate_scoped_registry_document(id, document, cancel)?;
+        }
         if !self.captures_custom_element_reactions() {
             return Ok(());
         }
-        self.source_step(cancel)?;
         let Some(element) = self.node(key)?.element() else {
             return Ok(());
         };
         let element = element.language();
-        if !self.shadow_connected(key, cancel)? {
-            return Ok(());
-        }
         if element.custom_element_state()
             == surgeist_html::elements::native::HtmlCustomElementState::Custom
             && let crate::DomElementDefinition::Definition(definition) =
@@ -631,6 +645,22 @@ impl Draft {
             return Err(DomError::NotSupported);
         }
         self.record_custom_element_reaction(key, definition, ReactionKind::Upgrade, cancel)
+    }
+
+    pub(in crate::store) fn record_custom_element_registry_upgrade(
+        &mut self,
+        key: Key,
+        registry: crate::DomRegistryBinding,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        let element = self.node(key)?.element().ok_or(DomError::WrongNodeKind)?;
+        if element.language().custom_element_state()
+            != surgeist_html::elements::native::HtmlCustomElementState::Undefined
+        {
+            return Ok(());
+        }
+        self.record_custom_element_clone_upgrade(key, registry, cancel)
     }
 
     pub(in crate::store) fn record_custom_element_removal(

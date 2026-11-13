@@ -263,19 +263,6 @@ impl<'s> Conversion<'_, 's> {
         }
     }
 
-    pub(super) fn null_interface_member(
-        &mut self,
-        name: &'static str,
-        value: &Value<'s>,
-    ) -> Result<bool, Failure> {
-        self.work(Work::Value, 1).map_err(Failure)?;
-        let result = self.scope.kind(value);
-        match self.core(result)? {
-            ValueKind::Null => Ok(true),
-            _ => Err(self.validation(Rule::Interface(name))),
-        }
-    }
-
     pub(super) fn custom_element_registry_member(
         &mut self,
         value: &Value<'s>,

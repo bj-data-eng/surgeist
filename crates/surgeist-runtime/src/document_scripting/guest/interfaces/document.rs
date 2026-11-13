@@ -28,7 +28,7 @@ mod style_policy;
 mod template;
 mod text;
 mod title;
-mod tree;
+pub(super) mod tree;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
 pub(in crate::document_scripting) use ordinary::PendingConstructor;
 

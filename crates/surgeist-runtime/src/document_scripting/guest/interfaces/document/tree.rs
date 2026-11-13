@@ -81,7 +81,7 @@ pub(super) fn install<'scope>(
     Ok(())
 }
 
-pub(super) fn projected_node<'scope>(
+pub(in crate::document_scripting::guest::interfaces) fn projected_node<'scope>(
     scope: &mut Scope<'scope>,
     value: &Value<'scope>,
 ) -> Result<Option<GuestNode>, Error> {
@@ -292,7 +292,7 @@ impl Capture {
         tree_completion(scope, &events, result)
     }
 
-    pub(super) fn apply_tree_edit<'scope>(
+    pub(in crate::document_scripting::guest::interfaces) fn apply_tree_edit<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
@@ -574,7 +574,7 @@ impl DocumentScriptHost {
     }
 }
 
-pub(super) fn tree_completion<'scope>(
+pub(in crate::document_scripting::guest::interfaces) fn tree_completion<'scope>(
     scope: &mut Scope<'scope>,
     events: &GuestEvents,
     result: Result<Completion<'scope>, DocumentGuestEventError>,

@@ -2426,6 +2426,21 @@ impl<T> Bank<T> {
         })
     }
 
+    pub(in crate::store) fn set_source_admitted(
+        &mut self,
+        index: usize,
+        record: Record<T>,
+        totals: Totals,
+        origin: MaterializationId,
+        mut admit: impl FnMut(IndexCharge) -> Result<(), DomError>,
+    ) -> Result<(), DomError> {
+        self.set_with(index, record, false, totals, Some(origin), |charge| {
+            admit(charge)?;
+            Ok(None)
+        })?;
+        Ok(())
+    }
+
     fn set_with<E: From<DomError>>(
         &mut self,
         index: usize,

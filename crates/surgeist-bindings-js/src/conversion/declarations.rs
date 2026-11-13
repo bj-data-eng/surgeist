@@ -146,7 +146,7 @@ fn convert_shadow_root_init<'s>(
         Some(value) => *cx.value(&types::BOOLEAN, &value)?.get(),
         None => false,
     };
-    let custom_element_registry_is_null = match cx.member(
+    let custom_element_registry = match cx.member(
         input,
         object,
         &[
@@ -154,8 +154,8 @@ fn convert_shadow_root_init<'s>(
             116, 114, 121,
         ],
     )? {
-        Some(value) => cx.null_interface_member("CustomElementRegistry", &value)?,
-        None => false,
+        Some(value) => Some(cx.custom_element_registry_member(&value)?),
+        None => None,
     };
     let delegates_focus = match cx.member(
         input,
@@ -191,7 +191,7 @@ fn convert_shadow_root_init<'s>(
     };
     Ok(cx.plain(ShadowRootInit {
         clonable,
-        custom_element_registry_is_null,
+        custom_element_registry,
         delegates_focus,
         mode,
         serializable,

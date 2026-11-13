@@ -837,6 +837,7 @@ impl Draft {
     ) {
         self.journal.commit(rebase.journal);
         self.custom_element_reactions = None;
+        self.pending_scoped_documents = None;
         self.inline_recording = rebase.inline_recording;
         // Old provisional records release before their matching root custody.
         self.records.clear();

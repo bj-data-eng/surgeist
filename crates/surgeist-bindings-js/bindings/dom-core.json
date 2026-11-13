@@ -4258,7 +4258,7 @@
       "kind": "interface",
       "owner": "surgeist-dom",
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#customelementregistry",
-      "requirement": "Global registry identity and factory argument branding are implemented. Scoped construction, canonical definition registration, and guest reactions require their owning native and Runtime routes."
+      "requirement": "Global and scoped registry objects use the Runtime installation of the pinned interface, with canonical DOM identity, registry definitions and Source reaction operations."
     },
     {
       "name": "DOMHighResTimeStamp",
@@ -4463,13 +4463,7 @@
       "kind": "native",
       "adapter": "documentorshadowroot.customelementregistry.get",
       "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "custom_element_registry"}],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Project scoped registries when canonical scoped creation and lifecycle are available. Registered Global identities are projected directly.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#mixin-documentorshadowroot"
-        }
-      ]
+      "requirements": []
     },
     "ParentNode.children/get": {
       "kind": "native",
@@ -5609,13 +5603,7 @@
       "kind": "native",
       "adapter": "element.attachshadow.call",
       "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "attach_shadow"}],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Exact nondefault options/registry and reached family initialization contract for attachShadow; preserve existing admitted default native profiles.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element"
-        }
-      ]
+      "requirements": []
     },
     "Element.shadowRoot/get": {
       "kind": "native",
@@ -5627,13 +5615,7 @@
       "kind": "native",
       "adapter": "element.customelementregistry.get",
       "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/element.rs", "symbol": "custom_element_registry"}],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Project scoped registries when canonical scoped creation and lifecycle are available. Registered Global identities are projected directly.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element"
-        }
-      ]
+      "requirements": []
     },
     "Element.closest:0/call": {
       "kind": "native",

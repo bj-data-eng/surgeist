@@ -388,6 +388,7 @@ impl Draft {
 /// belong to the inverse journal; numerical work/peaks are deliberately absent.
 pub(in crate::store) struct Snapshot {
     reaction_facts: Option<usize>,
+    scoped_documents: Option<usize>,
     fullscreen_exit: Option<fullscreen::exit::Frame>,
     hosted_pending: Option<operation::hosted::ChildHook>,
     notification_queued: bool,
@@ -409,6 +410,10 @@ impl Snapshot {
                 .custom_element_reactions
                 .as_ref()
                 .map(super::reactions::ReactionFacts::len),
+            scoped_documents: draft
+                .pending_scoped_documents
+                .as_ref()
+                .map(|pending| pending.len()),
             fullscreen_exit: draft.fullscreen_exit,
             hosted_pending: draft.hosted_pending,
             notification_queued: draft.notification_queued,
@@ -422,6 +427,14 @@ impl Snapshot {
         }
     }
     pub(in crate::store) fn restore(mut self, draft: &mut Draft) {
+        match self.scoped_documents {
+            Some(len) => {
+                if let Some(pending) = &mut draft.pending_scoped_documents {
+                    pending.truncate(len);
+                }
+            }
+            None => draft.pending_scoped_documents = None,
+        }
         match self.reaction_facts {
             Some(len) => {
                 if let Some(facts) = &mut draft.custom_element_reactions {

@@ -12,6 +12,7 @@ pub(in crate::store) struct Creation {
     pub(in crate::store) document: DocumentId,
     pub(in crate::store) name: payload::Sealed<ElementName>,
     pub(in crate::store) definition: crate::DomRegistryDefinitionId,
+    pub(in crate::store) global: crate::DomHostedGlobalId,
 }
 
 pub(super) struct Pending {
@@ -35,12 +36,9 @@ impl Pending {
             document,
             name,
             definition,
+            global,
         } = creation;
         draft.source_step(cancel)?;
-        let global = draft
-            .node(Key::Existing(document.node()))?
-            .relevant_global()
-            .ok_or(DomError::HostedSourceUnavailable)?;
         Ok(Self {
             request: DomSourceCustomElementRequest {
                 operation,
@@ -692,15 +690,29 @@ impl Operation {
         if !dom
             .dispatch_script_registration_current_with(registration, &mut step)
             .map_err(unavailable)?
-            || dom
-                .dispatch_global_document_current_with::<DomHostedError>(
-                    pending.request.global,
-                    &mut step,
-                )
-                .map_err(unavailable)?
-                != pending.request.document
         {
             return Err(DomError::HostedSourceUnavailable);
+        }
+        let current = dom
+            .dispatch_global_document_current_with::<DomHostedError>(
+                pending.request.global,
+                &mut step,
+            )
+            .map_err(unavailable)?;
+        if current != pending.request.document {
+            step().map_err(unavailable)?;
+            let document = dom.state.node(dom.owner, pending.request.document.node())?;
+            let crate::DomNodeKind::Document(metadata) = document.kind() else {
+                return Err(DomError::WrongDocument);
+            };
+            if pending.request.global != registration.global
+                || metadata.document_environment().has_ever_had_navigable()
+                || document
+                    .relevant_global()
+                    .is_some_and(|global| global != registration.global)
+            {
+                return Err(DomError::HostedSourceUnavailable);
+            }
         }
         Ok(())
     }
@@ -781,7 +793,13 @@ impl Dom {
             let registry_metadata = operation
                 .draft
                 .document_metadata(Key::Existing(document.node()))?;
-            if registry_metadata.custom_element_registry() != definition_registry {
+            let registry_record = operation
+                .draft
+                .creation_registry(definition.registry(), cancel)?;
+            if match registry_record.scoped_origin {
+                Some(origin) => origin != global || registry != definition_registry,
+                None => registry_metadata.custom_element_registry() != definition_registry,
+            } {
                 return Err(DomError::InvalidSourceOperation);
             }
             let saved_is = element.saved_is().cloned();

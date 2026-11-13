@@ -321,15 +321,16 @@ detached Element and admit its exact wrapper in the receiver's registered
 creation realm before publication. DOM owns name validation, namespace and
 prefix handling, and initialization of supported element families. The
 ordinary factory path accepts the legacy string and the creation dictionary,
-including saved `is`, an explicit null registry and the receiving Document's
-exact Global registry object. `Window.customElements` and the Document,
-Element and ShadowRoot registry getters share that canonical identity. The
-Global registry supports `define`, `get` and `whenDefined`. Explicit factories
+including saved `is`, an explicit null registry, the receiving Document's
+Global registry and scoped registry objects. `Window.customElements` exposes
+the Global registry. Document, Element and ShadowRoot getters expose their
+current canonical association. Registries support `define`, `get`, `getName`,
+`whenDefined`, `upgrade` and `initialize`. Explicit factories
 can synchronously construct autonomous and customized built-in elements, and
 native edits deliver their supported lifecycle reactions. Promise handlers
 run at an explicit guest checkpoint. Form-associated definitions refuse
-before publication while their canonical form lifecycle is pending. Scoped
-registry construction and parser-triggered execution are also pending.
+before publication while their canonical form lifecycle is pending.
+Parser-triggered execution is pending.
 Native ShadowRoots inherit DocumentFragment and expose their canonical host,
 mode, focus delegation, slot assignment, clonability and serializability.
 Element.shadowRoot exposes open roots. Node root reads and event paths use
@@ -342,8 +343,8 @@ reaction microtask at an explicit checkpoint.
 The wrapper uses the root's creation realm and keeps its
 exact retirement watch. Reuse returns the existing wrapper when available
 and preserves the root's settings while removing its ordinary children.
-The synchronous binding requires one complete Source publication. Native
-custom element registry options for `attachShadow` admit null.
+The synchronous binding requires one complete Source publication. `attachShadow`
+accepts null, the receiving Document's Global registry or a scoped registry.
 `DocumentGuestEventLimits` includes the native watch storage and work limits.
 The `Text` and `Comment` constructors and Document factories use the same
 creation and retirement boundary. The factories use the receiver Document's

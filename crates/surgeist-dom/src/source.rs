@@ -1031,6 +1031,28 @@ impl DomSourceEdit {
             },
         }
     }
+    /// Associate null registry slots in an ordinary subtree and enqueue the
+    /// eligible upgrades in tree order.
+    pub fn initialize_custom_element_registry(
+        root: NodeId,
+        registry: crate::DomRegistryId,
+    ) -> Self {
+        Self {
+            command: Command::InitializeRegistry {
+                root: root.into(),
+                registry,
+            },
+        }
+    }
+    /// Enqueue eligible upgrades for this registry in shadow-including order.
+    pub fn upgrade_custom_element_registry(root: NodeId, registry: crate::DomRegistryId) -> Self {
+        Self {
+            command: Command::UpgradeRegistry {
+                root: root.into(),
+                registry,
+            },
+        }
+    }
     /// Request one `create_fragment` operation on the canonical owner.
     pub fn create_fragment(document: NodeId) -> Self {
         Self::create(Creation::Fragment, Some(document.into()))

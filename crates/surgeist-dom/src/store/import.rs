@@ -425,9 +425,23 @@ impl Draft {
                 && state.clonable()
             {
                 let mut init = crate::DomShadowRootInit::from(state.properties());
-                if state.custom_element_registry() == crate::DomRegistryBinding::Null {
-                    init = init.with_null_registry();
-                }
+                init = match state.custom_element_registry() {
+                    crate::DomRegistryBinding::Null => init.with_null_registry(),
+                    crate::DomRegistryBinding::Registry(id)
+                        if self.creation_registry(id, cancel)?.scoped_origin.is_some() =>
+                    {
+                        init.with_registry(id)
+                    }
+                    crate::DomRegistryBinding::Registry(_) => {
+                        let selected = self
+                            .document_metadata(frame.document)?
+                            .custom_element_registry();
+                        match self.effective_global_registry(selected, cancel)? {
+                            crate::DomRegistryBinding::Null => init.with_null_registry(),
+                            crate::DomRegistryBinding::Registry(id) => init.with_registry(id),
+                        }
+                    }
+                };
                 let root = self.attach_shadow(frame.copy, init, limits, cancel)?;
                 if frame.creation_global.is_some() && self.node(root)?.relevant_global().is_none() {
                     self.establish_creation_global(root, frame.creation_global, cancel)?;
@@ -658,9 +672,11 @@ impl Draft {
                         .registry_scope(&record.local)
                         .map_err(DomError::SelectCapture)?
                     {
-                        surgeist_html_semantics::HtmlRegistryScope::Global => {
-                            self.document_metadata(document)?.custom_element_registry()
-                        }
+                        surgeist_html_semantics::HtmlRegistryScope::Global => self
+                            .effective_global_registry(
+                                self.document_metadata(document)?.custom_element_registry(),
+                                cancel,
+                            )?,
                         surgeist_html_semantics::HtmlRegistryScope::Scoped => {
                             crate::DomRegistryBinding::Registry(registry)
                         }

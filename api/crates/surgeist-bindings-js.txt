@@ -408,7 +408,7 @@ pub surgeist_bindings_js::declarations::ImportNodeOptions::custom_element_regist
 pub surgeist_bindings_js::declarations::ImportNodeOptions::self_only: bool
 pub struct surgeist_bindings_js::declarations::ShadowRootInit
 pub surgeist_bindings_js::declarations::ShadowRootInit::clonable: bool
-pub surgeist_bindings_js::declarations::ShadowRootInit::custom_element_registry_is_null: bool
+pub surgeist_bindings_js::declarations::ShadowRootInit::custom_element_registry: core::option::Option<core::option::Option<surgeist_bindings_js::CustomElementRegistryIdentity>>
 pub surgeist_bindings_js::declarations::ShadowRootInit::delegates_focus: bool
 pub surgeist_bindings_js::declarations::ShadowRootInit::mode: surgeist_bindings_js::declarations::ShadowRootMode
 pub surgeist_bindings_js::declarations::ShadowRootInit::serializable: bool
@@ -690,6 +690,9 @@ pub fn surgeist_bindings_js::Process::release_callback_object(&mut self, callbac
 impl surgeist_bindings_js::Process
 pub fn surgeist_bindings_js::Process::release_trusted_policy_callback(&mut self, callback: surgeist_bindings_js::TrustedPolicyCallback) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub struct surgeist_bindings_js::PromiseResolver
+pub struct surgeist_bindings_js::PublishedCustomElementRegistry<'scope, T>
+impl<'scope, T> surgeist_bindings_js::PublishedCustomElementRegistry<'scope, T>
+pub fn surgeist_bindings_js::PublishedCustomElementRegistry<'scope, T>::into_parts(self) -> (surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::RetainedCallbackObject, surgeist_bindings_js::CustomElementRegistryIdentity, T)
 pub struct surgeist_bindings_js::Realm(_)
 pub struct surgeist_bindings_js::RealmAuthority
 impl surgeist_bindings_js::RealmAuthority
@@ -762,6 +765,7 @@ pub fn surgeist_bindings_js::Scope<'scope>::retain_callback_object<Storage: 'sta
 impl<'scope> surgeist_bindings_js::Scope<'scope>
 pub fn surgeist_bindings_js::Scope<'scope>::custom_element_registry_identity(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<core::option::Option<surgeist_bindings_js::CustomElementRegistryIdentity>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::project_custom_element_registry<Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>, admit: impl core::ops::function::FnOnce(usize, usize) -> core::result::Result<(Storage, Storage), E>) -> core::result::Result<(surgeist_bindings_js::RetainedCallbackObject, surgeist_bindings_js::CustomElementRegistryIdentity), E>
+pub fn surgeist_bindings_js::Scope<'scope>::publish_custom_element_registry<Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>, T>(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>, admit: impl core::ops::function::FnOnce(usize, usize) -> core::result::Result<(Storage, Storage), E>, publish_host: impl core::ops::function::FnOnce() -> core::result::Result<T, E>) -> core::result::Result<surgeist_bindings_js::PublishedCustomElementRegistry<'scope, T>, E>
 impl<'scope> surgeist_bindings_js::Scope<'scope>
 pub fn surgeist_bindings_js::Scope<'scope>::native_object<T: 'static>(&mut self, object: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<core::option::Option<alloc::rc::Rc<surgeist_bindings_js::NativeObject<T>>>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::native_object_reference<T: 'static>(&mut self, object: &surgeist_bindings_js::Value<'scope>, slot: u32) -> core::result::Result<core::option::Option<surgeist_bindings_js::Value<'scope>>, surgeist_bindings_js::Error>
