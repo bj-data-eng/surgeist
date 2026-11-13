@@ -1354,6 +1354,22 @@ impl fmt::Debug for NativeOwner {
 }
 
 impl StoppedDocumentScriptHost {
+    /// Borrow the original native owners for recovery after engine disposal.
+    /// The loan can bind a missing producer or raise its limits before retry.
+    pub fn with_native<T>(
+        &mut self,
+        action: impl FnOnce(&mut DomEventDom<'_>, HostedRuntime, DomSourceRuntime) -> T,
+    ) -> Result<T, DocumentScriptNativeError> {
+        let mut session = self
+            .native
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let hosted = session.hosted_execution();
+        let source = session.source_execution();
+        Ok(action(&mut session.dom(), hosted, source))
+    }
+
     /// Recover the same native Session. Its historical scripting facts remain
     /// usable with their exact historical snapshots.
     /// Retained attribute and Style edits must be settled before recovery.

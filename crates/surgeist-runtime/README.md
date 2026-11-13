@@ -371,7 +371,8 @@ After a resource refusal, use `resume_pending_style_edit` with the original
 operation and higher Source limits. The host uses the same Session processor
 and report queue. After stopping the engine, use `settle_pending_style_edit`
 to complete the native edit before recovering the Session. Stop disposes of
-the guest report queue.
+the guest report queue. A stopped host's `with_native` loan can bind a missing
+CSSOM root or raise a producer's limits before settlement.
 
 Full NamedNodeMap collection behavior and live HTTP response CSP have separate
 integration work.

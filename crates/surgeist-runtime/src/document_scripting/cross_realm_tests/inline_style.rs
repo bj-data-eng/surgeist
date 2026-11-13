@@ -74,22 +74,6 @@ pub(super) fn style_runtime_refusal_preserves_the_original_guest_edit() {
         host.snapshot().unwrap().node(style).unwrap().parent(),
         Some(body)
     );
-    limits.work = 1_000_000;
-    host.with_native(|dom, _, _| {
-        styles.set_limits(dom, limits, &cancel).unwrap();
-        styles
-            .bind_root(
-                dom,
-                "refused-style".into(),
-                &mut Some(DomStyleCssomRoot::new(
-                    document.node(),
-                    CssomStore::new(Default::default(), Default::default()).unwrap(),
-                )),
-                &cancel,
-            )
-            .unwrap();
-    })
-    .unwrap();
     cancel.store(true, Ordering::Relaxed);
     let cancelled = host.resume_pending_style_edit(&permit, parked.operation(), SOURCE);
     assert!(
@@ -109,11 +93,41 @@ pub(super) fn style_runtime_refusal_preserves_the_original_guest_edit() {
             .unwrap(),
         Some(parked)
     );
+    let mut stopped = host
+        .stop()
+        .into_session()
+        .expect_err("Style remains pending");
+    limits.work = 1_000_000;
+    stopped
+        .with_native(|dom, _, _| styles.set_limits(dom, limits, &cancel).unwrap())
+        .unwrap();
     assert!(matches!(
-        host.resume_pending_style_edit(&permit, parked.operation(), SOURCE).unwrap().unwrap(),
+        stopped.settle_pending_style_edit(parked.operation(), SOURCE).unwrap().unwrap(),
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Style(request),
+            reason: DomSourceUnavailable::Style(crate::DomStyleUnavailable::RootList),
+        } if request.source().operation() == parked.operation()
+    ));
+    stopped
+        .with_native(|dom, _, _| {
+            styles
+                .bind_root(
+                    dom,
+                    "refused-style".into(),
+                    &mut Some(DomStyleCssomRoot::new(
+                        document.node(),
+                        CssomStore::new(Default::default(), Default::default()).unwrap(),
+                    )),
+                    &cancel,
+                )
+                .unwrap();
+        })
+        .unwrap();
+    assert!(matches!(
+        stopped.settle_pending_style_edit(parked.operation(), SOURCE).unwrap().unwrap(),
         DomSourceDriveProgress::Complete(done) if done.operation() == parked.operation()
     ));
-    let snapshot = host.snapshot().unwrap();
+    let snapshot = stopped.into_session().unwrap().snapshot();
     assert!(
         snapshot
             .node(style)
