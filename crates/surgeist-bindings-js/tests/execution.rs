@@ -170,6 +170,35 @@ fn properties_and_calls_refuse_invalid_values(process: &mut Process) -> Result<(
             scope.call(&primitive, &primitive, &[]),
             Err(Error::ExpectedFunction)
         ));
+        let entered = Cell::new(false);
+        assert!(matches!(
+            scope.call_with_entry(&primitive, &primitive, &[], || {
+                entered.set(true);
+                Ok(())
+            }),
+            Err(Error::ExpectedFunction)
+        ));
+        assert!(!entered.get());
+        let callback = scope.evaluate(&units("globalThis.calls = 0; () => ++calls"))?;
+        assert!(matches!(
+            scope.call_with_entry(&callback, &primitive, &[], || {
+                entered.set(true);
+                Err(Error::Allocation)
+            }),
+            Err(Error::Allocation)
+        ));
+        assert!(entered.get());
+        let calls = scope.evaluate(&units("calls"))?;
+        let zero = scope.primitive(Primitive::Number(0.0))?;
+        assert!(scope.strict_equals(&calls, &zero)?);
+        entered.set(false);
+        let result = scope.call_with_entry(&callback, &primitive, &[], || {
+            entered.set(true);
+            Ok(())
+        })?;
+        assert!(entered.get());
+        let one = scope.primitive(Primitive::Number(1.0))?;
+        assert!(scope.strict_equals(&result, &one)?);
         let object = scope.evaluate(&units("Object.freeze({x: 1})"))?;
         scope.evaluate(&units("Reflect.set = () => true"))?;
         assert!(matches!(

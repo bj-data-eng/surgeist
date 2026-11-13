@@ -227,8 +227,13 @@ pub(crate) trait Operations {
     fn array(&mut self, values: &[Root]) -> Result<Root, Error>;
     fn well_known_symbol(&mut self, symbol: WellKnownSymbol) -> Result<Root, Error>;
     fn intrinsic(&mut self, intrinsic: Intrinsic) -> Result<Root, Error>;
-    fn call(&mut self, function: &Root, receiver: &Root, arguments: &[Root])
-    -> Result<Root, Error>;
+    fn call(
+        &mut self,
+        function: &Root,
+        receiver: &Root,
+        arguments: &[Root],
+        enter: &mut dyn FnMut() -> Result<(), Error>,
+    ) -> Result<Root, Error>;
     fn construct_without_arguments(&mut self, constructor: &Root) -> Result<Root, Error>;
     fn coerce_string(&mut self, value: &Root) -> Result<CoercedString, Error>;
     /// Copies the entire string into an exactly sized, caller-owned buffer.

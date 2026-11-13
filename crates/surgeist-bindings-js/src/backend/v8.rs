@@ -1522,6 +1522,7 @@ impl Operations for Entered<'_, '_, '_> {
         function: &Root,
         receiver: &Root,
         arguments: &[Root],
+        enter: &mut dyn FnMut() -> Result<(), Error>,
     ) -> Result<Root, Error> {
         self.check_active()?;
         if arguments.len() > i32::MAX as usize {
@@ -1546,6 +1547,7 @@ impl Operations for Entered<'_, '_, '_> {
                 for argument in arguments {
                     values.push(roots.local(scope, argument)?);
                 }
+                enter()?;
                 let value = function
                     .call(scope, receiver, &values)
                     .ok_or(Error::BackendUnavailable)?;

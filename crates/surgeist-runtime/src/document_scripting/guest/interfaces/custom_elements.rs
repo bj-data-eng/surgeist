@@ -1905,13 +1905,13 @@ impl Drop for ReactionQueueEntry<'_> {
     }
 }
 
-struct UpgradeEntry<'a> {
+struct ReactionEntry<'a> {
     queue: &'a RefCell<LinkedList<QueuedReaction>>,
     front: LinkedList<QueuedReaction>,
     accepted: bool,
 }
 
-impl Drop for UpgradeEntry<'_> {
+impl Drop for ReactionEntry<'_> {
     fn drop(&mut self) {
         if !self.accepted {
             let mut queue = self.queue.borrow_mut();
@@ -1966,7 +1966,7 @@ impl ActiveReactionQueue {
                 let tail = reactions.split_off(1);
                 let front = std::mem::replace(&mut *reactions, tail);
                 drop(reactions);
-                let mut entry = UpgradeEntry {
+                let mut entry = ReactionEntry {
                     queue: &self.reactions,
                     front,
                     accepted: false,
@@ -2015,34 +2015,54 @@ impl ActiveReactionQueue {
                     .as_ref()
                     .map(|callback| scope.open_callback_object(callback))
                     .transpose()?;
-                (receiver, callback, arguments, connected)
+                (
+                    receiver,
+                    callback,
+                    arguments,
+                    connected,
+                    next.kind,
+                    next.definition,
+                    next.callback.associated_realm().identity(),
+                )
             };
-            let (receiver, callback, arguments, connected) = next;
+            let (receiver, callback, arguments, connected, mut kind, definition, mut realm) = next;
             let arguments = arguments
                 .as_ref()
                 .map_or(&[][..], ReactionArguments::as_slice);
             let mut report = events.reports.reserve_constructor(events, owner)?;
             let _arguments =
                 events.reserve(owner, scope.argument_copy_storage_bytes(arguments.len())?)?;
-            scope.check_active()?;
-            let Some(QueuedReaction::Callback(reaction)) = self
-                .reactions
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?
-                .pop_front()
-            else {
-                return Err(DocumentScriptNativeError::ProjectionCustody.into());
-            };
-            let mut kind = reaction.kind;
-            let mut realm = reaction.callback.associated_realm().identity();
-            let mut result = scope.call(&callback, &receiver, arguments);
+            let mut entered = LinkedList::new();
+            let mut result = scope.call_with_entry(&callback, &receiver, arguments, || {
+                let mut queue = self
+                    .reactions
+                    .try_borrow_mut()
+                    .map_err(|_| Error::RegistryConflict)?;
+                if !matches!(queue.front(), Some(QueuedReaction::Callback(_))) {
+                    return Err(Error::RegistryConflict);
+                }
+                let tail = queue.split_off(1);
+                entered = std::mem::replace(&mut *queue, tail);
+                Ok(())
+            });
             if result.is_ok()
-                && let Some((connected, callback)) =
-                    connected.zip(reaction.connect_after_disconnect.as_ref())
+                && let Some(connected) = connected
+                && let Some(QueuedReaction::Callback(reaction)) = entered.front_mut()
+                && let Some(callback) = reaction.connect_after_disconnect.take()
             {
                 kind = DocumentGuestCustomElementCallback::Connected;
                 realm = callback.associated_realm().identity();
-                result = scope.call(&connected, &receiver, &[]);
+                reaction.kind = kind;
+                reaction.callback = callback;
+                let mut continuation = ReactionEntry {
+                    queue: &self.reactions,
+                    front: entered,
+                    accepted: false,
+                };
+                result = scope.call_with_entry(&connected, &receiver, &[], || {
+                    continuation.accepted = true;
+                    Ok(())
+                });
             }
             match result {
                 Ok(_) => (),
@@ -2052,7 +2072,7 @@ impl ActiveReactionQueue {
                         DocumentGuestCustomElementCallbackException {
                             receiver: self.receiver,
                             callback: kind,
-                            definition: reaction.definition,
+                            definition,
                             realm,
                             exception,
                         },

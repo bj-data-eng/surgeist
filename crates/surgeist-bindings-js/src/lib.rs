@@ -1059,12 +1059,41 @@ impl<'scope> Scope<'scope> {
         self.call_with_prefix(function, receiver, &[], arguments)
     }
 
+    /// Call a function and acknowledge entry after all backend preparation.
+    /// The acknowledgment runs once before the guest function can run. If
+    /// acknowledgment refuses, the guest function is never entered.
+    /// The acknowledgment is for native bookkeeping and must not reenter
+    /// the engine.
+    pub fn call_with_entry(
+        &mut self,
+        function: &Value<'scope>,
+        receiver: &Value<'scope>,
+        arguments: &[Value<'scope>],
+        enter: impl FnOnce() -> Result<(), Error>,
+    ) -> Result<Value<'scope>, Error> {
+        let mut enter = Some(enter);
+        self.call_with_entry_and_prefix(function, receiver, &[], arguments, &mut || {
+            enter.take().ok_or(Error::BackendUnavailable)?()
+        })
+    }
+
     pub(crate) fn call_with_prefix(
         &mut self,
         function: &Value<'scope>,
         receiver: &Value<'scope>,
         prefix: &[Value<'scope>],
         arguments: &[Value<'scope>],
+    ) -> Result<Value<'scope>, Error> {
+        self.call_with_entry_and_prefix(function, receiver, prefix, arguments, &mut || Ok(()))
+    }
+
+    fn call_with_entry_and_prefix(
+        &mut self,
+        function: &Value<'scope>,
+        receiver: &Value<'scope>,
+        prefix: &[Value<'scope>],
+        arguments: &[Value<'scope>],
+        enter: &mut dyn FnMut() -> Result<(), Error>,
     ) -> Result<Value<'scope>, Error> {
         self.check_active()?;
         let length = prefix
@@ -1086,7 +1115,7 @@ impl<'scope> Scope<'scope> {
         );
         let root = self
             .operations
-            .call(&function.root, &receiver.root, &roots)?;
+            .call(&function.root, &receiver.root, &roots, enter)?;
         Ok(self.value(root))
     }
 
