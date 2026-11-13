@@ -318,6 +318,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
+    super::guest::tests::registered_origin::implementation_factories_keep_the_projection_realm();
     super::guest::tests::registered_origin::native_doctype_uses_its_registered_creation_realm();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(

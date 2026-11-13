@@ -595,6 +595,65 @@ pub(in crate::document_scripting) fn implementation_factories_use_the_receiver_r
         .unwrap();
 }
 
+pub(in crate::document_scripting) fn implementation_factories_keep_the_projection_realm() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) =
+        crate::document_scripting::cross_realm_tests::hosted_session(&cancel, 0);
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    let child = host
+        .in_document(&permit, |scope| {
+            let child =
+                scope.evaluate(&units("globalThis.probe = document.createElement('div')"))?;
+            super::projected_node_id(scope, &child)
+        })
+        .unwrap();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        batch.insert_before(child, &document, None);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    let created = host.in_document(&permit, |scope| {
+        let doctype = scope.evaluate(&units(
+            r#"
+            globalThis.impl = probe.ownerDocument.implementation;
+            globalThis.type = impl.createDocumentType('root', '', '');
+        "#,
+        ))?;
+        assert_guest(
+            scope,
+            r#"(() => {
+            const xml = impl.createDocument(null, 'root', type);
+            const html = impl.createHTMLDocument();
+            return xml.doctype === type && xml.documentElement instanceof Element &&
+                html.documentElement instanceof HTMLElement && html.doctype instanceof DocumentType;
+        })()"#,
+        )?;
+        super::projected_node_id(scope, &doctype)
+    });
+    let created = match created {
+        Ok(created) => created,
+        Err(DocumentScriptError::Script(Error::HostFailure(failure))) => {
+            panic!(
+                "factory lost its projection realm: {:?}",
+                failure.cause::<DocumentGuestEventError>()
+            )
+        }
+        Err(error) => panic!("{error:?}"),
+    };
+    assert_eq!(
+        host.snapshot()
+            .unwrap()
+            .node(created)
+            .unwrap()
+            .relevant_global()
+            .unwrap(),
+        Some(target.global())
+    );
+}
+
 pub(in crate::document_scripting) fn native_document_and_fragment_use_their_registered_realm() {
     let RegisteredOrigin {
         mut host,
