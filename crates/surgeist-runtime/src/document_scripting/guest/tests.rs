@@ -51,6 +51,52 @@ pub(in crate::document_scripting) fn element_factory_qualifies_the_explicit_regi
     }).unwrap();
 }
 
+pub(in crate::document_scripting) fn registry_define_upgrades_existing_candidates_in_tree_order() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const root = document.documentElement;
+            const host = document.createElement('div');
+            const shadow = host.attachShadow({mode: 'closed'});
+            const inside = document.createElement('x-upgrade');
+            const outside = document.createElement('x-upgrade');
+            const detached = document.createElement('x-upgrade');
+            inside.setAttribute('data-key', 'inside');
+            outside.setAttribute('data-key', 'outside');
+            shadow.appendChild(inside);
+            root.appendChild(host);
+            root.appendChild(outside);
+            const calls = [];
+            class Upgrade extends HTMLElement {
+                static observedAttributes = ['data-key'];
+                constructor() {
+                    super();
+                    calls.push(this, 'construct');
+                }
+                attributeChangedCallback(name, oldValue, value) {
+                    calls.push(this, name, oldValue, value);
+                }
+                connectedCallback() {
+                    calls.push(this, 'connected');
+                }
+            }
+            customElements.define('x-upgrade', Upgrade);
+            const expected = [
+                inside, 'construct', inside, 'data-key', null, 'inside', inside, 'connected',
+                outside, 'construct', outside, 'data-key', null, 'outside', outside, 'connected',
+            ];
+            return inside instanceof Upgrade && outside instanceof Upgrade
+                && !(detached instanceof Upgrade) && calls.length === expected.length
+                && calls.every((value, index) => value === expected[index]);
+        })()"#,
+        )
+    })
+    .unwrap();
+}
+
 pub(in crate::document_scripting) fn registry_when_defined_retains_original_promise_and_constructor()
  {
     let mut host = public_node_host(20_000, 200_000);

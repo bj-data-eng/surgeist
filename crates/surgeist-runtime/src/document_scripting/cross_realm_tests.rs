@@ -243,6 +243,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::element_factory_qualifies_the_explicit_registry();
     super::guest::tests::registry_definition_preserves_guest_identity_and_failure();
     super::guest::tests::registry_when_defined_retains_original_promise_and_constructor();
+    super::guest::tests::registry_define_upgrades_existing_candidates_in_tree_order();
     super::guest::tests::document_factories_execute_the_reached_custom_constructor();
     super::guest::tests::registered_origin::custom_element_factories_use_the_correct_realm();
     super::guest::tests::registered_origin::registered_origin_registry_keeps_exact_wrapper();
