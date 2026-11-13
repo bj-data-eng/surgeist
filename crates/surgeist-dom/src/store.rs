@@ -1471,6 +1471,19 @@ impl PartialEq for State {
     }
 }
 impl State {
+    pub(crate) fn ordinary_child_position_with<E: From<DomError>>(
+        &self,
+        id: NodeId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<(NodeId, usize)>, E> {
+        let Some(position) = self.slot_index.position_with(Key::Existing(id), step)? else {
+            return Ok(None);
+        };
+        let Key::Existing(parent) = position.parent else {
+            return Err(DomError::NotFound.into());
+        };
+        Ok(Some((parent, position.ordinal)))
+    }
     pub(crate) fn node(&self, owner: DomOwnerId, id: NodeId) -> Result<&Node, DomError> {
         self.node_with(owner, id, &mut || Ok(()))
     }
