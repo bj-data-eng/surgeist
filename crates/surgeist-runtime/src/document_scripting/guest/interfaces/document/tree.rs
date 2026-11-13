@@ -6,6 +6,7 @@ use surgeist_bindings_js::{ValueKind, dom_exception::DomExceptionName};
 use surgeist_dom::{DomSourceEdit, DomSourceStatus};
 
 mod clone;
+mod comparison;
 pub(super) use clone::install_import;
 
 #[derive(Clone, Copy)]
@@ -37,6 +38,7 @@ pub(super) fn install<'scope>(
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
     clone::install(scope, prototype, capture)?;
+    comparison::install(scope, prototype, capture)?;
     for (key, method, length) in [
         (&ascii(b"appendChild")[..], Method::Append, 1),
         (&ascii(b"insertBefore")[..], Method::Insert, 2),

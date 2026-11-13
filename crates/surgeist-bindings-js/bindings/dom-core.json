@@ -4768,7 +4768,10 @@
       "owner": "surgeist-bindings-js",
       "contract": "Compare authentic owner-qualified native node identity, retaining the nullable other-node branch; mutable prototypes do not establish identity.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-node-issamenode",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"}],
+      "inputs": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "node_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/identity.rs", "symbol": "NodeId"}
+      ],
       "requirements": []
     },
     "Node.compareDocumentPosition:0/call": {
@@ -4795,7 +4798,7 @@
       "owner": "surgeist-bindings-js",
       "contract": "Project ordinary inclusive ancestry from actual parent links and identity, preserving null and self cases and excluding shadow/Template host links.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-node-contains",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "contains_with"}],
       "requirements": []
     },
     "Node.lookupPrefix:0/call": {

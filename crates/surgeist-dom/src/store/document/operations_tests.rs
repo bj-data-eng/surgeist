@@ -28,6 +28,61 @@ fn dom() -> Dom {
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &cancel()).unwrap()
 }
+
+#[test]
+fn ordinary_containment_resolves_template_contents_without_crossing_the_host() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let template = batch.create_element_ns(&document, Namespace::html(), "template");
+    batch.insert_before(&template, &document, None);
+    let commit = apply(&mut dom, batch);
+    let template = commit.created(&template).unwrap().unwrap();
+    let snapshot = dom.snapshot();
+    let contents = snapshot
+        .node(template)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
+    let inert = snapshot.node(contents).unwrap().owner_document().unwrap();
+    let mut batch = DomBatch::new();
+    let text = batch.create_text(inert, "template");
+    batch.insert_before(&text, contents, None);
+    let text = apply(&mut dom, batch).created(&text).unwrap().unwrap();
+    let snapshot = dom.snapshot();
+    let template = snapshot.node(template).unwrap();
+    let contents = snapshot.node(contents).unwrap();
+    assert!(
+        contents
+            .contains_with(text, || Ok::<_, DomError>(()))
+            .unwrap()
+    );
+    assert!(
+        !template
+            .contains_with(text, || Ok::<_, DomError>(()))
+            .unwrap()
+    );
+    let mut work = 0;
+    let refused = contents.contains_with(text, || {
+        work += 1;
+        Err(DomError::Cancelled)
+    });
+    assert_eq!((refused, work), (Err(DomError::Cancelled), 1));
+    let mut foreign = self::dom();
+    let mut batch = DomBatch::new();
+    let foreign_document = batch.create_document();
+    let foreign_node = apply(&mut foreign, batch)
+        .document(&foreign_document)
+        .unwrap()
+        .node();
+    assert_eq!(
+        contents.contains_with(foreign_node, || Ok(())),
+        Err(DomError::ForeignOwner)
+    );
+}
+
 fn source_limits(outputs: usize) -> DomSourceLimits {
     DomSourceLimits::new(64_000_000, 2_000_000, 20_000_000, 128, outputs, 4096, 8)
 }

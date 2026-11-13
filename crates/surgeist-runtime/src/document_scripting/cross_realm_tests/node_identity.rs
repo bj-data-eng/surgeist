@@ -93,3 +93,39 @@ pub(super) fn node_comparisons_use_live_ordinary_ancestry_and_exact_identity() {
     ));
     assert_eq!(host.snapshot().unwrap().stamp(), before);
 }
+
+pub(super) fn node_comparisons_refuse_retired_operands() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    let retired = host
+        .in_document(&permit, |scope| {
+            let node = evaluate(scope, "globalThis.retiredOperand = new Text('retired')")?;
+            projected_node_id(scope, &node)
+        })
+        .unwrap();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.destroy(retired);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    for script in [
+        "document.contains(retiredOperand)",
+        "retiredOperand.contains(null)",
+        "document.isSameNode(retiredOperand)",
+        "retiredOperand.isSameNode(retiredOperand)",
+    ] {
+        let result = host.in_document(&permit, |scope| evaluate(scope, script).map(drop));
+        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+            panic!("retired operand must refuse for {script}: {result:?}");
+        };
+        assert!(matches!(
+            failure.cause::<DocumentGuestEventError>(),
+            Some(DocumentGuestEventError::Document(
+                DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
+            ))
+        ));
+    }
+}
