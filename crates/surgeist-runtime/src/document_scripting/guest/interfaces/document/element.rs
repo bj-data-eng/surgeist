@@ -76,6 +76,13 @@ const HTML_REFLECTIONS: &[super::reflection::Member] = &[
         super::reflection::Reflection::String,
     ),
     (
+        &ascii(b"dir"),
+        &ascii(b"get dir"),
+        &ascii(b"set dir"),
+        &ascii(b"dir"),
+        super::reflection::Reflection::Direction,
+    ),
+    (
         &ascii(b"inert"),
         &ascii(b"get inert"),
         &ascii(b"set inert"),
@@ -88,6 +95,20 @@ const HTML_REFLECTIONS: &[super::reflection::Member] = &[
         &ascii(b"set accessKey"),
         &ascii(b"accesskey"),
         super::reflection::Reflection::String,
+    ),
+    (
+        &ascii(b"popover"),
+        &ascii(b"get popover"),
+        &ascii(b"set popover"),
+        &ascii(b"popover"),
+        super::reflection::Reflection::Popover,
+    ),
+    (
+        &ascii(b"headingReset"),
+        &ascii(b"get headingReset"),
+        &ascii(b"set headingReset"),
+        &ascii(b"headingreset"),
+        super::reflection::Reflection::Boolean,
     ),
 ];
 

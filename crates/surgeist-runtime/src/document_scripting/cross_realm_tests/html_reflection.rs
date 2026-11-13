@@ -102,6 +102,60 @@ pub(super) fn local_keyword_reflections_follow_current_native_attributes() {
         assert!(scope.strict_equals(&actual, &yes)?);
         Ok(())
     }).unwrap();
+    host.stop().into_session().unwrap();
+    nullable_popover_removal_admits_source_output();
+}
+
+fn nullable_popover_removal_admits_source_output() {
+    // Removal changes the element's attribute order and the detached Attr's
+    // owner. Both canonical node changes need Source output admission.
+    for outputs in [0, 1, 2] {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (mut session, target) = hosted_session(&cancel, 0);
+        let mut batch = DomBatch::new();
+        let element = batch.create_element(target.document(), "div");
+        batch.set_attribute_ns(&element, Namespace::none(), "popover", "hint");
+        let element = session
+            .dom()
+            .apply(batch, &cancel)
+            .unwrap()
+            .created(&element)
+            .unwrap()
+            .unwrap();
+        let mut host =
+            attach_public_nodes_with_source_output_limit(session, target, cancel, outputs);
+        let permit = host.permit().unwrap();
+        expose_public_node_for_source_test(&mut host, &permit, element, "removalReflection");
+        let before = host.snapshot().unwrap().stamp();
+        let result = host.in_document(&permit, |scope| {
+            evaluate(scope, "removalReflection.popover = null").map(drop)
+        });
+        let after = host.snapshot().unwrap();
+        let attribute = after
+            .node(element)
+            .unwrap()
+            .get_attribute_node_ns(&Namespace::none(), &"popover".into());
+        if outputs < 2 {
+            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+                panic!("removal must refuse before Source publication: {result:?}");
+            };
+            assert!(matches!(
+                failure.cause::<crate::DomSourceDriveError>(),
+                Some(crate::DomSourceDriveError::Source(
+                    crate::DomSourceRuntimeError::Dom(surgeist_dom::DomError::SourceOutputLimit)
+                ))
+            ));
+            assert_eq!(after.stamp(), before);
+            assert_eq!(
+                attribute.unwrap().value().code_units(),
+                &[0x68, 0x69, 0x6e, 0x74]
+            );
+        } else {
+            result.unwrap();
+            assert!(attribute.is_none());
+        }
+        host.stop().into_session().unwrap();
+    }
 }
 
 pub(super) fn html_reflections_use_exact_live_attributes_and_html_brands() {
@@ -215,74 +269,93 @@ pub(super) fn html_reflections_use_exact_live_attributes_and_html_brands() {
 }
 
 fn html_reflection_setters_admit_the_native_change_before_publication() {
-    for (property, outputs) in [("title", 1), ("title", 2), ("inert", 1), ("inert", 2)] {
-        let cancel = Arc::new(AtomicBool::new(false));
-        let (mut session, target) = hosted_session(&cancel, 0);
-        let mut batch = DomBatch::new();
-        let element = batch.create_element(target.document(), "div");
-        let element = session
-            .dom()
-            .apply(batch, &cancel)
-            .unwrap()
-            .created(&element)
-            .unwrap()
-            .unwrap();
-        let mut host =
-            attach_public_nodes_with_source_output_limit(session, target, cancel, outputs);
-        let permit = host.permit().unwrap();
-        expose_public_node_for_source_test(&mut host, &permit, element, "limitedReflection");
-        let before = host.snapshot().unwrap();
-        let result = host.in_document(&permit, |scope| {
-            evaluate(
-                scope,
-                if property == "title" {
-                    "limitedReflection.title = '\\ud800'"
-                } else {
-                    "limitedReflection.inert = true"
-                },
-            )
-            .map(drop)
-        });
-        let after = host.snapshot().unwrap();
-        if outputs == 1 {
-            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
-                panic!("one-short reflection output must refuse before publication: {result:?}");
-            };
-            assert!(matches!(
-                failure.cause::<crate::DomSourceDriveError>(),
-                Some(crate::DomSourceDriveError::Source(
-                    crate::DomSourceRuntimeError::Dom(surgeist_dom::DomError::SourceOutputLimit)
-                ))
-            ));
-            assert_eq!(after.stamp(), before.stamp());
-            assert_eq!(after.nodes().count(), before.nodes().count());
-            assert!(
-                after
+    for (property, attribute, source, expected) in [
+        (
+            "title",
+            "title",
+            "limitedReflection.title = '\\ud800'",
+            &[0xd800][..],
+        ),
+        ("inert", "inert", "limitedReflection.inert = true", &[][..]),
+        (
+            "dir",
+            "dir",
+            "limitedReflection.dir = 'RTL'",
+            &[0x52, 0x54, 0x4c][..],
+        ),
+        (
+            "popover",
+            "popover",
+            "limitedReflection.popover = '\\ud800'",
+            &[0xd800][..],
+        ),
+        (
+            "headingReset",
+            "headingreset",
+            "limitedReflection.headingReset = true",
+            &[][..],
+        ),
+    ] {
+        for outputs in [1, 2] {
+            let cancel = Arc::new(AtomicBool::new(false));
+            let (mut session, target) = hosted_session(&cancel, 0);
+            let mut batch = DomBatch::new();
+            let element = batch.create_element(target.document(), "div");
+            let element = session
+                .dom()
+                .apply(batch, &cancel)
+                .unwrap()
+                .created(&element)
+                .unwrap()
+                .unwrap();
+            let mut host =
+                attach_public_nodes_with_source_output_limit(session, target, cancel, outputs);
+            let permit = host.permit().unwrap();
+            expose_public_node_for_source_test(&mut host, &permit, element, "limitedReflection");
+            let before = host.snapshot().unwrap();
+            let result = host.in_document(&permit, |scope| evaluate(scope, source).map(drop));
+            let after = host.snapshot().unwrap();
+            if outputs == 1 {
+                let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+                    panic!(
+                        "one-short reflection output must refuse before publication: {result:?}"
+                    );
+                };
+                assert!(matches!(
+                    failure.cause::<crate::DomSourceDriveError>(),
+                    Some(crate::DomSourceDriveError::Source(
+                        crate::DomSourceRuntimeError::Dom(
+                            surgeist_dom::DomError::SourceOutputLimit
+                        )
+                    ))
+                ));
+                assert_eq!(after.stamp(), before.stamp());
+                assert_eq!(after.nodes().count(), before.nodes().count());
+                assert!(
+                    after
+                        .node(element)
+                        .unwrap()
+                        .attributes()
+                        .unwrap()
+                        .is_empty()
+                );
+            } else {
+                result.unwrap();
+                let name = attribute.into();
+                let attr = after
                     .node(element)
                     .unwrap()
-                    .attributes()
-                    .unwrap()
-                    .is_empty()
-            );
-        } else {
-            result.unwrap();
-            let name = property.into();
-            let attr = after
-                .node(element)
-                .unwrap()
-                .get_attribute_node_ns(&Namespace::none(), &name)
+                    .get_attribute_node_ns(&Namespace::none(), &name)
+                    .unwrap();
+                assert_eq!(
+                    attr.value().code_units(),
+                    expected,
+                    "{property} native content"
+                );
+            }
+            host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
                 .unwrap();
-            assert_eq!(
-                attr.value().code_units(),
-                if property == "title" {
-                    &[0xd800][..]
-                } else {
-                    &[]
-                }
-            );
+            host.stop().into_session().unwrap();
         }
-        host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
-            .unwrap();
-        host.stop().into_session().unwrap();
     }
 }
