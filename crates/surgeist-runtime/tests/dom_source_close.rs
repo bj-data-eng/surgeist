@@ -168,7 +168,7 @@ fn complete(progress: DomSourceDriveProgress) -> DomSourceCompletion {
 fn open(session: &mut DomSession, subject: NodeId) {
     drop(complete(apply(
         session,
-        DomSourceEdit::set_attribute(subject, "open", ""),
+        DomSourceEdit::set_native_attribute(subject, "open", ""),
     )));
     let snapshot = session.snapshot();
     assert_eq!(

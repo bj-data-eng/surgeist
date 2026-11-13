@@ -165,7 +165,7 @@ fn callback_first_binding_survives_original_completion_and_guards_a_later_source
     // A later real style invocation must use the callback-created membership.
     let mut lease = dom
         .begin_source_edit(
-            DomSourceEdit::set_attribute(target, "style", "--x:old"),
+            DomSourceEdit::set_native_attribute(target, "style", "--x:old"),
             source_limits(),
             &cancel(),
         )

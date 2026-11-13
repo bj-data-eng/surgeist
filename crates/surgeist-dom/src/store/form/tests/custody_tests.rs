@@ -148,7 +148,7 @@ fn ordinary_and_source_field_edits_share_the_actual_slot_form_dependency() {
     let cancel = AtomicBool::new(false);
     let mut lease = dom
         .begin_source_edit(
-            crate::DomSourceEdit::set_attribute(form, "title", "source"),
+            crate::DomSourceEdit::set_native_attribute(form, "title", "source"),
             crate::DomSourceLimits::new(32_000_000, 100_000, 1_000_000, 16, 64, 64, 1),
             &cancel,
         )

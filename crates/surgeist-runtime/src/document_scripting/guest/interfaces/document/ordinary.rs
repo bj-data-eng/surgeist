@@ -2,7 +2,11 @@
 
 use super::*;
 use surgeist_bindings_js::NativeProjectionPrototype;
-use surgeist_dom::{DomNodeRetirementWatch, DomSourceEventRequest};
+use surgeist_dom::{
+    DomDetachedNodeCreation, DomDocumentScriptRegistration, DomNodeRetirementWatch,
+    DomSourceAttributeAttachmentOutput, DomSourceAttributeVerificationRequest,
+    DomSourceEventRequest,
+};
 
 pub(super) struct OrdinaryBindings {
     inbox: RefCell<DomNodeRetirementInbox>,
@@ -27,16 +31,25 @@ impl<'value, 'scope> NodePrototype<'value, 'scope> {
     }
 }
 
-enum Projection<'prototype, 'scope, Publish> {
-    Create(NodePrototype<'prototype, 'scope>, Publish),
-    Watch(&'prototype RetainedCallbackObject, Publish),
-}
-
 #[derive(Clone, Copy)]
 pub(super) struct Admission<'a> {
     owner: &'a NativeOwner,
     events: &'a GuestEvents,
-    request: Option<&'a DomSourceEventRequest>,
+    route: AdmissionRoute<'a>,
+}
+
+#[derive(Clone, Copy)]
+enum AdmissionRoute<'a> {
+    Ordinary,
+    Event(&'a DomSourceEventRequest),
+    Attribute(
+        DomSourceAttributeVerificationRequest,
+        &'a DomDocumentScriptRegistration,
+    ),
+    AttachmentOutput(
+        DomSourceAttributeAttachmentOutput,
+        &'a DomDocumentScriptRegistration,
+    ),
 }
 
 impl<'a> Admission<'a> {
@@ -44,7 +57,7 @@ impl<'a> Admission<'a> {
         Self {
             owner,
             events,
-            request: None,
+            route: AdmissionRoute::Ordinary,
         }
     }
 
@@ -56,21 +69,58 @@ impl<'a> Admission<'a> {
         Self {
             owner,
             events,
-            request: Some(request),
+            route: AdmissionRoute::Event(request),
+        }
+    }
+
+    pub(super) fn attribute(
+        owner: &'a NativeOwner,
+        events: &'a GuestEvents,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &'a DomDocumentScriptRegistration,
+    ) -> Self {
+        Self {
+            owner,
+            events,
+            route: AdmissionRoute::Attribute(request, registration),
+        }
+    }
+
+    pub(super) fn attachment_output(
+        owner: &'a NativeOwner,
+        events: &'a GuestEvents,
+        request: DomSourceAttributeAttachmentOutput,
+        registration: &'a DomDocumentScriptRegistration,
+    ) -> Self {
+        Self {
+            owner,
+            events,
+            route: AdmissionRoute::AttachmentOutput(request, registration),
         }
     }
 
     fn source_step(self) -> Result<(), DocumentGuestEventError> {
-        if let Some(request) = self.request {
-            let mut session = self
-                .owner
-                .session
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            session
-                .dom()
-                .raw()
-                .source_event_step(request, &self.owner.cancellation)?;
+        if matches!(self.route, AdmissionRoute::Ordinary) {
+            return Ok(());
+        }
+        let mut session = self
+            .owner
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let dom = session.dom();
+        let cancel = &self.owner.cancellation;
+        match self.route {
+            AdmissionRoute::Ordinary => (),
+            AdmissionRoute::Event(request) => dom.raw().source_event_step(request, cancel)?,
+            AdmissionRoute::Attribute(request, registration) => {
+                dom.raw()
+                    .source_attribute_callback_step(request, registration, cancel)?;
+            }
+            AdmissionRoute::AttachmentOutput(request, registration) => {
+                dom.raw()
+                    .source_attribute_attachment_output_step(request, registration, cancel)?;
+            }
         }
         Ok(())
     }
@@ -83,6 +133,26 @@ impl<'a> Admission<'a> {
     pub(super) fn reserve(self, bytes: usize) -> Result<GuestBacking, DocumentGuestEventError> {
         self.source_step()?;
         self.events.reserve(self.owner, bytes)
+    }
+
+    fn accept_output(self, watch: &DomNodeRetirementWatch) -> Result<(), DocumentGuestEventError> {
+        if let AdmissionRoute::AttachmentOutput(request, registration) = self.route {
+            let mut session = self
+                .owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            session
+                .dom()
+                .raw_mut()
+                .accept_source_attribute_attachment_output(
+                    request,
+                    registration,
+                    watch,
+                    &self.owner.cancellation,
+                )?;
+        }
+        Ok(())
     }
 }
 
@@ -256,8 +326,80 @@ impl OrdinaryBindings {
         self.project(
             scope,
             Admission::ordinary(owner, events),
-            Projection::Create(prototype, create),
+            (prototype, create),
         )
+    }
+
+    pub(super) fn create_detached<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        capture: &Capture,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        prototype: NodePrototype<'_, 'scope>,
+        (document, creation): (DocumentId, DomDetachedNodeCreation),
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let event = owner.active_event_request();
+        let attribute = owner.active_attribute_registration()?;
+        let admission = match (&attribute, &event) {
+            (Some((request, registration)), _) => {
+                Admission::attribute(owner, events, *request, registration)
+            }
+            (None, Some(request)) => Admission::source(owner, events, request),
+            (None, None) => Admission::ordinary(owner, events),
+        };
+        let publish = |inbox: &DomNodeRetirementInbox, key| {
+            capture
+                .callbacks
+                .with_qualified_session(owner, event.as_ref(), |session, _| {
+                    let project = match &creation {
+                        DomDetachedNodeCreation::Attribute(_)
+                        | DomDetachedNodeCreation::AttributeNs(..) => GuestNode::Attr,
+                        DomDetachedNodeCreation::Fragment => GuestNode::Fragment,
+                        DomDetachedNodeCreation::Text(_) => GuestNode::Text,
+                        DomDetachedNodeCreation::Comment(_) => GuestNode::Comment,
+                    };
+                    let mut dom = session.dom();
+                    let dom = dom.raw_mut();
+                    let cancel = &owner.cancellation;
+                    let watched = if matches!(admission.route, AdmissionRoute::Ordinary) {
+                        let mut batch = DomBatch::new();
+                        let ticket = match creation {
+                            DomDetachedNodeCreation::Attribute(name) => {
+                                batch.create_attribute(document, name)
+                            }
+                            DomDetachedNodeCreation::AttributeNs(namespace, name) => {
+                                batch.create_attribute_ns(document, namespace, name)
+                            }
+                            DomDetachedNodeCreation::Fragment => batch.create_fragment(document),
+                            DomDetachedNodeCreation::Text(data) => {
+                                batch.create_text(document, data)
+                            }
+                            DomDetachedNodeCreation::Comment(data) => {
+                                batch.create_comment(document, data)
+                            }
+                        };
+                        dom.apply_with_node_retirement_watch(
+                            batch,
+                            &ticket,
+                            inbox,
+                            key,
+                            events.limits.node_retirement,
+                            cancel,
+                        )?
+                    } else {
+                        dom.create_detached_with_node_retirement_watch(
+                            document,
+                            creation,
+                            (inbox, key),
+                            (events.limits.source_edits, events.limits.node_retirement),
+                            cancel,
+                        )?
+                    };
+                    let (_, node, watch) = watched.into_parts();
+                    Ok((project(node), watch))
+                })
+        };
+        self.project(scope, admission, (prototype, publish))
     }
 
     pub(super) fn watch<'scope>(
@@ -272,22 +414,25 @@ impl OrdinaryBindings {
         self.project(
             scope,
             Admission::ordinary(owner, events),
-            Projection::Watch(prototype, |inbox: &DomNodeRetirementInbox, key| {
-                let watch = callbacks.with_native(owner, |session, _| {
-                    session
-                        .dom()
-                        .raw_mut()
-                        .watch_node_retirement(
-                            node.node(),
-                            inbox,
-                            key,
-                            events.limits.node_retirement,
-                            &owner.cancellation,
-                        )
-                        .map_err(Into::into)
-                })?;
-                Ok((node, watch))
-            }),
+            (
+                NodePrototype::Creation(prototype),
+                |inbox: &DomNodeRetirementInbox, key| {
+                    let watch = callbacks.with_native(owner, |session, _| {
+                        session
+                            .dom()
+                            .raw_mut()
+                            .watch_node_retirement(
+                                node.node(),
+                                inbox,
+                                key,
+                                events.limits.node_retirement,
+                                &owner.cancellation,
+                            )
+                            .map_err(Into::into)
+                    })?;
+                    Ok((node, watch))
+                },
+            ),
         )
     }
 
@@ -303,21 +448,98 @@ impl OrdinaryBindings {
         self.project(
             scope,
             Admission::source(owner, events, request),
-            Projection::Watch(prototype, |inbox: &DomNodeRetirementInbox, key| {
-                let mut session = owner
-                    .session
-                    .try_borrow_mut()
-                    .map_err(|_| DocumentScriptNativeError::Busy)?;
-                let watch = session.dom().raw_mut().watch_source_event_node_retirement(
-                    request,
-                    node.node(),
-                    inbox,
-                    key,
-                    &owner.cancellation,
-                )?;
-                handler?;
-                Ok((node, watch))
-            }),
+            (
+                NodePrototype::Creation(prototype),
+                |inbox: &DomNodeRetirementInbox, key| {
+                    let mut session = owner
+                        .session
+                        .try_borrow_mut()
+                        .map_err(|_| DocumentScriptNativeError::Busy)?;
+                    let watch = session.dom().raw_mut().watch_source_event_node_retirement(
+                        request,
+                        node.node(),
+                        inbox,
+                        key,
+                        &owner.cancellation,
+                    )?;
+                    handler?;
+                    Ok((node, watch))
+                },
+            ),
+        )
+    }
+
+    pub(super) fn watch_attribute<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        admission: Admission<'_>,
+        node: GuestNode,
+        prototype: &RetainedCallbackObject,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let AdmissionRoute::Attribute(request, registration) = admission.route else {
+            return Err(DocumentScriptNativeError::SourceAccess.into());
+        };
+        self.project(
+            scope,
+            admission,
+            (
+                NodePrototype::Creation(prototype),
+                |inbox: &DomNodeRetirementInbox, key| {
+                    let mut session = admission
+                        .owner
+                        .session
+                        .try_borrow_mut()
+                        .map_err(|_| DocumentScriptNativeError::Busy)?;
+                    let watch = session
+                        .dom()
+                        .raw_mut()
+                        .watch_source_attribute_node_retirement(
+                            request,
+                            registration,
+                            node.node(),
+                            inbox,
+                            key,
+                            &admission.owner.cancellation,
+                        )?;
+                    Ok((node, watch))
+                },
+            ),
+        )
+    }
+
+    pub(super) fn project_attachment_output<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        admission: Admission<'_>,
+        prototype: &RetainedCallbackObject,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let AdmissionRoute::AttachmentOutput(request, registration) = admission.route else {
+            return Err(DocumentScriptNativeError::SourceAccess.into());
+        };
+        self.project(
+            scope,
+            admission,
+            (
+                NodePrototype::Creation(prototype),
+                |inbox: &DomNodeRetirementInbox, key| {
+                    let mut session = admission
+                        .owner
+                        .session
+                        .try_borrow_mut()
+                        .map_err(|_| DocumentScriptNativeError::Busy)?;
+                    let watch = session
+                        .dom()
+                        .raw_mut()
+                        .watch_source_attribute_attachment_output(
+                            request,
+                            registration,
+                            (inbox, key),
+                            admission.events.limits.node_retirement,
+                            &admission.owner.cancellation,
+                        )?;
+                    Ok((GuestNode::Attr(request.replaced().node()), watch))
+                },
+            ),
         )
     }
 
@@ -325,7 +547,7 @@ impl OrdinaryBindings {
         &self,
         scope: &mut Scope<'scope>,
         admission: Admission<'_>,
-        projection: Projection<'_, 'scope, Publish>,
+        (prototype, create): (NodePrototype<'_, 'scope>, Publish),
     ) -> Result<Value<'scope>, DocumentGuestEventError>
     where
         Publish: FnOnce(
@@ -355,55 +577,24 @@ impl OrdinaryBindings {
             lifetime: Some(lifetime.clone()),
         };
         let allocation = Box::new_uninit();
-        let (value, holder, live) = match projection {
-            Projection::Create(prototype, create) => {
-                admission.step()?;
-                scope.try_project_retained_native_object(
-                    prototype.projection(),
-                    payload,
-                    |payload, holder| {
-                        Ok::<_, DocumentGuestEventError>((
-                            admission.reserve(payload)?,
-                            admission.reserve(holder)?,
-                        ))
-                    },
-                    |payload| {
-                        #[cfg(test)]
-                        self.qualify_projection()?;
-                        let (node, watch) = create(&inbox, key)?;
-                        Ok(Self::bind_projection(payload, node, watch))
-                    },
-                )?
-            }
-            Projection::Watch(prototype, watch) => {
-                let mut watched = None;
-                let holder =
-                    Self::form_in_prototype_realm(scope, admission, prototype, payload, || {
-                        watched = Some(watch(&inbox, key)?);
-                        Ok(())
-                    })?;
-                let (node, watch) = watched.ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                let qualified = (|| {
-                    #[cfg(test)]
-                    self.qualify_projection()?;
-                    let value = scope.open_callback_object(&holder)?;
-                    let projection = scope
-                        .native_object::<GuestNodeProjection>(&value)?
-                        .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                    Ok::<_, DocumentGuestEventError>((
-                        value,
-                        Self::bind_projection(projection.payload(), node, watch),
-                    ))
-                })();
-                match qualified {
-                    Ok((value, live)) => (value, holder, live),
-                    Err(error) => {
-                        let _ = scope.release_callback_object(holder);
-                        return Err(error);
-                    }
-                }
-            }
-        };
+        admission.step()?;
+        let (value, holder, live) = scope.try_project_retained_native_object(
+            prototype.projection(),
+            payload,
+            |payload, holder| {
+                Ok::<_, DocumentGuestEventError>((
+                    admission.reserve(payload)?,
+                    admission.reserve(holder)?,
+                ))
+            },
+            |payload| {
+                #[cfg(test)]
+                self.qualify_projection()?;
+                let (node, watch) = create(&inbox, key)?;
+                admission.accept_output(&watch)?;
+                Ok(Self::bind_projection(payload, node, watch))
+            },
+        )?;
         let pin = Box::write(
             allocation,
             Pin {
@@ -437,31 +628,35 @@ impl OrdinaryBindings {
         }
     }
 
-    fn form_in_prototype_realm(
-        scope: &mut Scope<'_>,
-        admission: Admission<'_>,
-        prototype: &RetainedCallbackObject,
-        payload: GuestNodeProjection,
-        admit_watch: impl FnOnce() -> Result<(), DocumentGuestEventError>,
-    ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
-        admission.step()?;
-        scope.project_retained_native_object_in_prototype_realm(
-            prototype,
-            payload,
-            |payload, holder| {
-                let payload = admission.reserve(payload)?;
-                let holder = admission.reserve(holder)?;
-                admit_watch()?;
-                Ok((payload, holder))
-            },
-        )
-    }
-
     pub(super) fn open_with<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         node: NodeId,
         mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
+        self.open_qualified(scope, node, &mut step, |_| Ok(()))
+    }
+
+    pub(super) fn open_attachment_output<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        node: NodeId,
+        admission: Admission<'_>,
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
+        self.open_qualified(
+            scope,
+            node,
+            || admission.step(),
+            |watch| admission.accept_output(watch),
+        )
+    }
+
+    fn open_qualified<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        node: NodeId,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+        accept: impl FnOnce(&DomNodeRetirementWatch) -> Result<(), DocumentGuestEventError>,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
         let pins = self
             .pins
@@ -472,7 +667,9 @@ impl OrdinaryBindings {
             if let Slot::Retained(pin) = slot
                 && pin.live.node == node
             {
-                return Ok(Some(scope.open_callback_object(&pin.holder)?));
+                let value = scope.open_callback_object(&pin.holder)?;
+                accept(&pin.live._watch)?;
+                return Ok(Some(value));
             }
         }
         Ok(None)

@@ -2,6 +2,8 @@
 mod composition;
 #[path = "conversions/sequence.rs"]
 mod sequence;
+#[path = "conversions/trusted_types.rs"]
+mod trusted_types;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -473,6 +475,7 @@ fn main() -> TestResult {
         exact_admission_and_cross_realm_account(&mut process)?;
         composition::run(&mut process)?;
         sequence::run(&mut process)?;
+        trusted_types::run(&mut process)?;
     }
     admission_is_exact_and_terminal(false)?;
     admission_is_exact_and_terminal(true)?;

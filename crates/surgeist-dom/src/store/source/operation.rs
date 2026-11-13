@@ -1,5 +1,6 @@
 //! One canonical retained synchronous source operation. The lease grants access;
 //! all mandatory continuation and acknowledged external publication stays in Dom.
+pub(in crate::store) mod attribute;
 #[cfg(test)]
 mod design_mode_tests;
 mod dialog;
@@ -25,8 +26,8 @@ mod scope;
 #[cfg(test)]
 mod scope_tests;
 mod script;
-mod shadow;
 mod show_modal;
+mod synchronous_node;
 mod watcher;
 use super::Invocation;
 use super::*;
@@ -83,6 +84,7 @@ pub(in crate::store) struct Operation {
     inline_source: Option<inline::SourceInline>,
     meta_policy: Option<meta::Policy>,
     pending_meta: Option<meta::Pending>,
+    meta_csp: Option<Box<meta::CspDelivery>>,
     draft: dialog::OperationDraft,
     commands: OperationRoot,
     index: usize,
@@ -90,8 +92,10 @@ pub(in crate::store) struct Operation {
     published: bool,
     event_exposed: bool,
     script_parked: bool,
-    event_work: std::sync::Weak<crate::source::event::EventWork>,
-    event_custody: Option<Arc<formation::EventWorkCustody>>,
+    attribute_verification: Option<attribute::Pending>,
+    attachment_output: Option<attribute::AttachmentOutput>,
+    event_work: std::sync::Weak<crate::source::callback::CallbackWork>,
+    event_custody: Option<Arc<formation::CallbackWorkCustody>>,
     dialog_queue: Option<crate::DomElementTaskId>,
     request_close: Option<request_close::Call>,
     request_close_result: Option<DocumentString>,
@@ -156,7 +160,7 @@ struct AcceptedCssomCreation {
     owner_rule: Option<surgeist_cssom::CssomRuleId>,
 }
 /// Execution permission for exactly one DOM-owned source operation. Drop parks
-/// a published operation; it never runs cleanup or discards its mandatory tail.
+/// a published operation or an exposed service request. It never runs cleanup.
 pub struct DomSourceLease<'a> {
     dom: &'a mut Dom,
     id: DomSourceOperationId,
@@ -166,18 +170,20 @@ pub struct DomSourceLease<'a> {
 }
 impl Drop for DomSourceLease<'_> {
     fn drop(&mut self) {
-        if !self.complete
-            && self.dom.source_operation.as_ref().is_some_and(|o| {
-                !o.published
-                    && !o.event_exposed
-                    && !o.script_parked
-                    && matches!(
-                        &o.draft,
-                        dialog::OperationDraft::Segment(draft) if draft.compound_failure().is_none()
-                    )
-                    && o.meta_policy.is_none()
-            })
-        {
+        if !self.complete && self.dom.source_operation.as_ref().is_some_and(|o| {
+            !o.published
+                && !o.event_exposed
+                && !o.script_parked
+                    && o.meta_csp.is_none()
+                && o.attribute_verification.is_none()
+                && o.waiting_attachment_output().is_none()
+                && matches!(
+                    &o.draft,
+                    dialog::OperationDraft::Segment(draft)
+                            if draft.compound_failure().is_none() && draft.retained_meta_csp().is_none()
+                )
+                && o.meta_policy.is_none()
+        }) {
             self.dom.source_operation = self.dom.source_parents.pop();
         }
         #[cfg(test)]
@@ -373,12 +379,15 @@ impl Dom {
             inline_source: None,
             meta_policy: None,
             pending_meta: None,
+            meta_csp: None,
             commands,
             index: 0,
             started: false,
             published: false,
             event_exposed: false,
             script_parked: false,
+            attribute_verification: None,
+            attachment_output: None,
             event_work: std::sync::Weak::new(),
             event_custody: None,
             dialog_queue: None,
@@ -467,12 +476,14 @@ impl Dom {
         if id.owner != self.owner {
             return Err(DomError::ForeignOwner);
         }
+        self.raise_cancelled_attribute_parent(id, limits, cancel)?;
         let observed = self
             .source_operation
             .as_ref()
             .filter(|operation| operation.id == id)
             .ok_or(DomError::InvalidSourceOperation)?
-            .observed_event_work();
+            .callback_observation()
+            .map(|observation| observation.work.clone());
         if let Some(work) = observed {
             let mut policy = dialog::ResumeWorkPolicy::new(work, limits.work)?;
             self.admit_source_resume(id, limits, cancel)?;
@@ -590,7 +601,7 @@ impl Operation {
     }
     pub(in crate::store) fn admit_dom_limits(&self, limits: DomLimits) -> Result<(), DomError> {
         self.names.admit_limits(limits.names())?;
-        if let Some(observation) = self.observation() {
+        if let Some(observation) = self.callback_observation() {
             return observation.usage.admit_limits(limits);
         }
         let draft = &self.draft;
@@ -657,12 +668,13 @@ impl Operation {
     }
     pub(in crate::store) fn update_dom_limits(&mut self, limits: DomLimits) {
         self.names.replace_limits(limits.names());
-        if self.observation().is_some() {
+        if self.callback_observation().is_some() {
             return;
         }
         let draft = &mut self.draft;
-        draft.dom_limits.event_recipients = limits.event_recipients;
-        draft.dom_limits.child_list_observation = limits.child_list_observation;
+        // Sparse edits revalidate canonical counts with this copy after a
+        // parked Source resumes under newly admitted owner limits.
+        draft.dom_limits = limits;
         draft
             .input_processing
             .update_limits(limits.input_scratch, limits.input_work);
@@ -678,6 +690,18 @@ impl Operation {
         if let Some(observation) = self.observation() {
             return observation.status(self);
         }
+        if let dialog::OperationDraft::AttributeObserved(observation) = &self.draft {
+            return DomSourceStatus {
+                operation: self.id,
+                published: self.published,
+                cancelled: self.cancelled,
+                cleanup: self.failure,
+                work: observation.work.work.load(Ordering::Relaxed),
+                phases: self.phases,
+                parent: None,
+                phase: DomSourcePhase::AttributeVerification,
+            };
+        }
         DomSourceStatus {
             operation: self.id,
             published: self.published,
@@ -690,6 +714,12 @@ impl Operation {
                 crate::DomSourcePhase::PendingCleanup
             } else if self.draft.pending_script().is_some() {
                 crate::DomSourcePhase::ScriptPreparation
+            } else if self.draft.pending_meta_csp().is_some() {
+                crate::DomSourcePhase::MetaCsp
+            } else if self.waiting_attribute_verification().is_some() {
+                crate::DomSourcePhase::AttributeVerification
+            } else if self.waiting_attachment_output().is_some() {
+                crate::DomSourcePhase::AttributeAttachmentOutput
             } else if self.draft.fullscreen_exit.is_some() {
                 crate::DomSourcePhase::FullscreenExitHandoff
             } else if self.draft.pending_autofocus().is_some() {
@@ -796,7 +826,7 @@ impl Operation {
         Some(&request.source)
     }
     fn refresh_admission(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
-        if self.observation().is_some() {
+        if self.callback_observation().is_some() {
             return Ok(());
         }
         self.draft.source_other_bytes = self.input_bytes()?;
@@ -852,6 +882,8 @@ impl Operation {
                 parent: installation.parent,
                 before: installation.before,
             }
+        } else if let Some(attribute) = &self.attribute_verification {
+            headroom::Entry::VerifiedAttribute(attribute)
         } else {
             headroom::Entry::Command(
                 self.commands
@@ -1798,6 +1830,14 @@ impl DomSourceLease<'_> {
     }
     pub fn request_cancel(&mut self) {
         let op = self.dom.source_operation.as_mut().expect("live lease");
+        if matches!(&op.draft, dialog::OperationDraft::AttributeObserved(observation) if !observation.work.scope_closed())
+            || op
+                .attribute_verification
+                .as_ref()
+                .is_some_and(attribute::Pending::has_outcome)
+        {
+            return;
+        }
         op.cancelled = true;
         // Unstarted commands have no canonical obligations. The current command
         // retains every mandatory source frame until explicit recovery finishes.
@@ -1860,6 +1900,16 @@ impl DomSourceLease<'_> {
         {
             return Err(DomError::InvalidSourceOperation.into());
         }
+        if let Some(request) = self
+            .dom
+            .source_operation
+            .as_ref()
+            .and_then(|operation| operation.waiting_attachment_output())
+        {
+            return Ok(DomSourceProgress::Request(
+                DomSourceRequest::AttributeAttachmentOutput(request),
+            ));
+        }
         self.dom
             .source_operation
             .as_mut()
@@ -1892,6 +1942,19 @@ impl DomSourceLease<'_> {
             .is_some_and(|op| op.observation().is_some())
         {
             return self.advance_dialog_observation(execution, cancel);
+        }
+        if self
+            .dom
+            .source_operation
+            .as_ref()
+            .is_some_and(|op| matches!(op.draft, dialog::OperationDraft::AttributeObserved(_)))
+        {
+            if let Some(request) = self.parked_attribute_request()? {
+                return Ok(DomSourceProgress::Request(
+                    DomSourceRequest::AttributeVerification(request),
+                ));
+            }
+            self.rebase_attribute_observation(cancel)?;
         }
         let root = self
             .dom
@@ -2058,6 +2121,13 @@ impl DomSourceLease<'_> {
             // External task/runtime guards may have released storage since the
             // last receipt. Refresh before resumed methods or value formation.
             op.refresh_admission(cancel)?;
+            if !op.started
+                && let Some(request) = op.waiting_attribute_verification()
+            {
+                return Ok(DomSourceProgress::Request(
+                    DomSourceRequest::AttributeVerification(request),
+                ));
+            }
             if op.draft.pending_script().is_some() {
                 let (request, frame) = op.issue_script_request(cancel)?;
                 if !op.try_accept_disposed_script_settings(self.dom, request, frame, cancel)? {
@@ -2065,6 +2135,11 @@ impl DomSourceLease<'_> {
                         request,
                     )));
                 }
+            }
+            if op.draft.pending_meta_csp().is_some() {
+                return Ok(DomSourceProgress::Request(DomSourceRequest::MetaCsp(
+                    op.issue_meta_csp_request(cancel)?,
+                )));
             }
             if op.draft.fullscreen_exit.is_some() {
                 let request = op.fullscreen_handoff_request(self.dom, cancel)?;
@@ -2191,14 +2266,36 @@ impl DomSourceLease<'_> {
                 } else if op.started {
                     op.draft.run_effects(self.dom.limits, cancel)
                 } else if op.index < op.commands.len() && !op.cancelled {
-                    op.apply_command(self.dom.limits, cancel)
+                    op.apply_reached_command(self.dom, cancel)
                 } else {
                     Ok(())
                 }
             })();
+            if result.is_ok()
+                && let Some(request) = op.waiting_attachment_output()
+            {
+                drop(checkpoint);
+                return Ok(DomSourceProgress::Request(
+                    DomSourceRequest::AttributeAttachmentOutput(request),
+                ));
+            }
+            if result.is_ok()
+                && let Some(request) = op.waiting_attribute_verification()
+            {
+                if let Err(error) = op.observe_attribute_verification(self.dom, cancel) {
+                    op.attribute_verification = None;
+                    checkpoint.restore(&mut op.draft);
+                    return Err(error.into());
+                }
+                drop(checkpoint);
+                return Ok(DomSourceProgress::Request(
+                    DomSourceRequest::AttributeVerification(request),
+                ));
+            }
             match result {
                 Err(
                     boundary @ (DomError::ScriptPreparationRequired
+                    | DomError::MetaCspProcessingRequired
                     | DomError::FullscreenExitHandoffRequired),
                 ) => {
                     if !op.command_admitted {
@@ -2208,11 +2305,18 @@ impl DomSourceLease<'_> {
                         op.admit_current_command(self.dom, cancel)?;
                         continue;
                     }
-                    if execution.shadow_attachment.is_some() {
+                    if execution.synchronous_node.is_some() {
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
                         op.started = started;
                         return Err(DomError::IncompleteSourceOperation.into());
+                    }
+                    if matches!(boundary, DomError::MetaCspProcessingRequired) {
+                        op.started = true;
+                        drop(checkpoint);
+                        return Ok(DomSourceProgress::Request(DomSourceRequest::MetaCsp(
+                            op.issue_meta_csp_request(cancel)?,
+                        )));
                     }
                     if matches!(boundary, DomError::ScriptPreparationRequired) {
                         op.started = true;
@@ -3572,12 +3676,15 @@ impl Dom {
                 inline_source: None,
                 meta_policy: None,
                 pending_meta: None,
+                meta_csp: None,
                 commands: OperationRoot::NativeInstallation,
                 index: 0,
                 started: false,
                 published: false,
                 event_exposed: false,
                 script_parked: false,
+                attribute_verification: None,
+                attachment_output: None,
                 event_work: std::sync::Weak::new(),
                 event_custody: None,
                 dialog_queue: None,
@@ -6887,6 +6994,9 @@ pub(in crate::store) mod accounting_tests {
                         | DomSourceRequest::DesignMode(_)
                         | DomSourceRequest::FullscreenExitHandoff(_)
                         | DomSourceRequest::Script(_)
+                        | DomSourceRequest::MetaCsp(_)
+                        | DomSourceRequest::AttributeVerification(_)
+                        | DomSourceRequest::AttributeAttachmentOutput(_)
                         | DomSourceRequest::AutofocusInsertion(_),
                     )) => {
                         panic!("Slot assignment fixture has no eventful Dialog operation")

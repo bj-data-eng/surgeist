@@ -78,7 +78,7 @@ fn compound_conversion_services_real_sheet_removal_before_delivering_original_hi
         .source_execution()
         .apply(
             &mut session.dom(),
-            DomSourceEdit::set_attribute(style, "id", "survived"),
+            DomSourceEdit::set_native_attribute(style, "id", "survived"),
             source_limits(),
             &mut DomSourceServices {
                 meta: Some(envelope()),

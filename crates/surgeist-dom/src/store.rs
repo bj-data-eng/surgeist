@@ -7,7 +7,8 @@ use std::{
 };
 
 use crate::batch::{
-    AttachedAttribute, AttachedShadowRoot, BatchIdentity, Command, Creation, RemovedAttribute,
+    AttachedAttribute, AttachedShadowRoot, AttributeSetterMode, BatchIdentity, Command, Creation,
+    RemovedAttribute,
 };
 use crate::document::{DomDocumentMetadata, NATIVE_DOCUMENT_STRING_UNITS};
 use crate::{
@@ -323,6 +324,14 @@ pub enum DomError {
     },
     CloseWatcherProtocol(surgeist_html::elements::dialog::HtmlCloseWatcherRequestError),
     SourceEventExecutorUnavailable,
+    /// A reached attribute verification has no authentic node-document Global.
+    SourceAttributeGlobalUnavailable,
+    /// A reached attribute verification has no qualified executor.
+    SourceAttributeExecutorUnavailable,
+    /// The exact registered verifier rejected the proposed value.
+    SourceAttributeVerificationRejected,
+    /// The exact registered verifier retained an abrupt guest outcome.
+    SourceAttributeVerificationAbrupt,
     DialogInvalidState,
     NeedsEventfulOperation {
         subject: Option<NodeId>,
@@ -351,6 +360,8 @@ pub enum DomError {
     Namespace,
     /// HTML Script preparation requires a live settings observation.
     ScriptPreparationRequired,
+    /// A staged HTML Meta insertion requires its CSP processor.
+    MetaCspProcessingRequired,
     NotSupported,
     NativeInitializationRequired(surgeist_html::elements::native::HtmlElementClass),
     NonceInapplicable,
@@ -1674,16 +1685,16 @@ impl Dom {
     }
     /// Live bounds cannot fall below admitted state. Smaller history bounds
     /// discard coverage explicitly, without changing semantic revision.
-    /// Retained event observations must settle before these bounds can change.
+    /// Retained callback observations must settle before these bounds can change.
     pub fn set_limits(&mut self, limits: DomLimits) -> Result<(), DomError> {
         // This legacy policy controller supports the original single staged
-        // Source recovery, but not event-observation reentry. Refuse before
+        // Source recovery. Refuse callback observations before
         // traversing canonical banks without the observing owners' Work.
         if !self.source_parents.is_empty()
             || self
                 .source_operation
                 .as_ref()
-                .is_some_and(|operation| operation.is_observing_event())
+                .is_some_and(|operation| operation.is_observing_callback())
         {
             return Err(DomError::SourceOperationPending);
         }
@@ -2428,7 +2439,7 @@ struct Draft {
     // owner. Relaxed numerical loads/stores need no publication ordering; Arc
     // and atomics allow the complete parked owner to move between threads.
     source_work: source::formation::WorkOwner,
-    source_ancestors: Option<Arc<crate::source::event::EventWork>>,
+    source_ancestors: Option<Arc<crate::source::callback::CallbackWork>>,
     source_formation_bytes: Arc<AtomicUsize>,
     source_temporary_units: Arc<AtomicUsize>,
     source_other_bytes: usize,
@@ -2499,7 +2510,7 @@ struct Draft {
     #[cfg(test)]
     svg_processing_trace: Option<svg_script::ProcessingTrace>,
     source_mirrors: source::formation::SourceMirrors,
-    source_ancestor_custody: Option<Arc<source::formation::EventWorkCustody>>,
+    source_ancestor_custody: Option<Arc<source::formation::CallbackWorkCustody>>,
     names: name_registry::Operation,
     _header_custody: custody::Debit,
 }
@@ -2590,7 +2601,7 @@ impl Draft {
     }
     pub(in crate::store) fn source_ancestor_custody(
         &self,
-    ) -> Option<Arc<source::formation::EventWorkCustody>> {
+    ) -> Option<Arc<source::formation::CallbackWorkCustody>> {
         self.source_ancestor_custody.clone()
     }
     pub(in crate::store) fn source_mirrors(&self) -> source::formation::SourceMirrors {
@@ -3717,6 +3728,17 @@ impl Draft {
                 let node = self.resolve(node.clone())?;
                 self.remove(node, limits, cancelled)?;
             }
+            Command::RemoveChild { parent, child } => {
+                self.source_step(cancelled)?;
+                let parent = self.resolve(parent.clone())?;
+                self.source_step(cancelled)?;
+                let child = self.resolve(child.clone())?;
+                self.source_step(cancelled)?;
+                if self.node(child)?.parent() != Some(parent) {
+                    return Err(DomError::NotFound);
+                }
+                self.remove(child, limits, cancelled)?;
+            }
             Command::Adopt { node, document } => {
                 let node = self.resolve(node.clone())?;
                 let document = self.resolve(document.clone())?;
@@ -3742,13 +3764,39 @@ impl Draft {
                 namespace,
                 name,
                 value,
+                mode,
             } => {
                 let node = self.resolve(node.clone())?;
-                self.set_attribute(node, namespace.as_ref(), name, value, limits, cancelled)?;
+                match mode {
+                    AttributeSetterMode::Native => {
+                        self.set_attribute(
+                            node,
+                            namespace.as_ref(),
+                            name,
+                            value,
+                            limits,
+                            cancelled,
+                        )?;
+                    }
+                    AttributeSetterMode::Standard => {
+                        self.set_standard_attribute(
+                            node,
+                            namespace.as_ref(),
+                            name,
+                            value,
+                            limits,
+                            cancelled,
+                        )?;
+                    }
+                }
             }
             Command::SetCustomValidity { node, value } => {
                 let node = self.resolve(node.clone())?;
                 self.set_custom_validity(node, value, limits, cancelled)?;
+            }
+            Command::SetAttributeValue { attribute, value } => {
+                let attr = self.resolve(attribute.node().into())?;
+                self.set_existing_attr_value(attr, value, limits, cancelled)?;
             }
             Command::RequestCloseDialog { node, result } => {
                 let key = self.resolve(node.clone())?;
@@ -3814,11 +3862,17 @@ impl Draft {
                 let attr = self.resolve(attribute.node().into())?;
                 self.remove_attribute_node(node, attr, limits, cancelled)?;
             }
-            Command::AttachNativeAttribute { node, attribute } => {
+            Command::AttachAttribute {
+                node,
+                attribute,
+                mode,
+                output_registration: None,
+            } => {
                 let node = self.resolve(node.clone())?;
                 let attr = self.resolve(attribute.node().into())?;
-                self.attach_native_attribute(node, attr, limits, cancelled)?;
+                self.attach_attribute(node, attr, *mode, limits, cancelled)?;
             }
+            Command::AttachAttribute { .. } => return Err(DomError::InvalidSourceOperation),
             Command::Destroy(node) => {
                 let node = self.resolve(node.clone())?;
                 if self.node(node)?.parent().is_some()

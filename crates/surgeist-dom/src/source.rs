@@ -1,4 +1,7 @@
 //! One requested canonical edit and its retained source continuation.
+mod attribute;
+pub(crate) mod callback;
+pub use attribute::*;
 mod design_mode;
 pub(crate) mod event;
 pub use design_mode::{
@@ -15,7 +18,7 @@ pub use focus::{
 };
 pub use scope::DomSourceExecutionEntryScope;
 pub(crate) mod watcher;
-use crate::batch::{Command, Creation};
+use crate::batch::{AttributeSetterMode, Command, Creation};
 use crate::view_transition::*;
 use crate::{DomDocumentStamp, DomError, DomSnapshot, DomStyleRequest, NodeId};
 pub use event::*;
@@ -103,6 +106,10 @@ pub struct DomSourceOperationId {
 pub enum DomSourcePhase {
     /// Original private canonical segment.
     Staging,
+    /// A standard attribute setter awaits its registered verifier.
+    AttributeVerification,
+    /// A guest attachment awaits custody of its replaced Attr.
+    AttributeAttachmentOutput,
     /// A reached synchronous firing awaits its original clock observation.
     EventFiring,
     /// Coherent current-state observation awaiting actual event dispatch.
@@ -119,6 +126,8 @@ pub enum DomSourcePhase {
     FullscreenExitHandoff,
     /// Original HTML Script preparation is parked in the private segment.
     ScriptPreparation,
+    /// An original Meta CSP insertion awaits its policy processor.
+    MetaCsp,
     /// Actual original invocation cleanup remains after a native failure.
     PendingCleanup,
 }
@@ -167,6 +176,9 @@ impl DomSourceStatus {
 /// The actual service reached by the retained canonical source engine.
 #[derive(Clone, Debug)]
 pub enum DomSourceRequest {
+    AttributeVerification(DomSourceAttributeVerificationRequest),
+    AttributeAttachmentOutput(DomSourceAttributeAttachmentOutput),
+    MetaCsp(DomSourceMetaCspRequest),
     FullscreenExitHandoff(crate::DomSourceFullscreenExitHandoffRequest),
     Style(DomStyleRequest),
     HostedChild(crate::DomHostedChildRequest),
@@ -178,6 +190,32 @@ pub enum DomSourceRequest {
     CloseWatcher(DomSourceCloseWatcherRequest),
     DesignMode(DomSourceDesignModeRequest),
     Script(DomSourceScriptRequest),
+}
+
+/// Observation of one exact Meta CSP insertion in a private Source segment.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomSourceMetaCspRequest {
+    pub(crate) operation: DomSourceOperationId,
+    pub(crate) occurrence: watcher::HookOccurrence,
+    pub(crate) subject: Option<NodeId>,
+    pub(crate) document: Option<crate::DocumentId>,
+}
+
+impl DomSourceMetaCspRequest {
+    /// The original retained Source operation.
+    pub const fn operation(self) -> DomSourceOperationId {
+        self.operation
+    }
+
+    /// The Meta node, if its identity was already published.
+    pub const fn subject(self) -> Option<NodeId> {
+        self.subject
+    }
+
+    /// The Document, if its identity was already published.
+    pub const fn document(self) -> Option<crate::DocumentId> {
+        self.document
+    }
 }
 
 /// Actual reached boundary of an original native HTML Script preparation.
@@ -388,6 +426,31 @@ impl DomSourceNativeHtmlInstallLimits {
 pub struct DomSourceEdit {
     pub(crate) command: crate::batch::Command,
 }
+
+/// One ordinary detached node creation with no connected-tree effects.
+#[derive(Debug)]
+pub enum DomDetachedNodeCreation {
+    Attribute(DocumentString),
+    AttributeNs(Namespace, DocumentString),
+    Fragment,
+    Text(DocumentString),
+    Comment(DocumentString),
+}
+
+impl DomDetachedNodeCreation {
+    pub(crate) fn into_edit(self, document: crate::DocumentId) -> DomSourceEdit {
+        match self {
+            Self::Attribute(name) => DomSourceEdit::create_attribute(document, name),
+            Self::AttributeNs(namespace, name) => {
+                DomSourceEdit::create_attribute_ns(document, namespace, name)
+            }
+            Self::Fragment => DomSourceEdit::create_fragment(document.node()),
+            Self::Text(data) => DomSourceEdit::create_text(document.node(), data),
+            Self::Comment(data) => DomSourceEdit::create_comment(document.node(), data),
+        }
+    }
+}
+
 impl DomSourceEdit {
     pub fn exit_fullscreen(document: crate::DocumentId) -> Self {
         Self {
@@ -1050,6 +1113,16 @@ impl DomSourceEdit {
             command: Command::Detach(node.into()),
         }
     }
+    /// Remove the exact ordinary child of the selected parent. A live node
+    /// without that parent fails with `DomError::NotFound`.
+    pub fn remove_child(parent: NodeId, child: NodeId) -> Self {
+        Self {
+            command: Command::RemoveChild {
+                parent: parent.into(),
+                child: child.into(),
+            },
+        }
+    }
     /// Request one `replace_child` operation on the canonical owner.
     pub fn replace_child(node: NodeId, parent: NodeId, child: NodeId) -> Self {
         Self {
@@ -1069,34 +1142,68 @@ impl DomSourceEdit {
             },
         }
     }
-    /// Request one `set_attribute` operation on the canonical owner.
+    /// Request the standard qualified attribute setter, including verification
+    /// of values for reached Trusted Types sinks.
     pub fn set_attribute(
         node: NodeId,
         name: impl Into<DocumentString>,
         value: impl Into<DocumentString>,
     ) -> Self {
-        Self {
-            command: Command::SetAttribute {
-                node: node.into(),
-                namespace: None,
-                name: name.into(),
-                value: value.into(),
-            },
-        }
+        Self::attribute_setter(node, None, name, value, AttributeSetterMode::Standard)
     }
-    /// Request one `set_attribute_ns` operation on the canonical owner.
+    /// Request the standard namespace-aware attribute setter, including
+    /// verification of values for reached Trusted Types sinks.
     pub fn set_attribute_ns(
         node: NodeId,
         namespace: Namespace,
         qualified_name: impl Into<DocumentString>,
         value: impl Into<DocumentString>,
     ) -> Self {
+        Self::attribute_setter(
+            node,
+            Some(namespace),
+            qualified_name,
+            value,
+            AttributeSetterMode::Standard,
+        )
+    }
+    /// Write a qualified attribute as part of native canonical authoring.
+    pub fn set_native_attribute(
+        node: NodeId,
+        name: impl Into<DocumentString>,
+        value: impl Into<DocumentString>,
+    ) -> Self {
+        Self::attribute_setter(node, None, name, value, AttributeSetterMode::Native)
+    }
+    /// Write an expanded attribute as part of native canonical authoring.
+    pub fn set_native_attribute_ns(
+        node: NodeId,
+        namespace: Namespace,
+        qualified_name: impl Into<DocumentString>,
+        value: impl Into<DocumentString>,
+    ) -> Self {
+        Self::attribute_setter(
+            node,
+            Some(namespace),
+            qualified_name,
+            value,
+            AttributeSetterMode::Native,
+        )
+    }
+    fn attribute_setter(
+        node: NodeId,
+        namespace: Option<Namespace>,
+        name: impl Into<DocumentString>,
+        value: impl Into<DocumentString>,
+        mode: AttributeSetterMode,
+    ) -> Self {
         Self {
             command: Command::SetAttribute {
                 node: node.into(),
-                namespace: Some(namespace),
-                name: qualified_name.into(),
+                namespace,
+                name: name.into(),
                 value: value.into(),
+                mode,
             },
         }
     }
@@ -1135,13 +1242,53 @@ impl DomSourceEdit {
             },
         }
     }
-    /// Attach an already authored native Attr and return the canonical result.
-    /// Web-facing setters supply their own preceding verification step.
-    pub fn attach_native_attribute(node: NodeId, attribute: crate::DomAttrId) -> Self {
+    /// Set an existing Attr's value with standard attribute verification.
+    pub fn set_attribute_value(
+        attribute: crate::DomAttrId,
+        value: impl Into<DocumentString>,
+    ) -> Self {
         Self {
-            command: Command::AttachNativeAttribute {
+            command: Command::SetAttributeValue {
+                attribute,
+                value: value.into(),
+            },
+        }
+    }
+    /// Attach an Attr by expanded name with standard attribute verification.
+    /// Element and NamedNodeMap attachment use this same operation.
+    pub fn attach_attribute(node: NodeId, attribute: crate::DomAttrId) -> Self {
+        Self::attribute_attachment(node, attribute, AttributeSetterMode::Standard)
+    }
+    /// Require the attached guest's output custody before replacing an Attr.
+    pub fn attach_attribute_for_script(
+        node: NodeId,
+        attribute: crate::DomAttrId,
+        registration: &crate::DomDocumentScriptRegistration,
+    ) -> Self {
+        Self {
+            command: Command::AttachAttribute {
                 node: node.into(),
                 attribute,
+                mode: AttributeSetterMode::Standard,
+                output_registration: Some(registration.0.clone()),
+            },
+        }
+    }
+    /// Attach an already authored native Attr and return the canonical result.
+    pub fn attach_native_attribute(node: NodeId, attribute: crate::DomAttrId) -> Self {
+        Self::attribute_attachment(node, attribute, AttributeSetterMode::Native)
+    }
+    fn attribute_attachment(
+        node: NodeId,
+        attribute: crate::DomAttrId,
+        mode: AttributeSetterMode,
+    ) -> Self {
+        Self {
+            command: Command::AttachAttribute {
+                node: node.into(),
+                attribute,
+                mode,
+                output_registration: None,
             },
         }
     }

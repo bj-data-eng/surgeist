@@ -95,6 +95,12 @@ pub(crate) enum Creation {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AttributeSetterMode {
+    Native,
+    Standard,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum Command {
     Normalize(NodeOperand),
@@ -241,6 +247,10 @@ pub(crate) enum Command {
         parent: NodeOperand,
         child: NodeOperand,
     },
+    RemoveChild {
+        parent: NodeOperand,
+        child: NodeOperand,
+    },
     Detach(NodeOperand),
     Adopt {
         node: NodeOperand,
@@ -250,6 +260,11 @@ pub(crate) enum Command {
         node: NodeOperand,
         namespace: Option<Namespace>,
         name: DocumentString,
+        value: DocumentString,
+        mode: AttributeSetterMode,
+    },
+    SetAttributeValue {
+        attribute: DomAttrId,
         value: DocumentString,
     },
     SetCustomValidity {
@@ -292,9 +307,11 @@ pub(crate) enum Command {
         node: NodeOperand,
         attribute: DomAttrId,
     },
-    AttachNativeAttribute {
+    AttachAttribute {
         node: NodeOperand,
         attribute: DomAttrId,
+        mode: AttributeSetterMode,
+        output_registration: Option<std::sync::Arc<crate::hosted::ScriptRegistration>>,
     },
     Destroy(NodeOperand),
     ReplaceData {
@@ -1059,6 +1076,7 @@ impl DomBatch {
             namespace: None,
             name: name.into(),
             value: value.into(),
+            mode: AttributeSetterMode::Native,
         });
     }
     /// Sets by expanded name. Existing attributes preserve their prefix/order.
@@ -1074,6 +1092,7 @@ impl DomBatch {
             namespace: Some(namespace),
             name: qualified_name.into(),
             value: value.into(),
+            mode: AttributeSetterMode::Native,
         });
     }
     pub fn remove_attribute(
@@ -1128,9 +1147,11 @@ impl DomBatch {
             index: self.node_outputs,
         };
         self.node_outputs += 1;
-        self.commands.push(Command::AttachNativeAttribute {
+        self.commands.push(Command::AttachAttribute {
             node: node.into(),
             attribute,
+            mode: AttributeSetterMode::Native,
+            output_registration: None,
         });
         attached
     }

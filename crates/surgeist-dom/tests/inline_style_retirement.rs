@@ -874,7 +874,7 @@ fn first_middle_last_and_multiple_retirements_preserve_each_surviving_live_objec
                 .unwrap();
                 let mut lease = dom
                     .begin_source_edit_with_inline_styles(
-                        DomSourceEdit::set_attribute(element, "style", "width: 19px"),
+                        DomSourceEdit::set_native_attribute(element, "style", "width: 19px"),
                         context,
                         source_limits(8192),
                         requests(),
@@ -1014,7 +1014,7 @@ fn owned_shadow_and_template_contents_retire_with_their_host_and_preserve_captur
         .unwrap();
         let mut lease = dom
             .begin_source_edit_with_inline_styles(
-                DomSourceEdit::set_attribute(keeper, "style", "width: 17px"),
+                DomSourceEdit::set_native_attribute(keeper, "style", "width: 17px"),
                 context,
                 source_limits(8192),
                 requests(),

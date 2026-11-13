@@ -4,7 +4,10 @@ use std::cell::Cell;
 use std::sync::{Mutex, MutexGuard};
 
 use super::*;
-use crate::{DomSourceEventRequest, DomSourceEventRetention};
+use crate::{
+    DomDocumentScriptRegistration, DomSourceAttributeVerificationRequest, DomSourceEventRequest,
+    DomSourceEventRetention, source::callback::CallbackWork,
+};
 
 use custody::{Debit, Usage};
 
@@ -431,6 +434,33 @@ pub struct DomNodeRetirementWatch {
     slot: WatchSlot,
 }
 
+impl DomNodeRetirementWatch {
+    pub(super) fn qualifies(
+        &self,
+        node: NodeId,
+        dom: &Dom,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<bool, DomError> {
+        if self.node != node
+            || !dom
+                .node_retirements
+                .as_ref()
+                .is_some_and(|index| Arc::ptr_eq(index, &self.index))
+        {
+            return Ok(false);
+        }
+        let armed = lock(&self.index.armed);
+        let Some(root) = armed.as_ref() else {
+            return Ok(false);
+        };
+        let Some((_, watches)) = root.match_path(node, &mut step)? else {
+            return Ok(false);
+        };
+        step()?;
+        Ok(watches.is_open(self.slot))
+    }
+}
+
 impl Drop for DomNodeRetirementWatch {
     fn drop(&mut self) {
         // One administrative path per affine watch. Each branch tests a
@@ -504,12 +534,13 @@ impl Index {
 
 enum Funding<'a> {
     Source(&'a Dom, &'a DomSourceEventRequest),
+    SourceAttribute(&'a Dom, &'a CallbackWork),
     Ordinary(OrdinaryAdmission<'a>),
 }
 
 enum Reserved {
     Source(DomSourceEventRetention),
-    Ordinary(Debit),
+    Canonical(Debit),
 }
 
 impl Reserved {
@@ -518,7 +549,7 @@ impl Reserved {
             Self::Source(retained) => retained
                 .split_payload(bytes, 0)
                 .map(|part| part.into_debit()),
-            Self::Ordinary(retained) => retained.split(Usage::new(bytes, 0)),
+            Self::Canonical(retained) => retained.split(Usage::new(bytes, 0)),
         }
     }
 }
@@ -539,6 +570,7 @@ impl WatchAdmission<'_> {
     fn step(&self) -> Result<(), DomError> {
         match &self.funding {
             Funding::Source(dom, request) => dom.source_event_step(request, self.cancel),
+            Funding::SourceAttribute(_, work) => work.step(self.cancel),
             Funding::Ordinary(admission) => admission.admit_work(1),
         }
     }
@@ -558,9 +590,17 @@ impl WatchAdmission<'_> {
                 }
                 Reserved::Source(retained)
             }
+            Funding::SourceAttribute(dom, work) => {
+                let retained = dom
+                    .retain_source_attribute_observer_payload(Usage::new(bytes, 0), self.cancel)?;
+                for _ in 0..RADIX_DISARM_WORK {
+                    work.step(self.cancel)?;
+                }
+                Reserved::Canonical(retained)
+            }
             Funding::Ordinary(admission) => {
                 admission.admit_work(u64::from(RADIX_DISARM_WORK))?;
-                Reserved::Ordinary(admission.retain(bytes)?)
+                Reserved::Canonical(admission.retain(bytes)?)
             }
         };
         let backing = retained.take(leaf)?;
@@ -721,6 +761,36 @@ impl Dom {
         Ok(self.finish_watch(prepared, node))
     }
 
+    /// Watch the exact live generation during the registered attribute
+    /// verification callback. Admission uses the original Source limits.
+    /// The watch survives callback closure and reports only committed retirement.
+    pub fn watch_source_attribute_node_retirement(
+        &mut self,
+        request: DomSourceAttributeVerificationRequest,
+        registration: &DomDocumentScriptRegistration,
+        node: NodeId,
+        inbox: &DomNodeRetirementInbox,
+        custody_key: usize,
+        cancel: &AtomicBool,
+    ) -> Result<DomNodeRetirementWatch, DomError> {
+        if inbox.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        let work = self.active_source_attribute_callback_work(request, registration, cancel)?;
+        work.step(cancel)?;
+        self.state
+            .node_with(self.owner, node, &mut || work.step(cancel))?;
+        let admission = WatchAdmission {
+            funding: Funding::SourceAttribute(self, work),
+            inbox,
+            node,
+            custody_key,
+            cancel,
+        };
+        let prepared = arm(self.node_retirements.as_ref(), &admission, None)?;
+        Ok(self.finish_watch(prepared, node))
+    }
+
     /// Watch the exact live generation during an ordinary DOM operation.
     /// Detachment and adoption preserve the watch. Only committed destruction
     /// publishes the original key to the original inbox. Distinct inboxes
@@ -816,6 +886,34 @@ impl Dom {
             &admission,
             publication.node_retirement_publication.as_ref(),
         )?;
+        Ok(self.finish_watch(prepared, node))
+    }
+
+    /// Admit an exact replaced Attr's retirement watch on the original
+    /// guest attachment before any of its writes publish.
+    pub fn watch_source_attribute_attachment_output(
+        &mut self,
+        request: crate::DomSourceAttributeAttachmentOutput,
+        registration: &crate::DomDocumentScriptRegistration,
+        (inbox, custody_key): (&DomNodeRetirementInbox, usize),
+        limits: DomNodeRetirementLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomNodeRetirementWatch, DomError> {
+        if inbox.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        let node = request.replaced().node();
+        let prepared = {
+            let draft =
+                self.qualified_attribute_attachment_output(request, registration, cancel)?;
+            let source = super::source::formation::Formation::new(draft, cancel)?
+                .ok_or(DomError::InvalidSourceOperation)?;
+            let mut admission = OrdinaryAdmission::new(self, limits, cancel);
+            admission.source = Some(&source);
+            let admission =
+                self.watch_admission(&self.state, node, inbox, custody_key, admission)?;
+            arm(self.node_retirements.as_ref(), &admission, None)?
+        };
         Ok(self.finish_watch(prepared, node))
     }
 

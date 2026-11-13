@@ -679,7 +679,7 @@ mod tests {
         let policy = crate::DomSourceLimits::new(32_000_000, 100_000, 1_000_000, 16, 64, 64, 1);
         let mut lease = dom
             .begin_source_edit(
-                crate::DomSourceEdit::set_attribute(button, "form", "f"),
+                crate::DomSourceEdit::set_native_attribute(button, "form", "f"),
                 policy,
                 &cancel,
             )

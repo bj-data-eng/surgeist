@@ -78,8 +78,8 @@ fn close_observation_owns_exactly_one_original_result_backing_at_each_limit() {
             .unwrap()
             .observation()
             .unwrap();
-        assert_eq!(observation.inputs.bytes, occurrence_bytes);
-        assert_eq!(observation.inputs.units, units);
+        assert_eq!(observation.common.inputs.bytes, occurrence_bytes);
+        assert_eq!(observation.common.inputs.units, units);
         let expected = dom
             .source_observation_total(storage::Payload::default(), &AtomicBool::new(false))
             .unwrap();
@@ -224,10 +224,10 @@ fn refuse_original_observation(dom: &mut Dom, event: &DomSourceEventRequest, uni
         .observation()
         .unwrap();
     assert_eq!(
-        observation.inputs.bytes,
+        observation.common.inputs.bytes,
         size_of::<Vec<u16>>() + units * size_of::<u16>()
     );
-    assert_eq!(observation.inputs.units, units);
+    assert_eq!(observation.common.inputs.units, units);
     assert_eq!(
         observation.accepted,
         Some(DomSourceEventOutcome::NotCanceled)
@@ -657,7 +657,7 @@ fn measured_external_envelope_follows_nested_source_parent_restore_and_drop() {
                 .subject();
             let child = dom
                 .begin_source_edit(
-                    DomSourceEdit::set_attribute(subject, "data-unpublished", "child"),
+                    DomSourceEdit::set_native_attribute(subject, "data-unpublished", "child"),
                     limits(),
                     &AtomicBool::new(false),
                 )

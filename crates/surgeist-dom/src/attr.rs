@@ -1,6 +1,6 @@
 use crate::{
-    DocumentId, DocumentString, DomAttrId, DomAttribute, DomNode, DomQualifiedName, Namespace,
-    NodeId,
+    DocumentId, DocumentString, DomAttrId, DomAttribute, DomError, DomNode, DomQualifiedName,
+    Namespace, NodeId,
 };
 
 /// Result of a canonical native Attr attachment.
@@ -65,14 +65,9 @@ impl<'a> DomNamedNodeMap<'a> {
     }
 
     pub fn get_named_item(self, qualified_name: &DocumentString) -> Option<DomAttr<'a>> {
-        let fold = self.element.html_element_in_html_document();
-        self.iter().find(|attribute| {
-            if fold {
-                crate::names::qualified_equals_lowercase_input(attribute.name(), qualified_name)
-            } else {
-                crate::names::qualified_equals(attribute.name(), qualified_name)
-            }
-        })
+        self.get_named_item_with(qualified_name, || Ok::<_, DomError>(()))
+            .ok()
+            .flatten()
     }
 
     pub fn get_named_item_ns(
@@ -80,10 +75,55 @@ impl<'a> DomNamedNodeMap<'a> {
         namespace: &Namespace,
         local_name: &DocumentString,
     ) -> Option<DomAttr<'a>> {
-        self.iter().find(|attribute| {
-            attribute.name().namespace_uri() == namespace.uri()
-                && attribute.name().local_name() == local_name
+        self.get_named_item_ns_with(namespace, local_name, || Ok::<_, DomError>(()))
+            .ok()
+            .flatten()
+    }
+
+    /// Read the first matching qualified spelling in attribute order. For an
+    /// HTML element in an HTML document, only the input is ASCII-lowercased.
+    /// Admit each visited lookup entry and page and each compared code unit.
+    pub fn get_named_item_with<E: From<DomError>>(
+        self,
+        qualified_name: &DocumentString,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomAttr<'a>>, E> {
+        let fold = self.element.html_element_in_html_document_with(&mut step)?;
+        self.find_with(step, |name, step| {
+            crate::names::qualified_equals_with(name, qualified_name, fold, step)
         })
+    }
+
+    /// Read the first exact namespace and local name in attribute order.
+    /// Admit each visited lookup entry and page and each compared code unit.
+    pub fn get_named_item_ns_with<E: From<DomError>>(
+        self,
+        namespace: &Namespace,
+        local_name: &DocumentString,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomAttr<'a>>, E> {
+        self.find_with(step, |name, step| {
+            crate::names::expanded_equals_with(name, namespace.uri(), local_name, step)
+        })
+    }
+
+    fn find_with<E: From<DomError>, Step: FnMut() -> Result<(), E>>(
+        self,
+        mut step: Step,
+        mut matches: impl FnMut(&DomQualifiedName, &mut Step) -> Result<bool, E>,
+    ) -> Result<Option<DomAttr<'a>>, E> {
+        for &id in self.ids() {
+            let attribute = self
+                .element
+                .snapshot
+                .node_with(id, &mut step)?
+                .as_attr()
+                .ok_or(DomError::WrongNodeKind)?;
+            if matches(attribute.name(), &mut step)? {
+                return Ok(Some(attribute));
+            }
+        }
+        Ok(None)
     }
 }
 

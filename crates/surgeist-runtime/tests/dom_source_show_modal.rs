@@ -336,7 +336,7 @@ fn active_show_modal_publishes_structural_phase_then_waits_for_unobserved_rememb
     let (mut session, top, _, subject) = fixture();
     drop(complete(apply(
         &mut session,
-        DomSourceEdit::set_attribute(subject, "popover", "manual"),
+        DomSourceEdit::set_native_attribute(subject, "popover", "manual"),
     )));
     assert!(
         session
@@ -515,7 +515,7 @@ fn inactive_target() -> InactiveTarget {
         .unwrap();
     drop(complete(apply(
         &mut session,
-        DomSourceEdit::set_attribute(sentinel, "open", ""),
+        DomSourceEdit::set_native_attribute(sentinel, "open", ""),
     )));
     let sentinel_watcher = session
         .snapshot()
@@ -716,7 +716,7 @@ fn seed_unrelated_close(
         .unwrap();
     drop(complete(apply(
         session,
-        DomSourceEdit::set_attribute(other, "open", ""),
+        DomSourceEdit::set_native_attribute(other, "open", ""),
     )));
     let event = match apply(session, DomSourceEdit::close_dialog(other, None)) {
         DomSourceDriveProgress::Pending {
@@ -980,7 +980,7 @@ fn initial_open_inactive_and_disconnected_guards_do_not_dispatch_or_queue() {
         match case {
             0 => drop(complete(apply(
                 &mut session,
-                DomSourceEdit::set_attribute(subject, "open", ""),
+                DomSourceEdit::set_native_attribute(subject, "open", ""),
             ))),
             1 => {
                 let mut hosted = session.hosted_execution();

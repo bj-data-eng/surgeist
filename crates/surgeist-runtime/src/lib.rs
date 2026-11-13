@@ -189,6 +189,7 @@ mod service;
 mod snapshot;
 mod surface;
 mod task;
+pub mod trusted_types_csp;
 
 #[cfg(test)]
 mod testing;

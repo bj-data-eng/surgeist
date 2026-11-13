@@ -84,6 +84,7 @@ mod host;
 mod idl;
 mod native_object;
 mod owner;
+mod trusted_types;
 
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -93,6 +94,9 @@ pub use error::{Error, Exception, ExceptionPhase};
 pub use host::{HostFailure, HostFailureSlot, RealmAuthority, RealmId, RecordFailure};
 pub use idl::{ByteString, DomString, IntegerKind, IntegerMode, IntegerValue, UsvString};
 pub use native_object::{NativeObject, NativeObjectToken, NativeProjectionPrototype};
+pub use trusted_types::{
+    TrustedAttributeValue, TrustedPolicyCallback, TrustedType, TrustedTypeData, TrustedTypeKind,
+};
 
 /// Engine selected before creating any realm or heap values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1028,15 +1032,34 @@ impl<'scope> Scope<'scope> {
         receiver: &Value<'scope>,
         arguments: &[Value<'scope>],
     ) -> Result<Value<'scope>, Error> {
+        self.call_with_prefix(function, receiver, &[], arguments)
+    }
+
+    pub(crate) fn call_with_prefix(
+        &mut self,
+        function: &Value<'scope>,
+        receiver: &Value<'scope>,
+        prefix: &[Value<'scope>],
+        arguments: &[Value<'scope>],
+    ) -> Result<Value<'scope>, Error> {
         self.check_active()?;
-        if arguments.len() > i32::MAX as usize {
+        let length = prefix
+            .len()
+            .checked_add(arguments.len())
+            .ok_or(Error::TooManyArguments)?;
+        if length > i32::MAX as usize {
             return Err(Error::TooManyArguments);
         }
         let mut roots = Vec::new();
         roots
-            .try_reserve_exact(arguments.len())
+            .try_reserve_exact(length)
             .map_err(|_| Error::Allocation)?;
-        roots.extend(arguments.iter().map(|value| value.root.clone()));
+        roots.extend(
+            prefix
+                .iter()
+                .chain(arguments)
+                .map(|value| value.root.clone()),
+        );
         let root = self
             .operations
             .call(&function.root, &receiver.root, &roots)?;

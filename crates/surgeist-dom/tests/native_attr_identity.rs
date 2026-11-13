@@ -2,8 +2,9 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentString, Dom, DomBatch, DomError, DomLimits, DomNameLimits, DomNodeKind, DomSourceEdit,
-    DomSourceLimits, DomSourceProgress, Namespace, NodeId,
+    DocumentString, Dom, DomAttributeAttachment, DomBatch, DomError, DomLimits, DomNameLimits,
+    DomNodeKind, DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress, Namespace,
+    NodeId,
 };
 
 fn owner() -> Dom {
@@ -19,6 +20,268 @@ fn owner() -> Dom {
 
 fn policy() -> DomSourceLimits {
     DomSourceLimits::new(64_000_000, 1_000_000, 20_000_000, 128, 4096, 4096, 8)
+}
+
+#[test]
+fn standard_attribute_sink_requires_the_node_documents_global() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let element = setup.create_element_ns(&document, Namespace::html(), "div");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let before = dom.snapshot();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_attribute(element, "onclick", ""),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    let result = lease.advance(&cancel);
+    assert!(
+        matches!(result, Err(DomError::SourceAttributeGlobalUnavailable)),
+        "a recognized handler sink needs the node document's actual Global: {result:?}"
+    );
+    let after = lease.snapshot();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(
+        after.node(element).unwrap().attribute(&"onclick".into()),
+        None
+    );
+}
+
+#[test]
+fn attached_attr_text_content_preserves_the_attribute_identity() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let element = setup.create_element(&document, "div");
+    let namespace = Namespace::from_uri("urn:attr-test");
+    setup.set_attribute_ns(&element, namespace, "original:item", "old");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let name = "original:item".into();
+    let before = dom.snapshot();
+    let attr = before
+        .node(element)
+        .unwrap()
+        .get_attribute_node(&name)
+        .unwrap()
+        .id();
+    let value = DocumentString::from_utf16(vec![0xd800, 0x0041, 0]);
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_text_content(attr.node(), value.clone()),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    let after = lease.snapshot();
+    let current = after
+        .node(element)
+        .unwrap()
+        .get_attribute_node(&name)
+        .unwrap();
+    assert_eq!(current.id(), attr);
+    assert_eq!(current.value(), &value);
+    assert_eq!(before.attr(attr.node()).unwrap().value(), &"old".into());
+}
+
+#[test]
+fn attached_attr_text_content_verifies_against_its_owner_element() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let element = setup.create_element_ns(&document, Namespace::html(), "div");
+    setup.set_attribute(&element, "onclick", "old");
+    let detached = setup.create_attribute(&document, "onclick");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let detached = commit.created(&detached).unwrap().unwrap();
+    let before = dom.snapshot();
+    let attr = before
+        .node(element)
+        .unwrap()
+        .get_attribute_node(&"onclick".into())
+        .unwrap()
+        .id();
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_text_content(attr.node(), "new"),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel),
+        Err(DomError::SourceAttributeGlobalUnavailable)
+    ));
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        lease.snapshot().attr(attr.node()).unwrap().value(),
+        &"old".into()
+    );
+    drop(lease);
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_text_content(detached, "new"),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    assert_eq!(
+        lease.snapshot().attr(detached).unwrap().value(),
+        &"new".into()
+    );
+}
+
+#[test]
+fn standard_attr_attachment_verifies_before_owner_and_identity_checks() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let first = setup.create_element_ns(&document, Namespace::html(), "div");
+    let second = setup.create_element_ns(&document, Namespace::html(), "div");
+    setup.set_attribute(&first, "onclick", "old");
+    let ordinary = setup.create_attribute(&document, "data-x");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let first = commit.created(&first).unwrap().unwrap();
+    let second = commit.created(&second).unwrap().unwrap();
+    let ordinary = commit.created(&ordinary).unwrap().unwrap();
+    let before = dom.snapshot();
+    let ordinary = before.attr(ordinary).unwrap().id();
+    let handler = before
+        .node(first)
+        .unwrap()
+        .get_attribute_node(&"onclick".into())
+        .unwrap()
+        .id();
+
+    for edit in [
+        DomSourceEdit::attach_attribute(first, handler),
+        DomSourceEdit::attach_attribute(second, handler),
+        DomSourceEdit::set_attribute_value(handler, "replacement"),
+    ] {
+        let mut lease = dom.begin_source_edit(edit, policy(), &cancel).unwrap();
+        assert!(matches!(
+            lease.advance(&cancel),
+            Err(DomError::SourceAttributeGlobalUnavailable)
+        ));
+        assert_eq!(lease.snapshot().stamp(), before.stamp());
+    }
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::attach_attribute(second, ordinary),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Complete(completion) = lease.advance(&cancel).unwrap() else {
+        panic!("an ordinary Attr attaches synchronously");
+    };
+    assert_eq!(
+        completion.output(),
+        Some(DomSourceOutput::AttributeAttachment(
+            DomAttributeAttachment::Appended(ordinary)
+        ))
+    );
+    drop(lease);
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_attribute_value(ordinary, "new"),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    assert_eq!(
+        lease.snapshot().attr(ordinary.node()).unwrap().value(),
+        &"new".into()
+    );
+}
+
+#[test]
+fn standard_source_setters_select_exact_attribute_sinks() {
+    let cancel = AtomicBool::new(false);
+    let xlink = "http://www.w3.org/1999/xlink";
+    let cases = [
+        (Namespace::html(), "div", None, "ONCLICK", true),
+        (Namespace::html(), "div", Some(""), "ONCLICK", false),
+        (Namespace::html(), "div", None, "onafterprint", true),
+        (Namespace::html(), "div", None, "onopen", false),
+        (Namespace::mathml(), "mrow", None, "onbegin", true),
+        (
+            Namespace::from_uri("urn:foreign"),
+            "div",
+            None,
+            "onclick",
+            false,
+        ),
+        (Namespace::svg(), "script", None, "href", true),
+        (Namespace::svg(), "script", Some(xlink), "p:href", true),
+        (Namespace::svg(), "g", Some(xlink), "p:href", false),
+        (Namespace::html(), "script", None, "src", true),
+        (Namespace::html(), "iframe", None, "srcdoc", true),
+        (
+            Namespace::html(),
+            "div",
+            Some("urn:foreign"),
+            "p:onclick",
+            false,
+        ),
+    ];
+    for (namespace, tag, attr_namespace, name, sink) in cases {
+        let mut dom = owner();
+        let mut setup = DomBatch::new();
+        let origin = setup.create_document();
+        let document = setup.create_html_document(&origin, None);
+        let element = setup.create_element_ns(&document, namespace, tag);
+        let commit = dom.apply(setup, &cancel).unwrap();
+        let element = commit.created(&element).unwrap().unwrap();
+        let before = dom.snapshot().stamp();
+        let edit = match attr_namespace {
+            Some(namespace) => {
+                DomSourceEdit::set_attribute_ns(element, Namespace::from_uri(namespace), name, "")
+            }
+            None => DomSourceEdit::set_attribute(element, name, ""),
+        };
+        let mut lease = dom.begin_source_edit(edit, policy(), &cancel).unwrap();
+        let result = lease.advance(&cancel);
+        if sink {
+            assert!(
+                matches!(result, Err(DomError::SourceAttributeGlobalUnavailable)),
+                "{tag} {attr_namespace:?} {name}: {result:?}"
+            );
+            assert_eq!(lease.snapshot().stamp(), before);
+        } else {
+            assert!(
+                matches!(result, Ok(DomSourceProgress::Complete(_))),
+                "{tag} {attr_namespace:?} {name}: {result:?}"
+            );
+            assert_ne!(lease.snapshot().stamp(), before);
+        }
+    }
 }
 
 #[test]
@@ -290,6 +553,98 @@ fn named_node_map_removal_resolves_each_current_qualified_or_expanded_name() {
             .data(),
         Some(&"last".into())
     );
+}
+
+#[test]
+fn named_node_map_lookup_admits_current_document_entries_and_compared_units() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let xml = setup.create_document();
+    let html = setup.create_html_document(&xml, None);
+    let element = setup.create_element_ns(&html, Namespace::html(), "div");
+    let first_namespace = Namespace::from_uri("urn:attr-1");
+    let second_namespace = Namespace::from_uri("urn:attr-2");
+    setup.set_attribute_ns(&element, first_namespace, "p:item", "first");
+    setup.set_attribute_ns(&element, second_namespace.clone(), "p:item", "second");
+    setup.set_attribute(&element, "ignored", "third");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let xml = commit.document(&xml).unwrap();
+    let html = commit.document(&html).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let snapshot = dom.snapshot();
+    let map = snapshot.node(element).unwrap().attributes().unwrap();
+    let first = map.item(0).unwrap().id();
+    let second = map.item(1).unwrap().id();
+
+    let lookup_steps = |node| {
+        let mut steps = 0;
+        snapshot
+            .node_with(node, || {
+                steps += 1;
+                Ok::<_, DomError>(())
+            })
+            .unwrap();
+        steps
+    };
+    let qualified = DocumentString::from("P:ITEM");
+    let qualified_lookups = "http://www.w3.org/1999/xhtml".len()
+        + lookup_steps(html.node())
+        + lookup_steps(first.node());
+    let mut steps = 0;
+    let found = map
+        .get_named_item_with(&qualified, || {
+            steps += 1;
+            Ok::<_, DomError>(())
+        })
+        .unwrap();
+    assert_eq!(found.unwrap().id(), first);
+    assert_eq!(steps, qualified_lookups + qualified.len());
+
+    let mut steps = 0;
+    let found = map.get_named_item_with(&qualified, || {
+        steps += 1;
+        if steps == qualified_lookups + 2 {
+            return Err(DomError::Cancelled);
+        }
+        Ok(())
+    });
+    assert!(matches!(found, Err(DomError::Cancelled)));
+    assert_eq!(steps, qualified_lookups + 2);
+
+    let local = DocumentString::from("item");
+    let mut steps = 0;
+    let found = map
+        .get_named_item_ns_with(&second_namespace, &local, || {
+            steps += 1;
+            Ok::<_, DomError>(())
+        })
+        .unwrap();
+    assert_eq!(found.unwrap().id(), second);
+    assert_eq!(
+        steps,
+        lookup_steps(first.node())
+            + lookup_steps(second.node())
+            + 2 * "urn:attr-2".len()
+            + local.len()
+    );
+    assert!(
+        map.get_named_item_ns_with(&second_namespace, &"ITEM".into(), || Ok::<_, DomError>(()))
+            .unwrap()
+            .is_none()
+    );
+
+    let mut adopt = DomBatch::new();
+    adopt.adopt(element, xml);
+    dom.apply(adopt, &cancel).unwrap();
+    let adopted = dom.snapshot();
+    let adopted = adopted.node(element).unwrap().attributes().unwrap();
+    assert!(adopted.get_named_item(&qualified).is_none());
+    assert_eq!(
+        adopted.get_named_item(&"p:item".into()).unwrap().id(),
+        first
+    );
+    assert_eq!(map.get_named_item(&qualified).unwrap().id(), first);
 }
 
 #[test]

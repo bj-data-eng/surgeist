@@ -128,7 +128,7 @@ impl Draft {
         Ok(HtmlOptionValueEnvelope::new(
             limits.retained_bytes - bytes,
             limits.retained_units - units,
-            crate::source::event::remaining_ancestor_work(self.source_ancestors.as_ref(), work)?,
+            crate::source::callback::remaining_ancestor_work(self.source_ancestors.as_ref(), work)?,
         ))
     }
     fn option_value_usage(
@@ -163,7 +163,10 @@ impl Draft {
         self.select_semantic_work.set(semantic_work);
         self.select_semantic_bytes.set(semantic_bytes);
         if self.source_limits.is_some() {
-            crate::source::event::retain_ancestor_work(self.source_ancestors.as_ref(), work_delta)?;
+            crate::source::callback::retain_ancestor_work(
+                self.source_ancestors.as_ref(),
+                work_delta,
+            )?;
         }
         Ok(())
     }

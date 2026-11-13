@@ -43,6 +43,113 @@ fn base(dom: &mut Dom, mode: Mode, clonable: bool) -> (DocumentId, NodeId, NodeI
         commit.attached_shadow_root(&root).unwrap().unwrap(),
     )
 }
+
+#[test]
+fn metered_descendant_text_follows_ordinary_edges_in_tree_order() {
+    let mut dom = dom();
+    let (document, host, shadow) = base(&mut dom, Mode::Closed, false);
+    let mut batch = DomBatch::new();
+    let template = batch.create_element_ns(document, Namespace::html(), "template");
+    let branch = batch.create_element(document, "branch");
+    let raw = DocumentString::from_utf16([0xd800, 0, 0x0041]);
+    let first = batch.create_text(document, raw.clone());
+    let last = batch.create_text(document, "last");
+    let hidden = batch.create_text(document, "shadow");
+    let comment = batch.create_comment(document, "comment");
+    batch.insert_before(&first, &branch, None);
+    batch.insert_before(&comment, &branch, None);
+    batch.insert_before(&branch, host, None);
+    batch.insert_before(&template, host, None);
+    batch.insert_before(&last, host, None);
+    batch.insert_before(&hidden, shadow, None);
+    let commit = apply(&mut dom, batch);
+    let template = commit.created(&template).unwrap().unwrap();
+    let branch = commit.created(&branch).unwrap().unwrap();
+    let first = commit.created(&first).unwrap().unwrap();
+    let last = commit.created(&last).unwrap().unwrap();
+    let comment = commit.created(&comment).unwrap().unwrap();
+    let before = dom.snapshot();
+    let contents = before
+        .node(template)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
+    let inert = before.node(contents).unwrap().owner_document().unwrap();
+    let mut batch = DomBatch::new();
+    let hidden = batch.create_text(inert, "template");
+    batch.insert_before(&hidden, contents, None);
+    apply(&mut dom, batch);
+    let snapshot = dom.snapshot();
+
+    let mut expected_steps = 0;
+    for node in [branch, first, comment, template, last] {
+        expected_steps += 1;
+        snapshot
+            .node_with(node, || {
+                expected_steps += 1;
+                Ok::<_, DomError>(())
+            })
+            .unwrap();
+    }
+    let host = snapshot.node(host).unwrap();
+    let mut steps = 0;
+    let mut reservations = Vec::new();
+    let mut texts = Vec::new();
+    host.visit_descendant_text_with(
+        || {
+            steps += 1;
+            Ok::<_, DomError>(())
+        },
+        |bytes| {
+            reservations.push(bytes);
+            Ok(())
+        },
+        |text| {
+            texts.push(text.clone());
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert_eq!(texts, [raw, DocumentString::from("last")]);
+    assert_eq!(steps, expected_steps);
+    assert_eq!(reservations, [size_of::<&[NodeId]>()]);
+
+    let mut visits = 0;
+    let result = host.visit_descendant_text_with(
+        || Ok(()),
+        |_| Err::<(), _>(DomError::AllocationFailed),
+        |_| {
+            visits += 1;
+            Ok(())
+        },
+    );
+    assert_eq!(result, Err(DomError::AllocationFailed));
+    assert_eq!(visits, 0);
+    let mut visits = 0;
+    let result = host.visit_descendant_text_with(
+        || Ok(()),
+        |_| Ok(()),
+        |_| {
+            visits += 1;
+            Err(DomError::Cancelled)
+        },
+    );
+    assert_eq!(result, Err(DomError::Cancelled));
+    assert_eq!(visits, 1);
+
+    snapshot
+        .node(first)
+        .unwrap()
+        .visit_descendant_text_with(
+            || Err(DomError::Cancelled),
+            |_| Err::<(), _>(DomError::AllocationFailed),
+            |_| Err(DomError::Cancelled),
+        )
+        .unwrap();
+}
+
 #[test]
 fn explicit_mode_defaults_and_complete_native_state_have_real_canonical_identity() {
     for mode in [Mode::Open, Mode::Closed] {

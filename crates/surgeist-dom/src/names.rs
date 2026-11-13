@@ -268,17 +268,81 @@ pub(crate) fn name_units(
         .checked_add(name.namespace_uri().map_or(0, DocumentString::len))
 }
 
-pub(crate) fn qualified_equals(
+/// Compare a qualified spelling without allocating or changing the stored name.
+/// HTML lookup folds ASCII units in the input only.
+pub(crate) fn qualified_equals_with<E: From<DomError>>(
     name: &(impl surgeist_html::values::HtmlNameInput + ?Sized),
     value: &DocumentString,
-) -> bool {
+    lowercase_input: bool,
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    let local = name.local_name();
+    let mut length = local.len();
+    if let Some(prefix) = name.prefix() {
+        length = length
+            .checked_add(prefix.len())
+            .and_then(|length| length.checked_add(1))
+            .ok_or(DomError::RepresentationExhausted)?;
+    }
+    if value.len() != length {
+        return Ok(false);
+    }
     let prefix = name
         .prefix()
         .into_iter()
-        .flat_map(|prefix| prefix.code_units().iter().copied().chain([0x3a]));
-    prefix
-        .chain(name.local_name().code_units().iter().copied())
-        .eq(value.code_units().iter().copied())
+        .flat_map(|prefix| prefix.code_units().iter().chain([&0x3a]));
+    let stored = prefix.chain(local.code_units());
+    for (stored, requested) in stored.zip(value.code_units()) {
+        step()?;
+        let requested = if lowercase_input {
+            ascii_lower(*requested)
+        } else {
+            *requested
+        };
+        if *stored != requested {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+pub(crate) fn expanded_equals_with<E>(
+    name: &(impl surgeist_html::values::HtmlNameInput + ?Sized),
+    namespace: Option<&DocumentString>,
+    local_name: &DocumentString,
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    match (name.namespace_uri(), namespace) {
+        (None, None) => (),
+        (Some(stored), Some(requested)) => {
+            if !same_code_units(stored.code_units(), requested.code_units(), &mut step)? {
+                return Ok(false);
+            }
+        }
+        _ => return Ok(false),
+    }
+    same_code_units(
+        name.local_name().code_units(),
+        local_name.code_units(),
+        step,
+    )
+}
+
+pub(crate) fn same_code_units<E>(
+    left: &[u16],
+    right: &[u16],
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    if left.len() != right.len() {
+        return Ok(false);
+    }
+    for (left, right) in left.iter().zip(right) {
+        step()?;
+        if left != right {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 /// HTML API casing is ASCII-only; exact UTF-16 non-ASCII units are untouched.
@@ -309,25 +373,26 @@ pub(crate) fn ascii_lowercase(
 pub(crate) fn in_html_namespace(
     name: &(impl surgeist_html::values::HtmlNameInput + ?Sized),
 ) -> bool {
-    name.namespace_uri().is_some_and(|uri| {
-        uri.code_units()
-            .iter()
-            .copied()
-            .eq("http://www.w3.org/1999/xhtml".encode_utf16())
-    })
+    match in_html_namespace_with(name, || Ok::<_, std::convert::Infallible>(())) {
+        Ok(matches) => matches,
+        Err(never) => match never {},
+    }
 }
-/// Lowercase only the requested qualified spelling, never stored attributes.
-pub(crate) fn qualified_equals_lowercase_input(
+pub(crate) fn in_html_namespace_with<E>(
     name: &(impl surgeist_html::values::HtmlNameInput + ?Sized),
-    value: &DocumentString,
-) -> bool {
-    let prefix = name
-        .prefix()
-        .into_iter()
-        .flat_map(|prefix| prefix.code_units().iter().copied().chain([0x3a]));
-    prefix
-        .chain(name.local_name().code_units().iter().copied())
-        .eq(value.code_units().iter().copied().map(ascii_lower))
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    const HTML: &str = "http://www.w3.org/1999/xhtml";
+    let Some(uri) = name.namespace_uri().filter(|uri| uri.len() == HTML.len()) else {
+        return Ok(false);
+    };
+    for (&unit, byte) in uri.code_units().iter().zip(HTML.bytes()) {
+        step()?;
+        if unit != u16::from(byte) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 #[cfg(test)]

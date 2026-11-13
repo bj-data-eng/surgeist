@@ -205,7 +205,7 @@ fn actual_window_manager_shares_group_and_releases_each_removed_member_once() {
         .unwrap();
     apply(
         &mut session,
-        DomSourceEdit::set_attribute(second, "open", ""),
+        DomSourceEdit::set_native_attribute(second, "open", ""),
     );
     let second_id = session
         .snapshot()
@@ -270,7 +270,7 @@ fn refused_watcher_acceptance_retries_same_real_registration_without_replay() {
         let mut lease = dom
             .raw_mut()
             .begin_source_edit(
-                DomSourceEdit::set_attribute(subject, "open", ""),
+                DomSourceEdit::set_native_attribute(subject, "open", ""),
                 source_limits(),
                 &cancel,
             )
@@ -342,7 +342,7 @@ fn retired_window_retains_host_and_whole_session_until_canonical_clear_is_joined
     let cancel = AtomicBool::new(false);
     apply(
         &mut session,
-        DomSourceEdit::set_attribute(subject, "open", ""),
+        DomSourceEdit::set_native_attribute(subject, "open", ""),
     );
     let mut hosted = session.hosted_execution();
     let owner = hosted.state().unwrap();
@@ -410,7 +410,7 @@ fn real_removal_replacement_adoption_and_shadow_descendants_drain_original_watch
         let cancel = AtomicBool::new(false);
         apply(
             &mut session,
-            DomSourceEdit::set_attribute(subject, "open", ""),
+            DomSourceEdit::set_native_attribute(subject, "open", ""),
         );
         let old = session
             .snapshot()
@@ -531,7 +531,7 @@ fn actual_member_replacement_peak_one_short_refuses_before_registration_and_retr
             .unwrap();
         apply(
             &mut session,
-            DomSourceEdit::set_attribute(first, "open", ""),
+            DomSourceEdit::set_native_attribute(first, "open", ""),
         );
         let mut hosted = session.hosted_execution();
         let owner = hosted.state().unwrap();
@@ -572,7 +572,7 @@ fn actual_member_replacement_peak_one_short_refuses_before_registration_and_retr
         let mut lease = dom
             .raw_mut()
             .begin_source_edit(
-                DomSourceEdit::set_attribute(second, "open", ""),
+                DomSourceEdit::set_native_attribute(second, "open", ""),
                 source_limits(),
                 &cancel,
             )
@@ -733,7 +733,7 @@ fn refused_final_association_publication_retains_actual_receipt_and_same_registr
     let mut lease = dom
         .raw_mut()
         .begin_source_edit(
-            DomSourceEdit::set_attribute(subject, "open", ""),
+            DomSourceEdit::set_native_attribute(subject, "open", ""),
             source_limits(),
             &cancel,
         )
@@ -821,7 +821,7 @@ fn retired_window_settlement_work_is_admitted_before_source_close_and_pruning() 
     let cancel = AtomicBool::new(false);
     apply(
         &mut session,
-        DomSourceEdit::set_attribute(subject, "open", ""),
+        DomSourceEdit::set_native_attribute(subject, "open", ""),
     );
     let mut hosted = session.hosted_execution();
     let owner = hosted.state().unwrap();
@@ -1183,7 +1183,7 @@ fn real_child_complete_keeps_registered_window_payload_under_the_original_parent
                 let mut policy = |_: &DomStyleSource| None;
                 context.child = Some(context.source.apply(
                     dom,
-                    DomSourceEdit::set_attribute(child, "open", ""),
+                    DomSourceEdit::set_native_attribute(child, "open", ""),
                     source_limits(),
                     &mut DomSourceServices {
                         meta: None,
@@ -1281,7 +1281,7 @@ fn adopted_dialog_uses_original_window_and_old_or_foreign_requests_cannot_remove
         let mut lease = dom
             .raw_mut()
             .begin_source_edit(
-                DomSourceEdit::set_attribute(subject, "open", ""),
+                DomSourceEdit::set_native_attribute(subject, "open", ""),
                 source_limits(),
                 &cancel,
             )
@@ -1477,7 +1477,7 @@ fn original_source_removal_work_exact_and_one_short_precede_real_manager_effect(
         let cancel = AtomicBool::new(false);
         apply(
             &mut session,
-            DomSourceEdit::set_attribute(subject, "open", ""),
+            DomSourceEdit::set_native_attribute(subject, "open", ""),
         );
         let id = session
             .snapshot()
@@ -1641,7 +1641,7 @@ fn ancestor_removal_attempt(
         .unwrap();
     apply(
         &mut session,
-        DomSourceEdit::set_attribute(child, "open", ""),
+        DomSourceEdit::set_native_attribute(child, "open", ""),
     );
     let mut context = AncestorRemoval {
         hosted: session.hosted_execution(),
@@ -1967,7 +1967,7 @@ fn second_registration_fixture() -> (DomSession, NodeId) {
     let (mut session, top, body, first) = fixture();
     apply(
         &mut session,
-        DomSourceEdit::set_attribute(first, "open", ""),
+        DomSourceEdit::set_native_attribute(first, "open", ""),
     );
     let mut batch = DomBatch::new();
     let second = batch.create_element_ns(top.document(), Namespace::html(), "dialog");
@@ -2063,7 +2063,7 @@ fn source_member_growth_precharge_one_short_preserves_actual_old_bank_and_exact_
             let mut lease = dom
                 .raw_mut()
                 .begin_source_edit(
-                    DomSourceEdit::set_attribute(second, "open", ""),
+                    DomSourceEdit::set_native_attribute(second, "open", ""),
                     source_limits(),
                     &cancel,
                 )

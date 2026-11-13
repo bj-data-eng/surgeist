@@ -123,6 +123,9 @@ impl SelectedCsp {
             layout,
         }))
     }
+    pub(crate) fn association(&self) -> &HtmlCspAssociation {
+        &self.0.association
+    }
     pub(crate) fn wrapper_bytes() -> usize {
         // The protocol receipt already includes the inline association.
         size_of::<CspAssociation>() - size_of::<HtmlCspAssociation>()
@@ -190,7 +193,7 @@ pub enum DomMetaError {
     HistoryUnavailable,
     /// The preferred stylesheet-set operation requires its actual CSSOM owner.
     DefaultStyleUnsupported,
-    /// The reached CSP parser and policy enforcement are not supplied.
+    /// This native mutation route cannot process the reached CSP insertion.
     ContentSecurityPolicyUnsupported,
     /// Media beyond HTML's empty/ASCII-whitespace match needs actual matching facts.
     ThemeColorMediaUnavailable,

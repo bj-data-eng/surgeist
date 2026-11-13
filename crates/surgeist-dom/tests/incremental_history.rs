@@ -102,7 +102,7 @@ fn source_attribute(case: &mut Fixture, value: &str, extent: usize) -> DomChange
     let mut lease = case
         .dom
         .begin_source_edit(
-            DomSourceEdit::set_attribute(case.root, "data-local", value),
+            DomSourceEdit::set_native_attribute(case.root, "data-local", value),
             policy,
             &AtomicBool::new(false),
         )

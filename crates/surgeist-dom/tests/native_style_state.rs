@@ -870,7 +870,7 @@ fn exercise_wrong_owner_media(
     };
     use surgeist_dom::{DomSourceProgress, DomStyleCssomOwnerBinding};
     let cancel = AtomicBool::new(false);
-    let edit = DomSourceEdit::set_attribute(element, "media", "print");
+    let edit = DomSourceEdit::set_native_attribute(element, "media", "print");
     let mut lease = dom
         .begin_source_edit(edit, source_limits(), &cancel)
         .unwrap();
@@ -2243,6 +2243,17 @@ fn execute_slot_source_edit(
             surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Script(request)) => {
                 panic!("manual Slot assignment has no Script settings phase: {request:?}")
             }
+            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::MetaCsp(request)) => {
+                panic!("manual Slot assignment has no Meta CSP phase: {request:?}")
+            }
+            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::AttributeVerification(
+                request,
+            )) => {
+                panic!("manual Slot assignment has no attribute verification phase: {request:?}")
+            }
+            surgeist_dom::DomSourceProgress::Request(
+                DomSourceRequest::AttributeAttachmentOutput(request),
+            ) => panic!("manual Slot assignment has no attribute attachment output: {request:?}"),
             surgeist_dom::DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(
                 request,
             )) => {

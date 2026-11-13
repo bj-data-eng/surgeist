@@ -1706,6 +1706,9 @@ impl std::error::Error for DomSessionCreateFailure {
 /// permissions never own or release its resources.
 pub struct DomSession {
     dom: Dom,
+    #[cfg(feature = "document-scripting")]
+    pub(crate) trusted_types_csp:
+        Option<std::rc::Rc<crate::document_scripting::HostedPolicyProcessor>>,
     state: std::rc::Rc<std::cell::RefCell<StyleState>>,
     element_tasks: crate::element_tasks::ElementTaskOwner,
     hosted: crate::dom_lifecycle::HostedOwner,
@@ -1973,6 +1976,8 @@ impl DomSession {
         state.work.set(parsed_work);
         Ok(Self {
             dom,
+            #[cfg(feature = "document-scripting")]
+            trusted_types_csp: None,
             state: std::rc::Rc::new(std::cell::RefCell::new(state)),
             element_tasks: details,
             hosted,
@@ -3286,7 +3291,7 @@ mod tests {
             source
                 .apply(
                     &mut dom,
-                    DomSourceEdit::set_attribute(style, "title", title.clone()),
+                    DomSourceEdit::set_native_attribute(style, "title", title.clone()),
                     source_limits(),
                     &mut DomSourceServices {
                         meta: None,
@@ -3299,7 +3304,8 @@ mod tests {
                 .unwrap(),
             DomSourceDriveProgress::Complete(_)
         ));
-        let edit = DomSourceEdit::set_attribute(style, "media", "screen and (min-width: 2px)");
+        let edit =
+            DomSourceEdit::set_native_attribute(style, "media", "screen and (min-width: 2px)");
         let progress = source
             .apply(
                 &mut dom,
@@ -4213,13 +4219,18 @@ mod tests {
                     DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Script(_)) => {
                         panic!("Style fixture cannot request Script settings")
                     }
+                    DomSourceProgress::Request(surgeist_dom::DomSourceRequest::MetaCsp(_)) => {
+                        panic!("Style fixture cannot request a Meta CSP processor")
+                    }
                     DomSourceProgress::Request(
                         surgeist_dom::DomSourceRequest::FullscreenExitHandoff(_),
                     ) => {
                         panic!("Style fixture cannot request a fullscreen exit handoff")
                     }
                     DomSourceProgress::Request(
-                        surgeist_dom::DomSourceRequest::Event(_)
+                        surgeist_dom::DomSourceRequest::AttributeVerification(_)
+                        | surgeist_dom::DomSourceRequest::AttributeAttachmentOutput(_)
+                        | surgeist_dom::DomSourceRequest::Event(_)
                         | surgeist_dom::DomSourceRequest::Dialog(_)
                         | surgeist_dom::DomSourceRequest::DialogFocusing(_)
                         | surgeist_dom::DomSourceRequest::FocusDelegate(_)
@@ -4329,7 +4340,7 @@ mod tests {
         append_style(&mut session, document, Some("print and"));
         let mut permission = session.style_execution();
         let mut source = session.source_execution();
-        let edit = DomSourceEdit::set_attribute(first, "title", "changed");
+        let edit = DomSourceEdit::set_native_attribute(first, "title", "changed");
         assert!(matches!(
             source
                 .apply(
@@ -4735,7 +4746,7 @@ mod tests {
             stamp,
             "actual external configuration edit changes no DOM state"
         );
-        let edit = DomSourceEdit::set_attribute(target, "media", "screen and");
+        let edit = DomSourceEdit::set_native_attribute(target, "media", "screen and");
         assert!(matches!(
             source
                 .apply(
@@ -4820,7 +4831,7 @@ mod tests {
                 .media_diagnostics()
                 .is_empty()
         );
-        let edit = DomSourceEdit::set_attribute(target, "title", "same-mode");
+        let edit = DomSourceEdit::set_native_attribute(target, "title", "same-mode");
         assert!(matches!(
             source
                 .apply(
@@ -5998,7 +6009,7 @@ mod tests {
             + size_of::<DomStyleProcessedSheet>()
             - 1;
         permission.set_limits(&session.dom(), low, &cancel).unwrap();
-        let edit = DomSourceEdit::set_attribute(target, "title", "changed");
+        let edit = DomSourceEdit::set_native_attribute(target, "title", "changed");
         assert!(
             matches!(
                 source.apply(

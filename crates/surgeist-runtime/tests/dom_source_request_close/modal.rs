@@ -27,7 +27,7 @@ fn shown_and_initial_toggle_delivered(
     for name in ["inert", "autofocus"] {
         drop(complete(apply(
             session,
-            DomSourceEdit::set_attribute(subject, name, ""),
+            DomSourceEdit::set_native_attribute(subject, name, ""),
         )));
     }
     let mut registry = dispatcher::<usize>();
@@ -414,7 +414,7 @@ fn reentrant_modal_request_literal_force_reset_closes_auto_but_preserves_none_wi
         if let Some(value) = closedby {
             drop(complete(apply(
                 &mut session,
-                DomSourceEdit::set_attribute(subject, "closedby", value),
+                DomSourceEdit::set_native_attribute(subject, "closedby", value),
             )));
         }
         let seed = DocumentString::from("seed before reentry");

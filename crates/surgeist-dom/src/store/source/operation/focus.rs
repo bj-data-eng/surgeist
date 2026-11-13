@@ -12,13 +12,17 @@ enum FocusFrame {
 }
 impl Operation {
     fn focus_frame(&self, request: &DomFocusRequest) -> Result<FocusFrame, DomError> {
+        if request.operation() != self.id {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        let dialog::OperationDraft::Segment(draft) = &self.draft else {
+            return Err(DomError::InvalidSourceOperation);
+        };
         if let DomFocusRequest::AllowAutofocusInsertion(request) = request {
-            let frame = self
-                .draft
+            let frame = draft
                 .pending_autofocus()
                 .ok_or(DomError::InvalidSourceOperation)?;
-            if request.operation() != self.id
-                || self.draft.published_id(frame.subject) != Some(request.subject())
+            if draft.published_id(frame.subject) != Some(request.subject())
                 || request.action()
                     != surgeist_html::focus::HtmlAutofocusInsertionAction::ReadAllowFocus
                 || frame.cursor.action() != request.action()
@@ -28,16 +32,14 @@ impl Operation {
             {
                 return Err(DomError::InvalidSourceOperation);
             }
-            self.draft.element(frame.subject)?;
+            draft.element(frame.subject)?;
             return Ok(FocusFrame::Insertion(frame));
         }
 
-        let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_ref() else {
+        let Some(crate::store::method::Frame::Dialog(frame)) = draft.method.as_ref() else {
             return Err(DomError::InvalidSourceOperation);
         };
-        if request.operation() != self.id
-            || self.draft.published_id(frame.subject) != Some(request.subject())
-        {
+        if draft.published_id(frame.subject) != Some(request.subject()) {
             return Err(DomError::InvalidSourceOperation);
         }
         match request {
@@ -70,7 +72,7 @@ impl Operation {
                 unreachable!("handled original insertion")
             }
         }
-        self.draft.dialog_state(frame.subject)?;
+        draft.dialog_state(frame.subject)?;
         Ok(FocusFrame::Dialog(frame.subject))
     }
     fn focus_qualification(

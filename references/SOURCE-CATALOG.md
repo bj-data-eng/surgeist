@@ -1,5 +1,12 @@
 # Exact source catalog
 
+## Trusted Types attribute verification
+
+| Source | Exact snapshot | Complete original source SHA-256 | Representation |
+| --- | --- | --- | --- |
+| [Trusted Types attribute verification](trusted-types-attribute-verification--20261007.md) | [W3C Working Draft, 7 October 2026](https://www.w3.org/TR/2026/WD-trusted-types-20261007/) | a487f2501c7bae462a9c74c0cebc0bb40b5cefb229f130c9edb6b971effc8a79 | Pinned original and bounded clause selection, with exact test witness identities |
+| [CSP3 policy and reporting clauses](trusted-types-attribute-verification--20261007.md#selected-clauses) | [W3C Working Draft, 27 October 2026](https://www.w3.org/TR/2026/WD-CSP3-20261027/) | be8f2468b963df915511832113794407420090f9b4d87d58b603daf01de3144e | Pinned original and bounded clause selection |
+
 ## Overflow-only relative inset witnesses
 
 | Source | Exact snapshot | Complete original source SHA-256 | Representation |

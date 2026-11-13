@@ -2042,7 +2042,7 @@ fn source_attribute_publication_matches_full_oracle_and_unpublished_drop_preserv
     let changes = {
         let mut lease = dom
             .begin_source_edit(
-                DomSourceEdit::set_attribute(parent, "data-local", "kept"),
+                DomSourceEdit::set_native_attribute(parent, "data-local", "kept"),
                 limits,
                 &cancel,
             )

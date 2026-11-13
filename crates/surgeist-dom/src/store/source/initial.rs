@@ -25,8 +25,8 @@ pub(in crate::store) struct Initial {
     bytes: Cell<usize>,
     units: Cell<usize>,
     work: Work,
-    ancestors: Option<Arc<crate::source::event::EventWork>>,
-    ancestor_custody: Option<Arc<formation::EventWorkCustody>>,
+    ancestors: Option<Arc<crate::source::callback::CallbackWork>>,
+    ancestor_custody: Option<Arc<formation::CallbackWorkCustody>>,
     names: Option<name_registry::Operation>,
     #[cfg(test)]
     measurement_identity: Cell<Option<usize>>,
@@ -102,19 +102,21 @@ impl Initial {
         self.names = names;
         self
     }
-    pub(in crate::store) fn ancestors(&self) -> Option<&Arc<crate::source::event::EventWork>> {
+    pub(in crate::store) fn ancestors(
+        &self,
+    ) -> Option<&Arc<crate::source::callback::CallbackWork>> {
         self.ancestors.as_ref()
     }
     fn with_ancestors(
         mut self,
-        ancestors: Option<Arc<crate::source::event::EventWork>>,
-        custody: Option<Arc<formation::EventWorkCustody>>,
+        ancestors: Option<Arc<crate::source::callback::CallbackWork>>,
+        custody: Option<Arc<formation::CallbackWorkCustody>>,
     ) -> Self {
         self.ancestors = ancestors;
         self.ancestor_custody = custody;
         self
     }
-    pub(in crate::store) fn ancestor_custody(&self) -> Option<Arc<formation::EventWorkCustody>> {
+    pub(in crate::store) fn ancestor_custody(&self) -> Option<Arc<formation::CallbackWorkCustody>> {
         self.ancestor_custody.clone()
     }
     pub(in crate::store) fn source_work(
@@ -165,7 +167,7 @@ impl Initial {
         }
         self.work.set(next);
         formation::SourceStorage::record_step();
-        crate::source::event::step_ancestors(self.ancestors.as_ref(), cancel)?;
+        crate::source::callback::step_ancestors(self.ancestors.as_ref(), cancel)?;
         Ok(())
     }
     pub(in crate::store) fn retain(

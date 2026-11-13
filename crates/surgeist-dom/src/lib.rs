@@ -353,6 +353,7 @@ pub use store::source::operation::fullscreen::{
 };
 pub use store::source::operation::meta::{
     DomMetaSourcePreparation, DomMetaSourcePublished, DomMetaSourceRuntimeHold, DomMetaSourceStep,
+    DomSourceMetaCspError, DomSourceMetaCspProcessorFailure,
 };
 pub use store::source::operation::{DomSourceEventFiringLoan, DomSourceLease};
 pub use style::{

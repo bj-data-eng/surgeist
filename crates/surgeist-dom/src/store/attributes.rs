@@ -1,8 +1,14 @@
 use super::*;
 use crate::element::{ElementFormation, FormedElement, NonceUpdate};
-use crate::names::{attribute_name, name_units, valid_attribute_local_name};
-use crate::{DomAttribute as Attribute, DomQualifiedName as QualifiedName};
-use surgeist_html::values::Namespace;
+use crate::names::{
+    attribute_name, expanded_equals_with, name_units, qualified_equals_with, same_code_units,
+    valid_attribute_local_name,
+};
+use crate::{DomAttribute as Attribute, DomQualifiedName as QualifiedName, DomSourceAttributeSink};
+use surgeist_html::values::{HtmlNameInput, Namespace};
+use surgeist_html::vocabulary::{
+    ElementKey, ElementNamespace, KnownHtmlElement, KnownHtmlEventHandler, KnownSvgElement,
+};
 
 /// Actual native edit versus the Input Color cloning step whose current value
 /// will be copied by source overlay, without resolving its default again.
@@ -25,12 +31,106 @@ pub(super) enum AttributeRemoval {
 }
 
 #[derive(Clone, Copy)]
+pub(super) struct AttributeAttachmentPlan {
+    node: Key,
+    attr: Key,
+    placement: AttributePlacement,
+}
+
+impl AttributeAttachmentPlan {
+    pub(super) fn replaced(self, draft: &Draft) -> Result<Option<crate::DomAttrId>, DomError> {
+        match self.placement {
+            AttributePlacement::Replace { previous, .. } => draft
+                .published_id(previous)
+                .map(crate::DomAttrId)
+                .map(Some)
+                .ok_or(DomError::UnavailableCreation),
+            AttributePlacement::Append | AttributePlacement::Unchanged => Ok(None),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum AttributePlacement {
+    Append,
+    Unchanged,
+    Replace { index: usize, previous: Key },
+}
+
+#[derive(Clone, Copy)]
 enum AttributeLookup<'a> {
     Qualified(&'a DocumentString),
     Expanded {
         namespace: Option<&'a DocumentString>,
         local_name: &'a DocumentString,
     },
+}
+
+struct AttributeSetter<'a> {
+    namespace: Option<&'a Namespace>,
+    name: &'a DocumentString,
+    value: &'a DocumentString,
+    mode: AttributeSetterMode,
+}
+
+pub(super) struct PreparedAttributeName {
+    raw_name: surgeist_html::values::QualifiedName,
+    formation: Option<source::formation::Formation>,
+    normalized: name_registry::NormalizedCustody,
+    expanded: bool,
+}
+impl PreparedAttributeName {
+    fn discard_name(self) -> name_registry::NormalizedCustody {
+        let Self {
+            raw_name,
+            formation,
+            normalized,
+            ..
+        } = self;
+        drop(raw_name);
+        drop(formation);
+        normalized
+    }
+}
+
+fn ascii_spelling(units: &[u16], literal: &str) -> bool {
+    units.len() == literal.len() && units.iter().copied().eq(literal.bytes().map(u16::from))
+}
+
+fn trusted_attribute_sink(
+    element: &QualifiedName,
+    attribute: &impl HtmlNameInput,
+) -> Option<DomSourceAttributeSink> {
+    let element = ElementKey::from_name(element);
+    let namespace = attribute.namespace_uri();
+    let local = attribute.local_name().code_units();
+    if namespace.is_none() {
+        if element.namespace() != ElementNamespace::Other
+            && let Some(handler) = KnownHtmlEventHandler::from_local_units(local)
+                .map(KnownHtmlEventHandler::local_name)
+                .or_else(|| {
+                    ["onwaitingforkey", "onbegin", "onend", "onrepeat"]
+                        .into_iter()
+                        .find(|name| ascii_spelling(local, name))
+                })
+        {
+            return Some(DomSourceAttributeSink::EventHandler(handler));
+        }
+        match element.html() {
+            Some(KnownHtmlElement::Iframe) if ascii_spelling(local, "srcdoc") => {
+                return Some(DomSourceAttributeSink::HtmlIframeSrcdoc);
+            }
+            Some(KnownHtmlElement::Script) if ascii_spelling(local, "src") => {
+                return Some(DomSourceAttributeSink::HtmlScriptSrc);
+            }
+            _ => {}
+        }
+    }
+    (element.svg() == Some(KnownSvgElement::Script)
+        && ascii_spelling(local, "href")
+        && namespace
+            .is_none_or(|uri| ascii_spelling(uri.code_units(), "http://www.w3.org/1999/xlink")))
+    .then_some(DomSourceAttributeSink::SvgScriptHref)
 }
 
 // The validated name and its admission remain one argument across every
@@ -80,23 +180,6 @@ fn attribute_units(attribute: &Attribute) -> Result<usize, DomError> {
     name_units(attribute.name())
         .and_then(|units| units.checked_add(attribute.value().len()))
         .ok_or(DomError::RepresentationExhausted)
-}
-
-fn same_code_units(
-    left: &[u16],
-    right: &[u16],
-    mut step: impl FnMut() -> Result<(), DomError>,
-) -> Result<bool, DomError> {
-    if left.len() != right.len() {
-        return Ok(false);
-    }
-    for (left, right) in left.iter().zip(right) {
-        step()?;
-        if left != right {
-            return Ok(false);
-        }
-    }
-    Ok(true)
 }
 
 pub(super) fn same_string(
@@ -210,7 +293,37 @@ impl Draft {
         Ok(Attribute::from_parts(name, value))
     }
 
-    pub(super) fn set_detached_attr_value(
+    pub(super) fn set_existing_attr_value(
+        &mut self,
+        key: Key,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if let Some((owner, _)) = self.existing_attr_sink(key, cancel)? {
+            return self.refuse_unserviced_attribute_sink(owner);
+        }
+        self.write_existing_attr_value(key, value, limits, cancel)
+    }
+
+    pub(super) fn existing_attr_sink(
+        &self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<Option<(Key, DomSourceAttributeSink)>, DomError> {
+        let node = self.node(key)?;
+        let transaction::KindRead::Attr(old) = node.kind() else {
+            return Err(DomError::WrongNodeKind);
+        };
+        let Some(owner) = node.attr_owner() else {
+            return Ok(None);
+        };
+        Ok(self
+            .classify_attribute_sink(owner, old.name(), cancel)?
+            .map(|sink| (owner, sink)))
+    }
+
+    pub(super) fn write_existing_attr_value(
         &mut self,
         key: Key,
         value: &DocumentString,
@@ -221,8 +334,22 @@ impl Draft {
         let transaction::KindRead::Attr(old) = node.kind() else {
             return Err(DomError::WrongNodeKind);
         };
-        if node.attr_owner().is_some() {
-            return Err(DomError::InvalidSourceOperation);
+        if let Some(owner) = node.attr_owner() {
+            let position = self.attribute_identity_position(owner, key, cancel)?;
+            let formation = source::formation::Formation::new(self, cancel)?;
+            let name = self.bind_canonical_name(old.name(), formation.as_ref(), cancel)?;
+            return self.write_attribute(
+                AttributeWrite {
+                    node: owner,
+                    position: Some(position),
+                    name,
+                    value,
+                    cause: AttributeCause::Change,
+                    name_formation: formation,
+                },
+                limits,
+                cancel,
+            );
         }
         if same_string(old.value(), value, || self.source_step(cancel))? {
             return Ok(());
@@ -241,66 +368,6 @@ impl Draft {
         Ok(())
     }
 
-    fn attribute_name_equal(
-        &self,
-        left: &[u16],
-        right: &[u16],
-        cancel: &AtomicBool,
-    ) -> Result<bool, DomError> {
-        same_code_units(left, right, || self.name_step(cancel))
-    }
-    fn attribute_namespace_equal(
-        &self,
-        left: Option<&DocumentString>,
-        right: Option<&DocumentString>,
-        cancel: &AtomicBool,
-    ) -> Result<bool, DomError> {
-        match (left, right) {
-            (None, None) => Ok(true),
-            (Some(left), Some(right)) => {
-                self.attribute_name_equal(left.code_units(), right.code_units(), cancel)
-            }
-            _ => Ok(false),
-        }
-    }
-    fn attribute_qualified_equal(
-        &self,
-        name: &QualifiedName,
-        value: &DocumentString,
-        cancel: &AtomicBool,
-    ) -> Result<bool, DomError> {
-        let prefix = name.prefix();
-        let offset = prefix.map_or(Ok(0), |p| {
-            p.len()
-                .checked_add(1)
-                .ok_or(DomError::RepresentationExhausted)
-        })?;
-        if value.len()
-            != offset
-                .checked_add(name.local_name().len())
-                .ok_or(DomError::RepresentationExhausted)?
-        {
-            return Ok(false);
-        }
-        if let Some(prefix) = prefix {
-            if !self.attribute_name_equal(
-                prefix.code_units(),
-                &value.code_units()[..prefix.len()],
-                cancel,
-            )? {
-                return Ok(false);
-            }
-            self.name_step(cancel)?;
-            if value.code_units()[prefix.len()] != 0x3a {
-                return Ok(false);
-            }
-        }
-        self.attribute_name_equal(
-            name.local_name().code_units(),
-            &value.code_units()[offset..],
-            cancel,
-        )
-    }
     fn attribute_position(
         &self,
         attributes: transaction::AttributeRead<'_>,
@@ -313,19 +380,11 @@ impl Draft {
                 AttributeLookup::Expanded {
                     namespace,
                     local_name,
-                } => {
-                    self.attribute_namespace_equal(
-                        attribute.name().namespace_uri(),
-                        namespace,
-                        cancel,
-                    )? && self.attribute_name_equal(
-                        attribute.name().local_name().code_units(),
-                        local_name.code_units(),
-                        cancel,
-                    )?
-                }
+                } => expanded_equals_with(attribute.name(), namespace, local_name, || {
+                    self.name_step(cancel)
+                })?,
                 AttributeLookup::Qualified(name) => {
-                    self.attribute_qualified_equal(attribute.name(), name, cancel)?
+                    qualified_equals_with(attribute.name(), name, false, || self.name_step(cancel))?
                 }
             };
             if matched {
@@ -387,28 +446,126 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        let element = self.element(node)?;
-        let mut name_formation = source::formation::Formation::new(self, cancelled)?;
+        self.set_attribute_value(
+            node,
+            AttributeSetter {
+                namespace,
+                name,
+                value,
+                mode: AttributeSetterMode::Native,
+            },
+            limits,
+            cancelled,
+        )
+    }
+    pub(super) fn set_standard_attribute(
+        &mut self,
+        node: Key,
+        namespace: Option<&Namespace>,
+        name: &DocumentString,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.set_attribute_value(
+            node,
+            AttributeSetter {
+                namespace,
+                name,
+                value,
+                mode: AttributeSetterMode::Standard,
+            },
+            limits,
+            cancelled,
+        )
+    }
+    fn set_attribute_value(
+        &mut self,
+        node: Key,
+        input: AttributeSetter<'_>,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let AttributeSetter {
+            namespace,
+            name,
+            value,
+            mode,
+        } = input;
+        self.element(node)?;
+        let prepared = self.prepare_attribute_name(node, namespace, name, cancelled)?;
+        if mode == AttributeSetterMode::Standard {
+            self.require_attribute_verification(node, &prepared.raw_name, cancelled)?;
+        }
+        self.apply_attribute_name(node, prepared, value, limits, cancelled)
+    }
+
+    fn require_attribute_verification(
+        &self,
+        element: Key,
+        attribute: &impl HtmlNameInput,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if self
+            .classify_attribute_sink(element, attribute, cancel)?
+            .is_some()
+        {
+            return self.refuse_unserviced_attribute_sink(element);
+        }
+        Ok(())
+    }
+
+    fn refuse_unserviced_attribute_sink(&self, element: Key) -> Result<(), DomError> {
+        let document = self.node(element)?.document();
+        Err(if self.node(document)?.relevant_global().is_some() {
+            DomError::SourceAttributeExecutorUnavailable
+        } else {
+            DomError::SourceAttributeGlobalUnavailable
+        })
+    }
+
+    fn classify_attribute_sink(
+        &self,
+        element: Key,
+        attribute: &impl HtmlNameInput,
+        cancel: &AtomicBool,
+    ) -> Result<Option<DomSourceAttributeSink>, DomError> {
+        let name = self.element(element)?.language().name();
+        // The sink table uses bounded vocabulary and literal comparisons.
+        self.source_step(cancel)?;
+        Ok(trusted_attribute_sink(name, attribute))
+    }
+
+    pub(super) fn prepare_standard_attribute_name(
+        &self,
+        node: Key,
+        namespace: Option<&Namespace>,
+        name: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<(PreparedAttributeName, Option<DomSourceAttributeSink>), DomError> {
+        self.element(node)?;
+        let prepared = self.prepare_attribute_name(node, namespace, name, cancel)?;
+        let sink = self.classify_attribute_sink(node, &prepared.raw_name, cancel)?;
+        Ok((prepared, sink))
+    }
+
+    fn prepare_attribute_name(
+        &self,
+        node: Key,
+        namespace: Option<&Namespace>,
+        name: &DocumentString,
+        cancelled: &AtomicBool,
+    ) -> Result<PreparedAttributeName, DomError> {
+        let formation = source::formation::Formation::new(self, cancelled)?;
         let mut normalized = name_registry::Normalized::new(&self.names);
-        let (position, raw_name) = if let Some(namespace) = namespace {
-            let name = attribute_name(
+        let raw_name = if let Some(namespace) = namespace {
+            attribute_name(
                 namespace,
                 name,
                 &mut || self.name_step(cancelled),
-                &mut |input, lower| {
-                    normalized.units(input, lower, name_formation.as_ref(), cancelled)
-                },
-                &mut |value| retain_string(value, name_formation.as_ref(), cancelled),
-            )?;
-            let position = self.attribute_position(
-                element.attributes(),
-                AttributeLookup::Expanded {
-                    namespace: name.namespace().uri(),
-                    local_name: name.local_name(),
-                },
-                cancelled,
-            )?;
-            (position, name)
+                &mut |input, lower| normalized.units(input, lower, formation.as_ref(), cancelled),
+                &mut |value| retain_string(value, formation.as_ref(), cancelled),
+            )?
         } else {
             if !valid_attribute_local_name(name, &mut || self.name_step(cancelled))? {
                 return Err(DomError::InvalidCharacter);
@@ -418,47 +575,72 @@ impl Draft {
                     name,
                     &mut || self.name_step(cancelled),
                     &mut |input, lower| {
-                        normalized.units(input, lower, name_formation.as_ref(), cancelled)
+                        normalized.units(input, lower, formation.as_ref(), cancelled)
                     },
-                    &mut |value| retain_string(value, name_formation.as_ref(), cancelled),
+                    &mut |value| retain_string(value, formation.as_ref(), cancelled),
                 )?
             } else {
-                retain_string(name, name_formation.as_ref(), cancelled)?
+                retain_string(name, formation.as_ref(), cancelled)?
             };
-            let position = self.attribute_position(
-                element.attributes(),
-                AttributeLookup::Qualified(&name),
-                cancelled,
-            )?;
-            (
-                position,
-                surgeist_html::values::QualifiedName::new(Namespace::none(), None, name),
-            )
+            surgeist_html::values::QualifiedName::new(Namespace::none(), None, name)
         };
+        Ok(PreparedAttributeName {
+            raw_name,
+            formation,
+            normalized: normalized.into_custody(),
+            expanded: namespace.is_some(),
+        })
+    }
+    fn prepared_attribute_position(
+        &self,
+        element: transaction::ElementRead<'_>,
+        prepared: &PreparedAttributeName,
+        cancel: &AtomicBool,
+    ) -> Result<Option<usize>, DomError> {
+        let raw_name = &prepared.raw_name;
+        let lookup = if prepared.expanded {
+            AttributeLookup::Expanded {
+                namespace: raw_name.namespace().uri(),
+                local_name: raw_name.local_name(),
+            }
+        } else {
+            AttributeLookup::Qualified(raw_name.local_name())
+        };
+        self.attribute_position(element.attributes(), lookup, cancel)
+    }
+
+    pub(super) fn apply_attribute_name(
+        &mut self,
+        node: Key,
+        prepared: PreparedAttributeName,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let element = self.element(node)?;
+        let position = self.prepared_attribute_position(element, &prepared, cancelled)?;
         // Existing set-value preserves its exact canonical prefix and order.
         // Discard lookup spelling before admitting the selected occurrence.
-        let name = if let Some(position) = position {
-            drop(raw_name);
-            drop(name_formation);
-            name_formation = source::formation::Formation::new(self, cancelled)?;
-            self.bind_canonical_name(
+        let (name, name_formation) = if let Some(position) = position {
+            let normalized = prepared.discard_name();
+            let formation = source::formation::Formation::new(self, cancelled)?;
+            let name = self.bind_canonical_name(
                 element
                     .attributes()
                     .get(position)
                     .ok_or(DomError::StaleNode)?
                     .name(),
-                name_formation.as_ref(),
+                formation.as_ref(),
                 cancelled,
-            )?
+            )?;
+            drop(normalized);
+            (name, formation)
         } else {
-            let canonical = source::formation::Formation::new(self, cancelled)?;
-            let name = self.bind_name(&raw_name, canonical.as_ref(), cancelled)?;
-            drop(raw_name);
-            drop(name_formation);
-            name_formation = canonical;
-            name
+            let formation = source::formation::Formation::new(self, cancelled)?;
+            let name = self.bind_name(&prepared.raw_name, formation.as_ref(), cancelled)?;
+            drop(prepared);
+            (name, formation)
         };
-        drop(normalized);
         self.write_attribute(
             AttributeWrite {
                 node,
@@ -472,6 +654,43 @@ impl Draft {
             cancelled,
         )
     }
+    pub(super) fn apply_verified_attribute_name(
+        &mut self,
+        node: Key,
+        prepared: &PreparedAttributeName,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let element = self.element(node)?;
+        let position = self.prepared_attribute_position(element, prepared, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let name = match position {
+            Some(index) => self.bind_canonical_name(
+                element
+                    .attributes()
+                    .get(index)
+                    .ok_or(DomError::StaleNode)?
+                    .name(),
+                formation.as_ref(),
+                cancel,
+            )?,
+            None => self.bind_name(&prepared.raw_name, formation.as_ref(), cancel)?,
+        };
+        self.write_attribute(
+            AttributeWrite {
+                node,
+                position,
+                name,
+                value,
+                cause: AttributeCause::Change,
+                name_formation: formation,
+            },
+            limits,
+            cancel,
+        )
+    }
+
     /// Append exact validated component records; no QName reconstruction.
     pub(super) fn append_attribute(
         &mut self,
@@ -669,13 +888,55 @@ impl Draft {
         )
     }
 
-    pub(super) fn attach_native_attribute(
+    pub(super) fn attach_attribute(
         &mut self,
         node: Key,
         attr: Key,
+        mode: AttributeSetterMode,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        if mode == AttributeSetterMode::Standard
+            && self.attachment_sink(node, attr, cancel)?.is_some()
+        {
+            return self.refuse_unserviced_attribute_sink(node);
+        }
+        self.write_attribute_attachment(node, attr, None, limits, cancel)
+    }
+
+    pub(super) fn attachment_sink(
+        &self,
+        node: Key,
+        attr: Key,
+        cancel: &AtomicBool,
+    ) -> Result<Option<(DomSourceAttributeSink, &DocumentString)>, DomError> {
+        self.element(node)?;
+        let transaction::KindRead::Attr(incoming) = self.node(attr)?.kind() else {
+            return Err(DomError::WrongNodeKind);
+        };
+        Ok(self
+            .classify_attribute_sink(node, incoming.name(), cancel)?
+            .map(|sink| (sink, incoming.value())))
+    }
+
+    pub(super) fn write_attribute_attachment(
+        &mut self,
+        node: Key,
+        attr: Key,
+        verified: Option<&DocumentString>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let plan = self.prepare_attribute_attachment(node, attr, cancel)?;
+        self.apply_attribute_attachment(plan, verified, limits, cancel)
+    }
+
+    pub(super) fn prepare_attribute_attachment(
+        &self,
+        node: Key,
+        attr: Key,
+        cancel: &AtomicBool,
+    ) -> Result<AttributeAttachmentPlan, DomError> {
         let node = self.live_key(node);
         let attr = self.live_key(attr);
         let read = self.element(node)?;
@@ -698,20 +959,78 @@ impl Draft {
             },
             cancel,
         )?;
-        let previous_id = position
-            .map(|index| {
-                self.node(node)?
-                    .attribute_ids()
-                    .get(index)
-                    .ok_or(DomError::StaleNode)
-            })
-            .transpose()?;
-        if previous_id.is_some_and(|previous| self.live_key(previous) == attr) {
+        let placement = if let Some(index) = position {
+            let previous = self
+                .node(node)?
+                .attribute_ids()
+                .get(index)
+                .ok_or(DomError::StaleNode)?;
+            if self.live_key(previous) == attr {
+                AttributePlacement::Unchanged
+            } else {
+                AttributePlacement::Replace { index, previous }
+            }
+        } else {
+            AttributePlacement::Append
+        };
+        Ok(AttributeAttachmentPlan {
+            node,
+            attr,
+            placement,
+        })
+    }
+
+    pub(super) fn apply_attribute_attachment(
+        &mut self,
+        plan: AttributeAttachmentPlan,
+        verified: Option<&DocumentString>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let AttributeAttachmentPlan {
+            node,
+            attr,
+            placement,
+        } = plan;
+        if matches!(placement, AttributePlacement::Unchanged) {
             return self.register_node_ticket(
                 NodeTicket::AttributeAttachment(attr, AttachmentKind::Unchanged),
                 cancel,
             );
         }
+        let (position, previous_id) = match placement {
+            AttributePlacement::Replace { index, previous } => (Some(index), Some(previous)),
+            AttributePlacement::Append | AttributePlacement::Unchanged => (None, None),
+        };
+        let read = self.element(node)?;
+        let previous = read.attributes();
+        let incoming = self.node(attr)?;
+        let transaction::KindRead::Attr(replacement) = incoming.kind() else {
+            return Err(DomError::WrongNodeKind);
+        };
+        let (verified_record, attr_formation) = if let Some(value) = verified
+            && !same_string(replacement.value(), value, || self.source_step(cancel))?
+        {
+            let units = self
+                .units
+                .checked_sub(replacement.value().len())
+                .and_then(|units| units.checked_add(value.len()))
+                .ok_or(DomError::RepresentationExhausted)?;
+            let formation = source::formation::Formation::new(self, cancel)?;
+            let value = retain_attribute_value(self, value, formation.as_ref(), cancel)?;
+            (
+                Some((
+                    Attribute::from_parts(replacement.name().clone(), value),
+                    units,
+                )),
+                formation,
+            )
+        } else {
+            (None, None)
+        };
+        let replacement = verified_record
+            .as_ref()
+            .map_or(replacement, |(record, _)| record);
         let previous_value = position
             .map(|index| previous.get(index).ok_or(DomError::StaleNode))
             .transpose()?;
@@ -755,6 +1074,10 @@ impl Draft {
             );
             element.with_attribute_effect(&previous, &next, &changed, nonce, context)?
         };
+        if let Some((record, units)) = verified_record {
+            self.replace_attr_value_formed(attr, record, attr_formation, cancel)?;
+            self.units = units;
+        }
         self.attach_attribute_identity(node, index, previous_id, attr, cancel)?;
         self.publish_element(node, old_units, formed, formation, limits, cancel)?;
         let (result, kind) = previous_id.map_or((attr, AttachmentKind::Appended), |old| {
@@ -1008,16 +1331,27 @@ impl Draft {
         if attribute.attr_owner().map(|owner| self.live_key(owner)) != Some(self.live_key(node)) {
             return Err(DomError::NotFound);
         }
-        for (index, entry) in self.node(node)?.attribute_ids().iter().enumerate() {
+        let position = self.attribute_identity_position(node, attr, cancel)?;
+        self.remove_attribute_at(
+            node,
+            position,
+            AttributeRemoval::ReturnIdentity,
+            limits,
+            cancel,
+        )
+    }
+
+    fn attribute_identity_position(
+        &self,
+        owner: Key,
+        attr: Key,
+        cancel: &AtomicBool,
+    ) -> Result<usize, DomError> {
+        let attr = self.live_key(attr);
+        for (index, entry) in self.node(owner)?.attribute_ids().iter().enumerate() {
             self.source_step(cancel)?;
             if self.live_key(entry) == attr {
-                return self.remove_attribute_at(
-                    node,
-                    index,
-                    AttributeRemoval::ReturnIdentity,
-                    limits,
-                    cancel,
-                );
+                return Ok(index);
             }
         }
         Err(DomError::StaleNode)

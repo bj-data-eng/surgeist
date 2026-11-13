@@ -1,5 +1,6 @@
 //! Registered guest callbacks for ordinary authored standalone dispatch.
 
+mod csp_task;
 mod element_task;
 mod interfaces;
 mod listeners;
@@ -16,9 +17,11 @@ use crate::dom_event::{
     DomEventInit, DomEventListenerOptions, DomEventPhase, DomEventRegistrationId, DomEventTarget,
     DomEventTimestampUnavailable, DomEventType, DomStandaloneEventTarget, NativeDomEvent,
 };
+pub use csp_task::DocumentCspViolationProgress;
 use interfaces::PublicEventBindings;
-pub(super) use reports::GuestExceptionReports;
+pub(crate) use reports::QueuedViolation;
 use reports::{DirectExceptions, ExceptionRoots};
+pub(super) use reports::{GuestExceptionReports, ViolationQueue};
 use surgeist_bindings_js::{
     Exception, NativeObjectToken, ObjectPrototype, RetainedCallbackObject, Root, Value,
 };
@@ -354,10 +357,93 @@ impl From<DocumentGuestEventError> for DocumentGuestEventDispatchFailure {
     }
 }
 
-struct GuestBacking {
+pub(crate) struct GuestBacking {
     used: Rc<Cell<usize>>,
     bytes: usize,
     _canonical: DomHostedRuntimeRetention,
+}
+
+/// A retained verification decision for the original native attribute write.
+pub(super) struct PendingAttribute {
+    request: surgeist_dom::DomSourceAttributeVerificationRequest,
+    reply: AttributeReply,
+    parent: Option<surgeist_dom::DomSourceAttributeVerificationRequest>,
+    interrupted_parent: Option<Box<Self>>,
+    _header: GuestBacking,
+}
+
+enum AttributeReply {
+    Abandon,
+    OriginalValue,
+    Mismatch(crate::trusted_types_csp::AttributeMismatchProgress),
+    Converted {
+        result: surgeist_bindings_js::conversion::Converted<
+            Option<surgeist_bindings_js::TrustedTypeData>,
+        >,
+        // Keeps the original setup debit alive if the engine retires first.
+        _account: Rc<interfaces::Callbacks>,
+    },
+    Abrupt(Error),
+    Accepted {
+        abrupt: Option<Error>,
+    },
+}
+
+impl Drop for PendingAttribute {
+    fn drop(&mut self) {
+        let mut parent = self.interrupted_parent.take();
+        while let Some(mut frame) = parent {
+            parent = frame.interrupted_parent.take();
+        }
+    }
+}
+
+impl NativeOwner {
+    pub(super) fn reconcile_pending_attribute(&self) -> Result<(), DocumentScriptNativeError> {
+        let mut pending = self
+            .pending_attribute
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        if pending.is_none() {
+            return Ok(());
+        }
+        let current = self
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .dom()
+            .pending_source_edit();
+        while let Some(mut frame) = pending.take() {
+            if let Some(status) =
+                current.filter(|status| status.operation() == frame.request.operation())
+            {
+                if status.cancellation_requested()
+                    && !matches!(frame.reply, AttributeReply::Accepted { .. })
+                {
+                    frame.reply = AttributeReply::Abandon;
+                }
+                *pending = Some(frame);
+                break;
+            }
+            *pending = frame.interrupted_parent.take();
+        }
+        Ok(())
+    }
+
+    fn retain_interrupted_attribute(&self, parent: Box<PendingAttribute>) {
+        let Ok(mut pending) = self.pending_attribute.try_borrow_mut() else {
+            return;
+        };
+        let Some(mut child) = pending.as_deref_mut() else {
+            return;
+        };
+        while let Some(ref mut next) = child.interrupted_parent {
+            child = next;
+        }
+        if child.parent == Some(parent.request) {
+            child.interrupted_parent = Some(parent);
+        }
+    }
 }
 
 impl GuestBacking {
@@ -488,6 +574,24 @@ impl GuestBudget {
         limits: DocumentGuestEventLimits,
         bytes: usize,
     ) -> Result<GuestBacking, DocumentGuestEventError> {
+        self.reserve_with(limits, bytes, || {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            session
+                .hosted_execution()
+                .retain_script_payload(&mut session.dom(), bytes, &owner.cancellation)
+                .map_err(DocumentScriptNativeError::from)
+        })
+    }
+
+    fn reserve_with(
+        &self,
+        limits: DocumentGuestEventLimits,
+        bytes: usize,
+        retain: impl FnOnce() -> Result<DomHostedRuntimeRetention, DocumentScriptNativeError>,
+    ) -> Result<GuestBacking, DocumentGuestEventError> {
         self.charge_work(limits.work, 1)?;
         let total = self
             .used
@@ -497,14 +601,7 @@ impl GuestBudget {
         if total > limits.storage_bytes {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
-        let mut session = owner
-            .session
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let canonical = session
-            .hosted_execution()
-            .retain_script_payload(&mut session.dom(), bytes, &owner.cancellation)
-            .map_err(DocumentScriptNativeError::from)?;
+        let canonical = retain()?;
         self.used.set(total);
         Ok(GuestBacking {
             used: self.used.clone(),

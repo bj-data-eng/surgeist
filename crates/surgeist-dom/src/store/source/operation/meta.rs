@@ -2,8 +2,70 @@
 use super::*;
 use crate::meta_atomic::{DomMetaAtomicLimits, DomMetaRuntimeUsage};
 
+mod csp;
+pub(super) use csp::CspDelivery;
+pub use csp::{DomSourceMetaCspError, DomSourceMetaCspProcessorFailure};
+
 #[cfg(test)]
 mod tests;
+
+impl Operation {
+    pub(super) fn issue_meta_csp_request(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceMetaCspRequest, DomError> {
+        self.draft.source_step(cancel)?;
+        let frame = self
+            .draft
+            .pending_meta_csp()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let ordinal = match frame.ordinal {
+            Some(ordinal) => ordinal,
+            None => {
+                let ordinal = self.draft.source_invocation;
+                let next = ordinal
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                let identities = self
+                    .identities
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                if identities > self.limits.identities {
+                    return Err(DomError::SourceIdentityLimit);
+                }
+                let Some(select::Effect::MetaCsp(frame)) =
+                    self.draft.effects.last_mut().map(|frame| &mut frame.effect)
+                else {
+                    return Err(DomError::InvalidSourceOperation);
+                };
+                frame.ordinal = Some(ordinal);
+                self.draft.source_invocation = next;
+                self.identities = identities;
+                ordinal
+            }
+        };
+        Ok(self.meta_csp_request(frame, ordinal))
+    }
+
+    fn meta_csp_request(
+        &self,
+        frame: crate::store::meta::CspInsertion,
+        ordinal: u64,
+    ) -> DomSourceMetaCspRequest {
+        DomSourceMetaCspRequest {
+            operation: self.id,
+            occurrence: crate::source::watcher::HookOccurrence {
+                command: self.index,
+                ordinal,
+            },
+            subject: self.draft.published_id(frame.subject),
+            document: self
+                .draft
+                .published_id(frame.document)
+                .map(crate::DocumentId),
+        }
+    }
+}
 
 /// Original native accounting, retained outside the sparse semantic journal.
 /// Its actual atom backing and work dependencies outlive every alias together.
@@ -288,7 +350,7 @@ impl DomSourceLease<'_> {
             .as_ref()
             .filter(|operation| !self.complete && operation.id == self.id)
             .ok_or(DomError::InvalidSourceOperation)?;
-        if operation.observation().is_some() {
+        if operation.callback_observation().is_some() {
             self.dom
                 .source_observation_formation(cancel)?
                 .ok_or(DomError::InvalidSourceOperation)
@@ -454,14 +516,8 @@ impl DomMetaSourceRuntimeHold<'_, '_> {
         Ok(())
     }
     pub fn request_cancel(&mut self) -> Result<(), DomError> {
-        let operation = self
-            .lease
-            .dom
-            .source_operation
-            .as_mut()
-            .filter(|operation| !self.lease.complete && operation.id == self.lease.id)
-            .ok_or(DomError::InvalidSourceOperation)?;
-        operation.cancelled = true;
+        self.lease.qualify_meta_lease()?;
+        self.lease.request_cancel();
         Ok(())
     }
 }
@@ -749,7 +805,7 @@ impl<'lease, 'dom> DomMetaSourceRuntimeHold<'lease, 'dom> {
                         runtime: self.usage,
                     }),
                     hosted_events: clock == crate::DomSourceEventClockMode::Hosted,
-                    shadow_attachment: None,
+                    synchronous_node: None,
                 };
                 // Receipt validation already holds this exact producer lock
                 // through the Source advance and its publication fence.

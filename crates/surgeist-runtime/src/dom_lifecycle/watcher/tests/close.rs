@@ -21,7 +21,7 @@ fn close_at_removal() -> (
     );
     apply(
         &mut session,
-        DomSourceEdit::set_attribute(subject, "open", ""),
+        DomSourceEdit::set_native_attribute(subject, "open", ""),
     );
     let watcher = session
         .snapshot()

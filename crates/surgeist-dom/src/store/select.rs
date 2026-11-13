@@ -1009,6 +1009,7 @@ pub(super) enum Effect {
     AttributeSuffix(attributes::AttributeSuffix),
     AfterScriptAttribute(attributes::AttributeSuffix),
     Script(super::script::Frame),
+    MetaCsp(super::meta::CspInsertion),
     Style(style::Frame),
     XmlDocument(super::document::XmlDocumentFrame),
     ChildrenChanged {
@@ -1141,6 +1142,7 @@ impl EffectFrame {
             Effect::AttributeSuffix(frame) => Effect::AttributeSuffix(frame.clone()),
             Effect::AfterScriptAttribute(frame) => Effect::AfterScriptAttribute(frame.clone()),
             Effect::Script(frame) => Effect::Script(*frame),
+            Effect::MetaCsp(frame) => Effect::MetaCsp(*frame),
             Effect::Style(frame) => Effect::Style(*frame),
             Effect::XmlDocument(frame) => Effect::XmlDocument(frame.clone()),
             Effect::ChildrenChanged { parent, stage } => Effect::ChildrenChanged {
@@ -1339,6 +1341,9 @@ impl Draft {
                 } else {
                     self.source_step(cancel)?;
                 }
+                if self.pending_meta_csp().is_some() {
+                    return Err(DomError::MetaCspProcessingRequired);
+                }
                 let latest = self.journal.latest_mark_id();
                 let needs_snapshot = latest.is_some_and(|latest| {
                     self.effects
@@ -1390,6 +1395,9 @@ impl Draft {
                         self.attribute_after_script(frame, payload, limits, cancel)?
                     }
                     Effect::Script(frame) => self.script_effect(frame, cancel)?,
+                    Effect::MetaCsp(frame) => {
+                        self.finish_meta_insertion(frame.subject, frame.document, limits, cancel)?
+                    }
                     Effect::Style(frame) => self.style_effect(frame, cancel)?,
                     Effect::XmlDocument(frame) => {
                         self.xml_document_effect(frame, payload, limits, cancel)?

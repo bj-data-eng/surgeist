@@ -144,7 +144,7 @@ fn source_attributes_and_text_survive_preflight_restore_and_replay() {
     // Style processing. The subsequent actual Text edit owns that update.
     complete_local(
         &mut dom,
-        DomSourceEdit::set_attribute(style, "type", raw("text/css")),
+        DomSourceEdit::set_native_attribute(style, "type", raw("text/css")),
     );
     let after_attribute = dom.snapshot();
     assert_eq!(attrs(&after_attribute, style).len(), 2);
@@ -433,7 +433,7 @@ fn reentrant_child_values_survive_parent_observation_discard_and_canceled_resume
     let scope = executor.enter_dispatch(&dom, &permit, &cancel()).unwrap();
     complete_local(
         &mut dom,
-        DomSourceEdit::set_attribute(target, "data-shared", raw("child")),
+        DomSourceEdit::set_native_attribute(target, "data-shared", raw("child")),
     );
     complete_local(
         &mut dom,
@@ -516,7 +516,7 @@ fn refused_source_candidates_cancel_cleanly_and_semantic_noops_preserve_backing(
         let value = raw("discarded-candidate");
         let weak = value.block().downgrade();
         let edit = if attribute {
-            DomSourceEdit::set_attribute(element, "data-shared", value)
+            DomSourceEdit::set_native_attribute(element, "data-shared", value)
         } else {
             DomSourceEdit::replace_data(node, 0, usize::MAX, value)
         };
@@ -553,7 +553,7 @@ fn refused_source_candidates_cancel_cleanly_and_semantic_noops_preserve_backing(
         ));
         assert!(text(&before, node).shares_storage_with(text(&after_refusal, node)));
         let edit = if attribute {
-            DomSourceEdit::set_attribute(element, "data-shared", raw("kept"))
+            DomSourceEdit::set_native_attribute(element, "data-shared", raw("kept"))
         } else {
             DomSourceEdit::replace_data(node, 0, usize::MAX, raw("kept"))
         };
@@ -577,7 +577,7 @@ fn refused_source_candidates_cancel_cleanly_and_semantic_noops_preserve_backing(
         };
         assert!(equal_with_spare.retained_units() > current.retained_units());
         let unchanged = if attribute {
-            DomSourceEdit::set_attribute(element, "data-shared", equal_with_spare)
+            DomSourceEdit::set_native_attribute(element, "data-shared", equal_with_spare)
         } else {
             DomSourceEdit::replace_data(node, 0, usize::MAX, equal_with_spare)
         };

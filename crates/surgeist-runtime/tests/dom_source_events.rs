@@ -1239,7 +1239,7 @@ fn hosted_source_open_attribute_completes_actual_watcher_hook_without_queueing()
             .source_execution()
             .apply(
                 &mut session.dom(),
-                DomSourceEdit::set_attribute(subject, "open", ""),
+                DomSourceEdit::set_native_attribute(subject, "open", ""),
                 source_limits(),
                 &mut DomSourceServices {
                     meta: None,
@@ -2330,7 +2330,7 @@ fn callback_open_is_observed_by_separate_resume_without_queueing_toggle() {
                     source
                         .apply(
                             dom,
-                            DomSourceEdit::set_attribute(subject, "open", ""),
+                            DomSourceEdit::set_native_attribute(subject, "open", ""),
                             source_limits(),
                             &mut DomSourceServices {
                                 meta: None,
@@ -3488,7 +3488,7 @@ fn hosted_dialog_watcher_lifetime(retire_before_removal: bool) {
             .source_execution()
             .apply(
                 &mut session.dom(),
-                DomSourceEdit::set_attribute(subject, "open", ""),
+                DomSourceEdit::set_native_attribute(subject, "open", ""),
                 source_limits(),
                 &mut DomSourceServices {
                     meta: None,

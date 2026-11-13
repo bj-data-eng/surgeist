@@ -41,7 +41,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
         .source_execution()
         .apply(
             &mut session.dom(),
-            DomSourceEdit::set_attribute(sentinel, "open", ""),
+            DomSourceEdit::set_native_attribute(sentinel, "open", ""),
             limits(),
             &mut DomSourceServices {
                 meta: None,

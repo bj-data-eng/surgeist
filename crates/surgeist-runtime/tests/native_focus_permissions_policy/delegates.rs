@@ -199,7 +199,7 @@ fn ordinary_descendant_queries_keep_the_exact_focus_or_autofocus_leaf_across_res
         let subject = dialog(&mut session, top.document());
         edit(
             &mut session,
-            DomSourceEdit::set_attribute(subject, "inert", ""),
+            DomSourceEdit::set_native_attribute(subject, "inert", ""),
         );
         let mut batch = DomBatch::new();
         let child = batch.create_element_ns(top.document(), Namespace::html(), "span");
@@ -217,7 +217,7 @@ fn ordinary_descendant_queries_keep_the_exact_focus_or_autofocus_leaf_across_res
         if autofocus {
             edit(
                 &mut session,
-                DomSourceEdit::set_attribute(child, "autofocus", ""),
+                DomSourceEdit::set_native_attribute(child, "autofocus", ""),
             );
         }
         let ready = session.snapshot();
@@ -251,7 +251,7 @@ fn autofocus_in_shadow_descendants_does_not_enter_the_dialog_ordinary_passes() {
     let subject = dialog(&mut session, top.document());
     edit(
         &mut session,
-        DomSourceEdit::set_attribute(subject, "inert", ""),
+        DomSourceEdit::set_native_attribute(subject, "inert", ""),
     );
     let mut batch = DomBatch::new();
     let host = batch.create_element_ns(top.document(), Namespace::html(), "div");
@@ -290,7 +290,7 @@ fn autofocus_in_shadow_descendants_does_not_enter_the_dialog_ordinary_passes() {
     );
     edit(
         &mut session,
-        DomSourceEdit::set_attribute(shadow_child, "autofocus", ""),
+        DomSourceEdit::set_native_attribute(shadow_child, "autofocus", ""),
     );
     let ready = session.snapshot();
     assert_eq!(ready.node(subject).unwrap().children(), [host]);
@@ -420,7 +420,10 @@ fn empty_delegate_tail_preadmits_only_actual_changed_same_origin_autofocus_outpu
             let seed = if case == 1 {
                 let seed = dialog(&mut session, top.document());
                 for name in ["inert", "autofocus"] {
-                    edit(&mut session, DomSourceEdit::set_attribute(seed, name, ""));
+                    edit(
+                        &mut session,
+                        DomSourceEdit::set_native_attribute(seed, name, ""),
+                    );
                 }
                 let mut calls = Vec::new();
                 let result = drive(
@@ -452,7 +455,7 @@ fn empty_delegate_tail_preadmits_only_actual_changed_same_origin_autofocus_outpu
             let subject = dialog(&mut session, document);
             edit(
                 &mut session,
-                DomSourceEdit::set_attribute(subject, "inert", ""),
+                DomSourceEdit::set_native_attribute(subject, "inert", ""),
             );
             let ready = session.snapshot();
             let node = ready.node(subject).unwrap();

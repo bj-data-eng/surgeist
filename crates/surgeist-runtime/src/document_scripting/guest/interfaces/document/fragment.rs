@@ -1,6 +1,7 @@
 //! Canonical ordinary DocumentFragment creation and projection custody.
 
 use super::*;
+use surgeist_dom::DomDetachedNodeCreation;
 
 pub(super) const FRAGMENT: &[u16] = &ascii(b"DocumentFragment");
 const CREATE_FRAGMENT: &[u16] = &ascii(b"createDocumentFragment");
@@ -124,25 +125,12 @@ impl Capture {
             .ok_or(Error::ExpiredIdentity)?
             .document
             .ordinary;
-        bindings.create(scope, owner, events, prototype, |inbox, key| {
-            self.with_native(owner, |session, _| {
-                let mut batch = DomBatch::new();
-                let ticket = batch.create_fragment(document);
-                let (_, node, watch) = session
-                    .dom()
-                    .raw_mut()
-                    .apply_with_node_retirement_watch(
-                        batch,
-                        &ticket,
-                        inbox,
-                        key,
-                        events.limits.node_retirement,
-                        &owner.cancellation,
-                    )
-                    .map_err(DocumentScriptNativeError::from)?
-                    .into_parts();
-                Ok((GuestNode::Fragment(node), watch))
-            })
-        })
+        bindings.create_detached(
+            scope,
+            self,
+            (owner, events),
+            prototype,
+            (document, DomDetachedNodeCreation::Fragment),
+        )
     }
 }

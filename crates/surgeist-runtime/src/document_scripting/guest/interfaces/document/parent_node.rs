@@ -1,10 +1,10 @@
 //! ParentNode.moveBefore over the canonical native Source operation.
 
-use super::*;
-use crate::{
-    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
+use super::{
+    tree::{projected_node, tree_completion},
+    *,
 };
-use surgeist_bindings_js::{ValueKind, dom_exception::DomExceptionName};
+use surgeist_bindings_js::ValueKind;
 use surgeist_dom::DomSourceEdit;
 
 const MOVE_BEFORE: &[u16] = &ascii(b"moveBefore");
@@ -56,23 +56,6 @@ pub(super) fn install<'scope>(
     Ok(())
 }
 
-fn projected_node<'scope>(
-    scope: &mut Scope<'scope>,
-    value: &Value<'scope>,
-) -> Result<Option<GuestNode>, Error> {
-    Ok(scope
-        .native_object::<GuestNodeProjection>(value)?
-        .and_then(|projection| projection.payload().id()))
-}
-
-fn move_exception(error: &DomError) -> Option<DomExceptionName> {
-    match error {
-        DomError::HierarchyRequest => Some(DomExceptionName::HierarchyRequestError),
-        DomError::NotFound => Some(DomExceptionName::NotFoundError),
-        _ => None,
-    }
-}
-
 impl Capture {
     fn move_before<'scope>(
         &self,
@@ -114,76 +97,14 @@ impl Capture {
                 };
                 Some(reference.node())
             };
-            self.apply_move(
+            self.apply_tree_edit(
                 scope,
                 &owner,
                 &events,
                 DomSourceEdit::move_before(node.node(), parent.node(), before),
+                Completion::Undefined,
             )
         })();
-        match result {
-            Ok(completion) => Ok(completion),
-            Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
-                Err(error)
-            }
-            Err(error) => refuse(scope, &events.refusal, error),
-        }
-    }
-
-    fn apply_move<'scope>(
-        &self,
-        scope: &mut Scope<'scope>,
-        owner: &NativeOwner,
-        events: &GuestEvents,
-        edit: DomSourceEdit,
-    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
-        let attachment = owner
-            .attachment
-            .get()
-            .ok_or(DocumentScriptNativeError::Revoked)?;
-        let (result, pending) = self.with_native(owner, |session, _| {
-            let mut source = session.source_execution();
-            let mut dom = session.dom();
-            let result = source.apply(
-                &mut dom,
-                edit,
-                events.limits.source_edits,
-                &mut DomSourceServices {
-                    meta: None,
-                    execution_scope: None,
-                    style_policy: &mut |_| None,
-                    url: None,
-                },
-                &owner.cancellation,
-            );
-            Ok((result, dom.pending_source_edit()))
-        })?;
-        match result {
-            Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
-                Err(DocumentScriptNativeError::from(DomError::Cancelled).into())
-            }
-            Ok(DomSourceDriveProgress::Complete(_)) => Ok(Completion::Undefined),
-            Ok(DomSourceDriveProgress::Failed(failure)) => {
-                let error = failure.into_parts().1;
-                match move_exception(&error) {
-                    Some(name) => Ok(Completion::Throw(scope.dom_exception(name, &[])?)),
-                    None => Err(DocumentScriptNativeError::from(error).into()),
-                }
-            }
-            Err(error) => {
-                if pending.is_none()
-                    && let DomSourceDriveError::Source(DomSourceRuntimeError::Dom(error)) = &error
-                    && let Some(name) = move_exception(error)
-                {
-                    return Ok(Completion::Throw(scope.dom_exception(name, &[])?));
-                }
-                refuse(scope, &attachment.source_failures, error).map_err(Into::into)
-            }
-            Ok(_) => Err(
-                pending.map_or(DocumentGuestEventError::HostRouteUnavailable, |status| {
-                    DocumentGuestEventError::SourcePending(status.operation())
-                }),
-            ),
-        }
+        tree_completion(scope, &events, result)
     }
 }

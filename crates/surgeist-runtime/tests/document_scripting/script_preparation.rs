@@ -144,7 +144,7 @@ fn text_and_attribute_keep_the_private_segment() -> DomSourceScriptRequest {
         .with_native(|dom, _, mut source| {
             let refused = source.apply(
                 dom,
-                DomSourceEdit::set_attribute(script, "src", "unavailable.js"),
+                DomSourceEdit::set_native_attribute(script, "src", "unavailable.js"),
                 no_identities,
                 &mut DomSourceServices {
                     meta: None,
@@ -1240,7 +1240,7 @@ fn check_published_iframe_svg_refusal(retry_close: bool) {
     let later = source
         .apply(
             &mut session.dom(),
-            DomSourceEdit::set_attribute(wrapper, "data-after", "applied"),
+            DomSourceEdit::set_native_attribute(wrapper, "data-after", "applied"),
             LIMITS,
             &mut services,
             &cancel(),

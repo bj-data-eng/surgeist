@@ -111,6 +111,98 @@ impl HtmlCspPolicyArtifact for OtherNative {
     }
 }
 
+#[test]
+fn response_policy_refusal_returns_artifact_and_success_preserves_header_custody() {
+    let mut owner = HtmlCspOwner::new_with(&mut allow).unwrap();
+    let mut backend = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+    let profile = backend.profile_with(17, &mut allow).unwrap();
+    let foreign = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+    let foreign_profile = foreign.profile_with(17, &mut allow).unwrap();
+    let observation = Arc::new(Observation::default());
+    let artifact = Arc::new(NativePolicy {
+        values: [0xd800, 0, 0, 0],
+        len: 2,
+        observation: observation.clone(),
+    });
+    let original = Arc::as_ptr(&artifact);
+
+    let rejected = backend
+        .attest_response_policy_with(&mut owner, &foreign_profile, artifact, &mut allow)
+        .unwrap_err();
+    assert!(matches!(rejected.error, HtmlCspError::Protocol(cause) if cause.is_wrong_processor()));
+    assert_eq!(Arc::as_ptr(&rejected.retained), original);
+    assert_eq!(observation.metadata.load(Ordering::Relaxed), 0);
+
+    let mut reject_transfer = |layout: HtmlCspLayout| {
+        if layout.transferred() == NativePolicy::layout() {
+            Err(Stop::Storage)
+        } else {
+            Ok(())
+        }
+    };
+    let rejected = backend
+        .attest_response_policy_with(
+            &mut owner,
+            &profile,
+            rejected.retained,
+            &mut reject_transfer,
+        )
+        .unwrap_err();
+    assert_eq!(rejected.error, HtmlCspError::Interrupted(Stop::Storage));
+    assert_eq!(Arc::as_ptr(&rejected.retained), original);
+    assert_eq!(observation.drops.load(Ordering::Relaxed), 0);
+
+    let mut seen_transfer = None;
+    let mut association = backend
+        .attest_response_policy_with(&mut owner, &profile, rejected.retained, &mut |layout| {
+            if layout.transferred() == NativePolicy::layout() {
+                seen_transfer = Some(layout);
+            }
+            allow(layout)
+        })
+        .unwrap();
+    assert_eq!(observation.metadata.load(Ordering::Relaxed), 2);
+    assert_eq!(
+        association.document(),
+        association.origin().original_document()
+    );
+    assert_eq!(association.document().owner(), owner.identity());
+    assert!(association.latest().is_none());
+    assert!(association.policy().processing_origin().is_none());
+    assert_eq!(association.policy().profile(), Some(&profile));
+    let layout = seen_transfer.unwrap();
+    assert_eq!(layout.retained(), association.retained_layout().unwrap());
+    assert_eq!(layout.peak(), layout.retained().storage());
+    assert_eq!(
+        layout.closing_work().work_credits() + NativePolicy::layout().disposal().work_credits(),
+        layout.retained().disposal().work_credits(),
+    );
+    let HtmlCspNativePolicy::External(native) = association
+        .policy()
+        .borrow_native_with::<NativePolicy, _>(&profile, &mut allow)
+        .unwrap()
+    else {
+        panic!("expected the actual header policy");
+    };
+    assert_eq!(std::ptr::from_ref(native), original);
+    assert_eq!(&native.values[..native.len], &[0xd800, 0]);
+
+    let request = owner
+        .request_meta_insertion_with(&association, &profile, "next".into(), &mut allow)
+        .unwrap();
+    assert_eq!(request.prior_policy(), association.policy());
+    let unchanged = backend.attest_unchanged_with(&request, &mut allow).unwrap();
+    drop(
+        owner
+            .prepare_publication_with(&mut association, request, unchanged, &mut allow)
+            .unwrap()
+            .publish(),
+    );
+    assert!(association.latest().is_some());
+    drop(association);
+    assert_eq!(observation.drops.load(Ordering::Relaxed), 1);
+}
+
 #[derive(Debug, Eq, PartialEq)]
 enum NativeError {
     Capacity,

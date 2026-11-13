@@ -6102,6 +6102,9 @@ pub fn surgeist_html::security::csp::HtmlCspError<E>::fmt(&self, f: &mut core::f
 pub enum surgeist_html::security::csp::HtmlCspNativePolicy<'a, A: surgeist_html::security::csp::HtmlCspPolicyArtifact>
 pub surgeist_html::security::csp::HtmlCspNativePolicy::External(&'a A)
 pub surgeist_html::security::csp::HtmlCspNativePolicy::InitialEmpty
+pub enum surgeist_html::security::csp::HtmlCspPolicySource
+pub surgeist_html::security::csp::HtmlCspPolicySource::Header
+pub surgeist_html::security::csp::HtmlCspPolicySource::Meta
 #[non_exhaustive] pub enum surgeist_html::security::csp::HtmlCspUnavailable
 pub surgeist_html::security::csp::HtmlCspUnavailable::InitialEmptyProcessing
 pub surgeist_html::security::csp::HtmlCspUnavailable::NativeOwner
@@ -6141,6 +6144,18 @@ pub struct surgeist_html::security::csp::HtmlCspAssociationOrigin
 impl surgeist_html::security::csp::HtmlCspAssociationOrigin
 pub fn surgeist_html::security::csp::HtmlCspAssociationOrigin::original_document(&self) -> &surgeist_html::security::csp::HtmlCspDocumentId
 pub fn surgeist_html::security::csp::HtmlCspAssociationOrigin::transferred_from(&self) -> core::option::Option<(&surgeist_html::security::csp::HtmlCspDocumentId, &surgeist_html::security::csp::HtmlCspAssociationGeneration, surgeist_html::security::csp::HtmlCspAssociationCause)>
+pub struct surgeist_html::security::csp::HtmlCspDirective<'a>
+impl<'a> surgeist_html::security::csp::HtmlCspDirective<'a>
+pub fn surgeist_html::security::csp::HtmlCspDirective<'a>::name(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = u8> + 'a
+pub fn surgeist_html::security::csp::HtmlCspDirective<'a>::value_range(&self) -> core::ops::range::Range<usize>
+pub fn surgeist_html::security::csp::HtmlCspDirective<'a>::values(&self) -> surgeist_html::security::csp::HtmlCspDirectiveValues<'a>
+pub struct surgeist_html::security::csp::HtmlCspDirectiveValues<'a>
+impl<'a> surgeist_html::security::csp::HtmlCspDirectiveValues<'a>
+pub const fn surgeist_html::security::csp::HtmlCspDirectiveValues<'a>::new(value: &'a [u16]) -> Self
+pub fn surgeist_html::security::csp::HtmlCspDirectiveValues<'a>::next_with<E>(&mut self, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<&'a [u16]>, E>
+pub struct surgeist_html::security::csp::HtmlCspDirectives<'a>
+impl<'a> surgeist_html::security::csp::HtmlCspDirectives<'a>
+pub fn surgeist_html::security::csp::HtmlCspDirectives<'a>::next_with<E>(&mut self, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::security::csp::HtmlCspDirective<'a>>, E>
 pub struct surgeist_html::security::csp::HtmlCspDisposalWork
 impl surgeist_html::security::csp::HtmlCspDisposalWork
 pub fn surgeist_html::security::csp::HtmlCspDisposalWork::atomic_bytes(self) -> usize
@@ -6187,6 +6202,7 @@ pub fn surgeist_html::security::csp::HtmlCspPolicyState::eq(&self, other: &Self)
 pub struct surgeist_html::security::csp::HtmlCspProcessorAuthority
 impl surgeist_html::security::csp::HtmlCspProcessorAuthority
 pub fn surgeist_html::security::csp::HtmlCspProcessorAuthority::attest_changed_with<A: surgeist_html::security::csp::HtmlCspPolicyArtifact, E>(&mut self, request: &surgeist_html::security::csp::HtmlMetaCspRequest, artifact: alloc::sync::Arc<A>, admit: &mut impl core::ops::function::FnMut(surgeist_html::security::csp::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::security::csp::HtmlMetaCspPrepared, surgeist_html::security::csp::HtmlCspRejected<alloc::sync::Arc<A>, E>>
+pub fn surgeist_html::security::csp::HtmlCspProcessorAuthority::attest_response_policy_with<A: surgeist_html::security::csp::HtmlCspPolicyArtifact, E>(&mut self, owner: &mut surgeist_html::security::csp::HtmlCspOwner, profile: &surgeist_html::security::csp::HtmlCspProcessorProfile, artifact: alloc::sync::Arc<A>, admit: &mut impl core::ops::function::FnMut(surgeist_html::security::csp::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::security::csp::HtmlCspAssociation, surgeist_html::security::csp::HtmlCspRejected<alloc::sync::Arc<A>, E>>
 pub fn surgeist_html::security::csp::HtmlCspProcessorAuthority::attest_unchanged_with<E>(&mut self, request: &surgeist_html::security::csp::HtmlMetaCspRequest, admit: &mut impl core::ops::function::FnMut(surgeist_html::security::csp::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::security::csp::HtmlMetaCspPrepared, surgeist_html::security::csp::HtmlCspError<E>>
 pub fn surgeist_html::security::csp::HtmlCspProcessorAuthority::new_with<E>(admit: &mut impl core::ops::function::FnMut(surgeist_html::security::csp::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<Self, surgeist_html::security::csp::HtmlCspError<E>>
 pub fn surgeist_html::security::csp::HtmlCspProcessorAuthority::profile_with<E>(&self, semantic_version: u64, admit: &mut impl core::ops::function::FnMut(surgeist_html::security::csp::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::security::csp::HtmlCspProcessorProfile, surgeist_html::security::csp::HtmlCspError<E>>
@@ -6219,6 +6235,11 @@ impl<T, E> core::fmt::Display for surgeist_html::security::csp::HtmlCspRejected<
 pub fn surgeist_html::security::csp::HtmlCspRejected<T, E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: core::fmt::Debug, E: core::error::Error + 'static> core::error::Error for surgeist_html::security::csp::HtmlCspRejected<T, E>
 pub fn surgeist_html::security::csp::HtmlCspRejected<T, E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+pub struct surgeist_html::security::csp::HtmlCspSerializedPolicy<'a>
+impl<'a> surgeist_html::security::csp::HtmlCspSerializedPolicy<'a>
+pub fn surgeist_html::security::csp::HtmlCspSerializedPolicy<'a>::directive_with<E>(self, name: &[u8], step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::security::csp::HtmlCspDirective<'a>>, E>
+pub const fn surgeist_html::security::csp::HtmlCspSerializedPolicy<'a>::directives(self) -> surgeist_html::security::csp::HtmlCspDirectives<'a>
+pub const fn surgeist_html::security::csp::HtmlCspSerializedPolicy<'a>::new(units: &'a [u16], source: surgeist_html::security::csp::HtmlCspPolicySource) -> Self
 pub struct surgeist_html::security::csp::HtmlCspStorage
 impl surgeist_html::security::csp::HtmlCspStorage
 pub fn surgeist_html::security::csp::HtmlCspStorage::bytes(self) -> usize

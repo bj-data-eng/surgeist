@@ -5,6 +5,7 @@ use super::{checkpoint, formation};
 
 pub(in crate::store) enum Entry<'a> {
     Command(&'a Command),
+    VerifiedAttribute(&'a super::operation::attribute::Pending),
     Native {
         wrapper: Key,
         parent: Key,
@@ -254,6 +255,9 @@ impl Draft {
                 restore.draft.seed_headroom(cancel)?;
                 match entry {
                     Entry::Command(command) => restore.draft.apply(command, dom.limits, cancel),
+                    Entry::VerifiedAttribute(pending) => {
+                        pending.apply(restore.draft, dom.limits, cancel)
+                    }
                     Entry::Native {
                         wrapper,
                         parent,
@@ -372,6 +376,26 @@ impl Draft {
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
         scan.script_settings_wait = true;
+        Ok(true)
+    }
+
+    /// Count the private CSP request during the rollback-only Source scan.
+    pub(in crate::store) fn headroom_meta_csp(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        if self.source_headroom.is_none() {
+            return Ok(false);
+        }
+        self.source_step(cancel)?;
+        let scan = self
+            .source_headroom
+            .as_mut()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        scan.invocations = scan
+            .invocations
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
         Ok(true)
     }
 

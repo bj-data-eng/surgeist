@@ -14,7 +14,7 @@ use surgeist_html::values::DocumentString;
 
 mod index;
 mod ingress;
-pub(in crate::store) use ingress::Normalized;
+pub(in crate::store) use ingress::{Normalized, NormalizedCustody};
 #[cfg(test)]
 mod tests;
 use index::{Index, Prepared};

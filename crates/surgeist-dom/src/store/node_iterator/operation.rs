@@ -1,7 +1,8 @@
 use super::*;
-use crate::source::event::EventWork;
-use crate::{DomNodeFilterDecision, DomNodeIteratorProgress, DomSourceEventId};
+use crate::source::callback::CallbackWork;
+use crate::{DomNodeFilterDecision, DomNodeIteratorProgress};
 use std::cell::Cell;
+use std::sync::Weak;
 use traversal::Direction;
 
 struct Work {
@@ -25,7 +26,7 @@ impl Work {
 struct Tree<'a> {
     dom: &'a Dom,
     work: &'a Work,
-    source: Option<&'a EventWork>,
+    source: Option<&'a CallbackWork>,
     cancel: &'a AtomicBool,
 }
 
@@ -147,7 +148,7 @@ pub struct DomNodeIteratorFilterRequest {
     node: NodeId,
     direction: Direction,
     work: Work,
-    source: Option<DomSourceEventId>,
+    source: Option<Weak<CallbackWork>>,
     activation: Activation,
 }
 
@@ -182,7 +183,14 @@ impl DomNodeIteratorFilterRequest {
         }
         dom.require_source_entry()?;
         let source = dom.dispatch_hosted_read_work(cancel)?;
-        if source.as_deref().map(|work| work.identity) != self.source {
+        let same_scope = match (&self.source, &source) {
+            (None, None) => true,
+            (Some(expected), Some(active)) => expected
+                .upgrade()
+                .is_some_and(|expected| Arc::ptr_eq(&expected, active)),
+            _ => false,
+        };
+        if !same_scope {
             return Err(DomError::InvalidSourceEvent);
         }
         let mut cursor = dom.state.node_iterators.cursor(dom.owner, self.id)?.clone();
@@ -336,7 +344,7 @@ impl Dom {
                     node: next.node,
                     direction,
                     work,
-                    source: source.as_deref().map(|work| work.identity),
+                    source: source.as_ref().map(Arc::downgrade),
                     activation,
                 },
             ))

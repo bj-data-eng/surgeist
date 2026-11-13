@@ -128,7 +128,7 @@ fn insertion_enqueues_in_top_document_and_attribute_changes_alone_do_not_enqueue
     );
     edit(
         &mut session,
-        DomSourceEdit::set_attribute(node, "autofocus", ""),
+        DomSourceEdit::set_native_attribute(node, "autofocus", ""),
     );
     state(&session.snapshot(), top.document(), &[], false);
     edit(&mut session, DomSourceEdit::detach(node));
@@ -527,7 +527,7 @@ fn dialog_same_origin_tail_clears_actual_top_history_and_processed_blocks_later_
     for name in ["inert", "autofocus"] {
         edit(
             &mut session,
-            DomSourceEdit::set_attribute(subject, name, ""),
+            DomSourceEdit::set_native_attribute(subject, name, ""),
         );
     }
     let mut calls = Vec::new();
@@ -590,7 +590,7 @@ fn cross_origin_dialog_return_preserves_actual_nonempty_top_candidate_history() 
     for name in ["inert", "autofocus"] {
         edit(
             &mut session,
-            DomSourceEdit::set_attribute(subject, name, ""),
+            DomSourceEdit::set_native_attribute(subject, name, ""),
         );
     }
     let mut calls = Vec::new();

@@ -111,28 +111,9 @@ impl Draft {
         self.source_step(cancel)?;
         let receiver = self.resolve(edit.receiver().into())?;
         match edit {
-            Edit::TextContent { value, .. } => match self.node(receiver)?.kind() {
-                transaction::KindRead::Attr(_) => {
-                    self.set_detached_attr_value(receiver, value, limits, cancel)
-                }
-                transaction::KindRead::Element(_)
-                | transaction::KindRead::DocumentFragment
-                | transaction::KindRead::ShadowRoot(_) => {
-                    let (value, payload) = source::formation::shared_string(self, value, cancel)?;
-                    self.string_replace_all(receiver, value, payload, limits, cancel)
-                }
-                transaction::KindRead::Text(value) | transaction::KindRead::Comment(value) => {
-                    let count = value.len();
-                    self.compound_replace_data(receiver, count, edit, limits, cancel)
-                }
-                transaction::KindRead::ProcessingInstruction(value) => {
-                    let count = value.data().len();
-                    self.compound_replace_data(receiver, count, edit, limits, cancel)
-                }
-                transaction::KindRead::Document(_) | transaction::KindRead::DocumentType(_) => {
-                    Ok(())
-                }
-            },
+            Edit::TextContent { value, .. } => {
+                self.compound_text_content(receiver, value, limits, cancel)
+            }
             Edit::AdjacentText { position, data, .. } => {
                 self.element(receiver)?;
                 let text =
@@ -256,17 +237,42 @@ impl Draft {
             }
         }
     }
+    pub(super) fn compound_text_content(
+        &mut self,
+        receiver: Key,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        match self.node(receiver)?.kind() {
+            transaction::KindRead::Attr(_) => {
+                self.set_existing_attr_value(receiver, value, limits, cancel)
+            }
+            transaction::KindRead::Element(_)
+            | transaction::KindRead::DocumentFragment
+            | transaction::KindRead::ShadowRoot(_) => {
+                let (value, payload) = source::formation::shared_string(self, value, cancel)?;
+                self.string_replace_all(receiver, value, payload, limits, cancel)
+            }
+            transaction::KindRead::Text(current) | transaction::KindRead::Comment(current) => {
+                let count = current.len();
+                self.compound_replace_data(receiver, count, value, limits, cancel)
+            }
+            transaction::KindRead::ProcessingInstruction(current) => {
+                let count = current.data().len();
+                self.compound_replace_data(receiver, count, value, limits, cancel)
+            }
+            transaction::KindRead::Document(_) | transaction::KindRead::DocumentType(_) => Ok(()),
+        }
+    }
     fn compound_replace_data(
         &mut self,
         receiver: Key,
         count: usize,
-        edit: &Edit,
+        value: &DocumentString,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let Edit::TextContent { value, .. } = edit else {
-            return Err(DomError::InvalidSourceOperation);
-        };
         let (data, payload) = source::formation::shared_string(self, value, cancel)?;
         let receiver = self
             .published_id(receiver)

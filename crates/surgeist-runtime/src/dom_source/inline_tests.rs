@@ -194,7 +194,7 @@ fn compound_failure_delivers_partial_native_commit_and_releases_runtime_source_g
         .source_execution()
         .apply(
             &mut session.dom(),
-            DomSourceEdit::set_attribute(element, "id", "after-failure"),
+            DomSourceEdit::set_native_attribute(element, "id", "after-failure"),
             limits(),
             &mut DomSourceServices {
                 meta: None,
@@ -404,7 +404,7 @@ fn compound_failure_preserves_paired_inline_adoption_publication_through_native_
         .source_execution()
         .apply(
             &mut session.dom(),
-            DomSourceEdit::set_attribute(element, "data-next", "after-inline-failure"),
+            DomSourceEdit::set_native_attribute(element, "data-next", "after-inline-failure"),
             limits(),
             &mut DomSourceServices {
                 meta: None,
@@ -433,7 +433,7 @@ fn inline_setter_returns_original_complete_with_receipt_and_releases_source_owne
         .apply_with_inline_styles(
             &mut session.dom(),
             DomSourceInlineStyleEdit::new(
-                DomSourceEdit::set_attribute(element, "style", ";"),
+                DomSourceEdit::set_native_attribute(element, "style", ";"),
                 context,
                 requests(),
             ),
@@ -640,7 +640,7 @@ fn bound_retirement_returns_original_pair_and_releases_runtime_source_owner() {
         .source_execution()
         .apply(
             &mut session.dom(),
-            DomSourceEdit::set_attribute(keeper, "id", "still-live"),
+            DomSourceEdit::set_native_attribute(keeper, "id", "still-live"),
             limits(),
             &mut DomSourceServices {
                 meta: None,

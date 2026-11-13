@@ -1,8 +1,30 @@
 use super::*;
 
+pub(in crate::document_scripting) mod attributes;
 pub(in crate::document_scripting) mod move_before;
 pub(in crate::document_scripting) mod registered_origin;
 pub(in crate::document_scripting) mod shadow_root;
+pub(in crate::document_scripting) mod trusted_policy;
+
+pub(in crate::document_scripting) fn assert_queued_trusted_types_violations(
+    host: &DocumentScriptHost,
+    expected: &[(usize, &str, &str)],
+) {
+    let queue = host.native.trusted_types_reports.borrow();
+    if let Some(queue) = queue.as_ref() {
+        let target = host.native.attachment.get().unwrap().target;
+        assert_eq!(queue.origin().global, target.global());
+        assert_eq!(queue.origin().document, target.document());
+    }
+    let mut reports = queue.iter().flat_map(|queue| queue.iter());
+    for &(policy, resource, sample) in expected {
+        let report = reports.next().unwrap();
+        assert_eq!(report.policy_index(), policy);
+        assert_eq!(report.resource(), resource);
+        assert_eq!(report.sample(), units(sample));
+    }
+    assert!(reports.next().is_none());
+}
 
 fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
     let cancellation = Arc::new(AtomicBool::new(false));
@@ -10,7 +32,7 @@ fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
     attach_public_nodes(session, target, cancellation, node_work, source_work)
 }
 
-fn attach_public_nodes(
+pub(in crate::document_scripting) fn attach_public_nodes(
     mut session: DomSession,
     target: DomHostedTopLevel,
     cancellation: Arc<AtomicBool>,
@@ -79,11 +101,11 @@ pub(in crate::document_scripting) fn attach_public_nodes_with_registry_and_repor
             },
             registry,
             DocumentGuestEventLimits {
-                storage_bytes: 65_536,
+                storage_bytes: 96 * 1024,
                 work: 10_000,
                 pending_exception_reports,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),
-                source_edits: DomSourceLimits::new(16_000_000, 200_000, source_work, 64, 64, 64, 2),
+                source_edits: DomSourceLimits::new(16_000_000, 200_000, source_work, 64, 64, 64, 3),
                 dispatch: DomEventDispatchLimits {
                     path_items: 8,
                     snapshot_listeners: 8,

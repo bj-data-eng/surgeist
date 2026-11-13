@@ -237,8 +237,8 @@ impl Dom {
             return Ok(());
         };
         for _ in 0..steps {
-            if let Some(work) = op.observed_event_work() {
-                work.step(cancel)?;
+            if let Some(observation) = op.callback_observation() {
+                observation.work.step(cancel)?;
             } else {
                 op.draft.source_step(cancel)?;
             }

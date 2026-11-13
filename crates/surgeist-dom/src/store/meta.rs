@@ -10,7 +10,27 @@ mod scheme;
 #[cfg(test)]
 mod tests_css;
 
+#[derive(Clone, Copy)]
+pub(super) struct CspInsertion {
+    pub(super) subject: Key,
+    pub(super) document: Key,
+    pub(super) content: usize,
+    pub(super) ordinal: Option<u64>,
+    pub(super) applied: bool,
+}
+
 impl Draft {
+    pub(super) fn pending_meta_csp(&self) -> Option<CspInsertion> {
+        self.retained_meta_csp().filter(|frame| !frame.applied)
+    }
+
+    pub(super) fn retained_meta_csp(&self) -> Option<CspInsertion> {
+        match self.effects.last()?.effect {
+            select::Effect::MetaCsp(frame) => Some(frame),
+            _ => None,
+        }
+    }
+
     pub(super) fn meta_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         self.source_step(cancel)?;
         if let Some(recording) = &self.meta_recording {
@@ -64,10 +84,20 @@ impl Draft {
         attribute: Attr,
         cancel: &AtomicBool,
     ) -> Result<Option<&DocumentString>, DomError> {
+        Ok(self
+            .meta_attribute_index(key, attribute, cancel)?
+            .map(|(_, value)| value))
+    }
+    fn meta_attribute_index(
+        &self,
+        key: Key,
+        attribute: Attr,
+        cancel: &AtomicBool,
+    ) -> Result<Option<(usize, &DocumentString)>, DomError> {
         let transaction::KindRead::Element(element) = &self.node(key)?.kind() else {
             return Ok(None);
         };
-        for entry in element.attributes().iter() {
+        for (index, entry) in element.attributes().iter().enumerate() {
             self.meta_step(cancel)?;
             if entry.name().namespace_uri().is_none()
                 && self.meta_ascii(
@@ -79,7 +109,7 @@ impl Draft {
             {
                 #[cfg(test)]
                 source_observation::retained(self, entry.value(), false, cancel)?;
-                return Ok(Some(entry.value()));
+                return Ok(Some((index, entry.value())));
             }
         }
         Ok(None)
@@ -152,7 +182,9 @@ impl Draft {
                 return Ok(());
             }
         }
-        let Some(content) = self.meta_attribute(key, Attr::Content, cancel)? else {
+        let Some((content_index, content)) =
+            self.meta_attribute_index(key, Attr::Content, cancel)?
+        else {
             return Ok(());
         };
         match state {
@@ -279,7 +311,24 @@ impl Draft {
                 }
             }
             Pragma::ContentSecurityPolicy if !content.is_empty() => {
-                return Err(DomError::Meta(Failure::ContentSecurityPolicyUnsupported));
+                if self.source_limits.is_none() {
+                    return Err(DomError::Meta(Failure::ContentSecurityPolicyUnsupported));
+                }
+                if self.headroom_meta_csp(cancel)? {
+                    return Ok(());
+                }
+                self.push_effect(
+                    select::Effect::MetaCsp(CspInsertion {
+                        subject: key,
+                        document,
+                        content: content_index,
+                        ordinal: None,
+                        applied: false,
+                    }),
+                    self.effect_scoped,
+                    cancel,
+                )?;
+                return Err(DomError::MetaCspProcessingRequired);
             }
             _ => (),
         }
@@ -459,8 +508,33 @@ impl Draft {
             return Ok(());
         };
         self.meta_pragma(key, document, limits, cancel)?;
+        self.finish_meta_insertion(key, document, limits, cancel)
+    }
+    pub(super) fn finish_meta_insertion(
+        &mut self,
+        key: Key,
+        document: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         self.meta_referrer(key, cancel)?;
         self.meta_candidates(document, true, true, limits, cancel)
+    }
+
+    pub(super) fn meta_csp_content(
+        &self,
+        frame: CspInsertion,
+        cancel: &AtomicBool,
+    ) -> Result<&DocumentString, DomError> {
+        self.meta_step(cancel)?;
+        let transaction::KindRead::Element(element) = self.node(frame.subject)?.kind() else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        element
+            .attributes()
+            .get(frame.content)
+            .map(crate::DomAttribute::value)
+            .ok_or(DomError::InvalidSourceOperation)
     }
     pub(super) fn meta_removed(
         &mut self,
@@ -615,6 +689,65 @@ mod tests {
         .unwrap()
         .with_meta_processing_work(1_000_000)
     }
+
+    #[test]
+    fn source_meta_csp_insertion_waits_for_its_policy_without_publishing() {
+        use crate::{
+            DomSourceEdit, DomSourceLimits, DomSourcePhase, DomSourceProgress, DomSourceRequest,
+        };
+
+        let cancel = AtomicBool::new(false);
+        let mut dom = Dom::new(policy()).unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let head = setup.create_element_ns(&document, Namespace::html(), "head");
+        let meta = setup.create_element_ns(&document, Namespace::html(), "meta");
+        setup.insert_before(&head, &document, None);
+        setup.set_attribute(&meta, "http-equiv", "content-security-policy");
+        setup.set_attribute(&meta, "content", "require-trusted-types-for 'script'");
+        let created = dom.apply(setup, &cancel).unwrap();
+        let document = created.document(&document).unwrap();
+        let head = created.created(&head).unwrap().unwrap();
+        let meta = created.created(&meta).unwrap().unwrap();
+        let before = dom.snapshot().stamp();
+        let limits = DomSourceLimits::new(64_000_000, 4_000_000, 1_000_000, 64, 4096, 4096, 1);
+        let request = {
+            let mut lease = dom
+                .begin_source_edit(
+                    DomSourceEdit::insert_before(meta, head, None),
+                    limits,
+                    &cancel,
+                )
+                .unwrap();
+            let progress = lease.advance(&cancel);
+            let Ok(DomSourceProgress::Request(DomSourceRequest::MetaCsp(request))) = progress
+            else {
+                panic!("expected policy service on the reached Meta insertion, got {progress:?}");
+            };
+            assert_eq!(request.operation(), lease.operation());
+            assert_eq!(request.subject(), Some(meta));
+            assert_eq!(request.document(), Some(document));
+            assert_eq!(lease.status().phase(), DomSourcePhase::MetaCsp);
+            assert_eq!(lease.snapshot().stamp(), before);
+            request
+        };
+        let mut lease = dom
+            .resume_source_edit(request.operation(), limits, &cancel)
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancel).unwrap(),
+            DomSourceProgress::Request(DomSourceRequest::MetaCsp(again)) if again == request
+        ));
+        assert_eq!(lease.snapshot().stamp(), before);
+        lease.request_cancel();
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("explicit cancellation must close the original private insertion");
+        };
+        assert!(done.cancellation_requested());
+        assert_eq!(lease.snapshot().stamp(), before);
+        assert_eq!(lease.snapshot().node(meta).unwrap().parent(), None);
+    }
+
     fn actual_source_meta_read(
         bytes: usize,
         require_complete: bool,

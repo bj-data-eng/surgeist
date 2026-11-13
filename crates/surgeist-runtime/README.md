@@ -341,6 +341,31 @@ and native hierarchy and reference failures become the corresponding guest
 DOMExceptions.
 AbortSignal and wider descendant navigation are separate capabilities.
 
+The native node interfaces expose live Attr values and ownership, Element
+attribute value and node operations, and Document Attr factories. Attribute
+writes use canonical Source verification. A default policy can reenter those
+operations, create detached nodes and change the attribute the original write
+will observe. Runtime retains the exact native continuation across a host
+refusal. Use `resume_pending_attribute_write` to settle that write without
+rerunning the guest policy.
+An Attr replacement admits the exact return wrapper before mutation. If an
+accepted verification stops at that admission, live native retry returns the
+pending output request. The stopped host can settle the original native
+attachment and its exact output without entering JavaScript.
+
+Call `DomSession::enable_trusted_types_csp` to select the Session processor for
+the hosted initial `about:blank` profile. Runtime serves reached Meta policies
+through the original Source request. The Window's `trustedTypes` factory
+exposes policy creation, the default policy and the policy methods
+`createHTML`, `createScript` and `createScriptURL`. Attach the guest event
+registry before delivery. `run_attached_csp_violation_task` services one queued
+violation for its original Document and Window. Retry resumes the same event
+and listener position. The host controls microtask checkpoints.
+
+Full NamedNodeMap collection behavior, HTTP response CSP and the inline Style
+policy service have separate integration work. A reached service with
+unavailable authority refuses or retains its original native request.
+
 An attachment can enable callable Window timers with `WindowTimerLimits`.
 `setTimeout` keeps the callable and arguments in the attached Window's realm.
 `clearTimeout` releases the registration. Runtime orders admitted timers by

@@ -1,4 +1,9 @@
-//! Neutral qualified meta CSP transitions over caller-owned native artifacts.
+//! CSP directive syntax and qualified policy custody over caller-owned artifacts.
+
+pub use crate::internal::security::csp_directives::{
+    HtmlCspDirective, HtmlCspDirectiveValues, HtmlCspDirectives, HtmlCspPolicySource,
+    HtmlCspSerializedPolicy,
+};
 
 pub use crate::internal::security::csp_policy::accounting::{
     HtmlCspArtifactLayout, HtmlCspDisposalWork, HtmlCspLayout, HtmlCspStorage,

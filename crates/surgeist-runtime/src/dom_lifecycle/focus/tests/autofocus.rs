@@ -260,6 +260,61 @@ fn actual_insertion_denial_receipt_survives_refusal_cancel_foreign_source_and_pe
 }
 
 #[test]
+fn stale_focus_request_refuses_on_an_observing_source_lease() {
+    let mut case = parked_insertion();
+    let request = DomFocusRequest::AllowAutofocusInsertion(case.request.clone());
+    let cancel = AtomicBool::new(false);
+    let hosted = case.session.hosted_execution();
+    let owner = hosted.state().unwrap();
+    let limits = source_limits(10_000_000);
+    let mut dom = case.session.dom();
+    {
+        let mut lease = dom
+            .resume_source_edit(request.operation(), limits, &cancel)
+            .unwrap();
+        assert!(hosted.service_focus(&mut lease, &request, &cancel).unwrap());
+        assert!(matches!(
+            lease.advance(&cancel).unwrap(),
+            DomSourceProgress::Complete(_)
+        ));
+    }
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let dialog = setup.create_element_ns(&document, Namespace::html(), "dialog");
+    setup.insert_before(&dialog, &document, None);
+    let dialog = dom
+        .apply(setup, &cancel)
+        .unwrap()
+        .created(&dialog)
+        .unwrap()
+        .unwrap();
+    let mut lease = dom
+        .begin_source_edit(DomSourceEdit::show_dialog(dialog), limits, &cancel)
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Event(event)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("expected the Dialog event observation");
+    };
+    let stamp = lease.snapshot().stamp();
+    let source = &owner.borrow().source;
+    assert!(matches!(
+        lease.prepare_focus(&request, source, &cancel),
+        Err(DomError::InvalidSourceOperation)
+    ));
+    assert!(matches!(
+        lease.accept_focus(&request, source, &mut None, &cancel),
+        Err(DomError::InvalidSourceOperation)
+    ));
+    assert_eq!(lease.snapshot().stamp(), stamp);
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Request(DomSourceRequest::Event(current))
+            if current.identity() == event.identity()
+    ));
+}
+
+#[test]
 fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_effect() {
     for short in [true, false] {
         let (mut session, host, _) = fixture();
@@ -288,7 +343,7 @@ fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_e
                 .source_execution()
                 .apply(
                     &mut session.dom(),
-                    DomSourceEdit::set_attribute(subject, name, ""),
+                    DomSourceEdit::set_native_attribute(subject, name, ""),
                     source_limits(10_000_000),
                     &mut DomSourceServices {
                         meta: None,

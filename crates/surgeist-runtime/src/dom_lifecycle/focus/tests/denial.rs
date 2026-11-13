@@ -137,7 +137,7 @@ fn parked(
     if retain_window {
         let opened = session.source_execution().apply(
             &mut session.dom(),
-            DomSourceEdit::set_attribute(sentinel, "open", ""),
+            DomSourceEdit::set_native_attribute(sentinel, "open", ""),
             source_limits(10_000_000),
             &mut DomSourceServices {
                 meta: None,

@@ -171,7 +171,7 @@ fn called_request_close_admits_exact_five_revisions_and_phases_before_its_first_
         let original = {
             let mut lease = dom
                 .begin_source_edit(
-                    DomSourceEdit::set_attribute(subject, "open", ""),
+                    DomSourceEdit::set_native_attribute(subject, "open", ""),
                     limits(),
                     &cancel,
                 )

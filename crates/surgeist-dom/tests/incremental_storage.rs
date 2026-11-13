@@ -419,7 +419,7 @@ fn local_source_attribute_edit_completes_with_fixed_work_despite_unrelated_recor
         let cancel = AtomicBool::new(false);
         let mut lease = dom
             .begin_source_edit(
-                DomSourceEdit::set_attribute(root, "data-local", "changed"),
+                DomSourceEdit::set_native_attribute(root, "data-local", "changed"),
                 source_limits(WORK),
                 &cancel,
             )

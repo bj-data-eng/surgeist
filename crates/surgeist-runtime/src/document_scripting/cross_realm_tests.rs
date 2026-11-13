@@ -2,6 +2,7 @@ mod authored_toggle;
 mod declarative_shadow;
 mod element_tasks;
 mod nested_dispatch;
+mod trusted_attribute;
 
 use super::*;
 use crate::{
@@ -33,25 +34,43 @@ fn hosted_session_with_details(
     source_jobs: usize,
     details_intentions: usize,
 ) -> (DomSession, DomHostedTopLevel) {
-    let dom = Dom::new(
-        DomLimits::new(
-            128,
-            200_000,
-            256,
-            256,
-            256,
-            32,
-            1_000_000,
-            DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
-        )
-        .unwrap()
-        .with_dispatch_custody(
-            DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
-        )
-        .with_details_toggle_intentions(details_intentions)
-        .unwrap(),
+    hosted_session_with_dom_limits(cancel, source_jobs, details_intentions, |limits| limits)
+}
+
+fn hosted_session_with_dom_limits(
+    cancel: &AtomicBool,
+    source_jobs: usize,
+    details_intentions: usize,
+    configure: impl FnOnce(DomLimits) -> DomLimits,
+) -> (DomSession, DomHostedTopLevel) {
+    let dom = Dom::new(configure(scripting_dom_limits(200_000, details_intentions))).unwrap();
+    hosted_session_with_dom(cancel, source_jobs, dom)
+}
+
+fn scripting_dom_limits(units: usize, details_intentions: usize) -> DomLimits {
+    DomLimits::new(
+        128,
+        units,
+        256,
+        256,
+        256,
+        32,
+        1_000_000,
+        DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
-    .unwrap();
+    .unwrap()
+    .with_dispatch_custody(
+        DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+    )
+    .with_details_toggle_intentions(details_intentions)
+    .unwrap()
+}
+
+fn hosted_session_with_dom(
+    cancel: &AtomicBool,
+    source_jobs: usize,
+    dom: Dom,
+) -> (DomSession, DomHostedTopLevel) {
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
@@ -226,6 +245,21 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     element_tasks::verify_attached_element_tasks();
     nested_dispatch::verify_nested_authored_dispatch();
     authored_toggle::verify_authored_toggle_constructor();
+    super::guest::tests::attributes::detached_attribute_keeps_its_live_native_identity();
+    super::guest::tests::attributes::element_methods_return_the_exact_attribute();
+    super::guest::tests::attributes::refused_verified_replacement_keeps_its_exact_output();
+    super::guest::tests::attributes::inherited_node_values_use_canonical_text();
+    trusted_attribute::hosted_attribute_policy_reads_charge_the_parked_source_and_preserve_exact_input();
+    trusted_attribute::hosted_meta_source_publishes_ordered_csp_for_the_registered_attribute_verifier();
+    trusted_attribute::guest_tree_edits_deliver_original_meta_policies();
+    trusted_attribute::guest_meta_without_processor_preserves_original_source();
+    trusted_attribute::guest_meta_retry_preserves_accepted_first_policy();
+    trusted_attribute::guest_attribute_policy_keeps_original_authority_after_adoption();
+    trusted_attribute::guest_attribute_policy_verifies_html_and_svg_sinks();
+    trusted_attribute::guest_verification_without_callback_retains_the_native_continuation();
+    trusted_attribute::default_factory_retains_the_real_guest_callback();
+    super::guest::tests::trusted_policy::window_factory_creates_the_exact_default_policy();
+    super::guest::tests::trusted_policy::guest_attribute_writes_reach_the_native_element();
     declarative_shadow::verify_declarative_shadow_reuse();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
@@ -306,6 +340,7 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         + FailureSlot::storage_bytes()
         + SourceFailureSlot::storage_bytes()
         + DomDocumentScriptRegistration::storage_bytes()
+        + REGISTRATION_ACCESS_BYTES
         + escape
         + HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes()
         + dom_exception
@@ -477,7 +512,7 @@ impl Projection {
                     source
                         .apply(
                             dom,
-                            DomSourceEdit::set_attribute(self.dialog, "open", ""),
+                            DomSourceEdit::set_native_attribute(self.dialog, "open", ""),
                             SOURCE,
                             &mut services,
                             cancel,
@@ -698,6 +733,9 @@ fn public_and_source_comment_projection_share_identity() {
                     if (comment !== publicComment || comment.marker !== 42) {
                         throw new Error("Source must delegate the original public Comment");
                     }
+                    if (comment.nodeValue !== "A's native Comment") throw new Error("wrong Source nodeValue");
+                    comment.textContent = 'new\ud800';
+                    if (comment.nodeValue !== 'new\ud800') throw new Error("wrong Source textContent");
                     detachIf(1, publicComment);
                 }"#,
                 &cancel,
@@ -896,6 +934,7 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
             r#"
             globalThis.sentinel = {};
             globalThis.cancelChecks = false;
+            const cancelAttr = document.createAttribute('data-cancel');
             let removedCalls = 0;
             const removed = () => { removedCalls++; };
             dialog.addEventListener("cancel", function (event) {
@@ -916,6 +955,11 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
                 const path = event.composedPath();
                 cancelChecks &&= path[0] === dialog
                     && path[1] instanceof HTMLBodyElement && path.includes(attachedDocument);
+                cancelChecks &&= dialog.setAttributeNode(cancelAttr) === null
+                    && dialog.getAttributeNode('data-cancel') === cancelAttr
+                    && dialog.removeAttributeNode(cancelAttr) === cancelAttr;
+                dialog.textContent = 'native event\ud800';
+                cancelChecks &&= dialog.textContent === 'native event\ud800';
                 event.currentTarget.removeEventListener("cancel", removed);
                 event.preventDefault();
             }, {once: true});
@@ -1313,7 +1357,7 @@ fn start_attached_cancel(
             source
                 .apply(
                     dom,
-                    DomSourceEdit::set_attribute(dialog, "open", ""),
+                    DomSourceEdit::set_native_attribute(dialog, "open", ""),
                     SOURCE,
                     services,
                     cancel

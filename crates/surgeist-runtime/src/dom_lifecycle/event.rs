@@ -337,6 +337,27 @@ impl HostedRuntime {
         state.sample_event_creation(dom, &association, cancel)
     }
 
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn create_csp_violation_event(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        event_type: &[u16],
+        init: crate::dom_event::AuthoredCspViolationInit<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<NativeDomEvent, DomEventConstructionError> {
+        let creation = self.authored_event_creation(dom, global, cancel)?;
+        NativeDomEvent::authored_csp_violation(
+            dom,
+            self.event_storage.clone(),
+            creation,
+            event_type,
+            init,
+            cancel,
+        )
+        .map_err(Into::into)
+    }
+
     /// Construct an untrusted, uninitialized Event using the receiving
     /// Document's actual relevant Global and original time origin.
     ///

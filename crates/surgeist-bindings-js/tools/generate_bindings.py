@@ -840,6 +840,11 @@ def conversion_type(ty, model, aliases=frozenset()):
         if inner[0] in {d["name"] for d in model["dictionaries"]}:
             return None
         return ("Option<" + inner[0] + ">", "Nullable<" + inner[1] + ">", inner[2] + ".nullable()")
+    if ty["kind"] == "union" and ty["members"] == [
+        {"kind": "named", "name": "TrustedType"}, {"kind": "named", "name": "DOMString"}
+    ]:
+        return ("TrustedAttributeValue", "Type<TrustedAttributeValue>",
+                "types::TRUSTED_ATTRIBUTE_VALUE")
     if ty["kind"] != "named":
         return None
     name = ty["name"]
@@ -905,6 +910,8 @@ def emit_conversions(model, arguments=(), annotated_setters=()):
               "//! Closed scoped conversion descriptors from the retained declarations.", "",
               "use super::{",
               "    Argument, Conversion, Converted, Enumeration, Failure, IntegerType, Nullable, Type, types,", "};"]
+    if any(a["info"][0] == "TrustedAttributeValue" for a in arguments):
+        result.append("use crate::TrustedAttributeValue;")
     for definition in sorted(model["enumerations"] + model["dictionaries"], key=lambda definition: definition["name"]):
         result.append("use crate::declarations::" + definition["name"] + ";")
     result += ["use crate::{DomString, IntegerKind, IntegerMode, IntegerValue, UsvString, Value};", ""]
