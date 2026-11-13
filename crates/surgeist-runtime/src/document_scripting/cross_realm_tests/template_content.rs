@@ -6,7 +6,7 @@ use crate::document_scripting::guest::tests::{
 pub(super) fn template_content_is_the_live_owned_inert_fragment() {
     let cancel = Arc::new(AtomicBool::new(false));
     let (session, target) = hosted_session(&cancel, 0);
-    let mut host = attach_public_nodes(session, target, cancel, 8_000, 80_000);
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 8_000, 80_000);
     let permit = host.permit().unwrap();
     host.in_document(&permit, |scope| {
         let result = evaluate(scope, r#"
@@ -52,6 +52,36 @@ pub(super) fn template_content_is_the_live_owned_inert_fragment() {
             })()
         "#)?;
         assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
+        Ok(())
+    }).unwrap();
+    let probe = host
+        .in_document(&permit, |scope| {
+            let probe = evaluate(
+                scope,
+                "globalThis.templateDocumentProbe = document.createElement('div')",
+            )?;
+            projected_node_id(scope, &probe)
+        })
+        .unwrap();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        batch.adopt(probe, &document);
+        batch.insert_before(probe, &document, None);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        let result = evaluate(scope, r#"
+            (() => {
+                const receiving = templateDocumentProbe.ownerDocument;
+                const template = receiving.createElementNS('http://www.w3.org/1999/xhtml', 'template');
+                const fragment = template.content;
+                return fragment instanceof DocumentFragment && fragment === template.content &&
+                    fragment.ownerDocument !== receiving && fragment.ownerDocument !== document;
+            })()
+        "#)?;
+        assert!(scope.boolean(&result)?);
         Ok(())
     }).unwrap();
 }
