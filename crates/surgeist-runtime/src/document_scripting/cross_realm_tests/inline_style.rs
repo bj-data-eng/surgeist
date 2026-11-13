@@ -256,9 +256,13 @@ pub(super) fn guest_style_reports_to_current_window_for_another_document() {
     let style = batch.create_element_ns(target.document(), Namespace::html(), "style");
     let text = batch.create_text(target.document(), "p { color: red }");
     batch.insert_before(&text, &style, None);
+    let projection_style = batch.create_element_ns(target.document(), Namespace::html(), "style");
+    let projection_text = batch.create_text(target.document(), "p { color: blue }");
+    batch.insert_before(&projection_text, &projection_style, None);
     let commit = session.dom().apply(batch, &cancel).unwrap();
     let meta = commit.created(&meta).unwrap().unwrap();
     let style = commit.created(&style).unwrap().unwrap();
+    let projection_style = commit.created(&projection_style).unwrap().unwrap();
     session.enable_trusted_types_csp(&cancel).unwrap();
     install_policy_before_style_retry(&mut session, meta, head, &cancel);
     let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
@@ -266,6 +270,7 @@ pub(super) fn guest_style_reports_to_current_window_for_another_document() {
     host.register_node_creation_realm(&permit, other).unwrap();
     expose_public_node_for_source_test(&mut host, &permit, destination, "otherStyleParent");
     expose_public_node_for_source_test(&mut host, &permit, style, "movedStyle");
+    expose_public_node_for_source_test(&mut host, &permit, projection_style, "projectionStyle");
     host.in_document(&permit, |scope| {
         let result = evaluate(scope, r#"
             globalThis.otherStyleReports = [];
@@ -315,6 +320,44 @@ pub(super) fn guest_style_reports_to_current_window_for_another_document() {
         Ok(())
     })
     .unwrap();
+    let result = host.in_document(&permit, |scope| {
+        evaluate(scope, "otherStyleParent.appendChild(projectionStyle)").map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("the projection realm has no native report owner: {result:?}");
+    };
+    let parked = host
+        .with_native(|dom, _, _| dom.pending_source_edit().unwrap())
+        .unwrap();
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::SourcePending(operation)) if *operation == parked.operation()
+    ));
+    assert!(matches!(
+        host.resume_pending_style_edit(&permit, parked.operation(), SOURCE)
+            .unwrap()
+            .unwrap(),
+        DomSourceDriveProgress::Pending {
+            reason: DomSourceUnavailable::Style(crate::DomStyleUnavailable::InlinePolicy),
+            ..
+        }
+    ));
+    crate::document_scripting::guest::tests::assert_queued_trusted_types_violations(&host, &[]);
+    let mut stopped = host.stop();
+    assert!(matches!(
+        stopped.settle_pending_style_edit(parked.operation(), SOURCE).unwrap().unwrap(),
+        DomSourceDriveProgress::Complete(done) if done.operation() == parked.operation()
+    ));
+    assert_eq!(
+        stopped
+            .into_session()
+            .unwrap()
+            .snapshot()
+            .node(projection_style)
+            .unwrap()
+            .parent(),
+        Some(destination)
+    );
 }
 
 pub(super) fn character_data_edit_in_a_native_listener_settles_style_before_return() {
