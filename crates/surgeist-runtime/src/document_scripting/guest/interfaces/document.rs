@@ -194,6 +194,7 @@ pub(in crate::document_scripting::guest) enum GuestNode {
     ShadowRoot(NodeId),
     Text(NodeId),
     Comment(NodeId),
+    ProcessingInstruction(NodeId),
     Element(NodeId),
     Attr(NodeId),
 }
@@ -207,6 +208,7 @@ impl GuestNode {
             | Self::ShadowRoot(id)
             | Self::Text(id)
             | Self::Comment(id)
+            | Self::ProcessingInstruction(id)
             | Self::Element(id)
             | Self::Attr(id) => id,
         }
@@ -220,6 +222,7 @@ impl GuestNode {
             (Self::ShadowRoot(_), DomNodeKind::ShadowRoot(_)) => Ok(11.0),
             (Self::Text(_), DomNodeKind::Text(_)) => Ok(3.0),
             (Self::Comment(_), DomNodeKind::Comment(_)) => Ok(8.0),
+            (Self::ProcessingInstruction(_), DomNodeKind::ProcessingInstruction(_)) => Ok(7.0),
             (Self::Element(_), DomNodeKind::Element(_)) => Ok(1.0),
             (Self::Attr(_), DomNodeKind::Attr(_)) => Ok(2.0),
             _ => Err(DocumentScriptNativeError::ProjectionCustody),

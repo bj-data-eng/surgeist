@@ -66,6 +66,7 @@ impl CharacterKind {
 pub(super) struct CharacterBindings {
     text: RetainedCallbackObject,
     comment: RetainedCallbackObject,
+    pub(super) processing_instruction: RetainedCallbackObject,
 }
 
 impl CharacterBindings {
@@ -133,7 +134,34 @@ impl CharacterBindings {
             funding,
             constructors,
         )?;
-        Ok(Self { text, comment })
+        let (_, instruction) = install_derived_interface(
+            scope,
+            &prototype,
+            &interface,
+            FunctionMetadata {
+                name: &ascii(b"ProcessingInstruction"),
+                length: 1,
+            },
+            &illegal_constructor(),
+        )?;
+        let capture = (funding.capture)(size_of::<Capture>())?;
+        install_getter(
+            scope,
+            &instruction,
+            &ascii(b"target"),
+            &ascii(b"get target"),
+            true,
+            Callback::new(move |scope, arguments| {
+                capture.processing_instruction_target(scope, arguments)
+            }),
+        )?;
+        let observed = scope.callback_object(&instruction)?;
+        let processing_instruction = scope.retain_callback_object(observed, funding.retain)?;
+        Ok(Self {
+            text,
+            comment,
+            processing_instruction,
+        })
     }
 
     fn install_kind<'scope>(
@@ -260,6 +288,31 @@ impl GuestEvents {
 }
 
 impl Capture {
+    fn processing_instruction_target<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let Some(GuestNode::ProcessingInstruction(id)) =
+            tree::projected_node(scope, arguments.receiver())?
+        else {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"ProcessingInstruction required"))?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let target = self.callbacks.with_read(&owner, &events, |read, _| {
+                let DomNodeKind::ProcessingInstruction(instruction) = read.node(id)?.kind() else {
+                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
+                };
+                Ok(instruction.target().clone())
+            })?;
+            self.copy_dom_units(scope, target.code_units())
+        })();
+        complete(scope, &events, result)
+    }
+
     fn construct_character<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -416,6 +469,10 @@ impl Capture {
             match (id, node.kind()) {
                 (GuestNode::Text(_), DomNodeKind::Text(data))
                 | (GuestNode::Comment(_), DomNodeKind::Comment(data)) => Ok(data.clone()),
+                (
+                    GuestNode::ProcessingInstruction(_),
+                    DomNodeKind::ProcessingInstruction(value),
+                ) => Ok(value.data().clone()),
                 _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
             }
         })
@@ -429,7 +486,12 @@ fn character_receiver<'scope>(
     Ok(scope
         .native_object::<GuestNodeProjection>(receiver)?
         .and_then(|value| value.payload().id())
-        .filter(|id| matches!(id, GuestNode::Text(_) | GuestNode::Comment(_))))
+        .filter(|id| {
+            matches!(
+                id,
+                GuestNode::Text(_) | GuestNode::Comment(_) | GuestNode::ProcessingInstruction(_)
+            )
+        }))
 }
 
 pub(in crate::document_scripting::guest::interfaces) fn copy_native_data(

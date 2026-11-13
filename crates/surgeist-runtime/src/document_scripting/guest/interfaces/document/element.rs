@@ -89,6 +89,7 @@ enum NativeProjection {
     Fragment,
     ShadowRoot,
     Character(CharacterKind),
+    ProcessingInstruction,
     Element(ElementInterface),
     Attr(DomAttrId),
 }
@@ -680,6 +681,7 @@ impl PublicEventBindings {
                         | DomNodeKind::ShadowRoot(_)
                         | DomNodeKind::Text(_)
                         | DomNodeKind::Comment(_)
+                        | DomNodeKind::ProcessingInstruction(_)
                         | DomNodeKind::Element(_)
                         | DomNodeKind::Attr(_)
                 ) {
@@ -703,6 +705,9 @@ impl PublicEventBindings {
                 let origin = origin.ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
                 if matches!(node.kind(), DomNodeKind::DocumentType(_)) {
                     return Ok((origin, attached, NativeProjection::DocumentType));
+                }
+                if matches!(node.kind(), DomNodeKind::ProcessingInstruction(_)) {
+                    return Ok((origin, attached, NativeProjection::ProcessingInstruction));
                 }
                 if matches!(node.kind(), DomNodeKind::DocumentFragment) {
                     return Ok((origin, attached, NativeProjection::Fragment));
@@ -779,6 +784,11 @@ impl PublicEventBindings {
                 scope,
                 kind.project(node),
                 documents.character_data.prototype(kind),
+            ),
+            NativeProjection::ProcessingInstruction => watch(
+                scope,
+                GuestNode::ProcessingInstruction(node),
+                &documents.character_data.processing_instruction,
             ),
             NativeProjection::Element(interface) => {
                 let prototype = elements.prototype(interface, || admission.step())?;
