@@ -5,6 +5,105 @@ use super::*;
 use surgeist_dom::{DomBatch, DomNodeKind};
 use surgeist_html::values::{DocumentString, Namespace};
 
+pub(in crate::document_scripting) fn refused_verified_replacement_keeps_its_exact_output() {
+    let mut host = public_node_host(5_000, 60_000);
+    let permit = host.permit().unwrap();
+    let cancel = host.native.cancellation.clone();
+    let (element, old) = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let element = batch.create_element_ns(permit.document, Namespace::html(), "div");
+            batch.set_attribute(&element, "onclick", "original");
+            let element = dom
+                .apply(batch, &cancel)
+                .unwrap()
+                .created(&element)
+                .unwrap()
+                .unwrap();
+            let old = dom
+                .snapshot()
+                .node(element)
+                .unwrap()
+                .get_attribute_node(&"onclick".into())
+                .unwrap()
+                .id();
+            (element, old)
+        })
+        .unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, element, "verifiedOwner");
+    let incoming = host.in_document(&permit, |scope| {
+        let value = scope.evaluate(&units(
+            "globalThis.incoming = document.createAttribute('onclick'); incoming.value = 'next'; incoming",
+        ))?;
+        Ok(scope.native_object::<GuestNodeProjection>(&value)?.unwrap().payload().id().unwrap().node())
+    }).unwrap();
+    let events = host.guest_events().unwrap();
+    let initial_backing = events.budget.used.get();
+    refuse_next_source_node_validation(&host);
+    let before = host.snapshot().unwrap().stamp();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units("verifiedOwner.setAttributeNode(incoming)"))
+            .map(drop)
+    });
+    assert!(
+        matches!(
+            result,
+            Err(DocumentScriptError::Script(Error::BackendUnavailable))
+        ),
+        "{result:?}"
+    );
+    let status = host
+        .with_native(|dom, _, _| dom.pending_source_edit().unwrap())
+        .unwrap();
+    assert_eq!(
+        status.phase(),
+        surgeist_dom::DomSourcePhase::AttributeAttachmentOutput
+    );
+    assert_eq!(host.snapshot().unwrap().stamp(), before);
+    assert_eq!(
+        events.budget.used.get(),
+        initial_backing + size_of::<super::super::PendingAttribute>()
+    );
+    let limits = events.limits.source_edits;
+    let progress = host
+        .resume_pending_attribute_write(&permit, limits)
+        .unwrap()
+        .unwrap();
+    let crate::DomSourceDriveProgress::Pending {
+        request: surgeist_dom::DomSourceRequest::AttributeAttachmentOutput(request),
+        ..
+    } = progress
+    else {
+        panic!("original Attr output must remain pending");
+    };
+    assert_eq!(request.operation(), status.operation());
+    assert_eq!(request.replaced(), old);
+    drop(events);
+    let mut stopped = host.stop();
+    let progress = stopped
+        .abandon_pending_attribute_write(limits)
+        .unwrap()
+        .unwrap();
+    let crate::DomSourceDriveProgress::Complete(done) = progress else {
+        panic!("the stopped owner must complete the same accepted verification");
+    };
+    assert_eq!(done.operation(), status.operation());
+    assert!(matches!(
+        done.output(),
+        Some(surgeist_dom::DomSourceOutput::AttributeAttachment(
+            surgeist_dom::DomAttributeAttachment::Replaced(id)
+        )) if id == old
+    ));
+    let session = stopped.into_session().unwrap();
+    let snapshot = session.snapshot();
+    assert!(snapshot.attr(old.node()).unwrap().owner_element().is_none());
+    assert_eq!(
+        snapshot.attr(incoming).unwrap().owner_element(),
+        Some(element)
+    );
+}
+
 pub(in crate::document_scripting) fn inherited_node_values_use_canonical_text() {
     let mut host = public_node_host(5_000, 20_000);
     let permit = host.permit().unwrap();
@@ -271,7 +370,14 @@ pub(in crate::document_scripting) fn element_methods_return_the_exact_attribute(
         "#))?;
         let projection = scope.native_object::<GuestNodeProjection>(&value)?.unwrap();
         Ok(projection.payload().id().unwrap().node())
-    }).unwrap();
+    });
+    if let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = &removed {
+        panic!(
+            "attribute operations failed: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        );
+    }
+    let removed = removed.unwrap();
     assert_eq!(removed, unprojected);
     assert_eq!(
         host.snapshot()

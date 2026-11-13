@@ -2110,6 +2110,9 @@ impl DomDocumentScriptRegistration {
 impl Drop for DomDocumentScriptRegistration {
     fn drop(&mut self) {
         let _ = self.0.end.set(ScriptRegistrationEnd::EngineDisposed);
+        self.0
+            .engine_disposed
+            .store(true, std::sync::atomic::Ordering::Release);
     }
 }
 
@@ -2125,6 +2128,7 @@ pub(crate) struct ScriptRegistration {
     pub(crate) global: DomHostedGlobalId,
     pub(crate) navigable: DomHostedNavigableId,
     pub(crate) end: std::sync::OnceLock<ScriptRegistrationEnd>,
+    pub(crate) engine_disposed: std::sync::atomic::AtomicBool,
     pub(crate) _backing: DomHostedRuntimeRetention,
 }
 

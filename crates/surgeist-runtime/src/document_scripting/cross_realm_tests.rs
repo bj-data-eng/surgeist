@@ -247,6 +247,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     authored_toggle::verify_authored_toggle_constructor();
     super::guest::tests::attributes::detached_attribute_keeps_its_live_native_identity();
     super::guest::tests::attributes::element_methods_return_the_exact_attribute();
+    super::guest::tests::attributes::refused_verified_replacement_keeps_its_exact_output();
     super::guest::tests::attributes::inherited_node_values_use_canonical_text();
     trusted_attribute::hosted_attribute_policy_reads_charge_the_parked_source_and_preserve_exact_input();
     trusted_attribute::hosted_meta_source_publishes_ordered_csp_for_the_registered_attribute_verifier();

@@ -47,6 +47,18 @@ impl Watches {
         }
     }
 
+    pub(super) fn is_open(&self, slot: WatchSlot) -> bool {
+        let armed = match self {
+            Self::Single(armed) if slot.0 == 0 => armed.as_deref(),
+            Self::Shared(shared) => match shared.slots.get(slot.0) {
+                Some(Entry::Armed(armed)) => Some(armed.as_ref()),
+                _ => None,
+            },
+            _ => None,
+        };
+        armed.is_some_and(|armed| lock(&armed.queue).open)
+    }
+
     pub(super) fn delivery_work(&self) -> (usize, usize) {
         match self {
             Self::Single(armed) => (0, usize::from(armed.is_some())),

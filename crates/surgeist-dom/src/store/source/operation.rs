@@ -93,6 +93,7 @@ pub(in crate::store) struct Operation {
     event_exposed: bool,
     script_parked: bool,
     attribute_verification: Option<attribute::Pending>,
+    attachment_output: Option<attribute::AttachmentOutput>,
     event_work: std::sync::Weak<crate::source::callback::CallbackWork>,
     event_custody: Option<Arc<formation::CallbackWorkCustody>>,
     dialog_queue: Option<crate::DomElementTaskId>,
@@ -175,6 +176,7 @@ impl Drop for DomSourceLease<'_> {
                 && !o.script_parked
                     && o.meta_csp.is_none()
                 && o.attribute_verification.is_none()
+                && o.waiting_attachment_output().is_none()
                 && matches!(
                     &o.draft,
                     dialog::OperationDraft::Segment(draft)
@@ -385,6 +387,7 @@ impl Dom {
             event_exposed: false,
             script_parked: false,
             attribute_verification: None,
+            attachment_output: None,
             event_work: std::sync::Weak::new(),
             event_custody: None,
             dialog_queue: None,
@@ -715,6 +718,8 @@ impl Operation {
                 crate::DomSourcePhase::MetaCsp
             } else if self.waiting_attribute_verification().is_some() {
                 crate::DomSourcePhase::AttributeVerification
+            } else if self.waiting_attachment_output().is_some() {
+                crate::DomSourcePhase::AttributeAttachmentOutput
             } else if self.draft.fullscreen_exit.is_some() {
                 crate::DomSourcePhase::FullscreenExitHandoff
             } else if self.draft.pending_autofocus().is_some() {
@@ -1895,6 +1900,16 @@ impl DomSourceLease<'_> {
         {
             return Err(DomError::InvalidSourceOperation.into());
         }
+        if let Some(request) = self
+            .dom
+            .source_operation
+            .as_ref()
+            .and_then(|operation| operation.waiting_attachment_output())
+        {
+            return Ok(DomSourceProgress::Request(
+                DomSourceRequest::AttributeAttachmentOutput(request),
+            ));
+        }
         self.dom
             .source_operation
             .as_mut()
@@ -2256,6 +2271,14 @@ impl DomSourceLease<'_> {
                     Ok(())
                 }
             })();
+            if result.is_ok()
+                && let Some(request) = op.waiting_attachment_output()
+            {
+                drop(checkpoint);
+                return Ok(DomSourceProgress::Request(
+                    DomSourceRequest::AttributeAttachmentOutput(request),
+                ));
+            }
             if result.is_ok()
                 && let Some(request) = op.waiting_attribute_verification()
             {
@@ -3661,6 +3684,7 @@ impl Dom {
                 event_exposed: false,
                 script_parked: false,
                 attribute_verification: None,
+                attachment_output: None,
                 event_work: std::sync::Weak::new(),
                 event_custody: None,
                 dialog_queue: None,
@@ -6972,6 +6996,7 @@ pub(in crate::store) mod accounting_tests {
                         | DomSourceRequest::Script(_)
                         | DomSourceRequest::MetaCsp(_)
                         | DomSourceRequest::AttributeVerification(_)
+                        | DomSourceRequest::AttributeAttachmentOutput(_)
                         | DomSourceRequest::AutofocusInsertion(_),
                     )) => {
                         panic!("Slot assignment fixture has no eventful Dialog operation")

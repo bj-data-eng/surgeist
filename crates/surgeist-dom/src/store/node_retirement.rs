@@ -434,6 +434,33 @@ pub struct DomNodeRetirementWatch {
     slot: WatchSlot,
 }
 
+impl DomNodeRetirementWatch {
+    pub(super) fn qualifies(
+        &self,
+        node: NodeId,
+        dom: &Dom,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<bool, DomError> {
+        if self.node != node
+            || !dom
+                .node_retirements
+                .as_ref()
+                .is_some_and(|index| Arc::ptr_eq(index, &self.index))
+        {
+            return Ok(false);
+        }
+        let armed = lock(&self.index.armed);
+        let Some(root) = armed.as_ref() else {
+            return Ok(false);
+        };
+        let Some((_, watches)) = root.match_path(node, &mut step)? else {
+            return Ok(false);
+        };
+        step()?;
+        Ok(watches.is_open(self.slot))
+    }
+}
+
 impl Drop for DomNodeRetirementWatch {
     fn drop(&mut self) {
         // One administrative path per affine watch. Each branch tests a
@@ -859,6 +886,34 @@ impl Dom {
             &admission,
             publication.node_retirement_publication.as_ref(),
         )?;
+        Ok(self.finish_watch(prepared, node))
+    }
+
+    /// Admit an exact replaced Attr's retirement watch on the original
+    /// guest attachment before any of its writes publish.
+    pub fn watch_source_attribute_attachment_output(
+        &mut self,
+        request: crate::DomSourceAttributeAttachmentOutput,
+        registration: &crate::DomDocumentScriptRegistration,
+        (inbox, custody_key): (&DomNodeRetirementInbox, usize),
+        limits: DomNodeRetirementLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomNodeRetirementWatch, DomError> {
+        if inbox.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        let node = request.replaced().node();
+        let prepared = {
+            let draft =
+                self.qualified_attribute_attachment_output(request, registration, cancel)?;
+            let source = super::source::formation::Formation::new(draft, cancel)?
+                .ok_or(DomError::InvalidSourceOperation)?;
+            let mut admission = OrdinaryAdmission::new(self, limits, cancel);
+            admission.source = Some(&source);
+            let admission =
+                self.watch_admission(&self.state, node, inbox, custody_key, admission)?;
+            arm(self.node_retirements.as_ref(), &admission, None)?
+        };
         Ok(self.finish_watch(prepared, node))
     }
 

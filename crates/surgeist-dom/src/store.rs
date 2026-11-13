@@ -3866,11 +3866,13 @@ impl Draft {
                 node,
                 attribute,
                 mode,
+                output_registration: None,
             } => {
                 let node = self.resolve(node.clone())?;
                 let attr = self.resolve(attribute.node().into())?;
                 self.attach_attribute(node, attr, *mode, limits, cancelled)?;
             }
+            Command::AttachAttribute { .. } => return Err(DomError::InvalidSourceOperation),
             Command::Destroy(node) => {
                 let node = self.resolve(node.clone())?;
                 if self.node(node)?.parent().is_some()

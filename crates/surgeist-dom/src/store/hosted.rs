@@ -2247,6 +2247,7 @@ impl DomHostedSource {
             global,
             navigable,
             end: std::sync::OnceLock::new(),
+            engine_disposed: AtomicBool::new(false),
             _backing: backing,
         });
         let canonical = CanonicalScriptRegistration(registration.clone());

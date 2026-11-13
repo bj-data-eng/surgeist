@@ -26,6 +26,28 @@ pub struct DomSourceAttributeVerificationRequest {
     pub(crate) sink: DomSourceAttributeSink,
 }
 
+/// The exact replaced Attr selected by a guest attachment before any write.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomSourceAttributeAttachmentOutput {
+    pub(crate) operation: DomSourceOperationId,
+    pub(crate) replaced: crate::DomAttrId,
+    pub(crate) creation_global: Option<DomHostedGlobalId>,
+}
+
+impl DomSourceAttributeAttachmentOutput {
+    pub const fn operation(self) -> DomSourceOperationId {
+        self.operation
+    }
+
+    pub const fn replaced(self) -> crate::DomAttrId {
+        self.replaced
+    }
+
+    pub const fn creation_global(self) -> Option<DomHostedGlobalId> {
+        self.creation_global
+    }
+}
+
 impl DomSourceAttributeVerificationRequest {
     pub const fn operation(self) -> DomSourceOperationId {
         self.operation

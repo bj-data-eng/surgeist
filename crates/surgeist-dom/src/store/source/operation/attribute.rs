@@ -3,7 +3,7 @@ use super::dialog::{CallbackObservation, OperationDraft, Usage};
 use super::*;
 use crate::hosted::ScriptRegistration;
 use crate::source::callback::CallbackWork;
-use crate::store::attributes::PreparedAttributeName;
+use crate::store::attributes::{AttributeAttachmentPlan, PreparedAttributeName};
 use crate::{DomDocumentScriptRegistration, DomHostedError};
 use surgeist_html::security::csp::{
     HtmlCspArtifactLayout, HtmlCspDisposalWork, HtmlCspLayout, HtmlCspStorage,
@@ -62,6 +62,13 @@ struct RetainedOutcome {
     _backing: Option<formation::Formation>,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct AttachmentOutput {
+    plan: AttributeAttachmentPlan,
+    request: DomSourceAttributeAttachmentOutput,
+    admitted: bool,
+}
+
 impl Pending {
     pub(super) fn registration_is_active(&self) -> bool {
         self.registration.is_active()
@@ -74,6 +81,16 @@ impl Pending {
     pub(in crate::store) fn apply(
         &self,
         draft: &mut Draft,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.apply_with_attachment_plan(draft, None, limits, cancel)
+    }
+
+    fn apply_with_attachment_plan(
+        &self,
+        draft: &mut Draft,
+        plan: Option<AttributeAttachmentPlan>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -99,6 +116,14 @@ impl Pending {
                         draft.write_existing_attr_value(attribute, value, limits, cancel)
                     }
                     Target::Attachment(attribute) => {
+                        if let Some(plan) = plan {
+                            return draft.apply_attribute_attachment(
+                                plan,
+                                Some(value),
+                                limits,
+                                cancel,
+                            );
+                        }
                         let element = draft.resolve(self.request.element.into())?;
                         let attribute = draft.resolve(attribute.into())?;
                         draft.write_attribute_attachment(
@@ -150,6 +175,88 @@ fn prepare_attr_value(
 }
 
 impl Operation {
+    pub(super) fn waiting_attachment_output(&self) -> Option<DomSourceAttributeAttachmentOutput> {
+        self.attachment_output
+            .filter(|output| !output.admitted && !self.cancelled)
+            .map(|output| output.request)
+    }
+
+    fn attachment_output_draft(
+        &self,
+        request: DomSourceAttributeAttachmentOutput,
+        registration: &DomDocumentScriptRegistration,
+    ) -> Result<&Draft, DomError> {
+        if self.waiting_attachment_output() != Some(request) {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        if !self
+            .output_registration()
+            .is_some_and(|expected| Arc::ptr_eq(expected, &registration.0) && expected.is_active())
+        {
+            return Err(DomError::SourceAttributeExecutorUnavailable);
+        }
+        match &self.draft {
+            OperationDraft::Segment(draft) => Ok(draft),
+            _ => Err(DomError::InvalidSourceOperation),
+        }
+    }
+
+    fn prepare_attachment_output(
+        &mut self,
+        dom: &Dom,
+        node: Key,
+        attr: Key,
+        verified: bool,
+        cancel: &AtomicBool,
+    ) -> Result<Option<AttributeAttachmentPlan>, DomError> {
+        if let Some(output) = self.attachment_output {
+            return Ok(output.admitted.then_some(output.plan));
+        }
+        let plan = self
+            .draft
+            .prepare_attribute_attachment(node, attr, cancel)?;
+        if let Some(replaced) = plan.replaced(&self.draft)? {
+            let registration = self
+                .output_registration()
+                .ok_or(DomError::InvalidSourceOperation)?;
+            if !verified || !registration.engine_disposed.load(Ordering::Acquire) {
+                self.qualify_attribute_registration(
+                    dom,
+                    registration.global,
+                    registration,
+                    cancel,
+                )?;
+            }
+            let creation_global = dom
+                .state
+                .node_with(dom.owner, replaced.node(), &mut || {
+                    self.draft.source_step(cancel)
+                })?
+                .relevant_global();
+            self.attachment_output = Some(AttachmentOutput {
+                plan,
+                request: DomSourceAttributeAttachmentOutput {
+                    operation: self.id,
+                    replaced,
+                    creation_global,
+                },
+                admitted: false,
+            });
+            return Ok(None);
+        }
+        Ok(Some(plan))
+    }
+
+    fn output_registration(&self) -> Option<&Arc<ScriptRegistration>> {
+        match self.commands.get(self.index) {
+            Some(Command::AttachAttribute {
+                output_registration,
+                ..
+            }) => output_registration.as_ref(),
+            _ => None,
+        }
+    }
+
     pub(super) fn waiting_attribute_verification(
         &self,
     ) -> Option<DomSourceAttributeVerificationRequest> {
@@ -166,7 +273,45 @@ impl Operation {
     ) -> Result<(), DomError> {
         if let Some(pending) = &self.attribute_verification {
             self.draft.source_step(cancel)?;
-            return pending.apply(&mut self.draft, dom.limits, cancel);
+            let mut plan = None;
+            if self.output_registration().is_some()
+                && let Target::Attachment(attr) = pending.operands.target
+                && let Some(RetainedOutcome {
+                    outcome: DomSourceAttributeVerificationOutcome::Value(_),
+                    ..
+                }) = &pending.outcome
+            {
+                let element = pending.request.element;
+                let prepared = (|| {
+                    let element = self.draft.resolve(element.into())?;
+                    let attr = self.draft.resolve(attr.into())?;
+                    self.prepare_attachment_output(dom, element, attr, true, cancel)
+                })();
+                match prepared {
+                    Ok(Some(prepared)) => plan = Some(prepared),
+                    Ok(None) => return Ok(()),
+                    Err(error @ (DomError::InUseAttribute | DomError::StaleNode)) => {
+                        return self.draft.source_set_method(
+                            Some(crate::store::method::Frame::CompoundFailure(error)),
+                            cancel,
+                        );
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            let pending = self
+                .attribute_verification
+                .as_ref()
+                .ok_or(DomError::InvalidSourceOperation)?;
+            return pending.apply_with_attachment_plan(&mut self.draft, plan, dom.limits, cancel);
+        }
+        if let Some(output) = self.attachment_output {
+            if !output.admitted {
+                return Err(DomError::InvalidSourceOperation);
+            }
+            return self
+                .draft
+                .apply_attribute_attachment(output.plan, None, dom.limits, cancel);
         }
         let command = self
             .commands
@@ -244,12 +389,31 @@ impl Operation {
                 node,
                 attribute,
                 mode: AttributeSetterMode::Standard,
+                output_registration,
             } => {
+                if let Some(registration) = output_registration {
+                    self.qualify_attribute_registration(
+                        dom,
+                        registration.global,
+                        registration,
+                        cancel,
+                    )?;
+                }
                 self.draft.source_step(cancel)?;
                 let element = self.draft.resolve(node.clone())?;
                 let id = attribute.node();
                 let attr = self.draft.resolve(id.into())?;
                 let Some((sink, value)) = self.draft.attachment_sink(element, attr, cancel)? else {
+                    if output_registration.is_some() {
+                        return match self
+                            .prepare_attachment_output(dom, element, attr, false, cancel)?
+                        {
+                            Some(plan) => self
+                                .draft
+                                .apply_attribute_attachment(plan, None, dom.limits, cancel),
+                            None => Ok(()),
+                        };
+                    }
                     return self
                         .draft
                         .write_attribute_attachment(element, attr, None, dom.limits, cancel);
@@ -399,6 +563,143 @@ impl Operation {
             }
             Ok(false) | Err(_) => Err(DomError::SourceAttributeExecutorUnavailable),
         }
+    }
+}
+
+impl Dom {
+    /// Discard an unpublished guest attachment with no accepted verification.
+    /// This cleanup spends no work and restores the exact enclosing Source.
+    pub fn discard_source_attribute_attachment_output(
+        &mut self,
+        request: DomSourceAttributeAttachmentOutput,
+        registration: &DomDocumentScriptRegistration,
+    ) -> Result<(), DomError> {
+        let operation = self
+            .source_operation
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        if operation.published
+            || operation.event_exposed
+            || operation.script_parked
+            || operation.attribute_verification.is_some()
+            || operation.meta_csp.is_some()
+            || operation.pending_meta.is_some()
+            || operation.meta_policy.is_some()
+            || !operation
+                .attachment_output
+                .is_some_and(|output| output.request == request)
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        if !operation
+            .output_registration()
+            .is_some_and(|expected| Arc::ptr_eq(expected, &registration.0))
+        {
+            return Err(DomError::SourceAttributeExecutorUnavailable);
+        }
+        self.source_operation = self.source_parents.pop();
+        #[cfg(test)]
+        self.observe_source_lifecycle();
+        Ok(())
+    }
+
+    pub(in crate::store) fn qualified_attribute_attachment_output(
+        &self,
+        request: DomSourceAttributeAttachmentOutput,
+        registration: &DomDocumentScriptRegistration,
+        cancel: &AtomicBool,
+    ) -> Result<&Draft, DomError> {
+        if self.active_script_registration() != Some(registration.0.key) {
+            return Err(DomError::SourceAttributeExecutorUnavailable);
+        }
+        check_cancel(cancel)?;
+        self.source_operation
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?
+            .attachment_output_draft(request, registration)
+    }
+
+    /// Charge one wrapper admission step to the original attachment and ancestors.
+    pub fn source_attribute_attachment_output_step(
+        &self,
+        request: DomSourceAttributeAttachmentOutput,
+        registration: &DomDocumentScriptRegistration,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.qualified_attribute_attachment_output(request, registration, cancel)?
+            .source_step(cancel)
+    }
+
+    /// Accept custody of the exact Attr while the guest can still return it.
+    /// The adapter keeps the admitted watch with that wrapper through publication.
+    pub fn accept_source_attribute_attachment_output(
+        &mut self,
+        request: DomSourceAttributeAttachmentOutput,
+        registration: &DomDocumentScriptRegistration,
+        watch: &crate::DomNodeRetirementWatch,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let draft = self.qualified_attribute_attachment_output(request, registration, cancel)?;
+        match self.dispatch_script_registration_current_with(&registration.0, || {
+            draft.source_step(cancel).map_err(DomHostedError::from)
+        }) {
+            Ok(true) => (),
+            Err(DomHostedError::Dom(error)) => return Err(error),
+            _ => return Err(DomError::SourceAttributeExecutorUnavailable),
+        }
+        if !watch.qualifies(request.replaced().node(), self, || {
+            draft.source_step(cancel)
+        })? {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        self.admit_attribute_attachment_output(request)
+    }
+
+    /// Settle the native output after disposal of the original guest registration.
+    /// This transfers no guest return authority to another attachment.
+    pub fn abandon_source_attribute_attachment_output(
+        &mut self,
+        request: DomSourceAttributeAttachmentOutput,
+        binding: &crate::DomDocumentScriptBinding,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        check_cancel(cancel)?;
+        let operation = self
+            .source_operation
+            .as_ref()
+            .filter(|operation| {
+                operation.waiting_attachment_output() == Some(request)
+                    && operation
+                        .attribute_verification
+                        .as_ref()
+                        .is_some_and(Pending::has_outcome)
+            })
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let registration = operation
+            .output_registration()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        if registration.key != binding.key()
+            || registration.global != binding.global
+            || !registration.engine_disposed.load(Ordering::Acquire)
+        {
+            return Err(DomError::SourceAttributeExecutorUnavailable);
+        }
+        operation.draft.source_step(cancel)?;
+        self.admit_attribute_attachment_output(request)
+    }
+
+    fn admit_attribute_attachment_output(
+        &mut self,
+        request: DomSourceAttributeAttachmentOutput,
+    ) -> Result<(), DomError> {
+        let output = self
+            .source_operation
+            .as_mut()
+            .and_then(|operation| operation.attachment_output.as_mut())
+            .filter(|output| !output.admitted && output.request == request)
+            .ok_or(DomError::InvalidSourceOperation)?;
+        output.admitted = true;
+        Ok(())
     }
 }
 

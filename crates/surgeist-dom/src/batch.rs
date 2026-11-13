@@ -311,6 +311,7 @@ pub(crate) enum Command {
         node: NodeOperand,
         attribute: DomAttrId,
         mode: AttributeSetterMode,
+        output_registration: Option<std::sync::Arc<crate::hosted::ScriptRegistration>>,
     },
     Destroy(NodeOperand),
     ReplaceData {
@@ -1150,6 +1151,7 @@ impl DomBatch {
             node: node.into(),
             attribute,
             mode: AttributeSetterMode::Native,
+            output_registration: None,
         });
         attached
     }

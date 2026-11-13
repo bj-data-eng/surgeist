@@ -31,6 +31,33 @@ pub(super) enum AttributeRemoval {
 }
 
 #[derive(Clone, Copy)]
+pub(super) struct AttributeAttachmentPlan {
+    node: Key,
+    attr: Key,
+    placement: AttributePlacement,
+}
+
+impl AttributeAttachmentPlan {
+    pub(super) fn replaced(self, draft: &Draft) -> Result<Option<crate::DomAttrId>, DomError> {
+        match self.placement {
+            AttributePlacement::Replace { previous, .. } => draft
+                .published_id(previous)
+                .map(crate::DomAttrId)
+                .map(Some)
+                .ok_or(DomError::UnavailableCreation),
+            AttributePlacement::Append | AttributePlacement::Unchanged => Ok(None),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum AttributePlacement {
+    Append,
+    Unchanged,
+    Replace { index: usize, previous: Key },
+}
+
+#[derive(Clone, Copy)]
 enum AttributeLookup<'a> {
     Qualified(&'a DocumentString),
     Expanded {
@@ -900,6 +927,16 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        let plan = self.prepare_attribute_attachment(node, attr, cancel)?;
+        self.apply_attribute_attachment(plan, verified, limits, cancel)
+    }
+
+    pub(super) fn prepare_attribute_attachment(
+        &self,
+        node: Key,
+        attr: Key,
+        cancel: &AtomicBool,
+    ) -> Result<AttributeAttachmentPlan, DomError> {
         let node = self.live_key(node);
         let attr = self.live_key(attr);
         let read = self.element(node)?;
@@ -922,20 +959,55 @@ impl Draft {
             },
             cancel,
         )?;
-        let previous_id = position
-            .map(|index| {
-                self.node(node)?
-                    .attribute_ids()
-                    .get(index)
-                    .ok_or(DomError::StaleNode)
-            })
-            .transpose()?;
-        if previous_id.is_some_and(|previous| self.live_key(previous) == attr) {
+        let placement = if let Some(index) = position {
+            let previous = self
+                .node(node)?
+                .attribute_ids()
+                .get(index)
+                .ok_or(DomError::StaleNode)?;
+            if self.live_key(previous) == attr {
+                AttributePlacement::Unchanged
+            } else {
+                AttributePlacement::Replace { index, previous }
+            }
+        } else {
+            AttributePlacement::Append
+        };
+        Ok(AttributeAttachmentPlan {
+            node,
+            attr,
+            placement,
+        })
+    }
+
+    pub(super) fn apply_attribute_attachment(
+        &mut self,
+        plan: AttributeAttachmentPlan,
+        verified: Option<&DocumentString>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let AttributeAttachmentPlan {
+            node,
+            attr,
+            placement,
+        } = plan;
+        if matches!(placement, AttributePlacement::Unchanged) {
             return self.register_node_ticket(
                 NodeTicket::AttributeAttachment(attr, AttachmentKind::Unchanged),
                 cancel,
             );
         }
+        let (position, previous_id) = match placement {
+            AttributePlacement::Replace { index, previous } => (Some(index), Some(previous)),
+            AttributePlacement::Append | AttributePlacement::Unchanged => (None, None),
+        };
+        let read = self.element(node)?;
+        let previous = read.attributes();
+        let incoming = self.node(attr)?;
+        let transaction::KindRead::Attr(replacement) = incoming.kind() else {
+            return Err(DomError::WrongNodeKind);
+        };
         let (verified_record, attr_formation) = if let Some(value) = verified
             && !same_string(replacement.value(), value, || self.source_step(cancel))?
         {

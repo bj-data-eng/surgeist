@@ -124,8 +124,17 @@ impl Capture {
                             AttributeResult::Removed(attribute, value),
                         )
                     } else {
+                        let registration = owner
+                            .attachment
+                            .get()
+                            .and_then(|attachment| attachment.registration.upgrade())
+                            .ok_or(DocumentScriptNativeError::Revoked)?;
                         (
-                            DomSourceEdit::attach_attribute(element, attribute),
+                            DomSourceEdit::attach_attribute_for_script(
+                                element,
+                                attribute,
+                                &registration,
+                            ),
                             AttributeResult::Attached(attribute, value),
                         )
                     };

@@ -2251,6 +2251,9 @@ fn execute_slot_source_edit(
             )) => {
                 panic!("manual Slot assignment has no attribute verification phase: {request:?}")
             }
+            surgeist_dom::DomSourceProgress::Request(
+                DomSourceRequest::AttributeAttachmentOutput(request),
+            ) => panic!("manual Slot assignment has no attribute attachment output: {request:?}"),
             surgeist_dom::DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(
                 request,
             )) => {

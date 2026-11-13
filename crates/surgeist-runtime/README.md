@@ -348,6 +348,10 @@ operations, create detached nodes and change the attribute the original write
 will observe. Runtime retains the exact native continuation across a host
 refusal. Use `resume_pending_attribute_write` to settle that write without
 rerunning the guest policy.
+An Attr replacement admits the exact return wrapper before mutation. If an
+accepted verification stops at that admission, live native retry returns the
+pending output request. The stopped host can settle the original native
+attachment and its exact output without entering JavaScript.
 
 Call `DomSession::enable_trusted_types_csp` to select the Session processor for
 the hosted initial `about:blank` profile. Runtime serves reached Meta policies

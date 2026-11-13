@@ -108,6 +108,8 @@ pub enum DomSourcePhase {
     Staging,
     /// A standard attribute setter awaits its registered verifier.
     AttributeVerification,
+    /// A guest attachment awaits custody of its replaced Attr.
+    AttributeAttachmentOutput,
     /// A reached synchronous firing awaits its original clock observation.
     EventFiring,
     /// Coherent current-state observation awaiting actual event dispatch.
@@ -175,6 +177,7 @@ impl DomSourceStatus {
 #[derive(Clone, Debug)]
 pub enum DomSourceRequest {
     AttributeVerification(DomSourceAttributeVerificationRequest),
+    AttributeAttachmentOutput(DomSourceAttributeAttachmentOutput),
     MetaCsp(DomSourceMetaCspRequest),
     FullscreenExitHandoff(crate::DomSourceFullscreenExitHandoffRequest),
     Style(DomStyleRequest),
@@ -1256,6 +1259,21 @@ impl DomSourceEdit {
     pub fn attach_attribute(node: NodeId, attribute: crate::DomAttrId) -> Self {
         Self::attribute_attachment(node, attribute, AttributeSetterMode::Standard)
     }
+    /// Require the attached guest's output custody before replacing an Attr.
+    pub fn attach_attribute_for_script(
+        node: NodeId,
+        attribute: crate::DomAttrId,
+        registration: &crate::DomDocumentScriptRegistration,
+    ) -> Self {
+        Self {
+            command: Command::AttachAttribute {
+                node: node.into(),
+                attribute,
+                mode: AttributeSetterMode::Standard,
+                output_registration: Some(registration.0.clone()),
+            },
+        }
+    }
     /// Attach an already authored native Attr and return the canonical result.
     pub fn attach_native_attribute(node: NodeId, attribute: crate::DomAttrId) -> Self {
         Self::attribute_attachment(node, attribute, AttributeSetterMode::Native)
@@ -1270,6 +1288,7 @@ impl DomSourceEdit {
                 node: node.into(),
                 attribute,
                 mode,
+                output_registration: None,
             },
         }
     }

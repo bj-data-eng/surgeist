@@ -17,7 +17,7 @@ use surgeist_bindings_js::{
     dom_exception::DomExceptionName,
 };
 use surgeist_dom::{
-    DomAttrId, DomAttributeAttachment, DomSourceAttributeSink,
+    DomAttrId, DomAttributeAttachment, DomSourceAttributeAttachmentOutput, DomSourceAttributeSink,
     DomSourceAttributeVerificationOutcome, DomSourceAttributeVerificationRequest, DomSourceEdit,
     DomSourceLease, DomSourceLimits, DomSourceOutput, DomSourceRequest, DomSourceStatus, Namespace,
 };
@@ -170,6 +170,7 @@ impl Capture {
                     Ok((result, dom.pending_source_edit(), parent))
                 })?;
         let mut abrupt = None;
+        let mut output = None;
         if let Ok(DomSourceDriveProgress::Pending {
             request: DomSourceRequest::AttributeVerification(request),
             ..
@@ -206,6 +207,30 @@ impl Capture {
             };
             ((result, pending), abrupt) = continue_attribute(owner, retained, limits)?;
         }
+        if let Ok(DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::AttributeAttachmentOutput(request),
+            ..
+        }) = result
+        {
+            let staged = self.stage_attachment_output(scope, owner, events, request);
+            if staged.is_err() {
+                discard_attachment_output(owner, request);
+            }
+            output = Some((request.replaced(), staged?));
+            let retained = owner
+                .pending_attribute
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?
+                .take();
+            if let Some(retained) = retained {
+                ((result, pending), abrupt) = continue_attribute(owner, retained, limits)?;
+            } else {
+                (result, pending) = resume_attribute_source(owner, request.operation(), limits)?;
+                if result.is_err() {
+                    discard_attachment_output(owner, request);
+                }
+            }
+        }
         match result {
             Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
                 Err(DomError::Cancelled.into())
@@ -233,9 +258,10 @@ impl Capture {
                     Some(DomSourceOutput::AttributeAttachment(DomAttributeAttachment::Replaced(
                         id,
                     ))),
-                ) if id != incoming => self
-                    .project_observation(scope, owner, events, Observation::Node(Some(id.node())))
-                    .map(Completion::Return),
+                ) if id != incoming => match output {
+                    Some((staged, value)) if staged == id => Ok(Completion::Return(value)),
+                    _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
+                },
                 _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
             },
             Ok(DomSourceDriveProgress::Failed(failure)) => {
@@ -260,6 +286,65 @@ impl Capture {
                 }),
             ),
         }
+    }
+
+    fn stage_attachment_output<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        request: DomSourceAttributeAttachmentOutput,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let attachment = owner
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        let registration = attachment
+            .registration
+            .upgrade()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        let admission =
+            ordinary::Admission::attachment_output(owner, events, request, &registration);
+        let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+        let bindings = &public.document;
+        if let Some(value) =
+            bindings
+                .ordinary
+                .open_attachment_output(scope, request.replaced().node(), admission)?
+        {
+            return Ok(value);
+        }
+        let global = request
+            .creation_global()
+            .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
+        let project = |scope: &mut Scope<'scope>, documents: &DocumentPrototypes| {
+            bindings
+                .ordinary
+                .project_attachment_output(scope, admission, &documents.attr)
+        };
+        if global == attachment.target.global() {
+            project(scope, &bindings.prototypes)
+        } else {
+            public.with_origin_with(
+                global,
+                || admission.step(),
+                |origin| project(scope, &origin.documents),
+            )
+        }
+    }
+}
+
+fn discard_attachment_output(owner: &NativeOwner, request: DomSourceAttributeAttachmentOutput) {
+    if let Some(registration) = owner
+        .attachment
+        .get()
+        .and_then(|attachment| attachment.registration.upgrade())
+        && let Ok(mut session) = owner.session.try_borrow_mut()
+    {
+        let _ = session
+            .dom()
+            .raw_mut()
+            .discard_source_attribute_attachment_output(request, &registration);
     }
 }
 
@@ -457,6 +542,39 @@ fn resume_retained_attribute(
         retained.reply = AttributeReply::Abandon;
     }
     let ((progress, _), abrupt) = continue_attribute(owner, retained, limits)?;
+    if abandon
+        && let Ok(DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::AttributeAttachmentOutput(request),
+            ..
+        }) = progress
+    {
+        let attachment = owner
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            session
+                .dom()
+                .raw_mut()
+                .abandon_source_attribute_attachment_output(
+                    request,
+                    &attachment.canonical,
+                    &owner.cancellation,
+                )?;
+        }
+        let retained = owner
+            .pending_attribute
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .take()
+            .ok_or(DocumentScriptNativeError::SourceAccess)?;
+        let ((progress, _), _) = continue_attribute(owner, retained, limits)?;
+        return Ok(progress);
+    }
     if let (Ok(DomSourceDriveProgress::Failed(failure)), Some(error)) = (&progress, abrupt)
         && failure.error() == &DomError::SourceAttributeVerificationAbrupt
     {
@@ -473,7 +591,7 @@ fn continue_attribute(
     let request = retained.request;
     let attempted = retained
         .acknowledge(owner, limits)
-        .and_then(|()| resume_attribute_source(owner, request, limits));
+        .and_then(|()| resume_attribute_source(owner, request.operation(), limits));
     let terminal = matches!(
         &attempted,
         Ok((
@@ -584,7 +702,7 @@ impl PendingAttribute {
 
 fn resume_attribute_source(
     owner: &NativeOwner,
-    request: DomSourceAttributeVerificationRequest,
+    operation: surgeist_dom::DomSourceOperationId,
     limits: DomSourceLimits,
 ) -> Result<NativeAttributeProgress, DocumentGuestEventError> {
     let mut session = owner
@@ -596,7 +714,7 @@ fn resume_attribute_source(
     let mut no_style = |_: &surgeist_dom::DomStyleSource| None;
     let result = source.resume(
         &mut dom,
-        request.operation(),
+        operation,
         limits,
         &mut attribute_services(&mut no_style),
         &owner.cancellation,
