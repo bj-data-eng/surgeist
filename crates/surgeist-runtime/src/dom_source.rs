@@ -802,12 +802,12 @@ impl DomSourceRuntime {
 
 impl DomSourceRuntime {
     #[cfg(feature = "document-scripting")]
-    pub(crate) fn drive_split_text(
+    pub(crate) fn drive_watched_node(
         &self,
         dom: &mut DomEventDom<'_>,
         command: Result<DomSourceEdit, DomSourceOperationId>,
         limits: DomSourceLimits,
-        output: &mut surgeist_dom::DomSplitTextOutputWatch<'_>,
+        output: &mut surgeist_dom::DomSourceNodeOutputWatch<'_>,
         cancel: &AtomicBool,
     ) -> (
         Result<DomSourceDriveProgress, DomSourceDriveError>,
@@ -872,9 +872,9 @@ impl DomSourceRuntime {
         lease: &mut DomSourceLease<'_>,
         meta: Option<surgeist_dom::DomMetaAtomicLimits>,
         url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
-        (resolver, mut split_text_output): (
+        (resolver, mut node_output_watch): (
             &mut Option<&mut InlineResolver<'_>>,
-            Option<&mut surgeist_dom::DomSplitTextOutputWatch<'_>>,
+            Option<&mut surgeist_dom::DomSourceNodeOutputWatch<'_>>,
         ),
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
@@ -912,8 +912,8 @@ impl DomSourceRuntime {
                     })
                     .map_err(|error| DomSourceRuntimeError::Inline(error).into())
             } else {
-                let advanced = match split_text_output.as_deref_mut() {
-                    Some(output) => lease.advance_split_text_for_runtime(output, cancel),
+                let advanced = match node_output_watch.as_deref_mut() {
+                    Some(output) => lease.advance_watching_node_for_runtime(output, cancel),
                     None => lease.advance_for_runtime(cancel),
                 };
                 advanced

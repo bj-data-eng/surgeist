@@ -34,7 +34,7 @@ mod script;
 mod show_modal;
 mod synchronous_node;
 pub use synchronous_node::{
-    DomPreparedElementName, DomShadowReactionRoute, DomSplitTextOutputWatch,
+    DomPreparedElementName, DomShadowReactionRoute, DomSourceNodeOutputWatch,
     DomWatchedCustomElementResult, DomWatchedElementCreation,
 };
 mod watcher;
@@ -2035,15 +2035,15 @@ impl DomSourceLease<'_> {
         &mut self,
         cancel: &AtomicBool,
     ) -> Result<DomSourceAdvance<DomSourceProgress>, DomError> {
-        self.advance_with_split_text_output(None, cancel)
+        self.advance_with_node_output(None, cancel)
     }
 
-    /// Advance an original split while admitting retirement custody for its
-    /// exact returned Text at final publication. A yielded request leaves the
+    /// Advance a split or clone while admitting retirement custody for its
+    /// exact returned node at final publication. A yielded request leaves the
     /// output empty and the original continuation available for resumption.
-    pub fn advance_split_text_for_runtime(
+    pub fn advance_watching_node_for_runtime(
         &mut self,
-        output: &mut DomSplitTextOutputWatch<'_>,
+        output: &mut DomSourceNodeOutputWatch<'_>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceAdvance<DomSourceProgress>, DomError> {
         let operation = self
@@ -2052,20 +2052,23 @@ impl DomSourceLease<'_> {
             .as_ref()
             .filter(|operation| operation.id == self.id)
             .ok_or(DomError::InvalidSourceOperation)?;
-        if !matches!(operation.commands.first(), Some(Command::SplitText { .. })) {
+        if !matches!(
+            operation.commands.first(),
+            Some(Command::SplitText { .. } | Command::CloneNode { .. })
+        ) {
             return Err(DomError::InvalidSourceOperation);
         }
-        self.advance_with_split_text_output(Some(output), cancel)
+        self.advance_with_node_output(Some(output), cancel)
     }
 
-    fn advance_with_split_text_output(
+    fn advance_with_node_output(
         &mut self,
-        output: Option<&mut DomSplitTextOutputWatch<'_>>,
+        output: Option<&mut DomSourceNodeOutputWatch<'_>>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceAdvance<DomSourceProgress>, DomError> {
         let mut execution = Execution::disabled();
         execution.hosted_events = true;
-        execution.split_text_output = output.map(|output| output.admission(self.id)).transpose()?;
+        execution.node_output_watch = output.map(|output| output.admission(self.id)).transpose()?;
         match self.advance_execution(&mut execution, None, cancel) {
             Ok(progress) => Ok(DomSourceAdvance::Progress(progress)),
             Err(AdvanceError::EventFiring) => self

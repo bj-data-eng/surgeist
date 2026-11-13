@@ -233,6 +233,7 @@ pub(crate) enum Command {
     CloneNode {
         source: NodeOperand,
         subtree: bool,
+        fallback: Option<crate::DomCreationRealmFallback>,
     },
     Import {
         snapshot: DomSnapshot,
@@ -666,6 +667,7 @@ impl DomBatch {
         self.commands.push(Command::CloneNode {
             source: source.into(),
             subtree,
+            fallback: None,
         });
         ticket
     }

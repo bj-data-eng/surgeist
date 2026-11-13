@@ -1453,7 +1453,7 @@ fn clone_under_unit_limit(
     let (mut draft, _) =
         Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel).unwrap();
     let outcome = draft
-        .clone_node(Key::Existing(original), false, dom.limits, &cancel)
+        .clone_node(Key::Existing(original), false, None, dom.limits, &cancel)
         .map(|_| ());
     (outcome, dom.custody_registry.listed_blocks())
 }

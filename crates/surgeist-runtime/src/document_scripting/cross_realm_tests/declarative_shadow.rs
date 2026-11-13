@@ -652,6 +652,83 @@ pub(super) fn verify_declarative_shadow_reuse() {
         );
     }
     verify_mode_mismatch_precedes_realm_qualification();
+    verify_cloned_declarative_shadow_remains_reusable();
+}
+
+fn verify_cloned_declarative_shadow_remains_reusable() {
+    use super::super::guest::tests::{expose_public_node_for_source_test, projected_node_id};
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session(&cancel, 0);
+    let (document, element) = {
+        let hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let context = hosted
+            .with_current_top_level(&mut dom, target, &cancel, |source, dom| {
+                source
+                    .document_constructor_context(dom.raw(), target.global(), &cancel)
+                    .map_err(DomHostedRuntimeError::Dom)
+            })
+            .unwrap();
+        let mut batch = DomBatch::new();
+        let document = batch.construct_document(context);
+        let element = batch.create_element_ns(&document, Namespace::html(), "div");
+        batch.insert_before(&element, &document, None);
+        let commit = dom.apply(batch, &cancel).unwrap();
+        (
+            commit.document(&document).unwrap(),
+            commit.created(&element).unwrap().unwrap(),
+        )
+    };
+    let (capture, report) = fragment(
+        &session.snapshot(),
+        document,
+        element,
+        "<template shadowrootmode=open shadowrootclonable shadowrootcustomelementregistry><p>inside</p></template>",
+        &cancel,
+    );
+    session
+        .install_parsed_html_fragment(
+            report,
+            &capture,
+            DomParsedHtmlInstallLimits::new(1024, 10_000_000, 16_000_000, 100_000_000),
+            &cancel,
+        )
+        .unwrap();
+    let mut host = attach_window(session, target, cancel);
+    let permit = host.permit().unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, element, "originalHost");
+    let copy = host
+        .in_document(&permit, |scope| {
+            let copy = evaluate(
+                scope,
+                "globalThis.clonedHost = originalHost.cloneNode(false)",
+            )?;
+            projected_node_id(scope, &copy)
+        })
+        .unwrap();
+    let before = host.snapshot().unwrap();
+    let root = before.node(copy).unwrap().hosted_shadow_root().unwrap();
+    let state = before.shadow_root(root).unwrap();
+    assert!(state.state().declarative());
+    assert!(state.state().keep_custom_element_registry_null());
+    assert_eq!(state.node().children().len(), 1);
+    host.in_document(&permit, |scope| {
+        let result = evaluate(
+            scope,
+            r#"
+            (() => {
+                const root = clonedHost.shadowRoot;
+                return root !== originalHost.shadowRoot &&
+                    clonedHost.attachShadow({mode: 'open'}) === root &&
+                    root.firstChild === null && originalHost.shadowRoot.firstChild !== null;
+            })()
+        "#,
+        )?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    })
+    .unwrap();
 }
 
 fn verify_mode_mismatch_precedes_realm_qualification() {

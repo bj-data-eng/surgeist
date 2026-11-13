@@ -1,5 +1,4 @@
 use super::*;
-use crate::DomSourceDriveProgress;
 use surgeist_bindings_js::{IntegerValue, conversion::declarations};
 use surgeist_dom::{DomSourceEdit, DomSourceOutput};
 
@@ -78,43 +77,22 @@ impl Capture {
             let realm = scope.realm_authority()?.identity();
             let mut driven = None;
             let mut project = |prototypes: &DocumentPrototypes| {
-                public.document.ordinary.project_split_text(
+                public.document.ordinary.project_source_node(
                     scope,
                     (&owner, &events),
                     prototypes.character_data.prototype(CharacterKind::Text),
                     |output| {
-                        let limits = events.limits.source_edits;
-                        let cancel = &owner.cancellation;
-                        let event = owner.active_event_request();
-                        let (mut progress, parent) = self.callbacks.with_qualified_session(
-                            &owner,
-                            event.as_ref(),
-                            |session, _| {
-                                let source = session.source_execution();
-                                Ok(source.drive_split_text(
-                                    &mut session.dom(),
-                                    Ok(DomSourceEdit::split_text(node, offset)),
-                                    limits,
-                                    output,
-                                    cancel,
-                                ))
-                            },
+                        let drive = self.drive_guest_watched_node(
+                            (&owner, &events),
+                            realm,
+                            DomSourceEdit::split_text(node, offset),
+                            output,
                         )?;
-                        owner.finish_split_text_style(&mut progress, limits, realm, output);
-                        let pending = owner
-                            .session
-                            .try_borrow()
-                            .map_err(|_| DocumentScriptNativeError::Busy)?
-                            .read_dom()
-                            .pending_source_edit();
-                        let node = match &progress {
-                            Ok(DomSourceDriveProgress::Complete(done)) => match done.output() {
-                                Some(DomSourceOutput::Node(node)) => Some(node),
-                                _ => None,
-                            },
+                        let node = match drive.terminal_output() {
+                            Some(DomSourceOutput::Node(node)) => Some(GuestNode::Text(node)),
                             _ => None,
                         };
-                        driven = Some((progress, parent, pending));
+                        driven = Some(drive);
                         node.ok_or_else(|| DocumentScriptNativeError::ProjectionCustody.into())
                     },
                 )
@@ -124,15 +102,15 @@ impl Capture {
             } else {
                 project(&public.document.prototypes)
             };
-            let Some((progress, parent, pending)) = driven else {
+            let Some(drive) = driven else {
                 return projection.map(Completion::Return);
             };
             self.finish_guest_tree_edit(
                 scope,
                 &owner,
                 &events,
-                progress,
-                (parent, pending),
+                drive.progress,
+                (drive.parent, drive.pending),
                 |_, _| projection.map(Completion::Return),
             )
         })();

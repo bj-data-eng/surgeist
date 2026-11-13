@@ -1418,14 +1418,14 @@ impl OrdinaryBindings {
         self.project(scope, admission, (prototype, publish))
     }
 
-    pub(super) fn project_split_text<'scope>(
+    pub(super) fn project_source_node<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         (owner, events): (&NativeOwner, &GuestEvents),
         prototype: &RetainedCallbackObject,
         run: impl FnOnce(
-            &mut surgeist_dom::DomSplitTextOutputWatch<'_>,
-        ) -> Result<NodeId, DocumentGuestEventError>,
+            &mut surgeist_dom::DomSourceNodeOutputWatch<'_>,
+        ) -> Result<GuestNode, DocumentGuestEventError>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let event = owner.active_event_request();
         let attribute = owner.active_attribute_registration()?;
@@ -1444,7 +1444,7 @@ impl OrdinaryBindings {
             (
                 NodePrototype::Creation(prototype),
                 |inbox: &DomNodeRetirementInbox, key| {
-                    let mut output = surgeist_dom::DomSplitTextOutputWatch::new(
+                    let mut output = surgeist_dom::DomSourceNodeOutputWatch::new(
                         inbox,
                         key,
                         events.limits.node_retirement,
@@ -1452,9 +1452,9 @@ impl OrdinaryBindings {
                     let node = run(&mut output)?;
                     let (_, watch) = output
                         .into_watch()
-                        .filter(|(watched, _)| *watched == node)
+                        .filter(|(watched, _)| *watched == node.node())
                         .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                    Ok((GuestNode::Text(node), watch))
+                    Ok((node, watch))
                 },
             ),
         )

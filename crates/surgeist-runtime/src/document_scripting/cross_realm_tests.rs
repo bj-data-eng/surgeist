@@ -5,6 +5,7 @@ mod dom_implementation;
 mod element_tasks;
 mod inline_style;
 mod nested_dispatch;
+mod node_clone;
 mod node_relations;
 mod normalize;
 mod processing_instruction;
@@ -333,6 +334,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     normalize::normalize_preserves_typed_native_refusal();
     split_text::split_text_keeps_native_identity_and_range_boundaries();
     whole_text::whole_text_reads_the_current_contiguous_native_run();
+    node_clone::clone_node_returns_fresh_canonical_subtrees();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();

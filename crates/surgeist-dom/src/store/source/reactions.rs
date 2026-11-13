@@ -618,6 +618,21 @@ impl Draft {
         self.record_custom_element_reaction(key, definition, ReactionKind::Upgrade, cancel)
     }
 
+    pub(in crate::store) fn record_custom_element_clone_upgrade(
+        &mut self,
+        key: Key,
+        registry: crate::DomRegistryBinding,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let Some(definition) = self.lookup_element_definition(key, registry, cancel)? else {
+            return Ok(());
+        };
+        if !self.captures_custom_element_reactions() {
+            return Err(DomError::NotSupported);
+        }
+        self.record_custom_element_reaction(key, definition, ReactionKind::Upgrade, cancel)
+    }
+
     pub(in crate::store) fn record_custom_element_removal(
         &mut self,
         key: Key,
