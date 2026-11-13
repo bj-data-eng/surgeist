@@ -85,6 +85,7 @@ enum ElementObservation {
 
 enum NativeProjection {
     Document(DocumentId),
+    DocumentType,
     Fragment,
     ShadowRoot,
     Character(CharacterKind),
@@ -674,6 +675,7 @@ impl PublicEventBindings {
                 if !matches!(
                     node.kind(),
                     DomNodeKind::Document(_)
+                        | DomNodeKind::DocumentType(_)
                         | DomNodeKind::DocumentFragment
                         | DomNodeKind::ShadowRoot(_)
                         | DomNodeKind::Text(_)
@@ -698,6 +700,9 @@ impl PublicEventBindings {
                     ));
                 }
                 let origin = origin.ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
+                if matches!(node.kind(), DomNodeKind::DocumentType(_)) {
+                    return Ok((origin, attached, NativeProjection::DocumentType));
+                }
                 if matches!(node.kind(), DomNodeKind::DocumentFragment) {
                     return Ok((origin, attached, NativeProjection::Fragment));
                 }
@@ -758,6 +763,11 @@ impl PublicEventBindings {
                     || Ok(document),
                 )
             }
+            NativeProjection::DocumentType => watch(
+                scope,
+                GuestNode::DocumentType(node),
+                &documents.document_type,
+            ),
             NativeProjection::Fragment => {
                 watch(scope, GuestNode::Fragment(node), &documents.fragment)
             }

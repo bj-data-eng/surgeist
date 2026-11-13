@@ -13,6 +13,7 @@ const DOCUMENT: &[u16] = &ascii(b"Document");
 mod attr;
 mod attr_factory;
 mod character_data;
+mod document_type;
 pub(super) use character_data::copy_native_data;
 pub(super) mod element;
 mod element_factory;
@@ -186,6 +187,7 @@ fn guest_terminal_result(result: &DomSourceDriveProgress) -> Option<GuestTermina
 #[derive(Clone, Copy)]
 pub(in crate::document_scripting::guest) enum GuestNode {
     Document(DocumentId),
+    DocumentType(NodeId),
     Fragment(NodeId),
     ShadowRoot(NodeId),
     Text(NodeId),
@@ -198,7 +200,8 @@ impl GuestNode {
     pub(in crate::document_scripting::guest) fn node(self) -> NodeId {
         match self {
             Self::Document(id) => id.node(),
-            Self::Fragment(id)
+            Self::DocumentType(id)
+            | Self::Fragment(id)
             | Self::ShadowRoot(id)
             | Self::Text(id)
             | Self::Comment(id)
@@ -210,6 +213,7 @@ impl GuestNode {
     fn node_type(self, kind: DomNodeKind<'_>) -> Result<f64, DocumentScriptNativeError> {
         match (self, kind) {
             (Self::Document(_), DomNodeKind::Document(_)) => Ok(9.0),
+            (Self::DocumentType(_), DomNodeKind::DocumentType(_)) => Ok(10.0),
             (Self::Fragment(_), DomNodeKind::DocumentFragment) => Ok(11.0),
             (Self::ShadowRoot(_), DomNodeKind::ShadowRoot(_)) => Ok(11.0),
             (Self::Text(_), DomNodeKind::Text(_)) => Ok(3.0),
@@ -254,6 +258,7 @@ pub(super) struct DocumentBindings {
 
 pub(super) struct DocumentPrototypes {
     document: RetainedCallbackObject,
+    document_type: RetainedCallbackObject,
     fragment: RetainedCallbackObject,
     shadow: RetainedCallbackObject,
     attr: RetainedCallbackObject,
@@ -340,6 +345,7 @@ impl DocumentPrototypes {
             constructors,
         )?;
         let attr = attr::install(scope, node, constructor, funding)?;
+        let document_type = document_type::install(scope, node, constructor, &document, funding)?;
         let observed = scope.callback_object(&document)?;
         let retained_document = scope.retain_callback_object(observed, funding.retain)?;
         let observed = scope.callback_object(&fragment)?;
@@ -349,6 +355,7 @@ impl DocumentPrototypes {
         Ok((
             Self {
                 document: retained_document,
+                document_type,
                 fragment: retained_fragment,
                 shadow: retained_shadow,
                 attr,

@@ -482,6 +482,61 @@ fn retired_origin_with_moved_element() -> RegisteredOrigin {
     }
 }
 
+pub(in crate::document_scripting) fn native_doctype_uses_its_registered_creation_realm() {
+    let RegisteredOrigin {
+        mut host,
+        permit,
+        origin,
+        element,
+        cancellation,
+        ..
+    } = retired_origin_with_moved_element();
+    host.with_native(|dom, _, _| {
+        let snapshot = dom.snapshot();
+        let document = snapshot.node(element).unwrap().owner_document().unwrap();
+        let mut batch = DomBatch::new();
+        let doctype = batch.create_document_type(document, "html", "", "");
+        batch.insert_before(&doctype, document, Some(element.into()));
+        dom.apply(batch, &cancellation).unwrap();
+    })
+    .unwrap();
+    let doctype = host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"
+            (() => {
+                const doc = originChild.ownerDocument;
+                const getDoctype = Object.getOwnPropertyDescriptor(Document.prototype, 'doctype').get;
+                return doc.doctype === getDoctype.call(doc) && doc.doctype.parentNode === doc
+                    && doc.doctype.name === 'html' && !(doc.doctype instanceof DocumentType);
+            })()
+        "#)?;
+        let doctype = scope.evaluate(&units("originChild.ownerDocument.doctype"))?;
+        Ok(scope.retain(&doctype))
+    }).unwrap();
+    let engine = host.engine.as_mut().unwrap();
+    let realm = engine
+        .creations
+        .find(origin.global(), || Ok::<_, Error>(()))
+        .unwrap()
+        .unwrap();
+    engine
+        .process
+        .execution()
+        .in_realm(realm, |scope| {
+            let doctype = scope.import(&doctype)?;
+            let global = scope.global()?;
+            scope.set(
+                &global,
+                PropertyKey::String(&units("originalDoctype")),
+                &doctype,
+            )?;
+            assert_guest(
+                scope,
+                "Object.getPrototypeOf(originalDoctype) === DocumentType.prototype",
+            )
+        })
+        .unwrap();
+}
+
 pub(in crate::document_scripting) fn native_document_and_fragment_use_their_registered_realm() {
     let RegisteredOrigin {
         mut host,
