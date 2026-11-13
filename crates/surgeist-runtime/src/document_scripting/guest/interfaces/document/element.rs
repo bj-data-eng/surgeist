@@ -167,6 +167,9 @@ impl ElementBindings {
                 parent,
                 capture,
             )?;
+            if interface == "HTMLTemplateElement" {
+                super::template::install(scope, &prototype, capture)?;
+            }
             let prototype = scope.callback_object(&prototype)?;
             let constructor = scope.callback_object(&constructor)?;
             classes.push(HtmlPrototype {

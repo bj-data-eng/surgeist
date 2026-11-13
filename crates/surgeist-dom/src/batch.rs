@@ -76,6 +76,7 @@ pub(crate) enum Creation {
     Element {
         name: crate::DomElementCreationName,
         options: crate::DomElementCreationOptions,
+        fallback: Option<crate::DomCreationRealmFallback>,
     },
     Attr {
         namespace: Option<Namespace>,
@@ -780,6 +781,7 @@ impl DomBatch {
             Creation::Element {
                 name: crate::DomElementCreationName::Local(local_name.into()),
                 options: crate::DomElementCreationOptions::default(),
+                fallback: None,
             },
             Some(document.into()),
         )
@@ -796,6 +798,7 @@ impl DomBatch {
             Creation::Element {
                 name: crate::DomElementCreationName::Qualified(namespace, qualified_name.into()),
                 options: crate::DomElementCreationOptions::default(),
+                fallback: None,
             },
             Some(document.into()),
         )

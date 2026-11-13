@@ -53,6 +53,7 @@ fn prepared_detached_element_publishes_only_after_projection_and_watch_admission
         (
             DomElementCreationName::Qualified(Namespace::from_uri("urn:test"), "p:Exact".into()),
             DomElementCreationOptions::default(),
+            None,
         )
     };
     let before = dom.snapshot().stamp();

@@ -1060,7 +1060,22 @@ impl DomSourceEdit {
         name: DomElementCreationName,
         options: DomElementCreationOptions,
     ) -> Self {
-        Self::create(Creation::Element { name, options }, Some(document.into()))
+        Self::create_element_in_realm(document, name, options, None)
+    }
+    pub(crate) fn create_element_in_realm(
+        document: NodeId,
+        name: DomElementCreationName,
+        options: DomElementCreationOptions,
+        fallback: Option<crate::DomCreationRealmFallback>,
+    ) -> Self {
+        Self::create(
+            Creation::Element {
+                name,
+                options,
+                fallback,
+            },
+            Some(document.into()),
+        )
     }
     /// Request creation of one empty detached Attr in the selected Document.
     pub fn create_attribute(

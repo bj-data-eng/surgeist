@@ -24,6 +24,11 @@ if RUSTC:
 
 
 class DescriptionTests(unittest.TestCase):
+    def test_named_reflection_preserves_the_source_attribute(self):
+        self.assertEqual(g.attributes([{"name": "Reflect", "value": "for"}]), '[Reflect="for"] ')
+        with self.assertRaisesRegex(g.DescriptionError, "invalid reflected attribute name"):
+            g.attributes([{"name": "Reflect", "value": 'invalid"name'}])
+
     @classmethod
     def setUpClass(cls):
         cls.original = g.load()

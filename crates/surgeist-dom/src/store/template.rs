@@ -72,6 +72,7 @@ impl Draft {
     fn appropriate_template_document(
         &mut self,
         document: Key,
+        realm: Option<crate::DomHostedGlobalId>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<Key, DomError> {
@@ -89,6 +90,7 @@ impl Draft {
                 Ok(state.inert().expect("actual cached Document"))
             }
             surgeist_html::elements::template::HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument => {
+                let global = self.node(document)?.relevant_global().or(realm);
                 let KindRead::Document(source) = self.node(document)?.kind() else {
                     unreachable!("Document role requires Document")
                 };
@@ -101,6 +103,7 @@ impl Draft {
                 let key = Key::Created(self.created.len());
                 let key = self.allocate(NewNode::Document(metadata), key, limits, cancel)?;
                 drop(formation);
+                self.establish_creation_global(key, global, cancel)?;
                 let mut relation = self.template_document_mut(key, cancel)?;
                 *relation = Some(TemplateDocument::InertTemplate);
                 relation.commit(cancel)?;
@@ -123,9 +126,14 @@ impl Draft {
         {
             return Ok(());
         }
+        let host = self.node(node)?;
+        let global = host.relevant_global();
         let document =
-            self.appropriate_template_document(self.node(node)?.document(), limits, cancel)?;
+            self.appropriate_template_document(host.document(), global, limits, cancel)?;
         let contents = self.allocate(NewNode::DocumentFragment, document, limits, cancel)?;
+        if self.node(contents)?.relevant_global().is_none() {
+            self.establish_creation_global(contents, global, cancel)?;
+        }
         let mut relation = self.host_mut(contents, cancel)?;
         *relation = Some(node);
         relation.commit(cancel)?;
@@ -147,7 +155,7 @@ impl Draft {
         let Some(contents) = self.owned_template_contents(node, cancel)? else {
             return Ok(None);
         };
-        let target = self.appropriate_template_document(document, limits, cancel)?;
+        let target = self.appropriate_template_document(document, None, limits, cancel)?;
         Ok((self.node(contents)?.document() != target).then_some((contents, target)))
     }
 }

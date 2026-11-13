@@ -459,7 +459,7 @@ pub(in crate::store) fn commands(
             } => payload.string(value)?,
             Command::Create { kind, .. } => match kind {
                 Creation::Text(value) | Creation::Comment(value) => payload.string(value)?,
-                Creation::Element { name, options } => {
+                Creation::Element { name, options, .. } => {
                     match name {
                         crate::DomElementCreationName::Local(name) => payload.string(name)?,
                         crate::DomElementCreationName::Qualified(namespace, name) => {

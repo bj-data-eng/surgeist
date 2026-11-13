@@ -115,6 +115,22 @@ impl DomTemplate<'_> {
             .template_contents()
             .ok_or(crate::DomError::TemplateContentsUnavailable)
     }
+    /// Resolve the current HTML content getter result. Only an exact ordinary
+    /// fragment with the reciprocal Template host relation can be returned.
+    /// The caller's meter covers each reached canonical lookup.
+    pub fn content_fragment_with<E: From<crate::DomError>>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<NodeId, E> {
+        let id = self.contents()?;
+        let contents = self.node.snapshot.node_with(id, step)?;
+        if !matches!(contents.kind(), crate::DomNodeKind::DocumentFragment)
+            || contents.fragment_host() != Some(self.id())
+        {
+            return Err(crate::DomError::TemplateContentsUnavailable.into());
+        }
+        Ok(id)
+    }
     pub fn insertion_state(self) -> DomTemplatePatch {
         DomTemplatePatch {
             state: self

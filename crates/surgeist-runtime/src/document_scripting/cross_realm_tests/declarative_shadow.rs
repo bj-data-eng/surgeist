@@ -37,7 +37,7 @@ fn parse_limits() -> HtmlParseLimits {
         .unwrap()
 }
 
-fn fragment(
+pub(super) fn fragment(
     snapshot: &DomSnapshot,
     document: DocumentId,
     element: NodeId,

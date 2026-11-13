@@ -3673,7 +3673,12 @@ impl Draft {
                     None
                 };
                 let metadata_formation = source::formation::Formation::new(self, cancelled)?;
-                if let Creation::Element { name, options } = kind {
+                if let Creation::Element {
+                    name,
+                    options,
+                    fallback,
+                } = kind
+                {
                     let metadata = self.document_metadata(document)?;
                     let (formed, selected) = if let Some(reached) = reached {
                         let name = self.native_element_name(
@@ -3737,6 +3742,11 @@ impl Draft {
                         cancelled,
                         metadata_formation,
                     )?;
+                    if self.node(key)?.relevant_global().is_none() && fallback.is_some() {
+                        let global =
+                            self.resolve_creation_global(document, *fallback, cancelled)?;
+                        self.establish_creation_global(key, global, cancelled)?;
+                    }
                     if let Some(binding) = selected {
                         self.establish_element_registry(key, binding, cancelled)?;
                         self.initialize_native_element_features(key, limits, cancelled)?;
