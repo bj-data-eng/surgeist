@@ -90,22 +90,46 @@ impl<S: LayoutScalar> core::ops::Deref for GridAxisPreparationOwner<'_, S> {
 
 // One returned bounded sizing execution owns this key. Unissued prefix axes remain
 // absent even if the traversal returned provisional numeric estimates.
-pub(super) struct GridTrackExecutionFrame<'input, 'source, Node, S: LayoutScalar> {
+pub(super) struct GridTrackSizingReceipt<Node, S: LayoutScalar> {
     owner: Node,
+    context: GridContainerContext<S>,
+    columns: Option<Vec<S>>,
+    rows: Option<Vec<S>>,
+    requests: LogicalSizeOf<Option<AxisSizingRequestOf<S>>>,
+    finishing: LogicalSizeOf<Option<GridTrackSizingConstraint<S>>>,
+}
+
+pub(super) struct GridTrackExecutionFrame<'input, 'source, Node, S: LayoutScalar> {
+    receipt: &'source GridTrackSizingReceipt<Node, S>,
     constants: &'source Constants<S>,
     flow: crate::geometry::FlowAxes,
     stage: GridSizingStage,
-    context: GridContainerContext<S>,
     style: GridContainerProjection<'source, S>,
     column_tracks: &'source [TrackSizingOf<S>],
     row_tracks: &'source [TrackSizingOf<S>],
     minimum_functions: GridMinimumParentFunctions<'source, S>,
     placements: &'source GridPlacementContext<'input, Node, S>,
     subgrid_report: &'source GridSubgridReport<Node>,
-    columns: Option<Vec<S>>,
-    rows: Option<Vec<S>>,
-    requests: LogicalSizeOf<Option<AxisSizingRequestOf<S>>>,
-    finishing: LogicalSizeOf<Option<GridTrackSizingConstraint<S>>>,
+}
+
+impl<Node, S: LayoutScalar> GridTrackSizingReceipt<Node, S> {
+    pub(super) fn frame<'input, 'source>(
+        &'source self,
+        source: GridTrackSource<'input, 'source, Node, S>,
+    ) -> GridTrackExecutionFrame<'input, 'source, Node, S> {
+        GridTrackExecutionFrame {
+            receipt: self,
+            constants: source.constants,
+            flow: source.sizing_flow_axes,
+            stage: source.stage,
+            style: *source.style,
+            column_tracks: source.column_tracks,
+            row_tracks: source.row_tracks,
+            minimum_functions: source.minimum_functions,
+            placements: source.placements,
+            subgrid_report: source.subgrid_report,
+        }
+    }
 }
 
 pub(super) enum GridTrackRun<'input, 'source, 'a, Node, S: LayoutScalar> {
@@ -311,7 +335,7 @@ pub(super) fn resolve_tracks<'input, 'source, 'prepared, Tree, M>(
     node: Tree::Node,
     input: GridTrackResolutionInput<'input, 'source, Tree::Node, Tree::Scalar>,
     run: GridTrackRun<'input, 'source, 'prepared, Tree::Node, Tree::Scalar>,
-) -> GridTrackResolutionResult<'input, 'source, 'prepared, Tree::Node, Tree::Scalar, M>
+) -> GridTrackResolutionResult<'prepared, Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -401,14 +425,16 @@ impl<'prepared, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'prepared, Nod
                     row_preparation,
                     spaces,
                 } => {
-                    if source.owner != node
+                    if source.receipt.owner != node
                         || source.stage != input.stage
-                        || source.columns.as_deref() != Some(columns.as_slice())
-                        || source.rows.as_deref() != Some(rows.as_slice())
-                        || source.requests.inline != Some(column_preparation.available)
-                        || source.requests.block != Some(row_preparation.available)
-                        || source.finishing.inline != Some(column_preparation.finishing_available)
-                        || source.finishing.block != Some(row_preparation.finishing_available)
+                        || source.receipt.columns.as_deref() != Some(columns.as_slice())
+                        || source.receipt.rows.as_deref() != Some(rows.as_slice())
+                        || source.receipt.requests.inline != Some(column_preparation.available)
+                        || source.receipt.requests.block != Some(row_preparation.available)
+                        || source.receipt.finishing.inline
+                            != Some(column_preparation.finishing_available)
+                        || source.receipt.finishing.block
+                            != Some(row_preparation.finishing_available)
                     {
                         return Err(grid_track_sizing_error(
                             node,
@@ -440,15 +466,15 @@ impl<'prepared, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'prepared, Nod
                     }
                     let unchanged = source.constants == input.constants
                         && source.flow == input.sizing_flow_axes
-                        && &source.context == input.context.as_ref()
+                        && &source.receipt.context == input.context.as_ref()
                         && source.style == *input.style
                         && source.column_tracks == input.column_tracks
                         && source.row_tracks == input.row_tracks
                         && source.minimum_functions == input.minimum_functions
                         && core::ptr::eq(source.placements, input.placements)
                         && core::ptr::eq(source.subgrid_report, input.subgrid_report)
-                        && source.requests.inline == Some(input.available.inline)
-                        && source.requests.block == Some(input.available.block);
+                        && source.receipt.requests.inline == Some(input.available.inline)
+                        && source.receipt.requests.block == Some(input.available.block);
                     (
                         Some(columns),
                         Some(rows),
@@ -747,7 +773,7 @@ impl<'prepared, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'prepared, Nod
         self,
         node: Node,
         input: GridTrackResolutionInput<'input, 'source, Node, S>,
-    ) -> GridTrackResolutionResult<'input, 'source, 'prepared, Node, S, M> {
+    ) -> GridTrackResolutionResult<'prepared, Node, S, M> {
         let Self {
             columns,
             rows,
@@ -762,17 +788,8 @@ impl<'prepared, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'prepared, Nod
         let rows = rows.unwrap_or_else(|| {
             initial_estimate(input.row_tracks, input.context.percent_basis.block)
         });
-        let source_frame = GridTrackExecutionFrame {
+        let receipt = GridTrackSizingReceipt {
             owner: node,
-            constants: input.constants,
-            flow: input.sizing_flow_axes,
-            stage: input.stage,
-            style: *input.style,
-            column_tracks: input.column_tracks,
-            row_tracks: input.row_tracks,
-            minimum_functions: input.minimum_functions,
-            placements: input.placements,
-            subgrid_report: input.subgrid_report,
             columns: if column_preparation.is_some() {
                 Some(retain_allocation(node, &columns)?)
             } else {
@@ -803,7 +820,7 @@ impl<'prepared, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'prepared, Nod
             rows,
             column_preparation,
             row_preparation,
-            source_frame,
+            receipt,
         })
     }
 }

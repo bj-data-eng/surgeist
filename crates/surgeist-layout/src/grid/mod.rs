@@ -72,10 +72,11 @@ pub use lanes::{
     LaneTrackSpanLength, lane_intrinsic_sizing, place_lanes,
 };
 use lanes::{
-    GridLanesLayoutInput, LaneIntrinsicTrackSizeInput, LanePlacementGeometry,
-    apply_grid_lanes_auto_fit_policy, column_flow_for_grid_lanes, grid_axis_for_grid_lanes,
-    lane_axis_for_grid_lanes, layout_grid_lanes_children, prepare_grid_lanes_intrinsic_child_input,
-    prepare_lane_placement, resolve_grid_lanes_placement_with_resolved_tracks,
+    GridLanesLayoutInput, LaneIntrinsicTrackSizeInput, LanePacking, LanePackingChild,
+    LanePackingSource, LanePlacementGeometry, LanePlacementPacking,
+    apply_grid_lanes_auto_fit_policy, begin_lane_placement, column_flow_for_grid_lanes,
+    grid_axis_for_grid_lanes, lane_axis_for_grid_lanes, layout_grid_lanes_children,
+    prepare_grid_lanes_intrinsic_child_input,
 };
 use named::{
     GridAreaNameFacts, NamedGridError, NamedGridLines, build_grid_named_context,
@@ -179,6 +180,8 @@ enum GridChildPhase<'input, Node, S: LayoutScalar> {
         node: Node,
         input: ComputeInputOf<S>,
     },
+    InitialLanePacking(LanePackingChild<Node, S>),
+    FinalLanePacking(LanePackingChild<Node, S>),
     InFlow(GridFlowChild<'input, Node, S>),
     Positioned(PositionedGridChild<'input, Node, S>),
 }
@@ -187,6 +190,9 @@ impl<Node: Copy, S: LayoutScalar> GridChild<'_, Node, S> {
     pub(crate) fn request(&self) -> (Node, ComputeInputOf<S>) {
         match &self.phase {
             GridChildPhase::Track { node, input } => (*node, *input),
+            GridChildPhase::InitialLanePacking(child) | GridChildPhase::FinalLanePacking(child) => {
+                child.request()
+            }
             GridChildPhase::InFlow(child) => child.request(),
             GridChildPhase::Positioned(child) => (child.node, child.input),
         }
@@ -257,40 +263,72 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                 }
                 self.pass.take().expect("active Grid pass").finish()?
             } else if let Some(tracks) = &mut self.tracks {
-                if let GridTrackPassPhase::Repeat(repeat) = tracks {
-                    let expansion = match repeat.advance(tree, self.node)? {
-                        ControlFlow::Continue((node, input)) => {
+                let next = match tracks {
+                    GridTrackPassPhase::Repeat(repeat) => {
+                        let expansion = match repeat.advance(tree, self.node)? {
+                            ControlFlow::Continue((node, input)) => {
+                                return Ok(ControlFlow::Continue(GridChild {
+                                    phase: GridChildPhase::Track { node, input },
+                                }));
+                            }
+                            ControlFlow::Break(expansion) => expansion,
+                        };
+                        let Some(GridTrackPassPhase::Repeat(repeat)) = self.tracks.take() else {
+                            unreachable!("completed repeat owns track preparation")
+                        };
+                        let GridRepeatPass { source, probe } = *repeat;
+                        drop(probe);
+                        let source = source.finish(tree, self.node, Some(expansion))?;
+                        self.tracks = Some(GridTrackPassPhase::sizing(source));
+                        continue;
+                    }
+                    GridTrackPassPhase::Sizing(tracks) => {
+                        if let ControlFlow::Continue((node, input)) =
+                            tracks
+                                .sizing
+                                .advance(tree, self.node, &tracks.source.track_input())?
+                        {
                             return Ok(ControlFlow::Continue(GridChild {
                                 phase: GridChildPhase::Track { node, input },
                             }));
                         }
-                        ControlFlow::Break(expansion) => expansion,
-                    };
-                    let Some(GridTrackPassPhase::Repeat(repeat)) = self.tracks.take() else {
-                        unreachable!("completed repeat owns track preparation")
-                    };
-                    let GridRepeatPass { source, probe } = *repeat;
-                    drop(probe);
-                    let source = source.finish(tree, self.node, Some(expansion))?;
-                    self.tracks = Some(GridTrackPassPhase::sizing(source));
-                    continue;
-                }
-                let GridTrackPassPhase::Sizing(tracks) = tracks else {
-                    unreachable!("repeat and sizing own distinct track phases")
+                        let Some(GridTrackPassPhase::Sizing(tracks)) = self.tracks.take() else {
+                            unreachable!("sized tracks own the prepared pass")
+                        };
+                        let GridTrackPass { source, sizing } = *tracks;
+                        let resolved = sizing.finish(self.node, source.track_input())?;
+                        if let Some(packing) = source.begin_lane_extent(tree, self.node, &resolved)
+                        {
+                            self.tracks = Some(GridTrackPassPhase::LaneExtent(Box::new(
+                                GridInitialLanePacking {
+                                    source,
+                                    resolved,
+                                    packing,
+                                },
+                            )));
+                            continue;
+                        }
+                        source.finish(tree, self.node, resolved, None)?
+                    }
+                    GridTrackPassPhase::LaneExtent(lanes) => {
+                        let extent = match lanes.advance(tree)? {
+                            ControlFlow::Continue(child) => {
+                                return Ok(ControlFlow::Continue(GridChild {
+                                    phase: GridChildPhase::InitialLanePacking(child),
+                                }));
+                            }
+                            ControlFlow::Break(extent) => extent,
+                        };
+                        let Some(GridTrackPassPhase::LaneExtent(lanes)) = self.tracks.take() else {
+                            unreachable!("completed packing owns the stacking extent")
+                        };
+                        let GridInitialLanePacking {
+                            source, resolved, ..
+                        } = *lanes;
+                        source.finish(tree, self.node, resolved, extent)?
+                    }
                 };
-                let projected = tracks.source.track_input();
-                if let ControlFlow::Continue((node, input)) =
-                    tracks.sizing.advance(tree, self.node, &projected)?
-                {
-                    return Ok(ControlFlow::Continue(GridChild {
-                        phase: GridChildPhase::Track { node, input },
-                    }));
-                }
-                let Some(GridTrackPassPhase::Sizing(tracks)) = self.tracks.take() else {
-                    unreachable!("sized tracks own the prepared pass")
-                };
-                let GridTrackPass { source, sizing } = *tracks;
-                match source.finish(tree, self.node, sizing)? {
+                match next {
                     ControlFlow::Break(result) => result,
                     ControlFlow::Continue(pass) => {
                         self.pass = Some(pass);
@@ -334,12 +372,22 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
             let tracks = self.tracks.as_mut().expect("active track request");
             return match tracks {
                 GridTrackPassPhase::Repeat(repeat) => repeat.accept(self.node, output),
+                GridTrackPassPhase::LaneExtent(_) => {
+                    unreachable!("lane packing owns its child receipt")
+                }
                 GridTrackPassPhase::Sizing(tracks) => {
                     tracks
                         .sizing
                         .accept(self.node, &tracks.source.track_input(), output)
                 }
             };
+        }
+        if let GridChildPhase::InitialLanePacking(child) = child.phase {
+            let Some(GridTrackPassPhase::LaneExtent(lanes)) = &mut self.tracks else {
+                unreachable!("the initial packing owns its child receipt");
+            };
+            lanes.accept(child, output);
+            return Ok(());
         }
         self.pass
             .as_mut()
@@ -903,6 +951,8 @@ struct GridPass<'input, Node, S: LayoutScalar> {
 }
 
 enum GridPassChildren<'input, Node, S: LayoutScalar> {
+    PackLanes(Box<GridFinalLanePacking<'input, Node, S>>),
+    EmptyLanes(Box<GridChildrenLayout<Node, S>>),
     InFlowLanes(Box<GridLanesInFlow<'input, Node, S>>),
     InFlowOrdinary(Box<OrdinaryGridInFlow<'input, Node, S>>),
     Positioned(GridChildPlacement<'input, Node, S>),
@@ -949,14 +999,19 @@ impl<'input, Node, S: LayoutScalar> OrdinaryGridSource<'input, Node, S> {
     }
 }
 
+struct GridFinalLanePacking<'input, Node, S: LayoutScalar> {
+    source: GridLanesPlacementSource<'input, Node, S>,
+    packing: LanePlacementPacking<S>,
+}
+
 struct GridLanesInFlow<'input, Node, S: LayoutScalar> {
     geometry: LanePlacementGeometry<S>,
+    children: Vec<Node>,
     source: GridLanesPlacementSource<'input, Node, S>,
     collection: GridItemCollection<'input, Node, S>,
 }
 
 struct GridLanesPlacementSource<'input, Node, S: LayoutScalar> {
-    children: Vec<Node>,
     columns: Vec<S>,
     rows: Vec<S>,
     column_tracks: Vec<TrackSizingOf<S>>,
@@ -1031,13 +1086,41 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
+        if let Some(GridPassChildren::PackLanes(lanes)) = &mut self.children {
+            let input = lanes.source.input(&self.output, self.scroll_box);
+            let geometry = match lanes.packing.advance(tree, &input)? {
+                ControlFlow::Continue(child) => {
+                    return Ok(Some(GridChild {
+                        phase: GridChildPhase::FinalLanePacking(child),
+                    }));
+                }
+                ControlFlow::Break(ControlFlow::Break(layout)) => {
+                    self.children = Some(GridPassChildren::EmptyLanes(Box::new(layout)));
+                    return Ok(None);
+                }
+                ControlFlow::Break(ControlFlow::Continue(geometry)) => geometry,
+            };
+            let Some(GridPassChildren::PackLanes(lanes)) = self.children.take() else {
+                unreachable!("Grid Lanes retains the source of its completed packing");
+            };
+            let GridFinalLanePacking { source, .. } = *lanes;
+            let children = tree.children(self.output.node).collect::<Vec<_>>();
+            let input = source.input(&self.output, self.scroll_box);
+            let collection = GridItemCollection::new(&geometry.item_input(&input, &children));
+            self.children = Some(GridPassChildren::InFlowLanes(Box::new(GridLanesInFlow {
+                geometry,
+                children,
+                source,
+                collection,
+            })));
+        }
         if let Some(GridPassChildren::InFlowLanes(lanes)) = &mut self.children {
             let input = lanes.source.input(&self.output, self.scroll_box);
             let geometry = &lanes.geometry;
             if let Some(child) = lanes.collection.next(
                 tree,
                 self.output.node,
-                &geometry.item_input(&input, &lanes.source.children),
+                &geometry.item_input(&input, &lanes.children),
                 |source_index, style| geometry.item_disposition(&input, source_index, style),
             )? {
                 return Ok(Some(GridChild {
@@ -1051,6 +1134,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
                 geometry,
                 source,
                 collection,
+                ..
             } = *lanes;
             let input = source.input(&self.output, self.scroll_box);
             let children = geometry.finish(tree, self.output.node, &input, collection.finish())?;
@@ -1105,12 +1189,17 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         match (&mut self.children, child.phase) {
+            (Some(GridPassChildren::PackLanes(lanes)), GridChildPhase::FinalLanePacking(child)) => {
+                let input = lanes.source.input(&self.output, self.scroll_box);
+                lanes.packing.accept(&input, child, output);
+                Ok(())
+            }
             (Some(GridPassChildren::InFlowLanes(lanes)), GridChildPhase::InFlow(child)) => {
                 let input = lanes.source.input(&self.output, self.scroll_box);
                 lanes.collection.accept(
                     tree,
                     self.output.node,
-                    &lanes.geometry.item_input(&input, &lanes.source.children),
+                    &lanes.geometry.item_input(&input, &lanes.children),
                     child,
                     output,
                 )
@@ -1133,10 +1222,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
     }
 
     fn finish<M>(self) -> GridComputeOutcome<Node, S, M> {
-        let Some(GridPassChildren::Positioned(children)) = self.children else {
-            unreachable!("Grid finishes after all child placement");
+        let layout = match self.children {
+            Some(GridPassChildren::Positioned(children)) => children.finish()?,
+            Some(GridPassChildren::EmptyLanes(layout)) => *layout,
+            _ => unreachable!("Grid finishes after all child placement"),
         };
-        let layout = children.finish()?;
         self.output.finish(Some((self.scroll_box, layout)))
     }
 }
@@ -1188,13 +1278,36 @@ where
                 sizing: GridTrackSizing::intrinsic(),
             }
         }
+        GridTrackPassPhase::LaneExtent(_) => unreachable!("a new track pass starts before packing"),
     };
     let projected = source.track_input();
     while let ControlFlow::Continue((child, request)) = sizing.advance(tree, node, &projected)? {
         let output = tree.compute_child(child, request)?;
         sizing.accept(node, &projected, output)?;
     }
-    match source.finish(tree, node, sizing)? {
+    let resolved = sizing.finish(node, source.track_input())?;
+    let (source, resolved, extent) =
+        if let Some(packing) = source.begin_lane_extent(tree, node, &resolved) {
+            let mut lanes = GridInitialLanePacking {
+                source,
+                resolved,
+                packing,
+            };
+            let extent = loop {
+                match lanes.advance(tree)? {
+                    ControlFlow::Continue(child) => {
+                        let (node, input) = child.request();
+                        let output = tree.compute_child(node, input)?;
+                        lanes.accept(child, output);
+                    }
+                    ControlFlow::Break(extent) => break extent,
+                }
+            };
+            (lanes.source, lanes.resolved, extent)
+        } else {
+            (source, resolved, None)
+        };
+    match source.finish(tree, node, resolved, extent)? {
         ControlFlow::Break(result) => Ok(result),
         ControlFlow::Continue(pass) => pass.compute(tree),
     }
@@ -1203,6 +1316,7 @@ where
 enum GridTrackPassPhase<'input, Node, S: LayoutScalar> {
     Repeat(Box<GridRepeatPass<'input, Node, S>>),
     Sizing(Box<GridTrackPass<'input, Node, S>>),
+    LaneExtent(Box<GridInitialLanePacking<'input, Node, S>>),
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> GridTrackPassPhase<'input, Node, S> {
@@ -1264,6 +1378,35 @@ struct GridPassPreparationSource<'input, Node, S: LayoutScalar> {
 struct GridTrackPass<'input, Node, S: LayoutScalar> {
     source: GridPassSource<'input, Node, S>,
     sizing: GridTrackSizing<'static, Node, S>,
+}
+
+struct GridInitialLanePacking<'input, Node, S: LayoutScalar> {
+    source: GridPassSource<'input, Node, S>,
+    resolved: GridTrackResolution<'static, Node, S>,
+    packing: LanePacking<S>,
+}
+
+type GridLaneExtentStep<Node, S, M> =
+    LayoutResultOf<Node, ControlFlow<Option<S>, LanePackingChild<Node, S>>, S, M>;
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> GridInitialLanePacking<'input, Node, S> {
+    fn advance<Tree, M>(&mut self, tree: &mut Tree) -> GridLaneExtentStep<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let source = self.source.lane_packing_source(&self.resolved);
+        self.packing.advance(tree, &source).map(|step| match step {
+            ControlFlow::Continue(child) => ControlFlow::Continue(child),
+            ControlFlow::Break(report) => {
+                ControlFlow::Break(report.ok().map(|report| report.range_extent().max(S::ZERO)))
+            }
+        })
+    }
+
+    fn accept(&mut self, child: LanePackingChild<Node, S>, output: ComputeOutputOf<S>) {
+        let source = self.source.lane_packing_source(&self.resolved);
+        self.packing.accept(&source, child, output);
+    }
 }
 
 struct GridPassSource<'input, Node, S: LayoutScalar> {
@@ -1492,15 +1635,98 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPassSource<'input, Node, S> {
         }
     }
 
+    fn stacking(&self) -> Option<(GridAxisKind, SizingOperation)> {
+        self.style
+            .display
+            .establishes_grid_lanes_formatting_context()
+            .then(|| {
+                let axis = lane_axis_for_grid_lanes(&self.style);
+                let fixed_body = self
+                    .constants
+                    .flow_axes
+                    .logical_size(self.constants.explicit_definite_content_size);
+                let operation = if axis.component(fixed_body).is_some() {
+                    SizingOperation::Normal
+                } else {
+                    axis.component(self.initialized.track_available).operation()
+                };
+                (axis, operation)
+            })
+    }
+
+    fn needs_child_layout(&self) -> bool {
+        (self.input.run_mode().is_perform_layout()
+            || needs_intrinsic_auto_observation(&self.style, self.input)
+            || self.observes_contained_baseline)
+            && intrinsic_stage::has_layout_basis(
+                self.stage,
+                &self.constants,
+                &self.initialized.column_tracks,
+                &self.initialized.row_tracks,
+            )
+    }
+
+    fn begin_lane_extent<Tree, M>(
+        &self,
+        tree: &Tree,
+        node: Node,
+        resolved: &GridTrackResolution<'_, Node, S>,
+    ) -> Option<LanePacking<S>>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let (axis, _) = self.stacking()?;
+        // Grid-axis contributions do not consume stacking placement. Its
+        // range is needed only for resolved stacking sizing or child layout.
+        if axis
+            .component(self.constants.flow_axes.logical_size(self.contained_size))
+            .is_some()
+            || !(self.stage.has_resolved_axis(axis) || self.needs_child_layout())
+        {
+            return None;
+        }
+        LanePacking::begin(tree, node, &self.lane_packing_source(resolved)).ok()
+    }
+
+    fn lane_packing_source<'a>(
+        &'a self,
+        resolved: &'a GridTrackResolution<'_, Node, S>,
+    ) -> LanePackingSource<'input, 'a, Node, S> {
+        let context = &self.initialized.context;
+        LanePackingSource {
+            style: &self.style,
+            constants: &self.constants,
+            context,
+            columns: &resolved.columns,
+            rows: &resolved.rows,
+            placements: &self.initialized.placements,
+            grid_axis_gap: grid_axis_for_grid_lanes(&self.style).component(context.gap),
+            container_content_box_size: self
+                .constants
+                .flow_axes
+                .logical_size(self.constants.node_inner_size),
+            stacking_operation: self
+                .stacking()
+                .expect("only Grid Lanes measures stacking")
+                .1,
+            minimum_functions: self.track_input().minimum_functions,
+            subgrid_report: &self.initialized.subgrid_report,
+            sizing_stage: self.stage,
+        }
+    }
+
     fn finish<Tree, M>(
         self,
         tree: &mut Tree,
         node: Node,
-        sizing: GridTrackSizing<'_, Node, S>,
+        resolved: GridTrackResolution<'_, Node, S>,
+        lane_extent: Option<S>,
     ) -> GridPassStart<'input, Node, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
+        let stacking = self.stacking();
+        let needs_child_layout = self.needs_child_layout();
         let Self {
             input,
             stage,
@@ -1515,98 +1741,51 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPassSource<'input, Node, S> {
         let InitializedGridTracks {
             column_tracks,
             row_tracks,
-            track_available,
+            track_available: _,
             context,
             placements,
             subgrid_report,
             report,
         } = initialized;
-        let stacking_axis = style
-            .display
-            .establishes_grid_lanes_formatting_context()
-            .then(|| lane_axis_for_grid_lanes(&style));
         let sizing_flow_axes = constants.flow_axes;
         let gap = context.gap;
-        let stacking = stacking_axis.map(|axis| {
-            let fixed_body =
-                sizing_flow_axes.logical_size(constants.explicit_definite_content_size);
-            let operation = if axis.component(fixed_body).is_some() {
-                SizingOperation::Normal
-            } else {
-                axis.component(track_available).operation()
-            };
-            (axis, operation)
-        });
         let minimum_functions = minimum_parent_functions(
             &column_tracks,
             &row_tracks,
             context.percent_basis,
             &parent_context,
         );
-        let track_input = GridTrackResolutionInput {
+        let track_source = GridTrackSource {
             style: &style,
             constants: &constants,
             column_tracks: &column_tracks,
             row_tracks: &row_tracks,
             minimum_functions,
-            context: std::borrow::Cow::Owned(context.clone()),
             subgrid_report: &subgrid_report,
             sizing_flow_axes,
-            available: track_available,
             placements: &placements,
             stage,
         };
-        let track_resolution = sizing.finish(node, track_input)?;
+
         let GridTrackResolution {
             sizing_phases,
             columns,
             rows,
             column_preparation,
             row_preparation,
-            source_frame,
-        } = track_resolution;
+            receipt,
+        } = resolved;
+        let source_frame = receipt.frame(track_source);
         let track_content_size = LogicalSizeOf::new(
             track_sum_with_gutters(&columns, gap.inline, Some(&context.column_gutters)),
             track_sum_with_gutters(&rows, gap.block, Some(&context.row_gutters)),
         );
         let mut logical_content_size = track_content_size;
-        let needs_child_layout = (input.run_mode().is_perform_layout()
-            || needs_intrinsic_auto_observation(&style, input)
-            || observes_contained_baseline)
-            && intrinsic_stage::has_layout_basis(stage, &constants, &column_tracks, &row_tracks);
-        // Grid-axis contribution sizing does not consume stacking placement. Its
-        // range is needed only at the reached stacking sizing point or when the
-        // qualified child-layout operation can consume an actual scrollport.
-        if let Some((stacking_axis, stacking_operation)) = stacking
-            && stacking_axis
-                .component(sizing_flow_axes.logical_size(contained_size))
-                .is_none()
-            && (stage.has_resolved_axis(stacking_axis) || needs_child_layout)
-            && let Ok(lane_report) = resolve_grid_lanes_placement_with_resolved_tracks(
-                tree,
-                node,
-                &style,
-                &constants,
-                context.clone(),
-                &columns,
-                &rows,
-                &placements,
-                match grid_axis_for_grid_lanes(&style) {
-                    GridAxisKind::Column => gap.inline,
-                    GridAxisKind::Row => gap.block,
-                },
-                sizing_flow_axes.logical_size(constants.node_inner_size),
-                stacking_operation,
-                minimum_functions,
-                &subgrid_report,
-                stage,
-            )?
-        {
-            let extent = match stacking_axis {
-                GridAxisKind::Column => &mut logical_content_size.inline,
-                GridAxisKind::Row => &mut logical_content_size.block,
-            };
-            *extent = lane_report.range_extent().max(S::ZERO);
+        if let (Some((axis, _)), Some(extent)) = (stacking, lane_extent) {
+            match axis {
+                GridAxisKind::Column => logical_content_size.inline = extent,
+                GridAxisKind::Row => logical_content_size.block = extent,
+            }
         }
         let intrinsic_sizing_content_size = if stacking.is_some() {
             logical_content_size
@@ -1769,7 +1948,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPassSource<'input, Node, S> {
                 stacking_operation,
             };
             if input.run_mode().is_perform_layout() {
-                let prepared = prepare_lane_placement(tree, node, &lanes_input, context)?;
+                let prepared = begin_lane_placement(tree, node, &lanes_input, context)?;
                 let output = GridPassOutput {
                     node,
                     input,
@@ -1784,12 +1963,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPassSource<'input, Node, S> {
                     ControlFlow::Break(layout) => output
                         .finish(Some((scroll_box, layout)))
                         .map(ControlFlow::Break),
-                    ControlFlow::Continue(geometry) => {
-                        let children = tree.children(node).collect::<Vec<_>>();
-                        let collection =
-                            GridItemCollection::new(&geometry.item_input(&lanes_input, &children));
+                    ControlFlow::Continue(packing) => {
                         let source = GridLanesPlacementSource {
-                            children,
                             columns: layout_columns,
                             rows: layout_rows,
                             column_tracks,
@@ -1804,12 +1979,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPassSource<'input, Node, S> {
                             stacking_operation,
                         };
                         Ok(ControlFlow::Continue(Box::new(GridPass {
-                            children: Some(GridPassChildren::InFlowLanes(Box::new(
-                                GridLanesInFlow {
-                                    geometry,
-                                    source,
-                                    collection,
-                                },
+                            children: Some(GridPassChildren::PackLanes(Box::new(
+                                GridFinalLanePacking { source, packing },
                             ))),
                             output,
                             scroll_box,
@@ -3090,6 +3261,18 @@ fn raw_grid_line_is_numeric(line: &super::RawGridLine) -> bool {
     )
 }
 
+struct GridTrackSource<'input, 'a, Node, S: LayoutScalar> {
+    style: &'a GridContainerProjection<'a, S>,
+    constants: &'a Constants<S>,
+    column_tracks: &'a [TrackSizingOf<S>],
+    row_tracks: &'a [TrackSizingOf<S>],
+    minimum_functions: GridMinimumParentFunctions<'a, S>,
+    subgrid_report: &'a GridSubgridReport<Node>,
+    sizing_flow_axes: crate::geometry::FlowAxes,
+    placements: &'a GridPlacementContext<'input, Node, S>,
+    stage: GridSizingStage,
+}
+
 struct GridTrackResolutionInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     style: &'a GridContainerProjection<'a, S>,
     constants: &'a Constants<S>,
@@ -3147,17 +3330,17 @@ struct GridTrackSizingPhases {
     limit: GridSizingStage,
 }
 
-struct GridTrackResolution<'input, 'source, 'prepared, Node, S: LayoutScalar = Scalar> {
+struct GridTrackResolution<'prepared, Node, S: LayoutScalar = Scalar> {
     sizing_phases: GridTrackSizingPhases,
     columns: Vec<S>,
     rows: Vec<S>,
     column_preparation: Option<intrinsic_stage::GridAxisPreparationOwner<'prepared, S>>,
     row_preparation: Option<intrinsic_stage::GridAxisPreparationOwner<'prepared, S>>,
-    source_frame: intrinsic_stage::GridTrackExecutionFrame<'input, 'source, Node, S>,
+    receipt: intrinsic_stage::GridTrackSizingReceipt<Node, S>,
 }
 
-type GridTrackResolutionResult<'input, 'source, 'prepared, Node, S, M> =
-    LayoutResultOf<Node, GridTrackResolution<'input, 'source, 'prepared, Node, S>, S, M>;
+type GridTrackResolutionResult<'prepared, Node, S, M> =
+    LayoutResultOf<Node, GridTrackResolution<'prepared, Node, S>, S, M>;
 
 struct GridChildLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     execution_input: ComputeInputOf<S>,
