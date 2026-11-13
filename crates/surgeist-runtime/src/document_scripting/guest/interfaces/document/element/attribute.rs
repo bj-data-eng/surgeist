@@ -1,6 +1,7 @@
 //! Standard attribute setters over the original native Source operation.
 
 mod node;
+pub(super) use node::install;
 
 use super::{super::character_data::copy_native_data, *};
 use crate::{
@@ -28,56 +29,14 @@ pub(in crate::document_scripting::guest::interfaces::document) enum AttributeRes
     Removed(DomAttrId, Value<'scope>),
 }
 
-pub(super) fn install<'scope>(
-    scope: &mut Scope<'scope>,
-    element: &Value<'scope>,
-    capture: CaptureFunding<'_>,
-) -> Result<(), DocumentGuestEventError> {
-    for (name, namespaced, length) in [
-        (&ascii(b"setAttribute")[..], false, 2),
-        (&ascii(b"setAttributeNS")[..], true, 3),
-    ] {
-        let handler = capture(size_of::<(Capture, bool)>())?;
-        let function = scope.fixed_arity_function(
-            &Callback::new(move |scope, arguments| {
-                handler.write_attribute(scope, arguments, namespaced)
-            }),
-            FunctionMetadata { name, length },
-        )?;
-        define_data(
-            scope,
-            element,
-            PropertyKey::String(name),
-            &function,
-            true,
-            true,
-            true,
-        )?;
-    }
-    node::install(scope, element, capture)
-}
-
 impl Capture {
     fn write_attribute<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
+        (owner, events, element): (&NativeOwner, &GuestEvents, NodeId),
         namespaced: bool,
     ) -> Result<Completion<'scope>, Error> {
-        let receiver = scope.native_object::<GuestNodeProjection>(arguments.receiver())?;
-        let Some(GuestNode::Element(element)) = receiver.and_then(|node| node.payload().id())
-        else {
-            return Ok(Completion::Throw(
-                scope.type_error(&ascii(b"Element required"))?,
-            ));
-        };
-        let required = if namespaced { 3 } else { 2 };
-        if arguments.len() < required {
-            return Ok(Completion::Throw(
-                scope.type_error(&ascii(b"Missing attribute argument"))?,
-            ));
-        }
-        let (owner, events) = self.active(scope)?;
         let result = (|| -> Result<_, DocumentGuestEventError> {
             let (namespace, name, value) = self
                 .callbacks
@@ -110,11 +69,11 @@ impl Capture {
             else {
                 return Err(Error::BackendUnavailable.into());
             };
-            let (name, _name_backing) = copy_native_data(&owner, &events, name.as_code_units())?;
-            let (text, _value_backing) = copy_native_data(&owner, &events, value.as_code_units())?;
+            let (name, _name_backing) = copy_native_data(owner, events, name.as_code_units())?;
+            let (text, _value_backing) = copy_native_data(owner, events, value.as_code_units())?;
             let uri = match namespace.as_ref().map(|namespace| namespace.get()) {
                 Some(ArgumentValue::Present(Some(uri))) => {
-                    Some(copy_native_data(&owner, &events, uri.as_code_units())?)
+                    Some(copy_native_data(owner, events, uri.as_code_units())?)
                 }
                 Some(ArgumentValue::Missing) => return Err(Error::BackendUnavailable.into()),
                 _ => None,
@@ -131,7 +90,7 @@ impl Capture {
                 TrustedAttributeValue::Trusted(brand) => Some(brand.kind()),
                 TrustedAttributeValue::String(_) => None,
             };
-            self.apply_attribute(scope, &owner, &events, edit, brand, AttributeResult::Value)
+            self.apply_attribute(scope, owner, events, edit, brand, AttributeResult::Value)
         })();
         match result {
             Ok(completion) => Ok(completion),

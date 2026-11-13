@@ -5531,7 +5531,7 @@
     "Element.hasAttributes:0/call": {
       "kind": "native",
       "adapter": "element.hasattributes.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/element.rs", "symbol": "attributes"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "is_empty"}],
       "requirements": []
     },
     "Element.attributes/get": {
@@ -5551,20 +5551,20 @@
     "Element.getAttributeNames:0/call": {
       "kind": "native",
       "adapter": "element.getattributenames.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/element.rs", "symbol": "attributes"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "visit_with"}],
       "requirements": [],
       "result_view": "sequence"
     },
     "Element.getAttribute:0/call": {
       "kind": "native",
       "adapter": "element.getattribute.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_named_item_with"}],
       "requirements": []
     },
     "Element.getAttributeNS:0/call": {
       "kind": "native",
       "adapter": "element.getattributens.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_named_item_ns_with"}],
       "requirements": []
     },
     "Element.setAttribute:0/call": {
@@ -5609,13 +5609,13 @@
     "Element.hasAttribute:0/call": {
       "kind": "native",
       "adapter": "element.hasattribute.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_named_item_with"}],
       "requirements": []
     },
     "Element.hasAttributeNS:0/call": {
       "kind": "native",
       "adapter": "element.hasattributens.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_named_item_ns_with"}],
       "requirements": []
     },
     "Element.getAttributeNode:0/call": {
