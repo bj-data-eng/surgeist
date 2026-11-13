@@ -314,6 +314,73 @@ pub(in crate::document_scripting) fn registered_origin_registry_keeps_exact_wrap
     }).unwrap();
 }
 
+pub(in crate::document_scripting) fn scoped_registry_outlives_its_original_navigable() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) =
+        crate::document_scripting::cross_realm_tests::hosted_session(&cancel, 0);
+    let origin = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted.create_headless_host(&mut dom, &cancel).unwrap();
+        hosted.create_top_level(&mut dom, owner, &cancel).unwrap()
+    };
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 14_000, 180_000);
+    let permit = host.permit().unwrap();
+    host.register_node_creation_realm(&permit, origin).unwrap();
+    let foreign = {
+        let engine = host.engine.as_mut().unwrap();
+        let realm = engine
+            .creations
+            .find(origin.global(), || Ok::<_, Error>(()))
+            .unwrap()
+            .unwrap();
+        engine
+            .process
+            .execution()
+            .in_realm(realm, |scope| {
+                let values = scope.evaluate(&units(
+                    r#"(() => {
+                function Fallback() {}
+                Fallback.prototype = null;
+                return [CustomElementRegistry, Fallback, CustomElementRegistry.prototype];
+            })()"#,
+                ))?;
+                Ok(scope.retain(&values))
+            })
+            .unwrap()
+    };
+    host.in_document(&permit, |scope| {
+        let global = scope.global()?;
+        let foreign = scope.import(&foreign)?;
+        scope.set(&global, PropertyKey::String(&units("foreignRegistryParts")), &foreign)?;
+        assert_guest(scope, r#"(() => {
+            const [ForeignRegistry, NewTarget, prototype] = foreignRegistryParts;
+            const cross = Reflect.construct(CustomElementRegistry, [], NewTarget);
+            if (Object.getPrototypeOf(cross) !== prototype) return false;
+            globalThis.retainedScoped = new ForeignRegistry();
+            globalThis.scopedSurvivor = document.createElement('scope-survivor', {customElementRegistry: retainedScoped});
+            document.documentElement.appendChild(scopedSurvivor);
+            return scopedSurvivor.customElementRegistry === retainedScoped;
+        })()"#)
+    }).unwrap();
+    host.with_native(|dom, mut hosted, _| {
+        let retirement = hosted.destroy_top_level(dom, origin.navigable(), &cancel).unwrap();
+        assert!((0..256).any(|_| matches!(
+            hosted.run_next(dom, retirement.traversable(), &cancel).unwrap(),
+            crate::DomHostedTaskProgress::Complete { operation } if operation == retirement.operation()
+        )));
+        hosted.destroy_host(dom, origin.host(), &cancel).unwrap();
+    }).unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            class Survivor extends HTMLElement {}
+            retainedScoped.define('scope-survivor', Survivor);
+            return retainedScoped.get('scope-survivor') === Survivor &&
+                scopedSurvivor.customElementRegistry === retainedScoped && scopedSurvivor instanceof Survivor;
+        })()"#)
+    }).unwrap();
+}
+
 pub(in crate::document_scripting) fn definition_queues_candidates_before_resolving_waiter() {
     let cancellation = Arc::new(AtomicBool::new(false));
     let (mut session, target) =

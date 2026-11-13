@@ -154,10 +154,16 @@ impl Capture {
                 init.clonable,
                 init.serializable,
             ));
-            if init.custom_element_registry_is_null {
-                native = native.with_null_registry();
-            }
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            native = match init.custom_element_registry {
+                None => native,
+                Some(None) => native.with_null_registry(),
+                Some(Some(identity)) => {
+                    native.with_registry(self.callbacks.with_read(&owner, &events, |read, _| {
+                        public.native_registry(read, identity)
+                    })?)
+                }
+            };
             let registration = owner
                 .attachment
                 .get()

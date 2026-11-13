@@ -218,6 +218,14 @@ pub(crate) enum Command {
         host: NodeOperand,
         init: crate::DomShadowRootInit,
     },
+    InitializeRegistry {
+        root: NodeOperand,
+        registry: crate::DomRegistryId,
+    },
+    UpgradeRegistry {
+        root: NodeOperand,
+        registry: crate::DomRegistryId,
+    },
     ViewTransition {
         basis: DomDocumentStamp,
         edit: Edit,

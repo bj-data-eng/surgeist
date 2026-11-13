@@ -110,7 +110,7 @@ struct OriginBindings {
     target: RetainedCallbackObject,
     documents: document::DocumentPrototypes,
     elements: document::element::ElementBindings,
-    custom_elements: Rc<custom_elements::GlobalRegistry>,
+    custom_elements: Rc<custom_elements::Registry>,
     next: Option<Box<Self>>,
     _backing: GuestBacking,
 }
@@ -156,7 +156,8 @@ pub(super) struct PublicEventBindings {
     backup_reaction_job: RetainedCallbackObject,
     backup_reactions_scheduled: Cell<bool>,
     document: document::DocumentBindings,
-    custom_elements: Rc<custom_elements::GlobalRegistry>,
+    custom_elements: Rc<custom_elements::Registry>,
+    scoped_registries: RefCell<custom_elements::ScopedRegistries>,
     origins: RefCell<Option<Box<OriginBindings>>>,
     origin_cost: OriginCost,
 }
@@ -434,6 +435,7 @@ impl PublicEventBindings {
             backup_reactions_scheduled: Cell::new(false),
             document,
             custom_elements,
+            scoped_registries: RefCell::default(),
             origins: RefCell::new(None),
             origin_cost,
         })

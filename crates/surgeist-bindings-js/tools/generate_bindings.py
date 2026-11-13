@@ -695,14 +695,10 @@ def field_name(name):
     return "r#" + result if result in keywords else result
 
 
-def null_registry_member(member):
+def branded_registry_member(member):
     return (member.get("id") in {"ShadowRootInit.customElementRegistry", "ElementCreationOptions.customElementRegistry"}
             and member["type"] == {"kind": "nullable", "inner": {"kind": "named", "name": "CustomElementRegistry"}}
             and not member["required"] and "default" not in member)
-
-
-def branded_registry_member(member):
-    return null_registry_member(member) and member.get("id") == "ElementCreationOptions.customElementRegistry"
 
 def required_registry_brand_member(member):
     return (member.get("id") == "ImportNodeOptions.customElementRegistry"
@@ -717,8 +713,7 @@ def string_member(member):
 
 
 def member_field(member):
-    name = field_name(member["name"])
-    return name + "_is_null" if null_registry_member(member) and not branded_registry_member(member) else name
+    return field_name(member["name"])
 
 
 def lower_values(data):
@@ -746,7 +741,7 @@ def lower_values(data):
         result = list(inherited)
         for m in sorted(d["members"], key=lambda m: m["name"]):
             ty = m["type"]
-            if not (null_registry_member(m) or required_registry_brand_member(m)):
+            if not (branded_registry_member(m) or required_registry_brand_member(m)):
                 if ty["kind"] != "named" or ty.get("attributes"):
                     return None
                 target = definitions.get(ty["name"])
@@ -784,8 +779,6 @@ def member_type(member):
         return "Option<CustomElementRegistryIdentity>"
     if branded_registry_member(member):
         return "Option<Option<CustomElementRegistryIdentity>>"
-    if null_registry_member(member):
-        return "bool"
     name = member["type"]["name"]
     value = {"boolean": "bool", "DOMString": "DomString"}.get(name, name)
     return value if member["required"] or "default" in member else "Option<" + value + ">"
@@ -796,8 +789,6 @@ def member_default(member, enumerations):
         return "None"
     if branded_registry_member(member):
         return "None"
-    if null_registry_member(member):
-        return "false"
     value = member.get("default")
     if value is None:
         require(not member["required"], "required dictionary member has no default")
@@ -847,13 +838,12 @@ def emit_values(model):
         copy = "" if any(string_member(m) for m in d["members"]) else "Clone, Copy, "
         derives = copy + "Debug, " + ("Default, " if derive_default else "") + "PartialEq, Eq"
         doc = ("Complete `" + d["name"] + "` dictionary value for the admitted registry profile."
-               if any(null_registry_member(m) or required_registry_brand_member(m) for m in d["members"])
+               if any(branded_registry_member(m) or required_registry_brand_member(m) for m in d["members"])
                else "Complete brand-free `" + d["name"] + "` dictionary value.")
         result += ["/// " + doc,
                    "#[derive(" + derives + ")]", "pub struct " + d["name"] + " {"]
         for m in d["members"]:
-            doc = ("Whether `customElementRegistry` was explicitly supplied as null."
-                   if null_registry_member(m) else "The declared `" + m["name"] + "` member.")
+            doc = "The declared `" + m["name"] + "` member."
             if branded_registry_member(m):
                 doc = "A supplied null or exact branded registry identity."
             result += ["    /// " + doc,
@@ -1036,8 +1026,6 @@ def emit_conversions(model, arguments=(), selected_setters=()):
                 result += ["        Some(value) => Some(cx.required_custom_element_registry_member(&value)?),"]
             elif branded_registry_member(member):
                 result += ["        Some(value) => Some(cx.custom_element_registry_member(&value)?),"]
-            elif null_registry_member(member):
-                result += ["        Some(value) => cx.null_interface_member(\"CustomElementRegistry\", &value)?,"]
             elif string_member(member):
                 result += ["        Some(value) => Some(cx.value(&types::DOM_STRING, &value)?),"]
             else:

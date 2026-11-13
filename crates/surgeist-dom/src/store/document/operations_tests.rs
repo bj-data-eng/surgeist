@@ -352,6 +352,152 @@ fn source(dom: &mut Dom, edit: DomSourceEdit) -> DomSourceCompletion {
 }
 
 #[test]
+fn scoped_registry_publication_preserves_exact_snapshot_and_document_order() {
+    use surgeist_html_semantics::{HtmlCustomElementDefinition, HtmlRegistryScope};
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let other = hosted(&mut dom, &mut issuer);
+    let before = dom.snapshot();
+    let retained = issuer.retained_storage_bytes();
+    assert!(matches!(
+        dom.create_scoped_registry(&issuer, owner.global(), source_limits(0), &cancel()),
+        Err(DomHostedError::Dom(DomError::SourceOutputLimit))
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(issuer.retained_storage_bytes(), retained);
+    let (created, id) = dom
+        .create_scoped_registry(&issuer, owner.global(), source_limits(1), &cancel())
+        .unwrap();
+    assert_eq!(
+        created.changes().changes(),
+        &[DomChange::RegistryCreated(id)]
+    );
+    let empty = dom.snapshot();
+    assert!(before.registry(id).is_err());
+    assert_eq!(
+        empty.registry(id).unwrap().scope(),
+        HtmlRegistryScope::Scoped
+    );
+    assert_eq!(empty.registry(id).unwrap().scoped_document_count(), 0);
+
+    let mut batch = DomBatch::new();
+    let host = batch.create_element(other.document(), "div");
+    let host = apply(&mut dom, batch).created(&host).unwrap().unwrap();
+    source(
+        &mut dom,
+        DomSourceEdit::attach_shadow(
+            host,
+            crate::DomShadowRootInit::new(HtmlShadowRootMode::Open).with_registry(id),
+        ),
+    );
+    let mut batch = DomBatch::new();
+    let moved = batch.create_element(owner.document(), "div");
+    let moved = apply(&mut dom, batch).created(&moved).unwrap().unwrap();
+    source(
+        &mut dom,
+        DomSourceEdit::attach_shadow(
+            moved,
+            crate::DomShadowRootInit::new(HtmlShadowRootMode::Open).with_registry(id),
+        ),
+    );
+    let mut batch = DomBatch::new();
+    let created_document = batch.create_document();
+    batch.insert_before(moved, &created_document, None);
+    let root = dom
+        .snapshot()
+        .document(other.document())
+        .unwrap()
+        .document_element()
+        .unwrap();
+    batch.insert_before(host, root, None);
+    let created_document = apply(&mut dom, batch).document(&created_document).unwrap();
+    assert_eq!(
+        dom.snapshot()
+            .scoped_registry_documents_with(id, || Ok::<_, DomError>(()))
+            .unwrap(),
+        &[created_document, other.document()]
+    );
+
+    for document in [owner.document(), other.document()] {
+        let candidate = source(
+            &mut dom,
+            DomSourceEdit::create_element_with_options(
+                document.node(),
+                crate::DomElementCreationName::Local("x-scoped".into()),
+                crate::DomElementCreationOptions {
+                    is: None,
+                    registry: Some(DomRegistryBinding::Null),
+                },
+            ),
+        );
+        let Some(crate::DomSourceOutput::Node(candidate)) = candidate.output() else {
+            panic!("expected an admitted detached Element");
+        };
+        source(
+            &mut dom,
+            DomSourceEdit::initialize_custom_element_registry(candidate, id),
+        );
+        let snapshot = dom.snapshot();
+        assert_eq!(
+            snapshot
+                .node(candidate)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .custom_element_registry(),
+            DomRegistryBinding::Registry(id)
+        );
+    }
+    let associated = dom.snapshot();
+    assert_eq!(
+        associated
+            .scoped_registry_documents_with(id, || Ok::<_, DomError>(()))
+            .unwrap(),
+        &[created_document, other.document(), owner.document()]
+    );
+    assert_eq!(empty.registry(id).unwrap().scoped_document_count(), 0);
+    let definition =
+        HtmlCustomElementDefinition::new("x-scoped".into(), "x-scoped".into(), false, false);
+    assert!(matches!(
+        dom.prepare_registry_definition(
+            &issuer,
+            other.global(),
+            id,
+            &definition,
+            source_limits(1),
+            &cancel()
+        ),
+        Err(DomHostedError::StaleIdentity)
+    ));
+    let (_, definition_id) = dom
+        .prepare_registry_definition(
+            &issuer,
+            owner.global(),
+            id,
+            &definition,
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap()
+        .commit();
+    assert_eq!(
+        dom.snapshot()
+            .registry(id)
+            .unwrap()
+            .definition(definition_id)
+            .unwrap(),
+        &definition
+    );
+    assert_eq!(associated.registry(id).unwrap().definition_count(), 0);
+    assert_eq!(
+        dom.snapshot().registry(id).unwrap().scoped_document_count(),
+        3
+    );
+}
+
+#[test]
 fn split_text_creation_uses_current_owner_document_global_after_adoption() {
     let mut dom = dom();
     let mut issuer = issuer(&mut dom);
@@ -620,7 +766,7 @@ fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
         )
         .unwrap();
     assert!(matches!(
-        dom.prepare_global_registry_definition(
+        dom.prepare_registry_definition(
             &issuer,
             owner.global(),
             registry_id,
@@ -638,7 +784,7 @@ fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
     let input_units = autonomous.name().retained_units() + autonomous.local_name().retained_units();
     let canonical_units = dom.custody_registry.ledger().total().units();
     assert!(matches!(
-        dom.prepare_global_registry_definition(
+        dom.prepare_registry_definition(
             &issuer,
             owner.global(),
             registry_id,
@@ -661,7 +807,7 @@ fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
     ));
     assert_eq!(issuer.retained_storage_bytes(), retained);
     assert!(matches!(
-        dom.prepare_global_registry_definition(
+        dom.prepare_registry_definition(
             &issuer,
             owner.global(),
             other_registry,
@@ -672,7 +818,7 @@ fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
         Err(DomHostedError::StaleIdentity)
     ));
     assert!(matches!(
-        dom.prepare_global_registry_definition(
+        dom.prepare_registry_definition(
             &issuer,
             owner.global(),
             registry_id,
@@ -683,7 +829,7 @@ fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
         Err(DomHostedError::Dom(DomError::SourceOutputLimit))
     ));
     assert!(matches!(
-        dom.prepare_global_registry_definition(
+        dom.prepare_registry_definition(
             &issuer,
             owner.global(),
             registry_id,
@@ -696,7 +842,7 @@ fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
         }))
     ));
     let staged = dom
-        .prepare_global_registry_definition(
+        .prepare_registry_definition(
             &issuer,
             owner.global(),
             registry_id,
@@ -710,7 +856,7 @@ fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
     assert_eq!(issuer.retained_storage_bytes(), retained);
 
     let first = dom
-        .prepare_global_registry_definition(
+        .prepare_registry_definition(
             &issuer,
             owner.global(),
             registry_id,
@@ -728,7 +874,7 @@ fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
     );
     let intermediate = dom.snapshot();
     assert!(matches!(
-        dom.prepare_global_registry_definition(
+        dom.prepare_registry_definition(
             &issuer,
             owner.global(),
             registry_id,
@@ -742,7 +888,7 @@ fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
     ));
     assert_eq!(dom.snapshot().stamp(), intermediate.stamp());
     let second = dom
-        .prepare_global_registry_definition(
+        .prepare_registry_definition(
             &issuer,
             owner.global(),
             registry_id,
@@ -865,7 +1011,7 @@ fn document_factory_reaches_the_selected_definition_before_allocating_an_element
         registry
     };
     let mut define = |name: &str, local: &str| {
-        dom.prepare_global_registry_definition(
+        dom.prepare_registry_definition(
             &issuer,
             owner.global(),
             registry,
@@ -1164,7 +1310,7 @@ fn insertion_reaction_receipt_preserves_shadow_order_and_refused_output() {
     let outside = committed.created(&outside).unwrap().unwrap();
     let later = committed.created(&later).unwrap().unwrap();
     let definition = dom
-        .prepare_global_registry_definition(
+        .prepare_registry_definition(
             &issuer,
             owner.global(),
             registry,
@@ -1375,7 +1521,7 @@ fn customized_factory_publishes_one_receiver_and_retries_its_closing_phase() {
         panic!("hosted registry");
     };
     let definition = dom
-        .prepare_global_registry_definition(
+        .prepare_registry_definition(
             &issuer,
             owner.global(),
             registry,
@@ -1641,7 +1787,7 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
         };
         registry
     };
-    dom.prepare_global_registry_definition(
+    dom.prepare_registry_definition(
         &issuer,
         owner.global(),
         registry,
@@ -1966,7 +2112,7 @@ fn adopted_custom_element_exports_the_definition_from_its_original_registry() {
     let source_registry = registry_of(original.document());
     let destination_registry = registry_of(destination.document());
     let other = HtmlCustomElementDefinition::new("x-other".into(), "x-other".into(), false, false);
-    dom.prepare_global_registry_definition(
+    dom.prepare_registry_definition(
         &issuer,
         original.global(),
         source_registry,
@@ -1979,7 +2125,7 @@ fn adopted_custom_element_exports_the_definition_from_its_original_registry() {
     let competing =
         HtmlCustomElementDefinition::new("x-widget".into(), "x-widget".into(), false, true);
     let (_, wrong) = dom
-        .prepare_global_registry_definition(
+        .prepare_registry_definition(
             &issuer,
             destination.global(),
             destination_registry,
@@ -1992,7 +2138,7 @@ fn adopted_custom_element_exports_the_definition_from_its_original_registry() {
     let facts =
         HtmlCustomElementDefinition::new("x-widget".into(), "x-widget".into(), false, false);
     let (_, definition) = dom
-        .prepare_global_registry_definition(
+        .prepare_registry_definition(
             &issuer,
             original.global(),
             source_registry,

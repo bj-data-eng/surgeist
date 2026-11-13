@@ -1409,6 +1409,7 @@ impl Operation {
             Some(Invocation::Exposed(_)) | None => None,
         };
         self.refresh_admission(cancel)?;
+        self.draft.resolve_scoped_registry_documents(dom, cancel)?;
         let mut prepared = self.draft.finish_segment(dom, cancel)?;
         let incomplete_owner = if incomplete {
             Some(self.id)

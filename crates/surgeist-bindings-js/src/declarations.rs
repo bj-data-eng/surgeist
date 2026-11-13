@@ -152,8 +152,8 @@ pub struct ImportNodeOptions {
 pub struct ShadowRootInit {
     /// The declared `clonable` member.
     pub clonable: bool,
-    /// Whether `customElementRegistry` was explicitly supplied as null.
-    pub custom_element_registry_is_null: bool,
+    /// A supplied null or exact branded registry identity.
+    pub custom_element_registry: Option<Option<CustomElementRegistryIdentity>>,
     /// The declared `delegatesFocus` member.
     pub delegates_focus: bool,
     /// The declared `mode` member.

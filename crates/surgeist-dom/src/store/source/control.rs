@@ -141,13 +141,25 @@ impl Draft {
         incoming: Option<formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.set_registries_with_debit(
+            next,
+            incoming.and_then(formation::Formation::into_debit),
+            cancel,
+        )
+    }
+
+    pub(in crate::store) fn set_registries_with_debit(
+        &mut self,
+        next: Option<Arc<crate::store::registry::Bank>>,
+        incoming: Option<custody::Debit>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         // A refusal reserving the inverse must destroy the consumed semantic
         // output before its incoming producer credit, including on this path.
         let staged = (next, incoming);
         let retain = self.prepare_undo(cancel)?;
         let registry = self.custody_registry().clone();
         let (next, incoming) = staged;
-        let incoming = incoming.and_then(formation::Formation::into_debit);
         let (next, custody) = match next {
             Some(next) => {
                 let prepared = transaction::auxiliary::prepare_registry(
@@ -388,6 +400,7 @@ impl Draft {
 /// belong to the inverse journal; numerical work/peaks are deliberately absent.
 pub(in crate::store) struct Snapshot {
     reaction_facts: Option<usize>,
+    scoped_documents: Option<usize>,
     fullscreen_exit: Option<fullscreen::exit::Frame>,
     hosted_pending: Option<operation::hosted::ChildHook>,
     notification_queued: bool,
@@ -409,6 +422,10 @@ impl Snapshot {
                 .custom_element_reactions
                 .as_ref()
                 .map(super::reactions::ReactionFacts::len),
+            scoped_documents: draft
+                .pending_scoped_documents
+                .as_ref()
+                .map(|pending| pending.len()),
             fullscreen_exit: draft.fullscreen_exit,
             hosted_pending: draft.hosted_pending,
             notification_queued: draft.notification_queued,
@@ -422,6 +439,14 @@ impl Snapshot {
         }
     }
     pub(in crate::store) fn restore(mut self, draft: &mut Draft) {
+        match self.scoped_documents {
+            Some(len) => {
+                if let Some(pending) = &mut draft.pending_scoped_documents {
+                    pending.truncate(len);
+                }
+            }
+            None => draft.pending_scoped_documents = None,
+        }
         match self.reaction_facts {
             Some(len) => {
                 if let Some(facts) = &mut draft.custom_element_reactions {

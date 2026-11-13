@@ -121,6 +121,9 @@ impl OperationRoot {
             } => existing(associated_document),
             Command::Create { document, .. } => document.as_ref().and_then(existing),
             Command::AttachShadow { host, .. } => existing(host),
+            Command::InitializeRegistry { root, .. } | Command::UpgradeRegistry { root, .. } => {
+                existing(root)
+            }
             Command::AssignSlot { slot, .. } => existing(slot),
             Command::Select { node, .. }
             | Command::SetStyleDisabled { node, .. }

@@ -394,26 +394,43 @@ impl Draft {
             };
             let adopted = self.node(node)?;
             if let KindRead::Element(element) = adopted.kind() {
-                let binding = match (
-                    element.language().custom_element_registry(),
-                    adopted.parent(),
-                ) {
+                let current = element.language().custom_element_registry();
+                let binding = match (current, adopted.parent()) {
+                    (crate::DomRegistryBinding::Registry(id), _)
+                        if self
+                            .creation_registry(id, cancelled)?
+                            .scoped_origin
+                            .is_some() =>
+                    {
+                        current
+                    }
                     (crate::DomRegistryBinding::Null, Some(parent)) => {
                         self.source_step(cancelled)?;
-                        match self.node(parent)?.kind() {
+                        let selected = match self.node(parent)?.kind() {
                             KindRead::Element(parent) => {
                                 parent.language().custom_element_registry()
                             }
                             KindRead::ShadowRoot(parent) => parent.custom_element_registry(),
+                            KindRead::Document(parent) => parent.custom_element_registry(),
                             _ => binding,
-                        }
+                        };
+                        self.effective_global_registry(selected, cancelled)?
                     }
-                    _ => binding,
+                    _ => self.effective_global_registry(binding, cancelled)?,
                 };
                 self.establish_element_registry(node, binding, cancelled)?;
                 self.record_custom_element_adoption(node, old_document, document, cancelled)?;
             }
-            if matches!(self.node(node)?.kind(), KindRead::ShadowRoot(_)) {
+            if let KindRead::ShadowRoot(current) = self.node(node)?.kind()
+                && (match current.custom_element_registry() {
+                    crate::DomRegistryBinding::Null => !current.keep_custom_element_registry_null(),
+                    crate::DomRegistryBinding::Registry(id) => self
+                        .creation_registry(id, cancelled)?
+                        .scoped_origin
+                        .is_none(),
+                })
+            {
+                let binding = self.effective_global_registry(binding, cancelled)?;
                 let mut state = self.shadow_state_mut(node, cancelled)?;
                 state.select_global_registry(binding);
                 state.commit(cancelled)?;
@@ -1133,7 +1150,14 @@ impl Draft {
                         _ => (),
                     }
                 } else {
-                    if stage < 10 || (stage == 10 && self.captures_custom_element_reactions()) {
+                    if stage < 10
+                        || (stage == 10
+                            && (self.captures_custom_element_reactions()
+                                || self
+                                    .registries
+                                    .as_deref()
+                                    .is_some_and(registry::Bank::has_scoped_registry)))
+                    {
                         self.push_effect(
                             select::Effect::Tree(Frame::Node {
                                 key,

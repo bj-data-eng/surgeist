@@ -987,6 +987,27 @@ impl HostedRuntime {
     }
 
     #[cfg(feature = "document-scripting")]
+    pub(crate) fn create_script_scoped_registry(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        limits: surgeist_dom::DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<surgeist_dom::DomRegistryId, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        state.step(cancel)?;
+        let (_, id) = dom
+            .raw_mut()
+            .create_scoped_registry(&state.source, global, limits, cancel)
+            .map_err(DomHostedRuntimeError::Dom)?;
+        Ok(id)
+    }
+
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn publish_script_registry_definition(
         &self,
         dom: &mut DomEventDom<'_>,
@@ -1004,7 +1025,7 @@ impl HostedRuntime {
         state.step(cancel)?;
         let prepared = dom
             .raw_mut()
-            .prepare_global_registry_definition(
+            .prepare_registry_definition(
                 &state.source,
                 global,
                 registry,

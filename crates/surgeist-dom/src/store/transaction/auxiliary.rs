@@ -38,6 +38,7 @@ struct DocumentMembersCustody {
 }
 struct RegistryChildren {
     _records: bank::BankCustody<registry::Record>,
+    _scoped_documents: bank::BankCustody<registry::ScopedDocuments>,
 }
 struct GlobalsChildren {
     _entries: index::IndexCustody<hosted::GlobalMapping>,
@@ -450,9 +451,16 @@ impl<'a, 'p, 's> Adopter<'a, 'p, 's> {
         let records = self.rows(graph.custody_bank(), &|row| {
             Ok((row.custody_origin(), row.custody_payload()))
         })?;
-        Ok(RegistryCustody(
-            self.attach(root, RegistryChildren { _records: records })?,
-        ))
+        let scoped_documents = self.rows(graph.custody_scoped_documents(), &|row| {
+            Ok((row.origin, row.custody_usage()?))
+        })?;
+        Ok(RegistryCustody(self.attach(
+            root,
+            RegistryChildren {
+                _records: records,
+                _scoped_documents: scoped_documents,
+            },
+        )?))
     }
     fn globals(&self, graph: &hosted::GlobalDocumentIndex) -> Result<GlobalsCustody, DomError> {
         let root = self.root(graph.custody_identity(), graph.custody_usage())?;

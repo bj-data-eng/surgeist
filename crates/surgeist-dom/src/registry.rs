@@ -2,7 +2,7 @@
 
 use crate::{DomOwnerId, DomSnapshot};
 
-/// One actual immutable global registry object in the canonical owner.
+/// One canonical custom-element registry identity.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct DomRegistryId {
     pub(crate) owner: DomOwnerId,
@@ -46,7 +46,7 @@ impl<'a> DomRegistry<'a> {
         self.record()
             .capture
             .registry_scope(&self.record().local)
-            .expect("the controlled registry factory established its exact Global registry")
+            .expect("the controlled registry factory established its exact registry scope")
     }
     pub fn definition_count(self) -> usize {
         match self
@@ -78,14 +78,16 @@ impl<'a> DomRegistry<'a> {
             .definition(id.ordinal)
             .map_err(crate::DomError::SelectCapture)
     }
-    pub const fn is_scoped(self) -> bool {
-        false
+    pub fn is_scoped(self) -> bool {
+        self.record().scoped_origin.is_some()
     }
     pub const fn definition_is_running(self) -> bool {
         false
     }
-    pub const fn scoped_document_count(self) -> usize {
-        0
+    pub fn scoped_document_count(self) -> usize {
+        self.snapshot
+            .scoped_registry_documents_with(self.id, || Ok::<_, crate::DomError>(()))
+            .map_or(0, |documents| documents.len())
     }
     pub const fn when_defined_count(self) -> usize {
         0
